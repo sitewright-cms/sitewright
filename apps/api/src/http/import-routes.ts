@@ -12,6 +12,7 @@ import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
 import { renderViaBrowser } from '../import/render.js';
+import type { ReferencePage, CaptureRefsResult } from '../render/source-ref.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
 
@@ -112,6 +113,16 @@ export interface ImportRouteDeps {
   pinnedFetch?: typeof pinnedFetch;
   /** Headless render of a client-rendered page (omit to disable SPA rendering, e.g. in tests). */
   render?: (url: string, opts?: { signal?: AbortSignal }) => Promise<string | null>;
+  /**
+   * Capture + cache each imported page's LIVE source screenshot (for compare_to_source). Called only on
+   * a FOUNDATION import (the AI-clone path). Omit to skip (e.g. in tests, or when caching is disabled).
+   */
+  cacheSourceRefs?: (
+    slug: string,
+    pages: ReferencePage[],
+    onProgress: (e: unknown) => void,
+    signal: AbortSignal,
+  ) => Promise<CaptureRefsResult>;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -301,6 +312,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     onProgress: (e: unknown) => void,
     extra: { truncated: boolean; warnings: string[] },
     foundation = false,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
     const result = await buildBundle(site, {
@@ -315,7 +327,19 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     assertNoScripts(bundle);
     onProgress({ phase: 'assemble', detail: 'saving content' });
     await contentRepo.importBundle(ctx, project, toImportInput(bundle));
-    return buildReport(site, result, extra);
+    const report = buildReport(site, result, extra);
+    // FOUNDATION (AI-clone) only: cache each page's live-source screenshot so compare_to_source has a
+    // stable reference from import time. Best-effort — a failure never fails the import.
+    if (foundation && deps.cacheSourceRefs) {
+      try {
+        const refs = await deps.cacheSourceRefs(project.slug, bundle.pages as ReferencePage[], onProgress, signal ?? new AbortController().signal);
+        report.sourceRefsCaptured = refs.captured;
+        if (refs.capped) report.sourceRefsCapped = refs.total;
+      } catch (err) {
+        log.warn({ projectId: project.id, errMsg: err instanceof Error ? err.message : String(err) }, 'source-reference capture failed');
+      }
+    }
+    return report;
   }
 
   /** Claim the per-project lock + a global slot; sends the 409/429 and returns false if unavailable. */
@@ -373,7 +397,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
             },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
-          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation);
+          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
         },
         { projectId: project.id },
         log,
@@ -425,7 +449,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         async (onProgress) => {
           const fetcher = makeFetcher(abort.signal);
           const media = makeMediaPort(ctx, project.slug, fetcher);
-          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, foundation);
+          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, foundation, abort.signal);
         },
         { projectId: project.id },
         log,

@@ -28,7 +28,7 @@ interface Built {
 
 type PinnedStub = (url: string) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
 
-function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub } = {}): Built {
+function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub; cacheSourceRefs?: (slug: string, pages: unknown[], onProgress: (e: unknown) => void, signal: AbortSignal) => Promise<{ captured: number; total: number; capped: boolean }> } = {}): Built {
   const app = Fastify();
   void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
@@ -46,6 +46,7 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
     // Default: no network (pinnedFetch returns null); SPA render disabled in tests (no headless browser).
     pinnedFetch: (opts.pinnedFetch ?? (async () => null)) as never,
     render: undefined,
+    ...(opts.cacheSourceRefs ? { cacheSourceRefs: opts.cacheSourceRefs as never } : {}),
   });
   return { app, importBundle, createMediaAsset, hostScript };
 }
@@ -190,6 +191,28 @@ describe('POST /projects/:id/import/website/stream', () => {
     const off = track(makeApp({ buildBundle }));
     await off.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
     expect(seen[1]?.foundation).toBeUndefined();
+  });
+
+  it('caches source references ONLY on a foundation import, and reports the count', async () => {
+    const okBundle = () => ({
+      bundles: [{ project: { identity: { name: 'X', colors: {} } as never, settings: { defaultLocale: 'en', locales: ['en'] } }, pages: [{ id: 'h', path: '', title: 'H', source: '<p>ok</p>', data: { swImport: { sourceUrl: 'https://ex.com/', rewritten: false } } }], templates: [], datasets: [], entries: [] }],
+      diagnostics: [] as [],
+      stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
+    });
+    const buildBundle = (async () => okBundle()) as never;
+    const cacheSourceRefs = vi.fn(async () => ({ captured: 1, total: 1, capped: false }));
+
+    // foundation import → references captured, count surfaced in the SSE `done` report.
+    const on = track(makeApp({ buildBundle, cacheSourceRefs }));
+    const res = await on.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream?foundation=1', payload: { url: 'https://ex.com/' } });
+    expect(cacheSourceRefs).toHaveBeenCalledTimes(1);
+    expect(cacheSourceRefs.mock.calls[0]![0]).toBe('p'); // project slug
+    expect(res.payload).toContain('"sourceRefsCaptured":1');
+
+    // plain import → NOT called.
+    const off = track(makeApp({ buildBundle, cacheSourceRefs }));
+    await off.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
+    expect(cacheSourceRefs).toHaveBeenCalledTimes(1); // still 1
   });
 
   it('self-hosts an image whose bytes are already captured (no fetch)', async () => {

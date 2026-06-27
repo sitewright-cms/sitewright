@@ -169,8 +169,10 @@ import {
   getUserEmail,
   listPlatformUsers,
   listProjectAccessForUser,
+  listProjectClientUserIds,
   listProjectMembers,
   login,
+  reapOrphanedClients,
   registerAccount,
   removeProjectMember,
   resolveProjectRole,
@@ -1164,6 +1166,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       };
       // Re-load the project so a stale key whose project was deleted resolves to a clean 404.
       const project = await projects.get(req.params.projectId);
+      if (project.deletedAt) throw new NotFoundError('project not found'); // soft-deleted → unreachable
       return { ctx, project, apiKey: key };
     }
 
@@ -1173,6 +1176,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const role = await resolveProjectRole(db, userId, req.params.projectId);
     if (!role) throw new ForbiddenError('you do not have access to this project');
     const project = await projects.get(req.params.projectId);
+    if (project.deletedAt) throw new NotFoundError('project not found'); // soft-deleted → unreachable
     return { ctx: { userId, role, projectId: project.id, actor: 'user' }, project, apiKey: null };
   }
 
@@ -1727,6 +1731,66 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  // ---- Deleted (soft-deleted) projects. Listed / restored / permanently reaped by a platform admin. ----
+  app.get('/admin/deleted-projects', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const deleted = await projects.listDeleted();
+    const items = await Promise.all(
+      deleted.map(async (p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        deletedAt: p.deletedAt?.toISOString() ?? null,
+        // Resolve the deleter's email for display; null if that account is itself gone.
+        deletedBy: p.deletedBy ? await getUserEmail(db, p.deletedBy).catch(() => null) : null,
+      })),
+    );
+    return reply.send({ projects: items });
+  });
+
+  app.post<{ Params: { id: string } }>(
+    '/admin/deleted-projects/:id/restore',
+    { config: rl(20) },
+    async (req, reply) => {
+      await requireInstanceAdmin(req);
+      if (req.params.id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found'); // never the global scope
+      const project = await projects.get(req.params.id); // NotFound if absent
+      if (!project.deletedAt) throw new NotFoundError('project not found'); // only deleted projects restore
+      await projects.restore(req.params.id);
+      return reply.code(204).send();
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    '/admin/deleted-projects/:id',
+    { config: rl(20) },
+    async (req, reply) => {
+      await requireInstanceAdmin(req);
+      const project = await projects.get(req.params.id); // NotFound if absent
+      // Only a SOFT-deleted project can be permanently reaped (a live one must be deleted first).
+      if (!project.deletedAt) throw new ForbiddenError('only a deleted project can be permanently removed');
+      await reapProject(req.params.id);
+      return reply.code(204).send();
+    },
+  );
+
+  app.delete('/admin/deleted-projects', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const deleted = await projects.listDeleted();
+    // Isolate each reap: one failure must not abort the sweep, and the returned count reflects what
+    // actually succeeded (not the pre-loop list length).
+    let reaped = 0;
+    for (const p of deleted) {
+      try {
+        await reapProject(p.id);
+        reaped += 1;
+      } catch (err) {
+        app.log.error({ id: p.id, err: err instanceof Error ? err.message : String(err) }, 'reap-all: failed to reap a project');
+      }
+    }
+    return reply.send({ reaped });
+  });
+
   // ---- Invites: staff (platform admin/developer) or a project member joins only by accepting an
   // invite while signed in as the invited email — no direct add, so there is no account-existence
   // oracle and no unaccepted membership. ----
@@ -1882,7 +1946,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const userId = await requireUserId(req);
       const role = await resolveProjectRole(db, userId, req.params.id);
       if (!role) throw new ForbiddenError('you do not have access to this project');
-      return reply.send({ project: await projects.get(req.params.id) });
+      const project = await projects.get(req.params.id);
+      if (project.deletedAt) throw new NotFoundError('project not found'); // soft-deleted → hidden
+      return reply.send({ project });
     },
   );
 
@@ -1896,31 +1962,44 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const userId = await requireUserId(req);
       const role = await resolveProjectRole(db, userId, req.params.id);
       if (role !== 'owner') throw new ForbiddenError('insufficient role to delete this project');
-      // Capture the slug BEFORE the row is gone — the published site directory is keyed by slug.
       const project = await projects.get(req.params.id);
-      await projects.remove(req.params.id);
-      // Best-effort on-disk cleanup: the published site + media directories have no
-      // DB-level cascade. A failure here must NOT fail the delete (the rows are
-      // already gone) — log and continue. Optional chaining no-ops when unconfigured.
-      // Log only the error code/message (not the full error, which carries the
-      // absolute fs path) to keep internal paths out of the logs.
-      const onCleanupError = (what: string) => (err: unknown) =>
-        req.log.warn(
-          { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
-          'project asset cleanup failed on delete',
-        );
-      // The published site, the ephemeral preview build, and media storage are all keyed by the
-      // project's (immutable) slug.
-      await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
-      await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
-      // Drop the in-memory preview-build bookkeeping for this project so the maps can't leak.
+      if (project.deletedAt) throw new NotFoundError('project not found'); // already deleted
+      // SOFT-delete (recoverable): the project leaves every member list, its routes + published site
+      // 404, but ALL rows + on-disk artifacts are RETAINED so an instance admin can restore it. The
+      // permanent REAP (rows + disk + orphaned client accounts) happens from the admin surface.
+      await projects.softDelete(req.params.id, userId);
+      // Drop the in-memory preview-build bookkeeping so a hidden project keeps no stale builds.
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
       previewBuildFail.delete(project.id);
-      await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
       return reply.code(204).send();
     },
   );
+
+  /**
+   * REAP a (soft-deleted) project: permanently delete its rows, then its on-disk artifacts, then any
+   * CLIENT account left orphaned of every project (never staff). The row delete is the transactional
+   * core; on-disk + orphaned-client cleanup is best-effort/post-commit (a failure there must not undo
+   * the reap). The published site / preview build / media dirs are all keyed by the (immutable) slug.
+   */
+  async function reapProject(id: string): Promise<void> {
+    if (id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found'); // never reap the global scope
+    const project = await projects.get(id); // NotFound if absent
+    const clientIds = await listProjectClientUserIds(db, id); // snapshot BEFORE membership rows go
+    await projects.remove(id);
+    const onCleanupError = (what: string) => (err: unknown) =>
+      app.log.warn(
+        { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
+        'project asset cleanup failed on reap',
+      );
+    await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
+    await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
+    previewBuiltVersion.delete(project.id);
+    previewBuilds.delete(project.id);
+    previewBuildFail.delete(project.id);
+    await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
+    await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
+  }
 
   // ---- Project content (tenant + project scoped) ----
   type ContentParams = { projectId: string; kind: string; entityId: string };
@@ -2445,6 +2524,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       } catch {
         return expired();
       }
+      if (project.deletedAt) return expired(); // soft-deleted → preview unreachable
       // Session-only auth, mirroring resolveProject's session branch: a platform admin resolves to
       // owner, everyone else needs a membership on THIS project. requireUserId throws without a
       // session → treated as a miss.
@@ -3455,7 +3535,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Local hosting is served ONLY when the project has a `local` deploy target (it carries the
         // serve options). No project / no local target → behave as if nothing is published here (404).
         const gateProject = await projects.getBySlug(slug).catch(() => null);
-        if (!gateProject) return reply.code(404).send();
+        // No project, or a SOFT-DELETED one → behave as if nothing is published (the page goes offline
+        // the moment the project is deleted; its retained assets are inert without the page).
+        if (!gateProject || gateProject.deletedAt) return reply.code(404).send();
         const local = await findLocalTarget({ userId: 'system', projectId: gateProject.id, role: 'owner' as const });
         if (!local) return reply.code(404).send();
         // The target's preview-token gate (a soft "unlisted preview" control). Keep clean path URLs
@@ -3681,7 +3763,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const { projectId, sig } = req.params;
         if (!verifyPreview(projectId, sig, currentCookieSecret)) return reply.code(404).send();
         const project = await projects.get(projectId).catch(() => null);
-        if (!project) return reply.code(404).send();
+        // A soft-deleted project's draft preview goes offline too, even for a previously-minted signed
+        // URL — otherwise a held link would keep serving the (now-deleted) draft site.
+        if (!project || project.deletedAt) return reply.code(404).send();
         const path = req.params['*'] ?? '';
         const base = `/preview-site/${projectId}/${sig}/`;
 

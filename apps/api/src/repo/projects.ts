@@ -1,7 +1,8 @@
 import { newId } from '../id.js';
-import { eq } from 'drizzle-orm';
+import { desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
+  aiUsage,
   apiKeys,
   content,
   contentRevisions,
@@ -20,6 +21,10 @@ export interface Project {
   name: string;
   slug: string;
   createdAt: Date;
+  /** Soft-delete marker — NULL on a live project; set once an owner/admin deletes it (recoverable). */
+  deletedAt: Date | null;
+  /** The user who soft-deleted it (display only). */
+  deletedBy: string | null;
 }
 
 export interface CreateProjectInput {
@@ -43,15 +48,26 @@ export class ProjectRepository {
    * relies on). Repo-layer tests that don't care about membership omit `ownerUserId`.
    */
   async create(input: CreateProjectInput, ownerUserId?: string): Promise<Project> {
-    const duplicate = await this.db.select().from(projects).where(eq(projects.slug, input.slug));
-    if (duplicate.length > 0) {
-      throw new ConflictError('a project with this slug already exists');
+    // A soft-deleted project keeps its (unique) slug until it is reaped, so a clash may be a deleted
+    // project the admin can restore or remove — say which, so the operator has a path to resolution.
+    const [duplicate] = await this.db
+      .select({ deletedAt: projects.deletedAt })
+      .from(projects)
+      .where(eq(projects.slug, input.slug));
+    if (duplicate) {
+      throw new ConflictError(
+        duplicate.deletedAt
+          ? 'a deleted project is holding this slug — restore or permanently remove it first'
+          : 'a project with this slug already exists',
+      );
     }
     const project: Project = {
       id: newId(),
       name: input.name,
       slug: input.slug,
       createdAt: new Date(),
+      deletedAt: null,
+      deletedBy: null,
     };
     if (ownerUserId === undefined) {
       await this.db.insert(projects).values(project);
@@ -85,10 +101,12 @@ export class ProjectRepository {
   }
 
   /**
-   * Deletes a project + all of its dependent rows in one transaction (no DB-level ON DELETE
-   * CASCADE). Drops content + its revision history, form submissions (visitor PII), API keys + OAuth grants (revokes all
-   * tokens), project memberships, and project invites. On-disk media/publish artifacts are not
-   * removed here (follow-up).
+   * REAP — permanently deletes a project + ALL of its dependent rows in one transaction (no
+   * DB-level ON DELETE CASCADE). Drops content + its revision history, form submissions (visitor
+   * PII), API keys + OAuth grants (revokes all tokens), the AI-usage ledger, project memberships,
+   * and project invites. On-disk media/publish/preview artifacts are removed by the HTTP layer
+   * (keyed by slug). This is the FINAL step behind the admin "deleted projects" reap — callers
+   * soft-delete (`softDelete`) first; restore is impossible after this.
    */
   async remove(id: string): Promise<void> {
     await this.get(id); // NotFound if absent
@@ -96,6 +114,7 @@ export class ProjectRepository {
       await tx.delete(content).where(eq(content.projectId, id));
       await tx.delete(contentRevisions).where(eq(contentRevisions.projectId, id));
       await tx.delete(formSubmissions).where(eq(formSubmissions.projectId, id));
+      await tx.delete(aiUsage).where(eq(aiUsage.projectId, id));
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
       await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));
@@ -104,5 +123,26 @@ export class ProjectRepository {
       await tx.delete(invites).where(eq(invites.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });
+  }
+
+  /**
+   * SOFT-delete: mark the project deleted (recoverable). It then drops out of every member-facing
+   * query (lists/role resolution/project routes/published site) but keeps ALL rows + on-disk
+   * artifacts so an admin can `restore` it. Does NOT free the slug (a restore must find it intact).
+   */
+  async softDelete(id: string, byUserId: string): Promise<void> {
+    await this.get(id); // NotFound if absent
+    await this.db.update(projects).set({ deletedAt: new Date(), deletedBy: byUserId }).where(eq(projects.id, id));
+  }
+
+  /** Un-delete a soft-deleted project — clears the marker; its retained rows/artifacts come back. */
+  async restore(id: string): Promise<void> {
+    await this.get(id); // NotFound if absent
+    await this.db.update(projects).set({ deletedAt: null, deletedBy: null }).where(eq(projects.id, id));
+  }
+
+  /** Every soft-deleted project (the admin "deleted projects" list), most-recently-deleted first. */
+  async listDeleted(): Promise<Project[]> {
+    return this.db.select().from(projects).where(isNotNull(projects.deletedAt)).orderBy(desc(projects.deletedAt));
   }
 }

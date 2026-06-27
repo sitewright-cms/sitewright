@@ -159,7 +159,7 @@ describe('project lifecycle (HTTP layer)', () => {
   });
 
   // ---- 3. Delete lifecycle ----
-  it('deletes an (empty) project so it leaves the list and is no longer reachable (403)', async () => {
+  it('soft-deletes an (empty) project so it leaves the list and is no longer reachable (404)', async () => {
     h = await makeHarness();
     const a = await h.signup();
     const projectId = await a.createProject('Site', 'site-a');
@@ -168,7 +168,7 @@ describe('project lifecycle (HTTP layer)', () => {
     // The project resolves before deletion.
     expect((await a.get(`/projects/${projectId}`)).statusCode).toBe(200);
 
-    // Delete the project → 204.
+    // Delete the project → 204 (a recoverable SOFT-delete).
     const del = await a.del(`/projects/${projectId}`);
     expect(del.statusCode).toBe(204);
 
@@ -176,37 +176,31 @@ describe('project lifecycle (HTTP layer)', () => {
     const list = await a.get(`/projects`);
     expect((list.json() as { projects: ProjectShape[] }).projects).toHaveLength(0);
 
-    // Delete also removed the owner's membership row, so the (former) owner now resolves
-    // no role for the gone project → 403 (a clean deny that doesn't reveal existence).
-    expect((await a.get(`/projects/${projectId}`)).statusCode).toBe(403);
-
-    // Its (would-be) content is no longer accessible: resolveProject → no role → 403.
-    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(403);
-    expect((await a.get(`${base}/content/page`)).statusCode).toBe(403);
+    // Soft-delete KEEPS the owner's membership but marks the project deleted, so every project
+    // route 404s (hidden — not "forbidden", since the membership still resolves a role).
+    expect((await a.get(`/projects/${projectId}`)).statusCode).toBe(404);
+    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(404);
+    expect((await a.get(`${base}/content/page`)).statusCode).toBe(404);
   });
 
-  // Regression: a project with content must be deletable. `content.project_id`
-  // has no DB-level ON DELETE CASCADE, so ProjectRepository.remove deletes the
-  // content rows + the project row in one transaction. (Previously the bare
-  // project delete violated the FK → 500, making projects with content
-  // undeletable.)
-  it('deletes a project that has content, cascading its content rows (204)', async () => {
+  // A project with content soft-deletes cleanly and its content is RETAINED (so an admin can restore
+  // it). The permanent reap of those content rows — which has no DB-level ON DELETE CASCADE — is
+  // covered by project-soft-delete.test.ts (reap of a project with content + members).
+  it('soft-deletes a project that has content (204) — the content is retained for restore', async () => {
     h = await makeHarness();
     const a = await h.signup();
     const projectId = await a.createProject('Site', 'site-b');
     const base = `/projects/${projectId}`;
 
-    // Seed a content row so the project has a dependent FK reference.
+    // Seed a content row so the project has dependent data.
     expect((await a.put(`${base}/content/page/home`, page)).statusCode).toBe(200);
 
-    // Delete now cascades to content rows in one transaction (previously 500'd on the FK).
     const del = await a.del(`/projects/${projectId}`);
     expect(del.statusCode).toBe(204);
 
-    // The project and its content are gone; the (former) owner's membership went with it,
-    // so re-reading now resolves no role → 403.
-    expect((await a.get(`/projects/${projectId}`)).statusCode).toBe(403);
-    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(403);
+    // Hidden + 404 (membership intact); the content row is retained behind the soft-delete.
+    expect((await a.get(`/projects/${projectId}`)).statusCode).toBe(404);
+    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(404);
   });
 
   it('returns 403 when deleting a project the caller has no membership for (incl. non-existent)', async () => {

@@ -24,6 +24,8 @@ interface HeaderSettingsMenuProps {
   onSystemSettings: () => void;
   onClients: () => void;
   onTeam: () => void;
+  /** Owner/agency-only: delete the current project (opens the type-to-confirm modal; absent → hidden). */
+  onDeleteProject?: () => void;
 }
 
 /**
@@ -42,6 +44,7 @@ export function HeaderSettingsMenu({
   onSystemSettings,
   onClients,
   onTeam,
+  onDeleteProject,
 }: HeaderSettingsMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -73,20 +76,26 @@ export function HeaderSettingsMenu({
   // Owner/agency-only: Clone a website with AI + CLIENT MANAGEMENT (the "Clients" panel = invite/manage other
   // users). System Settings + Team are instance-admin-only. Account actions (Account Settings + Logout)
   // live under the adjacent user icon (UserDropdown).
-  const items: { label: string; onClick: () => void; dividerBefore?: boolean }[] = [
-    ...(
-      [
-        { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
-        { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
-        { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
-        { label: 'Clients', onClick: onClients, show: owner },
-        // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.
-        { label: 'Team', onClick: onTeam, show: isInstanceAdmin },
-      ] as { label: string; onClick: () => void; show: boolean }[]
-    )
-      .filter((i) => i.show)
-      .map(({ label, onClick }) => ({ label, onClick })),
-  ];
+  const items: { label: string; onClick: () => void; dividerBefore?: boolean; danger?: boolean }[] = (
+    [
+      { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
+      { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
+      { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
+      { label: 'Clients', onClick: onClients, show: owner },
+      // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.
+      { label: 'Team', onClick: onTeam, show: isInstanceAdmin },
+      // Destructive, owner-only, set apart at the bottom: SOFT-delete the whole project (type-to-confirm).
+      {
+        label: 'Delete Project',
+        onClick: onDeleteProject ?? (() => {}),
+        show: owner && !!onDeleteProject,
+        dividerBefore: true,
+        danger: true,
+      },
+    ] as { label: string; onClick: () => void; show: boolean; dividerBefore?: boolean; danger?: boolean }[]
+  )
+    .filter((i) => i.show)
+    .map(({ label, onClick, dividerBefore, danger }) => ({ label, onClick, dividerBefore, danger }));
   const all = items;
 
   const pick = (fn: () => void) => () => {
@@ -153,7 +162,12 @@ export function HeaderSettingsMenu({
                 onClick={pick(it.onClick)}
                 // Usual hover (gradient) + ripple on click. focus-VISIBLE (keyboard only) so the
                 // first item isn't highlighted when the menu is opened by mouse (programmatic focus).
-                className={`waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`}
+                // A `danger` item (Delete Project) is rose, set apart from the neutral items.
+                className={
+                  it.danger
+                    ? 'waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:bg-rose-50 focus-visible:outline-none'
+                    : `waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`
+                }
               >
                 {it.label}
               </button>

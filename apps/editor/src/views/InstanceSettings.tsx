@@ -16,6 +16,7 @@ import {
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
+import { DeletedProjectsCard } from './DeletedProjectsCard';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
@@ -775,6 +776,7 @@ export function InstanceSettings() {
     </form>
 
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pb-10">
+      <DeletedProjectsCard />
       <section className={`${glassCard} p-4`}>
         <h2 className="flex items-center gap-1.5 text-sm font-bold">
           MCP endpoints

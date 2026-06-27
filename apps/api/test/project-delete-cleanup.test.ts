@@ -47,7 +47,8 @@ describe('project delete — on-disk cleanup', () => {
     publishRoot = await mkdtemp(join(tmpdir(), 'sw-del-sites-'));
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-del-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
-    client = await harness.signup();
+    // An instance admin (can both create a project and run the permanent reap).
+    client = await harness.signup({ admin: true });
     projectId = await client.createProject('Site', slug);
   });
 
@@ -57,7 +58,7 @@ describe('project delete — on-disk cleanup', () => {
     await rm(mediaRoot, { recursive: true, force: true });
   });
 
-  it('removes the published-site and media directories when the project is deleted', async () => {
+  it('retains on-disk dirs on SOFT-delete, then removes them on the permanent REAP', async () => {
     const proj = client.project(projectId);
 
     // Publish a site (creates publishRoot/<slug>/) ...
@@ -65,21 +66,24 @@ describe('project delete — on-disk cleanup', () => {
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
     expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(200);
 
-    // ... and upload media (creates mediaRoot/<projectId>/<assetId>/).
+    // ... and upload media (creates mediaRoot/<slug>/<assetId>/).
     const up = await client.inject({ method: 'POST', url: `${proj.base}/media`, ...multipart('a.png', 'image/png', PNG_1X1) });
     expect(up.statusCode).toBe(201);
     const asset = (up.json() as { item: { id: string; url: string } }).item;
     expect((await client.get(asset.url)).statusCode).toBe(200);
 
-    // Positive proof: both directories exist on disk before delete (published
-    // site AND media are both keyed by the project's slug).
+    // Positive proof: both directories exist on disk (published site AND media, both keyed by slug).
     expect(existsSync(join(publishRoot, slug))).toBe(true);
     expect(existsSync(join(mediaRoot, slug))).toBe(true);
 
-    // Delete the project.
+    // SOFT-delete: the page goes offline (404) but the on-disk dirs are RETAINED so it can be restored.
     expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
+    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(404);
+    expect(existsSync(join(publishRoot, slug))).toBe(true);
+    expect(existsSync(join(mediaRoot, slug))).toBe(true);
 
-    // The on-disk directories are gone (not merely 404 at the HTTP layer)...
+    // Permanent REAP (admin): NOW the directories are removed from disk (not merely 404'd)...
+    expect((await client.del(`/admin/deleted-projects/${projectId}`)).statusCode).toBe(204);
     expect(existsSync(join(publishRoot, slug))).toBe(false);
     expect(existsSync(join(mediaRoot, slug))).toBe(false);
     // ... and the served URLs 404.

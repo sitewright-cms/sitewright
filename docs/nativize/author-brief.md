@@ -133,6 +133,16 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
   `data-sw-html`/`data-sw-text` so a client can edit it.
 - **R32 — Header bar fidelity.** The header is part of the diff: match its background (brand vs white),
   container width, logo size, item alignment and spacing to the original — don't settle for the default.
+- **R33 — Site-wide data → `website.data`.** Any value reused across pages/sections (app-store URLs,
+  phone/email, a booking link, repeated CTAs) belongs in `website.data` once, referenced everywhere with
+  `{{website.data.KEY}}` (in a URL: `{{sw-url website.data.KEY}}`). Never hardcode the same value in two
+  places or leave it a `href="#"` placeholder — pull the real value from the original (e.g. the live
+  app-store links) into `website.data`. Page-specific values still go in `page.data`.
+- **R34 — Replicate a component's LOOK, don't abandon it.** When a native SW component's default styling
+  differs from the original (slider arrows/dots, accordion active-state highlight, tab styling), keep the
+  component and restyle it to match — Tailwind utility classes on the markup, or `criticalCss` rules
+  targeting its `[data-sw-part="…"]` / state selectors. Falling back to non-native markup because "the
+  default looks different" is a regression (R13a).
 
 ## Self-lint checklist (run BEFORE returning — catch violations pre-audit)
 - [ ] No landmark tags, no `{{{raw}}}`, no inline `<style>/<script>`, no foreign classes (R1,R2)

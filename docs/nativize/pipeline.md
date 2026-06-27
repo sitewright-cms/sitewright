@@ -146,3 +146,39 @@ Project `burmeister-native` (`F45xZmYIGBaj`): all 19 pages native + verified (de
 scripts under `apps/api/_*.mjs` (`_css`, `_chrome3`, `_navfix`, `_svctpl`, `_home3`, `_inaug`,
 `_contact`, `_author`, `_render`) are the prototype each productionized step replaces. Captures/working
 state under the session scratchpad `native/`. See the memory note `native-clone-authoring-recipe`.
+
+## 10. Compare-to-source: the self-correction loop (the missing capability)
+
+The hand-clone failures proved agents (human or MCP) CANNOT reliably self-verify visual fidelity by
+"looking at their own render." The fix is a TOOL that puts build next to source and MEASURES the gap,
+plus prompts that make using it mandatory. This is the reproducible system; the non-MCP agent's job is
+to build this tooling + the prompts, not to hand-clone.
+
+**Decisions (2026-06-27):**
+- **No foreign JS/CSS import.** The AI-clone flow imports BINARY ASSETS ONLY (images/fonts/docs) + the
+  source reference screenshots. Foreign CSS/JS are never hosted (R30 already skips them in foundation
+  mode). The compare-to-source reference replaces the old literal-CSS scaffold.
+- **Imported assets land in the ROOT folder** (no `imported/<dir>` mirroring); the author agent regroups
+  them per R21. (Change `importMediaFolder` → `''` in foundation mode.)
+- **Single sequential AUTHOR agent**, not parallel per-page — one agent retains memory/conventions across
+  the whole site (datasets, chrome, tokens) and compares each page as it goes.
+
+**Build spec:**
+1. **Source reference capture (ingest).** Add `captureSourceShots(url, viewports)` to
+   `apps/api/src/import/render.ts` — same pinned-route headless Chromium as `renderViaBrowser` (SSRF-safe),
+   but `page.screenshot({fullPage})` at desktop + mobile. During the foundation import, screenshot each
+   crawled page and store the shots (media in a reserved `__source__` folder, or a dedicated reference
+   store) keyed by route; record `page.data.swImport.reference = { desktop, mobile }`.
+2. **`compare_to_source` MCP tool** (+ HTTP route). Input: a page id (+ optional viewports). Server:
+   renders the agent's BUILD via the existing `captureScreenshots(html, …)` path; loads the stored SOURCE
+   reference shots; computes a **pixelmatch** difference (resize to common width) → a 0–1 diff score per
+   viewport. Returns the build + source images **side-by-side as MCP image blocks** + the diff scores +
+   page-height deltas. Register in `MCP_TOOL_CATALOG` (content:read), add `client.ts` method, document in
+   the agent guide.
+3. **Prompt/brief loop.** Author a page → `compare_to_source(pageId)` → enumerate the visible diffs from
+   the side-by-side AND read the diff score → fix → repeat until the score is under a threshold (e.g. <8%).
+   NEVER self-declare "faithful"; the diff score + the side-by-side ARE the verdict. Goes in author-brief
+   (replaces the unenforceable "render-diff yourself") + the MCP agent import guide.
+
+This makes the verification a tool call an agent cannot skip or fake — the structural fix for the
+repeated "looked at my own render and called it faithful" failure.

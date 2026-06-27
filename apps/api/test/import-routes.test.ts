@@ -200,13 +200,13 @@ describe('POST /projects/:id/import/website/stream', () => {
       stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
     });
     const buildBundle = (async () => okBundle()) as never;
-    const cacheSourceRefs = vi.fn(async (_slug: string, _pages: unknown[], _op: (e: unknown) => void, _s: AbortSignal) => ({ captured: 1, total: 1, capped: false }));
+    const cacheSourceRefs = vi.fn(async () => ({ captured: 1, total: 1, capped: false }));
 
     // foundation import → references captured, count surfaced in the SSE `done` report.
     const on = track(makeApp({ buildBundle, cacheSourceRefs }));
     const res = await on.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream?foundation=1', payload: { url: 'https://ex.com/' } });
     expect(cacheSourceRefs).toHaveBeenCalledTimes(1);
-    expect(cacheSourceRefs.mock.calls[0]![0]).toBe('p'); // project slug
+    expect((cacheSourceRefs.mock.calls[0] as unknown[])[0]).toBe('p'); // project slug
     expect(res.payload).toContain('"sourceRefsCaptured":1');
 
     // plain import → NOT called.

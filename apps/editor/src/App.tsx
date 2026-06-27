@@ -13,6 +13,7 @@ import { DataPanel } from './views/datasets/DataPanel';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
+import { DeleteProjectModal } from './views/DeleteProjectModal';
 import { UserDropdown } from './views/UserDropdown';
 import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost';
 import { UserMenu } from './views/UserMenu';
@@ -117,6 +118,8 @@ function MainApp({
   const [publishRefresh, setPublishRefresh] = useState(0);
   // The header gear menu's settings surfaces (System Settings / Clients / Team / Access), each a modal.
   const [settingsView, setSettingsView] = useState<SettingsView | null>(null);
+  // The owner-only "Delete Project" type-to-confirm modal (the project being deleted, or null).
+  const [deleteFor, setDeleteFor] = useState<Project | null>(null);
 
   async function signOut() {
     try {
@@ -329,6 +332,7 @@ function MainApp({
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
+          onDeleteProject={inProject && !isClient ? () => setDeleteFor(inProject) : undefined}
         />
         {/* The user/account menu (person icon → dropdown): "Account Settings" opens the tabbed account
             modal (email, password, access keys, security/MFA); "Logout" signs out (relocated here from
@@ -414,6 +418,18 @@ function MainApp({
       {/* System Settings / Clients / Team — opened (as modals) from the header gear menu. */}
       {settingsView && (
         <SettingsModalHost view={settingsView} project={inProject} onClose={() => setSettingsView(null)} />
+      )}
+      {/* Owner-only "Delete Project" (type-to-confirm). On success, leave the now-deleted project. */}
+      {deleteFor && (
+        <DeleteProjectModal
+          project={deleteFor}
+          onClose={() => setDeleteFor(null)}
+          onDeleted={() => {
+            setDeleteFor(null);
+            setStage({ name: 'home' });
+            void refresh();
+          }}
+        />
       )}
       {/* The user/account menu (person icon) — account email, password, access keys, security. */}
       {userMenuOpen && (

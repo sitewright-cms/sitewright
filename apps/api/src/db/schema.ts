@@ -35,6 +35,14 @@ export const projects = sqliteTable(
     /** Instance-unique (there is one platform); the published site serves at `/sites/<slug>/`. */
     slug: text('slug').notNull().unique(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * SOFT-DELETE marker. NULL = a live project. When set, the project is hidden from every
+     * member-facing query (lists, role resolution, project routes 404, the published site 404s)
+     * but ALL its rows + on-disk artifacts are RETAINED so an instance admin can restore it. The
+     * final REAP (admin) clears the rows + disk. `deletedBy` is the acting user (display only).
+     */
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
+    deletedBy: text('deleted_by'),
   },
   () => [],
 );

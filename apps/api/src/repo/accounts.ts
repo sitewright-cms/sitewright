@@ -1,7 +1,27 @@
 import { newId } from '../id.js';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
+import {
+  aiUsage,
+  apiKeys,
+  contentRevisions,
+  invites,
+  mfaLoginTickets,
+  oauthAuthCodes,
+  oauthDeviceCodes,
+  oauthRefreshTokens,
+  oidcIdentities,
+  projectMembers,
+  projects,
+  sessions,
+  userMfaRecoveryCodes,
+  userMfaTotp,
+  userPasskeys,
+  users,
+  webauthnChallenges,
+  type PlatformRole,
+  type ProjectRole,
+} from '../db/schema.js';
 import { GLOBAL_SCOPE_ID } from './global-library.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { acceptPendingInvitesForEmail, hasPendingInvite } from './invites.js';
@@ -302,7 +322,9 @@ export async function listProjectAccessForUser(db: Database, userId: string): Pr
     const all = await db
       .select({ projectId: projects.id, projectName: projects.name, projectSlug: projects.slug })
       .from(projects)
-      .where(ne(projects.id, GLOBAL_SCOPE_ID)); // hide the reserved global-library scope
+      // hide the reserved global-library scope + any SOFT-DELETED project (admins manage those
+      // separately via the "deleted projects" admin surface).
+      .where(and(ne(projects.id, GLOBAL_SCOPE_ID), isNull(projects.deletedAt)));
     return all.map((p) => ({ ...p, role: 'owner' as ProjectRole }));
   }
   return db
@@ -314,7 +336,8 @@ export async function listProjectAccessForUser(db: Database, userId: string): Pr
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .where(eq(projectMembers.userId, userId));
+    // a soft-deleted project drops out of every member's list (access is revoked while deleted).
+    .where(and(eq(projectMembers.userId, userId), isNull(projects.deletedAt)));
 }
 
 export interface ProjectMemberView {
@@ -359,6 +382,68 @@ export async function removeProjectMember(db: Database, ctx: ProjectContext, use
   await db
     .delete(projectMembers)
     .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, ctx.projectId)));
+}
+
+/** The CLIENT members (platformRole null — NOT agency staff) of a project, by user id. Snapshotted
+ *  before a reap so orphaned client accounts can be cleaned up afterwards. */
+export async function listProjectClientUserIds(db: Database, projectId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: users.id })
+    .from(projectMembers)
+    .innerJoin(users, eq(projectMembers.userId, users.id))
+    .where(and(eq(projectMembers.projectId, projectId), isNull(users.platformRole)));
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * Permanently deletes a USER account + EVERY row that references it (no DB-level cascade): project
+ * memberships, sessions, MFA (TOTP + recovery + login tickets), passkeys + WebAuthn challenges, OIDC
+ * identities, API keys, OAuth grants, the AI-usage ledger, authored content-revision rows, and the
+ * invites they created/accepted. Used ONLY by {@link reapOrphanedClients} — the caller must have
+ * verified the user is a non-staff client orphaned of every project. NEVER call for agency staff.
+ */
+export async function deleteUserAccount(db: Database, userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(projectMembers).where(eq(projectMembers.userId, userId));
+    await tx.delete(sessions).where(eq(sessions.userId, userId));
+    await tx.delete(userMfaTotp).where(eq(userMfaTotp.userId, userId));
+    await tx.delete(userMfaRecoveryCodes).where(eq(userMfaRecoveryCodes.userId, userId));
+    await tx.delete(mfaLoginTickets).where(eq(mfaLoginTickets.userId, userId));
+    await tx.delete(userPasskeys).where(eq(userPasskeys.userId, userId));
+    await tx.delete(webauthnChallenges).where(eq(webauthnChallenges.userId, userId));
+    await tx.delete(oidcIdentities).where(eq(oidcIdentities.userId, userId));
+    await tx.delete(apiKeys).where(eq(apiKeys.createdBy, userId));
+    await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.userId, userId));
+    await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.userId, userId));
+    await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.userId, userId));
+    await tx.delete(aiUsage).where(eq(aiUsage.userId, userId));
+    await tx.delete(contentRevisions).where(eq(contentRevisions.userId, userId));
+    await tx.delete(invites).where(or(eq(invites.invitedBy, userId), eq(invites.acceptedBy, userId)));
+    await tx.delete(users).where(eq(users.id, userId));
+  });
+}
+
+/**
+ * After a project is reaped, delete each former CLIENT whose LAST project just went away — a non-staff
+ * account with NO remaining project membership at all. Staff (admin/developer) are never touched; a
+ * client still in ANOTHER project (live or soft-deleted) is kept (so that project's restore keeps
+ * them). Caller passes the client ids snapshotted (via {@link listProjectClientUserIds}) BEFORE the
+ * reap removed their membership. Returns the ids actually deleted.
+ */
+export async function reapOrphanedClients(db: Database, candidateUserIds: string[]): Promise<string[]> {
+  const deleted: string[] = [];
+  for (const userId of candidateUserIds) {
+    if ((await getPlatformRole(db, userId)) !== null) continue; // never delete agency staff
+    const [stillMember] = await db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId))
+      .limit(1);
+    if (stillMember) continue; // belongs to another project → keep the account
+    await deleteUserAccount(db, userId);
+    deleted.push(userId);
+  }
+  return deleted;
 }
 
 export interface PlatformUser {

@@ -264,6 +264,14 @@ export interface Project {
   slug: string;
   role: ProjectRole;
 }
+/** A soft-deleted project awaiting restore or permanent reap (the admin "deleted projects" list). */
+export interface DeletedProject {
+  id: string;
+  name: string;
+  slug: string;
+  deletedAt: string | null;
+  deletedBy: string | null;
+}
 /** A user's role within a single project. */
 export type ProjectRole = 'owner' | 'member';
 /** The platform-staff role for a user (developer/admin), or null for a pure client. */
@@ -585,7 +593,17 @@ export const api = {
     request<void>('DELETE', `/projects/${projectId}/members/${encodeURIComponent(userId)}`),
   createProject: (name: string, slug: string) =>
     request<{ project: Project }>('POST', '/projects', { name, slug }),
+  /** SOFT-delete (recoverable): hides the project everywhere; an admin can restore or permanently reap it. */
   deleteProject: (id: string) => request<void>('DELETE', `/projects/${id}`),
+  /** Admin: every soft-deleted project (for the "deleted projects" management surface). */
+  listDeletedProjects: () => request<{ projects: DeletedProject[] }>('GET', '/admin/deleted-projects'),
+  /** Admin: un-delete a soft-deleted project (its rows + artifacts were retained). */
+  restoreProject: (id: string) =>
+    request<void>('POST', `/admin/deleted-projects/${encodeURIComponent(id)}/restore`),
+  /** Admin: PERMANENTLY delete a soft-deleted project — rows, files, and orphaned client accounts. */
+  reapProject: (id: string) => request<void>('DELETE', `/admin/deleted-projects/${encodeURIComponent(id)}`),
+  /** Admin: permanently delete EVERY soft-deleted project. Returns how many were reaped. */
+  reapAllDeletedProjects: () => request<{ reaped: number }>('DELETE', '/admin/deleted-projects'),
   listPages: (projectId: string) =>
     request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
   getPage: (projectId: string, id: string) =>

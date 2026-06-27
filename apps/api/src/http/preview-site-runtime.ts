@@ -23,12 +23,24 @@ export const PREVIEW_SITE_RUNTIME_JS = `(function () {
   // the body so scroll-linked page JS (back-to-top, parallax, scrollTo, anchor jumps, AOS) keeps working.
   function bridgeScroll() {
     var b = document.body;
+    // Self-guard: only bridge when the body is ACTUALLY the scroll container (the renderer's
+    // previewScroll CSS is in effect). If the viewport still scrolls, leave the native scroll APIs
+    // alone — so this never silently zeroes window.scrollY when the body-scroll CSS isn't present.
+    try { if (getComputedStyle(b).overflowY !== 'auto') return; } catch (e) { return; }
     try {
       Object.defineProperty(window, 'scrollY', { configurable: true, get: function () { return b.scrollTop; } });
       Object.defineProperty(window, 'pageYOffset', { configurable: true, get: function () { return b.scrollTop; } });
-    } catch (e) { /* non-configurable in this engine: leave the native accessor */ }
-    window.scrollTo = function (a, y) { b.scrollTop = (a && typeof a === 'object') ? (a.top || 0) : (y || 0); };
-    window.scrollBy = function (a, y) { b.scrollTop += (a && typeof a === 'object') ? (a.top || 0) : (y || 0); };
+      Object.defineProperty(window, 'scrollX', { configurable: true, get: function () { return b.scrollLeft; } });
+      Object.defineProperty(window, 'pageXOffset', { configurable: true, get: function () { return b.scrollLeft; } });
+    } catch (e) { /* non-configurable in this engine: leave the native accessors */ }
+    window.scrollTo = function (a, y) {
+      if (a && typeof a === 'object') { b.scrollTop = a.top || 0; b.scrollLeft = a.left || 0; }
+      else { b.scrollLeft = +a || 0; b.scrollTop = +y || 0; }
+    };
+    window.scrollBy = function (a, y) {
+      if (a && typeof a === 'object') { b.scrollTop += a.top || 0; b.scrollLeft += a.left || 0; }
+      else { b.scrollLeft += +a || 0; b.scrollTop += +y || 0; }
+    };
     b.addEventListener('scroll', function () { window.dispatchEvent(new Event('scroll')); }, { passive: true });
   }
   function report() {

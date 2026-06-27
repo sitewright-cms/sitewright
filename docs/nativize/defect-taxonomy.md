@@ -26,8 +26,15 @@ For each defect found in the VERIFY phase, record: `{category, ruleId, page, sev
 | **C-SHADOW** | Elevation missing/too weak vs original | R23 | service image + cards flat; needed `bp-card` |
 | **C-EDIT** | Visible copy not wrapped for editing | R19 | headings/paragraphs hardcoded, not `data-sw-text` |
 | **C-ASSET** | Bare-UUID names / one flat folder / unpruned files | R21, R22 | everything under `_assets/<uuid>` |
-| **C-FIDELITY** | Faithful-design miss not covered above (texture, bg treatment, layout) | R8, R12, page-specific | red bands missing the geometric texture; contact missing the building bg-image + overlay; hero solid vs patterned |
-| **C-STALE** *(verify-process, not a code defect)* | Audited a STALE/transient render and mis-judged | — (VERIFY rule) | career "white job headers" + management "global preview bug" were stale fullPage CSS, not real defects — confirmed via computed-style + element screenshot |
+| **C-FIDELITY** | Faithful-design miss not covered above (texture, bg treatment, layout) | R8, R12, R25, R32, page-specific | red bands missing texture; contact missing bg-image+overlay; **etaxi: header white not yellow; "Why" tiles solid-white not semi-transparent+border; tile content left not centered; legal pages a generic richtext blob not the brand-bordered container** |
+| **C-HALLUCINATION** | Invented section/element/link not in the original; placeholder `href="#"`/lorem | R24 | **etaxi: a whole "Download the App" band invented; app-store badges + Imprint/Privacy links were dead `#` placeholders** |
+| **C-SNIPPET** | DaisyUI/hand-rolled used where a SW snippet exists | R13, R13a | **etaxi: nav hand-built `<li>`s instead of `nav-header`; How-To/FAQ used DaisyUI tabs not `tabs-mixed`/`tabs-dataset`; tiles not `recipe-dataset-grid`** |
+| **C-COMPONENT-CONTENT** | A component panel stripped of the original's inner media | R27 | **etaxi: How-To/FAQ tabs lost their sliders/images/buttons/video — reduced to a bare text list** |
+| **C-ICON-CAPTURE** | Original icons not reproduced (wrong glyph/size/color) | R26 | **etaxi: all "Why" tiles got one generic check icon; real distinct icons + sizes/colors dropped** |
+| **C-SIDEBAR** | Original sidebar/off-canvas dropped | R28 | **etaxi: sidebar not captured (foundation discards `sidebarLeft/Right`)** |
+| **C-DATASET-NAME** | Generic crawler dataset names kept | R29 | **etaxi: `items2`/`items3` not renamed to `FAQ – Passengers/Drivers`** |
+| **C-FOREIGN-FILES** | Imported CSS/JS/icon-font files left in the media library | R30 | **etaxi: File Manager still held imported `.css`/`.js` + FontAwesome woffs; `imported/_data` UUID dump not streamlined** |
+| **C-STALE** *(verify-process, not a code defect)* | Audited a STALE/transient render and mis-judged | — (VERIFY rule) | career/management false defects were stale fullPage CSS; **etaxi: a preloader scroll-lock (`html{overflow:hidden}`) clipped the headless render to the viewport** |
 
 ## Verify-phase rules (process, not page rules)
 - **V1** The author who declares faithfulness is never the only verifier — an independent render-and-compare is mandatory.
@@ -36,6 +43,13 @@ For each defect found in the VERIFY phase, record: `{category, ruleId, page, sev
   (avoids C-STALE false positives). Warm the preview (one request) before the authoritative render.
 - **V3** Headless artifacts ≠ defects: third-party embeds (maps, PDF iframes) and lazy map tiles may not
   paint headlessly though they work in a real browser — verify the markup/URL, don't log a false defect.
+- **V4** Verify PER SECTION, not by whole-page glance: enumerate the original's sections top-to-bottom and
+  confirm each (header, hero, every band/tile, tabs + inner media, accordion, footer, sub-footer, sidebar).
+  The etaxi pass declared `faithful` on a glance and missed ~15 defects on a single-page layout — the
+  author must produce the defect list, not the user.
+- **V5** Release scroll-locks before the authoritative screenshot: a preview/preloader can leave
+  `html{overflow:hidden}` + a fixed body height, clipping a headless fullPage capture to the viewport
+  (looks "blank below the fold"). Force `overflow:visible` / `height:auto` before measuring + shooting.
 
 ## Loop bookkeeping
 Each run appends to [progress.md](./progress.md): defect counts by category, any `MISSING-RULE` items,

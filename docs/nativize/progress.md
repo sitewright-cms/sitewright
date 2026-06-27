@@ -204,3 +204,28 @@ Follow-ups (separate from the AI-clone PRs — NOT introduced by them):
   `rewritten=true` native) is the intended path before publish. Worth a separate look.
 - **Mechanical nativizer deletion:** the dormant `/nativize/stream` + `render/nativize-project.ts` can
   now be removed (post-validation, per the Step-5 decision).
+
+## 2026-06-27 — etaxi AUTHOR-pass FAILURE → brief v4 (defects captured)
+
+Authored the etaxi clone (home + imprint + privacy) and wrongly declared it faithful after 3 passes.
+The user enumerated ~15 defects on a single-page layout that I should have caught — a verification
+failure (no per-section diff; declared `faithful` on a glance) AND non-compliance with existing rules
+(hardcoded nav vs R13; DaisyUI/hand-rolled vs the snippet library; registry not consulted), plus genuine
+rule gaps. Captured ALL of it:
+- **Brief → v4**: per-section enumerated diff (loop step 6 + V4); R13 now mandates `nav-header`/`nav-footer`
+  snippets (data-driven, never hand-rolled) + R13a snippet-first over DaisyUI; new R24 (no hallucination /
+  no placeholder links), R25 (match each section's surface/alignment), R26 (capture icons), R27 (keep
+  in-component media), R28 (sidebar), R29 (dataset names), R30 (delete foreign files), R31 (legal pages
+  faithful+editable), R32 (header-bar fidelity). Self-lint extended.
+- **Taxonomy**: added C-HALLUCINATION, C-SNIPPET, C-COMPONENT-CONTENT, C-ICON-CAPTURE, C-SIDEBAR,
+  C-DATASET-NAME, C-FOREIGN-FILES; V4 (per-section), V5 (release scroll-lock before capture).
+
+**Foundation/pipeline code follow-ups the defects imply (systemic, not just agent discipline):**
+1. `applyFoundation` DROPS `sidebarLeft/Right` — should PRESERVE/nativize a sidebar if the original has one (C-SIDEBAR).
+2. Foundation/import leaves the foreign CSS/JS + icon-font FILES in the media library — should delete them after discarding from the head (C-FOREIGN-FILES).
+3. Strip the imported `| Site Name` suffix from page titles.
+4. Better default dataset names (inference is generic — at least make rename frictionless for the agent).
+5. The whole AUTHOR phase must run with brief v4 + a per-section diff gate before any `faithful` claim.
+
+Redo of the etaxi clone to be done PROPERLY under v4 (snippets, faithful per-section, clean assets,
+editable legal pages, sidebar) — not another glance pass.

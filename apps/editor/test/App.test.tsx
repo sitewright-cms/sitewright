@@ -68,6 +68,8 @@ describe('App shell', () => {
   it('shows the project selector automatically on first load, searchable', async () => {
     render(<App />);
     const dialog = await screen.findByRole('dialog', { name: 'SiteWright' });
+    // The System Library (project-agnostic) stays available even with NO project selected.
+    expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Acme/ })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Globex/ })).toBeInTheDocument();
     // Search filters the list.

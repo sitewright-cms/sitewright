@@ -429,13 +429,14 @@ function MainApp({
           onPasswordChanged={() => void refresh()}
         />
       )}
-      {/* Always-present edge side-panels (any project member): System Library (left), File Manager
-          (right), and the bottom rails — Datasets (left), the paired Snippets + Widgets (center),
-          Templates (right). They render above modals so their tabs stay reachable; each opens on
-          hover/click of its own edge tab. */}
+      {/* The System Library (global reference: snippets/templates/icons/builders) is project-agnostic,
+          so it stays on the left edge even with NO project selected — a reachable reference at all times. */}
+      <LibraryPanel />
+      {/* Project-scoped edge side-panels (any project member): File Manager (right), and the bottom
+          rails — Datasets (left), the paired Snippets + Widgets (center), Templates (right). They render
+          above modals so their tabs stay reachable; each opens on hover/click of its own edge tab. */}
       {inProject && (
         <>
-          <LibraryPanel />
           <AssetsPanel key={inProject.id} projectId={inProject.id} />
           <DataPanel key={`dt-${inProject.id}`} project={inProject} />
           <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />

@@ -258,4 +258,29 @@ export class SitewrightClient {
     );
     return res.item;
   }
+
+  /** List the project's virtual media FOLDERS (grouping labels for the media library). */
+  async listMediaFolders(): Promise<unknown> {
+    return this.request('GET', this.projectPath('/media/folders'));
+  }
+
+  /** Create an (empty) media folder + any missing ancestors. */
+  async createMediaFolder(path: string): Promise<unknown> {
+    return this.request('POST', this.projectPath('/media/folders'), { path });
+  }
+
+  /** Rename OR move a media folder — re-roots the subtree AND re-files every asset under it. */
+  async renameMediaFolder(from: string, to: string): Promise<unknown> {
+    return this.request('POST', this.projectPath('/media/folders/rename'), { from, to });
+  }
+
+  /** Move (`folder`) and/or rename (`filename`) a single media asset. */
+  async updateMedia(id: string, changes: { folder?: string; filename?: string }): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'PATCH',
+      this.projectPath(`/media/${encodeURIComponent(id)}`),
+      changes,
+    );
+    return res.item;
+  }
 }

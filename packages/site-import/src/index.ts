@@ -3,6 +3,19 @@
 // adapters (crawl/zip) and the MediaPort implementation live in the API app; this package is I/O-free
 // apart from the injected MediaPort.
 export { buildImportBundle } from './build.js';
+export {
+  type HostedFont,
+  type FoundationInput,
+  type FoundationResult,
+  applyFoundation,
+  extractColors,
+  extractTypography,
+  foundationCriticalCss,
+  nativeMainNav,
+  nativeFooter,
+  configurePageNav,
+  readCssVars,
+} from './transform/foundation.js';
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
 export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl, UPLOAD_BASE } from './url-util.js';
 export { looksClientRendered } from './spa-detect.js';

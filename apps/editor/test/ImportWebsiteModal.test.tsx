@@ -43,7 +43,7 @@ describe('ImportWebsiteModal', () => {
     });
     setup();
 
-    const start = screen.getByRole('button', { name: 'Start import' });
+    const start = screen.getByRole('button', { name: 'Clone with AI' });
     expect(start).toBeDisabled();
     await user.type(screen.getByLabelText('Website URL'), 'https://example.com');
     expect(start).toBeEnabled();
@@ -52,8 +52,11 @@ describe('ImportWebsiteModal', () => {
 
     // Drive the stream to completion → report step.
     act(() => handlers.onDone?.(REPORT));
-    expect(screen.getByText('Imported 3 pages')).toBeTruthy();
+    expect(screen.getByText(/Foundation ready/)).toBeTruthy();
     expect(screen.getByText('3 of 4 found')).toBeTruthy();
+    // The mechanical "Nativize" step is gone — replaced by the AI-authoring handoff.
+    expect(screen.getByText('Author with AI')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Nativize/ })).toBeNull();
   });
 
   it('opens the project from the report step', async () => {
@@ -66,7 +69,7 @@ describe('ImportWebsiteModal', () => {
     const onImported = vi.fn();
     setup(onImported);
     await user.type(screen.getByLabelText('Website URL'), 'https://example.com');
-    await user.click(screen.getByRole('button', { name: 'Start import' }));
+    await user.click(screen.getByRole('button', { name: 'Clone with AI' }));
     act(() => handlers.onDone?.(REPORT));
     await user.click(screen.getByRole('button', { name: 'Open project' }));
     expect(onImported).toHaveBeenCalledTimes(1);
@@ -81,10 +84,10 @@ describe('ImportWebsiteModal', () => {
     });
     setup();
     await user.type(screen.getByLabelText('Website URL'), 'https://example.com');
-    await user.click(screen.getByRole('button', { name: 'Start import' }));
+    await user.click(screen.getByRole('button', { name: 'Clone with AI' }));
     act(() => handlers.onError?.('only public https URLs can be imported'));
     expect(screen.getByText('only public https URLs can be imported')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Start import' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clone with AI' })).toBeTruthy();
   });
 
   it('aborts the stream when closed mid-import', async () => {
@@ -96,7 +99,7 @@ describe('ImportWebsiteModal', () => {
     });
     setup();
     await user.type(screen.getByLabelText('Website URL'), 'https://example.com');
-    await user.click(screen.getByRole('button', { name: 'Start import' }));
+    await user.click(screen.getByRole('button', { name: 'Clone with AI' }));
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(signal?.aborted).toBe(true);
   });
@@ -108,7 +111,7 @@ describe('ImportWebsiteModal', () => {
     await user.click(screen.getByRole('button', { name: /Upload a bundle/ }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(fileInput, new File(['PK'], 'site.zip', { type: 'application/zip' }));
-    await user.click(screen.getByRole('button', { name: 'Start import' }));
+    await user.click(screen.getByRole('button', { name: 'Clone with AI' }));
     expect(importUploadStream).toHaveBeenCalledTimes(1);
     expect(importUploadStream.mock.calls[0]![1].name).toBe('site.zip');
   });

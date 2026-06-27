@@ -13,6 +13,7 @@ import {
   StockProviderNameSchema,
   ScreenshotViewportNameSchema,
   SCREENSHOT_VIEWPORT_NAMES,
+  MediaFolderSchema,
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
@@ -393,6 +394,15 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:read', ({ kind }) => client.listMedia(kind)),
   );
 
+  server.registerTool(
+    'list_media_folders',
+    {
+      description:
+        'List the project’s media FOLDERS (virtual grouping labels — slash-delimited paths, "" = root). Call before organizing assets so you reuse existing folders instead of creating duplicates.',
+    },
+    gate('content:read', () => client.listMediaFolders()),
+  );
+
   // ---------------------------------------------------------------- writes (content:write)
   // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to
   // create/update without the irreversible power to remove pages or content.
@@ -448,6 +458,50 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       inputSchema: { url: z.string().url().max(2048), folder: z.string().max(1024).optional() },
     },
     gate('content:write', ({ url, folder }) => client.importImageUrl(url, folder)),
+  );
+
+  // Media organization — give the agent control over the per-page folder structure (a gallery in
+  // its own folder, one-per-page heroes under "Header Images", loose singletons under "Main", …).
+  server.registerTool(
+    'create_media_folder',
+    {
+      description:
+        'Create an (empty) media folder + any missing ancestors. `path` is a slash-delimited grouping label (segments: letters, digits, space, _ or -), e.g. "About/Gallery". Folders are virtual labels; the file bytes stay where they are.',
+      inputSchema: { path: MediaFolderSchema },
+    },
+    gate('content:write', ({ path }) => client.createMediaFolder(path)),
+  );
+
+  server.registerTool(
+    'rename_media_folder',
+    {
+      description:
+        'Rename OR move a media folder: re-roots the folder subtree AND re-files every asset under it. `from`/`to` are full folder paths. Fails if `to` already exists.',
+      inputSchema: { from: MediaFolderSchema, to: MediaFolderSchema },
+    },
+    gate('content:write', ({ from, to }) => client.renameMediaFolder(from, to)),
+  );
+
+  server.registerTool(
+    'move_media',
+    {
+      description:
+        'Move and/or rename a single media asset: `folder` re-files it (use list_media_folders / create_media_folder), `filename` sets its display name. Pass at least one. The asset URL is unchanged.',
+      inputSchema: {
+        id: z.string(),
+        folder: MediaFolderSchema.optional(),
+        filename: z.string().min(1).max(255).optional(),
+      },
+    },
+    gate('content:write', ({ id, folder, filename }) => {
+      if (folder === undefined && filename === undefined) {
+        throw new Error('move_media needs at least one of `folder` or `filename`.');
+      }
+      return client.updateMedia(id, {
+        ...(folder !== undefined ? { folder } : {}),
+        ...(filename !== undefined ? { filename } : {}),
+      });
+    }),
   );
 
   // ---------------------------------------------------------------- publish (publish)

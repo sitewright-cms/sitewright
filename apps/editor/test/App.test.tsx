@@ -127,8 +127,8 @@ describe('App shell', () => {
     const menu = await screen.findByRole('menu', { name: 'Settings' });
     expect(within(menu).getByRole('menuitem', { name: 'Publish & Deploy Options' })).toBeInTheDocument();
     expect(within(menu).queryByRole('menuitem', { name: 'Clients' })).toBeNull();
-    // Website import is an agency action — not offered to a client.
-    expect(within(menu).queryByRole('menuitem', { name: 'Import a website' })).toBeNull();
+    // Website cloning is an agency action — not offered to a client.
+    expect(within(menu).queryByRole('menuitem', { name: 'Clone a website with AI' })).toBeNull();
   });
 
   it('the header project name re-opens the selector', async () => {

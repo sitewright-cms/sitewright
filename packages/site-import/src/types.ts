@@ -91,6 +91,13 @@ export interface TransformOptions {
   defaultLocale?: string;
   /** ISO timestamp stamped onto each imported page's `data.swImport` marker (the route supplies it). */
   importedAt?: string;
+  /**
+   * Opt-in: run the deterministic FOUNDATION extractor (theme + captured fonts + data-driven native
+   * chrome) and DISCARD the foreign stylesheet/scripts, so the import yields a clean native foundation
+   * for AI page authoring instead of the raw foreign-CSS scaffold. Off → import behaves as before.
+   * See docs/nativize/pipeline.md + transform/foundation.ts.
+   */
+  foundation?: boolean;
   onProgress?: (e: ImportProgress) => void;
 }
 
@@ -112,6 +119,7 @@ export type DiagnosticCode =
   | 'locales-detected'
   | 'dataset-inferred'
   | 'invalid-source-fallback'
+  | 'foundation-applied'
   | 'bundle-invalid';
 
 export interface ImportDiagnostic {

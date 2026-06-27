@@ -16,6 +16,33 @@
  * navigates the iframe naturally and this script re-reports the new location on the next load.
  */
 export const PREVIEW_SITE_RUNTIME_JS = `(function () {
+  // PREVIEW-only: the page scrolls on <body> (the renderer sets html{overflow:hidden} body{overflow:auto}),
+  // because Chrome renders a sandboxed sub-frame's VIEWPORT scrollbar as an auto-hiding overlay — so the
+  // brand ::-webkit-scrollbar never shows there. A non-root scroll container's scrollbar IS classic +
+  // styled, giving the preview a real, visible scrollbar like the published tab. Bridge window scroll →
+  // the body so scroll-linked page JS (back-to-top, parallax, scrollTo, anchor jumps, AOS) keeps working.
+  function bridgeScroll() {
+    var b = document.body;
+    // Self-guard: only bridge when the body is ACTUALLY the scroll container (the renderer's
+    // previewScroll CSS is in effect). If the viewport still scrolls, leave the native scroll APIs
+    // alone — so this never silently zeroes window.scrollY when the body-scroll CSS isn't present.
+    try { if (getComputedStyle(b).overflowY !== 'auto') return; } catch (e) { return; }
+    try {
+      Object.defineProperty(window, 'scrollY', { configurable: true, get: function () { return b.scrollTop; } });
+      Object.defineProperty(window, 'pageYOffset', { configurable: true, get: function () { return b.scrollTop; } });
+      Object.defineProperty(window, 'scrollX', { configurable: true, get: function () { return b.scrollLeft; } });
+      Object.defineProperty(window, 'pageXOffset', { configurable: true, get: function () { return b.scrollLeft; } });
+    } catch (e) { /* non-configurable in this engine: leave the native accessors */ }
+    window.scrollTo = function (a, y) {
+      if (a && typeof a === 'object') { b.scrollTop = a.top || 0; b.scrollLeft = a.left || 0; }
+      else { b.scrollLeft = +a || 0; b.scrollTop = +y || 0; }
+    };
+    window.scrollBy = function (a, y) {
+      if (a && typeof a === 'object') { b.scrollTop += a.top || 0; b.scrollLeft += a.left || 0; }
+      else { b.scrollLeft += +a || 0; b.scrollTop += +y || 0; }
+    };
+    b.addEventListener('scroll', function () { window.dispatchEvent(new Event('scroll')); }, { passive: true });
+  }
   function report() {
     try {
       parent.postMessage(
@@ -26,9 +53,10 @@ export const PREVIEW_SITE_RUNTIME_JS = `(function () {
       /* parent gone or cross-origin-blocked: the page still renders, just without auto-tracking */
     }
   }
+  function init() { bridgeScroll(); report(); }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', report);
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    report();
+    init();
   }
 })();`;

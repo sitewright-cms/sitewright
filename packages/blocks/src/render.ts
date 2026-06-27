@@ -163,6 +163,15 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   inlineScripts?: readonly string[];
   /**
+   * PREVIEW-ONLY (the whole-site draft preview): move the page scroll from the iframe VIEWPORT onto
+   * the `<body>`. Chrome renders a sandboxed sub-frame's VIEWPORT scrollbar as an auto-hiding overlay
+   * (so the brand `::-webkit-scrollbar` never shows), but a non-root scroll container's scrollbar is
+   * classic + styleable — so the preview gets a real, visible scrollbar like the published tab. The
+   * preview runtime bridges `window.scrollY`/scroll events to the body so scroll-linked JS still works.
+   * Never set on publish (a top-level tab's viewport scrollbar is already classic).
+   */
+  previewScroll?: boolean;
+  /**
    * The resolved SYSTEM UI strings as a JSON string (see @sitewright/blocks `systemI18nData`),
    * stamped onto `<html data-sw-i18n="…">` for the first-party component RUNTIMES to read +
    * JSON.parse. It MUST be an ATTRIBUTE, not an inline `<script>`: the published site's CSP is
@@ -217,6 +226,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     headInlineScripts,
     scripts,
     inlineScripts,
+    previewScroll,
     systemI18n,
     ...ctx
   } = opts;
@@ -229,13 +239,28 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   // Sanitized (schema already constrains it; defense-in-depth keeps any future caller from injecting CSS).
   const containerCss =
     containerWidth && /^(none|\d{2,4}px)$/.test(containerWidth) ? `\n:root{--sw-container:${containerWidth}}` : '';
+  // Preview-only: give the sandboxed sub-frame a real, visible scrollbar like the published tab.
+  // Two sub-frame-specific problems to beat (neither bites a top-level tab):
+  //   1. Chrome paints a sub-frame's VIEWPORT scrollbar as an auto-hiding overlay → move the scroll onto
+  //      <body> (a non-root scroll container), whose scrollbar reserves space and stays put.
+  //   2. daisyUI's styles.css sets `:root{scrollbar-color: <translucent> transparent}`, which both puts
+  //      Chrome in STANDARD-scrollbar mode (so the brand `::-webkit-scrollbar` pseudo never paints in the
+  //      sub-frame) AND makes that standard bar see-through. So colour the standard scrollbar with the
+  //      OPAQUE brand tokens here — a visible indigo thumb on a page-coloured track.
+  // Appended LAST so it wins over previewStyles' `body{min-height:100dvh}`. The preview runtime bridges
+  // window scroll → the body so scroll-linked page JS keeps working. NEVER emitted on publish.
+  const previewScrollCss = previewScroll
+    ? '\nhtml{height:100%;overflow:hidden}' +
+      '\nbody{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;' +
+      'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}'
+    : '';
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
     theme?.enabled
       ? `\n${themeCss(brand.colors)}`
       : emitBrandContentTokens
         ? `\n${lightContentTokensCss(brand.colors)}`
         : ''
-  }${containerCss}`;
+  }${containerCss}${previewScrollCss}`;
   // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).
   const dataThemeAttr = theme?.enabled ? themeHtmlAttr(theme.default) : '';

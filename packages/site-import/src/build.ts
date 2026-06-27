@@ -22,7 +22,7 @@ import { collectDocumentRefs, collectImageRefs, hostAssets } from './transform/a
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectAndHostScripts } from './transform/scripts.js';
 import { collectFontFaces } from './transform/fonts.js';
-import { applyFoundation, type HostedFont } from './transform/foundation.js';
+import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
 import { inferDatasets } from './transform/datasets.js';
@@ -157,7 +157,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // Self-host @font-face web fonts too (keyed like images → the same host pass; buildPageStyles then
   // rewrites the @font-face url() to the hosted file). The page renders rawFidelity, so these fonts
   // — not the platform typography — apply.
-  for (const [key, asset] of collectFontFaces(cssCollection.cssText)) if (!refs.has(key)) refs.set(key, asset);
+  // In FOUNDATION mode the foreign CSS is discarded, so its icon fonts (FontAwesome/icomoon/…) are dead
+  // weight — don't self-host them (they'd otherwise litter the media library). Brand text fonts ARE kept
+  // (the foundation matches them into identity.typography).
+  for (const [key, asset] of collectFontFaces(cssCollection.cssText)) {
+    if (opts.foundation && isIconFont(asset.font?.family)) continue;
+    if (!refs.has(key)) refs.set(key, asset);
+  }
   // Self-host linked documents (PDFs/docs) too, so a `<a href="brochure.pdf">` keeps working off /media.
   for (const [key, asset] of collectDocumentRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })))) if (!refs.has(key)) refs.set(key, asset);
   const host = await hostAssets(refs, opts.media, limits, opts.onProgress);
@@ -176,14 +182,17 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     hostableCss = '';
     diagnostics.push({ code: 'css-overflow', message: `imported CSS exceeds ${Math.round(MAX_HOSTABLE_CSS_BYTES / 1024)} KB; omitted` });
   }
-  const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
+  // In FOUNDATION mode the foreign stylesheet + scripts are discarded (the foundation replaces them with
+  // native chrome + theme), so don't self-host them at all — otherwise the .css/.js files linger in the
+  // media library (File Manager pollution). Non-foundation import behaves exactly as before.
+  const cssUrl = !opts.foundation && hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
   const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
-  const pageStyles = cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
+  const pageStyles = opts.foundation || cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
 
   // Self-host the imported site's scripts (inline + external) as `<script src>` links for the
   // website.scripts slot — done BEFORE the transform strips <script> from page sources/chrome. Empty
-  // string when the media port has no `hostScript` (the safe, scripts-dropped default).
-  const scriptLinks = await collectAndHostScripts(parsed, opts.media);
+  // string when the media port has no `hostScript` (the safe, scripts-dropped default) or in foundation mode.
+  const scriptLinks = opts.foundation ? '' : await collectAndHostScripts(parsed, opts.media);
 
   const identity: CorporateIdentity = home
     ? extractIdentity(home.doc, { baseUrl: home.url, assetMap, fallbackName: hostFallbackName(workSite.baseUrl) })

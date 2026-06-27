@@ -268,6 +268,29 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
   });
 
+  it('does NOT host the foreign stylesheet, scripts, or icon fonts (keeps brand fonts) — R30', async () => {
+    const fonts: string[] = [];
+    let cssHosted = 0;
+    let scriptHosted = 0;
+    const media: MediaPort = {
+      hostAsset: async (a) => {
+        if (a.kind === 'font') fonts.push(a.font?.family ?? '');
+        return { ref: a.kind === 'font' ? `/media/test/f${fonts.length}/font.woff` : `/media/test/i.jpg` };
+      },
+      hostStylesheet: async () => { cssHosted++; return '/media/test/css/styles.css'; },
+      hostScript: async () => { scriptHosted++; return '/media/test/js/app.js'; },
+    };
+    const STYLE_FA = STYLE.replace('</style>', "@font-face{font-family:'FontAwesome';src:url('/fonts/fa.woff')}</style>");
+    await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1><script>doThing()</script>', HOME_HEAD + STYLE_FA) }]),
+      { media, foundation: true },
+    );
+    expect(cssHosted).toBe(0); // foreign stylesheet not hosted
+    expect(scriptHosted).toBe(0); // foreign scripts not hosted
+    expect(fonts).toEqual(expect.arrayContaining(['brandhead', 'brandbody'])); // brand fonts kept
+    expect(fonts).not.toContain('FontAwesome'); // icon font skipped
+  });
+
   it('is opt-in: without the flag, no foundation is applied', async () => {
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1>', HOME_HEAD + STYLE) }]),

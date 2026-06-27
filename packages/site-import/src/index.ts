@@ -14,6 +14,8 @@ export {
   nativeMainNav,
   nativeFooter,
   configurePageNav,
+  cleanNavLabel,
+  isIconFont,
   readCssVars,
 } from './transform/foundation.js';
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';

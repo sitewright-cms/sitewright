@@ -16,9 +16,13 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
    `get_reference` (authoring-reference), `get_guide`. Prefer a documented primitive over custom markup.
 4. **Author** the page body; create datasets/templates/forms as needed.
 5. **Screenshot** your page at desktop + mobile (the multi-device screenshotter).
-6. **Self-lint** against the checklist below; **render-diff** vs the original; list every difference
+6. **Self-lint** against the checklist below; **render-diff PER SECTION** vs the original — enumerate the
+   original's sections/elements top-to-bottom (header, hero, each band, each tile, tabs+their inner media,
+   accordion, footer, sub-footer, sidebar) and confirm EACH is reproduced with matching layout, background,
+   borders, alignment, icons and content. "Looks about right" is not verification. List every difference
    YOURSELF; fix; repeat until faithful at both breakpoints.
 7. **Return** the structured report (output contract below). Be honest — an independent auditor re-renders.
+   `faithful:true` is a claim you must have EARNED with a per-section diff, not a glance.
 
 ## Rules
 
@@ -54,8 +58,20 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
   on full-bleed sections, gaps at section seams / above the footer. Remove the offending container.
 
 ### Components & primitives (prefer these over custom markup)
-- **R13** Nav is NEVER hardcoded — chrome iterates `{{#each nav.header}}` (foundation owns this; don't
-  re-author nav in a page).
+- **R13** Nav is NEVER hardcoded — use the canonical **`nav-header`** chrome snippet (and `nav-footer`),
+  which iterate `{{#each nav.header}}` from the nav object. Configure the nav ITEMS (labels, links,
+  in-page section anchors, the CTA button) in the nav data — do NOT write `<li>`-by-`<li>` markup or
+  literal hrefs in the slot. Same for the footer: start from `nav-footer`, don't rebuild from scratch.
+- **R13a** Prefer a SW snippet/component over DaisyUI or hand-rolled markup whenever one exists — check
+  the snippet library FIRST: tabs → `tabs-mixed` / `tabs-dataset` (NOT DaisyUI `tabs`); sliders →
+  `slider-*`; galleries → `gallery-*`; modal → `modal-*`; forms → `form-embed`/`form-custom`; dataset
+  card grid → `recipe-dataset-grid`; nav/footer → `nav-header`/`nav-footer`. DaisyUI is the fallback,
+  not the default.
+- **R13b** Use each page's NAV LABEL + page SETTINGS — don't hardcode menu text. The nav renders
+  `{{sw-label}}`, which reads the page's nav label; set a clean per-page nav label (e.g. `Why eTaxi`),
+  not the raw `<title>` (which may carry a `| Site Name` suffix). Likewise populate the other available
+  page settings from the original — menu order, dropdown/parent placement, `newTab`, SEO title +
+  meta description, and the slug. The original's menu order and labels are part of fidelity.
 - **R14** Helpers: `{{sw-url x}}` REQUIRED for any dynamic href/src; `{{sw-html x}}` for rich HTML;
   `{{sw-icon "name" "h-4 w-4"}}` (Lucide). Inside a `{{#each}}` fields are bare (`{{title}}`).
 - **R15** Galleries → the **Lightbox** component (`data-sw-component="lightbox"` over `<a href><img></a>`
@@ -87,6 +103,35 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 - **R23** Cards/images use `bp-card` (foundation) + usually `ring-1 ring-base-200 rounded-lg
   overflow-hidden`. Shadows must be clearly visible (originals have strong drop shadows).
 
+### Fidelity — match the original, never invent (the rules the etaxi pass violated)
+- **R24 — NO HALLUCINATION.** Every section, element, image and link must exist in the original. NEVER
+  invent a section (e.g. a standalone "Download the App" band the original keeps only in the footer),
+  never pad with content that isn't there. NEVER ship placeholder links (`href="#"`) or lorem text — if a
+  target is unknown, wire the real one from the source or leave the field editable + empty, don't fabricate.
+- **R25 — Match each section's SURFACE, don't impose a default.** Reproduce the original's per-section
+  background (a brand-yellow band stays yellow), the tile/card treatment (semi-transparent fill + colored
+  border vs solid white — copy what's there), text ALIGNMENT (centered vs left), and spacing. R11's
+  "white surfaces" is only a default; the original overrides it.
+- **R26 — Capture icons faithfully.** Reproduce the original's actual icons (map to the closest
+  `{{sw-icon}}` / brand icon), preserving their size and color. Don't substitute one generic icon for a
+  set of distinct ones.
+- **R27 — Preserve ALL content inside a component.** When a section uses tabs/sliders/accordion, keep
+  everything the original puts inside them — sliders, images, buttons, video, captions. Don't reduce a
+  rich tab panel to a bare text list.
+- **R28 — Sidebar / off-canvas.** If the original has a sidebar or off-canvas drawer, reproduce it. The
+  foundation currently DROPS `sidebarLeft/Right` — re-add it (chrome slot or page) rather than losing it.
+- **R29 — Name datasets meaningfully.** Rename crawler-inferred datasets (`items2` → `FAQ – Passengers`,
+  etc.) via the dataset rename so names are self-describing; update the loops accordingly.
+- **R30 — Delete foreign files.** After the foundation discards foreign CSS/JS from the head, also DELETE
+  those files (imported `.css`/`.js`, FontAwesome/icon-font woffs) from the media library — they must not
+  linger in the File Manager. Streamline the folder tree (R21): no leftover `imported/_data` UUID dump.
+- **R31 — Content/legal pages are faithful + editable too.** Imprint/Privacy/Terms are NOT a single
+  richtext blob dropped in a generic container. Match the original's framing (e.g. white page +
+  transparent-brand container + brand border), structure the sections, and wrap the copy in
+  `data-sw-html`/`data-sw-text` so a client can edit it.
+- **R32 — Header bar fidelity.** The header is part of the diff: match its background (brand vs white),
+  container width, logo size, item alignment and spacing to the original — don't settle for the default.
+
 ## Self-lint checklist (run BEFORE returning — catch violations pre-audit)
 - [ ] No landmark tags, no `{{{raw}}}`, no inline `<style>/<script>`, no foreign classes (R1,R2)
 - [ ] Body copy is `text-base`/`lg`, captions `text-sm` — no `text-sm` body, no `text-xs` (R7)
@@ -95,8 +140,15 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 - [ ] Every dynamic href/src uses `{{sw-url}}`; every button has a `{{sw-icon}}` (R14,R20)
 - [ ] Galleries use Lightbox; hero slideshow uses `{{> hero-slider}}`; forms use `{{sw-form}}` (R15,R16,R18)
 - [ ] Copy wrapped in `data-sw-text/html` (R19); cards/images have `bp-card` (R23)
-- [ ] Assets referenced by organized name, not UUID (R21)
-- [ ] Rendered + compared to the original at desktop AND mobile (the loop)
+- [ ] Assets referenced by organized name, not UUID (R21); foreign CSS/JS/icon-font files DELETED (R30)
+- [ ] Nav + footer use `nav-header`/`nav-footer` snippets, data-driven, no hardcoded items/hrefs (R13)
+- [ ] Per-page nav LABELS + page settings set (label, order, SEO title/desc, slug) — not hardcoded (R13b)
+- [ ] SW snippet used where one exists (tabs/slider/gallery/modal/form) — not DaisyUI/hand-rolled (R13a)
+- [ ] NO invented sections, NO `href="#"`/placeholder/lorem (R24); every section traces to the original
+- [ ] Each section's bg/tile-fill/border/alignment/icons MATCH the original, not a default (R25,R26,R32)
+- [ ] All in-component media kept (slider/img/button/video inside tabs) (R27); sidebar reproduced (R28)
+- [ ] Datasets meaningfully named (R29); legal pages faithful + editable, not a richtext blob (R31)
+- [ ] PER-SECTION render-diff done at desktop AND mobile — every section confirmed, not glanced (the loop)
 
 ## Output contract (return ONLY this JSON — it is parsed, not shown to a human)
 ```
@@ -113,3 +165,11 @@ Be honest about `faithful`/`defects`. Do not claim faithful without rendering an
 - **v3** — foundation split out (fonts/colors/nav now foundation-owned: R5,R6,R13); `{{> hero-slider}}`
   widget mandated for hero sliders (R16); asset naming/folders (R21,R22); self-lint checklist + structured
   `selfLint` in the output contract; agents query the primitive registry (loop step 3).
+- **v4** — etaxi-pass failure capture. The diff went from whole-page glance → PER-SECTION enumeration
+  (loop step 6). New fidelity rules: no hallucination / no placeholder links (R24), match each section's
+  surface/alignment (R25), capture icons (R26), keep in-component media (R27), reproduce the sidebar (R28),
+  name datasets (R29), delete foreign files (R30), faithful+editable legal pages (R31), header-bar fidelity
+  (R32). R13 now mandates the `nav-header`/`nav-footer` snippets (data-driven, never hand-rolled) + R13a
+  snippet-first over DaisyUI + R13b use per-page nav LABELS + page settings (order/SEO/slug), not
+  hardcoded text or the raw title. Root cause was non-compliance with the EXISTING loop/R13/registry rules
+  as much as missing rules — hence the hardened, enumerated verification.

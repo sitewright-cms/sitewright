@@ -75,7 +75,7 @@ describe('buildSite preview options', () => {
     // Preview → <html> clipped, <body> the scroll container; the runtime bridges window scroll to it.
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: PREVIEW_SITE_RUNTIME_JS, bundle: bundle(onePage) });
     const preview = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;');
+    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:thin;');
     expect(preview).toContain('scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}');
     expect(preview).toContain('bridgeScroll'); // the window→body scroll bridge ships with the preview runtime
   });

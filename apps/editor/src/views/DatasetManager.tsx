@@ -111,10 +111,10 @@ export function DatasetManager({ project }: { project: Project }) {
     requestAnimationFrame(() => scrollPanelToTop(rootRef.current));
   }
 
-  // A drag-reorder must keep the Data side-panel open: dragging a row otherwise fires the panel's
-  // hover-close (mouseleave) and it collapses mid-drag. Hold it open for the duration of the drag,
-  // exactly as a child Modal does (null outside any panel). Balanced hold/release; released on
-  // unmount too in case a drag is interrupted.
+  // Force the Data side-panel to stay open for the duration of a drag-reorder, exactly as a child
+  // Modal does (null outside any panel). The click-open drawer no longer collapses on pointer
+  // movement, so this is now a belt-and-braces guard (e.g. it also keeps the panel from being
+  // closed by a stray Escape mid-drag). Balanced hold/release; released on unmount if a drag is cut.
   const panelHold = useContext(SidePanelHold);
   const dragHeld = useRef(false);
   function holdPanel() {

@@ -124,6 +124,25 @@ describe('SidePanel', () => {
     expect(fireEvent.drop(region, { dataTransfer: { types: ['Files'] } })).toBe(true);
   });
 
+  it('a Modal open inside it owns Escape — the drawer stays open (closes only once no modal is stacked)', () => {
+    const { container } = render(
+      <SidePanel side="left" label="Lib">
+        <Modal title="Inside" onClose={() => {}}>
+          <p>m</p>
+        </Modal>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    // The inner Modal force-holds the drawer open (and sits on OVERLAY_STACK).
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Escape is owned by the topmost overlay (the modal) — the drawer does NOT close behind it.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Clicking the drawer's own backdrop is likewise a no-op while the modal is up.
+    fireEvent.click(container.firstChild as HTMLElement);
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+  });
+
   it('elevates a Modal rendered inside it above the panel layer (z-[70]); a standalone modal stays z-50', () => {
     render(
       <SidePanel side="left" label="Lib">

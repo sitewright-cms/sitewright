@@ -2,6 +2,7 @@
    const lookup table by a typed `SidePanelSide`/`SidePanelAlign` literal; never user-controlled. */
 import { createContext, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { OVERLAY_STACK } from './overlay';
 
 /**
  * True for any subtree rendered inside a {@link SidePanel}'s content. {@link Modal} reads it to
@@ -11,11 +12,10 @@ import { X } from 'lucide-react';
 export const InSidePanel = createContext(false);
 
 /**
- * Lets a {@link Modal} opened INSIDE a panel claim Esc/close ownership for its lifetime. While the
- * count is non-zero the panel does NOT close on Escape (the topmost dialog handles Esc first) and
- * is force-held open. A {@link Modal} calls `hold` on mount + `release` on unmount. Null outside any
- * panel. (Drag interactions also hold it as a belt-and-braces guard, though the click-open drawer no
- * longer collapses on pointer movement.)
+ * Force-holds a {@link SidePanel} OPEN for the lifetime of a child {@link Modal} (so a dialog opened
+ * from the panel keeps the panel mounted behind it). A {@link Modal} calls `hold` on mount + `release`
+ * on unmount. Null outside any panel. (Esc/backdrop close is suppressed separately, via OVERLAY_STACK,
+ * whenever ANY modal is open — see `requestClose`.)
  */
 export const SidePanelHold = createContext<{ hold: () => void; release: () => void } | null>(null);
 
@@ -135,11 +135,8 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
   // Library/Assets EDGE tabs). Inset that side so they don't clip.
   const edgeInset = side === 'bottom' ? (align === 'start' ? 'pl-10' : align === 'end' ? 'pr-10' : '') : '';
 
-  // Number of child dialogs currently holding the panel (see SidePanelHold). A ref mirrors it so the
-  // Escape handler reads the latest value without re-subscribing.
+  // Number of child dialogs currently holding the panel open (see SidePanelHold).
   const [held, setHeld] = useState(0);
-  const heldRef = useRef(0);
-  heldRef.current = held;
   const holdApi = useMemo(
     () => ({ hold: () => setHeld((h) => h + 1), release: () => setHeld((h) => Math.max(0, h - 1)) }),
     [],
@@ -148,6 +145,13 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
   useEffect(() => {
     if (held > 0) setOpen(true);
   }, [held]);
+
+  // Dismiss the drawer — but only when no modal is stacked above it. An open Modal (whether spawned
+  // from this panel or a top-level one) owns Escape + outside-clicks and closes first; it stays on
+  // OVERLAY_STACK until it unmounts, so this guard is race-free during the same keydown/click.
+  const requestClose = () => {
+    if (OVERLAY_STACK.length === 0) setOpen(false);
+  };
 
   // Force-open when the parent bumps `openSignal` (e.g. the header "Assets" button).
   const lastSignal = useRef(openSignal);
@@ -158,11 +162,11 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
     }
   }, [openSignal]);
 
-  // Escape closes the drawer — unless a child dialog is held open (it owns Esc and closes first).
+  // Escape closes the drawer (deferring to any modal stacked above it — see requestClose).
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && heldRef.current === 0) setOpen(false);
+      if (e.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -194,7 +198,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
           one-drawer-at-a-time). Always mounted so it can FADE out on close. */}
       <div
         aria-hidden
-        onClick={() => setOpen(false)}
+        onClick={requestClose}
         className={`fixed inset-0 z-[60] bg-slate-900/30 backdrop-blur-[2px] transition-opacity duration-300 motion-reduce:transition-none ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
@@ -205,6 +209,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
           fixed node because `.waves-effect` forces `position:relative`. The wrapper fades out while
           the drawer is open (the panel's own × / backdrop / Esc close it). */}
       <div
+        aria-hidden={open}
         className={`fixed z-[55] transition-opacity duration-200 ${tabPosition(side, align)} ${
           open ? 'pointer-events-none opacity-0' : 'opacity-100'
         }`}

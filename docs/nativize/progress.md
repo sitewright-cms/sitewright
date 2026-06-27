@@ -86,3 +86,46 @@ Findings:
   (e.g. `create_media_folder`, `move_media`, `rename_media`), gated `content:write`.
 
 Step 3 narrows to: add the media-management MCP tools (+ any missing HTTP endpoint) with tests.
+
+## 2026-06-27 — Step 3 DONE (commit `eca4960`)
+
+Added four capability-gated MCP tools (no new HTTP endpoints needed — the `/media/folders` +
+`PATCH /media/:id` routes already existed):
+- `list_media_folders` (content:read), `create_media_folder`, `rename_media_folder`, `move_media`
+  (content:write). Client methods in `client.ts`, registrations in `server.ts`, entries in
+  `MCP_TOOL_CATALOG` (the no-drift test passes), folder paths validated with `MediaFolderSchema`.
+- Documented in the **images** agent guide with the per-page / count-justified convention.
+- Tests: server.test.ts (gating + forwarding + invalid-segment reject) + client.test.ts (paths/bodies).
+  MCP **76 passed**, schema **240 passed**, typecheck clean.
+
+The screenshotter (`preview_page`), reference (`get_components`/`get_guide`/`get_reference`), and
+headless auth (`staticAuth`) already existed — so Step 3 is complete.
+
+## 2026-06-27 — Step 4 RESOLVED (agent-phase, not mechanical)
+
+Per-page / count-justified asset organization is inherently an **authoring judgment** (gallery vs
+one-off hero vs sitewide singleton) that needs page context — which the **agent** (Phase B) has and the
+ingest MediaPort does not (its `hostAsset` callback never sees the referencing page; threading it would
+be an engine API change to the soon-retired mechanical importer). So Step 4 is delivered as an
+**authoritative, enforceable agent rule**, not new ingest code:
+- `author-brief.md` **R21** (reorganize the transient `imported/*` tree → per-page folders, count
+  justified, `Header Images` / `Main`, slugified names — now naming the actual MCP tools) + **R22** (prune).
+- `defect-taxonomy.md` **C-ASSET** maps bad asset trees back to R21/R22 (so the prompt-improvement loop
+  catches regressions), and the **images** guide carries the same convention for any SW agent.
+- Tools to act on it shipped in Step 3.
+
+Decision: intentionally NOT changing the mechanical ingest foldering (`importMediaFolder`'s
+`imported/<dir>` mirror) — it's a transient starting tree the agent flattens, and that code path is
+slated for retirement in Step 5.
+
+**Steps 1–4 DONE on `nativize/clone-pipeline-current`.**
+
+## Steps 5 + 6 — need decisions / a live environment (paused for input)
+
+- **Step 5 (UI swap, retire mechanical nativizer)** removes a SHIPPED feature (the "Import a website" UI
+  + `render/nativize-project`) and introduces the "Clone a website with AI" UX — a product decision with
+  real consequences (and orchestration design: who drives the AUTHOR agents, and from where).
+- **Step 6 (end-to-end validation)** needs a live instance + a real target site + an agent run, then a
+  defect-report pass feeding the prompt loop — not completable purely in-repo.
+
+These match the user's "stop for meaningful decisions / blockers" bar — surfaced for direction.

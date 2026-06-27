@@ -76,9 +76,11 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 - **R20** Every button carries a leading icon: `class="btn btn-primary gap-2">{{sw-icon "send" ...}}…`.
 
 ### Assets & naming
-- **R21** Reference the organized asset paths, not bare UUIDs. Group per page; a dedicated folder only
-  when count justifies it (gallery/grid ≈ 3+); one-per-page heroes → shared `Header Images`; sitewide
-  singletons (logo/icon) → `Main`. Rename to slugified subjects (`ronald-kubas.jpg`).
+- **R21** Reference the organized asset paths, not bare UUIDs. Ingest lands assets in a transient
+  `imported/*` tree — REORGANIZE it. Group per page; a dedicated folder only when count justifies it
+  (gallery/grid ≈ 3+); one-per-page heroes → shared `Header Images`; sitewide singletons (logo/icon) →
+  `Main`. Rename to slugified subjects (`ronald-kubas.jpg`). Tools: `list_media_folders` (see what
+  exists first), `create_media_folder`, `move_media` (re-file + rename one asset), `rename_media_folder`.
 - **R22** Prune assets the page no longer references.
 
 ### Elevation

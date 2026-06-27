@@ -23,6 +23,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     compareToSource: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
+      sourceFrom: 'cache' as const,
+      capturedAt: 1_700_000_000_000,
       build: { desktop: { base64: 'QUFB', mimeType: 'image/jpeg', width: 1280, height: 900 } },
       source: { desktop: { base64: 'QkJC', mimeType: 'image/jpeg', width: 1280, height: 900 } },
     })),
@@ -203,14 +205,22 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
   });
 
-  it('compare_to_source returns BUILD + SOURCE image blocks (content:read)', async () => {
+  it('compare_to_source returns BUILD + SOURCE image blocks (content:read) + notes the cached source', async () => {
     const c = fakeClient();
     const r = await connect(c, readScope);
     const res = await r.callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(c).compareToSource).toHaveBeenCalledWith('home', undefined);
-    const blocks = res.content as Array<{ type: string }>;
+    expect(callsOf(c).compareToSource).toHaveBeenCalledWith('home', undefined, undefined);
+    const blocks = res.content as Array<{ type: string; text?: string }>;
     expect(blocks.filter((b) => b.type === 'image').length).toBe(2); // one build + one source shot
+    expect(blocks[0]?.text).toMatch(/reference captured at import time/); // provenance surfaced
+  });
+
+  it('compare_to_source forwards refresh:true to re-snapshot the live source', async () => {
+    const c = fakeClient();
+    const r = await connect(c, readScope);
+    await r.callTool({ name: 'compare_to_source', arguments: { pageId: 'home', refresh: true } });
+    expect(callsOf(c).compareToSource).toHaveBeenCalledWith('home', undefined, true);
   });
 
   it('compare_to_source: gates, empty shots, and client errors', async () => {

@@ -26,6 +26,8 @@ const publishRoot = resolve(process.env.PUBLISH_ROOT ?? join(dataDir, 'sites'));
 // Ephemeral live-preview draft builds (members-only, rebuilt on change). Kept apart from the
 // published artifact so a draft can never collide with a deployable build.
 const previewRoot = resolve(process.env.PREVIEW_ROOT ?? join(dataDir, 'preview'));
+// Cached source-reference screenshots captured at import time (for compare_to_source).
+const sourceRefRoot = resolve(process.env.SOURCE_REF_ROOT ?? join(dataDir, 'source-refs'));
 
 // COOKIE_SECRET is OPTIONAL now: when set it PINS the session-signing key (e.g. to share across
 // replicas); when unset, createApp auto-generates + persists one on first boot and lets an admin rotate
@@ -153,6 +155,8 @@ await mkdir(mediaRoot, { recursive: true });
 await mkdir(publishRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(previewRoot, { recursive: true });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+await mkdir(sourceRefRoot, { recursive: true });
 
 const app = await createApp({
   db,
@@ -163,6 +167,7 @@ const app = await createApp({
   mediaRoot,
   publishRoot,
   previewRoot,
+  sourceRefRoot,
   trustProxy,
   encryptionKey,
   // WebAuthn RP overrides for deployments behind a proxy (default: derived from the request host).

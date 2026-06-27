@@ -57,6 +57,10 @@ export interface PreviewResult {
 export interface CompareResult {
   sourceUrl: string;
   route: string;
+  /** 'cache' = the reference captured at import time; 'live' = freshly rendered now. */
+  sourceFrom?: 'cache' | 'live';
+  /** Epoch ms the source shots were captured. */
+  capturedAt?: number;
   build: Partial<Record<ScreenshotViewportName, PreviewShot>>;
   source: Partial<Record<ScreenshotViewportName, PreviewShot>>;
 }
@@ -216,10 +220,14 @@ export class SitewrightClient {
     return this.request('POST', path, page);
   }
 
-  /** Screenshot a page's BUILD + its imported SOURCE at the same viewports, for side-by-side comparison. */
-  async compareToSource(pageId: string, viewports?: string): Promise<CompareResult> {
-    const qs = viewports ? `?viewports=${encodeURIComponent(viewports)}` : '';
-    return this.request('GET', this.projectPath(`/compare/${encodeURIComponent(pageId)}${qs}`));
+  /** Screenshot a page's BUILD + its imported SOURCE at the same viewports, for side-by-side comparison.
+   *  The source uses the reference cached at import time; `refresh` forces a fresh live snapshot. */
+  async compareToSource(pageId: string, viewports?: string, refresh?: boolean): Promise<CompareResult> {
+    const qs = new URLSearchParams();
+    if (viewports) qs.set('viewports', viewports);
+    if (refresh) qs.set('refresh', '1');
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request('GET', this.projectPath(`/compare/${encodeURIComponent(pageId)}${suffix}`));
   }
 
   async publish(): Promise<unknown> {

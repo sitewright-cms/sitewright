@@ -47,6 +47,7 @@ import {
   type Template,
   COMPONENT_CATALOG,
   isScreenshotViewportName,
+  DEFAULT_SCREENSHOT_VIEWPORTS,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -233,6 +234,7 @@ import {
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, compareTargets, type ComparePageInput } from '../render/compare.js';
+import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -659,6 +661,12 @@ export interface AppOptions {
    */
   previewRoot?: string;
   /**
+   * Root dir for cached source-reference screenshots (one JSON per imported page), captured at import
+   * time and served by `compare_to_source`. Omit to disable caching (compare then always renders the
+   * live source). Separate from previewRoot: references are long-lived snapshots, not rebuilt drafts.
+   */
+  sourceRefRoot?: string;
+  /**
    * Trust `X-Forwarded-For` so `req.ip` is the real client IP behind a reverse
    * proxy (required for correct per-IP rate limiting). `true`, or a CIDR/list of
    * trusted proxy addresses. Leave unset for direct connections.
@@ -779,6 +787,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // proven path-safe serving logic is reused verbatim), but a separate root holding
   // ephemeral, rebuilt-on-change DRAFT builds served only to authenticated members.
   const previewSiteStore = opts.previewRoot ? new PublishStore(opts.previewRoot) : undefined;
+  // Cached source-reference screenshots (captured at import) for compare_to_source.
+  const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
   // Live-preview draft-build state, keyed by project id: the content version currently built,
   // any in-flight build (so concurrent requests coalesce onto one), and the last failed
   // version+time (a short cooldown so a persistently-broken project can't spin a fresh build on
@@ -1995,6 +2005,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       );
     await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
     await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
+    await sourceRefStore?.removeProject(project.slug).catch(onCleanupError('source-refs'));
     previewBuiltVersion.delete(project.id);
     previewBuilds.delete(project.id);
     previewBuildFail.delete(project.id);
@@ -2943,6 +2954,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
       rl,
       log: app.log,
+      // FOUNDATION imports only: cache each imported page's live-source screenshot so compare_to_source
+      // has a stable reference from import time (skipped when source-ref caching is disabled).
+      ...(sourceRefStore
+        ? {
+            cacheSourceRefs: (slug: string, pages: ReferencePage[], onProgress: (e: unknown) => void, signal: AbortSignal) =>
+              captureSourceRefs(sourceRefStore, slug, pages, { onProgress, signal }),
+          }
+        : {}),
     });
 
     // Server-side mechanical nativize of an imported project's rawFidelity pages → native Tailwind+token
@@ -3749,10 +3768,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // compare-to-source: screenshot the page's BUILD (its loopback preview) AND its imported SOURCE (the
-    // live original, via the SSRF-pinned browser) at the same viewports, so an agent gets both side-by-side
-    // and self-corrects against the real site. Owner/member (content:read); the page must carry an import
-    // source (`data.swImport.sourceUrl`).
+    // compare-to-source: screenshot the page's BUILD (its loopback preview) AND its imported SOURCE at the
+    // same viewports, so an agent gets both side-by-side and self-corrects against the real site. The SOURCE
+    // prefers the reference cached at IMPORT time (stable snapshot, fast); on a miss it renders the live
+    // original via the SSRF-pinned browser and backfills the cache. `?refresh=1` forces a fresh snapshot.
+    // Owner/member (content:read); the page must carry an import source (`data.swImport.sourceUrl`).
     app.get<{ Params: { projectId: string; pageId: string } }>(
       '/projects/:projectId/compare/:pageId',
       { config: rl(10) },
@@ -3771,13 +3791,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
+        const refreshQ = ((req.query as { refresh?: string } | undefined)?.refresh ?? '').toLowerCase();
+        const wantRefresh = refreshQ === '1' || refreshQ === 'true';
+        const wantNames = (target.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS) as ViewportName[];
         const abort = new AbortController();
         req.raw.on('close', () => abort.abort());
-        const [build, source] = await Promise.all([
-          captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({})),
-          captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: target.viewports, signal: abort.signal }).catch(() => ({})),
-        ]);
-        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, build, source });
+
+        // The BUILD always renders live (it's the agent's current work). Kick it off concurrently.
+        const buildP = captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>);
+
+        // The SOURCE prefers the reference cached at import time (stable + fast); falls back to a live
+        // render. A live render that (re)builds the canonical reference captures the DEFAULT viewport set
+        // and stores it — so the cache is never clobbered with a partial set.
+        let source: Partial<Record<ViewportName, Shot>> = {};
+        let sourceFrom: 'cache' | 'live' = 'cache';
+        let capturedAt: number | undefined;
+        const cached = wantRefresh ? null : await (sourceRefStore?.get(project.slug, req.params.pageId) ?? Promise.resolve(null));
+        if (cached && wantNames.every((n) => cached.shots[n])) {
+          source = Object.fromEntries(wantNames.map((n) => [n, cached.shots[n]!]));
+          capturedAt = cached.capturedAt;
+        } else {
+          sourceFrom = 'live';
+          capturedAt = Date.now();
+          if (sourceRefStore && (wantRefresh || !cached)) {
+            const full = await captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: [...DEFAULT_SCREENSHOT_VIEWPORTS], signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>);
+            if (Object.keys(full).length > 0) await sourceRefStore.put(project.slug, req.params.pageId, { sourceUrl: target.sourceUrl, capturedAt, shots: full }).catch(() => {});
+            source = Object.fromEntries(wantNames.filter((n) => full[n]).map((n) => [n, full[n]!]));
+          } else {
+            // No store, or a partial miss against an existing cache — render the requested set, don't cache.
+            source = await captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: target.viewports, signal: abort.signal }).catch(() => ({}));
+          }
+        }
+        const build = await buildP;
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, sourceFrom, capturedAt, build, source });
       },
     );
 

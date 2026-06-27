@@ -289,5 +289,7 @@ describe('SitewrightClient', () => {
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/compare/home');
     await client.compareToSource('about us', 'desktop,mobile');
     expect(calls[2]!.input).toBe('https://cms.test/projects/p1/compare/about%20us?viewports=desktop%2Cmobile');
+    await client.compareToSource('home', undefined, true);
+    expect(calls[3]!.input).toBe('https://cms.test/projects/p1/compare/home?refresh=1');
   });
 });

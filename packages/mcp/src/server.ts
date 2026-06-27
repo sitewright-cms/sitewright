@@ -345,21 +345,25 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'compare_to_source',
     {
       description:
-        `Screenshot an imported page's BUILD and its ORIGINAL source at the same viewports and return them SIDE-BY-SIDE, so you can see exactly how your build differs from the real site and fix it. Use this after authoring an imported page and ITERATE until the build matches the source — never call a page done from your own render alone; the source pair here is the ground truth. The page must have an import source. Pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to focus breakpoints.`,
-      inputSchema: { pageId: z.string(), viewports: z.array(ScreenshotViewportNameSchema).optional() },
+        `Screenshot an imported page's BUILD and its ORIGINAL source at the same viewports and return them SIDE-BY-SIDE, so you can see exactly how your build differs from the real site and fix it. Use this after authoring an imported page and ITERATE until the build matches the source — never call a page done from your own render alone; the source pair here is the ground truth. The source is the reference captured at import time (fast + stable); pass refresh:true to re-snapshot the live site if it has changed. The page must have an import source. Pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to focus breakpoints.`,
+      inputSchema: { pageId: z.string(), viewports: z.array(ScreenshotViewportNameSchema).optional(), refresh: z.boolean().optional() },
     },
-    async ({ pageId, viewports }: { pageId: string; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
+    async ({ pageId, viewports, refresh }: { pageId: string; viewports?: ScreenshotViewportName[]; refresh?: boolean }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
         return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
       }
       try {
-        const res = await client.compareToSource(pageId, viewports?.length ? viewports.join(',') : undefined);
+        const res = await client.compareToSource(pageId, viewports?.length ? viewports.join(',') : undefined, refresh);
         const names = Object.keys(res.build) as ScreenshotViewportName[];
+        const provenance =
+          res.sourceFrom === 'live'
+            ? 'Source = rendered from the live site just now.'
+            : `Source = the reference captured at import time${res.capturedAt ? ` (${new Date(res.capturedAt).toISOString()})` : ''}; if the live site has since changed, pass refresh:true to re-snapshot.`;
         const content: ContentBlock[] = [
           {
             type: 'text',
-            text: `BUILD vs SOURCE for page “${pageId}” (original: ${res.sourceUrl}). For EACH viewport below you get YOUR BUILD then the ORIGINAL. Compare them region by region — header, every section/tile, tabs + their inner media, accordion, footer/sub-footer — and match background, borders, colours, type sizes, layout and content. Fix the differences and run this again. Do NOT call the page faithful from your own render; the source here is the ground truth.`,
+            text: `BUILD vs SOURCE for page “${pageId}” (original: ${res.sourceUrl}). ${provenance} For EACH viewport below you get YOUR BUILD then the ORIGINAL. Compare them region by region — header, every section/tile, tabs + their inner media, accordion, footer/sub-footer — and match background, borders, colours, type sizes, layout and content. Fix the differences and run this again. Do NOT call the page faithful from your own render; the source here is the ground truth.`,
           },
         ];
         for (const vp of names) {

@@ -557,7 +557,7 @@ INNER markup of the Main Navigation / Footer slots.
   },
   import: {
     title: "Nativize an imported website — a faithful port to native primitives",
-    summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport + draft) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS",
+    summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport + draft) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS and tidy the media folders",
     body: `
 IMPORTED PAGES. When an external site is imported (the OWNER does this in the editor — you don't trigger
 it), each page lands as a FAITHFUL replica: literal HTML in \`source\` (no Handlebars), the foreign CSS
@@ -592,6 +592,14 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content.
 7. IMAGES: keep the self-hosted images the import found (same src); fill gaps with import_image (from a URL)
    or search_stock_images (SVGs and oversize images may have been dropped).
+8. ASSET FOLDERS: the import dumps every self-hosted file into a TRANSIENT \`imported/\` tree — REORGANIZE it
+   into a clean, human-readable library. Group by the page/role that uses each file (a dedicated folder when
+   a page has a cluster of ~3+, e.g. \`Management Team\`; a shared role folder for once-per-page assets like
+   \`Header Images\`; \`Main\` for sitewide singletons — logo, favicon). Use slugified names, never bare UUIDs
+   (\`ronald-kubas.jpg\`). PRUNE files no page references. Tools: list_media_folders (look first),
+   create_media_folder, move_media (re-file + rename one asset), rename_media_folder. This is SAFE: moving or
+   renaming only changes the folder TAG — the \`/media/...\` URL is content-addressed and stable, so page
+   references never break. End state: a tree a human dev reads at a glance, with no \`imported/\` left.
 
 CHROME (do this too — it isn't done until the slots are ported). The header / footer slots
 (in the settings entity, website.mainNav/.footer) still hold literal foreign HTML. Port them the
@@ -600,7 +608,8 @@ same way — same layout, native classes + tokens + {{company.*}} — editing th
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
 (website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
 no longer referenced (trim the criticalCss/head to nothing once every section is token-driven; delete unused
-self-hosted .js/.css media). Re-render and confirm nothing regressed.
+self-hosted .js/.css media). The page is NOT done until the media library is also a clean tree (step 8) — no
+leftover \`imported/\` UUID dump. Re-render and confirm nothing regressed.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,

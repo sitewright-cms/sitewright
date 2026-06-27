@@ -269,7 +269,7 @@ export function PublishBar({
               }`}
             >
               <DeployIcon />
-              {busy ? 'Deploying…' : `Deploy to ${defaultTarget?.name ?? ''}`}
+              {busy ? 'Deploying…' : 'Deploy'}
               {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
             </button>
             <button

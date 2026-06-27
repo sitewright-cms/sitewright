@@ -63,7 +63,10 @@ describe('PublishBar — deploy split button', () => {
     listDeployTargets.mockResolvedValue({ items: [remote, local] });
     publish.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
+    // Accessible name keeps the target (aria-label/title), but the VISIBLE label is just "Deploy".
     const primary = await screen.findByRole('button', { name: 'Deploy to Local Hosting' });
+    expect(primary).toHaveTextContent('Deploy');
+    expect(primary.textContent).not.toContain('Local Hosting');
     primary.click();
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
   });

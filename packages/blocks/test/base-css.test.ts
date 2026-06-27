@@ -219,7 +219,12 @@ describe('baseStyles — platform base stylesheet', () => {
     });
 
     it('resets the root back to auto in WebKit so daisyUI’s :root{scrollbar-color} cannot keep the page bar grey', () => {
-      expect(css).toContain('html:root { scrollbar-color: auto; scrollbar-width: auto; }');
+      // !important so daisyUI's layered :root rule can't re-disable the brand pseudos in the preview sub-frame.
+      expect(css).toContain('html:root { scrollbar-color: auto !important; scrollbar-width: auto !important; }');
+    });
+
+    it('reserves a stable scrollbar gutter so the bar renders the same top-level and in the preview iframe', () => {
+      expect(css).toContain('html { scrollbar-gutter: stable; }');
     });
 
     it('uses a SOLID track (page background, no transparency) and no arrows', () => {

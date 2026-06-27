@@ -1,40 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PARALLAX_LIMITS } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
 import { glassInput, fieldLabel, ghostButton } from '../../theme';
-
-// The platform's contentColorFor crossover (WCAG luminance) — for the on-brand preview sample.
-function contentFor(hex: string): string {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return '#ffffff';
-  const h = m[1]!.length === 3 ? m[1]!.replace(/(.)/g, '$1$1') : m[1]!;
-  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
-  const r = lin(parseInt(h.slice(0, 2), 16) / 255);
-  const g = lin(parseInt(h.slice(2, 4), 16) / 255);
-  const b = lin(parseInt(h.slice(4, 6), 16) / 255);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? '#1f2937' : '#ffffff';
-}
-
-// Best-effort project brand vars for the preview iframe (only fully-matched hex/rgb is trusted before
-// being interpolated into the iframe <style> — no `;`/`<`/`}` break-out chars).
-function brandVarsFromDom(): string {
-  const root = getComputedStyle(document.documentElement);
-  const DEFAULTS: Record<string, string> = { primary: '#4f46e5', secondary: '#0ea5e9', neutral: '#171627', 'base-100': '#ffffff', 'base-content': '#1a1a23' };
-  const read = (role: string): string => {
-    const raw = root.getPropertyValue(`--sw-color-${role}`).trim();
-    return /^#[0-9a-fA-F]{3,8}$/.test(raw) || /^rgba?\([0-9\s,./%]+\)$/i.test(raw) ? raw : DEFAULTS[role]!;
-  };
-  let v = '';
-  for (const role of ['primary', 'secondary', 'neutral'] as const) {
-    const c = read(role);
-    v += `--sw-color-${role}:${c};--sw-color-${role}-content:${contentFor(c)};`;
-  }
-  v += `--sw-color-base-100:${read('base-100')};--sw-color-base-content:${read('base-content')};`;
-  return v;
-}
 
 interface ParallaxBuilderProps {
   onClose: () => void;
@@ -47,9 +17,13 @@ const num = (v: string, d: number): number => {
 
 /**
  * The Library "Parallax builder" — compose a scroll-linked element (translate speed + axis, plus optional
- * opacity / scale / blur channels), preview it live in a sandboxed, SCROLLABLE iframe rendered with the
- * EXACT platform runtime (`api.parallaxRuntime`), and copy the resulting `data-sw-parallax*` markup.
- * Read-only (copy-to-clipboard), like the other Library tools.
+ * opacity / scale / blur channels), preview it live in a sandboxed, SCROLLABLE iframe driven by the EXACT
+ * platform runtime, and copy the resulting `data-sw-parallax*` markup. Read-only (copy-to-clipboard).
+ *
+ * The preview is loaded by iframe `src` (NOT srcDoc) from a same-origin route served under
+ * `Content-Security-Policy: sandbox allow-scripts` — that is what lets the inline runtime RUN: the
+ * editor's own CSP is `script-src 'self'`, which a srcDoc iframe inherits and which would freeze the
+ * engine (the original "preview shows no action on scroll" bug).
  */
 export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
   const [speed, setSpeed] = useState(0.3);
@@ -60,19 +34,8 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
   const [sc, setSc] = useState<[number, number]>([0.9, 1.05]);
   const [blOn, setBlOn] = useState(false);
   const [bl, setBl] = useState<[number, number]>([8, 0]);
-  const [rt, setRt] = useState<{ css: string; js: string } | null>(null);
   const toast = useToast();
   const [, copy] = useCopy(() => toast.show('Parallax markup copied — paste it onto an element in your page'));
-
-  useEffect(() => {
-    let on = true;
-    api.parallaxRuntime().then((r) => on && setRt(r)).catch(() => {});
-    return () => {
-      on = false;
-    };
-  }, []);
-
-  const brandVars = useMemo(() => brandVarsFromDom(), []);
 
   // Omit channels that are off; omit axis when default (y). speed is always emitted (the headline knob).
   const attrs = [
@@ -86,34 +49,16 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
     .join(' ');
   const code = `<div ${attrs}>\n  <!-- your content -->\n</div>`;
 
-  // A tall, scrollable preview driven by the REAL runtime (so it bails under YOUR reduced-motion setting,
-  // matching a published page). The sample sits beside a STATIC twin: parallax displacement is subtle
-  // against the box's own scroll travel, so the side-by-side makes the differential motion legible — the
-  // "Parallax" box visibly shifts / fades / scales / blurs relative to the un-animated "Static" one. A
-  // tiny inline script swaps the hint when reduced-motion suppresses the effect, so "no action" is never
-  // mistaken for a bug. sandbox: allow-scripts.
-  const srcDoc = rt
-    ? `<!doctype html><html><head><meta charset="utf-8"><style>:root{${brandVars}}` +
-      `html{scroll-behavior:auto}body{margin:0;font-family:system-ui,sans-serif;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23)}` +
-      `.hint{position:sticky;top:0;z-index:2;text-align:center;font-size:12px;font-weight:600;padding:8px 10px;` +
-      `background:color-mix(in srgb,var(--sw-color-base-100,#fff) 86%,transparent);backdrop-filter:blur(4px);` +
-      `border-bottom:1px solid color-mix(in srgb,var(--sw-color-base-content,#1a1a23) 12%,transparent)}` +
-      `.pad{height:90vh}` +
-      `.row{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center;margin:0 1.5rem}` +
-      `.box{display:grid;place-items:center;min-height:120px;padding:1.25rem;border-radius:18px;font-weight:700;text-align:center;line-height:1.25}` +
-      `.box small{display:block;font-size:11px;font-weight:600;opacity:.7;margin-top:4px}` +
-      `.ref{background:transparent;color:var(--sw-color-base-content,#1a1a23);border:2px dashed color-mix(in srgb,var(--sw-color-base-content,#1a1a23) 28%,transparent)}` +
-      `.sample{color:var(--sw-color-primary-content,#fff);background:linear-gradient(135deg,var(--sw-color-primary,#4f46e5),var(--sw-color-secondary,#0ea5e9));` +
-      `box-shadow:0 18px 50px rgba(0,0,0,.2)}` +
-      `${rt.css}</style></head><body>` +
-      `<div class="hint">↕ Scroll inside this frame — watch “Parallax” shift against “Static”</div>` +
-      `<div class="pad"></div>` +
-      `<div class="row"><div class="box ref">Static<small>no effect</small></div>` +
-      `<div class="box sample" ${attrs}>Parallax<small>this element</small></div></div>` +
-      `<div class="pad"></div>` +
-      `<script>if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){var h=document.querySelector('.hint');if(h)h.textContent='Motion is off under your system reduced-motion setting — visitors with it see no parallax.';}</script>` +
-      `<script>${rt.js}</script></body></html>`
-    : '';
+  // The same channel knobs as a query string; the server clamps them + renders the static-twin demo
+  // (the "Parallax" box beside an un-animated "Static" one, so the subtle differential motion is legible).
+  const previewSrc = useMemo(() => {
+    const p = new URLSearchParams({ speed: String(speed) });
+    if (axis === 'x') p.set('axis', 'x');
+    if (opOn) p.set('opacity', `${op[0]},${op[1]}`);
+    if (scOn) p.set('scale', `${sc[0]},${sc[1]}`);
+    if (blOn) p.set('blur', `${bl[0]},${bl[1]}`);
+    return api.parallaxPreviewUrl(p.toString());
+  }, [speed, axis, opOn, op, scOn, sc, blOn, bl]);
 
   const Range = ({ label, value, set, lo, hi, step }: { label: string; value: number; set: (n: number) => void; lo: number; hi: number; step: number }) => (
     <label className="flex flex-col gap-1">
@@ -161,7 +106,7 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
 
         {/* preview + code */}
         <div className="flex min-w-0 flex-col gap-3">
-          <iframe title="Parallax preview" srcDoc={srcDoc} className="block h-[380px] w-full rounded-xl border border-white/10 bg-white" sandbox="allow-scripts" />
+          <iframe title="Parallax preview" src={previewSrc} className="block h-[380px] w-full rounded-xl border border-white/10 bg-white" sandbox="allow-scripts" />
           <div className="flex items-start gap-2">
             <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl bg-black/40 p-3 text-xs text-white/80"><code>{code}</code></pre>
             <button type="button" className={`${ghostButton} shrink-0 whitespace-nowrap`} onClick={() => copy(code, 'px-builder')}>

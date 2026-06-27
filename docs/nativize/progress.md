@@ -156,3 +156,29 @@ Not completable purely in-repo: needs a running instance, a real target site, a 
 an AUTHOR-agent pass over the imported pages via MCP, then a render-diff/defect audit feeding the
 prompt loop. The reusable spike harness (`_render.mjs` etc., §8) + the burmeister reference remain the
 template. Pending a live environment (shared DinD :2003 redeploy or local) to run against.
+
+## 2026-06-27 — Step 6 RAN on live :2003 (#492 merged → main-38ab637 deployed)
+
+Pushed #492 → CI green (after fixing a tsc-only test type error vitest missed) → squash-merged →
+rebuilt the `:2003` image from an `origin/main` worktree → swapped the container (reused key + sw-data
+volume) → healthy. Then cloned **burmeister.com.na** with `?foundation=1` (4 pages) end-to-end via the
+live route. **PASS** on the core foundation:
+- `identity.colors` exact vs ground truth: primary `#B42A33`, secondary `#565656`, accent `#880088`,
+  base-content `#222222`, **base-200 `#CCCCCC`** (the captured page bg — the review fix), → `criticalCss`
+  body `background-color:#CCCCCC`. ✓
+- foreign `head`/`scripts` empty (CSS/JS discarded); `mainNav` 1870c, `footer` 774c, `criticalCss` 1215c. ✓
+- `foundation-applied` diagnostic emitted; 18 images self-hosted, 24 scripts dropped. ✓
+
+**DEFECT FOUND + FIXED (font extraction):** `typography` came back EMPTY (`no-fonts`) even though the
+woffs were self-hosted (primary-font, secondary-font, FontAwesome). Root cause (reproduced locally
+against the real CSS): (A) `familyForSelectors` didn't strip `!important` → garbage family; (B) the brand
+applies its heading font via a `.primary-font` **class**, not `h1/h2`, so the selector scan missed it;
+(C) the body woff `text-font` wasn't among the hosted fonts; (D) `FontAwesome` (an icon font) polluted
+the candidate pool. Fix in `transform/foundation.ts`: resolve roles from semantic `--*-font` vars
+(`FONT_VAR_MAP`) before selector-scanning, strip `!important` (shared `familyName` helper), and exclude
+icon fonts. Now resolves heading=primary-font, body=secondary-font (via the unhosted-body fallback).
++4 unit tests; site-import 224 green. Shipping as a follow-up PR (then a 2nd `:2003` redeploy to confirm
+fonts populate live).
+
+Known limitation (not fixed here): the crawler didn't self-host the `text-font` woff (only primary/
+secondary/FontAwesome) — the body falls back to the other brand face. A separate font-capture issue.

@@ -6,7 +6,7 @@
 //  - mode 'pinned'   — an EXTERNAL source URL; EVERY request is served by `pinnedFetch` (https-only,
 //                      SSRF-validated, connect-pinned), exactly like the importer's `renderViaBrowser`,
 //                      so the browser's unpinnable DNS is never used.
-import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS } from '@sitewright/schema';
+import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
 import { getBrowser, withRenderSlot, type Shot, type ViewportName } from './screenshot.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
@@ -17,6 +17,37 @@ const SUBRESOURCE_MAX_BYTES = 15 * 1024 * 1024;
 const JPEG_QUALITY = 72;
 
 export type CaptureMode = 'loopback' | 'pinned';
+
+/** The page shape the compare route reads (its route + import source). */
+export interface ComparePageInput {
+  path?: string;
+  data?: { swImport?: { sourceUrl?: string } };
+}
+export type CompareTargets =
+  | { error: 'not-found' | 'no-source' }
+  | { sourceUrl: string; route: string; buildUrl: string; viewports?: ViewportName[] };
+
+/**
+ * Pure: resolve what to screenshot for a compare request — the page's import SOURCE url and its own
+ * loopback BUILD preview url (route-rebased, trailing slash for non-root) — or an error sentinel when the
+ * page is missing or was never imported. Kept out of the browser-driving code so it's unit-testable.
+ */
+export function compareTargets(opts: {
+  page: ComparePageInput | null;
+  projectId: string;
+  sig: string;
+  originHostPort: string;
+  /** Raw `viewports` query string (comma-separated); unknown names are dropped. */
+  viewports?: string;
+}): CompareTargets {
+  if (!opts.page) return { error: 'not-found' };
+  const sourceUrl = opts.page.data?.swImport?.sourceUrl;
+  if (!sourceUrl) return { error: 'no-source' };
+  const route = (opts.page.path ?? '').replace(/^\/+/, '');
+  const buildUrl = `http://${opts.originHostPort}/preview-site/${opts.projectId}/${opts.sig}/${route}${route && !route.endsWith('/') ? '/' : ''}`;
+  const vps = (opts.viewports ?? '').split(',').map((v) => v.trim()).filter((v): v is ViewportName => isScreenshotViewportName(v));
+  return { sourceUrl, route, buildUrl, ...(vps.length ? { viewports: vps } : {}) };
+}
 
 // Drives a real headless Chromium (no browser in unit tests) — exercised by the deploy-time e2e check,
 // like renderViaBrowser. The SSRF guard it relies on (pinnedFetch) IS unit-tested.

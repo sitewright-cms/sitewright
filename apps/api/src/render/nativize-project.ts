@@ -106,6 +106,8 @@ function buildNavbar(logo: string | undefined): string {
   return `<div class="bg-base-100 border-b border-base-200">
   <div class="sw-container flex items-center gap-4 py-3">
   ${brand}
+  {{!-- Desktop links carry their own active styling inline (below); they are deliberately NOT a
+       .menu, so the site-wide sw-nav-* effect schemes don't double up on a nativized site. --}}
   <ul class="ml-auto flex list-none items-center gap-1 max-lg:hidden">
     {{#each nav.header}}
     <li><a href="{{sw-url path}}" class="rounded px-3 py-2 font-medium no-underline transition-colors {{#if (sw-active path)}}bg-neutral text-neutral-content{{else}}text-base-content hover:bg-base-200{{/if}}">{{sw-label}}</a></li>
@@ -115,7 +117,7 @@ function buildNavbar(logo: string | undefined): string {
   <label for="sw-nav-drawer" class="btn btn-ghost btn-square ml-auto lg:hidden">{{sw-icon "menu" "h-6 w-6"}}</label>
   <label for="sw-nav-drawer" class="fixed inset-0 z-40 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-300 peer-checked:opacity-100 peer-checked:pointer-events-auto lg:hidden"></label>
   <div class="fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] -translate-x-full bg-base-100 shadow-xl transition-transform duration-300 peer-checked:translate-x-0 lg:hidden">
-    <ul class="menu w-full p-4 pt-16">
+    <ul class="menu h-full w-full overflow-y-auto overflow-x-hidden p-4 pt-16">
       {{#each nav.header}}
       <li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>
       {{/each}}

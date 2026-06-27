@@ -61,7 +61,7 @@ export interface RenderDocumentOptions extends RenderContext {
   bodyHtml?: string;
   /**
    * Space-separated class(es) for the `<body>` element — the site-wide nav/button effect schemes
-   * (`sw-nav-*` / `sw-btn-*`) chosen in Website settings. Cascades to the nav landmarks + `.btn`s;
+   * (`sw-nav-*` / `sw-btn-*`) chosen in Website settings. Cascades to the `.menu` nav links + `.btn`s;
    * the effect CSS tree-shakes per scheme. Caller-computed (see `websiteEffectsClasses`); attribute-escaped.
    */
   bodyClass?: string;

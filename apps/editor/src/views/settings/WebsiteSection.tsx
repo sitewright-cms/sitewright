@@ -94,7 +94,7 @@ export function WebsiteSection({
       code: form.navCode,
       set: (v: string) => patch({ navCode: v }),
       forks: forks?.nav ?? [],
-      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. #main-nav a, .menu a) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
+      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. .menu a — the built-in schemes only style links inside a .menu) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
     },
     button: {
       title: 'Custom button effect code',

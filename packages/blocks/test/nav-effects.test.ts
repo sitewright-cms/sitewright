@@ -9,9 +9,11 @@ describe('nav-effects runtime', () => {
     expect(NAV_EFFECTS_JS).not.toContain('innerHTML');
   });
 
-  it('mirrors the effect CSS scope selector (landmarks + per-element nav containers)', () => {
-    expect(NAV_EFFECTS_JS).toContain('#main-nav');
-    expect(NAV_EFFECTS_JS).toContain('.menu,nav,[role="navigation"]');
+  it('mirrors the effect CSS scope selector (every .menu, nothing else)', () => {
+    expect(NAV_EFFECTS_JS).toContain(".matches('.menu')");
+    expect(NAV_EFFECTS_JS).toContain("querySelectorAll('.menu')");
+    expect(NAV_EFFECTS_JS).not.toContain('#main-nav');
+    expect(NAV_EFFECTS_JS).not.toContain('[role="navigation"]');
   });
 
   it('wires all three JS-backed schemes (sliding line, sliding pill, spotlight)', () => {

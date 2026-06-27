@@ -20,7 +20,7 @@ describe('buildEffectForks', () => {
 
   it('targets the nav links / buttons directly with the dark-safe --sw-color-* tokens', () => {
     const box = f.nav.find((x) => x.name === 'box-solid')!;
-    expect(box.code).toContain('#main-nav');
+    expect(box.code).toContain('.menu a');
     expect(box.code).toContain('--sw-color-primary');
     expect(f.button.find((x) => x.name === 'lift')!.code).toContain('.btn');
   });

@@ -4,9 +4,9 @@
 // discipline as the cart / preloader / ripple runtimes), gated by `navEffectUsesRuntime` in
 // @sitewright/schema.
 //
-// What it does, mirroring the effect CSS selectors exactly (class on <body> → scoped to the
-// #main-nav landmark; or class on a per-element nav container):
-//   • the two SLIDING schemes get a single `<span class="sw-nav-indicator">` appended to each nav
+// What it does, mirroring the effect CSS selectors exactly (class on <body> → scoped to every `.menu`;
+// or the class on a `.menu` itself):
+//   • the two SLIDING schemes get a single `<span class="sw-nav-indicator">` appended to each `.menu`
 //     scope; the runtime publishes the active/hovered link's rect as the `--sw-ind-*` custom props on
 //     the scope, and the CSS composes those into a bottom bar (line) or a full pill. The pill/line
 //     animate via the CSS transition — the runtime only moves the numbers.
@@ -28,8 +28,8 @@ export const NAV_EFFECTS_JS = `(function(){
     var out=[];
     function add(el){ if(out.indexOf(el)<0) out.push(el); }
     Array.prototype.forEach.call(document.querySelectorAll('.'+cls),function(el){
-      if(el.matches('.menu,nav,[role="navigation"]')) add(el);
-      Array.prototype.forEach.call(el.querySelectorAll('#main-nav'),add);
+      if(el.matches('.menu')) add(el);
+      Array.prototype.forEach.call(el.querySelectorAll('.menu'),add);
     });
     return out;
   }

@@ -4,9 +4,10 @@
 // `<body>` for a site-wide effect (what the no-code picker does), or on a single element for a
 // one-off — full code-first freedom either way.
 //
-// NAV schemes style the main nav links — site-wide (class on <body>, scoped to the #main-nav
-// landmark) OR per-element (class on the nav container, e.g. <ul class="menu
-// sw-nav-box-solid">). The active item is marked with `.active` (author-applied, e.g.
+// NAV schemes style the nav links INSIDE A `.menu` — site-wide (class on <body>, scoped to every
+// `.menu` descendant's links) OR per-element (class on the `.menu` itself, e.g. <ul class="menu
+// sw-nav-box-solid">). Links outside a `.menu` (a brand mark, a CTA button, language flags) are left
+// alone. The active item is marked with `.active` (author-applied, e.g.
 // `{{#if (sw-active path)}}active{{/if}}`) and/or `[aria-current="page"]`. BUTTON effects layer on any
 // daisyUI `.btn` — site-wide (class on <body>) or on the button itself (`<button class="btn sw-btn-fx-lift">`).
 //
@@ -26,21 +27,21 @@
 //
 // MOTION is gated behind `prefers-reduced-motion: no-preference`; the active/hover end-states stay.
 
-// A scheme works whether its class is GLOBAL (on <body> via the picker → scoped to the nav landmarks
-// / any .btn descendant) OR PER-ELEMENT (on the nav container or the button itself). Each helper emits
+// A scheme works whether its class is GLOBAL (on <body> via the picker → scoped to links inside any
+// `.menu` / any .btn descendant) OR PER-ELEMENT (on the `.menu` or the button itself). Each helper emits
 // BOTH selectors. Every `&` is written explicitly (a comma breaks the `&` association), so call sites
 // use `${...} { … }` with no extra leading `&`.
 //   nav link, optional `<suffix>` (':hover', '.active', '::after', …):
 const navLink = (s = ''): string =>
-  `& #main-nav a${s}, &:is(.menu, nav, [role="navigation"]) a${s}`;
+  `& .menu a${s}, &.menu a${s}`;
 const navActive = `${navLink('.active')}, ${navLink('[aria-current="page"]')}`;
 //   the "effect-on" states for a link / pseudo — hover preview + BOTH active markers:
 const on = (p = ''): string =>
   `${navLink(`:hover${p}`)}, ${navLink(`.active${p}`)}, ${navLink(`[aria-current="page"]${p}`)}`;
-//   the nav CONTAINER itself (landmark or per-element nav) — the positioning context for the
+//   the `.menu` CONTAINER itself — the positioning context for the
 //   JS-backed schemes' injected `.sw-nav-indicator` and the spotlight background:
 const navScope = (s = ''): string =>
-  `& #main-nav${s}, &:is(.menu, nav, [role="navigation"])${s}`;
+  `& .menu${s}, &.menu${s}`;
 //   button AXIS helpers (effect / shape / accent). Each class doubles as a site DEFAULT (on <body>,
 //   scoped to descendant .btn that DON'T carry their own override for that axis) OR a per-button
 //   override (on the .btn itself). The `:not([class*="sw-btn-<axis>-"])` guard makes the body default

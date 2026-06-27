@@ -50,6 +50,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     requestAnimationFrame(function () {
       ticking = false;
       post({ type: 'scroll', y: window.scrollY || window.pageYOffset || 0 });
+      repositionHud(); // keep the active-element HUD glued to its target as the page scrolls
     });
   }, { passive: true });
 
@@ -65,6 +66,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (!a) return;
     if (editing && a.hasAttribute('data-sw-href')) return; // editable link → its edit popover wins
     if (editing && a.closest('[data-sw-entry]')) return; // inside an editable dataset card → entry editor wins
+    // While editing, a link that sits INSIDE editable content (e.g. an <a> in rich html, or an external-href
+    // editable link) must never navigate — you're editing, not browsing. Suppress it entirely.
+    if (editing && a.closest('[data-sw-text],[data-sw-html],[data-sw-translate],[data-sw-src],[data-sw-bg],[data-sw-control]')) { e.preventDefault(); e.stopPropagation(); return; }
     if (a.getAttribute('target') === '_blank') return;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '/' || href.charAt(1) === '/') return; // only root-relative site routes
@@ -98,27 +102,21 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Dataset rows: same always-on marker, in teal to distinguish a structured entry from inline content.
       '[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,background-color .12s}' +
       '[data-sw-entry].sw-entry-on:hover{background:rgba(20,184,166,.08)}' +
-      // Field-name BADGES (hover/focus): a floating pill naming the bound key/dataset, anchored to the
-      // element (setEditing promotes a STATIC host to relative so the absolute ::before anchors here),
-      // with a near-max z-index so it is never covered. content:attr(...) shows the field name; the
-      // emoji type-glyphs are safe — this CSS only runs in the Chromium preview, never in published HTML.
-      // display:none at rest (NOT opacity:0): an opacity:0 pseudo stays in the hit-test tree and can
-      // block clicks on an element flush with the iframe top even with pointer-events:none; display:none
-      // removes it entirely and it still reveals cleanly on hover.
-      '[data-sw-text].sw-edit-on::before,[data-sw-html].sw-edit-on::before,[data-sw-href].sw-link-on::before,[data-sw-src].sw-img-on::before,[data-sw-bg].sw-img-on::before,[data-sw-translate].sw-tr-on::before,[data-sw-entry].sw-entry-on::before{display:none;position:absolute;top:0;left:0;transform:translateY(-100%);z-index:2147483640;padding:1px 5px;border-radius:5px 5px 5px 0;font:600 10px/1.5 system-ui,sans-serif;color:#fff;background:#6366f1;white-space:nowrap;pointer-events:none}' +
-      // Glyphs use JS unicode escapes so the LITERAL char lands in the CSS string; a raw CSS hex
-      // escape would be eaten by the inner JS string octal-escape parsing when this script runs.
-      '[data-sw-text].sw-edit-on::before{content:"\\u270E " attr(data-sw-text)}' +
-      '[data-sw-html].sw-edit-on::before{content:"\\u00B6 " attr(data-sw-html)}' +
-      '[data-sw-href].sw-link-on::before{content:"\\u{1F517} " attr(data-sw-href)}' +
-      '[data-sw-src].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-src)}' +
-      '[data-sw-bg].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-bg)}' +
-      '[data-sw-entry].sw-entry-on::before{content:"\\u{1F5C2} " attr(data-sw-dataset);background:#14b8a6}' +
-      '[data-sw-translate].sw-tr-on::before{content:"\\u{1F310} " attr(data-sw-translate);background:#059669}' +
-      '[data-sw-text].sw-edit-on:hover::before,[data-sw-text].sw-edit-on:focus::before,[data-sw-html].sw-edit-on:hover::before,[data-sw-html].sw-edit-on:focus::before,[data-sw-href].sw-link-on:hover::before,[data-sw-href].sw-link-on:focus::before,[data-sw-src].sw-img-on:hover::before,[data-sw-bg].sw-img-on:hover::before,[data-sw-translate].sw-tr-on:hover::before,[data-sw-translate].sw-tr-on:focus::before,[data-sw-entry].sw-entry-on:hover::before{display:block}' +
-      // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
-      // static, so positioned elements are untouched) so it never mutates the inline style attribute.
-      '.sw-rel{position:relative}' +
+      // --- Editable-region OVERLAY HUD: the field-name BADGES + the active OUTLINE live in a body-level,
+      // position:fixed, max-z layer (built in JS below) — NOT as a host ::before. So they are never
+      // clipped by the host's (or an ancestor's) overflow, never covered by host content, immune to host
+      // styling, and CLICKABLE. The ambient dashed outline above still marks every region at rest; the
+      // HUD reinforces + makes interactive the element(s) under the pointer/focus. ---
+      '.sw-ov{position:fixed;inset:0;pointer-events:none;z-index:2147483646}' +
+      '.sw-ov-box{position:fixed;pointer-events:none;border:2px dashed #6366f1;border-radius:3px;box-sizing:border-box}' +
+      '.sw-ov-box.sw-b-tr{border-color:#059669}.sw-ov-box.sw-b-entry{border-color:#14b8a6}' +
+      '.sw-ov-row{position:fixed;display:flex;flex-wrap:wrap;align-items:flex-end;gap:4px;pointer-events:none;max-width:90vw}' +
+      // all:unset wipes host inheritance; an explicit MONOSPACE font + WHITE svg icon make every badge
+      // uniform regardless of the element it marks. pointer-events:auto → the badge itself is clickable.
+      '.sw-ov-badge{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;pointer-events:auto;cursor:pointer;padding:2px 6px 2px 5px;border-radius:5px 5px 5px 0;background:#6366f1;color:#fff;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35)}' +
+      '.sw-ov-badge:hover{filter:brightness(1.12)}' +
+      '.sw-ov-badge.sw-b-tr{background:#059669}.sw-ov-badge.sw-b-entry{background:#14b8a6}' +
+      '.sw-ov-badge svg{width:13px;height:13px;flex:0 0 auto;display:block;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
       // Locate flash: a brief amber ring when the Regions panel jumps to an element (fades out via the keyframe).
       '@keyframes sw-flash{0%{box-shadow:0 0 0 3px #f59e0b}100%{box-shadow:0 0 0 3px rgba(245,158,11,0)}}' +
       '.sw-flash{animation:sw-flash 1.2s ease-out;border-radius:3px}' +
@@ -371,13 +369,6 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
 
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
-  // The field-name badge ::before is position:absolute, so its host needs a positioned box. Promote a
-  // STATIC host with the .sw-rel class (NOT inline style — that would reserialize the element's style
-  // attribute, e.g. collapse a data-sw-bg background-image); an already-positioned element is untouched.
-  function relPos(el, on) {
-    if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
-    else el.classList.remove('sw-rel');
-  }
 
   // ---- Editable-regions manifest + locate/edit (drives the editor's Regions side-panel) ------------
   // The panel is the RELIABLE way to reach any editable thing — including content the page occludes,
@@ -451,22 +442,161 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
   function onTextDocDown(e) { if (!tpop || tpop.style.display === 'none') return; if (tpop.contains(e.target)) return; closeTextPop(); }
-  // Locate + edit a region by rid (from the panel): scroll to + flash it (when on-screen), then trigger
-  // its editor exactly as an in-place click would.
+  // Open the editor for a SPECIFIC directive on el — reused by both an overlay badge click and editRegion.
+  function editDirective(el, kind) {
+    closePop(); closeControlPop(); closeTextPop(); // never stack popovers
+    var onScreen = el.getClientRects().length;
+    if (kind === 'entry') { post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' }); return; }
+    if (kind === 'control') { openControlPop(el); return; }
+    if (kind === 'image' || kind === 'bg') { pickImage(el); return; }
+    if (kind === 'href') { openPop(el); return; }
+    if (kind === 'html') { if (onScreen) { try { el.focus(); } catch (e) {} } else { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); } return; }
+    // text on a LINK has no standalone editable box — its text rides in the link popover (the Text row).
+    if (kind === 'text' && el.hasAttribute('data-sw-href')) { openPop(el); return; }
+    // plain text + translations: focus in place, or a centred popover when off-screen.
+    if (onScreen) { try { el.focus(); var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} } else { openTextPop(el); }
+  }
+  // The directive an in-place CLICK / the Regions panel resolves to (priority order = the old ladder).
+  function primaryKind(el) {
+    if (el.hasAttribute('data-sw-entry')) return 'entry';
+    if (el.hasAttribute('data-sw-control')) return 'control';
+    if (el.hasAttribute('data-sw-src')) return 'image';
+    if (el.hasAttribute('data-sw-bg')) return 'bg';
+    if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) return 'href';
+    if (el.hasAttribute('data-sw-html')) return 'html';
+    if (el.hasAttribute('data-sw-translate')) return 'translate';
+    return 'text';
+  }
+  // Locate + edit a region by rid (from the panel): scroll to + flash it (when on-screen), then open its
+  // primary editor exactly as an in-place click would.
   function editRegion(rid) {
     var el = document.querySelector('[data-sw-rid="' + rid + '"]');
     if (!el) return;
-    closePop(); closeControlPop(); closeTextPop(); // never stack popovers across panel clicks
     var onScreen = el.getClientRects().length;
     if (onScreen) { try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} flashEl(el); }
-    if (el.hasAttribute('data-sw-entry')) { post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' }); return; }
-    if (el.hasAttribute('data-sw-control')) { openControlPop(el); return; }
-    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) { pickImage(el); return; }
-    if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) { openPop(el); return; }
-    if (el.hasAttribute('data-sw-html')) { if (onScreen) { try { el.focus(); } catch (e) {} } else { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); } return; }
-    // Plain text + translations share the focus-in-place / off-screen-popover path (the popover detects which).
-    if (onScreen) { try { el.focus(); var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} } else { openTextPop(el); }
+    editDirective(el, primaryKind(el));
   }
+  // ---- Editable-region OVERLAY HUD: a body-level, fixed, max-z layer holding the ACTIVE element's
+  //      outline + a cluster of CLICKABLE, uniform, per-directive badges (white monochrome SVG icons +
+  //      a monospace field name). Never clipped/covered (top-level), immune to host CSS (own layer).
+  //      Shown for the element(s) under the pointer/focus, including the editable STACK there. ----
+  var ICONS = {
+    text: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    html: '<path d="M13 4v16M17 4v16M19 4h-6.5a4.5 4.5 0 0 0 0 9H13"/>',
+    href: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+    translate: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/>',
+    control: '<line x1="4" x2="20" y1="8" y2="8"/><line x1="4" x2="20" y1="16" y2="16"/><circle cx="9" cy="8" r="2.6" fill="#fff" stroke="none"/><circle cx="15" cy="16" r="2.6" fill="#fff" stroke="none"/>',
+    entry: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>'
+  };
+  ICONS.bg = ICONS.image;
+  function isEditable(el) {
+    return !!(el && el.hasAttribute && (el.hasAttribute('data-sw-text') || el.hasAttribute('data-sw-html') || el.hasAttribute('data-sw-href') || el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg') || el.hasAttribute('data-sw-translate') || el.hasAttribute('data-sw-control') || el.hasAttribute('data-sw-entry')));
+  }
+  function dirLabel(el, kind) {
+    if (kind === 'entry') return el.getAttribute('data-sw-dataset') || el.getAttribute('data-sw-entry') || 'entry';
+    if (kind === 'control') return el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-control') || 'control';
+    if (kind === 'image') return el.getAttribute('data-sw-src') || 'image';
+    if (kind === 'bg') return el.getAttribute('data-sw-bg') || 'background';
+    return el.getAttribute('data-sw-' + kind) || kind;
+  }
+  // Every editable directive present on ONE element (content-first order) → one badge each.
+  function directivesOf(el) {
+    var ks = [];
+    if (el.hasAttribute('data-sw-text')) ks.push('text');
+    if (el.hasAttribute('data-sw-translate')) ks.push('translate');
+    if (el.hasAttribute('data-sw-html')) ks.push('html');
+    if (el.hasAttribute('data-sw-href')) ks.push('href');
+    if (el.hasAttribute('data-sw-src')) ks.push('image');
+    if (el.hasAttribute('data-sw-bg')) ks.push('bg');
+    if (el.hasAttribute('data-sw-control')) ks.push('control');
+    if (el.hasAttribute('data-sw-entry')) ks.push('entry');
+    return ks;
+  }
+  // The editable elements under a point: each hit + its editable ancestors, topmost-first, deduped — so a
+  // dataset card inside a link yields BOTH (the inner card and the outer link), each reachable via a badge.
+  function editableStack(x, y) {
+    var list = [], els = document.elementsFromPoint(x, y) || [];
+    for (var i = 0; i < els.length; i++) {
+      var node = els[i];
+      while (node && node !== document) {
+        if (node.nodeType === 1 && isEditable(node) && list.indexOf(node) < 0) list.push(node);
+        node = node.parentNode;
+      }
+    }
+    return list;
+  }
+  var ov = null, ovBox = null, ovRow = null, ovActive = null, ovTimer = null, ovTick = false;
+  function ensureOverlay() {
+    if (ov) return;
+    ov = document.createElement('div'); ov.className = 'sw-ov';
+    ovBox = document.createElement('div'); ovBox.className = 'sw-ov-box'; ovBox.style.display = 'none';
+    ovRow = document.createElement('div'); ovRow.className = 'sw-ov-row'; ovRow.style.display = 'none';
+    ovRow.addEventListener('mouseenter', function () { if (ovTimer) { clearTimeout(ovTimer); ovTimer = null; } });
+    ovRow.addEventListener('mouseleave', scheduleHide);
+    ov.appendChild(ovBox); ov.appendChild(ovRow);
+    document.body.appendChild(ov);
+  }
+  function badgeKlass(kind) { return kind === 'translate' ? 'sw-b-tr' : kind === 'entry' ? 'sw-b-entry' : ''; }
+  function buildBadge(el, kind) {
+    var b = document.createElement('button'); b.type = 'button';
+    var k = badgeKlass(kind); b.className = 'sw-ov-badge' + (k ? ' ' + k : '');
+    b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[kind] || ICONS.text) + '</svg>'; // fixed icon markup only
+    b.appendChild(document.createTextNode(dirLabel(el, kind))); // the variable name as TEXT (no injection)
+    b.title = kind + ': ' + dirLabel(el, kind);
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // don't blur a contenteditable mid-edit
+    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); editDirective(el, kind); });
+    b.addEventListener('mouseenter', function () { outlineFor(el, kind); }); // highlight THIS badge's target, in its colour
+    return b;
+  }
+  function outlineFor(el, kind) {
+    if (!el.getClientRects().length) { ovBox.style.display = 'none'; return; }
+    var r = el.getBoundingClientRect(), k = badgeKlass(kind);
+    ovBox.className = 'sw-ov-box' + (k ? ' ' + k : '');
+    ovBox.style.left = r.left + 'px'; ovBox.style.top = r.top + 'px';
+    ovBox.style.width = r.width + 'px'; ovBox.style.height = r.height + 'px';
+    ovBox.style.display = 'block';
+  }
+  function positionRow(el) {
+    if (!el.getClientRects().length) { ovRow.style.display = 'none'; return; }
+    var r = el.getBoundingClientRect();
+    ovRow.style.display = 'flex';
+    var left = r.left; if (left < 2) left = 2;
+    var maxLeft = window.innerWidth - ovRow.offsetWidth - 2; if (left > maxLeft) left = maxLeft > 2 ? maxLeft : 2;
+    var top = r.top - ovRow.offsetHeight - 2; if (top < 2) top = r.top + 2; // flush to viewport top → just inside
+    ovRow.style.left = left + 'px'; ovRow.style.top = top + 'px';
+  }
+  function showHud(stack) {
+    if (ovTimer) { clearTimeout(ovTimer); ovTimer = null; }
+    ovActive = stack;
+    while (ovRow.firstChild) ovRow.removeChild(ovRow.firstChild);
+    var count = 0;
+    for (var i = 0; i < stack.length && count < 8; i++) {
+      var ks = directivesOf(stack[i]);
+      for (var j = 0; j < ks.length && count < 8; j++) { ovRow.appendChild(buildBadge(stack[i], ks[j])); count++; }
+    }
+    ovRow.style.display = 'flex';
+    outlineFor(stack[0], primaryKind(stack[0]));
+    // Position AFTER layout — the just-appended badges have no measured size in this same tick.
+    var first = stack[0];
+    requestAnimationFrame(function () { positionRow(first); });
+  }
+  function hideHud() { ovTimer = null; ovActive = null; if (ovBox) ovBox.style.display = 'none'; if (ovRow) ovRow.style.display = 'none'; }
+  function scheduleHide() { if (ovTimer) return; ovTimer = setTimeout(hideHud, 180); }
+  function repositionHud() { if (editing && ovActive && ovActive.length) { outlineFor(ovActive[0], primaryKind(ovActive[0])); positionRow(ovActive[0]); } }
+  function onOvMove(e) {
+    if (!editing) return;
+    if (ov && e.target && ov.contains(e.target)) return; // over the HUD itself → keep it
+    if (ovTick) return; ovTick = true;
+    var x = e.clientX, y = e.clientY;
+    requestAnimationFrame(function () {
+      ovTick = false;
+      var stack = editableStack(x, y);
+      if (stack.length) showHud(stack); else scheduleHide();
+    });
+  }
+  function onOvLeave(e) { if (!e.relatedTarget && !e.toElement) scheduleHide(); } // pointer left the iframe
+
   function setEditing(on) {
     if (on === editing) return;
     editing = on;
@@ -476,38 +606,32 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (el.hasAttribute('data-sw-href')) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
-      relPos(el, on);
     });
     // Project translations — plaintext editing like data-sw-text, but the edit writes website.translations.
     eachEl('[data-sw-translate]', function (el) {
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-tr-on'); el.addEventListener('input', onTranslateInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-tr-on'); el.removeEventListener('input', onTranslateInput); }
-      relPos(el, on);
     });
     // Rich
     eachEl('[data-sw-html]', function (el) {
       if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
-      relPos(el, on);
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
       if (el.hasAttribute('data-sw-html')) return;
       if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
-      relPos(el, on);
     });
     // Images + backgrounds — click to replace via the editor's file picker.
     eachEl('[data-sw-src],[data-sw-bg]', function (el) {
       if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
-      relPos(el, on);
     });
     // Dataset rows — a hover affordance; the click is handled by one delegated document listener.
     eachEl('[data-sw-entry]', function (el) {
       if (on) el.classList.add('sw-entry-on');
       else el.classList.remove('sw-entry-on');
-      relPos(el, on);
     });
     // Editor-only control chips — shown + clickable only in content mode.
     eachEl('[data-sw-control]', function (el) {
@@ -520,10 +644,19 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // bubble-phase handler (e.g. the carousel's data-click-next "advance on slide click") fires —
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
+      // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
+      ensureOverlay();
+      document.addEventListener('mousemove', onOvMove, true);
+      document.addEventListener('mouseleave', onOvLeave, true);
+      window.addEventListener('resize', repositionHud);
       postRegions(); // publish the editable-regions manifest to the editor's Regions panel
     } else {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
+      document.removeEventListener('mousemove', onOvMove, true);
+      document.removeEventListener('mouseleave', onOvLeave, true);
+      window.removeEventListener('resize', repositionHud);
+      hideHud();
       hideToolbar();
       closePop();
       closeControlPop();

@@ -22,11 +22,12 @@ import { collectDocumentRefs, collectImageRefs, hostAssets } from './transform/a
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectAndHostScripts } from './transform/scripts.js';
 import { collectFontFaces } from './transform/fonts.js';
+import { applyFoundation, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
 import { inferDatasets } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
-import type { CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
+import type { CapturedAsset, CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
 /** Upper bound on the hosted imported stylesheet (a real site's full minified CSS is far smaller). */
 const MAX_HOSTABLE_CSS_BYTES = 2 * 1024 * 1024;
@@ -91,6 +92,27 @@ function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): We
   if (chrome.preloaderEffect) effects.preloaderEffect = chrome.preloaderEffect;
   input.effects = effects;
   return WebsiteSettingsSchema.parse(input);
+}
+
+/**
+ * The self-hosted web fonts as `{ family, assetId, weight, style }` — the foundation extractor matches
+ * the page's heading/body families against these to wire native typography. The `assetId` is parsed from
+ * the hosted media path (`/media/<slug>/<assetId>/<file>`), deduped per asset+weight.
+ */
+function collectHostedFonts(refs: ReadonlyMap<string, CapturedAsset>, assetMap: ReadonlyMap<string, string>): HostedFont[] {
+  const out: HostedFont[] = [];
+  const seen = new Set<string>();
+  for (const [key, asset] of refs) {
+    if (asset.kind !== 'font' || !asset.font) continue;
+    const media = assetMap.get(key);
+    const id = media?.match(/^\/media\/[^/]+\/([^/]+)\//)?.[1];
+    if (!id) continue;
+    const dedupe = `${id}|${asset.font.weight}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    out.push({ family: asset.font.family, assetId: id, weight: asset.font.weight, style: asset.font.style });
+  }
+  return out;
 }
 
 export async function buildImportBundle(site: CapturedSite, opts: TransformOptions): Promise<ImportResult> {
@@ -283,10 +305,27 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // goes live. The subsequent nativize keeps published pages published.
   for (const p of routeRes.pages) p.status = (p.data as { swImport?: unknown } | undefined)?.swImport ? 'published' : 'draft';
 
-  const website = buildWebsite(chrome, cssLink || undefined, scriptLinks || undefined);
+  // In FOUNDATION mode the foreign stylesheet/scripts are discarded (the foundation extractor replaces
+  // them with native theme + chrome), so don't wire the <link>/<script> into the website slots.
+  let website = buildWebsite(chrome, opts.foundation ? undefined : cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined);
+  let bundleIdentity = identity;
+  let bundlePages = routeRes.pages;
+  if (opts.foundation) {
+    const fnd = applyFoundation({
+      cssText: cssCollection.cssText,
+      identity,
+      website,
+      pages: routeRes.pages,
+      hostedFonts: collectHostedFonts(refs, assetMap),
+    });
+    bundleIdentity = fnd.identity;
+    website = fnd.website;
+    bundlePages = fnd.pages;
+    diagnostics.push(...fnd.diagnostics);
+  }
   const bundle: ImportBundle = {
-    project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
-    pages: routeRes.pages,
+    project: { identity: bundleIdentity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
+    pages: bundlePages,
     templates: [],
     datasets,
     entries,
@@ -297,9 +336,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const stubProject: Project = {
     formatVersion: PROJECT_FORMAT_VERSION,
     id: 'import',
-    name: identity.name.slice(0, 200) || 'Imported site',
+    name: bundleIdentity.name.slice(0, 200) || 'Imported site',
     slug: 'import',
-    identity,
+    identity: bundleIdentity,
     settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales },
   };
   const issues = validateProject({ project: stubProject, pages: bundle.pages, datasets, entries });

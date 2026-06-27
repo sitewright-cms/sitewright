@@ -7,7 +7,7 @@ import {
   extractTypography,
   foundationCriticalCss,
   nativeFooter,
-  nativeTopNav,
+  nativeMainNav,
   readCssVars,
   type HostedFont,
 } from '../src/transform/foundation.js';
@@ -83,13 +83,13 @@ describe('foundationCriticalCss', () => {
   });
 });
 
-describe('nativeTopNav', () => {
+describe('nativeMainNav', () => {
   it('is data-driven (iterates nav.header) and uses no <nav> landmark', () => {
-    const nav = nativeTopNav({ name: 'Acme', logo: '/media/s/main/logo.webp' });
+    const nav = nativeMainNav({ name: 'Acme', logo: '/media/s/main/logo.webp' });
     expect(nav).toContain('{{#each nav.header}}');
     expect(nav).toContain('{{sw-label}}');
     expect(nav).toContain('(sw-active path)');
-    expect(nav).not.toMatch(/<nav[\s>]/); // the platform owns the <nav> landmark
+    expect(nav).not.toMatch(/<nav[\s>]/); // the platform owns the <nav id="main-nav"> landmark
     expect(nav).toContain('/media/s/main/logo.webp');
   });
 });
@@ -115,7 +115,7 @@ describe('configurePageNav', () => {
     ];
     configurePageNav(pages);
     const byId = Object.fromEntries(pages.map((p) => [p.id, p])) as Record<string, Page>;
-    expect(byId.home!.nav).toMatchObject({ slots: ['header', 'mobile'], order: 0, title: 'Home' });
+    expect(byId.home!.nav).toMatchObject({ slots: ['header'], order: 0, title: 'Home' });
     expect(byId.about!.nav).toMatchObject({ dropdown: true });
     expect(byId.services!.nav).toMatchObject({ dropdown: true });
     // children carry NO nav object (they nest via parent) — empty slots would be rejected on PUT
@@ -140,7 +140,7 @@ describe('applyFoundation', () => {
     // foreign css/js discarded; native chrome + criticalCss in
     expect(r.website.head ?? '').toBe('');
     expect(r.website.scripts ?? '').toBe('');
-    expect(r.website.topNav).toContain('{{#each nav.header}}');
+    expect(r.website.mainNav).toContain('{{#each nav.header}}');
     expect(r.website.criticalCss).toContain('.bp-hero');
     // page nav configured
     expect(pages.find((p) => p.id === 'home')!.nav).toMatchObject({ title: 'Home' });

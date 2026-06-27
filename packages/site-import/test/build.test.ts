@@ -225,3 +225,55 @@ describe('buildImportBundle (integration)', () => {
     expect(result.diagnostics.some((d) => d.code === 'page-skipped')).toBe(true);
   });
 });
+
+describe('buildImportBundle — foundation mode (opt-in)', () => {
+  function foundationMedia(): MediaPort {
+    let n = 0;
+    return { hostAsset: async (a) => ({ ref: a.kind === 'font' ? `/media/test/fa${n++}/font.woff` : `/media/test/${n++}.jpg` }) };
+  }
+  const STYLE =
+    '<style>' +
+    ':root{--primary-color:#cc0000;--secondary-color:#333333;--text-color:#111111}' +
+    "@font-face{font-family:'brandhead';src:url('/fonts/head.woff')}" +
+    "@font-face{font-family:'brandbody';src:url('/fonts/body.woff')}" +
+    'body{font-family:"brandbody",sans-serif}' +
+    'h1{font-family:"brandhead",serif}' +
+    '</style>';
+
+  it('applies native theme + fonts + data-driven chrome and discards foreign css/js', async () => {
+    const result = await buildImportBundle(
+      site([
+        { sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Welcome</h1>', HOME_HEAD + STYLE) },
+        { sourceUrl: 'https://ex.com/about', html: page('About', '<h2>About</h2>') },
+        { sourceUrl: 'https://ex.com/contact', html: page('Contact', '<h2>Contact</h2>') },
+      ]),
+      { media: foundationMedia(), foundation: true },
+    );
+    const bundle = result.bundles[0]!;
+    const w = bundle.project.website!;
+    const id = bundle.project.identity;
+
+    expect(id.colors.primary).toBe('#cc0000');
+    expect(id.colors.secondary).toBe('#333333');
+    expect(id.colors['base-content']).toBe('#111111');
+    expect(id.typography?.heading).toMatchObject({ source: 'asset' });
+    expect(id.typography?.body).toMatchObject({ source: 'asset' });
+    expect(w.mainNav).toContain('{{#each nav.header}}');
+    expect(w.criticalCss).toContain('.bp-hero');
+    expect(w.head ?? '').not.toContain('stylesheet');
+    expect(w.scripts ?? '').toBe('');
+    const home = bundle.pages.find((p) => p.path === '')!;
+    expect(home.nav).toMatchObject({ slots: expect.arrayContaining(['header']), title: 'Home' });
+    expect(result.diagnostics.some((d) => d.code === 'foundation-applied')).toBe(true);
+    expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+  });
+
+  it('is opt-in: without the flag, no foundation is applied', async () => {
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1>', HOME_HEAD + STYLE) }]),
+      { media: foundationMedia() },
+    );
+    expect(result.diagnostics.some((d) => d.code === 'foundation-applied')).toBe(false);
+    expect(result.bundles[0]!.project.website?.mainNav ?? '').not.toContain('{{#each nav.header}}');
+  });
+});

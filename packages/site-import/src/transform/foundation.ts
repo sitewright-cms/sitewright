@@ -148,24 +148,29 @@ export function foundationCriticalCss(bg = '#e9e9ec'): string {
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** Data-driven top nav (R13): the menu is GENERATED from the page tree via `{{#each nav.header}}`. */
-export function nativeTopNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>): string {
+/**
+ * Data-driven Main Navigation (R13): the menu is GENERATED from the page tree via `{{#each nav.header}}`
+ * — desktop bar (hover dropdowns) + a mobile drawer. Goes in the single `website.mainNav` slot (the
+ * platform wraps it in `<nav id="main-nav">`, so no `<nav>` here). Models the global `navbar` recipe.
+ */
+export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>): string {
   const logo = identity.logo ? `<img src="${esc(identity.logo)}" alt="${esc(identity.name)} logo" class="h-12 w-auto"/>` : '';
   const brand = logo || `<span class="text-lg font-bold text-primary">${esc(identity.name)}</span>`;
   const desktopItem =
-    `{{#each nav.header}}{{#if children}}<li><details><summary class="{{#if (sw-active path)}}text-primary{{/if}}">{{sw-label}}</summary>` +
-    `<ul class="z-20 w-64 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul></details></li>` +
-    `{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/if}}{{/each}}`;
+    `{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover">` +
+    `<a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>` +
+    `<ul class="dropdown-content menu z-30 w-56 rounded-box border border-base-200 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul></li>` +
+    `{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/if}}{{/each}}`;
   const mobileItem =
     `{{#each nav.header}}{{#if children}}<li class="menu-title text-primary">{{sw-label}}</li>{{#each children}}<li><a href="{{sw-url path}}">{{sw-label}}</a></li>{{/each}}` +
     `{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a></li>{{/if}}{{/each}}`;
   return (
-    `<div class="bg-base-100 shadow-md"><div class="navbar mx-auto min-h-0 max-w-screen-xl px-3 py-1.5 sm:px-6">` +
-    `<div class="flex-1"><a href="/" class="flex items-center gap-2 no-underline">${brand}</a></div>` +
+    `<div class="navbar min-h-0 bg-base-100 px-3 py-1.5 shadow-md sm:px-5">` +
+    `<div class="flex-1"><a href="{{sw-url '/'}}" class="flex items-center gap-2 no-underline">${brand}</a></div>` +
     `<div class="hidden flex-none lg:block"><ul class="menu menu-horizontal items-center gap-0.5 px-1 text-[15px] font-medium">${desktopItem}</ul></div>` +
-    `<div class="flex-none lg:hidden"><div class="dropdown dropdown-end"><div tabindex="0" role="button" class="btn btn-outline btn-primary btn-sm gap-1">{{sw-icon "menu" "h-4 w-4"}}<span class="font-semibold">Menu</span></div>` +
-    `<ul tabindex="0" class="menu dropdown-content z-30 mt-2 w-72 gap-0.5 rounded-box bg-base-100 p-2 text-[15px] shadow-lg">${mobileItem}</ul></div></div>` +
-    `</div></div>`
+    `<div class="flex-none lg:hidden"><div class="dropdown dropdown-end"><div tabindex="0" role="button" class="btn btn-ghost btn-sm">{{sw-icon "menu" "h-5 w-5"}}</div>` +
+    `<ul tabindex="0" class="menu dropdown-content z-30 mt-2 w-64 gap-0.5 rounded-box bg-base-100 p-2 text-[15px] shadow-lg">${mobileItem}</ul></div></div>` +
+    `</div>`
   );
 }
 
@@ -205,7 +210,7 @@ export function configurePageNav(pages: Page[]): void {
   for (const p of topLevel) {
     const o = order++;
     p.order = o;
-    p.nav = { slots: ['header', 'mobile'], order: o, ...(childParentIds.has(p.id) ? { dropdown: true } : {}), ...(isHome(p) ? { title: 'Home' } : {}) };
+    p.nav = { slots: ['header'], order: o, ...(childParentIds.has(p.id) ? { dropdown: true } : {}), ...(isHome(p) ? { title: 'Home' } : {}) };
   }
   // Children: order within their sibling group; remove any (empty-slots) nav object so the PUT validates
   // and so they nest under the dropdown parent rather than appearing flat.
@@ -250,8 +255,7 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   delete websiteIn.sidebarLeft;
   delete websiteIn.sidebarRight;
   websiteIn.criticalCss = foundationCriticalCss(colors['base-200']);
-  websiteIn.topNav = nativeTopNav(identity);
-  websiteIn.mobileNav = '';
+  websiteIn.mainNav = nativeMainNav(identity); // single consolidated nav slot
   websiteIn.footer = nativeFooter(identity);
   const website = WebsiteSettingsSchema.parse(websiteIn);
 

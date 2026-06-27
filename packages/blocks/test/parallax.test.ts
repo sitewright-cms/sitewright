@@ -69,9 +69,16 @@ describe('parallax — scroll-linked property engine (v2)', () => {
     it('drives transform / opacity / filter, and does not close the tag early', () => {
       expect(PARALLAX_JS).toContain('.style.transform=');
       expect(PARALLAX_JS).toContain('.style.opacity=');
-      expect(PARALLAX_JS).toContain(".style.filter='blur(");
+      expect(PARALLAX_JS).toContain("'blur('");
       expect(PARALLAX_JS).toContain('translate3d(');
       expect(PARALLAX_JS).not.toContain('</script');
+    });
+
+    it('shares its MATH with the preview runtime (one source — no drift)', () => {
+      // the in→hold→out resolver + the cover-progress spine live in PARALLAX_CORE, embedded in both runtimes
+      expect(PARALLAX_JS).toContain('function val(c,ch)');
+      expect(PARALLAX_JS).toContain('function pxApply(');
+      expect(PARALLAX_JS).toContain('(vh-r.top)/(vh+r.height)');
     });
   });
 
@@ -88,11 +95,15 @@ describe('parallax — scroll-linked property engine (v2)', () => {
       expect(doc).toContain('reduced-motion setting');
     });
 
-    it('embeds the REAL runtime (CSS + JS); an empty preview defaults to a visible translate', () => {
+    it('embeds the CSS + the shared math + a LIVE-UPDATE runtime; empty preview defaults to a visible translate', () => {
       const doc = parallaxPreviewDoc();
       expect(doc).toContain(PARALLAX_CSS);
-      expect(doc).toContain(PARALLAX_JS);
-      expect(sampleTag(doc)).toContain('data-sw-parallax-translate="40,-40"'); // default motion
+      expect(doc).toContain('function val(c,ch)'); // same math as production (PARALLAX_CORE)
+      // the preview takes live updates over postMessage (no reload → scroll preserved) with a whitelist
+      expect(doc).toContain("d.type!=='sw-px'");
+      expect(doc).toContain('sw-px-ready');
+      expect(doc).toContain('setAttribute');
+      expect(sampleTag(doc)).toContain('data-sw-parallax-translate="40,-40"'); // default motion (baked initial)
     });
 
     it('emits per-channel windows + an OUT phase when supplied; omits the default y axis', () => {

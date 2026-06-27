@@ -58,17 +58,16 @@ export const PARALLAX_CSS = [
 ].join('');
 
 // --- runtime ----------------------------------------------------------------
-export const PARALLAX_JS = `(function(){
-  'use strict';
-  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  var els=document.querySelectorAll('[data-sw-parallax-translate],[data-sw-parallax-opacity],[data-sw-parallax-scale],[data-sw-parallax-blur]');
-  if(els.length===0)return;
+// Shared MATH, embedded verbatim in BOTH the production runtime and the builder-preview runtime so the two
+// can never drift: the helpers (clamp/pair/win/lerp), `chan` (resolve a channel's IN window + optional
+// OUT phase — an OUT can't start before IN ends, a zero-width OUT is dropped), `val` (channel value at
+// cover-progress c: in → hold → out), `pxParse` (read an element's channels), `pxCover` (the progress
+// spine), and `pxApply` (write transform/opacity/filter from a parse).
+const PARALLAX_CORE = `
   function clamp(n,lo,hi){return n<lo?lo:(n>hi?hi:n);}
   function pair(v,lo,hi){if(v==null)return null;var p=(''+v).split(',');var a=parseFloat(p[0]),b=parseFloat(p[1]);if(isNaN(a)||isNaN(b))return null;return [clamp(a,lo,hi),clamp(b,lo,hi)];}
   function win(v){var p=pair(v,0,1);return (p&&p[1]>p[0])?p:null;}
   function lerp(a,b,t){return a+(b-a)*t;}
-  // Resolve one channel: IN pair + IN window (falls back to the element window er, then 0..1) + optional
-  // OUT pair (enables an OUT phase) + OUT window (default = the remainder after IN).
   function chan(el,name,lo,hi,er){
     var p=pair(el.getAttribute('data-sw-parallax-'+name),lo,hi);if(!p)return null;
     var iw=win(el.getAttribute('data-sw-parallax-'+name+'-range'))||er||[0,1];
@@ -76,26 +75,42 @@ export const PARALLAX_JS = `(function(){
     var ow=null;
     if(o){
       ow=win(el.getAttribute('data-sw-parallax-'+name+'-out-range'))||[iw[1],1];
-      if(ow[0]<iw[1])ow=[iw[1],ow[1]]; // an OUT can't start before IN ends (no overlap jump)
-      if(ow[1]<=ow[0]){o=null;ow=null;} // zero-width window (e.g. IN fills the whole pass) → no OUT
+      if(ow[0]<iw[1])ow=[iw[1],ow[1]];
+      if(ow[1]<=ow[0]){o=null;ow=null;}
     }
     return {f:p[0],t:p[1],iw:iw,o:o,ow:ow};
   }
-  // Channel value at cover-progress c: in → hold → out.
   function val(c,ch){
     if(ch.o&&c>=ch.ow[0])return lerp(ch.o[0],ch.o[1],clamp((c-ch.ow[0])/(ch.ow[1]-ch.ow[0]),0,1));
     return lerp(ch.f,ch.t,clamp((c-ch.iw[0])/(ch.iw[1]-ch.iw[0]),0,1));
   }
+  function pxParse(el){var er=win(el.getAttribute('data-sw-parallax-range'));return {
+    axis:el.getAttribute('data-sw-parallax-axis')==='x'?'x':'y',
+    tr:chan(el,'translate',${PARALLAX_LIMITS.translate.min},${PARALLAX_LIMITS.translate.max},er),
+    op:chan(el,'opacity',${PARALLAX_LIMITS.opacity.min},${PARALLAX_LIMITS.opacity.max},er),
+    sc:chan(el,'scale',${PARALLAX_LIMITS.scale.min},${PARALLAX_LIMITS.scale.max},er),
+    bl:chan(el,'blur',${PARALLAX_LIMITS.blur.min},${PARALLAX_LIMITS.blur.max},er)};}
+  function pxCover(r,vh){return clamp((vh-r.top)/(vh+r.height),0,1);}
+  function pxApply(el,P,c){var tf='';
+    if(P.tr){var d=val(c,P.tr);tf=P.axis==='x'?'translate3d('+d.toFixed(2)+'px,0,0)':'translate3d(0,'+d.toFixed(2)+'px,0)';}
+    if(P.sc)tf+=(tf?' ':'')+'scale('+val(c,P.sc).toFixed(3)+')';
+    // Only WRITE a property this element actually drives — never clobber an author's CSS transform/etc.
+    if(tf)el.style.transform=tf;
+    if(P.op)el.style.opacity=val(c,P.op).toFixed(3);
+    if(P.bl)el.style.filter='blur('+val(c,P.bl).toFixed(2)+'px)';
+  }`;
+
+export const PARALLAX_JS = `(function(){
+  'use strict';
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var els=document.querySelectorAll('[data-sw-parallax-translate],[data-sw-parallax-opacity],[data-sw-parallax-scale],[data-sw-parallax-blur]');
+  if(els.length===0)return;
+  ${PARALLAX_CORE}
   var items=[];
   Array.prototype.forEach.call(els,function(el){
-    var er=win(el.getAttribute('data-sw-parallax-range'));
-    var tr=chan(el,'translate',${PARALLAX_LIMITS.translate.min},${PARALLAX_LIMITS.translate.max},er);
-    var op=chan(el,'opacity',${PARALLAX_LIMITS.opacity.min},${PARALLAX_LIMITS.opacity.max},er);
-    var sc=chan(el,'scale',${PARALLAX_LIMITS.scale.min},${PARALLAX_LIMITS.scale.max},er);
-    var bl=chan(el,'blur',${PARALLAX_LIMITS.blur.min},${PARALLAX_LIMITS.blur.max},er);
-    if(!tr&&!op&&!sc&&!bl)return;
-    var wc=[];if(tr||sc)wc.push('transform');if(op)wc.push('opacity');if(bl)wc.push('filter');
-    items.push({el:el,axis:el.getAttribute('data-sw-parallax-axis')==='x'?'x':'y',tr:tr,op:op,sc:sc,bl:bl,wc:wc.join(','),active:true,r:null});
+    var P=pxParse(el);if(!P.tr&&!P.op&&!P.sc&&!P.bl)return;
+    var wc=[];if(P.tr||P.sc)wc.push('transform');if(P.op)wc.push('opacity');if(P.bl)wc.push('filter');
+    items.push({el:el,P:P,wc:wc.join(','),active:true,r:null});
   });
   if(items.length===0)return;
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){
@@ -104,23 +119,40 @@ export const PARALLAX_JS = `(function(){
   if(io)items.forEach(function(it){io.observe(it.el);});
   var vh=window.innerHeight,ticking=false;
   function render(){
-    ticking=false;var i,it,r,c,tf,d;
+    ticking=false;var i,it;
     // PASS 1 — read every rect first (no interleaved writes → one layout, no thrash)
     for(i=0;i<items.length;i++){it=items[i];it.r=it.active?it.el.getBoundingClientRect():null;}
     // PASS 2 — write styles only (no reads)
-    for(i=0;i<items.length;i++){
-      it=items[i];r=it.r;if(!r)continue;
-      c=clamp((vh-r.top)/(vh+r.height),0,1);tf='';
-      if(it.tr){d=val(c,it.tr);tf=it.axis==='x'?'translate3d('+d.toFixed(2)+'px,0,0)':'translate3d(0,'+d.toFixed(2)+'px,0)';}
-      if(it.sc)tf+=(tf?' ':'')+'scale('+val(c,it.sc).toFixed(3)+')';
-      if(tf)it.el.style.transform=tf;
-      if(it.op)it.el.style.opacity=val(c,it.op).toFixed(3);
-      if(it.bl)it.el.style.filter='blur('+val(c,it.bl).toFixed(2)+'px)';
-    }
+    for(i=0;i<items.length;i++){it=items[i];if(!it.r)continue;pxApply(it.el,it.P,pxCover(it.r,vh));}
   }
   function onScroll(){if(!ticking){ticking=true;(window.requestAnimationFrame||function(f){return f();})(render);}}
   window.addEventListener('scroll',onScroll,{passive:true});
   window.addEventListener('resize',function(){vh=window.innerHeight;onScroll();},{passive:true});
+  render();
+})();`;
+
+// The builder-preview runtime: drives the SINGLE `.sample` element off scroll, re-reading its attributes
+// every frame, and accepts LIVE updates from the editor via postMessage — so changing a value never
+// reloads the iframe and the scroll position is preserved. Same MATH as production (shared PARALLAX_CORE).
+const PARALLAX_PREVIEW_JS = `(function(){
+  'use strict';
+  ${PARALLAX_CORE}
+  var el=document.querySelector('.sample');if(!el)return;
+  if(parent)parent.postMessage({type:'sw-px-ready'},'*');
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var vh=window.innerHeight,ticking=false;
+  function render(){ticking=false;pxApply(el,pxParse(el),pxCover(el.getBoundingClientRect(),vh));}
+  function onScroll(){if(!ticking){ticking=true;(window.requestAnimationFrame||function(f){return f();})(render);}}
+  window.addEventListener('scroll',onScroll,{passive:true});
+  window.addEventListener('resize',function(){vh=window.innerHeight;onScroll();},{passive:true});
+  // Live updates pushed by the builder — no reload, so the scroll position is preserved. Only whitelisted
+  // data-sw-parallax-* attributes with numeric/comma/x values are applied (the doc is sandboxed anyway).
+  window.addEventListener('message',function(e){var d=e.data;if(!d||d.type!=='sw-px'||!(d.entries instanceof Array))return;
+    var a=el.attributes,i;for(i=a.length-1;i>=0;i--){if(a[i].name.indexOf('data-sw-parallax-')===0)el.removeAttribute(a[i].name);}
+    for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];if(/^[a-z-]+$/.test(k)&&/^[-0-9.,x]*$/.test(v))el.setAttribute('data-sw-parallax-'+k,v);}
+    el.style.transform='';el.style.opacity='';el.style.filter=''; // reset first so a REMOVED channel clears
+    render();
+  });
   render();
 })();`;
 
@@ -227,7 +259,7 @@ export function parallaxPreviewDoc(opts: ParallaxPreviewOpts = {}): string {
     `<div class="box sample" ${attrs}>Parallax<small>this element</small></div></div>` +
     `<div class="pad"></div>` +
     `<script>if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){var h=document.querySelector('.hint');if(h)h.textContent='Motion is off under your system reduced-motion setting — visitors with it see no parallax.';}</script>` +
-    `<script>${PARALLAX_JS}</script></body></html>`
+    `<script>${PARALLAX_PREVIEW_JS}</script></body></html>`
   );
 }
 

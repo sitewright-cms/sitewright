@@ -33,7 +33,7 @@ test('a global snippet renders via {{> name}} and is listed (copyable) in the Sn
 
   // The Snippets rail lists the built-in globals (read-only for a project user) with copy buttons —
   // the chip's name is the partial identifier (`recipe-page-vars`), which is what you type in {{> … }}.
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const snippets = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(snippets.getByText(/Global snippets/)).toContainText('built-in, read-only');
   await expect(snippets.getByText('recipe-page-vars', { exact: true })).toBeVisible();
@@ -59,7 +59,7 @@ test('an instance admin can create + delete a global snippet from the Snippets r
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // The global section is editable, with a "+ New global" affordance (absent for project users).
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const snippets = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(snippets).toHaveAttribute('aria-hidden', 'false');
   await expect(snippets.getByText(/Global snippets/)).toContainText('editable');
@@ -82,7 +82,7 @@ test('an instance admin can create + delete a global snippet from the Snippets r
   // Persists across a reload (loaded from the server), then clean up so the shared slot stays tidy.
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Admin Globals/ }).click();
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const snippets2 = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(snippets2.getByText(name, { exact: true })).toBeVisible();
   await snippets2.getByRole('button', { name: `Delete ${name}` }).click();

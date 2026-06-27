@@ -11,10 +11,11 @@ import { X } from 'lucide-react';
 export const InSidePanel = createContext(false);
 
 /**
- * Lets a {@link Modal} opened INSIDE a panel pin it open for its lifetime. Without this, moving the
- * pointer onto the (body-portalled) dialog fires the panel's mouseleave and collapses it behind the
- * dialog — so the panel would vanish mid-operation. A {@link Modal} calls `hold` on mount + `release`
- * on unmount; the panel suppresses hover-close while the count is non-zero. Null outside any panel.
+ * Lets a {@link Modal} opened INSIDE a panel claim Esc/close ownership for its lifetime. While the
+ * count is non-zero the panel does NOT close on Escape (the topmost dialog handles Esc first) and
+ * is force-held open. A {@link Modal} calls `hold` on mount + `release` on unmount. Null outside any
+ * panel. (Drag interactions also hold it as a belt-and-braces guard, though the click-open drawer no
+ * longer collapses on pointer movement.)
  */
 export const SidePanelHold = createContext<{ hold: () => void; release: () => void } | null>(null);
 
@@ -60,25 +61,30 @@ const DEFAULT_SIZE: Record<SidePanelSide, string> = {
   bottom: 'h-[60vh]',
 };
 
-// Panel rest position. Left/right span the FULL screen height (top-0, over the header). The panel
-// must ANCHOR UNDER ITS TAB so the moment it opens it already covers the cursor sitting on the tab;
-// the panel also FADES in place (opacity+visibility) rather than sliding. Both rules exist for the
-// same reason: if the panel is offset from its tab (centered) or slides away from it, the cursor
-// falls through the (pointer-events-none) tab to the page, fires mouseleave, and the panel flickers
-// open/closed. So a bottom panel is anchored bottom-LEFT/RIGHT under its tab (per `align`).
+// Panel REST position (open). Left/right span the full screen height (top-0, over the header); a
+// bottom panel docks to the bottom edge at its `align` anchor. The slide transform (SLIDE) animates
+// the panel between this rest position and an off-edge start position; it composes with the
+// bottom-centre `-translate-x-1/2` here (different axis, so both apply).
 function panelPos(side: SidePanelSide, align: SidePanelAlign, width?: string): string {
   if (side === 'left') return 'left-0 top-0 bottom-0 h-auto border-r';
   if (side === 'right') return 'right-0 top-0 bottom-0 h-auto border-l';
   const w = width ?? 'w-[min(42rem,48vw)]';
   if (align === 'start') return `bottom-0 left-0 ${w} rounded-tr-2xl border-r border-t`;
   if (align === 'end') return `bottom-0 right-0 ${w} rounded-tl-2xl border-l border-t`;
-  // center + the center-left/center-right cluster all use the wide CENTERED panel anchor (it spans
-  // well past the ±4.75rem tab offsets, so it still covers its tab — the no-flicker invariant).
+  // center + the center-left/center-right cluster share the wide CENTERED panel anchor.
   return `bottom-0 left-1/2 -translate-x-1/2 ${width ?? 'w-[min(72rem,92vw)]'} rounded-t-2xl border-x border-t`;
 }
 
+// Open ⇄ closed slide. Closed = parked just off its edge; open = at rest. Only touches the slide
+// axis, so it composes with panelPos's `-translate-x-1/2` centring (the perpendicular axis).
+const SLIDE: Record<SidePanelSide, { open: string; closed: string }> = {
+  left: { open: 'translate-x-0', closed: '-translate-x-full' },
+  right: { open: 'translate-x-0', closed: 'translate-x-full' },
+  bottom: { open: 'translate-y-0', closed: 'translate-y-full' },
+};
+
 // Collapsed-tab anchoring. left/right tabs are vertically centred (or start/end); bottom tabs are
-// horizontally placed so three can share the bottom edge (start | center | end).
+// horizontally placed so several can share the bottom edge (start | center-left | center-right | end).
 function tabPosition(side: SidePanelSide, align: SidePanelAlign): string {
   if (side === 'bottom') {
     const x =
@@ -104,24 +110,33 @@ const TAB_RADIUS: Record<SidePanelSide, string> = {
   bottom: 'rounded-t-xl',
 };
 
+// Hover affordance: the tab reaches a little further toward the screen interior (the outward-facing
+// face) on hover, a quiet "I'm a clickable handle" cue. Animated by the tab's `transition-all`.
+const TAB_HOVER_PAD: Record<SidePanelSide, string> = {
+  left: 'hover:pr-3.5',
+  right: 'hover:pl-3.5',
+  bottom: 'hover:pt-3',
+};
+
 /**
- * A reusable, hover-expanding edge panel — the platform's side-rail primitive (Library, Assets, and
- * the bottom code rails all build on it). A small **blue tab** rides the chosen edge; on
- * `mouseenter` (or keyboard focus) a FIXED-SIZE, frosted panel FADES in at the edge, and fades back
- * out on `mouseleave`/blur (fade-in-place, not a slide — see the PANEL_POS note for why). The whole
- * thing sits ABOVE modals (so the tabs are always reachable), and exposes {@link InSidePanel} to its
- * children so their own dialogs elevate above it.
+ * A reusable click-to-open edge drawer — the platform's side-rail primitive (Library, Assets, and
+ * the bottom code rails all build on it). A small **brand tab** rides the chosen edge; CLICKING it
+ * slides a fixed-size, frosted panel in from that edge over a dimmed backdrop. The panel STAYS open
+ * until dismissed — click the backdrop, press Escape, or hit the header ×. Only one drawer is open
+ * at a time (an open drawer's backdrop covers the other tabs). The whole thing sits ABOVE modals (so
+ * the tabs are always reachable when nothing's open) and exposes {@link InSidePanel} to its children
+ * so their own dialogs elevate above it.
  */
 export function SidePanel({ side, label, icon, size, width, align = 'center', compact, openSignal, openOnFileDrag, children }: SidePanelProps) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
-  // A bottom panel is flush to its corner (so it covers its tab — see panelPos), which puts its
-  // near-edge content under the centered Library/Assets EDGE tabs. Inset that side so they don't clip.
+  // A bottom panel is flush to its corner (so its near-edge content can sit under the centered
+  // Library/Assets EDGE tabs). Inset that side so they don't clip.
   const edgeInset = side === 'bottom' ? (align === 'start' ? 'pl-10' : align === 'end' ? 'pr-10' : '') : '';
 
-  // Number of child dialogs currently holding the panel open (see SidePanelHold). A ref mirrors it
-  // so the hover/blur handlers read the latest value without being re-created.
+  // Number of child dialogs currently holding the panel (see SidePanelHold). A ref mirrors it so the
+  // Escape handler reads the latest value without re-subscribing.
   const [held, setHeld] = useState(0);
   const heldRef = useRef(0);
   heldRef.current = held;
@@ -129,13 +144,12 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
     () => ({ hold: () => setHeld((h) => h + 1), release: () => setHeld((h) => Math.max(0, h - 1)) }),
     [],
   );
-  // A held dialog forces the panel open (it opened FROM the panel).
+  // A held dialog forces the panel open (it opened FROM the panel, so the panel must back it).
   useEffect(() => {
     if (held > 0) setOpen(true);
   }, [held]);
 
-  // Force-open when the parent bumps `openSignal` (e.g. the header "Assets" button). Hover/blur
-  // then govern closing as usual, so it behaves like any other open afterwards.
+  // Force-open when the parent bumps `openSignal` (e.g. the header "Assets" button).
   const lastSignal = useRef(openSignal);
   useEffect(() => {
     if (openSignal !== undefined && openSignal !== lastSignal.current) {
@@ -144,23 +158,29 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
     }
   }, [openSignal]);
 
+  // Escape closes the drawer — unless a child dialog is held open (it owns Esc and closes first).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && heldRef.current === 0) setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   // With `openOnFileDrag`, dragging OS files over the collapsed tab opens the panel so the drop can
-  // reach the content inside (the open panel anchors under its tab, immediately covering the cursor
-  // — see panelPos). Only OS file drags carry a 'Files' type; internal element drags (row reordering
-  // etc.) are ignored. We `preventDefault` + mark the drag a copy so (a) the cursor reads as a valid
-  // drop and (b) a file dropped ON THE TAB during the brief open transition is swallowed rather than
-  // opened by the browser (which would navigate away from the editor — there is no global drop
-  // guard). Reused for the tab's drop too: a stray tab-drop is a safe no-op, real uploads land on the
-  // file browser inside the open panel.
+  // reach the content inside. Only OS file drags carry a 'Files' type; internal element drags are
+  // ignored. `preventDefault` + copy effect so (a) the cursor reads as a valid drop and (b) a file
+  // dropped ON THE TAB during the open transition is swallowed rather than opened by the browser
+  // (which would navigate away — there is no global drop guard).
   const onTabFileDrag = (e: ReactDragEvent) => {
     if (!openOnFileDrag || !e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setOpen(true);
   };
-  // Same browser-navigation guard for the OPEN panel: a file dropped on the panel chrome (header,
-  // padding) that misses the inner drop zone would otherwise navigate the browser to the file. The
-  // file browser handles real uploads and stops propagation, so this only catches the misses.
+  // Same browser-navigation guard for the OPEN panel: a file dropped on the panel chrome that misses
+  // the inner drop zone would otherwise navigate the browser. The file browser handles real uploads.
   const onPanelFileDrag = (e: ReactDragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
@@ -168,67 +188,71 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
   };
 
   return (
-    // Hover/focus on EITHER the tab or the panel keeps it open; both are descendants of this
-    // wrapper, so React's enter/leave fire only when the pointer crosses the whole group's boundary.
-    // Hover-close is suppressed while a child dialog holds the panel open.
-    <div
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => heldRef.current === 0 && setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={(e) => {
-        if (heldRef.current === 0 && !e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
-      }}
-    >
-      {/* Dim+blur scrim behind the open panel. `pointer-events-none` is CRITICAL: the scrim is a
-          descendant of this hover group, so if it captured the pointer the group would never see a
-          mouseleave (the full-screen scrim is always "under" the cursor) and the panel could never
-          close on hover-out — and it must not block clicks on the page behind it either. */}
-      {open && <div aria-hidden className="pointer-events-none fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-[2px]" />}
+    <>
+      {/* Dim+blur backdrop behind the open drawer. CLICK ANYWHERE on it to close (z-60: above the
+          other tabs at z-55, below this drawer at z-61, so it both dismisses and enforces
+          one-drawer-at-a-time). Always mounted so it can FADE out on close. */}
+      <div
+        aria-hidden
+        onClick={() => setOpen(false)}
+        className={`fixed inset-0 z-[60] bg-slate-900/30 backdrop-blur-[2px] transition-opacity duration-300 motion-reduce:transition-none ${
+          open ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+      />
 
-      {/* The collapsed TAB (z-55) — reachable over a base modal (z-50), but BELOW the scrim (z-60)
-          and panel (z-61) so an EXPANDED panel and its dim overlay cover the OTHER panels' tabs. It
-          also fades out while its own panel is open (the panel header carries the close affordance). */}
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={regionId}
-        aria-label={open ? `Close ${label}` : `Open ${label}`}
-        onClick={() => setOpen((v) => !v)}
-        onDragEnter={onTabFileDrag}
-        onDragOver={onTabFileDrag}
-        onDrop={onTabFileDrag}
-        // While open the tab is invisible (the panel's own × closes it), so drop it from the tab
-        // order too — a focusable-but-invisible control would break keyboard focus order.
-        tabIndex={open ? -1 : undefined}
-        className={`sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover fixed z-[55] flex items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white transition ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
-          side === 'bottom'
-            ? compact ? 'px-2.5 py-1 text-xs' : 'px-4 py-2 text-sm'
-            : compact ? 'gap-1 px-1.5 py-2.5 text-[11px]' : 'px-2 py-4 text-sm'
-        } ${open ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+      {/* The collapsed TAB. A `fixed` positioning wrapper (z-55, reachable over a base modal at z-50,
+          below the backdrop+panel) holds an inner waves-effect button — the button can't be the
+          fixed node because `.waves-effect` forces `position:relative`. The wrapper fades out while
+          the drawer is open (the panel's own × / backdrop / Esc close it). */}
+      <div
+        className={`fixed z-[55] transition-opacity duration-200 ${tabPosition(side, align)} ${
+          open ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
       >
-        {side === 'bottom' ? (
-          <>
-            {icon}
-            <span>{label}</span>
-          </>
-        ) : (
-          <span className={`flex items-center gap-1.5 ${side === 'left' ? 'rotate-180' : ''} [writing-mode:vertical-rl]`}>
-            {icon}
-            {label}
-          </span>
-        )}
-      </button>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={regionId}
+          aria-label={`Open ${label}`}
+          onClick={() => setOpen(true)}
+          onDragEnter={onTabFileDrag}
+          onDragOver={onTabFileDrag}
+          onDrop={onTabFileDrag}
+          // Invisible-but-present while open would break keyboard focus order, so drop it from the
+          // tab order too.
+          tabIndex={open ? -1 : undefined}
+          className={`waves-effect waves-light sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover flex items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white transition-all duration-200 ${TAB_RADIUS[side]} ${TAB_HOVER_PAD[side]} ${
+            side === 'bottom'
+              ? compact ? 'px-2.5 py-1 text-xs' : 'px-4 py-2 text-sm'
+              : compact ? 'gap-1 px-1.5 py-2.5 text-[11px]' : 'px-2 py-4 text-sm'
+          }`}
+        >
+          {side === 'bottom' ? (
+            <>
+              {icon}
+              <span>{label}</span>
+            </>
+          ) : (
+            <span className={`flex items-center gap-1.5 ${side === 'left' ? 'rotate-180' : ''} [writing-mode:vertical-rl]`}>
+              {icon}
+              {label}
+            </span>
+          )}
+        </button>
+      </div>
 
-      {/* The FIXED-SIZE panel: fades in/out at a constant size + position (no resize ⇒ no reflow). */}
+      {/* The FIXED-SIZE panel: SLIDES in from its edge + fades, at a constant size (no reflow). When
+          closed it's parked off-edge and made `inert` so its off-screen controls leave the tab order. */}
       <section
         id={regionId}
         role="region"
         aria-label={label}
         aria-hidden={!open}
+        {...(!open ? ({ inert: '' } as object) : {})}
         onDragOver={openOnFileDrag ? onPanelFileDrag : undefined}
         onDrop={openOnFileDrag ? onPanelFileDrag : undefined}
-        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${panelPos(side, align, width)} ${panelSize} ${
-          open ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'
+        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none ${panelPos(side, align, width)} ${panelSize} ${
+          open ? `${SLIDE[side].open} opacity-100` : `${SLIDE[side].closed} opacity-0 pointer-events-none`
         }`}
       >
         <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 ${edgeInset}`}>
@@ -238,7 +262,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
             aria-label={`Close ${label}`}
             title="Close"
             onClick={() => setOpen(false)}
-            className="rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="waves-effect rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
             <X className="h-4 w-4" />
           </button>
@@ -249,6 +273,6 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
           </InSidePanel.Provider>
         </div>
       </section>
-    </div>
+    </>
   );
 }

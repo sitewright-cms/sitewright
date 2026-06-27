@@ -9,7 +9,7 @@ beforeEach(() => {
 
 async function openBuilder() {
   render(<LibraryPanel />);
-  fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+  fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
   fireEvent.click(screen.getByRole('button', { name: /Parallax builder/ }));
   return screen.findByRole('dialog', { name: 'Parallax builder' });
 }
@@ -17,7 +17,7 @@ async function openBuilder() {
 describe('ParallaxBuilder', () => {
   it('shows the featured card in the Library panel', () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     expect(screen.getByRole('button', { name: /Parallax builder/ })).toBeInTheDocument();
   });
 

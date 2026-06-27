@@ -4,21 +4,35 @@ import { SidePanel } from '../src/views/ui/SidePanel';
 import { Modal } from '../src/views/ui/Modal';
 
 describe('SidePanel', () => {
-  it('renders the edge tab; the panel is hidden until hover and shown on mouseenter', () => {
+  it('opens on tab click and closes on backdrop click, Escape, and the header ×', () => {
     const { container } = render(
       <SidePanel side="left" label="Library">
         <p>panel body</p>
       </SidePanel>,
     );
-    const wrapper = container.firstChild as HTMLElement;
     const region = container.querySelector('[role="region"]')!;
+    const backdrop = container.firstChild as HTMLElement; // fragment: backdrop, tab, panel
     expect(screen.getByRole('button', { name: 'Open Library' })).toBeInTheDocument();
     expect(region).toHaveAttribute('aria-hidden', 'true');
 
-    fireEvent.mouseEnter(wrapper);
+    // Click the tab → open (and STAYS open — no hover dependency).
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
     expect(region).toHaveAttribute('aria-hidden', 'false');
 
-    fireEvent.mouseLeave(wrapper);
+    // Click the backdrop → close.
+    fireEvent.click(backdrop);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    // Re-open, then Escape (dispatched at document → bubbles to the window listener) → close.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    // Re-open, then the header × → close.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Close Library' }));
     expect(region).toHaveAttribute('aria-hidden', 'true');
   });
 

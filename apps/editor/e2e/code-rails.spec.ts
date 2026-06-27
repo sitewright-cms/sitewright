@@ -19,7 +19,7 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Open the Snippets rail (bottom-left tab) → create a snippet via the name prompt.
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const panel = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
   await panel.getByRole('button', { name: '+ New snippet' }).click();
@@ -38,7 +38,7 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
   // Persists across a reload (loaded from the server), and the source round-trips.
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Rail Site/ }).click();
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const panel2 = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(panel2.getByText('mycard', { exact: true })).toBeVisible();
   await panel2.getByRole('button', { name: 'Edit mycard' }).click();
@@ -66,7 +66,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Open the Templates rail (bottom-right tab) → create a template via the name prompt.
-  await page.getByRole('button', { name: 'Open Templates' }).hover();
+  await page.getByRole('button', { name: 'Open Templates' }).click();
   const panel = page.locator('[role="region"][aria-label="Templates"]');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
 
@@ -95,7 +95,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   // Persists across reload (the rename round-trips via the API; the stable id is unchanged).
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Tpl Site/ }).click();
-  await page.getByRole('button', { name: 'Open Templates' }).hover();
+  await page.getByRole('button', { name: 'Open Templates' }).click();
   const panel2 = page.locator('[role="region"][aria-label="Templates"]');
   await expect(panel2.getByText('Promo Page', { exact: true })).toBeVisible();
 });
@@ -114,7 +114,7 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   await page.getByLabel('Project slug').fill(`snip2-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const panel = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
   await panel.getByRole('button', { name: '+ New snippet' }).click();
@@ -146,7 +146,7 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   await expect(panel.getByText('previewcard', { exact: true })).toHaveCount(0);
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Snip Site/ }).click();
-  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  await page.getByRole('button', { name: 'Open Snippets' }).click();
   const panelR = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(panelR.getByText('renamedcard', { exact: true })).toBeVisible();
   await expect(panelR.getByText('previewcard', { exact: true })).toHaveCount(0);

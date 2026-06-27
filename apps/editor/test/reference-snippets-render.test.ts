@@ -271,11 +271,11 @@ describe('reference cookbook — forms / inputs / shop / effects recipes render'
     expect(on).toMatch(/data-sw-cart[ >"]/); // the {{sw-cart}} mount (distinct from data-sw-cart-add)
   });
 
-  it('parallax-hero: a clipped parallax-bg section with a drifting layer', () => {
+  it('parallax-hero: a clipping scene with stacked, independently-moving layers', () => {
     const html = renderTemplate(src('parallax-hero'), {});
-    expect(html).toContain('data-sw-parallax-bg');
+    expect(html).toContain('data-sw-parallax-scene');
     expect(html).toContain('data-sw-parallax-layer');
-    expect(html).toContain('data-sw-parallax="0.4"');
+    expect(html).toContain('data-sw-parallax-translate="70,-70"');
   });
 
   it('shader-hero: a shader-bg section with a preset and an overlay scrim', () => {

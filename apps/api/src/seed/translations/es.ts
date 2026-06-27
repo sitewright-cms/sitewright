@@ -153,24 +153,29 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     title: 'Parallax',
     navTitle: 'Parallax',
     description:
-      'Profundidad, atenuación, escala y desenfoque a partir del scroll — un runtime diminuto gobernado por atributos data-sw-parallax, con una sección de deriva de fondo recortada. Discreto por defecto y desactivado por completo con movimiento reducido.',
+      'Movimiento, atenuación, escala y desenfoque a partir del scroll — un runtime diminuto gobernado por atributos data-sw-parallax. Cada efecto se ancla a su propia ventana del paso por el viewport (con una fase de salida opcional), y las escenas de profundidad apilan capas posicionadas en absoluto. Discreto por defecto y desactivado con movimiento reducido.',
     data: {
       px_intro:
-        'Profundidad a partir del scroll. Añade un atributo data-sw-parallax a cualquier elemento y la plataforma incluye un runtime diminuto que lo desplaza, atenúa, escala o desenfoca a medida que pasa por el viewport — combinable, acotado y desactivado por completo para quienes prefieren menos movimiento. Desplázate hacia abajo.',
-      hero_t: 'Deriva de fondo',
-      hero_d: 'Una sección recortada cuya capa de fondo sobredimensionada se desplaza más lenta que la página.',
-      depth_t: 'Profundidad — velocidad de desplazamiento',
+        'Movimiento a partir del scroll. Añade un atributo data-sw-parallax-* a cualquier elemento y la plataforma incluye un runtime diminuto que lo desplaza, atenúa, escala o desenfoca a medida que pasa por el viewport — cada efecto anclado a su propia ventana, combinable, acotado y desactivado por completo para quienes prefieren menos movimiento. Desplázate hacia abajo.',
+      hero_t: 'Escena de profundidad',
+      hero_d: 'Un contenedor recortado de capas apiladas — el fondo y el título se mueven a distinto ritmo.',
+      depth_t: 'Profundidad — un movimiento de→a',
       depth_d:
-        'data-sw-parallax="s" define la velocidad: 0 es estático, un valor positivo retrocede (va por detrás del scroll), un valor negativo avanza (flota hacia ti). Acotado a ±2. Observa cómo las tarjetas se desplazan a distinto ritmo.',
-      c1: 'avanza',
+        'data-sw-parallax-translate="de,a" desliza un elemento entre dos desplazamientos en píxeles al cruzar el viewport. Desplazamientos mayores parecen más cercanos; combina direcciones opuestas para dar profundidad. Observa cómo las tarjetas avanzan a distinto ritmo.',
+      c1: 'primer plano',
       c2: 'estático',
-      c3: 'retrocede',
+      c3: 'fondo',
       fx_t: 'Atenuar · escalar · desenfocar',
       fx_d:
-        'Cada canal adicional interpola de,a a lo largo del paso del elemento por el viewport — data-sw-parallax-opacity, -scale y -blur — y se combinan en un mismo elemento.',
+        'Cada canal adicional interpola de,a a lo largo de su ventana — data-sw-parallax-opacity, -scale y -blur — y se combinan en un mismo elemento.',
       t_fade: 'Aparece al subir',
       t_scale: 'Crece al desplazarse',
       t_blur: 'Entra en foco',
+      anchor_t: 'Ancla la ventana — y vuelve a salir',
+      anchor_d:
+        'Por defecto un efecto recorre todo el paso, así que alcanza su punto máximo al salir por arriba. Añade -<efecto>-range="0,0.5" para terminar mientras está centrado; una ventana más corta deja espacio para una fase -<efecto>-out que lo anima de vuelta.',
+      t_window: 'Opacidad total en el centro (-opacity-range="0,0.5")',
+      t_inout: 'Aparece hacia el centro y luego sale',
       nojs_t: 'Sin JavaScript (o con movimiento reducido)',
       nojs_d:
         'Cada elemento permanece exactamente donde está en el documento — el runtime solo añade encima una transformación/opacidad/filtro, así que nada se desplaza, se solapa ni desaparece. El parallax es decoración, nunca estructura.',

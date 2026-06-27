@@ -296,16 +296,22 @@ package, CDN links, or any script (they'd be rejected anyway). Content stays vis
 without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
 data-aos-delay per item (e.g. 0/100/200).
 
-PARALLAX (scroll-linked): drive depth/scale/fade/blur off scroll with data-sw-parallax* attributes on
+PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
 any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
-optional + composable: data-sw-parallax="0.3" = translate SPEED (0 static, + recedes/lags scroll,
-− leads/foreground, clamp ±2) with data-sw-parallax-axis="y|x"; data-sw-parallax-opacity="0,1",
-data-sw-parallax-scale="0.9,1.05", data-sw-parallax-blur="8,0" each interpolate from,to across the
-element's pass through the viewport. Background section: <section data-sw-parallax-bg
-data-sw-parallax="0.4"><div data-sw-parallax-layer data-sw-bg="page.data.bg"></div>…content…
-</section> — the clipped oversized layer drifts behind the content. RESTRAINT: at most one parallax
-accent per section, keep speeds subtle (0.15–0.4); it inherits prefers-reduced-motion (no motion = static,
-in-flow — never breaks layout). Blur is heavier — use sparingly. Recipe to copy: parallax-hero.
+optional + composable, each a from,to pair: data-sw-parallax-translate="40,-40" = MOVE in px (axis via
+data-sw-parallax-axis="y|x"); data-sw-parallax-opacity="0,1", data-sw-parallax-scale="0.9,1.05",
+data-sw-parallax-blur="8,0". ANCHORING: each effect interpolates across a WINDOW of the element's pass
+through the viewport — c=0 entering (bottom), 0.5 centred, 1 leaving (top). Default window is the whole
+pass-through (peaks as it leaves the top); add data-sw-parallax-<effect>-range="0,0.5" to finish while
+centred (or data-sw-parallax-range on the element as a default). A shorter window leaves room for an OUT
+phase: data-sw-parallax-<effect>-out="1,0" (+ optional -out-range) → in → hold → out (e.g. fade in to
+centre then back out). DEPTH SCENE (replaces the old -bg): <section data-sw-parallax-scene><div
+data-sw-parallax-layer data-sw-parallax-translate="70,-70" style="inset:-14% 0" data-sw-bg="page.data.bg">
+</div><div data-sw-parallax-layer data-sw-parallax-translate="0,-30">…content…</div></section> — the scene
+clips; each layer is absolutely-positioned and moves independently (oversize a translating cover layer via
+inline inset so no edge shows). RESTRAINT: at most one parallax accent per section, keep moves modest; it
+inherits prefers-reduced-motion (no motion = static, in-flow — never breaks layout). Blur is heavier — use
+sparingly. Recipe to copy: parallax-hero. Compose one in the editor's Parallax builder (Library).
 
 RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
 "waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary

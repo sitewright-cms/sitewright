@@ -38,10 +38,11 @@ describe('parallax → publish + preview', () => {
       path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
-      // a channel can be used without the base translate; also the bg-section variant
+      // a from→to translate, a windowed fade, and a stacked SCENE (clipping container + absolute layers)
       source:
-        '<section><h1 data-sw-parallax="0.3">Drift</h1><p data-sw-parallax-opacity="0,1">Fade</p>' +
-        '<div data-sw-parallax-bg data-sw-parallax="0.4"><div data-sw-parallax-layer></div><span>Hero</span></div></section>',
+        '<section><h1 data-sw-parallax-translate="40,-40">Drift</h1>' +
+        '<p data-sw-parallax-opacity="0,1" data-sw-parallax-opacity-range="0,0.5">Fade</p>' +
+        '<div data-sw-parallax-scene><div data-sw-parallax-layer data-sw-parallax-translate="0,-120"></div><span>Hero</span></div></section>',
     };
     const about = {
       id: 'about',
@@ -56,10 +57,11 @@ describe('parallax → publish + preview', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    expect(index.body).toContain('data-sw-parallax="0.3"'); // authored attrs survive
-    expect(index.body).toContain('data-sw-parallax-opacity="0,1"');
+    expect(index.body).toContain('data-sw-parallax-translate="40,-40"'); // authored attrs survive
+    expect(index.body).toContain('data-sw-parallax-opacity-range="0,0.5"');
+    expect(index.body).toContain('data-sw-parallax-scene'); // the scene container
     expect(index.body).toContain('<script defer src="parallax.js"></script>'); // runtime linked
-    expect(index.body).toContain('[data-sw-parallax-bg]{position:relative;overflow:hidden}'); // structural CSS inlined
+    expect(index.body).toContain('[data-sw-parallax-scene]{position:relative;overflow:hidden}'); // structural CSS inlined
 
     // Site-wide asset: a nested page links it rebased to its depth.
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
@@ -103,16 +105,20 @@ describe('parallax → publish + preview', () => {
     // The editor loads THIS by iframe `src` (not srcDoc): the editor page's own CSP is `script-src
     // 'self'`, which a srcDoc iframe inherits and which freezes the inline runtime. This route ships
     // its OWN `sandbox allow-scripts` CSP → opaque origin where inline script runs, isolated.
-    const res = await client.get('/authoring/parallax-preview?speed=0.4&axis=x&opacity=0.2%2C1&blur=999%2C0');
+    const res = await client.get(
+      '/authoring/parallax-preview?translate=40,-40&axis=x&opacity=0.2%2C1&opacity-range=0%2C0.5&opacity-out=1%2C0&blur=999%2C0',
+    );
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.headers['content-security-policy']).toBe('sandbox allow-scripts');
     expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
-    // the static-twin demo, the chosen channels, and the REAL runtime — with out-of-range params clamped
+    // the static-twin demo, the chosen channels (incl. per-effect window + OUT), and the REAL runtime — clamped
     expect(res.body).toContain('class="box ref"');
-    expect(res.body).toContain('data-sw-parallax="0.4"');
+    expect(res.body).toContain('data-sw-parallax-translate="40,-40"');
     expect(res.body).toContain('data-sw-parallax-axis="x"');
     expect(res.body).toContain('data-sw-parallax-opacity="0.2,1"');
+    expect(res.body).toContain('data-sw-parallax-opacity-range="0,0.5"');
+    expect(res.body).toContain('data-sw-parallax-opacity-out="1,0"');
     expect(res.body).toContain('data-sw-parallax-blur="40,0"'); // 999 clamped to PARALLAX_LIMITS.blur.max
     expect(res.body).toContain('prefers-reduced-motion'); // the runtime is embedded
   });

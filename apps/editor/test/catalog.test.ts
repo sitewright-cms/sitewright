@@ -15,11 +15,13 @@ describe('Library catalog', () => {
     expect(px).toBeDefined();
     const examples = px.items.map((i) => i.example).join('\n');
     for (const attr of [
-      'data-sw-parallax=',
+      'data-sw-parallax-translate=',
       'data-sw-parallax-opacity=',
       'data-sw-parallax-scale=',
       'data-sw-parallax-blur=',
-      'data-sw-parallax-bg',
+      'data-sw-parallax-opacity-range=',
+      'data-sw-parallax-opacity-out=',
+      'data-sw-parallax-scene',
       'data-sw-parallax-layer',
     ]) {
       expect(examples).toContain(attr);

@@ -3962,12 +3962,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const parts = v.split(',').map(Number);
         return parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1]) ? [parts[0]!, parts[1]!] : null;
       };
+      // Each channel: its from,to plus an optional per-channel window + OUT phase (query keys mirror the
+      // data attributes minus the prefix, e.g. `opacity`, `opacity-range`, `opacity-out`, `opacity-out-range`).
+      const chan = (name: string) => {
+        const main = numPair(q[name]);
+        return main
+          ? { from: main[0], to: main[1], range: numPair(q[`${name}-range`]), out: numPair(q[`${name}-out`]), outRange: numPair(q[`${name}-out-range`]) }
+          : null;
+      };
       const html = parallaxPreviewDoc({
-        speed: q.speed !== undefined ? Number(q.speed) : undefined,
         axis: q.axis === 'x' ? 'x' : 'y',
-        opacity: numPair(q.opacity),
-        scale: numPair(q.scale),
-        blur: numPair(q.blur),
+        range: numPair(q.range),
+        translate: chan('translate'),
+        opacity: chan('opacity'),
+        scale: chan('scale'),
+        blur: chan('blur'),
       });
       return reply
         .header('content-security-policy', 'sandbox allow-scripts')

@@ -155,24 +155,29 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     title: 'Parallax',
     navTitle: 'Parallax',
     description:
-      'Tiefe, Blende, Skalierung und Unschärfe aus dem Scrollen — eine winzige Laufzeit, gesteuert über data-sw-parallax-Attribute, mit einem beschnittenen Hintergrund-Drift-Bereich. Standardmäßig dezent und bei reduzierter Bewegung vollständig abgeschaltet.',
+      'Bewegung, Blende, Skalierung und Unschärfe aus dem Scrollen — eine winzige Laufzeit, gesteuert über data-sw-parallax-Attribute. Jeder Effekt ist an sein eigenes Fenster des Viewport-Durchlaufs verankert (mit optionaler Aus-Phase), und Tiefenszenen stapeln absolut positionierte Ebenen. Standardmäßig dezent und bei reduzierter Bewegung abgeschaltet.',
     data: {
       px_intro:
-        'Tiefe aus dem Scrollen. Füge einem beliebigen Element ein data-sw-parallax-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Durchlaufen des Viewports verschiebt, ein-/ausblendet, skaliert oder weichzeichnet — kombinierbar, begrenzt und für Besucher mit reduzierter Bewegung vollständig abgeschaltet. Scroll nach unten.',
-      hero_t: 'Hintergrund-Drift',
-      hero_d: 'Ein beschnittener Bereich, dessen überdimensionierte Hintergrundebene langsamer scrollt als die Seite.',
-      depth_t: 'Tiefe — Verschiebungstempo',
+        'Bewegung aus dem Scrollen. Füge einem beliebigen Element ein data-sw-parallax-*-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Durchlaufen des Viewports verschiebt, ein-/ausblendet, skaliert oder weichzeichnet — jeder Effekt an sein eigenes Fenster verankert, kombinierbar, begrenzt und für Besucher mit reduzierter Bewegung vollständig abgeschaltet. Scroll nach unten.',
+      hero_t: 'Tiefenszene',
+      hero_d: 'Ein beschnittener Container gestapelter Ebenen — Hintergrund und Überschrift bewegen sich unterschiedlich schnell.',
+      depth_t: 'Tiefe — eine von→bis-Bewegung',
       depth_d:
-        'data-sw-parallax="s" legt das Tempo fest: 0 ist statisch, ein positiver Wert tritt zurück (läuft dem Scrollen hinterher), ein negativer Wert führt (schwebt auf dich zu). Begrenzt auf ±2. Beobachte, wie die Karten unterschiedlich schnell driften.',
-      c1: 'führt',
+        'data-sw-parallax-translate="von,bis" verschiebt ein Element beim Durchlaufen des Viewports zwischen zwei Pixel-Offsets. Größere Offsets wirken näher; gegenläufige Richtungen erzeugen Tiefe. Beobachte, wie die Karten unterschiedlich schnell wandern.',
+      c1: 'Vordergrund',
       c2: 'statisch',
-      c3: 'tritt zurück',
+      c3: 'Hintergrund',
       fx_t: 'Blende · Skalierung · Unschärfe',
       fx_d:
-        'Jeder zusätzliche Kanal interpoliert von,bis über den Durchlauf des Elements durch den Viewport — data-sw-parallax-opacity, -scale und -blur — und sie lassen sich auf einem Element kombinieren.',
+        'Jeder zusätzliche Kanal interpoliert von,bis über sein Fenster — data-sw-parallax-opacity, -scale und -blur — und sie lassen sich auf einem Element kombinieren.',
       t_fade: 'Blendet beim Aufsteigen ein',
       t_scale: 'Wächst beim Hochscrollen',
       t_blur: 'Kommt in den Fokus',
+      anchor_t: 'Das Fenster verankern — und wieder ausblenden',
+      anchor_d:
+        'Standardmäßig läuft ein Effekt über den gesamten Durchlauf, erreicht seinen Höhepunkt also erst beim Verlassen oben. Füge -<effekt>-range="0,0.5" hinzu, um ihn zu beenden, während das Element zentriert ist; ein kürzeres Fenster lässt Raum für eine -<effekt>-out-Phase, die es wieder ausblendet.',
+      t_window: 'Volle Deckkraft bis zur Mitte (-opacity-range="0,0.5")',
+      t_inout: 'Blendet bis zur Mitte ein, dann wieder aus',
       nojs_t: 'Ohne JavaScript (oder bei reduzierter Bewegung)',
       nojs_d:
         'Jedes Element bleibt genau dort, wo es im Dokument steht — die Laufzeit fügt nur eine Transformation/Deckkraft/Filter darüber hinzu, sodass nichts verrutscht, überlappt oder verschwindet. Parallax ist Dekoration, niemals Struktur.',

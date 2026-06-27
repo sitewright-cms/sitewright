@@ -94,9 +94,9 @@ describe('code-first preview', () => {
   it('inlines the parallax runtime CSS + JS for its code-first marker', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-      source: '<section><h1 data-sw-parallax="0.3">Drift</h1></section>',
+      source: '<section><h1 data-sw-parallax-translate="40,-40">Drift</h1></section>',
     });
-    expect(html).toContain('[data-sw-parallax-bg]{position:relative;overflow:hidden}'); // PARALLAX_CSS inlined
+    expect(html).toContain('[data-sw-parallax-scene]{position:relative;overflow:hidden}'); // PARALLAX_CSS inlined
     expect(html).toContain('data-sw-parallax-blur'); // PARALLAX_JS inlined (the runtime selector list)
   });
 

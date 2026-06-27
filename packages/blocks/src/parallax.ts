@@ -1,12 +1,24 @@
 // Parallax / scroll-linked property engine: a first-party runtime for a small data-attribute
 // vocabulary that drives several CHANNELS off each element's scroll position.
 //
-//   data-sw-parallax="0.3"            translate (speed-based; the headline parallax knob)
-//   data-sw-parallax-axis="y|x"       translate axis (default y)
-//   data-sw-parallax-opacity="0,1"    opacity   interpolated from,to across the element's view-progress
-//   data-sw-parallax-scale="0.9,1"    scale     (composes with translate on the same transform)
-//   data-sw-parallax-blur="8,0"       filter: blur(px) from,to
-//   data-sw-parallax-bg                a clipped section whose oversized background LAYER drifts
+//   data-sw-parallax-translate="40,-40"   from→to motion in px (axis via -axis; default y)
+//   data-sw-parallax-axis="y|x"           translate axis (default y)
+//   data-sw-parallax-opacity="0,1"        opacity   from→to
+//   data-sw-parallax-scale="0.9,1.05"     scale     from→to (composes with translate on transform)
+//   data-sw-parallax-blur="8,0"           filter: blur(px) from→to
+//
+// ANCHORING — every channel interpolates over a WINDOW of the element's pass through the viewport:
+//   c = (vh − top)/(vh + height)  ∈ [0,1]   (0 enter-bottom · 0.5 viewport-centre · 1 exit-top)
+//   data-sw-parallax-<ch>-range="s,e"       the channel's IN window (cover-fraction); after `e` it HOLDS
+//   data-sw-parallax-range="s,e"            element-level default window (per-channel -range overrides)
+//   data-sw-parallax-<ch>-out="from,to"     optional OUT phase values (in → hold → out)
+//   data-sw-parallax-<ch>-out-range="s,e"   OUT window (default = the remainder after IN)
+//   default window is 0,1 (the full pass-through).
+//
+// SCENES — a depth stack (incl. the background) is a clipping container with absolutely-positioned
+// layers, each its own element carrying its own channels (no bespoke background logic):
+//   data-sw-parallax-scene                  position:relative; overflow:hidden (clips)
+//   data-sw-parallax-layer                  an absolutely-positioned, independently-animated layer
 //
 // Authored as plain attributes in code-first sources, snippets, or raw Html blocks — like data-aos
 // (see animations.ts). The vocabulary every HTML template / LLM understands; NO third-party library
@@ -23,87 +35,87 @@
 
 /** Per-channel clamp ranges — shared by the runtime, the editor builder, and tests. */
 export const PARALLAX_LIMITS = {
-  /** translate speed factor: 0 static, + recedes (lags scroll), − leads (foreground). */
-  speed: { min: -2, max: 2 },
+  /** translate offset, px (from→to). */
+  translate: { min: -600, max: 600 },
   opacity: { min: 0, max: 1 },
   scale: { min: 0, max: 4 },
   /** filter blur radius, px. */
   blur: { min: 0, max: 40 },
+  /** anchor window endpoints, as a fraction of the element's viewport pass-through. */
+  range: { min: 0, max: 1 },
 } as const;
 
 // --- CSS --------------------------------------------------------------------
 // Structural only (the MOTION is JS-applied, so it is never in the sheet). These rules are UNCONDITIONAL
-// — a reduced-motion / no-JS visitor still gets a correctly clipped, layered background section, just
-// without the drift. No brand colours here (the author sets the layer's background-image), so the sheet
-// stays dark-theme-safe.
+// — a reduced-motion / no-JS visitor still gets a correctly clipped, layered scene, just without the
+// drift. No brand colours here (the author styles the layers), so the sheet stays dark-theme-safe. A
+// layer that TRANSLATES a cover image should be oversized by the author (e.g. inline `inset:-12%` or a
+// base scale) so the motion never reveals an edge — the runtime applies no slack-clamp.
 export const PARALLAX_CSS = [
-  '[data-sw-parallax-bg]{position:relative;overflow:hidden}',
-  // The drifting layer: oversized + clipped so the runtime's translate never reveals an edge.
-  '[data-sw-parallax-bg] [data-sw-parallax-layer]{position:absolute;inset:-14% 0;z-index:0;background-size:cover;background-position:center}',
-  // Lift the section's own content above the background layer without the author managing z-index.
-  '[data-sw-parallax-bg]>:not([data-sw-parallax-layer]){position:relative;z-index:1}',
+  '[data-sw-parallax-scene]{position:relative;overflow:hidden}',
+  // Stacked, full-bleed layers; the author orders/styles them (z-index, background, object-fit).
+  '[data-sw-parallax-scene] [data-sw-parallax-layer]{position:absolute;inset:0}',
 ].join('');
 
 // --- runtime ----------------------------------------------------------------
-// SCALE constants keep in-view drift modest: an element at the viewport edge with speed 1 drifts ≈75px;
-// a background layer drifts more (×0.4) but is clamped to the overflow slack so no edge is ever revealed.
 export const PARALLAX_JS = `(function(){
   'use strict';
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  var els=document.querySelectorAll('[data-sw-parallax],[data-sw-parallax-bg],[data-sw-parallax-opacity],[data-sw-parallax-scale],[data-sw-parallax-blur]');
+  var els=document.querySelectorAll('[data-sw-parallax-translate],[data-sw-parallax-opacity],[data-sw-parallax-scale],[data-sw-parallax-blur]');
   if(els.length===0)return;
-  function num(v,d){var n=parseFloat(v);return isNaN(n)?d:n;}
   function clamp(n,lo,hi){return n<lo?lo:(n>hi?hi:n);}
   function pair(v,lo,hi){if(v==null)return null;var p=(''+v).split(',');var a=parseFloat(p[0]),b=parseFloat(p[1]);if(isNaN(a)||isNaN(b))return null;return [clamp(a,lo,hi),clamp(b,lo,hi)];}
+  function win(v){var p=pair(v,0,1);return (p&&p[1]>p[0])?p:null;}
   function lerp(a,b,t){return a+(b-a)*t;}
+  // Resolve one channel: IN pair + IN window (falls back to the element window er, then 0..1) + optional
+  // OUT pair (enables an OUT phase) + OUT window (default = the remainder after IN).
+  function chan(el,name,lo,hi,er){
+    var p=pair(el.getAttribute('data-sw-parallax-'+name),lo,hi);if(!p)return null;
+    var iw=win(el.getAttribute('data-sw-parallax-'+name+'-range'))||er||[0,1];
+    var o=pair(el.getAttribute('data-sw-parallax-'+name+'-out'),lo,hi);
+    var ow=null;
+    if(o){
+      ow=win(el.getAttribute('data-sw-parallax-'+name+'-out-range'))||[iw[1],1];
+      if(ow[0]<iw[1])ow=[iw[1],ow[1]]; // an OUT can't start before IN ends (no overlap jump)
+      if(ow[1]<=ow[0]){o=null;ow=null;} // zero-width window (e.g. IN fills the whole pass) → no OUT
+    }
+    return {f:p[0],t:p[1],iw:iw,o:o,ow:ow};
+  }
+  // Channel value at cover-progress c: in → hold → out.
+  function val(c,ch){
+    if(ch.o&&c>=ch.ow[0])return lerp(ch.o[0],ch.o[1],clamp((c-ch.ow[0])/(ch.ow[1]-ch.ow[0]),0,1));
+    return lerp(ch.f,ch.t,clamp((c-ch.iw[0])/(ch.iw[1]-ch.iw[0]),0,1));
+  }
   var items=[];
   Array.prototype.forEach.call(els,function(el){
-    var bg=el.hasAttribute('data-sw-parallax-bg');
-    var opacity=pair(el.getAttribute('data-sw-parallax-opacity'),${PARALLAX_LIMITS.opacity.min},${PARALLAX_LIMITS.opacity.max});
-    var blur=pair(el.getAttribute('data-sw-parallax-blur'),${PARALLAX_LIMITS.blur.min},${PARALLAX_LIMITS.blur.max});
-    items.push({
-      el:el,
-      target:bg?(el.querySelector('[data-sw-parallax-layer]')||el):el,
-      bg:bg,
-      speed:clamp(num(el.getAttribute('data-sw-parallax'),bg?0.3:0),${PARALLAX_LIMITS.speed.min},${PARALLAX_LIMITS.speed.max}),
-      axis:el.getAttribute('data-sw-parallax-axis')==='x'?'x':'y',
-      opacity:opacity,
-      scale:pair(el.getAttribute('data-sw-parallax-scale'),${PARALLAX_LIMITS.scale.min},${PARALLAX_LIMITS.scale.max}),
-      blur:blur,
-      // only hint the properties this element actually animates
-      wc:'transform'+(opacity?',opacity':'')+(blur?',filter':''),
-      active:true,
-      r:null
-    });
+    var er=win(el.getAttribute('data-sw-parallax-range'));
+    var tr=chan(el,'translate',${PARALLAX_LIMITS.translate.min},${PARALLAX_LIMITS.translate.max},er);
+    var op=chan(el,'opacity',${PARALLAX_LIMITS.opacity.min},${PARALLAX_LIMITS.opacity.max},er);
+    var sc=chan(el,'scale',${PARALLAX_LIMITS.scale.min},${PARALLAX_LIMITS.scale.max},er);
+    var bl=chan(el,'blur',${PARALLAX_LIMITS.blur.min},${PARALLAX_LIMITS.blur.max},er);
+    if(!tr&&!op&&!sc&&!bl)return;
+    var wc=[];if(tr||sc)wc.push('transform');if(op)wc.push('opacity');if(bl)wc.push('filter');
+    items.push({el:el,axis:el.getAttribute('data-sw-parallax-axis')==='x'?'x':'y',tr:tr,op:op,sc:sc,bl:bl,wc:wc.join(','),active:true,r:null});
   });
+  if(items.length===0)return;
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){
-    es.forEach(function(e){
-      for(var i=0;i<items.length;i++){if(items[i].el===e.target){
-        items[i].active=e.isIntersecting;
-        items[i].target.style.willChange=e.isIntersecting?items[i].wc:'';
-      }}
-    });
+    es.forEach(function(e){for(var i=0;i<items.length;i++){if(items[i].el===e.target){items[i].active=e.isIntersecting;items[i].el.style.willChange=e.isIntersecting?items[i].wc:'';}}});
   },{rootMargin:'25% 0px 25% 0px'}):null;
   if(io)items.forEach(function(it){io.observe(it.el);});
   var vh=window.innerHeight,ticking=false;
   function render(){
-    ticking=false;
-    var vc=vh/2,i,it,r;
+    ticking=false;var i,it,r,c,tf,d;
     // PASS 1 — read every rect first (no interleaved writes → one layout, no thrash)
     for(i=0;i<items.length;i++){it=items[i];it.r=it.active?it.el.getBoundingClientRect():null;}
     // PASS 2 — write styles only (no reads)
     for(i=0;i<items.length;i++){
       it=items[i];r=it.r;if(!r)continue;
-      var raw=(vc-(r.top+r.height/2))*it.speed;
-      var d=raw*(it.bg?0.4:0.2);
-      var tx=it.axis==='x'?d:0,ty=it.axis==='x'?0:d;
-      if(it.bg){var slack=r.height*0.14;tx=clamp(tx,-slack,slack);ty=clamp(ty,-slack,slack);}
-      var p=clamp((vh-r.top)/(vh+r.height),0,1);
-      var tf='translate3d('+tx.toFixed(2)+'px,'+ty.toFixed(2)+'px,0)';
-      if(it.scale)tf+=' scale('+lerp(it.scale[0],it.scale[1],p).toFixed(3)+')';
-      it.target.style.transform=tf;
-      if(it.opacity)it.target.style.opacity=lerp(it.opacity[0],it.opacity[1],p).toFixed(3);
-      if(it.blur)it.target.style.filter='blur('+lerp(it.blur[0],it.blur[1],p).toFixed(2)+'px)';
+      c=clamp((vh-r.top)/(vh+r.height),0,1);tf='';
+      if(it.tr){d=val(c,it.tr);tf=it.axis==='x'?'translate3d('+d.toFixed(2)+'px,0,0)':'translate3d(0,'+d.toFixed(2)+'px,0)';}
+      if(it.sc)tf+=(tf?' ':'')+'scale('+val(c,it.sc).toFixed(3)+')';
+      if(tf)it.el.style.transform=tf;
+      if(it.op)it.el.style.opacity=val(c,it.op).toFixed(3);
+      if(it.bl)it.el.style.filter='blur('+val(c,it.bl).toFixed(2)+'px)';
     }
   }
   function onScroll(){if(!ticking){ticking=true;(window.requestAnimationFrame||function(f){return f();})(render);}}
@@ -122,35 +134,77 @@ export const PARALLAX_JS = `(function(){
 // doc an opaque, isolated origin where inline script DOES run, with no access to the editor session.
 // Fixed demo colours (no brand vars) → the ONLY interpolated values are clamped numbers + the literal
 // 'x' axis, so there is no string-injection surface.
+
+/** One channel's config for the preview: IN from→to, an optional IN window, and an optional OUT phase. */
+export interface ParallaxChannel {
+  from: number;
+  to: number;
+  range?: readonly [number, number] | null;
+  out?: readonly [number, number] | null;
+  outRange?: readonly [number, number] | null;
+}
+
 export interface ParallaxPreviewOpts {
-  speed?: number;
   axis?: 'x' | 'y';
-  opacity?: readonly [number, number] | null;
-  scale?: readonly [number, number] | null;
-  blur?: readonly [number, number] | null;
+  /** element-level default window for channels without their own. */
+  range?: readonly [number, number] | null;
+  translate?: ParallaxChannel | null;
+  opacity?: ParallaxChannel | null;
+  scale?: ParallaxChannel | null;
+  blur?: ParallaxChannel | null;
 }
 
 function clampNum(n: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
 }
 
+/** A "from,to" string of two clamped numbers, or null when the input isn't a finite pair. */
+function pairStr(v: readonly [number, number] | null | undefined, lo: number, hi: number): string | null {
+  return v && v.length === 2 && Number.isFinite(v[0]) && Number.isFinite(v[1])
+    ? `${clampNum(v[0], lo, hi)},${clampNum(v[1], lo, hi)}`
+    : null;
+}
+
+/** A window "s,e" of two cover-fractions with e > s, or null. */
+function winStr(v: readonly [number, number] | null | undefined): string | null {
+  if (!v || v.length !== 2 || !Number.isFinite(v[0]) || !Number.isFinite(v[1])) return null;
+  const s = clampNum(v[0], 0, 1);
+  const e = clampNum(v[1], 0, 1);
+  return e > s ? `${s},${e}` : null;
+}
+
+/** The attributes for one channel: the from,to plus optional per-channel window + OUT phase. */
+function channelAttrs(name: string, ch: ParallaxChannel | null | undefined, lo: number, hi: number): string[] {
+  const main = ch ? pairStr([ch.from, ch.to], lo, hi) : null;
+  if (!ch || !main) return [];
+  const out: string[] = [`data-sw-parallax-${name}="${main}"`];
+  const rng = winStr(ch.range);
+  if (rng) out.push(`data-sw-parallax-${name}-range="${rng}"`);
+  const o = pairStr(ch.out, lo, hi);
+  if (o) {
+    out.push(`data-sw-parallax-${name}-out="${o}"`);
+    const orng = winStr(ch.outRange);
+    if (orng) out.push(`data-sw-parallax-${name}-out-range="${orng}"`);
+  }
+  return out;
+}
+
 /** Build the Parallax-builder preview document (see note above). Every numeric is clamped to
- *  PARALLAX_LIMITS; channels are emitted only when a valid from,to pair is supplied. */
+ *  PARALLAX_LIMITS; channels/windows/OUT are emitted only when a valid from,to pair is supplied. */
 export function parallaxPreviewDoc(opts: ParallaxPreviewOpts = {}): string {
   const L = PARALLAX_LIMITS;
-  const speed = clampNum(typeof opts.speed === 'number' && Number.isFinite(opts.speed) ? opts.speed : 0.3, L.speed.min, L.speed.max);
   const axis = opts.axis === 'x' ? 'x' : 'y';
-  const pair = (v: readonly [number, number] | null | undefined, lo: number, hi: number): string | null =>
-    v && v.length === 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]) ? `${clampNum(v[0], lo, hi)},${clampNum(v[1], lo, hi)}` : null;
-  const op = pair(opts.opacity, L.opacity.min, L.opacity.max);
-  const sc = pair(opts.scale, L.scale.min, L.scale.max);
-  const bl = pair(opts.blur, L.blur.min, L.blur.max);
+  const hasAny = opts.translate || opts.opacity || opts.scale || opts.blur;
+  // With no channels at all, default to a visible translate so the empty preview still demonstrates motion.
+  const translate = opts.translate ?? (hasAny ? null : { from: 40, to: -40 });
+  const elRange = winStr(opts.range);
   const attrs = [
-    `data-sw-parallax="${speed}"`,
+    ...channelAttrs('translate', translate, L.translate.min, L.translate.max),
+    ...channelAttrs('opacity', opts.opacity, L.opacity.min, L.opacity.max),
+    ...channelAttrs('scale', opts.scale, L.scale.min, L.scale.max),
+    ...channelAttrs('blur', opts.blur, L.blur.min, L.blur.max),
     axis === 'x' ? 'data-sw-parallax-axis="x"' : '',
-    op ? `data-sw-parallax-opacity="${op}"` : '',
-    sc ? `data-sw-parallax-scale="${sc}"` : '',
-    bl ? `data-sw-parallax-blur="${bl}"` : '',
+    elRange ? `data-sw-parallax-range="${elRange}"` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -177,12 +231,12 @@ export function parallaxPreviewDoc(opts: ParallaxPreviewOpts = {}): string {
   );
 }
 
-// Detection is a literal substring match: every channel attribute contains `data-sw-parallax`, so one
-// marker gates the whole family. A `data-sw-parallax` written via a Handlebars variable won't be
-// detected (don't do that); a prose mention over-ships ~1.5KB — benign in both directions.
+// Detection is a literal substring match: every channel/structural attribute contains `data-sw-parallax`,
+// so one marker gates the whole family. A `data-sw-parallax` written via a Handlebars variable won't be
+// detected (don't do that); a prose mention over-ships ~2KB — benign in both directions.
 const PARALLAX_MARKER = 'data-sw-parallax';
 
-/** Whether an authored HTML/template string uses any parallax channel. */
+/** Whether an authored HTML/template string uses any parallax channel or scene. */
 export function usesParallax(html: string | null | undefined): boolean {
   return typeof html === 'string' && html.includes(PARALLAX_MARKER);
 }

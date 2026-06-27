@@ -778,21 +778,24 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   },
   {
     name: 'parallax-hero',
-    label: 'Parallax — background drift',
+    label: 'Parallax — depth scene',
     category: 'effects',
     description:
-      'A clipped section whose background layer drifts slower than the page on scroll (data-sw-parallax-bg).',
-    demonstrates: ['data-sw-parallax-bg', 'data-sw-parallax-layer', 'data-sw-parallax', 'data-sw-text'],
-    // data-sw-parallax-bg marks the clipped section; the inner data-sw-parallax-layer is the drifting
-    // background (here a gradient — bind an image with data-sw-bg instead). data-sw-parallax sets the
-    // speed (0 static, + recedes, - leads; clamped ±2). The runtime only ships when used and bails
-    // under prefers-reduced-motion. Element parallax also supports -opacity / -scale / -blur (from,to).
-    source: `{{!-- A scroll-linked parallax band. Try data-sw-parallax-opacity="0,1" / -scale=".9,1.05" on any element. --}}
-<section data-sw-parallax-bg data-sw-parallax="0.4" class="my-10 flex min-h-[60vh] items-center justify-center overflow-hidden rounded-3xl px-6">
-  <div data-sw-parallax-layer class="bg-gradient-to-br from-primary to-secondary"></div>
-  <div class="text-center text-white">
-    <h2 class="text-4xl font-bold tracking-tight drop-shadow-lg sm:text-6xl" data-sw-text="page.data.parallax_title">Background drift</h2>
-    <p class="mx-auto mt-3 max-w-xl text-lg text-white/85" data-sw-text="page.data.parallax_lead">The background recedes as you scroll past it.</p>
+      'A clipping scene of stacked layers: the background and the heading move at different rates on scroll (data-sw-parallax-scene / -layer).',
+    demonstrates: ['data-sw-parallax-scene', 'data-sw-parallax-layer', 'data-sw-parallax-translate', 'data-sw-text'],
+    // data-sw-parallax-scene clips the band; each data-sw-parallax-layer is an absolutely-positioned,
+    // independently-animated layer. data-sw-parallax-translate="from,to" (px) slides a layer as the band
+    // crosses the viewport — oversize a translating cover layer (inline inset) so no edge shows. The
+    // runtime only ships when used and bails under prefers-reduced-motion. Any element also supports
+    // -opacity / -scale / -blur (from,to), each with its own -range window + optional -out phase.
+    source: `{{!-- A scroll-linked depth scene. Any element also takes data-sw-parallax-opacity="0,1" / -scale=".9,1.05". --}}
+<section data-sw-parallax-scene class="my-10 flex min-h-[60vh] items-center justify-center overflow-hidden rounded-3xl px-6">
+  <div data-sw-parallax-layer data-sw-parallax-translate="70,-70" class="bg-gradient-to-br from-primary to-secondary" style="inset:-14% 0"></div>
+  <div data-sw-parallax-layer data-sw-parallax-translate="0,-30" class="grid place-items-center px-6 text-center text-white">
+    <div>
+      <h2 class="text-4xl font-bold tracking-tight drop-shadow-lg sm:text-6xl" data-sw-text="page.data.parallax_title">Depth scene</h2>
+      <p class="mx-auto mt-3 max-w-xl text-lg text-white/85" data-sw-text="page.data.parallax_lead">Stacked layers move at different rates as you scroll past.</p>
+    </div>
   </div>
 </section>`,
   },

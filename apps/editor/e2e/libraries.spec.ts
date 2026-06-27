@@ -51,7 +51,7 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   const library = page.locator('[role="region"][aria-label="System Library"]');
   const openSection = async (name: RegExp) => {
     if ((await library.getAttribute('aria-hidden')) === 'true') {
-      await page.getByRole('button', { name: 'Open System Library' }).hover();
+      await page.getByRole('button', { name: 'Open System Library' }).click();
       await expect(library).toHaveAttribute('aria-hidden', 'false');
     }
     await library.getByRole('button', { name }).click();

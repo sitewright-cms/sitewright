@@ -10,7 +10,7 @@ beforeEach(() => {
 describe('LibraryPanel', () => {
   it('expands on hover and lists the section buttons', () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     for (const name of [/Icons/, /AOS/, /Lazy-load/, /Ripple effect/, /DaisyUI components/]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
@@ -18,7 +18,7 @@ describe('LibraryPanel', () => {
 
   it('opens a section gallery modal, searches within it, and copies an example', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
 
     const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
@@ -37,7 +37,7 @@ describe('LibraryPanel', () => {
 
   it('renders a live preview for DaisyUI components (real markup, Handlebars neutralized)', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
     const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
     fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'navbar' } });
@@ -49,7 +49,7 @@ describe('LibraryPanel', () => {
 
   it('lazy-loads documented variants and toggles them with "Show all variants"', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
     const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
     fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'breadcrumbs' } });
@@ -64,7 +64,7 @@ describe('LibraryPanel', () => {
 
   it('makes previews INTERACTIVE (no pointer-events-none) but blocks preview-link navigation', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
     const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
     fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'navbar' } });
@@ -78,7 +78,7 @@ describe('LibraryPanel', () => {
 
   it('lazy-loads the whole icon pack and copies an icon snippet on click', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /^Icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Icons' });
 
@@ -108,7 +108,7 @@ describe('LibraryPanel', () => {
 
   it('lazy-loads the brand icons and copies a brand: snippet', async () => {
     render(<LibraryPanel />);
-    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Brand icons' });
     // The grid lazy-loads a page at a time (50) and appends more on scroll, so a deep entry like

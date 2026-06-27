@@ -4,21 +4,35 @@ import { SidePanel } from '../src/views/ui/SidePanel';
 import { Modal } from '../src/views/ui/Modal';
 
 describe('SidePanel', () => {
-  it('renders the edge tab; the panel is hidden until hover and shown on mouseenter', () => {
+  it('opens on tab click and closes on backdrop click, Escape, and the header ×', () => {
     const { container } = render(
       <SidePanel side="left" label="Library">
         <p>panel body</p>
       </SidePanel>,
     );
-    const wrapper = container.firstChild as HTMLElement;
     const region = container.querySelector('[role="region"]')!;
+    const backdrop = container.firstChild as HTMLElement; // fragment: backdrop, tab, panel
     expect(screen.getByRole('button', { name: 'Open Library' })).toBeInTheDocument();
     expect(region).toHaveAttribute('aria-hidden', 'true');
 
-    fireEvent.mouseEnter(wrapper);
+    // Click the tab → open (and STAYS open — no hover dependency).
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
     expect(region).toHaveAttribute('aria-hidden', 'false');
 
-    fireEvent.mouseLeave(wrapper);
+    // Click the backdrop → close.
+    fireEvent.click(backdrop);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    // Re-open, then Escape (dispatched at document → bubbles to the window listener) → close.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    // Re-open, then the header × → close.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Library' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Close Library' }));
     expect(region).toHaveAttribute('aria-hidden', 'true');
   });
 
@@ -108,6 +122,25 @@ describe('SidePanel', () => {
     const region = container.querySelector('[role="region"]')!;
     // No openOnFileDrag ⇒ no drop handler ⇒ default not prevented (fireEvent returns true).
     expect(fireEvent.drop(region, { dataTransfer: { types: ['Files'] } })).toBe(true);
+  });
+
+  it('a Modal open inside it owns Escape — the drawer stays open (closes only once no modal is stacked)', () => {
+    const { container } = render(
+      <SidePanel side="left" label="Lib">
+        <Modal title="Inside" onClose={() => {}}>
+          <p>m</p>
+        </Modal>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    // The inner Modal force-holds the drawer open (and sits on OVERLAY_STACK).
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Escape is owned by the topmost overlay (the modal) — the drawer does NOT close behind it.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Clicking the drawer's own backdrop is likewise a no-op while the modal is up.
+    fireEvent.click(container.firstChild as HTMLElement);
+    expect(region).toHaveAttribute('aria-hidden', 'false');
   });
 
   it('elevates a Modal rendered inside it above the panel layer (z-[70]); a standalone modal stays z-50', () => {

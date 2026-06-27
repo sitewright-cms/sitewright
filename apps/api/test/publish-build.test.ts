@@ -351,9 +351,9 @@ describe('buildSite', () => {
     // A pure-CSS nav scheme ships NO nav runtime.
     expect(home).not.toContain('nav-effects.js');
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
-    // Only the chosen schemes ship, scoped to the platform landmarks, themed by the brand.
+    // Only the chosen schemes ship, scoped to the .menu nav links, themed by the brand.
     expect(sheet).toContain('.sw-nav-box-solid');
-    expect(sheet).toMatch(/#main-nav/);
+    expect(sheet).toMatch(/\.menu/);
     expect(sheet).toContain('.sw-btn-fx-lift');
     expect(sheet).not.toContain('sw-nav-line-bottom'); // tree-shaken (not chosen)
     expect(sheet).not.toContain('sw-btn-fx-glow');
@@ -401,7 +401,7 @@ describe('buildSite', () => {
           website: {
             effects: {
               // nav + preloader are "none" → their custom code applies; a built-in button stays a class.
-              navCode: '<style id="nav-fx">:is(#main-nav) a{color:red}</style>',
+              navCode: '<style id="nav-fx">.menu a{color:red}</style>',
               preloaderCode: '<div data-sw-preloader id="pre-fx">loading…</div>',
               buttonEffect: 'lift',
               buttonCode: '<style id="btn-fx">.btn{}</style>', // INERT — buttonEffect is a built-in

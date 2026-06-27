@@ -336,7 +336,7 @@ CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at
 body-end; a custom preloader becomes the FIRST body child). Target the nav links
-(\`#main-nav a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
+(\`.menu a\` — the built-in schemes only style links inside a \`.menu\`) or buttons (\`.btn\`) directly, and use the brand custom
 properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
 \`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.
 

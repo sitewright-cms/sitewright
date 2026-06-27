@@ -72,6 +72,32 @@ describe('extractTypography', () => {
   it('returns empty when no fonts are hosted', () => {
     expect(extractTypography(CSS, [])).toEqual({});
   });
+
+  it('resolves roles from semantic --*-font vars + !important, applied via classes, falling back for the unhosted body face', () => {
+    // mirrors a real site (burmeister): brand fonts are --*-font vars applied via CLASSES (.primary-font),
+    // body uses var(--text-font)!important, and only the heading woff + a second woff are self-hosted.
+    const css = `
+      :root{--primary-font:"primary-font";--text-font:"text-font";--secondary-font:"secondary-font";}
+      @font-face{font-family:"primary-font";src:url('/p.woff')}
+      @font-face{font-family:"secondary-font";src:url('/s.woff')}
+      body,html{font-family:var(--text-font)!important}
+      .primary-font{font-family:var(--primary-font)!important}
+      h1{font-family:inherit}
+    `;
+    const fonts: HostedFont[] = [
+      { family: 'primary-font', assetId: 'p', weight: 700, style: 'normal' },
+      { family: 'secondary-font', assetId: 's', weight: 400, style: 'normal' },
+      { family: 'FontAwesome', assetId: 'fa', weight: 400, style: 'normal' }, // icon font — must be ignored
+    ];
+    const t = extractTypography(css, fonts);
+    expect(t.heading).toMatchObject({ source: 'asset', assetId: 'p' }); // from --primary-font var
+    expect(t.body).toMatchObject({ source: 'asset', assetId: 's' }); // text-font not hosted → other non-icon font
+    expect(t.body?.family).not.toBe('FontAwesome');
+  });
+
+  it('never adopts an icon font as the only face', () => {
+    expect(extractTypography(CSS, [{ family: 'FontAwesome', assetId: 'fa', weight: 400, style: 'normal' }])).toEqual({});
+  });
 });
 
 describe('foundationCriticalCss', () => {

@@ -66,6 +66,14 @@ export function extractColors(cssText: string): Record<string, string> {
   return out;
 }
 
+/** Normalize a raw font-family VALUE to a single bare family name (resolve var(), drop !important,
+ *  the fallback stack, and quotes). Returns undefined for a keyword (inherit/initial/unset). */
+function familyName(value: string, vars: Map<string, string>): string | undefined {
+  const firstToken = (value.replace(/!important/gi, '').split(',')[0] ?? '').trim();
+  const first = (resolveVar(firstToken, vars).split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '');
+  return first && !/^(inherit|initial|unset)$/i.test(first) ? first : undefined;
+}
+
 /** The font-family declared on the first matching selector (var()s resolved to a single family name). */
 function familyForSelectors(cssText: string, selectors: readonly string[], vars: Map<string, string>): string | undefined {
   for (const sel of selectors) {
@@ -74,14 +82,35 @@ function familyForSelectors(cssText: string, selectors: readonly string[], vars:
     const block = cssText.match(re)?.[1];
     if (!block) continue;
     const value = block.match(/font-family\s*:\s*([^;}]+)/i)?.[1];
-    if (!value) continue;
-    // take the FIRST family token, then resolve a var() to a single family name (strip quotes)
-    const firstToken = (value.split(',')[0] ?? '').trim();
-    const first = (resolveVar(firstToken, vars).split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '');
-    if (first && !/^(inherit|initial|unset)$/i.test(first)) return first;
+    const first = value ? familyName(value, vars) : undefined;
+    if (first) return first;
   }
   return undefined;
 }
+
+// Semantic font custom-property names → role. Many sites declare the brand fonts as `--*-font` vars and
+// apply them via utility CLASSES (e.g. `.primary-font`), so the h1/h2/body selector scan alone misses
+// them — the var names are the more reliable signal.
+const FONT_VAR_MAP: ReadonlyArray<readonly [RegExp, 'heading' | 'body']> = [
+  [/^(primary-font|font-primary|headings?-?font|font-headings?|display-font|font-display|title-font|font-title)$/, 'heading'],
+  [/^(text-font|font-text|body-font|font-body|base-font|font-base|copy-font|font-copy|paragraph-font)$/, 'body'],
+];
+
+/** Resolve a role's family from a semantic `--*-font` custom property, when one is declared. */
+function familyFromVars(vars: Map<string, string>, role: 'heading' | 'body'): string | undefined {
+  for (const [name, raw] of vars) {
+    for (const [re, r] of FONT_VAR_MAP) {
+      if (r === role && re.test(name)) {
+        const fam = familyName(raw, vars);
+        if (fam) return fam;
+      }
+    }
+  }
+  return undefined;
+}
+
+// Icon/glyph fonts are not text typography — never adopt them as a heading/body face.
+const ICON_FONT = /(font[\s-]?awesome|^fa[\s-]|icomoon|glyphicons?|material[\s-]?icons|ionicons|feather|bootstrap[\s-]?icons|dashicons|elegant[\s-]?icons|themify)/i;
 
 const FAMILY_OK = /^[A-Za-z0-9][A-Za-z0-9 '-]*$/; // FontFamilyNameSchema
 
@@ -104,11 +133,13 @@ function slotFor(font: HostedFont, weight: FontSlot['weight']): FontSlot {
  * exist (the common heading+body pairing), or the single font for body when only one is hosted.
  */
 export function extractTypography(cssText: string, fonts: readonly HostedFont[]): { heading?: FontSlot; body?: FontSlot } {
-  const distinct = [...new Map(fonts.map((f) => [f.assetId, f])).values()];
+  // Drop icon/glyph fonts — they're never a text face (and must not be picked by the fallback below).
+  const distinct = [...new Map(fonts.filter((f) => !ICON_FONT.test(f.family)).map((f) => [f.assetId, f])).values()];
   if (distinct.length === 0) return {};
   const vars = readCssVars(cssText);
-  const bodyFam = familyForSelectors(cssText, ['body', 'html'], vars);
-  const headFam = familyForSelectors(cssText, ['h1', 'h2', 'h3', 'heading', 'title', 'bm-header'], vars);
+  // Prefer the semantic `--*-font` var; fall back to scanning the body/heading selectors.
+  const bodyFam = familyFromVars(vars, 'body') ?? familyForSelectors(cssText, ['body', 'html'], vars);
+  const headFam = familyFromVars(vars, 'heading') ?? familyForSelectors(cssText, ['h1', 'h2', 'h3', 'heading', 'title', 'bm-header'], vars);
   const match = (fam: string | undefined): HostedFont | undefined => (fam ? distinct.find((f) => norm(f.family) === norm(fam)) : undefined);
   let head = match(headFam);
   let body = match(bodyFam);

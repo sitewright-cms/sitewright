@@ -213,6 +213,26 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(blocks.filter((b) => b.type === 'image').length).toBe(2); // one build + one source shot
   });
 
+  it('compare_to_source: gates, empty shots, and client errors', async () => {
+    // not connected → login hint
+    const nc = await connect(fakeClient(), null);
+    expect((await nc.callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } })).isError).toBe(true);
+    // connected but lacking content:read → capability error
+    const noRead = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: ['publish'] });
+    const r2 = await noRead.callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
+    expect(r2.isError).toBe(true);
+    expect(text(r2)).toMatch(/content:read/);
+    // no shots captured → a note, no image blocks
+    const emptyC = fakeClient({ compareToSource: vi.fn(async () => ({ sourceUrl: 'x', route: '', build: {}, source: {} })) });
+    const r3 = await (await connect(emptyC, readScope)).callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
+    expect(r3.isError).toBeFalsy();
+    expect((r3.content as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+    // client throws → toolError
+    const errC = fakeClient({ compareToSource: vi.fn(async () => { throw new SitewrightApiError(500, 'boom'); }) });
+    const r4 = await (await connect(errC, readScope)).callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
+    expect(r4.isError).toBe(true);
+  });
+
   it('list_media_folders is content:read', async () => {
     const reader = fakeClient();
     const r = await connect(reader, readScope);

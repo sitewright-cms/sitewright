@@ -85,6 +85,7 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   validateTemplate,
+  findSkeletonLandmark,
   TemplateError,
   mediaForRender,
   decorateNav,
@@ -408,18 +409,17 @@ function validateSourceOnSave(kind: string, body: unknown): void {
   if (kind === 'settings') {
     const website = (body as { website?: Record<string, unknown> } | null | undefined)?.website;
     if (!website) return;
+    // Reject a skeleton LANDMARK (<nav>/<footer>/<aside>/<main>) in a chrome slot LOUDLY at save — the
+    // platform wraps each slot in that landmark, so a repeat was silently dropped at render (the old
+    // chrome kept showing, with no error). Landmark-ONLY on purpose: other slot issues (e.g. a stray
+    // <script>) keep the established lenient-preview / strict-publish flow rather than failing the save.
     for (const [slot, label] of CHROME_HTML_SLOTS) {
       // eslint-disable-next-line security/detect-object-injection -- `slot` is from the constant CHROME_HTML_SLOTS list
       const val = website[slot];
       if (typeof val !== 'string' || val.trim() === '') continue;
-      try {
-        validateTemplate(val);
-      } catch (err) {
-        if (err instanceof TemplateError) {
-          // Re-throw naming the slot (the original message already carries the reason + position).
-          throw new TemplateError(`the "${label}" chrome slot is invalid — ${err.message}`);
-        }
-        throw err;
+      const found = findSkeletonLandmark(val);
+      if (found) {
+        throw new TemplateError(`the "${label}" chrome slot can't contain a <${found.tag}> element — ${found.hint}.`);
       }
     }
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderTemplate, validateTemplate, TemplateError, type TemplateContext } from '../src/template.js';
+import { renderTemplate, validateTemplate, findSkeletonLandmark, TemplateError, type TemplateContext } from '../src/template.js';
 
 const ctx: TemplateContext = {
   company: { name: 'Acme & Co', address: { city: 'Berlin' } },
@@ -706,6 +706,25 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     allows('<a href="mailto:{{ company.email }}">email</a>');
     allows('<a href="tel:{{ company.telephone }}">call</a>');
     rejects('<a href="javascript:{{ page.x }}">x</a>'); // executable scheme still rejected
+  });
+
+  describe('findSkeletonLandmark', () => {
+    it('flags the first skeleton landmark element with a fix hint', () => {
+      expect(findSkeletonLandmark('<div>ok</div>')).toBeNull();
+      expect(findSkeletonLandmark('<footer class="x">…</footer>')).toMatchObject({ tag: 'footer' });
+      expect(findSkeletonLandmark('<div><nav>…</nav></div>')).toMatchObject({ tag: 'nav' });
+      expect(findSkeletonLandmark('<aside>…</aside>')?.hint).toMatch(/sidebar/);
+    });
+    it('ignores a landmark name inside a comment or script/style body', () => {
+      expect(findSkeletonLandmark('<!-- <footer> -->')).toBeNull();
+      expect(findSkeletonLandmark('<script>var x = "<footer>";</script>')).toBeNull();
+      // a real <footer> after an ignored one is still caught
+      expect(findSkeletonLandmark('<!-- <nav> --><footer>real</footer>')).toMatchObject({ tag: 'footer' });
+    });
+    it('does not match a longer tag that merely starts with a landmark name', () => {
+      expect(findSkeletonLandmark('<navigation>…</navigation>')).toBeNull();
+      expect(findSkeletonLandmark('<footer-bar>…</footer-bar>')).toBeNull();
+    });
   });
 
   it('gates the lazy-load data-src / data-bg URL attributes like src / background', () => {

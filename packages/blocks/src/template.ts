@@ -158,6 +158,25 @@ const SKELETON_LANDMARKS = new Map<string, string>([
   ['aside', 'the skeleton owns the sidebar landmarks <aside id="sidebar-left"> / <aside id="sidebar-right"> (authored via the Sidebar slots) — use a <div> for an aside inside your content'],
 ]);
 
+/**
+ * Find the first SKELETON-OWNED landmark element (`<nav>`/`<main>`/`<footer>`/`<aside>`) in a fragment —
+ * the platform wraps each chrome slot + the page body in one, so authored slot/page content must not
+ * repeat them. Returns the tag + a fix hint, or null. Comment + `<script>`/`<style>` bodies are ignored
+ * (a `<footer>` there is not a real element). This is the landmark-only subset of {@link validateTemplate}
+ * — used to reject landmarks in chrome SLOTS at save WITHOUT also rejecting their (separately handled)
+ * scripts, so the lenient-preview / strict-publish flow for other slot issues is preserved.
+ */
+export function findSkeletonLandmark(source: string): { tag: string; hint: string } | null {
+  const stripped = source
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, '');
+  const m = /<(nav|main|footer|aside)(?=[\s/>])/i.exec(stripped);
+  if (!m) return null;
+  const tag = (m[1] as string).toLowerCase();
+  return { tag, hint: SKELETON_LANDMARKS.get(tag) ?? '' };
+}
+
 export function validateTemplate(source: string): void {
   type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
   let mode: Mode = 'body';

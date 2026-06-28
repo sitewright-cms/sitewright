@@ -21,7 +21,8 @@ export function pageComponentsParallax(): Page {
       px_intro:
         'Drive motion off scroll. Add a data-sw-parallax-* attribute to any element and the platform ships a tiny runtime that moves, fades, scales or blurs it as it passes through the viewport — each effect anchored to its own window, composable, clamped, and switched off entirely for visitors who prefer reduced motion. Scroll down.',
       hero_t: 'Depth scene',
-      hero_d: 'A clipping container of stacked layers — the background and the heading move at different rates.',
+      hero_d:
+        'A clipping container of stacked layers — the background drifts and pushes in while the heading rises, fades, scales and sharpens into focus by centre, then eases back out.',
       depth_t: 'Depth — a from→to move',
       depth_d:
         'data-sw-parallax-translate="from,to" slides an element between two pixel offsets as it crosses the viewport. Bigger offsets feel closer; pair opposing directions for depth. Watch the cards travel at different rates.',
@@ -50,13 +51,21 @@ export function pageComponentsParallax(): Page {
   <pre class="mt-4 inline-block max-w-full overflow-x-auto text-xs"><code>-translate="40,-40"  ·  -opacity="0,1"  ·  -scale=".9,1.05"  ·  -blur="8,0"  ·  -opacity-range="0,0.5"  ·  -opacity-out="1,0"  ·  data-sw-parallax-scene / -layer</code></pre>
 </section>
 
-<!-- DEPTH SCENE (stacked absolute layers) -->
+<!-- DEPTH SCENE (stacked absolute layers) — the showcase: the background DRIFTS + pushes in (translate +
+     a cover-safe scale), while the heading composes EVERY channel at once — translate, opacity, scale and
+     blur — each anchored to a Bottom-To-Centre window ("-range=0,0.5") with an animate-out ("-out"), so it
+     rises, fades up, grows and sharpens into focus by centre, then eases back out as the scene leaves. -->
 <section data-sw-parallax-scene class="mx-auto my-10 flex min-h-[68vh] max-w-7xl items-center justify-center rounded-3xl px-6">
-  <div data-sw-parallax-layer data-sw-parallax-translate="80,-80" style="inset:-14% 0;background-image:radial-gradient(120% 90% at 15% 0%, color-mix(in oklab, var(--sw-color-secondary) 75%, #000) 0%, transparent 55%), radial-gradient(120% 110% at 90% 100%, color-mix(in oklab, var(--sw-color-accent) 65%, #000) 0%, transparent 50%), linear-gradient(135deg, var(--sw-color-primary), var(--sw-color-neutral));background-size:cover"></div>
-  <div data-sw-parallax-layer data-sw-parallax-translate="0,-36" class="grid place-items-center px-6 text-center text-white">
+  <div data-sw-parallax-layer data-sw-parallax-translate="80,-80" data-sw-parallax-scale="1.2,1.05" data-sw-parallax-scale-range="0,0.5" data-sw-parallax-scale-out="1.05,1.2" style="inset:-14% 0;background-image:radial-gradient(120% 90% at 15% 0%, color-mix(in oklab, var(--sw-color-secondary) 75%, #000) 0%, transparent 55%), radial-gradient(120% 110% at 90% 100%, color-mix(in oklab, var(--sw-color-accent) 65%, #000) 0%, transparent 50%), linear-gradient(135deg, var(--sw-color-primary), var(--sw-color-neutral));background-size:cover"></div>
+  <div data-sw-parallax-layer
+       data-sw-parallax-translate="0,-44"
+       data-sw-parallax-opacity="0,1" data-sw-parallax-opacity-range="0,0.5" data-sw-parallax-opacity-out="1,0"
+       data-sw-parallax-scale="0.8,1" data-sw-parallax-scale-range="0,0.5" data-sw-parallax-scale-out="1,1.08"
+       data-sw-parallax-blur="12,0" data-sw-parallax-blur-range="0,0.5" data-sw-parallax-blur-out="0,8"
+       class="grid place-items-center px-6 text-center text-white">
     <div>
       <h2 class="text-4xl font-bold tracking-tight drop-shadow-lg sm:text-6xl" data-sw-text="hero_t">Depth scene</h2>
-      <p class="mx-auto mt-3 max-w-xl text-lg text-white/85" data-sw-text="hero_d">Stacked layers move at different rates.</p>
+      <p class="mx-auto mt-3 max-w-xl text-lg text-white/85" data-sw-text="hero_d">The background drifts while the heading rises, fades, scales and sharpens into focus by centre — then eases back out.</p>
     </div>
   </div>
 </section>

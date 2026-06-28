@@ -160,7 +160,8 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       px_intro:
         'Bewegung aus dem Scrollen. Füge einem beliebigen Element ein data-sw-parallax-*-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Durchlaufen des Viewports verschiebt, ein-/ausblendet, skaliert oder weichzeichnet — jeder Effekt an sein eigenes Fenster verankert, kombinierbar, begrenzt und für Besucher mit reduzierter Bewegung vollständig abgeschaltet. Scroll nach unten.',
       hero_t: 'Tiefenszene',
-      hero_d: 'Ein beschnittener Container gestapelter Ebenen — Hintergrund und Überschrift bewegen sich unterschiedlich schnell.',
+      hero_d:
+        'Ein beschnittener Container gestapelter Ebenen — der Hintergrund driftet und schiebt sich heran, während die Überschrift aufsteigt, einblendet, skaliert und zur Mitte scharf stellt und dann wieder ausblendet.',
       depth_t: 'Tiefe — eine von→bis-Bewegung',
       depth_d:
         'data-sw-parallax-translate="von,bis" verschiebt ein Element beim Durchlaufen des Viewports zwischen zwei Pixel-Offsets. Größere Offsets wirken näher; gegenläufige Richtungen erzeugen Tiefe. Beobachte, wie die Karten unterschiedlich schnell wandern.',

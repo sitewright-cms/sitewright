@@ -11,6 +11,34 @@ import {
 
 const consent = (integrations: unknown[]): Consent => ({ enabled: true, integrations } as unknown as Consent);
 
+describe('embed CSP frame-src derivation', () => {
+  it('adds the provider frame-src (+ YouTube thumbnail img) independently of consent.enabled', () => {
+    const o = consentCspOrigins(undefined, ['youtube']);
+    expect(o.frame).toEqual(expect.arrayContaining(['www.youtube-nocookie.com', 'www.youtube.com']));
+    expect(o.img).toContain('i.ytimg.com');
+  });
+
+  it('builds a frame-src for an embed even with no registry integrations / consent off', () => {
+    const csp = buildSiteCspHeader(undefined, ['youtube'])!;
+    expect(csp).toContain("frame-src 'self' https://www.youtube-nocookie.com");
+    expect(csp).toContain("frame-ancestors 'none'");
+    const meta = buildConsentMetaCsp(undefined, ['youtube'])!;
+    expect(meta).toContain('frame-src');
+    expect(meta).not.toContain('frame-ancestors'); // meta ignores it
+  });
+
+  it('combines registry script-src AND embed frame-src in one CSP', () => {
+    const csp = buildSiteCspHeader(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]), ['google-maps'])!;
+    expect(csp).toContain("script-src 'self' https://www.googletagmanager.com");
+    expect(csp).toContain("frame-src 'self' https://www.google.com");
+  });
+
+  it('returns undefined when neither integrations nor embeds are present', () => {
+    expect(buildSiteCspHeader({ enabled: true } as Consent, [])).toBeUndefined();
+    expect(buildSiteCspHeader(undefined, [])).toBeUndefined();
+  });
+});
+
 describe('ConsentIntegrationSchema validation', () => {
   it('accepts a valid ga4 / gtm / custom integration', () => {
     expect(() => ConsentIntegrationSchema.parse({ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' })).not.toThrow();

@@ -35,6 +35,7 @@ import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/d
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
 import { NOTICE_CSS, NOTICE_JS } from './notice.js';
+import { EMBED_CSS, EMBED_JS } from './embed.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -710,6 +711,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
   ['Notice', { css: NOTICE_CSS, js: NOTICE_JS }],
+  ['Embed', { css: EMBED_CSS, js: EMBED_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
@@ -729,6 +731,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['modal', 'Modal'],
   ['cookie-consent', 'CookieConsent'],
   ['notice', 'Notice'],
+  ['embed', 'Embed'],
   ['tabs', 'Tabs'],
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],
@@ -757,6 +760,9 @@ export function componentTypesInSource(html: string | null | undefined): string[
   // scan must catch the reference itself. Anchored to the two real spellings (helper call /
   // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
   if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
+  // A click-to-load embed by REFERENCE — `{{sw-embed "youtube" …}}` — only gains its
+  // `data-sw-component="embed"` marker at render, so the source scan must catch the helper call too.
+  if (/(?:\{\{\s*sw-embed\b|data-sw-component="embed")/.test(html)) seen.add('Embed');
   return [...seen];
 }
 

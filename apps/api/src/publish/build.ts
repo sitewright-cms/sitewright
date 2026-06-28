@@ -39,6 +39,7 @@ import {
   resolveInternalUrl,
   relativizeInternalLinks,
   componentTypesInSource,
+  embedProvidersInSource,
   componentAssets,
   systemI18nData,
   usesDialog,
@@ -459,6 +460,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
+    // Click-to-load embed providers used anywhere on the site → the per-page CSP frame-src allow-list
+    // (an unused provider's frame-src is harmless, so a site-wide union keeps it simple + correct).
+    const embedProviders = [...effectiveSources, ...slotSources, ...Object.values(usedSnippets)].flatMap((s) => [...embedProvidersInSource(s)]);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
@@ -821,7 +825,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           head: website?.head,
           // Baked CSP for static-export parity (a strict external host then allows the consented
           // third-party origins). Platform-local serving ALSO sets it as a response header. Omit = none.
-          metaCsp: buildConsentMetaCsp(website?.consent),
+          metaCsp: buildConsentMetaCsp(website?.consent, embedProviders),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

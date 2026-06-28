@@ -185,6 +185,34 @@ describe('{{sw-consent}} / {{sw-consent-settings}} — consent manager helpers',
   });
 });
 
+describe('{{sw-embed}} — click-to-load embed helper', () => {
+  it('renders a held YouTube embed (nocookie src, marketing category, thumbnail, noscript link)', () => {
+    const out = renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ"}}', {} as TemplateContext);
+    expect(out).toContain('data-sw-component="embed"');
+    expect(out).toContain('data-embed-providerkey="youtube"');
+    expect(out).toContain('data-embed-src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
+    expect(out).toContain('data-embed-category="marketing"');
+    expect(out).toContain('data-embed-poster="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"');
+    expect(out).toContain('<noscript>');
+    expect(out).toContain('youtube.com/watch?v=dQw4w9WgXcQ');
+  });
+  it('renders a Google Maps embed (functional category + 4/3 ratio + output=embed)', () => {
+    const out = renderTemplate('{{sw-embed "google-maps" "Eiffel Tower"}}', {} as TemplateContext);
+    expect(out).toContain('data-embed-providerkey="google-maps"');
+    expect(out).toContain('output=embed');
+    expect(out).toContain('data-embed-category="functional"');
+    expect(out).toContain('aspect-ratio:4 / 3');
+  });
+  it('honors category= and guards the ratio against CSS injection', () => {
+    expect(renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ" category="functional"}}', {} as TemplateContext)).toContain('data-embed-category="functional"');
+    expect(renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ" ratio="1;background:url(evil)"}}', {} as TemplateContext)).toContain('aspect-ratio:16 / 9');
+  });
+  it('renders NOTHING for an unknown provider or a missing id', () => {
+    expect(renderTemplate('{{sw-embed "tiktok" "x"}}', {} as TemplateContext)).toBe('');
+    expect(renderTemplate('{{sw-embed "youtube" ""}}', {} as TemplateContext)).toBe('');
+  });
+});
+
 describe('{{sw-theme-toggle}} — theme toggle helper', () => {
   const on = { website: { enableThemes: true } } as unknown as TemplateContext;
   it('renders a marked button with both icons when themes are enabled', () => {

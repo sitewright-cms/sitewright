@@ -124,23 +124,52 @@ describe('SidePanel', () => {
     expect(fireEvent.drop(region, { dataTransfer: { types: ['Files'] } })).toBe(true);
   });
 
-  it('a Modal open inside it owns Escape — the drawer stays open (closes only once no modal is stacked)', () => {
-    const { container } = render(
+  it('a child Modal stacked ABOVE the open drawer owns Escape — the drawer stays open behind it', () => {
+    const { container, rerender } = render(
+      <SidePanel side="left" label="Lib">
+        <p>body</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    // Open the drawer first (it joins OVERLAY_STACK) ...
+    fireEvent.click(screen.getByRole('button', { name: 'Open Lib' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // ... then a child Modal opens ABOVE it (pushed onto the stack after the drawer → it's the top).
+    rerender(
       <SidePanel side="left" label="Lib">
         <Modal title="Inside" onClose={() => {}}>
           <p>m</p>
         </Modal>
       </SidePanel>,
     );
-    const region = container.querySelector('[role="region"]')!;
-    // The inner Modal force-holds the drawer open (and sits on OVERLAY_STACK).
-    expect(region).toHaveAttribute('aria-hidden', 'false');
     // Escape is owned by the topmost overlay (the modal) — the drawer does NOT close behind it.
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(region).toHaveAttribute('aria-hidden', 'false');
-    // Clicking the drawer's own backdrop is likewise a no-op while the modal is up.
+    // Clicking the drawer's own backdrop is likewise a no-op while the modal is up (it's not the top).
     fireEvent.click(container.firstChild as HTMLElement);
     expect(region).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  it('a base overlay BELOW the drawer (e.g. the page editor) does not block the drawer’s close', () => {
+    // A base Modal is already open (mounts first → pushed onto OVERLAY_STACK first), like the page
+    // code-editor that a sidebar is opened on top of.
+    const { container } = render(
+      <div>
+        <Modal title="Editor" onClose={() => {}}>
+          <p>e</p>
+        </Modal>
+        <SidePanel side="left" label="Lib">
+          <p>body</p>
+        </SidePanel>
+      </div>,
+    );
+    const region = container.querySelector('[role="region"][aria-label="Lib"]')!;
+    // Open the drawer OVER the modal → it becomes the topmost overlay.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Lib' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Escape closes the DRAWER even though a modal is open below it (the regression this fixes).
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('elevates a Modal rendered inside it above the panel layer (z-[70]); a standalone modal stays z-50', () => {

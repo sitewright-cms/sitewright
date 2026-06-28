@@ -54,7 +54,7 @@ describe('CodeRecordManager', () => {
     expect(await screen.findByText('hero')).toBeInTheDocument();
   });
 
-  it('shows a catalogued global snippet’s description in a DaisyUI tooltip (data-tip) on hover', async () => {
+  it('shows a catalogued global snippet’s description in a portal tooltip on hover', async () => {
     render(
       <CodeRecordManager
         projectId="p1"
@@ -75,9 +75,15 @@ describe('CodeRecordManager', () => {
       />,
     );
     const name = await screen.findByText('page-vars');
-    const tip = name.closest('[data-tip]');
-    expect(tip).toHaveClass('tooltip');
-    expect(tip).toHaveAttribute('data-tip', 'Bind page variables and list children.');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    // Hovering the trigger portals a description bubble (not a clipped CSS data-tip).
+    fireEvent.mouseEnter(name.parentElement!);
+    const bubble = screen.getByRole('tooltip');
+    expect(bubble).toHaveTextContent('Bind page variables and list children.');
+    // trigger references the bubble for screen readers
+    expect(name.parentElement).toHaveAttribute('aria-describedby', bubble.id);
+    fireEvent.mouseLeave(name.parentElement!);
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('creates via the name prompt → saves an empty-source record → opens the editor', async () => {

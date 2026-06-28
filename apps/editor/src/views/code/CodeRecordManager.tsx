@@ -6,7 +6,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { primaryButton, ghostButton, glassPanel } from '../../theme';
 import { SnippetPreviewButton } from './SnippetPreviewButton';
-import { Tooltip } from '../ui/Tooltip';
+import { HoverTip } from '../ui/HoverTip';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -219,10 +219,11 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     return (
     <li key={`${scope}:${r.id}`} className={`${glassPanel} flex items-center gap-2 rounded-xl px-3 py-2`}>
       {desc ? (
-        // Hover the name → a DaisyUI tooltip with the cookbook description (richer than a native title).
-        <Tooltip tip={desc} side="top" className="min-w-0 flex-1">
+        // Hover the name → the cookbook description in a PORTAL tooltip, so it isn't clipped by the
+        // side-panel's overflow the way a CSS data-tip bubble would be.
+        <HoverTip tip={desc} className="min-w-0 flex-1">
           <span className="block w-full truncate text-left text-sm font-medium text-slate-700">{r.name}</span>
-        </Tooltip>
+        </HoverTip>
       ) : (
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={r.name}>
           {r.name}

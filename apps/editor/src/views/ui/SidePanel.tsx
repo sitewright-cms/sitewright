@@ -110,12 +110,13 @@ const TAB_RADIUS: Record<SidePanelSide, string> = {
   bottom: 'rounded-t-xl',
 };
 
-// Hover affordance: the tab reaches a little further toward the screen interior (the outward-facing
-// face) on hover, a quiet "I'm a clickable handle" cue. Animated by the tab's `transition-all`.
+// Hover affordance: on hover the tab gains a little padding on its OUTER (browser-facing) face — the
+// side flush to the viewport edge — so the label is nudged inward off the edge rather than reaching
+// further into the content. A quiet "I'm a clickable handle" cue, animated by the tab's `transition-all`.
 const TAB_HOVER_PAD: Record<SidePanelSide, string> = {
-  left: 'hover:pr-3.5',
-  right: 'hover:pl-3.5',
-  bottom: 'hover:pt-3',
+  left: 'hover:pl-3.5',
+  right: 'hover:pr-3.5',
+  bottom: 'hover:pb-3',
 };
 
 /**
@@ -146,11 +147,25 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
     if (held > 0) setOpen(true);
   }, [held]);
 
-  // Dismiss the drawer — but only when no modal is stacked above it. An open Modal (whether spawned
-  // from this panel or a top-level one) owns Escape + outside-clicks and closes first; it stays on
-  // OVERLAY_STACK until it unmounts, so this guard is race-free during the same keydown/click.
+  // Join the shared overlay stack while open, so the drawer participates in Esc/close ordering exactly
+  // like a Modal: opening OVER another overlay (e.g. the page code-editor Modal, or a base dialog) puts
+  // this drawer on TOP, and a child Modal opened FROM the drawer stacks above it in turn.
+  const stackToken = useRef<object>({});
+  useEffect(() => {
+    if (!open) return;
+    const tok = stackToken.current;
+    OVERLAY_STACK.push(tok);
+    return () => {
+      const at = OVERLAY_STACK.indexOf(tok);
+      if (at !== -1) OVERLAY_STACK.splice(at, 1);
+    };
+  }, [open]);
+
+  // Dismiss the drawer — but only when it is the TOPMOST overlay. A modal stacked ABOVE it (a child
+  // dialog opened from the drawer) owns Escape + outside-clicks and closes first; an overlay BELOW it
+  // (the page editor this drawer opened over) must NOT block the drawer's own backdrop/Esc close.
   const requestClose = () => {
-    if (OVERLAY_STACK.length === 0) setOpen(false);
+    if (OVERLAY_STACK[OVERLAY_STACK.length - 1] === stackToken.current) setOpen(false);
   };
 
   // Force-open when the parent bumps `openSignal` (e.g. the header "Assets" button).

@@ -158,7 +158,8 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       px_intro:
         'Movimiento a partir del scroll. Añade un atributo data-sw-parallax-* a cualquier elemento y la plataforma incluye un runtime diminuto que lo desplaza, atenúa, escala o desenfoca a medida que pasa por el viewport — cada efecto anclado a su propia ventana, combinable, acotado y desactivado por completo para quienes prefieren menos movimiento. Desplázate hacia abajo.',
       hero_t: 'Escena de profundidad',
-      hero_d: 'Un contenedor recortado de capas apiladas — el fondo y el título se mueven a distinto ritmo.',
+      hero_d:
+        'Un contenedor recortado de capas apiladas — el fondo se desplaza y se acerca mientras el título asciende, aparece, escala y se enfoca al centro, y luego sale de nuevo.',
       depth_t: 'Profundidad — un movimiento de→a',
       depth_d:
         'data-sw-parallax-translate="de,a" desliza un elemento entre dos desplazamientos en píxeles al cruzar el viewport. Desplazamientos mayores parecen más cercanos; combina direcciones opuestas para dar profundidad. Observa cómo las tarjetas avanzan a distinto ritmo.',

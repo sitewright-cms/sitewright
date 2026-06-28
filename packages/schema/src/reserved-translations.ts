@@ -36,7 +36,7 @@ export interface ReservedTranslationGroup {
    * only controls editor SURFACING, so a disabled feature never clutters the translation table.
    * OMIT for a SYSTEM group (always surfaced — built-in component UI strings that every site has).
    */
-  feature?: 'shop' | 'themes';
+  feature?: 'shop' | 'themes' | 'consent';
   keys: readonly ReservedTranslation[];
 }
 
@@ -89,6 +89,36 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
     label: 'Themes',
     feature: 'themes',
     keys: [{ key: 'theme_toggle', label: 'Dark-mode toggle (aria-label)', default: 'Toggle dark mode' }],
+  },
+  {
+    // CONSENT group (gated on `website.consent.enabled`): the cookie-consent banner + preferences copy.
+    // The render helper ({{sw-consent}}) resolves each per page-locale and floors to these English defaults.
+    id: 'consent',
+    label: 'Consent · Cookie banner',
+    feature: 'consent',
+    keys: [
+      { key: 'consent_title', label: 'Banner heading', default: 'We value your privacy' },
+      {
+        key: 'consent_intro',
+        label: 'Banner intro text',
+        default: 'We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.',
+      },
+      { key: 'consent_accept_all', label: 'Accept-all button', default: 'Accept all' },
+      { key: 'consent_reject_all', label: 'Reject-all button', default: 'Reject all' },
+      { key: 'consent_customize', label: 'Customize button', default: 'Customize' },
+      { key: 'consent_save', label: 'Save-preferences button', default: 'Save preferences' },
+      { key: 'consent_prefs_title', label: 'Preferences group label', default: 'Privacy preferences' },
+      { key: 'consent_settings', label: 'Re-open settings link/button', default: 'Cookie settings' },
+      { key: 'consent_privacy', label: 'Privacy-policy link label', default: 'Privacy policy' },
+      { key: 'consent_necessary', label: 'Necessary category name', default: 'Strictly necessary' },
+      { key: 'consent_necessary_desc', label: 'Necessary category description', default: 'Required for the site to function. Always on.' },
+      { key: 'consent_functional', label: 'Functional category name', default: 'Functional' },
+      { key: 'consent_functional_desc', label: 'Functional category description', default: 'Remembers your preferences and enables enhanced features.' },
+      { key: 'consent_analytics', label: 'Analytics category name', default: 'Analytics' },
+      { key: 'consent_analytics_desc', label: 'Analytics category description', default: 'Helps us understand how visitors use the site.' },
+      { key: 'consent_marketing', label: 'Marketing category name', default: 'Marketing' },
+      { key: 'consent_marketing_desc', label: 'Marketing category description', default: 'Used to deliver relevant ads and measure campaigns.' },
+    ],
   },
 ];
 

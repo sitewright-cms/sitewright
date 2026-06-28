@@ -79,6 +79,8 @@ import {
   BUTTON_EFFECTS_JS,
   usesCart,
   CART_CSS,
+  usesConsent,
+  CONSENT_CSS,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -546,6 +548,10 @@ async function styledSourceDocument(
   // cart.js is deliberately INERT in the editor preview so its click handlers + floating drawer never
   // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
   const cart = usesCart(scanHtml);
+  // CONSENT MANAGER: style the banner in the preview but keep consent.js INERT here (like the cart) — its
+  // banner/preferences UI would cover the editor canvas + fight the click-to-edit bridge. It runs live on
+  // the published /sites/<slug>/ site.
+  const consent = usesConsent(scanHtml);
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
   // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
@@ -580,6 +586,7 @@ async function styledSourceDocument(
         ...(lazy ? [LAZYLOAD_CSS] : []),
         ...(waves ? [RIPPLE_CSS] : []),
         ...(cart ? [CART_CSS] : []),
+        ...(consent ? [CONSENT_CSS] : []),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
         ...(compileCandidates.length > 0
           ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
@@ -2466,7 +2473,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -2490,7 +2497,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
         const slotCtx = {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -4331,7 +4338,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
         // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
         website = settings.website
-          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         const fx = websiteEffectsCustomCode(settings.website?.effects);
@@ -4478,7 +4485,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         brand = settings.identity;
         // Snippet HOVER preview is intentionally lean (empty data/item); `website.t` is omitted too, so
         // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
-        website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
+        website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent } : undefined;
         containerWidth = settings.website?.containerWidth;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a

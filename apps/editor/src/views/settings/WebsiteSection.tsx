@@ -560,6 +560,7 @@ export function WebsiteSection({
             defaultLocale={form.defaultLocale}
             shopEnabled={form.shopEnabled}
             themesEnabled={form.enableThemes}
+            consentEnabled={form.consent?.enabled === true}
             // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
             // the wording here instead of hand-typing the keys — only while the shop is on.
             extraGhostGroups={

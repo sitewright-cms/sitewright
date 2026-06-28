@@ -100,6 +100,46 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(comp.body).toContain('data-sw-component="notice"');
   });
 
+  it('ships the Consent Manager runtime for a site with {{sw-consent}} in the bottom slot (enabled)', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true }, bottom: '{{sw-consent}}{{sw-consent-settings}}' },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Home</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    // The helper rendered the mount + the escaped config; the re-open button carries the open marker.
+    expect(index.body).toContain('data-sw-consent');
+    expect(index.body).toContain('data-sw-consent-config');
+    expect(index.body).toContain('data-sw-consent-open');
+    expect(index.body).toContain('<script defer src="consent.js"></script>');
+
+    const js = await client.get(`/sites/${slug}/consent.js`);
+    expect(js.statusCode).toBe(200);
+    expect(js.body).toContain('sw:consentchange');
+    expect(js.body).toContain('window.swConsent');
+  });
+
+  it('ships NO consent runtime for a site that uses no consent banner', async () => {
+    const proj = client.project(projectId);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Plain</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.body).not.toContain('consent.js');
+    expect((await client.get(`/sites/${slug}/consent.js`)).statusCode).toBe(404);
+  });
+
   it('ships ONLY the dialog runtime when a code-first page authors a bare <dialog> (no component, no placeholder)', async () => {
     const proj = client.project(projectId);
     // A global modal opened from an in-content anchor — no nav placeholder, no component wrapper.

@@ -54,6 +54,24 @@ export interface ChromeStrings {
   cart_currency_code: string;
   // COLOR SCHEMES (RESERVED) — accessible label for the {{sw-theme-toggle}} light/dark button.
   theme_toggle: string;
+  // CONSENT MANAGER (RESERVED) — the {{sw-consent}} banner + per-category preferences copy.
+  consent_title: string;
+  consent_intro: string;
+  consent_accept_all: string;
+  consent_reject_all: string;
+  consent_customize: string;
+  consent_save: string;
+  consent_prefs_title: string;
+  consent_settings: string;
+  consent_privacy: string;
+  consent_necessary: string;
+  consent_necessary_desc: string;
+  consent_functional: string;
+  consent_functional_desc: string;
+  consent_analytics: string;
+  consent_analytics_desc: string;
+  consent_marketing: string;
+  consent_marketing_desc: string;
   // SYSTEM component UI strings (RESERVED) — the first-party component runtimes read these via the
   // injected window.__SW_T__ (modal close button + carousel a11y). {n}/{total} are runtime-filled.
   close: string;
@@ -95,6 +113,23 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
     theme_toggle: 'Toggle dark mode',
+    consent_title: 'We value your privacy',
+    consent_intro: 'We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.',
+    consent_accept_all: 'Accept all',
+    consent_reject_all: 'Reject all',
+    consent_customize: 'Customize',
+    consent_save: 'Save preferences',
+    consent_prefs_title: 'Privacy preferences',
+    consent_settings: 'Cookie settings',
+    consent_privacy: 'Privacy policy',
+    consent_necessary: 'Strictly necessary',
+    consent_necessary_desc: 'Required for the site to function. Always on.',
+    consent_functional: 'Functional',
+    consent_functional_desc: 'Remembers your preferences and enables enhanced features.',
+    consent_analytics: 'Analytics',
+    consent_analytics_desc: 'Helps us understand how visitors use the site.',
+    consent_marketing: 'Marketing',
+    consent_marketing_desc: 'Used to deliver relevant ads and measure campaigns.',
     close: 'Close',
     slide_prev: 'Previous slide',
     slide_next: 'Next slide',
@@ -132,6 +167,23 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
     theme_toggle: 'Dunkelmodus umschalten',
+    consent_title: 'Wir schätzen Ihre Privatsphäre',
+    consent_intro: 'Wir verwenden Cookies, um Ihr Erlebnis zu verbessern und unseren Verkehr zu analysieren. Wählen Sie, welche Kategorien Sie zulassen.',
+    consent_accept_all: 'Alle akzeptieren',
+    consent_reject_all: 'Alle ablehnen',
+    consent_customize: 'Anpassen',
+    consent_save: 'Einstellungen speichern',
+    consent_prefs_title: 'Datenschutzeinstellungen',
+    consent_settings: 'Cookie-Einstellungen',
+    consent_privacy: 'Datenschutzerklärung',
+    consent_necessary: 'Unbedingt erforderlich',
+    consent_necessary_desc: 'Für den Betrieb der Website erforderlich. Immer aktiv.',
+    consent_functional: 'Funktional',
+    consent_functional_desc: 'Speichert Ihre Einstellungen und ermöglicht erweiterte Funktionen.',
+    consent_analytics: 'Statistik',
+    consent_analytics_desc: 'Hilft uns zu verstehen, wie Besucher die Website nutzen.',
+    consent_marketing: 'Marketing',
+    consent_marketing_desc: 'Dient dazu, relevante Werbung auszuspielen und Kampagnen zu messen.',
     close: 'Schließen',
     slide_prev: 'Vorherige Folie',
     slide_next: 'Nächste Folie',
@@ -169,6 +221,23 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
     theme_toggle: 'Cambiar modo oscuro',
+    consent_title: 'Valoramos su privacidad',
+    consent_intro: 'Usamos cookies para mejorar su experiencia y analizar nuestro tráfico. Elija qué categorías permite.',
+    consent_accept_all: 'Aceptar todo',
+    consent_reject_all: 'Rechazar todo',
+    consent_customize: 'Personalizar',
+    consent_save: 'Guardar preferencias',
+    consent_prefs_title: 'Preferencias de privacidad',
+    consent_settings: 'Configuración de cookies',
+    consent_privacy: 'Política de privacidad',
+    consent_necessary: 'Estrictamente necesarias',
+    consent_necessary_desc: 'Necesarias para que el sitio funcione. Siempre activas.',
+    consent_functional: 'Funcionales',
+    consent_functional_desc: 'Recuerda sus preferencias y habilita funciones mejoradas.',
+    consent_analytics: 'Analíticas',
+    consent_analytics_desc: 'Nos ayuda a entender cómo usan el sitio los visitantes.',
+    consent_marketing: 'Marketing',
+    consent_marketing_desc: 'Se usa para mostrar anuncios relevantes y medir campañas.',
     close: 'Cerrar',
     slide_prev: 'Diapositiva anterior',
     slide_next: 'Diapositiva siguiente',

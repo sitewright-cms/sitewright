@@ -75,6 +75,17 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withShop.website!.shop);
   });
 
+  it('round-trips website.consent VERBATIM (no data loss on save — the config has no editor panel yet)', () => {
+    const withConsent: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { consent: { enabled: true, version: 2, layout: 'box', categories: ['analytics'], denyButton: false, privacyHref: '/privacy' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toForm(withConsent).consent?.enabled).toBe(true);
+    // A settings save (toForm → edit something else → toBundle) MUST preserve the whole consent object.
+    expect(toBundle(toForm(withConsent), withConsent).website?.consent).toEqual(withConsent.website!.consent);
+  });
+
   it('round-trips the shop enabled toggle (and toggling on with no config yields a bare {enabled})', () => {
     const enabled: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

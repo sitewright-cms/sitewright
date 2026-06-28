@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -166,6 +166,10 @@ export interface SettingsForm {
   shopCurrencyPosition: 'before' | 'after';
   shopCurrencyDecimals: string;
   shopChannels: KeyedShopChannel[];
+  // CONSENT MANAGER (website.consent): preserved verbatim through the form so a settings save never drops
+  // it. PR2 ships the engine; the dedicated config panel + enable toggle land in a later PR (set via API/MCP
+  // until then). The reserved consent_* translation rows surface when `consent.enabled` is true.
+  consent?: Consent;
   // localization
   defaultLocale: string;
   locales: KeyedStr[];
@@ -310,6 +314,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     buttonCode: w?.effects?.buttonCode ?? '',
     preloaderCode: w?.effects?.preloaderCode ?? '',
     enableThemes: w?.enableThemes === true,
+    consent: w?.consent,
     defaultTheme: w?.defaultTheme ?? 'auto',
     containerWidth: w?.containerWidth ?? '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
@@ -537,11 +542,12 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   ]);
   const translations = rowsToTranslations(form.translations, localeSet);
   const hasTranslations = Object.keys(translations).length > 0;
-  if (w || redirects.length || shop || effects || themes || hasTranslations || form.containerWidth.trim()) {
+  if (w || redirects.length || shop || form.consent || effects || themes || hasTranslations || form.containerWidth.trim()) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
       ...(shop ? { shop } : {}),
+      ...(form.consent ? { consent: form.consent } : {}),
       ...(effects ? { effects } : {}),
       ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),

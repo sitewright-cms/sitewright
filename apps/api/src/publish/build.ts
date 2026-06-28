@@ -59,6 +59,9 @@ import {
   usesCart,
   CART_CSS,
   CART_JS,
+  usesConsent,
+  CONSENT_CSS,
+  CONSENT_JS,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -104,6 +107,8 @@ const LAZYLOAD_SCRIPT = 'lazyload.js';
 const RIPPLE_SCRIPT = 'ripple.js';
 /** The MINI SHOP cart runtime, written at the site root and linked per page. */
 const CART_SCRIPT = 'cart.js';
+/** The CONSENT MANAGER runtime, written at the site root and linked per page. */
+const CONSENT_SCRIPT = 'consent.js';
 /** The color-scheme toggle + no-flash runtime, written at the site root and linked SYNC in <head>. */
 const THEME_SCRIPT = 'theme.js';
 /** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
@@ -495,6 +500,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(usesCart);
+    const usesConsentRuntime = usesMarker(usesConsent);
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -649,7 +655,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT, enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -735,6 +741,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
           ...(usesCartRuntime ? [CART_CSS] : []),
+          ...(usesConsentRuntime ? [CONSENT_CSS] : []),
           ...(usesThemeToggleRuntime ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
           ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
@@ -746,6 +753,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
+          ...(usesConsentRuntime ? [`${siteRoot}${CONSENT_SCRIPT}`] : []),
           ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
@@ -886,6 +894,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, CART_SCRIPT), CART_JS, 'utf8');
       bytes += Buffer.byteLength(CART_JS);
+    }
+    // The CONSENT MANAGER runtime (first-party behavior; only-used-ships).
+    if (usesConsentRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, CONSENT_SCRIPT), CONSENT_JS, 'utf8');
+      bytes += Buffer.byteLength(CONSENT_JS);
     }
     // The color-scheme toggle + no-flash runtime (first-party behavior; only-used-ships).
     if (usesThemeToggleRuntime) {

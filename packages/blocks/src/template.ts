@@ -686,6 +686,63 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
+  // {{sw-consent}} → the CONSENT MANAGER banner mount (cookie-consent). Gated by the master switch
+  // (website.consent.enabled): OFF → renders nothing, so consent.js is never shipped. Place it ONCE in the
+  // website `bottom` slot. ALL copy auto-localizes per page-locale from the reserved consent_* catalog keys
+  // (catalog → built-in English default). Settings (website.consent) holds only STRUCTURE (enabled,
+  // version, layout, denyButton, categories, privacyHref); the config rides on an escaped JSON attribute.
+  hb.registerHelper('sw-consent', function swConsentBanner(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const root = (options.data?.root ?? {}) as { website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> } };
+    const consent = (root.website?.consent ?? {}) as Record<string, unknown>;
+    if (consent.enabled !== true) return new Handlebars.SafeString('');
+    // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* key; RESERVED_TRANSLATION_DEFAULTS is a frozen const registry (missing → undefined → '')
+    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
+    const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
+    const wantRaw = Array.isArray(consent.categories) ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string') : null;
+    const want = wantRaw && wantRaw.length ? wantRaw : [...CAT_KEYS];
+    const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
+    const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
+    const cfg: Record<string, unknown> = {
+      v: version,
+      layout: consent.layout === 'box' ? 'box' : 'bar',
+      deny: consent.denyButton !== false,
+      cats,
+      t: {
+        title: tr('consent_title'),
+        intro: tr('consent_intro'),
+        acceptAll: tr('consent_accept_all'),
+        rejectAll: tr('consent_reject_all'),
+        customize: tr('consent_customize'),
+        save: tr('consent_save'),
+        prefsTitle: tr('consent_prefs_title'),
+        necessary: tr('consent_necessary'),
+        necessaryDesc: tr('consent_necessary_desc'),
+        privacyLabel: tr('consent_privacy'),
+      },
+    };
+    const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
+    if (privacy && privacy !== '#') cfg.privacy = privacy;
+    // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip
+    // (runs on any page with data-sw-*) intact + byte-stable, then attr-escape for the attribute value.
+    const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+    const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
+    return new Handlebars.SafeString(`<div data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`);
+  });
+  // {{sw-consent-settings [label="…"] [class="…"]}} → a button that RE-OPENS the consent preferences
+  // (e.g. a footer "Cookie settings" link for GDPR withdrawal). Gated on website.consent.enabled. Carries
+  // data-sw-consent-open, which the consent.js runtime delegates. The label localizes (consent_settings).
+  hb.registerHelper('sw-consent-settings', function swConsentSettings(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options?.hash ?? {}) as Record<string, unknown>;
+    const root = (options.data?.root ?? {}) as { website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> } };
+    if ((root.website?.consent as Record<string, unknown> | undefined)?.enabled !== true) return new Handlebars.SafeString('');
+    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const label = str(h.label) || reservedTr(root, 'consent_settings') || RESERVED_TRANSLATION_DEFAULTS.consent_settings || 'Cookie settings';
+    const cls = str(h.class);
+    const classAttr = escapeAttr(cls || 'sw-consent-link');
+    return new Handlebars.SafeString(`<button type="button" data-sw-consent-open class="${classAttr}">${escapeHtml(label)}</button>`);
+  });
   // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN themes
   // feature (Settings → Website → enable themes). It carries both a sun + a moon icon;
   // CSS (THEME_TOGGLE_CSS) shows the one for the active theme, so the icon is correct with or without

@@ -135,6 +135,47 @@ describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
   });
 });
 
+describe('{{sw-consent}} / {{sw-consent-settings}} — consent manager helpers', () => {
+  const on = { website: { consent: { enabled: true } } } as unknown as TemplateContext;
+  it('renders the consent mount + escaped config attribute with the default copy when enabled', () => {
+    const out = renderTemplate('{{sw-consent}}', on);
+    expect(out).toContain('data-sw-consent');
+    expect(out).toContain('data-sw-consent-config="');
+    expect(out).toContain('Accept all');
+    expect(out).toContain('Functional');
+    expect(out).toContain('Analytics');
+    expect(out).toContain('Marketing');
+  });
+  it('renders NOTHING when consent is disabled / unset (helpers are safe to leave in)', () => {
+    expect(renderTemplate('{{sw-consent}}', { website: {} } as unknown as TemplateContext)).toBe('');
+    expect(renderTemplate('{{sw-consent}}', {} as TemplateContext)).toBe('');
+    expect(renderTemplate('{{sw-consent-settings}}', { website: {} } as unknown as TemplateContext)).toBe('');
+  });
+  it('honors layout + denyButton + version + a category subset', () => {
+    const cfg = { website: { consent: { enabled: true, layout: 'box', denyButton: false, version: 3, categories: ['analytics'] } } } as unknown as TemplateContext;
+    const out = renderTemplate('{{sw-consent}}', cfg);
+    expect(out).toContain('data-layout="box"');
+    expect(out).toMatch(/&quot;v&quot;:3/); // escaped JSON in the attribute
+    expect(out).toContain('Analytics');
+    expect(out).not.toContain('Marketing'); // only the requested category is offered
+  });
+  it('localizes copy from the catalog (reserved consent_* keys)', () => {
+    const de = { website: { consent: { enabled: true }, t: { consent_accept_all: 'Alle akzeptieren' } } } as unknown as TemplateContext;
+    expect(renderTemplate('{{sw-consent}}', de)).toContain('Alle akzeptieren');
+  });
+  it('{{sw-consent-settings}} renders a re-open button with a localized label', () => {
+    expect(renderTemplate('{{sw-consent-settings}}', on)).toContain('data-sw-consent-open');
+    expect(renderTemplate('{{sw-consent-settings}}', on)).toContain('Cookie settings');
+    expect(renderTemplate('{{sw-consent-settings label="Manage cookies"}}', on)).toContain('Manage cookies');
+  });
+  it('sanitizes the privacy link (javascript: dropped; internal path kept)', () => {
+    const bad = { website: { consent: { enabled: true, privacyHref: 'javascript:alert(1)' } } } as unknown as TemplateContext;
+    expect(renderTemplate('{{sw-consent}}', bad)).not.toContain('javascript:');
+    const good = { website: { consent: { enabled: true, privacyHref: '/privacy' } } } as unknown as TemplateContext;
+    expect(renderTemplate('{{sw-consent}}', good)).toContain('/privacy');
+  });
+});
+
 describe('{{sw-theme-toggle}} — theme toggle helper', () => {
   const on = { website: { enableThemes: true } } as unknown as TemplateContext;
   it('renders a marked button with both icons when themes are enabled', () => {

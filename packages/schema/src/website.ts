@@ -225,6 +225,37 @@ export const ShopSchema = z.object({
 });
 export type Shop = z.infer<typeof ShopSchema>;
 
+/** The OPTIONAL consent categories (Necessary is implicit + always granted). */
+export const CONSENT_CATEGORY_VALUES = ['functional', 'analytics', 'marketing'] as const;
+
+/**
+ * CONSENT MANAGER configuration (front-end cookie-consent). Like {@link ShopSchema}, this holds only
+ * non-text STRUCTURE — all banner/category COPY is TRANSLATABLE and lives in the catalog (reserved
+ * `consent_*` keys). The actual third-party gating (registry + CSP) layers on in later PRs.
+ */
+export const ConsentSchema = z.object({
+  /**
+   * Master ON switch. When not `true` the {{sw-consent}} / {{sw-consent-settings}} helpers render
+   * NOTHING (no banner site-wide, so `consent.js` is never shipped) and the editor hides the consent
+   * translation ghost rows. A fresh project starts OFF; the operator opts in.
+   */
+  enabled: z.boolean().optional(),
+  /**
+   * Consent VERSION. Bump it to re-prompt every visitor — a stored decision below this version is
+   * treated as absent (e.g. after adding a new tracker). Defaults to 1.
+   */
+  version: z.number().int().min(1).max(1_000_000).optional(),
+  /** Banner placement: `bar` (centered bottom bar, default) or `box` (bottom-left card). */
+  layout: z.enum(['bar', 'box']).optional(),
+  /** Which optional categories to offer (Necessary is always implicit/on). Default: all three. */
+  categories: z.array(z.enum(CONSENT_CATEGORY_VALUES)).max(3).optional(),
+  /** Show an explicit "Reject all" button on the first-layer banner (GDPR-recommended). Default true. */
+  denyButton: z.boolean().optional(),
+  /** Privacy-policy link shown in the banner — an internal page path or absolute URL (render-sanitized). */
+  privacyHref: z.string().max(2048).optional(),
+});
+export type Consent = z.infer<typeof ConsentSchema>;
+
 /**
  * Project-wide website settings — the `website.*` namespace (contentBase's
  * WEBSITE tab). The raw HTML/CSS fields are the tenant's own content for their
@@ -618,6 +649,12 @@ const WebsiteSettingsObject = z.object({
    * the first-party cart.js runtime. Front-end only: prices are NON-AUTHORITATIVE (see {@link ShopSchema}).
    */
   shop: ShopSchema.optional(),
+  /**
+   * CONSENT MANAGER — front-end cookie-consent (banner + per-category preferences). Exposed to templates
+   * as `{{ website.consent }}` and emitted onto the consent mount by the `{{sw-consent}}` helper for the
+   * first-party consent.js runtime. Copy is translatable (reserved `consent_*` keys). See {@link ConsentSchema}.
+   */
+  consent: ConsentSchema.optional(),
   /**
    * Nav/button EFFECT schemes applied site-wide (the no-code picker). Rendered as `<body>` classes;
    * the CSS tree-shakes per scheme. Authors keep full freedom (per-element scheme classes + custom

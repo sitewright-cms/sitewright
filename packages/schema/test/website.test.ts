@@ -22,6 +22,22 @@ import {
   CONTAINER_WIDTH_PRESETS,
 } from '../src/website.js';
 
+describe('website.consent (ConsentSchema)', () => {
+  it('parses a full consent config round-trip', () => {
+    const c = { consent: { enabled: true, version: 2, layout: 'box' as const, categories: ['analytics' as const], denyButton: false, privacyHref: '/privacy' } };
+    expect(WebsiteSettingsSchema.parse(c)).toEqual(c);
+  });
+  it('treats consent as off by default (empty object / omitted)', () => {
+    expect(WebsiteSettingsSchema.parse({ consent: {} }).consent).toEqual({});
+    expect(WebsiteSettingsSchema.parse({}).consent).toBeUndefined();
+  });
+  it('rejects an unknown category, a bad layout, and a non-positive version', () => {
+    expect(() => WebsiteSettingsSchema.parse({ consent: { categories: ['tracking'] } })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ consent: { layout: 'popup' } })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ consent: { version: 0 } })).toThrow();
+  });
+});
+
 describe('WebsiteSettingsSchema', () => {
   it('accepts the raw owner-only fields (head / criticalCss / scripts)', () => {
     const w = {

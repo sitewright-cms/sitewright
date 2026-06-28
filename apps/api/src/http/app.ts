@@ -48,6 +48,7 @@ import {
   COMPONENT_CATALOG,
   isScreenshotViewportName,
   DEFAULT_SCREENSHOT_VIEWPORTS,
+  siteCspHeaderFromHtml,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -3679,6 +3680,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const safePath = path.replace(/[\r\n\0]/g, '');
           return reply.redirect(`${siteBase}${safePath}/${query}`, 301);
         }
+        // Per-site CSP widening (PAGE responses only): a consent-enabled site WITH third-party integrations
+        // bakes a `<meta http-equiv CSP>` into its HTML; reconstruct the RESPONSE-HEADER form from it (the
+        // meta = header minus frame-ancestors). This costs only a string scan — no settings read — and is
+        // guaranteed consistent with the served HTML. It RELAXES the strict `default-src 'self'` default to
+        // EXACTLY the registered origins for BOTH the subdomain and the path form (they share this handler);
+        // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
+        const siteCsp = siteCspHeaderFromHtml(html);
+        if (siteCsp) reply.header('content-security-policy', siteCsp).header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
         return reply.type('text/html').send(html);
       },
     );

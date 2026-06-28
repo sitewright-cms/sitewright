@@ -174,6 +174,15 @@ describe('{{sw-consent}} / {{sw-consent-settings}} — consent manager helpers',
     const good = { website: { consent: { enabled: true, privacyHref: '/privacy' } } } as unknown as TemplateContext;
     expect(renderTemplate('{{sw-consent}}', good)).toContain('/privacy');
   });
+  it('bakes the integration registry into the config as runtime descriptors', () => {
+    const cfg = {
+      website: { consent: { enabled: true, integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }] } },
+    } as unknown as TemplateContext;
+    const out = renderTemplate('{{sw-consent}}', cfg);
+    expect(out).toContain('ga4'); // the runtime kind
+    expect(out).toContain('googletagmanager.com'); // the derived gtag loader host
+    expect(out).toContain('G-X'); // the measurement id
+  });
 });
 
 describe('{{sw-theme-toggle}} — theme toggle helper', () => {

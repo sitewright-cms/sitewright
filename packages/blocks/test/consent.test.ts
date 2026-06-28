@@ -69,3 +69,27 @@ describe('usesConsent gate (only-used-ships)', () => {
     expect([...CONSENT_CATEGORIES]).toEqual(['functional', 'analytics', 'marketing']);
   });
 });
+
+describe('consent integration injection (CONSENT_JS)', () => {
+  it('injects consented integrations once, de-duped, gated by the granted category', () => {
+    expect(CONSENT_JS).toContain('cfg.ints');
+    expect(CONSENT_JS).toContain('loadConsented');
+    expect(CONSENT_JS).toContain("createElement('script')");
+    expect(CONSENT_JS).toContain('data-sw-consent-loaded'); // de-dupe marker on the injected <script>
+    expect(CONSENT_JS).toContain('loaded[it.id]'); // de-dupe
+    expect(CONSENT_JS).toContain('current[it.cat]'); // gated by the consented category
+    // CSP-safe: injects EXTERNAL src scripts only — no eval/new Function.
+    expect(CONSENT_JS).not.toMatch(/\beval\(/);
+    expect(CONSENT_JS).not.toMatch(/\bnew\s+Function\s*\(/);
+  });
+  it('runs the gtag/gtm bootstrap in self-origin (no external inline script needed)', () => {
+    expect(CONSENT_JS).toContain('window.dataLayer');
+    expect(CONSENT_JS).toContain('gtag');
+    expect(CONSENT_JS).toContain('gtm.start');
+  });
+  it('registers a securitypolicyviolation listener that loudly names a blocked origin', () => {
+    expect(CONSENT_JS).toContain("'securitypolicyviolation'");
+    expect(CONSENT_JS).toContain('console.error');
+    expect(CONSENT_JS).toContain('blockedURI');
+  });
+});

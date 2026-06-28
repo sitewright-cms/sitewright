@@ -146,3 +146,94 @@ describe('Consent runtime behavior (jsdom)', () => {
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: false, marketing: true });
   });
 });
+
+describe('Consent integration injection (jsdom)', () => {
+  const INTS = [
+    { id: 'ga', cat: 'analytics', kind: 'ga4', mid: 'G-X', src: 'https://www.googletagmanager.com/gtag/js?id=G-X', async: true },
+    { id: 'chat', cat: 'functional', kind: 'script', src: 'https://w.example/c.js', async: true },
+  ];
+  const cfgInts = { ...CONFIG, ints: INTS };
+  const injected = (id: string): Element | null => document.querySelector(`script[data-sw-consent-loaded="${id}"]`);
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    Array.from(document.querySelectorAll('[data-sw-consent-loaded]')).forEach((s) => s.remove());
+    delete (window as unknown as { dataLayer?: unknown }).dataLayer;
+    delete (window as unknown as { gtag?: unknown }).gtag;
+  });
+
+  it('injects NOTHING before the visitor consents (first visit)', () => {
+    run(cfgInts);
+    expect(injected('ga')).toBeNull();
+    expect(injected('chat')).toBeNull();
+  });
+
+  it('Accept all → injects every integration and bootstraps gtag (self-origin)', () => {
+    run(cfgInts);
+    btn('Accept all').click();
+    expect(injected('ga')).not.toBeNull();
+    expect(injected('chat')).not.toBeNull();
+    expect((window as unknown as { dataLayer?: unknown[] }).dataLayer).toBeDefined();
+    expect(typeof (window as unknown as { gtag?: unknown }).gtag).toBe('function');
+  });
+
+  it('Reject all → injects nothing', () => {
+    run(cfgInts);
+    btn('Reject all').click();
+    expect(injected('ga')).toBeNull();
+    expect(injected('chat')).toBeNull();
+  });
+
+  it('injects ONLY the integrations whose category was granted (Customize → analytics only)', () => {
+    run(cfgInts);
+    btn('Customize').click();
+    (Array.from(root().querySelectorAll('.sw-consent-cat input')) as HTMLInputElement[])[2]!.checked = true; // analytics
+    btn('Save preferences').click();
+    expect(injected('ga')).not.toBeNull(); // analytics granted
+    expect(injected('chat')).toBeNull(); // functional NOT granted
+  });
+
+  it('a returning visitor with stored consent re-injects on load', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: true, marketing: false } }));
+    run(cfgInts);
+    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(injected('ga')).not.toBeNull();
+  });
+
+  it('de-dupes — never double-injects when consent is re-applied', () => {
+    run(cfgInts);
+    btn('Accept all').click();
+    (window as unknown as { swConsent: { set: (c: Record<string, boolean>) => void } }).swConsent.set({ functional: true, analytics: true, marketing: true });
+    expect(document.querySelectorAll('script[data-sw-consent-loaded="ga"]').length).toBe(1);
+  });
+
+  it('a GTM integration injects gtm.js and pushes gtm.start to the dataLayer', () => {
+    run({ ...CONFIG, ints: [{ id: 'gtm', cat: 'analytics', kind: 'gtm', mid: 'GTM-XY', src: 'https://www.googletagmanager.com/gtm.js?id=GTM-XY', async: true }] });
+    btn('Accept all').click();
+    expect(injected('gtm')).not.toBeNull();
+    const dl = (window as unknown as { dataLayer?: Array<Record<string, unknown>> }).dataLayer!;
+    expect(dl.some((e) => e && e['gtm.start'])).toBe(true);
+  });
+
+  it('multiple GA4 ids load gtag.js ONCE but config each id (no double-load)', () => {
+    run({
+      ...CONFIG,
+      ints: [
+        { id: 'ga1', cat: 'analytics', kind: 'ga4', mid: 'G-AAA', src: 'https://www.googletagmanager.com/gtag/js?id=G-AAA', async: true },
+        { id: 'ga2', cat: 'analytics', kind: 'ga4', mid: 'G-BBB', src: 'https://www.googletagmanager.com/gtag/js?id=G-BBB', async: true },
+      ],
+    });
+    btn('Accept all').click();
+    expect(document.querySelectorAll('script[data-sw-consent-loaded]').length).toBe(1); // gtag.js loaded once
+    const dl = (window as unknown as { dataLayer?: Array<Record<number, unknown>> }).dataLayer!;
+    const configs = dl.filter((a) => a && a[0] === 'config').map((a) => a[1]);
+    expect(configs).toEqual(expect.arrayContaining(['G-AAA', 'G-BBB'])); // both ids configured
+  });
+
+  it('a custom integration with async=false injects a non-async script', () => {
+    run({ ...CONFIG, ints: [{ id: 'sync', cat: 'functional', kind: 'script', src: 'https://w.example/s.js', async: false }] });
+    btn('Accept all').click();
+    expect((injected('sync') as HTMLScriptElement).async).toBe(false);
+  });
+});

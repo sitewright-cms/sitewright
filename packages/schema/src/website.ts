@@ -228,10 +228,72 @@ export type Shop = z.infer<typeof ShopSchema>;
 /** The OPTIONAL consent categories (Necessary is implicit + always granted). */
 export const CONSENT_CATEGORY_VALUES = ['functional', 'analytics', 'marketing'] as const;
 
+/** The third-party integration presets the registry understands. `custom` = an arbitrary external script. */
+export const CONSENT_INTEGRATION_PRESETS = ['ga4', 'gtm', 'custom'] as const;
+
+/** A bare hostname, optionally one leading `*.` wildcard. NO scheme/path/port/bare-`*` (the CSP builder prepends https://). */
+const CSP_HOST_RE = /^(\*\.)?([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+/**
+ * One consent-gated third-party integration. The runtime loads it ONLY after the visitor consents to
+ * its `category`; publish derives the per-site CSP origin allow-list from these (curated preset bundles
+ * + the `src` host + any extra `origins`). Owner-set, schema-bounded — never attacker-injectable.
+ */
+export const ConsentIntegrationSchema = z
+  .object({
+    /** Stable slug — the runtime de-dupe key + the data attribute on the injected <script>. */
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/i, 'id must be a slug (letters/digits/-, ≤64 chars)'),
+    /** Display name (editor + docs), e.g. "Google Analytics". */
+    name: z.string().min(1).max(80),
+    /** The consent category that gates it (Necessary can't gate — it is always granted). */
+    category: z.enum(CONSENT_CATEGORY_VALUES),
+    /** Integration kind. Omit = `custom` (an arbitrary external script via `src`). */
+    preset: z.enum(CONSENT_INTEGRATION_PRESETS).optional(),
+    /** ga4: the `G-XXXX` measurement id. gtm: the `GTM-XXXX` container id. */
+    measurementId: z.string().max(40).optional(),
+    /** custom: the external script URL to inject on consent (HTTPS only). */
+    src: z.string().max(2048).optional(),
+    /** custom: load the script async (default true). */
+    async: z.boolean().optional(),
+    /**
+     * ADVANCED — extra CSP hosts beyond the preset bundle + the `src` host (e.g. a chatbot's
+     * websocket/CDN origin). Bare hostnames or a single `*.` wildcard; NO scheme/path/port/bare-`*`
+     * (the publisher prepends `https://`). Added to script-src + connect-src.
+     */
+    origins: z
+      .array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path'))
+      .max(20)
+      .optional(),
+  })
+  .superRefine((v, ctx) => {
+    const preset = v.preset ?? 'custom';
+    if (preset === 'custom') {
+      if (!v.src) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'a custom integration needs a script src' });
+      } else {
+        let httpsHost = false;
+        try {
+          httpsHost = new URL(v.src).protocol === 'https:';
+        } catch {
+          httpsHost = false;
+        }
+        if (!httpsHost) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'src must be a valid https:// URL' });
+        else if (targetsPrivateHost(v.src)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'src must not point to a private/loopback host' });
+      }
+    } else if (!v.measurementId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} needs a measurementId` });
+    } else {
+      const re = preset === 'ga4' ? /^G-[A-Z0-9]+$/i : /^GTM-[A-Z0-9]+$/i;
+      if (!re.test(v.measurementId))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} measurementId must look like ${preset === 'ga4' ? 'G-XXXXXXX' : 'GTM-XXXXXX'}` });
+    }
+  });
+export type ConsentIntegration = z.infer<typeof ConsentIntegrationSchema>;
+
 /**
  * CONSENT MANAGER configuration (front-end cookie-consent). Like {@link ShopSchema}, this holds only
  * non-text STRUCTURE — all banner/category COPY is TRANSLATABLE and lives in the catalog (reserved
- * `consent_*` keys). The actual third-party gating (registry + CSP) layers on in later PRs.
+ * `consent_*` keys). `integrations` is the registry of third-party code the runtime gates by category.
  */
 export const ConsentSchema = z.object({
   /**
@@ -253,6 +315,12 @@ export const ConsentSchema = z.object({
   denyButton: z.boolean().optional(),
   /** Privacy-policy link shown in the banner — an internal page path or absolute URL (render-sanitized). */
   privacyHref: z.string().max(2048).optional(),
+  /**
+   * Managed third-party INTEGRATIONS (analytics / chatbots / scripts). Each is loaded ONLY after its
+   * category is consented; publish derives the per-site CSP origin allow-list from them. See
+   * {@link ConsentIntegrationSchema}.
+   */
+  integrations: z.array(ConsentIntegrationSchema).max(20).optional(),
 });
 export type Consent = z.infer<typeof ConsentSchema>;
 

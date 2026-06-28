@@ -78,7 +78,10 @@ describe('CodeRecordManager', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
     // Hovering the trigger portals a description bubble (not a clipped CSS data-tip).
     fireEvent.mouseEnter(name.parentElement!);
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Bind page variables and list children.');
+    const bubble = screen.getByRole('tooltip');
+    expect(bubble).toHaveTextContent('Bind page variables and list children.');
+    // trigger references the bubble for screen readers
+    expect(name.parentElement).toHaveAttribute('aria-describedby', bubble.id);
     fireEvent.mouseLeave(name.parentElement!);
     expect(screen.queryByRole('tooltip')).toBeNull();
   });

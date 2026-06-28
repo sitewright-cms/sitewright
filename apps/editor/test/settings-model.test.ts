@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
-import { toForm, toBundle, newShopChannel, newShopField, shopLabelKeys } from '../src/views/settings/model';
+import { toForm, toBundle, newShopChannel, newShopField, shopLabelKeys, newConsentIntegration } from '../src/views/settings/model';
 import type { SettingsBundle } from '../src/api';
 
 const full: SettingsBundle = {
@@ -74,7 +74,7 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withShop.website!.shop);
   });
 
-  it('round-trips website.consent VERBATIM (no data loss on save — the config has no editor panel yet)', () => {
+  it('round-trips website.consent (no data loss on save)', () => {
     const withConsent: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },
       website: { consent: { enabled: true, version: 2, layout: 'box', categories: ['analytics'], denyButton: false, privacyHref: '/privacy' } },
@@ -83,6 +83,43 @@ describe('settings model', () => {
     expect(toForm(withConsent).consent?.enabled).toBe(true);
     // A settings save (toForm → edit something else → toBundle) MUST preserve the whole consent object.
     expect(toBundle(toForm(withConsent), withConsent).website?.consent).toEqual(withConsent.website!.consent);
+  });
+
+  it('round-trips consent integrations + drops an incomplete row so the save validates', () => {
+    const withInts: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: {
+        consent: {
+          enabled: true,
+          integrations: [
+            { id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' },
+            { id: 'chat', name: 'Chat', category: 'functional', preset: 'custom', src: 'https://w.example/c.js' },
+          ],
+        },
+      },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toBundle(toForm(withInts), withInts).website?.consent?.integrations).toEqual(withInts.website!.consent!.integrations);
+    // Half-filled rows the editor can produce (no src / no measurementId / no name) are dropped on save.
+    const form = toForm(withInts);
+    form.consent = {
+      enabled: true,
+      integrations: [
+        { id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' },
+        { id: 'half', name: 'Half', category: 'marketing', preset: 'custom' }, // no src → dropped
+        { id: 'noname', name: '', category: 'analytics', preset: 'gtm', measurementId: 'GTM-Y' }, // no name → dropped
+      ],
+    };
+    expect(toBundle(form, withInts).website?.consent?.integrations?.map((i) => i.id)).toEqual(['ga']);
+  });
+
+  it("newConsentIntegration produces a valid, uniquely-id'd GA4 row", () => {
+    const a = newConsentIntegration();
+    const b = newConsentIntegration();
+    expect(a.id).not.toBe(b.id);
+    expect(a.preset).toBe('ga4');
+    expect(a.category).toBe('analytics');
+    expect(/^[a-z0-9][a-z0-9-]{0,63}$/.test(a.id)).toBe(true);
   });
 
   it('round-trips the shop enabled toggle (and toggling on with no config yields a bare {enabled})', () => {

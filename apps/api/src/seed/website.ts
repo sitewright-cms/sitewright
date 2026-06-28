@@ -65,14 +65,10 @@ export const EXAMPLE_WEBSITE = {
     <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${T('footer_built', 'Built with Sitewright — code-first, instantly fast.')}</p>
   </div>
 </div>`,
-  // Site-wide bottom slot: the COOKIE-CONSENT banner (first-party component — localStorage state;
-  // server HTML ships it `hidden` and the runtime reveals it only without prior consent, so a
-  // no-JS visitor or the sandboxed preview never sees a stuck banner). The component's own CSS
-  // positions/styles it; the copy localizes via the strings lookup.
-  bottom: `<div data-sw-component="cookie-consent" hidden>
-  <p>${T('cookie_text', 'We use a few essential cookies to make this site work and anonymous analytics to improve it.')} <a class="link" href="{{sw-url ${SL('href_privacy')}}}">${T('cookie_more', 'Learn more')}</a></p>
-  <button type="button" class="btn btn-sm" data-sw-part="accept">${T('cookie_accept', 'OK, got it')}</button>
-</div>`,
+  // Site-wide bottom slot: the CONSENT MANAGER banner ({{sw-consent}} — gated on website.consent.enabled
+  // above). It shows a cookie banner with per-category preferences, gates the third-party integrations, and
+  // its copy localizes per page-locale from the reserved consent_* catalog keys. Place it ONCE, site-wide.
+  bottom: `{{sw-consent}}`,
   // RAW slot (not validated, not escaped): CSS-only motion + the demo's design-system utilities,
   // so the site looks alive in the JS-blocked preview AND on export. Scroll-reveal sections use
   // the first-party data-aos runtime (PE: fully visible without JS); these utilities cover the
@@ -135,6 +131,14 @@ export const EXAMPLE_WEBSITE = {
       },
       { kind: 'payment', key: 'pay', provider: 'paypal', urlTemplate: 'https://paypal.me/northwind/{total}' },
     ],
+  },
+  // CONSENT MANAGER — the demo enables it to showcase the feature: a cookie banner with per-category
+  // preferences ({{sw-consent}} in the bottom slot) that gates a placeholder Google Analytics tracker, and
+  // derives the site Content-Security-Policy from it. The banner copy localizes from the reserved consent_*
+  // keys (seeded in strings.ts, en/de/es). A fresh project starts OFF — the operator opts in.
+  consent: {
+    enabled: true,
+    integrations: [{ id: 'analytics', name: 'Google Analytics', category: 'analytics', preset: 'ga4', measurementId: 'G-DEMO0000' }],
   },
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
   // language — so en→gb). This is project DATA (a config map), not translatable text.

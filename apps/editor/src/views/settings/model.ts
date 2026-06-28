@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -392,11 +392,26 @@ const put = <T extends object, K extends string, V>(obj: T, key: K, value: V | u
   value === undefined ? obj : ({ ...obj, [key]: value } as T);
 
 /**
+ * Drop incomplete integration rows the editor can produce (a half-filled row would 400 the save) and omit
+ * an empty list, so the consent the editor emits always validates against ConsentIntegrationSchema; every
+ * other consent field is preserved verbatim. (`integrations: undefined` is JSON-dropped + toEqual-ignored.)
+ */
+function cleanConsent(c: Consent): Consent {
+  const ok = (it: ConsentIntegration): boolean => {
+    const preset = it.preset ?? 'custom';
+    return preset === 'custom' ? !!(it.name && it.src) : !!(it.name && it.measurementId);
+  };
+  const ints = (c.integrations ?? []).filter(ok);
+  return { ...c, integrations: ints.length ? ints : undefined };
+}
+
+/**
  * Assemble a settings bundle from the form, omitting empty optionals. `base` is the
  * originally-loaded bundle: fields the form does NOT surface (spacing, radii,
  * typography.scale — e.g. set via the CLI/MCP) are carried through so a GUI save
  * never silently drops them.
  */
+
 export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBundle {
   const baseId = base?.identity;
   let identity: CorporateIdentity = { name: form.name.trim() || 'Untitled', colors: pairsToRecord(form.colors) };
@@ -544,7 +559,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
       ...(shop ? { shop } : {}),
-      ...(form.consent ? { consent: form.consent } : {}),
+      ...(form.consent ? { consent: cleanConsent(form.consent) } : {}),
       ...(effects ? { effects } : {}),
       ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),
@@ -591,6 +606,13 @@ export const newShopChannel = (): KeyedShopChannel => ({
 
 /** A fresh order-field row (defaults to a required single-line text input). */
 export const newShopField = (): KeyedShopField => ({ id: rowId(), key: '', type: 'text', required: true });
+
+/**
+ * A fresh consent-integration row (defaults to a GA4 analytics tracker). The `id` is auto-generated +
+ * unique (also the runtime de-dupe key) so the list editor can key React on it stably — the operator never
+ * edits it. It satisfies ConsentIntegrationSchema's slug regex (`/^[a-z0-9][a-z0-9-]{0,63}$/`).
+ */
+export const newConsentIntegration = (): ConsentIntegration => ({ id: `int-${rowSeq++}`, name: '', category: 'analytics', preset: 'ga4' });
 
 const SHOP_KIND_LABEL: Record<KeyedShopChannel['kind'], string> = {
   whatsapp: 'WhatsApp button',

@@ -38,7 +38,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   });
 
   it('every guide has a title, summary, and non-trivial body', () => {
-    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'templates', 'icons', 'nav', 'import']);
+    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import']);
     for (const t of GUIDE_TOPICS) {
       const g = AGENT_GUIDES[t];
       expect(g.title).toBeTruthy();

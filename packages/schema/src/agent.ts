@@ -451,6 +451,36 @@ the cart collects them before opening the link and appends them as "Label: value
 prefixed by the Corporate-Identity name ("Hi <name> — …").
 `,
   },
+  consent: {
+    title: "Cookie consent & third-party gating",
+    summary: "a cookie banner that loads analytics/chatbots/embeds ONLY after consent (+ derives the CSP)",
+    body: `
+CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. Turn it on
+with website.consent.enabled, then place {{sw-consent}} ONCE in the bottom slot. It shows a banner
+(Accept all / Reject all / Customize) + a per-category preferences panel: Strictly necessary (always on),
+Functional, Analytics, Marketing. The choice is remembered (versioned localStorage). Add a footer
+"Cookie settings" re-open link with {{sw-consent-settings}}.
+ALL banner COPY is TRANSLATABLE — it lives in website.translations under the reserved consent_* keys
+(consent_title, consent_intro, consent_accept_all, consent_reject_all, consent_customize, consent_save,
+consent_necessary[_desc], consent_functional[_desc], consent_analytics[_desc], consent_marketing[_desc],
+consent_settings, consent_privacy). website.consent holds only STRUCTURE:
+  consent: { enabled:true, version:1, layout:"bar"|"box", denyButton:true, privacyHref:"/privacy",
+             categories:["functional","analytics","marketing"],
+             integrations:[ {id:"ga", name:"Google Analytics", category:"analytics", preset:"ga4",
+                              measurementId:"G-XXXXXXX"},
+                            {id:"chat", name:"Support chat", category:"functional", preset:"custom",
+                              src:"https://widget.example.com/c.js"} ] }
+INTEGRATIONS = the third-party scripts to gate. Each loads ONLY after its category is consented. Presets:
+ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra CSP hosts in \`origins\`). On
+publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these origins — no manual
+allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
+CLICK-TO-LOAD EMBEDS: instead of a raw YouTube/Maps iframe (which loads on view + sets cookies), use
+{{sw-embed "youtube" "<video-id-or-url>"}} or {{sw-embed "google-maps" "<place-or-embed-url>"}} — it shows a
+placeholder and loads the iframe only after consent or a click, and the page's frame-src CSP is derived
+automatically. Embeds work even with consent off (pure click-to-load). Optional: category= / title= / ratio=.
+The whole thing is also configurable no-code in Settings → Website → Consent.
+`,
+  },
   templates: {
     title: "Templates, snippets & reuse",
     summary: "render a page from a template; reusable {{> snippets}} & widgets; ready-made global partials",

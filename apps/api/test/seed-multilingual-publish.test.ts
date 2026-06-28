@@ -158,15 +158,15 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('localizes the site chrome from one shared source (cookie banner, footer columns, mobile nav)', async () => {
     const en = await page('index.html');
-    expect(en).toContain('data-sw-component="cookie-consent"');
-    expect(en).toContain('OK, got it');
+    expect(en).toContain('data-sw-consent'); // the consent-manager banner mount ({{sw-consent}})
+    expect(en).toContain('We value your privacy'); // consent banner heading (en), from the consent_title catalog key
     expect(en).toContain('>Legal<'); // footer Legal column heading
     // The chrome now localizes via the EDITABLE data-sw-translate directive (S()→T()); the marker must
     // still be stripped from the published artifact (only the resolved text remains).
     expect(en).not.toContain('data-sw-translate');
     expect(en).toMatch(/aria-label="Menu"/); // mobile slot hamburger
     const de = await page('de/index.html');
-    expect(de).toContain('Alles klar'); // cookie banner (de)
+    expect(de).toContain('Wir schätzen Ihre Privatsphäre'); // consent banner (de), from consent_title
     expect(de).toContain('>Rechtliches<');
     expect(de).toMatch(/aria-label="Menü"/);
     expect(de).toContain('Datenschutz'); // the Legal column lists the German legal pages

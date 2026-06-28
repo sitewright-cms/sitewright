@@ -290,6 +290,45 @@ describe('buildSite', () => {
     expect(about).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>');
   });
 
+  it('rebases CI favicon + og:image media URLs to the bundled _assets path at every page depth', async () => {
+    // Regression: SEO/head values (favicon, og:image, schema.org logo/image) are resolved through
+    // rel() BEFORE the body media-rewrite, so rel() must do the same /media/<slug>/ → _assets/<id>/
+    // rebase — otherwise a relativised /media URL escapes that pass and ships a 404 favicon/og.
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const,
+          id: 'p',
+          name: 'Acme',
+          slug: 'acme',
+          identity: {
+            name: 'Acme',
+            colors: { primary: '#0a7' },
+            icon: '/media/acme/ic/ic-64.jpg',
+            image: '/media/acme/og/og-1200.jpg',
+          },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>Home</div>' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About</div>' },
+        ],
+      }),
+    });
+    // Depth 0: bundled under _assets/<id>/ (the slug segment dropped), page-relative.
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<link rel="icon" href="_assets/ic/ic-64.jpg" />');
+    expect(home).toContain('content="_assets/og/og-1200.jpg"');
+    expect(home).not.toContain('/media/acme/');
+    // Depth 1: rebased onto '../' — never a bare /media path or a malformed dotted path.
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64.jpg" />');
+    expect(about).toContain('content="../_assets/og/og-1200.jpg"');
+    expect(about).not.toContain('/media/acme/');
+  });
+
   it('marks the current nav item active via {{sw-active}} — class + aria-current swap per page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

@@ -293,6 +293,10 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     page.source = finalSource;
     // Mark the captured page for the AI rewrite stage (sourceUrl + rewritten:false; see get_guide("import")).
     page.data = { ...(page.data ?? {}), swImport: { sourceUrl: x.url, rewritten: false, ...(opts.importedAt ? { importedAt: opts.importedAt } : {}) } };
+    // A LITERAL import keeps the foreign CSS/JS → render the page as RAW HTML so the platform's own CSS/JS
+    // never fights it. A FOUNDATION import discards all foreign CSS/JS → render NATIVE (no rawHtml), so the
+    // page is styled by the platform sheet from the start (and an agent's nativization is visible at once).
+    if (!opts.foundation) page.rawHtml = true;
     const seo = seoByNorm.get(norm);
     if (seo?.title) page.title = seo.title;
     // NAV LABEL: page titles usually carry a " — Site Name" suffix; the nav menu should show just the page

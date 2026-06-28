@@ -12,7 +12,7 @@ import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, e
 import { type ContentRepository, SETTINGS_ENTITY_ID, type Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { RenderPool } from './render-pool.js';
-import { isRawFidelityPage } from '../import/raw-fidelity.js';
+import { isUnnativizedImport } from '../import/raw-fidelity.js';
 import { captureStyledTrees, type BodyBackground } from './nativize-capture.js';
 
 /** The headless capture seam — defaults to the real Playwright capture; tests inject a fixture. */
@@ -227,7 +227,7 @@ export async function nativizeProject(
   const palette = buildPalette(brand?.colors ?? {});
 
   const allPages = (await deps.contentRepo.list(ctx, 'page')) as Page[];
-  const targets = allPages.filter((p) => isRawFidelityPage(p));
+  const targets = allPages.filter((p) => isUnnativizedImport(p));
   const nctx: NativizeContext = { palette, originHosts: originHostsOf(allPages), breakpoints: ['', 'md:', 'lg:'] };
 
   // Group dataset entries (sorted) so dataset-driven {{#each}} loops — e.g. an inferred service-tile

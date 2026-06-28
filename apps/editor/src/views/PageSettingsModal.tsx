@@ -52,6 +52,8 @@ export interface PageSettingsValues {
   linkTarget: string;
   /** Link-placeholder only: open the target in a new tab. */
   linkNewTab: boolean;
+  /** Raw-HTML page: render `source` free-form, with NO platform CSS/JS injected. */
+  rawHtml: boolean;
 }
 
 /** Extracts the settings form values from a page. */
@@ -71,6 +73,7 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     image: page.image ?? '',
     linkTarget: page.link?.target ?? '',
     linkNewTab: page.link?.newTab ?? false,
+    rawHtml: page.rawHtml ?? false,
   };
 }
 
@@ -134,6 +137,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     locale: v.locale || undefined,
     description: v.description || undefined,
     image: v.image || undefined,
+    rawHtml: v.rawHtml || undefined,
   };
 }
 
@@ -604,6 +608,26 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             ))}
           </div>
         </div>
+
+        {page.kind !== 'link' && (
+          <div>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Raw HTML page"
+                checked={v.rawHtml}
+                onChange={(e) => patch({ rawHtml: e.target.checked })}
+              />
+              <span>
+                <span className="font-bold text-slate-700">Raw HTML</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                  Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts).
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
       </div>
     </Modal>
   );

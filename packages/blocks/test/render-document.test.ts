@@ -53,6 +53,17 @@ describe('renderDocument — document shell', () => {
     expect(renderDocument(page, { ...opts, rawFidelity: true })).not.toContain('/styles.css'); // raw: skipped
   });
 
+  it('rawFidelity omits ALL platform JS (theme-init head scripts + deferred component runtimes) but keeps inline scripts (the preview bridge)', () => {
+    const opts = { brand, bodyHtml: '<h1>Hi</h1>', headScripts: ['theme.js'], scripts: ['components.js'], inlineScripts: ['/*bridge*/'] };
+    const normal = renderDocument(page, opts);
+    expect(normal).toContain('theme.js');
+    expect(normal).toContain('components.js');
+    const raw = renderDocument(page, { ...opts, rawFidelity: true });
+    expect(raw).not.toContain('theme.js'); // platform no-flash init dropped
+    expect(raw).not.toContain('components.js'); // platform component runtime dropped
+    expect(raw).toContain('/*bridge*/'); // editor/preview bridge inline script preserved
+  });
+
   it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));

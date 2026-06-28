@@ -99,6 +99,8 @@ describe('buildImportBundle (integration)', () => {
     const home = pages.find((p) => p.path === '')!;
     const marker = (home.data as { swImport?: { sourceUrl?: string; rewritten?: boolean; importedAt?: string } }).swImport;
     expect(marker).toEqual({ sourceUrl: 'https://ex.com/', rewritten: false, importedAt: '2026-06-20T00:00:00.000Z' });
+    // A LITERAL import keeps the foreign CSS → captured pages render as RAW HTML (no platform CSS/JS to fight it).
+    expect((home as { rawHtml?: boolean }).rawHtml).toBe(true);
   });
 
   it('labels a trilingual crawl with locales + translationGroups', async () => {
@@ -266,6 +268,9 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     expect(home.nav).toMatchObject({ slots: expect.arrayContaining(['header']), title: 'Home' });
     expect(result.diagnostics.some((d) => d.code === 'foundation-applied')).toBe(true);
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+    // FOUNDATION discards all foreign CSS/JS → pages render NATIVE (no rawHtml), so they're styled by the
+    // platform sheet from the start (no raw-fidelity deadlock for the nativizing agent).
+    for (const p of bundle.pages) expect((p as { rawHtml?: boolean }).rawHtml).toBeUndefined();
   });
 
   it('does NOT host the foreign stylesheet, scripts, or icon fonts (keeps brand fonts) — R30', async () => {

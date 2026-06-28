@@ -46,6 +46,14 @@ const PageObject = z
     /** Exclude from search indexing + the sitemap (`<meta name="robots" content="noindex">`). */
     noindex: z.boolean().optional(),
     /**
+     * Raw HTML page: render the page `source` as FREE-FORM HTML with NO platform CSS or JS injected — the
+     * compiled Tailwind/DaisyUI utility sheet, the platform base + typography CSS, the no-flash theme init,
+     * and the component runtimes are ALL omitted (the page brings its own styling/scripts). The skeleton
+     * landmarks and the site head/criticalCss/scripts slots still apply. Off by default; for pasting a
+     * self-contained external page verbatim.
+     */
+    rawHtml: z.boolean().optional(),
+    /**
      * Code-first template reference: when set, this page renders the TEMPLATE's
      * Handlebars source (a project `template` entity, or a built-in `global:<key>`),
      * contributing only its own editable `page.data` overrides + settings. The page editor

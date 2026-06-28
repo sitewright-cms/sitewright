@@ -105,7 +105,22 @@ export const CONSENT_JS = `(function(){
     var btnSave=el('button',{cls:'btn btn-sm',text:txt('save','Save preferences'),attrs:{type:'button',style:'display:none'}});
     var btnAccept=el('button',{cls:'btn btn-sm btn-primary',text:txt('acceptAll','Accept all'),attrs:{type:'button'}});
 
-    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});root.setAttribute('hidden','');broadcast();}
+    // Managed third-party integrations the runtime injects when their category is consented (de-duped by id).
+    // NOTE: once a script is in the DOM it can't be retracted — withdrawing a category is honored on the NEXT
+    // page load only (the banner re-prompt + version bump handle re-consent). Browsers don't un-run scripts.
+    var ints=(cfg.ints&&cfg.ints.length)?cfg.ints:[];
+    var loaded={},gtagLoaded=0;
+    function injectScript(src,async,id){var s=document.createElement('script');s.src=src;s.async=!!async;s.setAttribute('data-sw-consent-loaded',id);(document.head||document.documentElement).appendChild(s);} // async set EXPLICITLY — a dynamically-created script defaults to async=true, so async:false must be forced off
+    // ga4/gtm run a self-origin bootstrap (consent.js is 'self', so no inline-CSP issue) then load the external
+    // gtag/gtm script; a plain 'script' just loads its src. CSP allows only the registered origins (derived at publish).
+    function loadConsented(){
+      for(var k=0;k<ints.length;k++){var it=ints[k];if(!it||loaded[it.id]||!current[it.cat])continue;loaded[it.id]=1;
+        if(it.kind==='ga4'){window.dataLayer=window.dataLayer||[];if(!window.gtag)window.gtag=function(){window.dataLayer.push(arguments);};window.gtag('js',new Date());if(it.mid)window.gtag('config',it.mid);if(!gtagLoaded){gtagLoaded=1;injectScript(it.src,true,it.id);}} // gtag.js loads ONCE; extra GA4 ids just gtag('config',…)
+        else if(it.kind==='gtm'){window.dataLayer=window.dataLayer||[];window.dataLayer.push({'gtm.start':+new Date(),event:'gtm.js'});injectScript(it.src,true,it.id);}
+        else{injectScript(it.src,it.async!==false,it.id);}
+      }
+    }
+    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});root.setAttribute('hidden','');broadcast();loadConsented();}
     function openPrefs(){root.setAttribute('data-prefs','open');btnSave.style.display='';for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}}
     btnCustomize.addEventListener('click',openPrefs);
     if(btnReject)btnReject.addEventListener('click',function(){apply(emptyCats(false));});
@@ -128,6 +143,7 @@ export const CONSENT_JS = `(function(){
       current=withNecessary(rec.cats);
       root.setAttribute('hidden','');
       broadcast(); // already-consented: tell late listeners the current state
+      loadConsented(); // re-inject the integrations the visitor already consented to (on every page load)
     }else{
       root.removeAttribute('hidden');
     }
@@ -146,6 +162,9 @@ export const CONSENT_JS = `(function(){
     document.addEventListener('click',function(e){
       var t=e.target;while(t&&t!==document){if(t.getAttribute&&t.getAttribute('data-sw-consent-open')!=null){e.preventDefault();if(window.swConsent)window.swConsent.open();return;}t=t.parentNode;}
     });
+    // Enforce-with-a-loud-error: if the CSP blocks a consented integration's origin, name it so the owner
+    // can add it to that integration's allowed origins (the gating still worked — this is the hardening layer).
+    window.addEventListener('securitypolicyviolation',function(e){try{if(e.blockedURI&&/script-src|connect-src|frame-src|img-src/.test(e.violatedDirective||'')){console.error('[sw-consent] CSP blocked '+e.blockedURI+' ('+e.violatedDirective+'). If this is a consented integration, add its origin to that integration\\'s allowed origins.');}}catch(_e){}});
   }
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;

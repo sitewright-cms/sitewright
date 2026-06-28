@@ -140,6 +140,62 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.get(`/sites/${slug}/consent.js`)).statusCode).toBe(404);
   });
 
+  it('widens the per-site CSP (response header + baked meta) for a consent site with a GA integration', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: {
+            consent: { enabled: true, integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' }] },
+            bottom: '{{sw-consent}}',
+          },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Home</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    // (a) the RESPONSE-HEADER CSP is widened to EXACTLY the GA origins (script + connect), strict elsewhere.
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("script-src 'self' https://www.googletagmanager.com");
+    expect(csp).toContain('https://www.google-analytics.com'); // connect-src
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp.split('; ').find((d) => d.startsWith('script-src'))).not.toContain("'unsafe-inline'");
+    // (b) the baked <meta> CSP gives static-export parity (same allow-list, minus frame-ancestors).
+    expect(index.body).toContain('http-equiv="Content-Security-Policy"');
+    expect(index.body).toContain('https://www.googletagmanager.com');
+    // (c) the consent config bakes the ga4 runtime descriptor for the runtime to inject on consent.
+    expect(index.body).toContain('data-sw-consent-config');
+    expect(index.body).toContain('ga4');
+  });
+
+  it('does NOT widen the CSP for a consent site with NO integrations (strict default stays)', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Home</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("default-src 'self'"); // the strict onSend default
+    expect(csp).not.toContain('googletagmanager'); // no widening
+    expect(index.body).not.toContain('http-equiv="Content-Security-Policy"'); // no baked meta
+  });
+
   it('ships ONLY the dialog runtime when a code-first page authors a bare <dialog> (no component, no placeholder)', async () => {
     const proj = client.project(projectId);
     // A global modal opened from an in-content anchor — no nav placeholder, no component wrapper.

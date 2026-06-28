@@ -111,6 +111,8 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   head?: string;
   customScripts?: string;
+  /** Consent-derived `<meta http-equiv="Content-Security-Policy">` content (static-export parity). Omit = none. */
+  metaCsp?: string;
   /**
    * Project-wide critical CSS, inlined in `<head>` after the brand styles
    * (contentBase's `critical_css`). Same raw-trust model as the head/customScripts
@@ -220,6 +222,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     organization,
     head,
     customScripts,
+    metaCsp,
     criticalCss,
     stylesheets,
     inlineStyles,
@@ -285,6 +288,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
+    // Consent-derived CSP for static-export parity (so a strict external host allows the consented
+    // third-party origins); platform-local serving ALSO sets it as a response header. Omitted when no
+    // consent integrations are configured, so a consent-off site is byte-identical.
+    (metaCsp ? `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(metaCsp)}" />\n` : '') +
     // No-flash color-scheme init FIRST (sync, pre-paint): re-applies a returning visitor's stored
     // scheme before the document renders. External (publish) or inlined (sandboxed preview).
     // RAW-HTML pages omit ALL platform JS (this theme init + the component runtimes below).

@@ -89,6 +89,7 @@ import {
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
   buttonEffectUsesRuntime,
+  buildConsentMetaCsp,
   type FormPublic,
   type MediaAsset,
 } from '@sitewright/schema';
@@ -798,6 +799,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           organization,
           criticalCss: website?.criticalCss,
           head: website?.head,
+          // Baked CSP for static-export parity (a strict external host then allows the consented
+          // third-party origins). Platform-local serving ALSO sets it as a response header. Omit = none.
+          metaCsp: buildConsentMetaCsp(website?.consent),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

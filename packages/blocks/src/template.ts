@@ -25,7 +25,7 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
-import { RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
+import { RESERVED_TRANSLATION_DEFAULTS, consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -721,6 +721,10 @@ function createInstance(): typeof Handlebars {
         privacyLabel: tr('consent_privacy'),
       },
     };
+    // Managed integrations the runtime injects on consent (each {id,cat,kind,src,mid,async}); only the
+    // valid ones are baked. The per-site CSP origin allow-list is derived from the SAME registry at publish.
+    const ints = consentRuntimeIntegrations(consent as unknown as Consent);
+    if (ints.length) cfg.ints = ints;
     const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
     if (privacy && privacy !== '#') cfg.privacy = privacy;
     // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip

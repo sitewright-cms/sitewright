@@ -589,8 +589,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         await mkdir(dirname(full), { recursive: true });
         // Internal page links + assets are relative to this page's depth (portable).
         const siteRoot = relativeRoot(outSlug);
+        // Editor media URLs (`/media/<slug>/<id>/<file>`) bundle under `_assets/<id>/<file>` (the
+        // slug segment is dropped). The page-BODY rewrite below handles raw `/media/…` refs, but
+        // SEO/head values (favicon, og:image, schema.org logo/image) are resolved HERE first — so
+        // `rel()` must do the SAME media→_assets rebase, else a relativised `/media/…` no longer
+        // matches that body pass and ships broken (a 404 favicon/og at every page depth).
+        const mediaPrefix = `/media/${bundle.project.slug}/`;
         const rel = (src: string | undefined): string | undefined =>
-          src ? resolveInternalUrl(src, siteRoot) : undefined;
+          !src
+            ? undefined
+            : src.startsWith(mediaPrefix)
+              ? `${siteRoot}${ASSET_DIR}/${src.slice(mediaPrefix.length)}`
+              : resolveInternalUrl(src, siteRoot);
         const organization = baseOrg
           ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
           : undefined;
@@ -814,7 +824,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // `data-bg`/`data-src`/`srcset` that `relativizeInternalLinks` misses. The prefix is a
         // slug-scoped literal, so a stray match in body text/an operator `<script>` string would
         // only be a reference to THIS project's own media — i.e. one we want rebased anyway.
-        const mediaPrefix = `/media/${bundle.project.slug}/`;
+        // (`mediaPrefix` is defined above, shared with the SEO/head `rel()` rebase.)
         const mediaRebased = html.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`

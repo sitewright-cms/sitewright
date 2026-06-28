@@ -606,6 +606,100 @@ function productTile(item: 'tee' | 'mug' | 'notebook' | 'poster' | 'stickers' | 
 </svg>`;
 }
 
+// ------------------------------------------------------------------ brand mark
+// The Northwind corporate identity — a single cohesive "compass needle" motif drawn three ways:
+// a bright app ICON (favicon), a deep-field LOGO tile (preloader + schema.org), and a 1.91:1 OG
+// share card. All are pure shapes/paths (NO <text> — the trusted SVG renderer has no fonts), so the
+// name is conveyed by the surrounding HTML, never baked into the art (keeps the mark editable + i18n-safe).
+
+const BRAND = { primary: '#4f46e5', secondary: '#0ea5e9', glow: '#6366f1', deep0: '#1d1b3a', deep1: '#0a0918' };
+
+/** The compass needle: a vertical north(bright)/south(dim) diamond on a hub, optionally inside a
+ *  ticked ring. Reads as a compass at any size; the bright north point also evokes the brand "N". */
+function compassMark(cx: number, cy: number, r: number, ring: boolean, tint = '#ffffff'): string {
+  const w = r * 0.34; // needle half-width at the equator
+  const needle =
+    `<path d="M ${cx} ${cy - r} L ${cx + w} ${cy} L ${cx} ${cy + r} L ${cx - w} ${cy} Z" fill="${tint}" fill-opacity="0.42"/>` +
+    `<path d="M ${cx} ${cy - r} L ${cx + w} ${cy} L ${cx - w} ${cy} Z" fill="${tint}"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${(r * 0.12).toFixed(1)}" fill="${tint}"/>`;
+  if (!ring) return needle;
+  const rr = r * 1.5;
+  const ticks = [0, 90, 180, 270]
+    .map((deg) => {
+      const a = (deg * Math.PI) / 180;
+      const x1 = cx + Math.cos(a) * rr;
+      const y1 = cy + Math.sin(a) * rr;
+      const x2 = cx + Math.cos(a) * (rr - r * 0.2);
+      const y2 = cy + Math.sin(a) * (rr - r * 0.2);
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${tint}" stroke-opacity="0.75" stroke-width="${(r * 0.07).toFixed(1)}" stroke-linecap="round"/>`;
+    })
+    .join('');
+  return (
+    `<circle cx="${cx}" cy="${cy}" r="${rr.toFixed(1)}" fill="none" stroke="${tint}" stroke-opacity="0.5" stroke-width="${(r * 0.05).toFixed(1)}"/>` +
+    ticks +
+    needle
+  );
+}
+
+/** App icon / favicon: a full-bleed brand-gradient tile + a top-light sheen + the white needle. No
+ *  ring (it must stay legible at 16px). Full-bleed so the JPEG fallback (no alpha) still reads. */
+function brandIcon(w = 512, h = 512): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${BRAND.primary}"/><stop offset="1" stop-color="${BRAND.secondary}"/></linearGradient>
+    <radialGradient id="hl" cx="0.32" cy="0.24" r="0.85"><stop offset="0" stop-color="#ffffff" stop-opacity="0.4"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  <rect width="${w}" height="${h}" fill="url(#hl)"/>
+  ${compassMark(w / 2, h / 2, h * 0.3, false)}
+  ${grain(w, h, 71, 240)}
+</svg>`;
+}
+
+/** Primary logo tile (preloader + schema.org): a deep brand field + a soft glow + the RINGED, ticked
+ *  compass — elegant on the frosted dark preloader overlay and on any light surface alike. */
+function brandLogo(w = 512, h = 512): string {
+  const g = splitGlow(glow('lg', w * 0.5, h * 0.42, w * 0.52, BRAND.glow, 0.7));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${BRAND.deep0}"/><stop offset="1" stop-color="${BRAND.deep1}"/></linearGradient>
+    ${g.def}
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  ${g.shape}
+  ${compassMark(w / 2, h / 2, h * 0.25, true)}
+  ${grain(w, h, 72, 260)}
+  ${vignette(w, h, 0.32)}
+</svg>`;
+}
+
+/** Open Graph / social share card (1.91:1): a deep field + twin glows + a blueprint grid, the ringed
+ *  compass on the left third, and an abstract glass accent arc on the right. No text (see header). */
+function brandOg(w = 1200, h = 630): string {
+  const gA = splitGlow(glow('oA', w * 0.3, h * 0.28, w * 0.42, BRAND.glow, 0.8));
+  const gB = splitGlow(glow('oB', w * 0.86, h * 0.85, w * 0.46, BRAND.secondary, 0.5));
+  const grid =
+    Array.from({ length: 11 }, (_, i) => `<line x1="${(i + 1) * (w / 12)}" y1="0" x2="${(i + 1) * (w / 12)}" y2="${h}" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>`).join('') +
+    Array.from({ length: 5 }, (_, i) => `<line x1="0" y1="${(i + 1) * (h / 6)}" x2="${w}" y2="${(i + 1) * (h / 6)}" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>`).join('');
+  const arc =
+    `<circle cx="${w * 0.82}" cy="${h * 0.52}" r="${h * 0.34}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="2"/>` +
+    `<circle cx="${w * 0.82}" cy="${h * 0.52}" r="${h * 0.22}" fill="none" stroke="${BRAND.secondary}" stroke-opacity="0.5" stroke-width="3"/>` +
+    `<circle cx="${w * 0.82}" cy="${h * 0.52 - h * 0.22}" r="7" fill="#ffffff" fill-opacity="0.9"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#15132f"/><stop offset="1" stop-color="#080714"/></linearGradient><!-- a touch deeper/cooler than BRAND.deep0/1 for stronger social-card contrast -->
+    ${gA.def}${gB.def}
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  ${gA.shape}${gB.shape}
+  ${grid}
+  ${arc}
+  ${compassMark(w * 0.32, h * 0.5, h * 0.2, true)}
+  ${grain(w, h, 73, 900)}
+  ${vignette(w, h, 0.28)}
+</svg>`;
+}
+
 // Per-client art palettes — deep fields with two glow hues, all dark-editorial.
 const ART = {
   harbor: { bg0: '#2a1505', bg1: '#140a02', glowA: '#f59e0b', glowB: '#b45309', fg: '#fde8c8' },
@@ -635,9 +729,9 @@ interface AssetSpec {
   svg: string;
 }
 
-/** The 25 demo assets: 6 project covers, 4 team portraits, hero + studio art, a 4-shot Studio/
- * gallery (for the {{#sw-folder}} demo), 3 blog covers, and 6 MINI SHOP product tiles.
- * Exported for tests (count/folder assertions) and offline art review. */
+/** The 28 demo assets: 3 brand marks (logo/icon/OG), 6 project covers, 4 team portraits, hero +
+ * studio art, a 4-shot Studio/ gallery (for the {{#sw-folder}} demo), 3 blog covers, and 6 MINI SHOP
+ * product tiles. Exported for tests (count/folder assertions) and offline art review. */
 export function exampleAssetSpecs(): AssetSpec[] {
   const proj = (key: keyof typeof ART, seed: number, alt: string): AssetSpec => ({
     key: `proj-${key}`,
@@ -659,6 +753,10 @@ export function exampleAssetSpecs(): AssetSpec[] {
     svg: avatarOrb(a, b, deep, seed),
   });
   return [
+    // Brand/ — the corporate-identity marks wired into Settings → Corporate Identity (logo/icon/image).
+    { key: 'brand-logo', id: 'ex-brand-logo', folder: 'Brand', alt: 'Northwind Web Studio logo', w: 512, h: 512, svg: brandLogo() },
+    { key: 'brand-icon', id: 'ex-brand-icon', folder: 'Brand', alt: 'Northwind Web Studio icon', w: 512, h: 512, svg: brandIcon() },
+    { key: 'brand-og', id: 'ex-brand-og', folder: 'Brand', alt: 'Northwind Web Studio — websites that mean business', w: 1200, h: 630, svg: brandOg() },
     proj('harbor', 101, 'Harbor & Co. — a flavour-led coffee storefront'),
     proj('vela', 102, 'Vela Health — a calm patient portal'),
     proj('lumen', 103, 'Lumen Capital — a data-rich finance site'),

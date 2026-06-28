@@ -575,7 +575,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <div class="navbar hidden border-b border-base-200 bg-base-100 px-4 sm:px-8 lg:flex">
     <div class="navbar-start">
       <a class="btn btn-ghost gap-2.5 px-2 text-lg font-bold tracking-tight" href="{{sw-url '/'}}">
-        <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content shadow">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>
+        {{#if company.icon}}<img class="h-8 w-8 rounded-xl object-cover shadow" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content shadow">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>{{/if}}
         {{ company.name }}
       </a>
     </div>
@@ -611,7 +611,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <div class="navbar-start">
       <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "menu" "h-6 w-6"}}</label>
       <a class="btn btn-ghost gap-2 px-1 text-base font-bold tracking-tight" href="{{sw-url '/'}}">
-        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>
+        {{#if company.icon}}<img class="h-7 w-7 rounded-lg object-cover" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{/if}}
         {{ company.name }}
       </a>
     </div>
@@ -621,7 +621,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     {{!-- slide-in panel --}}
     <div class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0">
       <div class="flex items-center justify-between border-b border-base-200 p-4">
-        <a class="flex items-center gap-2 text-base font-bold tracking-tight" href="{{sw-url '/'}}"><span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{ company.name }}</a>
+        <a class="flex items-center gap-2 text-base font-bold tracking-tight" href="{{sw-url '/'}}">{{#if company.icon}}<img class="h-7 w-7 rounded-lg object-cover" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{/if}}{{ company.name }}</a>
         <label for="sw-nav-drawer" class="btn btn-ghost btn-square btn-sm" aria-label="Close">{{sw-icon "x" "h-5 w-5"}}</label>
       </div>
       <ul class="menu w-full flex-1 overflow-y-auto overflow-x-hidden p-3">
@@ -647,7 +647,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     source: `<div class="bg-neutral text-neutral-content">
   <div class="mx-auto grid max-w-6xl gap-x-8 gap-y-10 px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">
     <div class="sm:col-span-2">
-      <a class="flex items-center gap-2.5 text-lg font-bold" href="{{sw-url '/'}}"><span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>{{ company.name }}</a>
+      <a class="flex items-center gap-2.5 text-lg font-bold" href="{{sw-url '/'}}">{{#if company.icon}}<img class="h-8 w-8 rounded-xl object-cover" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>{{/if}}{{ company.name }}</a>
       <p class="mt-3 max-w-sm text-sm text-neutral-content/70" data-sw-text="footer_tagline">A short line about what you do.</p>
       {{#if company.social}}<ul class="mt-5 flex flex-wrap gap-2">{{#each company.social}}<li><a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/15 text-neutral-content/70 transition hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url link}}" aria-label="{{name}}" target="_blank" rel="noopener">{{sw-icon icon "h-4 w-4"}}</a></li>{{/each}}</ul>{{/if}}
     </div>

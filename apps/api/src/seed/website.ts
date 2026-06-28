@@ -18,8 +18,10 @@ const SL = (key: string): string => `(sw-translate "${key}")`;
 // MUST be a plain-text literal — never a user/dynamic value (that would be an injection surface).
 const T = (key: string, fallback: string): string => `<span data-sw-translate="${key}">${fallback}</span>`;
 
-/** The shared brand mark — a gradient tile with the Northwind compass-N cut as pure CSS borders. */
-const BRAND_MARK = `<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30">${icon('compass', 'h-4.5 w-4.5')}</span>`;
+/** The shared brand mark — the Corporate-Identity icon when one is set (Settings → CI), else a
+ *  gradient tile with the Northwind compass glyph. The img is decorative (the company name sits
+ *  beside it), so it carries an empty alt + aria-hidden. */
+const BRAND_MARK = `{{#if company.icon}}<img class="h-8 w-8 shrink-0 rounded-xl object-cover shadow-md shadow-primary/30" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30">${icon('compass', 'h-4.5 w-4.5')}</span>{{/if}}`;
 
 export const EXAMPLE_WEBSITE = {
   // Main Navigation — the platform DEFAULT (the nav-header recipe): a data-driven desktop bar +

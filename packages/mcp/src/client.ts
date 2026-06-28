@@ -305,4 +305,15 @@ export class SitewrightClient {
     );
     return res.item;
   }
+
+  /** Permanently delete a media asset (DB row + binary). Needs the content:delete capability. */
+  async deleteMedia(id: string): Promise<{ ok: true }> {
+    await this.request('DELETE', this.projectPath(`/media/${encodeURIComponent(id)}`));
+    return { ok: true };
+  }
+
+  /** Rename a dataset's slug, cascading the change to entries + page/template sources (default on). */
+  async renameDataset(id: string, slug: string, cascade = true): Promise<unknown> {
+    return this.request('POST', this.projectPath(`/datasets/${encodeURIComponent(id)}/rename`), { slug, cascade });
+  }
 }

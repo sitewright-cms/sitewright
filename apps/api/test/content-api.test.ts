@@ -215,4 +215,15 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
     expect((await put(t, projectId, 'template', 'land', { id: 'land', name: 'Landing', source: '<nav>x</nav>' })).statusCode).toBe(400);
     expect((await put(t, projectId, 'snippet', 'card', { id: 'card', name: 'card', source: '<div onclick="{{x}}">x</div>' })).statusCode).toBe(400);
   });
+
+  it('LOUDLY rejects a skeleton landmark in a chrome slot (slot-named) but allows neutral slot content', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+    const bad = await put(t, projectId, 'settings', 'settings', { ...base, website: { footer: '<footer><div>x</div></footer>' } });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/Footer.*<footer>/); // names the slot + element
+    expect((await put(t, projectId, 'settings', 'settings', { ...base, website: { mainNav: '<nav>x</nav>' } })).statusCode).toBe(400);
+    // neutral content is fine (the platform wraps it in the landmark)
+    expect((await put(t, projectId, 'settings', 'settings', { ...base, website: { footer: '<div class="footer">ok</div>' } })).statusCode).toBe(200);
+  });
 });

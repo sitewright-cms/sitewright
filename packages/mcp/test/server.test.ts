@@ -40,6 +40,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     createMediaFolder: vi.fn(async () => ({ ok: true })),
     renameMediaFolder: vi.fn(async () => ({ ok: true })),
     updateMedia: vi.fn(async (_id: string, changes: unknown) => ({ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', ...(changes as object) })),
+    deleteMedia: vi.fn(async () => ({ ok: true })),
+    renameDataset: vi.fn(async () => ({ oldSlug: 'items', newSlug: 'features', cascaded: true, entriesUpdated: 2, pagesUpdated: 1, templatesUpdated: 0, referencesUpdated: 0 })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -288,6 +290,35 @@ describe('createSitewrightMcpServer — media tools', () => {
     const renamed = await w.callTool({ name: 'move_media', arguments: { id: 'm1', filename: 'logo.svg' } });
     expect(renamed.isError).toBeFalsy();
     expect(callsOf(writer).updateMedia).toHaveBeenCalledWith('m1', { filename: 'logo.svg' });
+  });
+
+  it('delete_media needs content:delete (write alone is refused) and forwards the id with the scope', async () => {
+    // A write-only token cannot delete media (content:delete is separate, opt-in).
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const refused = await w.callTool({ name: 'delete_media', arguments: { id: 'm1' } });
+    expect(refused.isError).toBe(true);
+    expect(text(refused)).toMatch(/content:delete/);
+    expect(callsOf(writer).deleteMedia).not.toHaveBeenCalled();
+    // With content:delete it goes through.
+    const deleter = fakeClient();
+    const d = await connect(deleter, deleteScope);
+    const ok = await d.callTool({ name: 'delete_media', arguments: { id: 'm1' } });
+    expect(ok.isError).toBeFalsy();
+    expect(callsOf(deleter).deleteMedia).toHaveBeenCalledWith('m1');
+  });
+
+  it('rename_dataset forwards (id, slug, cascade=true) with a write token', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'rename_dataset', arguments: { id: 'ds1', slug: 'features' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).renameDataset).toHaveBeenCalledWith('ds1', 'features', true);
+    // read-only token is refused
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    expect((await r.callTool({ name: 'rename_dataset', arguments: { id: 'ds1', slug: 'features' } })).isError).toBe(true);
+    expect(callsOf(reader).renameDataset).not.toHaveBeenCalled();
   });
 
   it('move_media errors (no client call) when neither folder nor filename is given', async () => {

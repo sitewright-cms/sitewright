@@ -552,6 +552,26 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     }),
   );
 
+  server.registerTool(
+    'delete_media',
+    {
+      description:
+        'PERMANENTLY delete a single media asset (its DB row + stored binary). Its `/media/...` URL stops resolving, so make sure NO page/dataset still references it first (prefer moving an asset to an "Unused" folder if unsure). Use to prune orphaned imported files. Needs the `content:delete` capability (opt-in, not implied by content:write) — if your connection lacks it, ask the user to grant it or remove the asset in the editor.',
+      inputSchema: { id: z.string() },
+    },
+    gate('content:delete', ({ id }) => client.deleteMedia(id)),
+  );
+
+  server.registerTool(
+    'rename_dataset',
+    {
+      description:
+        "Rename a dataset's slug. This CASCADES automatically: every entry's `dataset` field and every page/template source's `{{#each dataset.<slug>}}` / `dataset=\"<slug>\"` reference (and any other dataset's reference-field target) is rewritten to the new slug in one transaction — so nothing breaks. Pass the dataset's ID (not its current slug) + the new slug. Returns how many entries/pages were updated.",
+      inputSchema: { id: z.string(), slug: z.string().min(1).max(120) },
+    },
+    gate('content:write', ({ id, slug }) => client.renameDataset(id, slug, true)),
+  );
+
   // ---------------------------------------------------------------- publish (publish)
   // NB: `deploy` is intentionally NOT exposed as a tool — pushing to a customer's external webspace
   // (FTP/SFTP credentials) from an autonomous agent is out of scope; deploy stays human-driven.

@@ -158,6 +158,25 @@ const SKELETON_LANDMARKS = new Map<string, string>([
   ['aside', 'the skeleton owns the sidebar landmarks <aside id="sidebar-left"> / <aside id="sidebar-right"> (authored via the Sidebar slots) — use a <div> for an aside inside your content'],
 ]);
 
+/**
+ * Find the first SKELETON-OWNED landmark element (`<nav>`/`<main>`/`<footer>`/`<aside>`) in a fragment —
+ * the platform wraps each chrome slot + the page body in one, so authored slot/page content must not
+ * repeat them. Returns the tag + a fix hint, or null. Comment + `<script>`/`<style>` bodies are ignored
+ * (a `<footer>` there is not a real element). This is the landmark-only subset of {@link validateTemplate}
+ * — used to reject landmarks in chrome SLOTS at save WITHOUT also rejecting their (separately handled)
+ * scripts, so the lenient-preview / strict-publish flow for other slot issues is preserved.
+ */
+export function findSkeletonLandmark(source: string): { tag: string; hint: string } | null {
+  const stripped = source
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, '');
+  const m = /<(nav|main|footer|aside)(?=[\s/>])/i.exec(stripped);
+  if (!m) return null;
+  const tag = (m[1] as string).toLowerCase();
+  return { tag, hint: SKELETON_LANDMARKS.get(tag) ?? '' };
+}
+
 export function validateTemplate(source: string): void {
   type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
   let mode: Mode = 'body';
@@ -192,15 +211,19 @@ export function validateTemplate(source: string): void {
     if (mode === 'tag') {
       if (sub !== 'value') reject('an interpolation in an unquoted attribute or tag structure');
       if (quote === '') reject('an interpolation in an unquoted attribute value');
-      if (attrName.startsWith('on') || attrName === 'style') reject(`an interpolation in the "${attrName}" attribute`);
+      // Only inline event handlers stay forbidden (they execute JS). A QUOTED `style` attribute is
+      // allowed: the value is HTML-escaped (no tag/attribute breakout) and inline CSS can't run script,
+      // so per-row values like style="color:{{color}}" are fine. (A `<style>` ELEMENT body stays blocked
+      // above — that content isn't escaped.)
+      if (attrName.startsWith('on')) reject(`an interpolation in the "${attrName}" event-handler attribute`);
       if (URL_ATTRS.has(attrName)) {
         const isUrlHelper = /^sw-url(\s|$)/.test(inner);
         if (valuePrefix === '') {
           // The interpolation is the whole value → it must be sanitized by {{sw-url …}}.
           if (!isUrlHelper) reject(`a bare value in the URL attribute "${attrName}" (use {{sw-url …}})`);
-        } else if (!/^(#|\/(?!\/)|https?:\/\/)/i.test(valuePrefix)) {
-          // A literal prefix only fixes the scheme when it starts with /, #, or http(s)://.
-          // `j{{x}}` (→ javascript:) and `//{{x}}` (protocol-relative) are rejected here.
+        } else if (!/^(#|\/(?!\/)|https?:\/\/|mailto:|tel:)/i.test(valuePrefix)) {
+          // A literal prefix only fixes the scheme when it's a known-inert one: /, #, http(s)://, or the
+          // non-executable mailto:/tel: schemes. `j{{x}}` (→ javascript:) and `//{{x}}` stay rejected.
           reject(`an interpolation in URL attribute "${attrName}" whose scheme is not fixed by a safe prefix`);
         }
       }

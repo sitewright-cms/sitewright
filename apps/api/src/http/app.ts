@@ -85,6 +85,7 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   validateTemplate,
+  findSkeletonLandmark,
   TemplateError,
   mediaForRender,
   decorateNav,
@@ -376,16 +377,52 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
 /** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
 const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
 /**
+ * The HTML chrome slots on `settings.website` that the SKELETON wraps in a semantic landmark (so their
+ * content must be landmark-free + template-safe, exactly like a page `source`). `head`/`scripts` are
+ * excluded — they legitimately hold `<style>`/`<link>` and self-hosted `<script src>`; `criticalCss` is
+ * CSS. Label is the editor's name for the slot, used in the error so the user/agent knows WHICH to fix.
+ */
+const CHROME_HTML_SLOTS: ReadonlyArray<readonly [slot: string, label: string]> = [
+  ['mainNav', 'Main Navigation'],
+  ['footer', 'Footer'],
+  ['sidebarLeft', 'Left Sidebar'],
+  ['sidebarRight', 'Right Sidebar'],
+  ['bottom', 'Bottom'],
+];
+/**
  * Validate-on-save: reject an unsafe template `source` when it's written, so a broken page/template/
  * snippet fails fast with a precise, located message (TemplateError → 400) instead of being stored
  * and only caught at publish (409) — and so an MCP agent's put_page surfaces the error immediately.
  * Skipped when there's no own source (a template-based page) or the body is malformed (the kind's
  * Zod schema in contentRepo.put rejects that).
+ *
+ * For `settings`, the same safety check runs on each HTML CHROME SLOT — previously a landmark tag
+ * (`<footer>`/`<nav>`/…) in a chrome slot was accepted silently and then dropped at render (the old
+ * chrome kept showing), with no error to the user or agent. Now it fails LOUDLY (400) naming the slot.
  */
 function validateSourceOnSave(kind: string, body: unknown): void {
-  if (!SOURCE_KINDS.has(kind)) return;
-  const source = (body as { source?: unknown } | null | undefined)?.source;
-  if (typeof source === 'string' && source.trim() !== '') validateTemplate(source);
+  if (SOURCE_KINDS.has(kind)) {
+    const source = (body as { source?: unknown } | null | undefined)?.source;
+    if (typeof source === 'string' && source.trim() !== '') validateTemplate(source);
+    return;
+  }
+  if (kind === 'settings') {
+    const website = (body as { website?: Record<string, unknown> } | null | undefined)?.website;
+    if (!website) return;
+    // Reject a skeleton LANDMARK (<nav>/<footer>/<aside>/<main>) in a chrome slot LOUDLY at save — the
+    // platform wraps each slot in that landmark, so a repeat was silently dropped at render (the old
+    // chrome kept showing, with no error). Landmark-ONLY on purpose: other slot issues (e.g. a stray
+    // <script>) keep the established lenient-preview / strict-publish flow rather than failing the save.
+    for (const [slot, label] of CHROME_HTML_SLOTS) {
+      // eslint-disable-next-line security/detect-object-injection -- `slot` is from the constant CHROME_HTML_SLOTS list
+      const val = website[slot];
+      if (typeof val !== 'string' || val.trim() === '') continue;
+      const found = findSkeletonLandmark(val);
+      if (found) {
+        throw new TemplateError(`the "${label}" chrome slot can't contain a <${found.tag}> element — ${found.hint}.`);
+      }
+    }
+  }
 }
 
 const RegisterBody = z.object({
@@ -2062,6 +2099,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const { ctx } = await resolveProject(req, 'content:delete');
       await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
       return reply.code(204).send();
+    },
+  );
+
+  // Rename a dataset's SLUG with an optional cascade (default ON): rewrite every entry's `dataset` field
+  // + every page/template source's `dataset.<slug>` refs so loops don't break. content:write (it edits
+  // pages). `cascade:false` renames only the dataset (the editor's plain "Rename" — leaves refs dangling).
+  const RenameDatasetBody = z.object({ slug: z.string().min(1).max(120), cascade: z.boolean().default(true) });
+  app.post<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/datasets/:id/rename',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const body = RenameDatasetBody.parse(req.body);
+      return reply.send(await contentRepo.renameDataset(ctx, req.params.id, body.slug, { cascade: body.cascade }));
     },
   );
 

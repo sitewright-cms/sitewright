@@ -41,11 +41,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   emitBrandContentTokens?: boolean;
   /**
-   * RAW-FIDELITY mode for an imported page that is still a faithful replica of its source (i.e. not yet
-   * "nativized"): omit the platform's OWN CSS — modern-normalize, the unlayered platform defaults, brand
-   * tokens and the typography/@font-face block — so the imported site's own stylesheet (which rides in
-   * the page `source` as a `<style>` block, or its hoisted chrome slots) renders exactly as on the
-   * original, without the platform base CSS fighting it. The page's own `<style>`/head still apply.
+   * RAW-HTML mode (driven by the page's `rawHtml` setting): render the page as FREE-FORM HTML with NO
+   * platform injection — omit the platform's OWN CSS (modern-normalize, the unlayered platform defaults,
+   * brand tokens, the typography/@font-face block AND the compiled utility sheet) and the platform's OWN
+   * JS (the no-flash theme init + the component runtimes) — so the page's own `<style>`/`<script>` (and
+   * the site head/criticalCss/scripts slots) are the only styling/behaviour. Used for pasting a
+   * self-contained external page verbatim; the preview bridge runtime still loads in the editor preview.
    */
   rawFidelity?: boolean;
   /**
@@ -286,10 +287,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
     // No-flash color-scheme init FIRST (sync, pre-paint): re-applies a returning visitor's stored
     // scheme before the document renders. External (publish) or inlined (sandboxed preview).
-    (headScripts ?? []).map((src) => `<script src="${escapeAttr(src)}"></script>\n`).join('') +
-    (headInlineScripts ?? [])
-      .map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>\n`)
-      .join('') +
+    // RAW-HTML pages omit ALL platform JS (this theme init + the component runtimes below).
+    (rawFidelity ? '' : (headScripts ?? []).map((src) => `<script src="${escapeAttr(src)}"></script>\n`).join('')) +
+    (rawFidelity
+      ? ''
+      : (headInlineScripts ?? []).map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>\n`).join('')) +
     `<title>${escapeHtml(title)}</title>\n` +
     `${meta}\n` +
     (jsonLd ? `${jsonLd}\n` : '') +
@@ -332,7 +334,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('div', 'bottom', bottom) +
     `${backToTop ?? ''}` +
     `${customScripts ?? ''}` +
-    (scripts ?? [])
+    // RAW-HTML pages omit the platform component runtimes (the page brings its own scripts).
+    (rawFidelity ? [] : (scripts ?? []))
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +
     (inlineScripts ?? [])

@@ -154,7 +154,6 @@ import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes } from './import-routes.js';
 import { registerNativizeRoutes } from './nativize-routes.js';
-import { isRawFidelityPage } from '../import/raw-fidelity.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -528,41 +527,43 @@ async function styledSourceDocument(
   const navRuntime = usesNavEffects(scanHtml);
   // Button-effects runtime — ripple on every .btn (+ magnetic / spotlight); inline it live for preview parity.
   const btnRuntime = usesButtonEffects(scanHtml);
-  // A still-faithful imported page (swImport present, not yet nativized) is a raw replica — it renders
-  // with ONLY its own imported stylesheet (renderDocument omits the platform base CSS, and SKIPS the
-  // LINKED Tailwind utility sheet for raw pages). The editor canvas INLINES a per-page utility sheet
-  // instead of linking it, so renderDocument can't skip it — we must skip the compile here for parity.
-  // Otherwise the imported site's foreign classes (e.g. Bootstrap `w-100`/`m-0`) collide with Tailwind
-  // utility NAMES, so Tailwind emits `.w-100{width:calc(var(--spacing)*100)}` (=400px) and clobbers the
-  // import — collapsing full-width chrome like the footer. (The runtime CSS below matches publish, where
-  // it's injected for raw pages too and is harmless.)
-  const rawFidelity = isRawFidelityPage(page);
-  const inlineStyles = [
-    ...(componentCss ? [componentCss] : []),
-    ...(animated ? [ANIMATION_CSS] : []),
-    ...(parallaxed ? [PARALLAX_CSS] : []),
-    ...(marquee ? [MARQUEE_CSS] : []),
-    ...(lazy ? [LAZYLOAD_CSS] : []),
-    ...(waves ? [RIPPLE_CSS] : []),
-    ...(cart ? [CART_CSS] : []),
-    ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
-    ...(!rawFidelity && compileCandidates.length > 0
-      ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
-      : []),
-  ];
-  const inlineScripts = [
-    ...(componentJs ? [componentJs] : []),
-    ...(animated ? [ANIMATION_JS] : []),
-    ...(parallaxed ? [PARALLAX_JS] : []),
-    ...(lazy ? [LAZYLOAD_JS] : []),
-    ...(waves ? [RIPPLE_JS] : []),
-    ...(navRuntime ? [NAV_EFFECTS_JS] : []),
-    ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
-    ...(dialog ? [NAV_LINK_JS] : []),
-    // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
-    // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
-    PREVIEW_BRIDGE_JS,
-  ];
+  // A RAW-HTML page (the explicit page setting) renders free-form: renderDocument omits the platform base
+  // CSS, the linked utility sheet, and the platform JS. The editor canvas INLINES a per-page utility sheet
+  // (renderDocument can't skip a linked one here), so we ALSO skip that compile + every platform
+  // runtime/component style below for parity — the page brings its own CSS/JS. (Skipping the utility
+  // compile also avoids foreign classes like Bootstrap `w-100` colliding with Tailwind utility NAMES.)
+  const rawFidelity = page.rawHtml === true;
+  const inlineStyles = rawFidelity
+    ? []
+    : [
+        ...(componentCss ? [componentCss] : []),
+        ...(animated ? [ANIMATION_CSS] : []),
+        ...(parallaxed ? [PARALLAX_CSS] : []),
+        ...(marquee ? [MARQUEE_CSS] : []),
+        ...(lazy ? [LAZYLOAD_CSS] : []),
+        ...(waves ? [RIPPLE_CSS] : []),
+        ...(cart ? [CART_CSS] : []),
+        ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
+        ...(compileCandidates.length > 0
+          ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
+          : []),
+      ];
+  const inlineScripts = rawFidelity
+    ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS).
+      [PREVIEW_BRIDGE_JS]
+    : [
+        ...(componentJs ? [componentJs] : []),
+        ...(animated ? [ANIMATION_JS] : []),
+        ...(parallaxed ? [PARALLAX_JS] : []),
+        ...(lazy ? [LAZYLOAD_JS] : []),
+        ...(waves ? [RIPPLE_JS] : []),
+        ...(navRuntime ? [NAV_EFFECTS_JS] : []),
+        ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
+        ...(dialog ? [NAV_LINK_JS] : []),
+        // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
+        // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
+        PREVIEW_BRIDGE_JS,
+      ];
   return renderDocument(page, {
     brand,
     bodyHtml: body,

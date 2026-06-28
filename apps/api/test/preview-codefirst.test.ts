@@ -138,22 +138,22 @@ describe('code-first preview', () => {
     expect((res.json() as { error?: string }).error).toMatch(/unknown form "missing"/);
   });
 
-  // A raw-fidelity imported page (swImport, not yet nativized) carries FOREIGN classes (e.g. Bootstrap
-  // `w-100`) that collide with Tailwind utility NAMES. The editor canvas must NOT compile a per-page
-  // utility sheet from them — Tailwind would emit `.w-100{width:calc(var(--spacing)*100)}` (=400px) and
-  // clobber the import (collapsing full-width chrome like the footer). A normal page still gets it.
-  it('does NOT inline a Tailwind utility sheet for an imported (raw-fidelity) page — foreign classes survive', async () => {
+  // A RAW-HTML page (the explicit `page.rawHtml` setting) renders free-form: the editor canvas must NOT
+  // compile a per-page Tailwind utility sheet (foreign classes like Bootstrap `w-100` collide with Tailwind
+  // utility NAMES — Tailwind would emit `.w-100{width:calc(var(--spacing)*100)}` (=400px) and clobber the
+  // markup) and must inject NO platform CSS/JS. A normal page — INCLUDING a foundation-imported one — gets it.
+  it('does NOT inline a Tailwind utility sheet for a RAW-HTML page — foreign classes survive', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
       source: '<section><div class="w-100 m-0">hi</div></section>',
-      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } },
+      rawHtml: true,
     });
     expect(html).not.toContain('.w-100{width:calc'); // the colliding compiled utility is absent
     expect(html).not.toContain('--tw-'); // no Tailwind utility/preflight layer at all
-    expect(html).toContain('class="w-100 m-0"'); // the imported markup is preserved literally
+    expect(html).toContain('class="w-100 m-0"'); // the raw markup is preserved literally
   });
 
-  it('DOES inline the Tailwind utility sheet for a normal (non-imported) page using the same class', async () => {
+  it('DOES inline the Tailwind utility sheet for a normal (non-raw) page using the same class', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
       source: '<section><div class="w-100 m-0">hi</div></section>',
@@ -161,23 +161,25 @@ describe('code-first preview', () => {
     expect(html).toContain('.w-100{width:calc'); // Tailwind compiled the utility for a platform page
   });
 
-  it('still inlines the utility sheet once an imported page is nativized (rewritten:true)', async () => {
+  it('renders an IMPORTED page NATIVE (utility sheet present) even before nativization — rawHtml is the only render switch, NOT swImport', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
       source: '<section><div class="w-100 m-0">hi</div></section>',
-      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: true } },
+      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } },
     });
-    expect(html).toContain('.w-100{width:calc'); // back to normal platform rendering
+    // Foundation imports discard foreign CSS → the page is styled by the platform sheet from the start, so an
+    // agent's native classes are visible immediately (no raw-fidelity deadlock). swImport no longer suppresses CSS.
+    expect(html).toContain('.w-100{width:calc');
   });
 
-  it('still inlines the platform RUNTIME css/js (animation) for a raw-fidelity page — only the utility sheet is skipped', async () => {
+  it('a RAW-HTML page skips ALL platform CSS/JS — even the animation runtime (the page brings its own)', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
       source: '<section><div data-aos="fade-up" class="w-100">hi</div></section>',
-      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } },
+      rawHtml: true,
     });
-    expect(html).toContain('aos-init'); // ANIMATION_CSS still inlined (matches the publish path)
-    expect(html).toContain('IntersectionObserver'); // ANIMATION_JS still inlined
-    expect(html).not.toContain('--tw-'); // but the colliding Tailwind utility sheet is absent
+    expect(html).not.toContain('aos-init'); // ANIMATION_CSS NOT inlined under rawHtml
+    expect(html).not.toContain('IntersectionObserver'); // ANIMATION_JS NOT inlined
+    expect(html).not.toContain('--tw-'); // and no utility sheet
   });
 });

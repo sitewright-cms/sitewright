@@ -81,6 +81,7 @@ import {
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
+import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
 import {
@@ -553,6 +554,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
+    // Favicon / PWA icon set + Web App Manifest, derived ONCE from the single Corporate-Identity
+    // `icon` (favicon.ico + 32px PNG + apple-touch-180 + manifest 192/512/maskable). Best-effort:
+    // any failure (external icon, missing bytes, sharp error) leaves `iconSet` undefined and each
+    // page falls back to a single generic <link rel="icon"> below.
+    const iconSet: IconSet | undefined = opts.readMedia
+      ? await emitFaviconSet(tmp, bundle.project.slug, identity, media, opts.readMedia)
+      : undefined;
+
     // Render a project-wide skeleton slot (mainNav/sidebarLeft/sidebarRight/footer/bottom)
     // for a page, validated; an unsafe or
     // invalid slot fails the publish with a clear, slot-scoped error. Hoisted above the loops
@@ -787,12 +796,23 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           seo: {
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
-            // og:image falls back to the company image; favicon to icon then favicon.
+            // og:image falls back to the company image; the favicon/PWA icons derive from `icon`.
             image: rel(page.image ?? identity.image),
             url: page.canonical,
             noindex: page.noindex,
             themeColor: identity.colors.primary,
-            favicon: rel(identity.icon ?? identity.favicon),
+            // The generated set when the icon is an in-project media asset (page-relative); else a
+            // single generic <link rel="icon"> for an external/non-media icon.
+            ...(iconSet
+              ? {
+                  icons: {
+                    ico: `${siteRoot}${iconSet.ico}`,
+                    png: `${siteRoot}${iconSet.png}`,
+                    apple: `${siteRoot}${iconSet.apple}`,
+                    manifest: `${siteRoot}${iconSet.manifest}`,
+                  },
+                }
+              : { favicon: rel(identity.icon) }),
             alternates,
           },
           organization,

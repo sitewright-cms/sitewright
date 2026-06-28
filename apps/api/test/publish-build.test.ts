@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import { WIDGET_MANIFESTS } from '@sitewright/core';
 import { buildSite } from '../src/publish/build.js';
+import { renderTrustedSvgToPng } from '@sitewright/image-pipeline';
 
 let outDir: string;
 
@@ -327,6 +328,70 @@ describe('buildSite', () => {
     expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64.jpg" />');
     expect(about).toContain('content="../_assets/og/og-1200.jpg"');
     expect(about).not.toContain('/media/acme/');
+  });
+
+  it('generates the favicon / PWA icon set + manifest from the single CI icon (media-backed)', async () => {
+    const iconPng = await renderTrustedSvgToPng(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#0a7"/><circle cx="256" cy="256" r="180" fill="#fff"/></svg>',
+      512,
+      512,
+    );
+    const iconAsset = {
+      kind: 'image' as const,
+      folder: 'Brand',
+      id: 'ic',
+      filename: 'icon.png',
+      format: 'image/png',
+      bytes: iconPng.length,
+      width: 512,
+      height: 512,
+      variants: [{ format: 'webp' as const, width: 512, height: 512, path: 'ic-512.webp' }],
+      fallback: 'ic-512.jpg',
+      url: '/media/acme/ic/ic-512.jpg',
+    };
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      media: [iconAsset],
+      readMedia: async (id, file) => {
+        // Assert the generator selects the largest (WebP) variant as the source, not the fallback.
+        if (id === 'ic' && file === 'ic-512.webp') return iconPng;
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const,
+          id: 'p',
+          name: 'Acme',
+          slug: 'acme',
+          identity: { name: 'Acme', shortName: 'Acme', colors: { primary: '#0a7' }, icon: '/media/acme/ic/ic-512.jpg' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>Home</div>' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About</div>' },
+        ],
+      }),
+    });
+    // The derived files exist: the icon set under _assets/_icons/, the manifest at the root.
+    await expect(readFile(join(outDir, '_assets', '_icons', 'favicon.ico'))).resolves.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', '_icons', 'apple-touch-icon.png'))).resolves.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', '_icons', 'icon-512-maskable.png'))).resolves.toBeTruthy();
+    const manifest = JSON.parse(await readFile(join(outDir, 'site.webmanifest'), 'utf8'));
+    expect(manifest.name).toBe('Acme');
+    expect(manifest.theme_color).toBe('#0a7');
+    expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512', '512x512']);
+    expect(manifest.icons.some((i: { purpose: string }) => i.purpose === 'maskable')).toBe(true);
+    // Head links — depth 0 (page-relative to root).
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<link rel="icon" href="_assets/_icons/favicon.ico" sizes="any" />');
+    expect(home).toContain('<link rel="icon" type="image/png" sizes="32x32" href="_assets/_icons/favicon-32.png" />');
+    expect(home).toContain('<link rel="apple-touch-icon" href="_assets/_icons/apple-touch-icon.png" />');
+    expect(home).toContain('<link rel="manifest" href="site.webmanifest" />');
+    // Head links — depth 1 (rebased onto '../').
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('<link rel="apple-touch-icon" href="../_assets/_icons/apple-touch-icon.png" />');
+    expect(about).toContain('<link rel="manifest" href="../site.webmanifest" />');
   });
 
   it('marks the current nav item active via {{sw-active}} — class + aria-current swap per page', async () => {

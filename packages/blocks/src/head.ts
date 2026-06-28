@@ -16,8 +16,20 @@ export interface SeoMeta {
   url?: string;
   /** `theme-color` meta (company primary color). */
   themeColor?: string;
-  /** Favicon URL (company icon). */
+  /** A single generic favicon URL (used only when the full `icons` set isn't generated). */
   favicon?: string;
+  /** The generated favicon / PWA icon set (preferred over `favicon`): page-relative URLs for the
+   *  legacy `.ico`, the 32px PNG, the apple-touch icon, and the Web App Manifest. */
+  icons?: {
+    /** `favicon.ico` (legacy + root auto-request). */
+    ico?: string;
+    /** `favicon-32.png`. */
+    png?: string;
+    /** `apple-touch-icon.png` (180×180, opaque). */
+    apple?: string;
+    /** `site.webmanifest`. */
+    manifest?: string;
+  };
   noindex?: boolean;
   /**
    * Multilingual alternate links (`<link rel="alternate" hreflang>`). Each href is
@@ -68,7 +80,17 @@ export function metaTags(seo: SeoMeta): string {
   }
   meta('name', 'twitter:card', seo.image ? 'summary_large_image' : 'summary');
   if (seo.themeColor) meta('name', 'theme-color', seo.themeColor);
-  if (seo.favicon) tags.push(`<link rel="icon" href="${escapeAttr(seo.favicon)}" />`);
+  // Favicon / PWA icons: prefer the generated set (favicon.ico + 32px PNG + apple-touch + manifest);
+  // otherwise a single generic <link rel="icon"> (external/non-media icon, or no icon generated).
+  const ic = seo.icons;
+  if (ic && (ic.ico || ic.png || ic.apple || ic.manifest)) {
+    if (ic.ico) tags.push(`<link rel="icon" href="${escapeAttr(ic.ico)}" sizes="any" />`);
+    if (ic.png) tags.push(`<link rel="icon" type="image/png" sizes="32x32" href="${escapeAttr(ic.png)}" />`);
+    if (ic.apple) tags.push(`<link rel="apple-touch-icon" href="${escapeAttr(ic.apple)}" />`);
+    if (ic.manifest) tags.push(`<link rel="manifest" href="${escapeAttr(ic.manifest)}" />`);
+  } else if (seo.favicon) {
+    tags.push(`<link rel="icon" href="${escapeAttr(seo.favicon)}" />`);
+  }
   // hreflang alternates (attribute-escaped; href is an absolute URL built from the
   // configured site URL + a safe route slug, so it can't break out of the attribute).
   for (const alt of seo.alternates ?? []) {

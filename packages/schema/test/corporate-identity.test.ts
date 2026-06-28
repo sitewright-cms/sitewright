@@ -131,11 +131,12 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
     expect(id.radii).toEqual(LEGACY_BRAND.radii);
   });
 
-  it('splits the brand.logo object into logoLight / logoDark / favicon, and name from brand.name', () => {
+  it('splits the brand.logo object into logoLight / logoDark, and name from brand.name', () => {
     expect(id.name).toBe('Acme Brand');
     expect(id.logoLight).toBe('/logo-light.svg');
     expect(id.logoDark).toBe('/logo-dark.svg');
-    expect(id.favicon).toBe('/favicon.ico');
+    // brand.logo.favicon folds into the single `icon` source, but a dedicated company.icon wins here.
+    expect(id.icon).toBe('/company-icon.png');
   });
 
   it('maps every company field 1:1 (logo/icon/image kept distinct from brand logos)', () => {
@@ -161,8 +162,8 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
   it('covers every source key — guards against a future field being forgotten', () => {
     // Union of all old brand + company keys must each be represented in identity.
     const idKeys = new Set(Object.keys(id));
-    // brand.name → identity.name; brand.logo.* → logoLight/logoDark/favicon.
-    for (const k of ['name', 'colors', 'typography', 'spacing', 'radii', 'logoLight', 'logoDark', 'favicon']) {
+    // brand.name → identity.name; brand.logo.* → logoLight/logoDark (+ .favicon folds into `icon`).
+    for (const k of ['name', 'colors', 'typography', 'spacing', 'radii', 'logoLight', 'logoDark', 'icon']) {
       expect(idKeys.has(k)).toBe(true);
     }
     for (const k of Object.keys(LEGACY_COMPANY)) {
@@ -171,11 +172,12 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
     }
   });
 
-  it('works with no company (brand-only legacy project)', () => {
+  it('works with no company (brand-only legacy project) — brand.logo.favicon folds into icon', () => {
     const id2 = legacyToIdentity(LEGACY_BRAND);
     expect(id2.name).toBe('Acme Brand');
     expect(id2.legalName).toBeUndefined();
     expect(id2.colors).toEqual({ ...DEFAULT_BRAND_COLORS, ...LEGACY_BRAND.colors });
+    expect(id2.icon).toBe('/favicon.ico'); // no company.icon → the legacy favicon becomes the icon source
   });
 
   it('preserves the businessType="disabled" schema.org-suppression sentinel', () => {
@@ -196,6 +198,14 @@ describe('mergeLegacyIdentity — read-boundary normalizer', () => {
   it('passes through a record that already has identity', () => {
     const already = { identity: { name: 'X' }, website: {} };
     expect(mergeLegacyIdentity(already)).toBe(already);
+  });
+
+  it('folds an intermediate identity.favicon into icon when no icon is set (no data loss on upgrade)', () => {
+    const out = mergeLegacyIdentity({ identity: { name: 'X', favicon: '/fav.ico' } }) as { identity: Record<string, unknown> };
+    expect(out.identity.icon).toBe('/fav.ico');
+    // A row that already has its own icon keeps it (the favicon is the redundant duplicate, dropped on parse).
+    const kept = { identity: { name: 'X', icon: '/icon.png', favicon: '/fav.ico' } };
+    expect(mergeLegacyIdentity(kept)).toBe(kept); // same reference — no rewrite needed
   });
 
   it('leaves a record with neither identity nor brand untouched (defensive)', () => {

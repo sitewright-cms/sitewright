@@ -16,6 +16,8 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
   ['.js', 'text/javascript; charset=utf-8'],
   ['.xml', 'application/xml; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8'],
+  // The PWA Web App Manifest (inert JSON; same-origin) — emitted at the site root next to robots.txt.
+  ['.webmanifest', 'application/manifest+json'],
 ]);
 
 // Inline-servable types for the bundled `_assets/` binaries. Anything NOT in this map (raw uploads,
@@ -28,6 +30,8 @@ const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   ['.jpeg', 'image/jpeg'],
   ['.png', 'image/png'],
   ['.gif', 'image/gif'],
+  // The generated favicon (bundled under _assets/_icons/) — a binary image format, inert (no script).
+  ['.ico', 'image/x-icon'],
   // Self-hosted fonts are binary (not script/HTML) — safe to serve inline so bundled @font-face loads.
   ['.woff2', 'font/woff2'],
   ['.woff', 'font/woff'],

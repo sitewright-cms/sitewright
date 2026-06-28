@@ -11,8 +11,9 @@ const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
  * Every field of both old schemas lands in exactly one identity field (asserted by
  * the exhaustive field-map test) — a miss would silently drop brand/company data
  * on publish. The logo collision (old `brand.logo` was an object `{light,dark,
- * favicon}`; old `company.logo` was a single ref) splits cleanly into
- * `logo`/`logoLight`/`logoDark`/`favicon`.
+ * favicon}`; old `company.logo` was a single ref) splits into `logo`/`logoLight`/
+ * `logoDark`; the legacy `brand.logo.favicon` folds into the unified `icon` source
+ * (the single favicon/apple-touch/PWA-icon source) when no `company.icon` is set.
  */
 export function legacyToIdentity(brand: Brand, company?: Company): CorporateIdentity {
   return CorporateIdentitySchema.parse({
@@ -27,8 +28,9 @@ export function legacyToIdentity(brand: Brand, company?: Company): CorporateIden
     logo: company?.logo,
     logoLight: brand.logo?.light,
     logoDark: brand.logo?.dark,
-    icon: company?.icon,
-    favicon: brand.logo?.favicon,
+    // The dedicated company icon wins; the legacy brand.logo.favicon is the fallback — both fold
+    // into the single `icon` source (favicon + apple-touch + PWA manifest icons are derived from it).
+    icon: company?.icon ?? brand.logo?.favicon,
     image: company?.image,
     // contact / structured data
     email: company?.email,
@@ -58,7 +60,20 @@ export function legacyToIdentity(brand: Brand, company?: Company): CorporateIden
 export function mergeLegacyIdentity(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const obj = raw as Record<string, unknown>;
-  if (obj.identity !== undefined) return obj; // already unified
+  if (obj.identity !== undefined) {
+    // Intermediate-schema fold: an already-unified row written before `favicon` was collapsed into
+    // `icon` may carry `identity.favicon` with no `identity.icon`. Carry it into the single `icon`
+    // source so the (now-removed) favicon isn't silently dropped on the next parse — else a project
+    // that only ever set the old "Favicon" field would lose its favicon on this upgrade.
+    const id = obj.identity;
+    if (id && typeof id === 'object' && !Array.isArray(id)) {
+      const r = id as Record<string, unknown>;
+      if (r.icon === undefined && typeof r.favicon === 'string') {
+        return { ...obj, identity: { ...r, icon: r.favicon } };
+      }
+    }
+    return obj; // already unified
+  }
   if (obj.brand === undefined) return obj; // nothing to migrate (defensive)
   const brand = BrandSchema.parse(obj.brand);
   const company = obj.company !== undefined ? CompanySchema.parse(obj.company) : undefined;

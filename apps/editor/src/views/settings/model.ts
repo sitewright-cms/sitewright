@@ -105,7 +105,6 @@ export interface SettingsForm {
   logo: string;
   logoLight: string;
   logoDark: string;
-  favicon: string;
   icon: string;
   image: string;
   // identity — contact + location
@@ -273,7 +272,6 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     logo: id.logo ?? '',
     logoLight: id.logoLight ?? '',
     logoDark: id.logoDark ?? '',
-    favicon: id.favicon ?? '',
     icon: id.icon ?? '',
     image: id.image ?? '',
     email: id.email ?? '',
@@ -410,7 +408,6 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   identity = put(identity, 'logo', trimmed(form.logo));
   identity = put(identity, 'logoLight', trimmed(form.logoLight));
   identity = put(identity, 'logoDark', trimmed(form.logoDark));
-  identity = put(identity, 'favicon', trimmed(form.favicon));
   identity = put(identity, 'icon', trimmed(form.icon));
   identity = put(identity, 'image', trimmed(form.image));
   identity = put(identity, 'email', trimmed(form.email));

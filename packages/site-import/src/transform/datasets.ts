@@ -298,9 +298,12 @@ export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<s
     const titleField = fields.find((f) => f.type === 'text')?.name;
     const usedEntryIds = new Set<string>();
     rows.forEach((values, n) => {
-      const fromTitle = titleField ? slugifyId(values[titleField] ?? '') : '';
-      let id = fromTitle ? `${slug}-${fromTitle}` : `${slug}-${n + 1}`;
-      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${slug}-${fromTitle || n + 1}-${k}`;
+      // Entry ids are ITEM KEYS — used as `{{item.<dataset>.<id>.<field>}}` Handlebars PATHS and as
+      // data-sw-entry edit handles — so they must be underscore identifiers (no hyphens) and NOT prefixed
+      // with the dataset slug. Derive from the title; fall back to a neutral row key.
+      const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
+      let id = base;
+      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;
       usedEntryIds.add(id);
       entries.push({ id, dataset: slug, status: 'published', order: n, values });
     });

@@ -103,9 +103,9 @@ function served(siteSlug: string, path: string) {
 describe('collection page routing through publish', () => {
   it('expands one HTML page per PUBLISHED entry (drafts excluded), at entrySlug-derived slugs', async () => {
     await project.putContent('dataset', 'products', productsDataset);
-    const published1 = entry('p-alpha', 'alpha', 'Alpha Widget', 'published');
-    const published2 = entry('p-beta', 'beta', 'Beta Widget', 'published');
-    const draft = entry('p-gamma', 'gamma', 'Gamma Draft', 'draft');
+    const published1 = entry('p_alpha', 'alpha', 'Alpha Widget', 'published');
+    const published2 = entry('p_beta', 'beta', 'Beta Widget', 'published');
+    const draft = entry('p_gamma', 'gamma', 'Gamma Draft', 'draft');
     await project.putContent('entry', published1.id, published1);
     await project.putContent('entry', published2.id, published2);
     await project.putContent('entry', draft.id, draft);
@@ -133,8 +133,8 @@ describe('collection page routing through publish', () => {
 
   it('reflects static pages + expanded collection routes in the publish manifest', async () => {
     await project.putContent('dataset', 'products', productsDataset);
-    const alpha = entry('p-alpha', 'alpha', 'Alpha Widget', 'published');
-    const beta = entry('p-beta', 'beta', 'Beta Widget', 'published');
+    const alpha = entry('p_alpha', 'alpha', 'Alpha Widget', 'published');
+    const beta = entry('p_beta', 'beta', 'Beta Widget', 'published');
     await project.putContent('entry', alpha.id, alpha);
     await project.putContent('entry', beta.id, beta);
     await project.putContent('page', homePage.id, homePage);
@@ -210,8 +210,8 @@ describe('collection page routing through publish', () => {
     // Two entries whose `slug` values are BOTH safe segments AND identical: they
     // resolve to the same `/products/dup` route. allRoutes throws (duplicate route),
     // buildSite wraps it as PublishError, and /publish maps that to 409.
-    const a = entry('dup-a', 'dup', 'First Dup', 'published');
-    const b = entry('dup-b', 'dup', 'Second Dup', 'published');
+    const a = entry('dup_a', 'dup', 'First Dup', 'published');
+    const b = entry('dup_b', 'dup', 'Second Dup', 'published');
     expect(entrySlug(a, 'slug')).toBe('dup');
     expect(entrySlug(b, 'slug')).toBe('dup'); // genuine collision
 

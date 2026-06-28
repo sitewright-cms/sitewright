@@ -411,13 +411,19 @@ export class ContentRepository {
     ctx: ProjectContext,
     datasetId: string,
     newSlug: string,
-    opts: { cascade: boolean },
+    opts: { cascade: boolean; name?: string },
   ): Promise<{ oldSlug: string; newSlug: string; cascaded: boolean; entriesUpdated: number; pagesUpdated: number; templatesUpdated: number; referencesUpdated: number }> {
     const ds = (await this.get(ctx, 'dataset', datasetId)) as Dataset; // throws NotFoundError if absent
     const oldSlug = ds.slug;
-    // Validate the new slug by re-parsing the dataset through its schema (reuses SlugSchema rules).
-    const renamed = DatasetSchema.parse({ ...ds, slug: newSlug }) as Dataset;
+    // Validate the new slug (+ optional display name) by re-parsing the dataset through its schema.
+    const newName = opts.name?.trim() || ds.name;
+    const renamed = DatasetSchema.parse({ ...ds, slug: newSlug, name: newName }) as Dataset;
     if (renamed.slug === oldSlug) {
+      // Slug unchanged — but a display-name change still needs persisting (a name-only rename).
+      if (renamed.name !== ds.name) {
+        await this.writeRow(this.db, ctx, 'dataset', datasetId, renamed);
+        this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: datasetId, op: 'put', actor: ctx.actor });
+      }
       return { oldSlug, newSlug: oldSlug, cascaded: opts.cascade, entriesUpdated: 0, pagesUpdated: 0, templatesUpdated: 0, referencesUpdated: 0 };
     }
     const datasets = (await this.list(ctx, 'dataset')) as Dataset[];

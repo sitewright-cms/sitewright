@@ -12,6 +12,18 @@ export function slugify(input: string): string {
 }
 
 /**
+ * Lowercases a label into a DATASET slug — a Handlebars/JS identifier used directly as `dataset.<slug>`,
+ * so it uses UNDERSCORES, not hyphens (a hyphen would parse as subtraction). Matches `DatasetSlugSchema`.
+ * Returns '' when nothing usable remains.
+ */
+export function datasetSlugify(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
  * Turns a label into a valid CMS field key (KeyNameSchema: starts with a letter
  * or underscore, then letters/digits/underscores). Returns '' when nothing
  * usable remains.
@@ -134,13 +146,14 @@ export function reorderByKey<T>(
 }
 
 /**
- * Returns `desired` if free, else the first `desired-2`, `desired-3`, … not in `taken`. Used to
- * pick a collision-free slug/id when duplicating a dataset.
+ * Returns `desired` if free, else the first `desired{sep}2`, `desired{sep}3`, … not in `taken`. Used to
+ * pick a collision-free slug/id when duplicating. `sep` defaults to `-`; pass `_` for DATASET slugs (which
+ * are underscore identifiers, not hyphenated).
  */
-export function uniqueSlug(desired: string, taken: ReadonlySet<string>): string {
+export function uniqueSlug(desired: string, taken: ReadonlySet<string>, sep: '-' | '_' = '-'): string {
   if (!taken.has(desired)) return desired;
   for (let n = 2; ; n += 1) {
-    const candidate = `${desired}-${n}`;
+    const candidate = `${desired}${sep}${n}`;
     if (!taken.has(candidate)) return candidate;
   }
 }

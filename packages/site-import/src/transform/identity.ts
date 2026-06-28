@@ -32,20 +32,25 @@ function metaMap(doc: Document): Map<string, string> {
   return map;
 }
 
-/** The first <title>'s leading segment (split on common separators). */
+/** The first <title>'s leading segment (split on common separators). Returns undefined for a GENERIC
+ *  page title ("Home", "Homepage", "Welcome", …) — that's a page label, not the brand name, so `name`
+ *  should fall through to the next source rather than mislabel the whole site. */
 function titleName(doc: Document): string | undefined {
   const title = allByName(doc.children, 'title')[0];
   if (!title) return undefined;
   const text = textContent([title]).trim();
   if (!text) return undefined;
-  return (text.split(/\s*[|–—\-:]\s*/)[0] ?? text).trim() || text;
+  const lead = (text.split(/\s*[|–—\-:]\s*/)[0] ?? text).trim() || text;
+  if (/^(?:home|homepage|welcome|index|untitled|start|startseite|inicio|accueil)$/i.test(lead)) return undefined;
+  return lead;
 }
 
 function hostName(baseUrl: string): string {
   try {
     const h = new URL(baseUrl).hostname.replace(/^www\./, '');
     const label = h.split('.')[0] ?? h;
-    return label ? label.charAt(0).toUpperCase() + label.slice(1) : h;
+    // Title-case each hyphen-separated word so a multi-word domain reads as a brand (etaxi-worldwide → "Etaxi Worldwide").
+    return label.split('-').map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ').trim() || h;
   } catch {
     return 'Website';
   }

@@ -100,11 +100,11 @@ describe('multilingual publish (locale variants are pages)', () => {
       identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    // Two datasets: the base and its German duplicate.
+    // Two datasets: the base and its German duplicate (underscore suffix — a dataset slug is a Handlebars path).
     await proj.putContent('dataset', 'services', { id: 'services', name: 'Services', slug: 'services', fields: [{ name: 'name', type: 'text' }] });
-    await proj.putContent('dataset', 'services-de', { id: 'services-de', name: 'Services (DE)', slug: 'services-de', fields: [{ name: 'name', type: 'text' }] });
-    await proj.putContent('entry', 'svc-en', { id: 'svc-en', dataset: 'services', status: 'published', values: { name: 'Web Design' } });
-    await proj.putContent('entry', 'svc-de', { id: 'svc-de', dataset: 'services-de', status: 'published', values: { name: 'Webdesign' } });
+    await proj.putContent('dataset', 'services_de', { id: 'services_de', name: 'Services (DE)', slug: 'services_de', fields: [{ name: 'name', type: 'text' }] });
+    await proj.putContent('entry', 'svc_en', { id: 'svc_en', dataset: 'services', status: 'published', values: { name: 'Web Design' } });
+    await proj.putContent('entry', 'svc_de', { id: 'svc_de', dataset: 'services_de', status: 'published', values: { name: 'Webdesign' } });
 
     // The SAME source on both locale variants — auto-suffix picks the right dataset.
     const listSource = '<ul>{{#each dataset.services}}<li>{{ name }}</li>{{/each}}</ul>';
@@ -114,7 +114,7 @@ describe('multilingual publish (locale variants are pages)', () => {
 
     expect((await client.get(`/sites/${slug}/index.html`)).body).toContain('<li>Web Design</li>'); // base
     const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
-    expect(de).toContain('<li>Webdesign</li>'); // resolved services-de
+    expect(de).toContain('<li>Webdesign</li>'); // resolved services_de
     expect(de).not.toContain('Web Design');
   });
 

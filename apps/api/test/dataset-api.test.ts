@@ -47,7 +47,7 @@ const dataset = {
   ],
 };
 const entry = {
-  id: 'post-1',
+  id: 'post_1',
   dataset: 'posts',
   status: 'published',
   values: { title: 'Hello', body: 'World' },
@@ -64,7 +64,7 @@ describe('dataset + entry content API', () => {
     // Zod applies defaults (required:false, localized:false) to fields.
     expect((putDs.json() as { item: { slug: string } }).item.slug).toBe('posts');
 
-    const putEntry = await app.inject({ method: 'PUT', url: `${base}/content/entry/post-1`, cookies, payload: entry });
+    const putEntry = await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
     expect(putEntry.statusCode).toBe(200);
 
     const dsList = await app.inject({ method: 'GET', url: `${base}/content/dataset`, cookies });
@@ -100,10 +100,10 @@ describe('dataset + entry content API', () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
-    await app.inject({ method: 'PUT', url: `${base}/content/entry/post-1`, cookies, payload: entry });
-    const del = await app.inject({ method: 'DELETE', url: `${base}/content/entry/post-1`, cookies });
+    await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/entry/post_1`, cookies });
     expect(del.statusCode).toBe(204);
-    const get = await app.inject({ method: 'GET', url: `${base}/content/entry/post-1`, cookies });
+    const get = await app.inject({ method: 'GET', url: `${base}/content/entry/post_1`, cookies });
     expect(get.statusCode).toBe(404);
   });
 
@@ -129,7 +129,7 @@ describe('dataset + entry content API', () => {
     const b = await setup('b@globex.test', 'site-b');
     await app.inject({
       method: 'PUT',
-      url: `/projects/${a.projectId}/content/entry/post-1`,
+      url: `/projects/${a.projectId}/content/entry/post_1`,
       cookies: { sw_session: a.t },
       payload: entry,
     });
@@ -143,9 +143,9 @@ describe('dataset + entry content API', () => {
 
     const bWrites = await app.inject({
       method: 'PUT',
-      url: `/projects/${a.projectId}/content/entry/post-2`,
+      url: `/projects/${a.projectId}/content/entry/post_2`,
       cookies: { sw_session: b.t },
-      payload: { ...entry, id: 'post-2' },
+      payload: { ...entry, id: 'post_2' },
     });
     expect(bWrites.statusCode).toBe(403);
   });

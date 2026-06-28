@@ -194,7 +194,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     demonstrates: ['carousel', '{{#each dataset}}', 'sw-url', 'loop fields', '{{else}}', 'sw-icon'],
     // The data-driven pattern: point {{#each}} at any dataset slug. Inside the loop fields are read
     // directly ({{title}}, not {{values.title}}). Renders the {{else}} placeholder until the dataset
-    // has entries. On a translated page `dataset.projects` auto-resolves `projects-<locale>`.
+    // has entries. On a translated page `dataset.projects` auto-resolves `projects_<locale>`.
     source: `{{!-- Data-bound slider: one slide per entry in the "projects" dataset. --}}
 <div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoplay="true" data-interval="5000" aria-label="Featured projects">
   <div data-sw-part="track">

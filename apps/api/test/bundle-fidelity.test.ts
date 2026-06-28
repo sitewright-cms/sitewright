@@ -93,8 +93,8 @@ function richBundle() {
       },
     ],
     entries: [
-      { id: 'e-pub', dataset: 'posts', status: 'published', values: { title: 'Published Post' } },
-      { id: 'e-draft', dataset: 'posts', status: 'draft', values: { title: 'Draft Post' } },
+      { id: 'e_pub', dataset: 'posts', status: 'published', values: { title: 'Published Post' } },
+      { id: 'e_draft', dataset: 'posts', status: 'draft', values: { title: 'Draft Post' } },
     ],
   };
 }
@@ -131,13 +131,13 @@ describe('bundle export/import fidelity (HTTP)', () => {
 
     // ---- Entries: both published AND draft round-trip with their values ----
     const entriesById = new Map(out.entries.map((e) => [e.id, e]));
-    expect([...entriesById.keys()].sort()).toEqual(['e-draft', 'e-pub']);
-    expect(entriesById.get('e-pub')).toMatchObject({
+    expect([...entriesById.keys()].sort()).toEqual(['e_draft', 'e_pub']);
+    expect(entriesById.get('e_pub')).toMatchObject({
       dataset: 'posts',
       status: 'published',
       values: { title: 'Published Post' },
     });
-    expect(entriesById.get('e-draft')).toMatchObject({
+    expect(entriesById.get('e_draft')).toMatchObject({
       dataset: 'posts',
       status: 'draft',
       values: { title: 'Draft Post' },

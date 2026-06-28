@@ -95,10 +95,10 @@ Adopt a **document-level, template-reuse** model (the "contentBase way"):
 - **A "copy as translation" quick-start** clones a page's `source` into a new locale variant
   (own source from the start) and can later be **promoted to a template** so its siblings
   share it.
-- **Datasets are duplicated per locale** (`services` → `services-de`) and resolved by
-  **auto locale-suffix** at render: on a `de` page, `dataset.services` resolves to `services-de`
+- **Datasets are duplicated per locale** (`services` → `services_de`) and resolved by
+  **auto locale-suffix** at render: on a `de` page, `dataset.services` resolves to `services_de`
   when it exists, else falls back to `services`. A **manual escape hatch** stays available
-  (`{{#each dataset.services-de}}`, or `{{ page.locale }}` + `lookup`).
+  (`{{#each dataset.services_de}}`, or `{{ page.locale }}` + `lookup`).
 
 The legacy `PageTranslation` content kind and the per-locale publish loop are **retired**; each
 locale variant publishes once, as an ordinary page at its own path.
@@ -115,7 +115,7 @@ the *primary* model because the document-level model:
 - supports **per-locale layout variation** natively (a forked variant), which field-level can't.
 
 The accepted cost: more page + dataset objects, and a dataset's *field schema* is duplicated
-across `services`/`services-de` (adding a field means adding it to each). Mitigated by a
+across `services`/`services_de` (adding a field means adding it to each). Mitigated by a
 "duplicate dataset for locale" action that clones the schema at creation. For an agency tool
 with a handful of locales per client, this trade is right.
 
@@ -139,7 +139,7 @@ translationGroup?: IdSchema              // shared id linking all locale variant
 ### Dataset (no schema change)
 
 Localization is by **convention**, not by the `localized` field flag (which we leave as a
-no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`. The
+no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`. The
 `localized` flag may later drive the "duplicate for locale" UI default.
 
 ---
@@ -152,7 +152,7 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`.
 2. **Locale-aware dataset resolution.** Build the per-page `dataset` namespace so `dataset.<name>`
    prefers `<name>-<page.locale>` when that dataset exists, else `<name>`. Implement in the
    render-context assembly (a small locale-aware view over `datasetEntries(bundle)`), keeping
-   explicit `dataset.<name>-<locale>` working as the manual override.
+   explicit `dataset.<name>_<locale>` working as the manual override.
 3. **Collection pages** honor the same suffix: a collection variant whose `page.locale` is `de`
    expands over `<dataset>-de` when present.
 4. **`<html lang>`** = `page.locale ?? defaultLocale`.
@@ -189,10 +189,10 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`.
 
 - Teach the model in `packages/mcp/src/server.ts` INSTRUCTIONS: locale variants are pages
   linked by a translation group and (usually) sharing a template; datasets are duplicated as
-  `<slug>-<locale>` and addressed via auto-suffix (or explicitly); `{{ page.translations }}`
+  `<slug>_<locale>` and addressed via auto-suffix (or explicitly); `{{ page.translations }}`
   for a language switcher.
 - Seed: extend the Example Project with a second locale (e.g. `de`) — a template-shared home
-  + a `services-de` dataset — to demonstrate and to give E2E something real.
+  + a `services_de` dataset — to demonstrate and to give E2E something real.
 
 ---
 

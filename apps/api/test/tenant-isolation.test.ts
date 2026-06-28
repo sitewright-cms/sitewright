@@ -17,7 +17,7 @@ const dataset = {
   slug: 'posts',
   fields: [{ name: 'title', type: 'text', required: true }],
 };
-const entry = { id: 'post-1', dataset: 'posts', status: 'published', values: { title: 'Hello' } };
+const entry = { id: 'post_1', dataset: 'posts', status: 'published', values: { title: 'Hello' } };
 const settings = {
   brand: { name: 'Acme', colors: {} },
   settings: { defaultLocale: 'en', locales: ['en'] },
@@ -39,7 +39,7 @@ async function seedAllKinds(a: TestClient, projectId: string): Promise<void> {
   const proj = a.project(projectId);
   expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
   expect((await proj.putContent('dataset', 'posts', dataset)).statusCode).toBe(200);
-  expect((await proj.putContent('entry', 'post-1', entry)).statusCode).toBe(200);
+  expect((await proj.putContent('entry', 'post_1', entry)).statusCode).toBe(200);
   expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
 }
 
@@ -64,7 +64,7 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     const probes: Array<{ kind: string; entityId: string; writeBody: unknown }> = [
       { kind: 'page', entityId: 'home', writeBody: page },
       { kind: 'dataset', entityId: 'posts', writeBody: dataset },
-      { kind: 'entry', entityId: 'post-1', writeBody: entry },
+      { kind: 'entry', entityId: 'post_1', writeBody: entry },
       { kind: 'settings', entityId: 'settings', writeBody: settings },
     ];
 

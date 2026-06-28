@@ -566,10 +566,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'rename_dataset',
     {
       description:
-        "Rename a dataset's slug. This CASCADES automatically: every entry's `dataset` field and every page/template source's `{{#each dataset.<slug>}}` / `dataset=\"<slug>\"` reference (and any other dataset's reference-field target) is rewritten to the new slug in one transaction — so nothing breaks. Pass the dataset's ID (not its current slug) + the new slug. Returns how many entries/pages were updated.",
-      inputSchema: { id: z.string(), slug: z.string().min(1).max(120) },
+        "Rename a dataset's slug AND/OR its display name. The slug must be an UNDERSCORE identifier (e.g. `faq_passengers`, NOT `faq-passengers` — it is used as a `dataset.<slug>` Handlebars path). This CASCADES automatically: every entry's `dataset` field and every page/template source's `{{#each dataset.<slug>}}` / `dataset=\"<slug>\"` reference (and any other dataset's reference-field target) is rewritten in one transaction — so nothing breaks. Pass the dataset's ID (not its current slug), the new slug, and (recommended) a human `name` so it doesn't stay the import's generic 'List'/'List 2'. Returns how many entries/pages were updated.",
+      inputSchema: { id: z.string(), slug: z.string().min(1).max(120), name: z.string().min(1).max(200).optional() },
     },
-    gate('content:write', ({ id, slug }) => client.renameDataset(id, slug, true)),
+    gate('content:write', ({ id, slug, name }) => client.renameDataset(id, slug, name, true)),
   );
 
   // ---------------------------------------------------------------- publish (publish)

@@ -219,21 +219,22 @@ describe('seed demo content', () => {
     // provisioning. They're exempt from the per-locale twin requirement.
     const widgetDatasetSlugs = new Set(Object.values(WIDGET_MANIFESTS).flatMap((m) => m.datasets.map((d) => d.slug)));
     const bases = EXAMPLE_DATASETS.filter(
-      (d) => !EXTRA_LOCALES.some((l) => d.slug.endsWith(`-${l}`)) && !widgetDatasetSlugs.has(d.slug),
+      (d) => !EXTRA_LOCALES.some((l) => d.slug.endsWith(`_${l}`)) && !widgetDatasetSlugs.has(d.slug),
     );
     expect(bases.length).toBeGreaterThanOrEqual(8);
     for (const locale of EXTRA_LOCALES) {
       for (const base of bases) {
-        const twin = EXAMPLE_DATASETS.find((d) => d.slug === `${base.slug}-${locale}`);
-        expect(twin, `${base.slug}-${locale}`).toBeDefined();
+        // locale twins use the UNDERSCORE suffix (a dataset slug is a Handlebars path)
+        const twin = EXAMPLE_DATASETS.find((d) => d.slug === `${base.slug}_${locale}`);
+        expect(twin, `${base.slug}_${locale}`).toBeDefined();
         expect(twin!.fields.map((f) => [f.name, f.type])).toEqual(base.fields.map((f) => [f.name, f.type]));
         const baseCount = EXAMPLE_ENTRIES.filter((e) => e.dataset === base.slug).length;
         const twinCount = EXAMPLE_ENTRIES.filter((e) => e.dataset === twin!.slug).length;
         expect(twinCount, `${twin!.slug} entry count`).toBe(baseCount);
       }
-      // roles-<locale> managers reference team-<locale> entry ids (the keyed item.team lookup).
-      const teamIds = new Set(EXAMPLE_ENTRIES.filter((e) => e.dataset === `team-${locale}`).map((e) => e.id));
-      for (const role of EXAMPLE_ENTRIES.filter((e) => e.dataset === `roles-${locale}`)) {
+      // roles_<locale> managers reference team-<locale> entry ids (the keyed item.team lookup).
+      const teamIds = new Set(EXAMPLE_ENTRIES.filter((e) => e.dataset === `team_${locale}`).map((e) => e.id));
+      for (const role of EXAMPLE_ENTRIES.filter((e) => e.dataset === `roles_${locale}`)) {
         const manager = (role.values as { manager?: string }).manager;
         expect(manager && teamIds.has(manager), `${role.id} manager "${manager}"`).toBe(true);
       }
@@ -248,7 +249,7 @@ describe('seed demo content', () => {
   it('the roles "manager" reference field targets the locale-correct team via config.dataset', () => {
     // The editor's reference picker reads `config.dataset` (NOT `targetDataset`), so the per-locale
     // roles twin must point its manager at the same-locale team slug.
-    for (const suffix of ['', ...EXTRA_LOCALES.map((l) => `-${l}`)]) {
+    for (const suffix of ['', ...EXTRA_LOCALES.map((l) => `_${l}`)]) {
       const roles = EXAMPLE_DATASETS.find((d) => d.slug === `roles${suffix}`);
       const manager = roles?.fields.find((f) => f.name === 'manager');
       expect(manager?.type, `roles${suffix} manager type`).toBe('reference');
@@ -287,10 +288,11 @@ describe('seed demo content', () => {
     };
     const entries = exampleEntries(assets);
     const pages = examplePages(assets);
-    expect(JSON.stringify(entries.find((e) => e.id === 'proj-harbor'))).toContain(assets['proj-harbor']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'team-mara'))).toContain(assets['team-mara']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'team-dev'))).toContain(assets['team-devon']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'prod-tee'))).toContain(assets['prod-tee']);
+    // entry ids are underscore identifiers now; the ASSET KEYS (assets[...]) stay as-is (media keys).
+    expect(JSON.stringify(entries.find((e) => e.id === 'proj_harbor'))).toContain(assets['proj-harbor']);
+    expect(JSON.stringify(entries.find((e) => e.id === 'team_mara'))).toContain(assets['team-mara']);
+    expect(JSON.stringify(entries.find((e) => e.id === 'team_dev'))).toContain(assets['team-devon']);
+    expect(JSON.stringify(entries.find((e) => e.id === 'prod_tee'))).toContain(assets['prod-tee']);
     const sources = pages.map((p) => p.source ?? '').join('\n');
     expect(sources).toContain(assets.hero);
     expect(sources).toContain(assets.studio);

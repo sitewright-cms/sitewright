@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { createApp } from './http/app.js';
 import { seedInstance, DEFAULT_ADMIN_EMAIL } from './seed.js';
+import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
@@ -230,6 +231,15 @@ try {
     `[sitewright/seed] WARNING: bootstrap seed failed — ${err instanceof Error ? err.message : String(err)}\n` +
       '[sitewright/seed] the server will still start; re-deploy to retry the seed.\n',
   );
+}
+
+// Idempotent content migration: bring any legacy HYPHENATED dataset slugs (locale twins like `services-de`,
+// or user/agent multi-word slugs like `faq-passengers`) onto the underscore identifier convention so their
+// `dataset.<slug>` loops resolve. A no-op once migrated; never block boot if it fails.
+try {
+  await migrateDatasetSlugsToUnderscore(db, (m) => process.stderr.write(`[sitewright/migrate] ${m}\n`));
+} catch (err) {
+  process.stderr.write(`[sitewright/migrate] WARNING: dataset-slug migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
 // Refuse to boot into a permanently-locked state: registration is CLOSED by default (self-signup is an

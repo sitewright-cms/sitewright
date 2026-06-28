@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/// <reference lib="dom" />
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NOTICE_JS } from '../src/notice.js';
 

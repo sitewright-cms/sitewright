@@ -27,6 +27,33 @@ export const SlugSchema = z
   // is length-capped by .max() above, so backtracking is bounded (not ReDoS).
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be lowercase alphanumeric with hyphens'); // eslint-disable-line security/detect-unsafe-regex
 
+/**
+ * A dataset's slug — its binding KEY in templates: `{{#each dataset.<slug>}}`, `{{sw-control … dataset=
+ * "<slug>"}}`, a reference field's `config.target`. Unlike a URL slug it is a Handlebars/JS IDENTIFIER, so
+ * it uses UNDERSCORES, not hyphens — `dataset.faq-passengers` parses as subtraction, `dataset.faq_passengers`
+ * is a valid path. Same shape as {@link SlugSchema} but with `_` as the separator (a leading digit is fine —
+ * Handlebars resolves `dataset.2024report`). No leading/trailing/double underscore.
+ */
+export const DatasetSlugSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  // Linear: the "_" separator makes the two quantified groups non-overlapping; length-capped above (not ReDoS).
+  .regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/, 'must be a lowercase identifier with underscores, e.g. faq_passengers (no hyphens)'); // eslint-disable-line security/detect-unsafe-regex
+
+/**
+ * A dataset ENTRY's id — its "item key". Like {@link DatasetSlugSchema} it is a Handlebars/JS IDENTIFIER:
+ * an entry is directly addressable as `{{ item.<dataset>.<id>.<field> }}` (the keyed twin of the loop), so
+ * a hyphen would parse as subtraction and break the lookup (and the editor's data-sw-entry edit handle).
+ * Lowercase letters/digits in underscore-separated groups; no hyphens, no leading/trailing/double underscore.
+ */
+export const EntryIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  // Linear: the "_" separator makes the quantified groups non-overlapping; length-capped above (not ReDoS).
+  .regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/, 'must be a lowercase identifier with underscores, e.g. fast_pickup (no hyphens)'); // eslint-disable-line security/detect-unsafe-regex
+
 /** Block component type — resolved against the block registry. */
 export const ComponentTypeSchema = z
   .string()

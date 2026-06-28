@@ -97,19 +97,20 @@ describe('DatasetManager', () => {
     expect(saved.dataset).toBe('alpha');
   });
 
-  it('duplicates a dataset under a "<slug>-copy" id, cloning its entries', async () => {
+  it('duplicates a dataset under a "<slug>_copy" id, cloning its entries', async () => {
     render(<DatasetManager project={project} />);
     await screen.findByText('Alpha');
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate dataset Alpha' }));
     await waitFor(() =>
       expect(putDataset).toHaveBeenCalledWith(
         'p',
-        expect.objectContaining({ id: 'alpha-copy', name: 'Alpha copy', slug: 'alpha-copy' }),
+        // underscore, not hyphen — a dataset slug is a Handlebars identifier
+        expect.objectContaining({ id: 'alpha_copy', name: 'Alpha copy', slug: 'alpha_copy' }),
       ),
     );
     // Both of Alpha's entries are cloned under the new slug.
     await waitFor(() =>
-      expect(putEntry.mock.calls.filter(([, e]) => e.dataset === 'alpha-copy')).toHaveLength(2),
+      expect(putEntry.mock.calls.filter(([, e]) => e.dataset === 'alpha_copy')).toHaveLength(2),
     );
   });
 
@@ -178,12 +179,12 @@ describe('DatasetManager', () => {
     await waitFor(() => expect(renameDataset).toHaveBeenCalledWith('p', 'alpha', 'articles', false));
   });
 
-  it('rejects a slug with disallowed characters (allow-list: lowercase alphanumeric + hyphens)', async () => {
+  it('rejects a slug with disallowed characters (allow-list: lowercase alphanumeric + underscores)', async () => {
     const dlg = await openRename();
-    fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'My Articles!' } });
-    // Invalid slug → the cascade choice is NOT offered + a clear allow-list message shows.
+    // a HYPHEN is now rejected too — a dataset slug is a Handlebars identifier (underscores only)
+    fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'faq-passengers' } });
     expect(dlg.queryByRole('button', { name: /Rename \+ update all references/ })).not.toBeInTheDocument();
-    expect(dlg.getByText(/only lowercase letters, numbers, and hyphens/i)).toBeInTheDocument();
+    expect(dlg.getByText(/only lowercase letters, numbers, and underscores/i)).toBeInTheDocument();
     expect(renameDataset).not.toHaveBeenCalled();
   });
 

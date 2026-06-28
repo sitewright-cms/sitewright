@@ -453,6 +453,19 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '  <p>{{name}} — {{email}}</p>\n' +
           '{{/with}}',
       },
+      {
+        id: 'b-eq',
+        syntax: '{{#if (eq a b)}} … {{/if}}',
+        name: 'eq / ne',
+        keywords: 'equal equals compare comparison conditional if active match ne not-equal',
+        description:
+          'Strict (===) equality / inequality SUBEXPRESSION helpers — Handlebars has no built-in comparison, and a template that calls a helper that does not exist HARD-FAILS the render. Use {{#if (eq a b)}} / {{#if (ne a b)}} (or inline in an attribute) to render conditionally on a value, e.g. highlight one item in a loop. Compares by value, so compare like-with-like (string↔string, number↔number). For "is this the current page?" prefer {{#if (sw-active path)}} (route-aware trail matching) over eq.',
+        example:
+          '{{#each dataset.plans}}\n' +
+          '  <div class="card {{#if (eq this.tier \'pro\')}}ring-2 ring-primary{{/if}}">{{title}}</div>\n' +
+          '{{/each}}',
+        note: 'For nav active-state use sw-active (it matches the active trail + handles locale homes); eq/ne are for general value comparisons.',
+      },
     ],
   },
   {

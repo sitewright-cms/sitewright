@@ -308,12 +308,12 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(callsOf(deleter).deleteMedia).toHaveBeenCalledWith('m1');
   });
 
-  it('rename_dataset forwards (id, slug, cascade=true) with a write token', async () => {
+  it('rename_dataset forwards (id, slug, name, cascade=true) with a write token', async () => {
     const writer = fakeClient();
     const w = await connect(writer, writeScope);
-    const res = await w.callTool({ name: 'rename_dataset', arguments: { id: 'ds1', slug: 'features' } });
+    const res = await w.callTool({ name: 'rename_dataset', arguments: { id: 'ds1', slug: 'features', name: 'Features' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).renameDataset).toHaveBeenCalledWith('ds1', 'features', true);
+    expect(callsOf(writer).renameDataset).toHaveBeenCalledWith('ds1', 'features', 'Features', true);
     // read-only token is refused
     const reader = fakeClient();
     const r = await connect(reader, readScope);

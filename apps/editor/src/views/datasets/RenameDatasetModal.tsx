@@ -17,16 +17,17 @@ interface RenameDatasetModalProps {
   onClose: () => void;
 }
 
-// The slug allow-list (mirrors the server's SlugSchema): lowercase letters/digits in hyphen-separated
-// groups — no spaces, symbols, leading/trailing/double hyphens.
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// The slug allow-list (mirrors the server's DatasetSlugSchema): a dataset slug is a Handlebars/JS
+// identifier used directly as `dataset.<slug>`, so lowercase letters/digits in UNDERSCORE-separated
+// groups — no hyphens (they'd parse as subtraction), spaces, symbols, or leading/trailing/double `_`.
+const SLUG_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
 /**
  * Rename a dataset's display NAME and/or its SLUG (the binding key). The name is cosmetic. Changing the
  * slug is a server-side, ATOMIC operation (`api.renameDataset`) that CASCADES — every entry's `dataset`
  * field and every page/template `{{#each dataset.<slug>}}` / `dataset="<slug>"` reference is rewritten so
- * nothing breaks. The slug is allow-list validated (lowercase alphanumeric + hyphens). On a slug change
- * the user picks: Cancel (close) · Rename + update references (cascade) · Rename only (leave references).
+ * nothing breaks. The slug is allow-list validated (lowercase identifier with underscores). On a slug
+ * change the user picks: Cancel (close) · Rename + update references (cascade) · Rename only (leave refs).
  */
 export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs, onRenamed, onClose }: RenameDatasetModalProps) {
   const { confirm, dialog } = useDialogs();
@@ -101,10 +102,10 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
           />
           <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500' : 'text-slate-400'}`}>
             {slugChanged && !slugValid
-              ? 'Use only lowercase letters, numbers, and hyphens (no spaces, symbols, or leading/trailing hyphens).'
+              ? 'Use only lowercase letters, numbers, and underscores, e.g. faq_passengers (no hyphens — they break the binding).'
               : slugTaken
                 ? `“${slug}” is already used by another dataset.`
-                : 'Lowercase letters, numbers, and hyphens only.'}
+                : 'Lowercase letters, numbers, and underscores only (e.g. faq_passengers).'}
           </span>
         </label>
 

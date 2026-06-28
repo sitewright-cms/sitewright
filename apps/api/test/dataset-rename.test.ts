@@ -10,9 +10,21 @@ describe('rewriteDatasetRefsInSource', () => {
 
   it('rewrites a property-access path but does NOT touch a different slug with the same prefix', () => {
     expect(rewriteDatasetRefsInSource('{{dataset.items.length}}', 'items', 'features')).toBe('{{dataset.features.length}}');
-    // sibling slugs that merely share the prefix must be left alone
+    // sibling slugs that merely share the prefix must be left alone (underscore + hyphen boundaries)
     expect(rewriteDatasetRefsInSource('{{#each dataset.items2}}x{{/each}}', 'items', 'features')).toBe('{{#each dataset.items2}}x{{/each}}');
+    expect(rewriteDatasetRefsInSource('{{#each dataset.items_archive}}x{{/each}}', 'items', 'features')).toBe('{{#each dataset.items_archive}}x{{/each}}');
     expect(rewriteDatasetRefsInSource('{{#each dataset.items-archive}}x{{/each}}', 'items', 'features')).toBe('{{#each dataset.items-archive}}x{{/each}}');
+  });
+
+  it('normalizes the legacy bracket form `dataset.[old]` to the dotted underscore form (migration)', () => {
+    // a hyphenated slug had to be bracketed to survive Handlebars; migrating to underscore drops the brackets
+    expect(rewriteDatasetRefsInSource('{{#each dataset.[faq-passengers]}}x{{/each}}', 'faq-passengers', 'faq_passengers')).toBe(
+      '{{#each dataset.faq_passengers}}x{{/each}}',
+    );
+    // both the bracket form AND a stray broken dotted form get normalized in one pass
+    expect(rewriteDatasetRefsInSource('{{#each dataset.[a-b]}}{{/each}}{{sw-control dataset="a-b"}}', 'a-b', 'a_b')).toBe(
+      '{{#each dataset.a_b}}{{/each}}{{sw-control dataset="a_b"}}',
+    );
   });
 
   it('does not match `dataset` embedded in a longer identifier', () => {
@@ -29,7 +41,9 @@ describe('sourceReferencesDataset', () => {
   it('detects path + picker-arg references, and ignores prefix-siblings', () => {
     expect(sourceReferencesDataset('{{#each dataset.items}}{{/each}}', 'items')).toBe(true);
     expect(sourceReferencesDataset('{{sw-control dataset="items"}}', 'items')).toBe(true);
+    expect(sourceReferencesDataset('{{#each dataset.[faq-passengers]}}{{/each}}', 'faq-passengers')).toBe(true); // legacy bracket form
     expect(sourceReferencesDataset('{{#each dataset.items2}}{{/each}}', 'items')).toBe(false);
+    expect(sourceReferencesDataset('{{#each dataset.items_archive}}{{/each}}', 'items')).toBe(false);
     expect(sourceReferencesDataset('<p>x</p>', 'items')).toBe(false);
   });
 });

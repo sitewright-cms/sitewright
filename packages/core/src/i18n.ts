@@ -3,9 +3,9 @@
 // path/title/description/data) linked to its siblings by `translationGroup`. By default a
 // variant INHERITS the main language's page code (carries no `source`/`template`,
 // resolves the owner's via `resolveCodeRef`); it can instead FORK its own `source`
-// or reference a `template`. Datasets are duplicated per locale (`<slug>-<locale>`)
+// or reference a `template`. Datasets are duplicated per locale (`<slug>_<locale>`)
 // and resolved here by an auto locale-suffix convention, with explicit
-// `<slug>-<locale>` addressing still available.
+// `<slug>_<locale>` addressing still available (underscore — a dataset slug is a Handlebars path).
 import { isLinkPage, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
 
@@ -13,27 +13,29 @@ import { pagePath, pagesById } from './routes.js';
 const isHomePage = (p: Page): boolean => p.path === '' && !isLinkPage(p);
 
 /**
- * The dataset slug a base name resolves to in `locale` — a slug-valid hyphen suffix
- * with the locale lowercased (`services` + `de` → `services-de`; `pt-BR` → `services-pt-br`),
- * so it satisfies `SlugSchema` for every locale tag.
+ * The dataset slug a base name resolves to in `locale` — an UNDERSCORE suffix with the locale
+ * lowercased and its own hyphens underscored (`services` + `de` → `services_de`; `pt-BR` →
+ * `services_pt_br`). Underscore (not hyphen) because a dataset slug is a Handlebars/JS identifier
+ * used directly as `dataset.<slug>`, so it must satisfy `DatasetSlugSchema` and stay path-parseable
+ * (`dataset.services_de` is valid; `dataset.services-de` would parse as subtraction).
  */
 export function localizedDatasetName(name: string, locale: string): string {
-  return `${name}-${locale.toLowerCase()}`;
+  return `${name}_${locale.toLowerCase().replace(/-/g, '_')}`;
 }
 
 /**
  * Returns a view of the dataset map for the active `locale`: a base name `<s>`
- * resolves to `<s>-<locale>` when that dataset exists (auto-suffix), otherwise
+ * resolves to `<s>_<locale>` when that dataset exists (auto-suffix), otherwise
  * stays itself (fallback to the default-locale dataset). The original suffixed
- * keys remain addressable, so `{{#each dataset.services-de}}` still works as a
- * manual escape hatch. The default locale (no `-<locale>` variants) is unchanged.
+ * keys remain addressable, so `{{#each dataset.services_de}}` still works as a
+ * manual escape hatch. The default locale (no `_<locale>` variants) is unchanged.
  */
 export function resolveLocaleDatasets<T>(
   datasets: Record<string, readonly T[]>,
   locale: string | undefined,
 ): Record<string, readonly T[]> {
   if (!locale) return datasets;
-  const suffix = `-${locale.toLowerCase()}`;
+  const suffix = `_${locale.toLowerCase().replace(/-/g, '_')}`;
   const out: Record<string, readonly T[]> = { ...datasets };
   for (const name of Object.keys(datasets)) {
     // Don't re-suffix a name that is already a variant for THIS locale.

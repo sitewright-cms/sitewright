@@ -69,6 +69,11 @@ In \`source\`:
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}. A dataset field
   may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
   {{<field>.<key>}}), so an entry can hold structured/nested data.
+- CONDITIONALS / COMPARISON: {{#if x}}/{{#unless x}} are built in; for value comparison use {{#if (eq a b)}}
+  / {{#if (ne a b)}} (=== / !==). Handlebars has NO other built-in comparison, and calling a helper that
+  is NOT registered HARD-FAILS the whole render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick
+  to eq/ne (+ the {{sw-*}} helpers in get_reference). For "is this the current page?" use {{#if (sw-active
+  path)}} (route-aware), not eq.
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -407,10 +412,10 @@ or, to make a string editable IN PLACE in the content editor, put the key on an 
 data-sw-translate="key" directive. (The catalog is separate from website.data, the global
 NON-localized JSON store.)
 
-LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
-"services" + "services-de". A page with locale "de" auto-resolves {{#each dataset.services}}
-to "services-de" when it exists (else it falls back to "services"); address a specific
-variant explicitly with {{#each dataset.services-de}}. In source, expose the page's language
+LOCALIZED DATA: duplicate a dataset per locale as "<name>_<locale>" (lowercased, UNDERSCORE — a dataset
+slug is a Handlebars path so it can't contain hyphens), e.g. "services" + "services_de". A page with
+locale "de" auto-resolves {{#each dataset.services}} to "services_de" when it exists (else it falls back
+to "services"); address a specific variant explicitly with {{#each dataset.services_de}}. In source, expose the page's language
 as {{page.locale}} and its alternates as {{#each page.translations}} (each has \`locale\`,
 \`path\`, \`title\`). The "translation" content kind is legacy — do NOT use it; model
 languages as locale-variant pages instead.
@@ -629,6 +634,9 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    the foreign content container (a .container / centered max-width wrapper) to the platform .sw-container so
    every section aligns to the site-wide Content width (the --sw-container var); keep full-bleed backgrounds
    on the <section> with the .sw-container inside. Sections are full-width (w-full), not pinned pixel widths.
+   AVOID DaisyUI RESERVED component class names as plain layout classes — steps / tabs / carousel / collapse
+   / card / badge / menu etc. are COMPONENTS; e.g. <ol class="steps"> lays items out horizontally. Name your
+   own wrappers something else (howto-steps), or you'll inherit a component's styling by accident.
 2. COLORS: replace the foreign palette (fixed hexes, --primary-color vars, named colour classes) with the
    MATCHING theme tokens (primary, secondary, base-100/200/300, base-content) so light AND dark work; set
    the brand from the imported identity (see "SET THE BRAND" in the core instructions) to the source's colours.
@@ -636,11 +644,47 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
    The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
-   rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). Do NOT
-   change a dataset's slug via put_content: that renames only the dataset and orphans its entries + loops.
+   rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
+   slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it
+   "faq_passengers", NEVER "faq-passengers" (a hyphen parses as subtraction and breaks the loop; the tool
+   rejects it). Do NOT change a dataset's slug via put_content: that renames only the dataset and orphans
+   its entries + loops. rename_dataset ALSO takes a "name" — set a human display name so the dataset doesn't
+   stay the import's generic "List"/"List 2" in the editor. ITEM KEYS (entry ids) follow the same rule: they
+   are underscore identifiers (used as {{item.<dataset>.<id>}} paths + data-sw-entry edit handles), NEVER
+   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). And make the loop EDITABLE: put
+   data-sw-text / data-sw-html on each field INSIDE the {{#each}} ({{title}} → <span data-sw-text="title">
+   {{title}}</span>) so the client can edit every item — a loop with bare {{field}} and no directives renders
+   but can't be edited. GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
+   rows by slug — so after rename_dataset, any entry you re-put (e.g. to add a field) must carry the NEW slug
+   in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
+   rename, or set the "dataset" field to the new slug explicitly.
+4b. SHARED LAYOUTS -> TEMPLATE: when several imported pages share ONE layout — legal pages (Imprint +
+   Privacy Policy = a titled rich-text card), or repeated service/detail/blog pages — do NOT author them as
+   N standalone pages. Create ONE template (put_content "template" { id, name, source }) and render each page
+   FROM it: set page.template + put that page's content in page.data, read in the template via {{page.data.*}}
+   (+ data-sw-* so it's editable). One layout to maintain, faithful per page. See get_guide("templates").
 5. INTERACTIVITY: rebuild sliders/carousels/lightboxes/tabs/accordions/modals with the matching platform
-   COMPONENT (get_guide("components")) so they keep working — the import stripped their JS.
-6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content.
+   COMPONENT (get_guide("components")) so they keep working — the import stripped their JS. The component gives
+   you the BEHAVIOR; its DEFAULT chrome (arrows, dots, control bars, borders, tab underlines) rarely matches
+   the source, so RESTYLE it to match with a scoped <style> in the page source (or website.criticalCss for a
+   site-wide control): e.g. slider arrow size/position + indicator dots + a translucent bottom control bar;
+   CENTER the tab strip and match the original's tab SHAPE — strip the component's default background +
+   padding and match its corner-radius + active style + font size (a stray tab background or mismatched
+   rounded edges is a common miss). For an ACCORDION use the DaisyUI collapse
+   pattern — <details class="collapse collapse-arrow bg-base-200 …"> (the open marker is the summary), NOT a
+   bare <details> — then match its border/spacing/icon to the source. Shipping a component's default look when
+   the original clearly looks different is a fidelity miss.
+   SLIDER (Carousel) specifics: include ALL the source's slides (don't drop any), each with a real image src;
+   give the prev/next buttons a visible icon ({{sw-icon "chevron-left"}}) and keep a [data-sw-part="dots"]
+   (the runtime fills it). The arrows/dots are HIDDEN until the JS runtime ENHANCES the slider — so they do
+   NOT show in a static/JS-blocked preview; verify them on a rendered page, and when you restyle the controls
+   with <style> make sure you keep them VISIBLE (don't set opacity:0 / off-screen / transparent-on-transparent).
+6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content. A dataset
+   {{#each}} loop auto-gets a click-to-edit handle in the editor preview (each row is wrapped in data-sw-entry
+   → a teal "entry" badge + outline that opens that item's editor on click) — but ONLY in the editor's live
+   preview, not the static whole-site preview; and put data-sw-text/html on the fields so the inner text is
+   editable too. If a row is FULLY covered by editable leaves, click the row's teal entry badge (or any
+   non-text chrome / use the Regions panel) to open the full item editor.
 7. IMAGES: keep the self-hosted images the import found (same src); fill gaps with import_image (from a URL)
    or search_stock_images (SVGs and oversize images may have been dropped).
 8. ASSET FOLDERS: the import dumps every self-hosted file into a TRANSIENT \`imported/\` tree — REORGANIZE it
@@ -653,16 +697,56 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    file to an \`Unused\` folder instead). Moving/renaming is SAFE — it only changes the folder TAG, and the
    \`/media/...\` URL is content-addressed + stable, so page references never break (only delete_media is
    destructive). End state: a tree a human dev reads at a glance, with no \`imported/\` left.
+9. MATCH THE VISUAL SCALE (not just the structure — these "looks-close-but-off" misses are the most common):
+   - TYPE SIZES: don't shrink text. Match the source's body + heading scale (read the original's font sizes;
+     a real site's body is usually ~16-18px and headings are large). Defaulting everything to small text is a
+     frequent, glaring miss.
+   - ICON / graphic sizes: feature + hero icons are often BIG (~40-64px). Measure the original — don't default
+     to a tiny h-9.
+   - SHADOWS: cards, the header, buttons, popovers and tiles usually carry a VISIBLE shadow. Replicate its
+     strength (shadow-md/lg/xl), not a faint one or none.
+   - Spacing/padding and border weights likewise — match, don't approximate.
 
 CHROME (do this too — it isn't done until the slots are ported). The header / footer slots
 (in the settings entity, website.mainNav/.footer) still hold literal foreign HTML. Port them the
 same way — same layout, native classes + tokens + {{company.*}} — editing the settings entity.
+USE THE DEFAULT NAV AS THE STARTING POINT — DON'T HAND-ROLL A MENU WITH HARD-CODED ITEMS, and don't assume
+the bare partial is enough. The mainNav SLOT is already populated (the importer put the foreign header there;
+new projects ship {{> nav-header}}) — start from what's in the slot and ADAPT it; you do NOT need to fetch the
+snippet (get_content("snippet","nav-header") only resolves if the project actually has that snippet entity —
+an imported project does NOT, so it 404s; the data-driven recipe is in get_guide("nav")). The default is a
+data-driven desktop bar + pure-CSS mobile drawer + language/theme toggles; ADAPT it to the original's exact
+look: wrap it in the right CONTAINER (e.g. a .sw-container / centered max-width bar — the etaxi header needs
+one), set the brand-bar background + height, logo placement, spacing, and link styling. KEEP IT DATA-DRIVEN —
+build the items from the loop {{#each nav.header}}…{{sw-label}}…{{/each}}; NEVER write a fixed list of <a href>
+entries. A nav <ul> needs an explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
+appears otherwise). A menu item exists because a PAGE opts into the slot: set each page's nav:{ slots:["header"],
+title:"<short label>", order } (footer links the same via {{#each nav.footer}} / {{> nav-footer}}, also usually
+copied + adapted). See get_guide("nav").
+HEADER FIDELITY: (a) give the header bar a VISIBLE drop shadow (e.g. shadow-lg) — a faint shadow-sm vanishes
+when the bar sits on a same-colour hero, so go stronger or add a hairline bottom border. (b) The header must
+use the SAME content container + horizontal padding as the body sections (the .sw-container), so the logo +
+menu line up vertically with the hero/section content — do NOT zero the header's container padding, and keep
+that padding on mobile/tablet too (a flush-to-edge header is a common miss). (c) The mobile menu must be the
+slide-in DRAWER (the nav-header pure-CSS drawer pattern), NOT a dropdown — default to the drawer on small
+screens.
+IN-PAGE ANCHOR MENUS (a one-pager whose menu scrolls to sections — e.g. Home / Why eTaxi / How To Use / FAQ):
+do NOT hard-code href="#why". Create a LINK-PLACEHOLDER page per anchor — put_page { kind:"link", title,
+nav:{ slots:["header"], order }, link:{ target:"#why" } } — so it appears in {{#each nav.header}} as a
+smooth-scroll item, and give the matching home section id="why". (get_guide("nav") → NAV PLACEHOLDERS.)
 STANDARDIZE THE CHROME: the slots are SITE-WIDE — author ONE header + ONE footer that every page shares.
 When the original site styles its chrome INCONSISTENTLY across pages (e.g. a white header on one page, the
 brand-colour header on another), DO NOT copy the divergence — pick the treatment that reflects the brand's
 intent (usually the one in the brand/primary colour, or the most common one) and use it everywhere. If a
 SPECIFIC page genuinely needs a different chrome look, don't fork the slot — add a per-page \`<style>\`
 override in THAT page's source (scoped to it) on top of the shared chrome.
+MATCH THE CHROME DETAIL faithfully: keep the LOGO exactly as the source presents it — do NOT invent a colored
+box/pill behind it unless the original has one (a logo on a brand-colour bar usually sits directly on the bar).
+The FOOTER / sub-footer must match the source's background (often white/light, not the brand colour), its
+border weight, AND every link — including an agency/attribution credit (e.g. a "PHOENIX" build-credit link);
+don't silently drop links. A fixed social/contact RAIL that the original shows on DESKTOP must be VISIBLE on
+desktop — author it with the original's breakpoints, not md:hidden (mobile-only), or it vanishes on the
+desktop compare.
 
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
 (website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
@@ -676,14 +760,21 @@ embed with {{sw-form}}).
 
 VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
 compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.
-Go region by region — header, every section/tile, tabs + their inner media, accordion, footer/sub-footer
-— and match background, borders, colours, type sizes, layout and content to the source. Fix the
-differences and call it AGAIN. Keep iterating until the build matches the original; a page is NOT done
-because your own screenshot looks fine. Work ONE page at a time so conventions (theme tokens, datasets,
+Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs + their
+inner media, accordion, footer/sub-footer, the fixed social rail — and match background, borders, colours,
+TYPE SIZES, icon/graphic sizes, SHADOW strength, and component-control styling (slider arrows/dots, tab
+centering + active state) — not just layout and content. Fix the differences and call it AGAIN. Keep
+iterating until the build matches the original; a page is NOT done because your own screenshot looks fine. Work ONE page at a time so conventions (theme tokens, datasets,
 chrome) carry across the site.
 
-WHEN A PAGE IS DONE (i.e. compare_to_source shows it matching the original): set
-page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
+STRUCTURE CHECK (compare_to_source only catches VISUAL diffs — these are STRUCTURAL, so self-verify, they
+won't show in a screenshot): the header + footer menus are DATA-DRIVEN (built from {{#each nav.*}} over page
+nav-membership + link-placeholders), NOT a hard-coded <a> list; in-page section links are kind:"link"
+placeholders (not literal href="#…" in a hand-rolled menu); pages sharing a layout (legal/repeated) render
+from ONE shared template, not duplicated page source.
+
+WHEN A PAGE IS DONE (i.e. compare_to_source shows it matching the original AND the STRUCTURE CHECK passes):
+set page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
 `,
   },
 } as const;
@@ -753,6 +844,6 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
   { name: 'delete_media', description: "Permanently delete a media asset (DB row + binary) — prune orphaned files. Its URL stops resolving; ensure nothing references it.", capability: 'content:delete' },
-  { name: 'rename_dataset', description: "Rename a dataset's slug — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
+  { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

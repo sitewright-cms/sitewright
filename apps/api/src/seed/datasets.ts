@@ -1,14 +1,14 @@
 import type { Dataset, Field } from '@sitewright/schema';
-import { WIDGET_MANIFESTS } from '@sitewright/core';
+import { WIDGET_MANIFESTS, localizedDatasetName } from '@sitewright/core';
 
 // ---------------------------------------------------------------- datasets (the CMS)
 //
 // Every translatable dataset is declared ONCE and emitted per locale via the platform's
-// `<slug>-<locale>` convention: a `de` page binding `{{#each dataset.services}}` auto-resolves to
-// `services-de` (resolveLocaleDatasets in @sitewright/core). The default-locale dataset keeps the
-// bare slug. `reference` fields point at the SAME-locale twin of their target (e.g. `roles-de`
-// managers reference `team-de` entry ids), so keyed `{{item.team.<id>.…}}` lookups resolve
-// within the locale.
+// `<slug>_<locale>` convention: a `de` page binding `{{#each dataset.services}}` auto-resolves to
+// `services_de` (resolveLocaleDatasets in @sitewright/core). The default-locale dataset keeps the
+// bare slug. (Underscore, not hyphen — a dataset slug is a Handlebars path.) `reference` fields point
+// at the SAME-locale twin of their target (e.g. `roles_de` managers reference `team-de` entry ids),
+// so keyed `{{item.team.<id>.…}}` lookups resolve within the locale.
 
 /** The locales the example ships datasets/entries/forms/translations for (en = default). */
 export const EXAMPLE_CONTENT_LOCALES = ['en', 'de', 'es'] as const;
@@ -97,17 +97,20 @@ const SPECS: DatasetSpec[] = [
   },
 ];
 
-/** One spec → the base dataset + its `-<locale>` twins (schema declared once, emitted per locale). */
+/** One spec → the base dataset + its `_<locale>` twins (schema declared once, emitted per locale). The
+ *  per-locale slug/reference twin uses `localizedDatasetName` (the same underscore convention the platform
+ *  resolves), so a `de` page's `{{#each dataset.services}}` auto-resolves to `services_de`. */
 function emit(spec: DatasetSpec): Dataset[] {
   return EXAMPLE_CONTENT_LOCALES.map((locale) => {
-    const suffix = locale === 'en' ? '' : `-${locale}`;
+    const localize = (base: string): string => (locale === 'en' ? base : localizedDatasetName(base, locale));
     const fields = spec.fields.map((f) =>
       spec.referenceFields?.includes(f.name)
-        ? { ...f, config: { ...f.config, dataset: `${(f.config as { dataset: string }).dataset}${suffix}` } }
+        ? { ...f, config: { ...f.config, dataset: localize((f.config as { dataset: string }).dataset) } }
         : f,
     );
     const name = locale === 'en' ? spec.name : `${spec.name} - ${locale.toUpperCase()}`;
-    return { id: `${spec.id}${suffix}`, name, slug: `${spec.id}${suffix}`, fields };
+    const slug = localize(spec.id);
+    return { id: slug, name, slug, fields };
   });
 }
 

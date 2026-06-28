@@ -500,6 +500,14 @@ function createInstance(): typeof Handlebars {
     }
     return text.replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, ' ').trim() === '';
   });
+  // {{#if (eq a b)}} / {{#if (ne a b)}} — strict (===) equality / inequality SUBEXPRESSION helpers, for
+  // conditional rendering without a custom helper (Handlebars has no built-in comparison). Loose by design
+  // about types: numbers/strings compare by value via ===, so compare like-with-like. Returns a boolean,
+  // so it composes inside {{#if}}/{{#unless}} and attribute interpolation (e.g. class="{{#if (eq path
+  // page.path)}}active{{/if}}"). A render that references a NON-registered helper hard-fails (HTTP 400);
+  // these cover the common comparison need so authors don't reach for one that doesn't exist.
+  hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+  hb.registerHelper('ne', (a: unknown, b: unknown) => a !== b);
   // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
   // page locale, from the project translation catalog (website.translations). The render projection
   // pre-resolves the catalog per page-locale into `website.t` (a flat key→string map, defaultLocale

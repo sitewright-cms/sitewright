@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema, KeyNameSchema, SlugSchema, safeRecord } from './primitives.js';
+import { IdSchema, KeyNameSchema, DatasetSlugSchema, EntryIdSchema, safeRecord } from './primitives.js';
 
 /** Supported CMS field types. `list` (an ordered, repeatable group of sub-fields) and `object`
  *  (a named sub-group) are the NESTED types: they carry their own child `fields`, so a single
@@ -103,7 +103,7 @@ export const DatasetSchema = z
   .object({
     id: IdSchema,
     name: z.string().min(1).max(200),
-    slug: SlugSchema,
+    slug: DatasetSlugSchema,
     fields: z.array(FieldSchema).max(500).default([]),
   })
   .superRefine((ds, ctx) => {
@@ -118,8 +118,8 @@ export type Dataset = z.infer<typeof DatasetSchema>;
  *  field's array of objects, an `object` field's sub-record) store as-is — the field tree drives the
  *  editor, not entry-storage validation. */
 export const EntrySchema = z.object({
-  id: IdSchema,
-  dataset: SlugSchema,
+  id: EntryIdSchema,
+  dataset: DatasetSlugSchema,
   locale: z.string().max(35).optional(),
   status: z.enum(['draft', 'published']).default('draft'),
   /**

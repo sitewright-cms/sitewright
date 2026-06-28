@@ -49,6 +49,7 @@ import {
   isScreenshotViewportName,
   DEFAULT_SCREENSHOT_VIEWPORTS,
   siteCspHeaderFromHtml,
+  DatasetSlugSchema,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -2113,14 +2114,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Rename a dataset's SLUG with an optional cascade (default ON): rewrite every entry's `dataset` field
   // + every page/template source's `dataset.<slug>` refs so loops don't break. content:write (it edits
   // pages). `cascade:false` renames only the dataset (the editor's plain "Rename" — leaves refs dangling).
-  const RenameDatasetBody = z.object({ slug: z.string().min(1).max(120), cascade: z.boolean().default(true) });
+  const RenameDatasetBody = z.object({ slug: DatasetSlugSchema, name: z.string().min(1).max(200).optional(), cascade: z.boolean().default(true) });
   app.post<{ Params: { projectId: string; id: string } }>(
     '/projects/:projectId/datasets/:id/rename',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const body = RenameDatasetBody.parse(req.body);
-      return reply.send(await contentRepo.renameDataset(ctx, req.params.id, body.slug, { cascade: body.cascade }));
+      return reply.send(await contentRepo.renameDataset(ctx, req.params.id, body.slug, { cascade: body.cascade, name: body.name }));
     },
   );
 

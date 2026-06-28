@@ -70,7 +70,7 @@ describe('inferDatasets', () => {
     expect(ds.fields.map((f) => `${f.name}:${f.type}`)).toEqual(['image:image', 'title:text', 'description:text', 'link:text']);
     expect(inf.entries).toHaveLength(4);
     expect(inf.entries[0]!.values).toEqual({ image: '/media/x/a.jpg', title: 'Name 0', description: 'Role 0', link: '/p0' });
-    expect(inf.entries[0]!.id).toBe('ourteam-name-0'); // entry id from its title value, not "ourteam-1"
+    expect(inf.entries[0]!.id).toBe('name_0'); // item key = underscore identifier from the title value, un-prefixed (was 'ourteam-name-0')
     expect(inf.entries[0]!.dataset).toBe('ourteam');
     expect(inf.entries[0]!.status).toBe('published');
 

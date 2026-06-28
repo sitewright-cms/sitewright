@@ -3,7 +3,7 @@ import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
-import { defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
+import { datasetSlugify, defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
@@ -169,7 +169,7 @@ export function DatasetManager({ project }: { project: Project }) {
   async function createDataset(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const slug = slugify(newName);
+    const slug = datasetSlugify(newName);
     if (!slug) {
       setError('dataset name must contain letters or numbers');
       return;
@@ -219,13 +219,14 @@ export function DatasetManager({ project }: { project: Project }) {
     }
   }
 
-  // Duplicate a dataset: copy its schema under a fresh `<slug>-copy` id, then clone every entry
-  // (new ids, preserved order) under the new slug. Selects the copy.
+  // Duplicate a dataset: copy its schema under a fresh `<slug>_copy` id, then clone every entry
+  // (new ids, preserved order) under the new slug. Selects the copy. (Underscore, not hyphen — a
+  // dataset slug is a Handlebars identifier; see datasetSlugify / DatasetSlugSchema.)
   async function duplicateDataset(src: Dataset) {
     if (duplicatingDataset.current) return; // ignore a double-click while a duplicate is in flight
     duplicatingDataset.current = true;
     setError(null);
-    const newSlug = uniqueSlug(`${src.slug}-copy`, new Set(datasets.map((d) => d.id)));
+    const newSlug = uniqueSlug(`${src.slug}_copy`, new Set(datasets.map((d) => d.id)), '_');
     const srcEntries = entries.filter((e) => e.dataset === src.slug).slice().sort(compareEntryOrder);
     try {
       await api.putDataset(project.id, { id: newSlug, name: `${src.name} copy`, slug: newSlug, fields: src.fields.map((f) => ({ ...f })) });

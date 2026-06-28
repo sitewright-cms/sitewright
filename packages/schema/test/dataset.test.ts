@@ -84,11 +84,16 @@ describe('Dataset schemas', () => {
 
   it('entries store nested values verbatim (permissive values record)', () => {
     const e = EntrySchema.parse({
-      id: 'e-hero',
+      id: 'e_hero',
       dataset: 'hero',
       values: { show_navigation: true, slides: [{ image: '/a.jpg', caption: 'A' }, { image: '/b.jpg', caption: 'B' }] },
     });
     expect((e.values.slides as unknown[]).length).toBe(2);
+  });
+
+  it('rejects an entry id with hyphens (item keys are underscore identifiers — used as {{item.x.<id>}} paths)', () => {
+    expect(EntrySchema.safeParse({ id: 'svc-strategy', dataset: 'services', values: {} }).success).toBe(false);
+    expect(EntrySchema.safeParse({ id: 'svc_strategy', dataset: 'services', values: {} }).success).toBe(true);
   });
 
   it('defaults entry status to draft', () => {

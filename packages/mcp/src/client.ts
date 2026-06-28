@@ -313,7 +313,7 @@ export class SitewrightClient {
   }
 
   /** Rename a dataset's slug, cascading the change to entries + page/template sources (default on). */
-  async renameDataset(id: string, slug: string, cascade = true): Promise<unknown> {
-    return this.request('POST', this.projectPath(`/datasets/${encodeURIComponent(id)}/rename`), { slug, cascade });
+  async renameDataset(id: string, slug: string, name?: string, cascade = true): Promise<unknown> {
+    return this.request('POST', this.projectPath(`/datasets/${encodeURIComponent(id)}/rename`), { slug, name, cascade });
   }
 }

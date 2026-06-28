@@ -206,9 +206,10 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     const titleField = fields.find((f) => f.type === 'text')?.name;
     const usedEntryIds = new Set<string>();
     rows.forEach((values, n) => {
-      const fromTitle = titleField ? slugifyId(values[titleField] ?? '') : '';
-      let id = fromTitle ? `${slug}-${fromTitle}` : `${slug}-${n + 1}`;
-      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${slug}-${fromTitle || n + 1}-${k}`;
+      // Item keys = underscore identifiers, NOT slug-prefixed (used as {{item.<ds>.<id>}} paths + edit handles).
+      const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
+      let id = base;
+      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;
       usedEntryIds.add(id);
       entries.push({ id, dataset: slug, status: 'published', order: n, values });
     });

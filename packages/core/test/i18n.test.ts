@@ -27,30 +27,31 @@ const page = (over: Partial<Page>): Page =>
 describe('resolveLocaleDatasets (auto locale-suffix)', () => {
   const data = {
     services: [{ id: 'a' }],
-    'services-de': [{ id: 'a-de' }],
-    team: [{ id: 't' }], // no -de variant → falls back
+    services_de: [{ id: 'a-de' }],
+    team: [{ id: 't' }], // no _de variant → falls back
   };
 
-  it('base names resolve to their <name>-<locale> variant for the active locale', () => {
+  it('base names resolve to their <name>_<locale> variant for the active locale', () => {
     const de = resolveLocaleDatasets(data, 'de');
-    expect(de.services).toEqual([{ id: 'a-de' }]); // services → services-de
+    expect(de.services).toEqual([{ id: 'a-de' }]); // services → services_de
     expect(de.team).toEqual([{ id: 't' }]); // no de variant → unchanged (fallback)
     // The suffixed key stays addressable (manual escape hatch).
-    expect(de['services-de']).toEqual([{ id: 'a-de' }]);
+    expect(de['services_de']).toEqual([{ id: 'a-de' }]);
   });
 
   it('the default locale (no variants) is unchanged', () => {
-    expect(resolveLocaleDatasets(data, 'en')).toEqual(data); // no services-en → identical
+    expect(resolveLocaleDatasets(data, 'en')).toEqual(data); // no services_en → identical
     expect(resolveLocaleDatasets(data, undefined)).toBe(data); // no locale → same ref
   });
 
   it('does not double-suffix an already-localized name', () => {
-    const de = resolveLocaleDatasets({ 'services-de': [{ id: 'x' }] }, 'de');
-    expect(de['services-de']).toEqual([{ id: 'x' }]); // not services-de-de
+    const de = resolveLocaleDatasets({ services_de: [{ id: 'x' }] }, 'de');
+    expect(de['services_de']).toEqual([{ id: 'x' }]); // not services_de_de
   });
 
-  it('localizedDatasetName composes the suffix', () => {
-    expect(localizedDatasetName('services', 'pt-BR')).toBe('services-pt-br');
+  it('localizedDatasetName composes the suffix (hyphenated locale tags underscored too)', () => {
+    expect(localizedDatasetName('services', 'de')).toBe('services_de');
+    expect(localizedDatasetName('services', 'pt-BR')).toBe('services_pt_br');
   });
 });
 

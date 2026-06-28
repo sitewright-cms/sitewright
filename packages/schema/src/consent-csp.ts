@@ -46,6 +46,22 @@ export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>>
   },
 };
 
+/** Click-to-load EMBED providers (the iframe needs a `frame-src` origin; the parent CSP doesn't cascade INTO it). */
+export const EMBED_PROVIDERS = ['youtube', 'google-maps'] as const;
+export type EmbedProvider = (typeof EMBED_PROVIDERS)[number];
+
+/**
+ * Curated `frame-src` (+ thumbnail img) origins per embed provider. An <iframe> is its own browsing
+ * context, so the provider's INTERNAL fan-out is invisible to the page CSP — each provider needs exactly
+ * ONE-ish stable origin. Maintained in-repo; the publisher prepends `https://`.
+ */
+export const EMBED_PRESET_ORIGINS: Readonly<Record<EmbedProvider, CspOrigins>> = {
+  // youtube-nocookie is the embedded player; www.youtube.com is needed because clicking the title/logo in
+  // the player navigates THE IFRAME to youtube.com/watch (a same-frame navigation the page CSP governs).
+  youtube: { script: [], frame: ['www.youtube-nocookie.com', 'www.youtube.com'], connect: [], img: ['i.ytimg.com'], style: [], font: [] },
+  'google-maps': { script: [], frame: ['www.google.com'], connect: [], img: [], style: [], font: [] },
+};
+
 /** How the runtime loads one integration: a self-origin bootstrap (ga4/gtm) + an external `src`, or a plain script. */
 export interface ConsentIntegrationRuntime {
   /** Stable id (de-dupe key + the data attribute on the injected <script>). */
@@ -90,13 +106,18 @@ export function consentRuntimeIntegrations(consent: Consent | undefined): Consen
   return (consent?.integrations ?? []).map(integrationRuntimeInfo).filter((x): x is ConsentIntegrationRuntime => x !== null);
 }
 
-/** Aggregate, deduped CSP origins across every integration (preset bundle + custom src host + extra origins). */
-export function consentCspOrigins(consent: Consent | undefined): CspOrigins {
+/**
+ * Aggregate, deduped CSP origins. The REGISTRY integrations (script-src/connect-src) are gated on
+ * `consent.enabled`; the EMBED providers (frame-src) are added independently — a {{sw-embed}} is
+ * click-to-load and works even without the consent manager, but its iframe still needs a frame-src origin.
+ */
+export function consentCspOrigins(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): CspOrigins {
   const acc: Record<keyof CspOrigins, Set<string>> = { script: new Set(), frame: new Set(), connect: new Set(), img: new Set(), style: new Set(), font: new Set() };
-  for (const i of consent?.integrations ?? []) {
+  const mergeBundle = (b: CspOrigins): void => (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => b[k].forEach((h) => acc[k].add(h)));
+  for (const p of embedProviders) mergeBundle(EMBED_PRESET_ORIGINS[p]);
+  for (const i of consent?.enabled === true ? consent.integrations ?? [] : []) {
     const preset = i.preset ?? 'custom';
-    const bundle = preset === 'ga4' || preset === 'gtm' ? CONSENT_PRESET_ORIGINS[preset] : EMPTY;
-    (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => bundle[k].forEach((h) => acc[k].add(h)));
+    mergeBundle(preset === 'ga4' || preset === 'gtm' ? CONSENT_PRESET_ORIGINS[preset] : EMPTY);
     if (preset === 'custom') {
       const h = i.src ? hostOf(i.src) : null;
       // Re-validate the extracted host as a bare hostname(+optional port) before it enters the CSP — a
@@ -128,9 +149,8 @@ const https = (hosts: string[]): string => hosts.map((h) => `https://${h}`).join
  * is nothing to widen (caller then leaves the strict `default-src 'self'` default in place). Adds ONLY the
  * specific https origins; never 'unsafe-inline'/'unsafe-eval'/'*'. Keeps frame-ancestors 'none'.
  */
-export function buildSiteCspHeader(consent: Consent | undefined): string | undefined {
-  if (consent?.enabled !== true) return undefined;
-  const o = consentCspOrigins(consent);
+export function buildSiteCspHeader(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): string | undefined {
+  const o = consentCspOrigins(consent, embedProviders);
   if (!hasAny(o)) return undefined;
   const parts = [
     "default-src 'self'",
@@ -140,7 +160,7 @@ export function buildSiteCspHeader(consent: Consent | undefined): string | undef
     `font-src 'self'${o.font.length ? ' ' + https(o.font) : ''}`,
     `connect-src 'self'${o.connect.length ? ' ' + https(o.connect) : ''}`,
   ];
-  if (o.frame.length) parts.push(`frame-src 'self' ${https(o.frame)}`); // third-party embeds (none until the embeds PR)
+  if (o.frame.length) parts.push(`frame-src 'self' ${https(o.frame)}`); // click-to-load embeds (YouTube/Maps)
   parts.push("object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'");
   return parts.join('; ');
 }
@@ -149,8 +169,8 @@ export function buildSiteCspHeader(consent: Consent | undefined): string | undef
  * The baked `<meta http-equiv>` CSP for the published HTML (static-export parity on strict external hosts).
  * Same allow-list as the header MINUS frame-ancestors (a meta CSP ignores it). `undefined` when nothing to widen.
  */
-export function buildConsentMetaCsp(consent: Consent | undefined): string | undefined {
-  const header = buildSiteCspHeader(consent);
+export function buildConsentMetaCsp(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): string | undefined {
+  const header = buildSiteCspHeader(consent, embedProviders);
   if (!header) return undefined;
   return header
     .split('; ')

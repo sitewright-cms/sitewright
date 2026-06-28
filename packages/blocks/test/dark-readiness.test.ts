@@ -24,7 +24,7 @@ import { hexToOklch } from '../src/color-oklch.js';
 //    dark controls).
 //  - DateTimePicker: vendored Vanilla Calendar Pro, which ships its own light AND dark theme CSS.
 const SCHEME_EXEMPT_COMPONENTS = ['Lightbox', 'DateTimePicker'] as const;
-const FIRST_PARTY_COMPONENTS = ['CookieConsent', 'Notice', 'Modal', 'Tabs', 'Form', 'Carousel'] as const;
+const FIRST_PARTY_COMPONENTS = ['CookieConsent', 'Notice', 'Embed', 'Modal', 'Tabs', 'Form', 'Carousel'] as const;
 
 // Selector-level allowlist for raw light backgrounds that are deliberately scheme-independent:
 //  - `Unknown`: the [data-sw-block="Unknown"] diagnostic swatch pairs its own light bg + dark text, so

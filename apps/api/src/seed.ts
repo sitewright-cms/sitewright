@@ -139,8 +139,16 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
     }
   }
 
+  // Wire the generated brand marks into the Corporate Identity (Settings → CI): `logo` drives the
+  // preloader + schema.org JSON-LD, `icon` the favicon, `image` the Open Graph / social share card.
+  // Guarded on the asset map so the image-less seed (unit tests / no MEDIA_ROOT) keeps its prior shape.
+  const brand: Partial<Pick<CorporateIdentity, 'logo' | 'icon' | 'image'>> = {};
+  if (assets['brand-logo']) brand.logo = assets['brand-logo'];
+  if (assets['brand-icon']) brand.icon = assets['brand-icon'];
+  if (assets['brand-og']) brand.image = assets['brand-og'];
+
   await contentRepo.put(ctx, 'settings', 'settings', {
-    identity: { ...EXAMPLE_IDENTITY, typography },
+    identity: { ...EXAMPLE_IDENTITY, typography, ...brand },
     website: EXAMPLE_WEBSITE,
     // Multilingual demo: the FULL site exists per locale as inherit-mode variants (shared code,
     // translated page.data + localized slugs/datasets/forms/chrome strings) with hreflang + a

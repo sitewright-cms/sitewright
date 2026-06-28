@@ -182,6 +182,38 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
         'Cada elemento permanece exactamente donde está en el documento — el runtime solo añade encima una transformación/opacidad/filtro, así que nada se desplaza, se solapa ni desaparece. El parallax es decoración, nunca estructura.',
     },
   },
+  'comp-shader': {
+    path: 'fondo-animado',
+    title: 'Fondo animado',
+    navTitle: 'Fondo animado',
+    description:
+      'Un fondo animado WebGL detrás de cualquier sección — 30 presets con la identidad visual, regulados solo por atributos data-* declarativos (preset, velocidad, intensidad, ángulo, colores, interactivo), nunca por código propio. Limpio para CSP, en pausa fuera de pantalla, un único fotograma estático con movimiento reducido y un degradado CSS de reserva sin JS.',
+    data: {
+      intro_lead:
+        'Un fondo con vida, sin vídeo ni imagen. Añade data-sw-component="shader-bg" a cualquier sección y la plataforma incluye un runtime WebGL diminuto y limpio para CSP que pinta un shader con tu identidad detrás del contenido — elige un preset, ajústalo con unos atributos data-* y seguirá los colores de tu marca y el tema claro/oscuro. Se pausa fuera de pantalla, muestra un fotograma fijo con movimiento reducido y, sin JavaScript, recurre a un degradado de marca.',
+      hero_t: 'Marca el ambiente en un atributo',
+      hero_d:
+        'Todo este panel es un único shader-bg — mueve el puntero por encima. Los colores son tus tokens de identidad; una capa de legibilidad mantiene el texto nítido encima.',
+      presets_t: 'Un preset para cada ambiente',
+      presets_d:
+        'Vienen treinta presets con nombre — desde degradados de malla suaves hasta seda fluida, cáusticas, lava y campos de estrellas. Pon data-preset y lo demás es automático; aquí van seis, cada uno recoloreado a la paleta de este sitio.',
+      p_mesh: 'Degradado de malla',
+      p_silk: 'Flujo de seda',
+      p_caustics: 'Cáusticas',
+      p_lava: 'Lámpara de lava',
+      p_waterfall: 'Cascada',
+      p_starfield: 'Campo de estrellas',
+      knobs_t: 'Ajústalo con data-*',
+      knobs_d:
+        'Más allá del preset, cuatro reguladores opcionales moldean el aspecto — data-speed (0–4), data-intensity (0–1, saturación + brillo), data-angle (grados) y data-interactive (deja que el puntero lo deforme). data-colors puede incluso reasignar los tres huecos de la paleta a otros tokens de identidad.',
+      k_calm: 'Calmado — baja intensidad, lento',
+      k_vivid: 'Vívido — alta intensidad',
+      k_interactive: 'Interactivo — sigue al puntero',
+      nojs_t: 'Limpio para CSP, accesible y nunca obligatorio',
+      nojs_d:
+        'El runtime se entrega como un único components.js externo desde tu propio origen (sin script en línea, sin eval ni Workers) y solo cuando una página lo usa. Sin JavaScript — o con prefers-reduced-motion — el fondo es un degradado CSS quieto hecho con los mismos tokens de marca, así que el contenido nunca depende de la animación.',
+    },
+  },
   'comp-forms': {
     path: 'formularios',
     title: 'Formularios',

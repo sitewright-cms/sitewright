@@ -184,6 +184,38 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
         'Jedes Element bleibt genau dort, wo es im Dokument steht — die Laufzeit fügt nur eine Transformation/Deckkraft/Filter darüber hinzu, sodass nichts verrutscht, überlappt oder verschwindet. Parallax ist Dekoration, niemals Struktur.',
     },
   },
+  'comp-shader': {
+    path: 'animierter-hintergrund',
+    title: 'Animierter Hintergrund',
+    navTitle: 'Animierter HG',
+    description:
+      'Ein animierter WebGL-Hintergrund hinter jedem Abschnitt — 30 CI-getönte Presets, gesteuert nur über deklarative data-*-Regler (Preset, Tempo, Intensität, Winkel, Farben, interaktiv), nie über eigenen Code. CSP-konform, außerhalb des Sichtbereichs pausiert, ein einzelnes Standbild bei reduzierter Bewegung und ein CSS-Verlauf als Rückfallebene ohne JS.',
+    data: {
+      intro_lead:
+        'Ein lebendiger Hintergrund, ohne Video und ohne Bild. Füge einem beliebigen Abschnitt data-sw-component="shader-bg" hinzu, und die Plattform liefert eine winzige, CSP-konforme WebGL-Laufzeit, die einen CI-getönten Shader hinter deinen Inhalt malt — wähle ein Preset, justiere es mit ein paar data-*-Attributen, und es folgt deinen Markenfarben und dem Hell-/Dunkel-Thema. Außerhalb des Sichtbereichs pausiert es, bei reduzierter Bewegung zeigt es ein Standbild, und ohne JavaScript fällt es auf einen Markenverlauf zurück.',
+      hero_t: 'Stimmung in einem Attribut',
+      hero_d:
+        'Dieses ganze Panel ist ein einziges shader-bg — bewege den Zeiger darüber. Die Farben sind deine CI-Token; eine Lesbarkeits-Abdeckung hält den Text darüber scharf.',
+      presets_t: 'Für jede Stimmung ein Preset',
+      presets_d:
+        'Dreißig benannte Presets sind dabei — von weichen Mesh-Verläufen über fließende Seide bis zu Kaustik, Lava und Sternenfeldern. Setze data-preset und der Rest läuft automatisch; hier sind sechs, jeweils auf die Palette dieser Website umgefärbt.',
+      p_mesh: 'Mesh-Verlauf',
+      p_silk: 'Seidenfluss',
+      p_caustics: 'Kaustik',
+      p_lava: 'Lavalampe',
+      p_waterfall: 'Wasserfall',
+      p_starfield: 'Sternenfeld',
+      knobs_t: 'Mit data-* justieren',
+      knobs_d:
+        'Über das Preset hinaus formen vier optionale Regler den Look — data-speed (0–4), data-intensity (0–1, Sättigung + Helligkeit), data-angle (Grad) und data-interactive (lässt den Zeiger es verformen). data-colors kann sogar die drei Palettenplätze auf andere CI-Token umlegen.',
+      k_calm: 'Ruhig — niedrige Intensität, langsam',
+      k_vivid: 'Lebhaft — hohe Intensität',
+      k_interactive: 'Interaktiv — folgt dem Zeiger',
+      nojs_t: 'CSP-konform, barrierearm und nie zwingend',
+      nojs_d:
+        'Die Laufzeit wird als eine externe components.js von deiner eigenen Herkunft ausgeliefert (kein Inline-Skript, kein eval, keine Worker) — und nur, wenn eine Seite sie nutzt. Ohne JavaScript — oder bei prefers-reduced-motion — ist der Hintergrund ein ruhiger CSS-Verlauf aus denselben Markentoken, sodass der Inhalt nie von der Animation abhängt.',
+    },
+  },
   'comp-forms': {
     path: 'forms',
     title: 'Formulare',

@@ -31,7 +31,11 @@ export function pageHome(assets: Record<string, string>): Page {
     // renders nothing on the page), and the Content Editor reveals it while editing so the chips are
     // reachable — text/textarea/dataset plus number/color/date/select.
     source: `<div class="hidden">{{sw-control target="page.title" as="text" label="Page title"}} {{sw-control target="page.description" as="textarea" label="Meta description"}} {{sw-control target="page.data.spotlight" as="dataset" label="Spotlight project"}} {{sw-control target="page.data.demo_team" as="number" label="Team size"}} {{sw-control target="page.data.demo_accent" as="color" label="Brand accent"}} {{sw-control target="page.data.demo_launch" as="date" label="Next opening"}} {{sw-control target="page.data.demo_status" as="select" options="Open for projects, Booked, Waitlist" label="Availability"}}</div>
-<section class="nw-aurora relative overflow-hidden text-white">
+<!-- The hero is a live shader-bg: the WebGL runtime paints a CI-themed animated field BEHIND the
+     content (a legibility scrim keeps the white text crisp); the nw-aurora class is the JS-off /
+     reduced-motion fallback, the same brand gradient the component would draw. -->
+<section class="nw-aurora relative overflow-hidden text-white" data-sw-component="shader-bg" data-preset="mesh-gradient" data-speed="0.5" data-intensity="0.45">
+  <div data-sw-part="overlay" class="bg-neutral/35" aria-hidden="true"></div>
   <div class="nw-grid-bg pointer-events-none absolute inset-0" aria-hidden="true"></div>
   <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-6 pb-36 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:pb-44 lg:pt-28">
     <div class="nw-rise">
@@ -43,7 +47,9 @@ export function pageHome(assets: Record<string, string>): Page {
         <a class="btn btn-ghost" href="/work" data-sw-href="href_work"><span data-sw-translate="home.cta_work">See our work</span> ${icon('arrow-up-right', 'h-5 w-5')}</a>
       </div>
     </div>
-    <div class="relative hidden lg:block">
+    <!-- Decorative only: a gentle scroll-linked drift gives the hero art depth against the shader
+         field. The inner card keeps its CSS nw-float; parallax rides the wrapper so they don't clash. -->
+    <div class="relative hidden lg:block" data-sw-parallax-translate="0,-44">
       <div class="absolute -inset-8 rounded-full bg-primary/30 blur-3xl" aria-hidden="true"></div>
       <div class="nw-float relative overflow-hidden rounded-3xl shadow-2xl shadow-black/40 ring-1 ring-white/20 nw-zoom">
         <!-- Lazy-loaded: the URL lives in data-src → the runtime swaps it to src on scroll-in. -->
@@ -152,8 +158,8 @@ export function pageHome(assets: Record<string, string>): Page {
 </section>
 
 <section class="relative overflow-hidden bg-neutral text-neutral-content">
-  <div class="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/25 blur-3xl" aria-hidden="true"></div>
-  <div class="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-secondary/20 blur-3xl" aria-hidden="true"></div>
+  <div class="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/25 blur-3xl" aria-hidden="true" data-sw-parallax-translate="-60,60"></div>
+  <div class="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-secondary/20 blur-3xl" aria-hidden="true" data-sw-parallax-translate="60,-60"></div>
   <div class="relative mx-auto max-w-4xl px-6 py-24">
     <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="home.tst_title">Loved by the brands we build for</h2>
     <!-- First-party CAROUSEL: scroll-snap track (swipeable without JS); the runtime adds arrows,
@@ -180,7 +186,10 @@ export function pageHome(assets: Record<string, string>): Page {
 </section>
 
 <section class="bg-base-100 px-6 py-24">
-  <div class="nw-aurora relative mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] text-white shadow-2xl shadow-primary/15">
+  <!-- Closing CTA: the same live shader-bg treatment as the hero (rounded + clipped), with nw-aurora
+       as the JS-off fallback and a scrim for text contrast. -->
+  <div class="nw-aurora relative mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] text-white shadow-2xl shadow-primary/15" data-sw-component="shader-bg" data-preset="silk-flow" data-speed="0.4" data-intensity="0.5">
+    <div data-sw-part="overlay" class="bg-neutral/35" aria-hidden="true"></div>
     <div class="nw-grid-bg pointer-events-none absolute inset-0" aria-hidden="true"></div>
     <div class="relative mx-auto flex max-w-3xl flex-col items-center gap-6 px-6 py-20 text-center">
       <h2 class="text-3xl font-bold tracking-tight sm:text-5xl" data-sw-translate="home.cta_title">Have a project in mind?</h2>

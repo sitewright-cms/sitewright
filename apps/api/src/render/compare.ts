@@ -100,7 +100,12 @@ async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (t
       .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
       .catch(() => vp.height);
     const height = Math.min(Math.max(fullHeight, vp.height), vp.capHeight);
-    const buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, clip: { x: 0, y: 0, width: vp.width, height } });
+    // Grow the viewport to the full (capped) page height, then capture — a `clip` taller than the viewport
+    // is silently CLAMPED to the viewport by the browser, which produced top-of-page-only screenshots
+    // (everything below the fold was invisible to the comparing agent). Resizing makes the whole page paint.
+    await page.setViewportSize({ width: vp.width, height }).catch(() => {});
+    await page.waitForTimeout(200).catch(() => {});
+    const buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY });
     return { base64: buf.toString('base64'), mimeType: 'image/jpeg', width: vp.width, height };
   } finally {
     await context.close().catch(() => {});

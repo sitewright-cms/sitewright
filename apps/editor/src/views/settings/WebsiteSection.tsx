@@ -14,13 +14,14 @@ import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { api, type EffectForks } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
+import { ConsentSettingsModal } from './ConsentSettingsModal';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
@@ -76,6 +77,7 @@ export function WebsiteSection({
 }) {
   const [dataOpen, setDataOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
   // effect's code editor is open. The forks are static platform data, fetched once.
   const [forks, setForks] = useState<EffectForks | null>(null);
@@ -536,6 +538,54 @@ export function WebsiteSection({
           </div>
         )}
         {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} />}
+      </GlassCard>
+
+      <GlassCard
+        title="Consent / cookies"
+        icon={<ShieldCheck className="h-4 w-4" />}
+        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. Place {{sw-consent}} once in the Bottom slot."
+        wide
+      >
+        <label className="flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>Enable consent manager</span>
+            <span className="block text-[11px] text-slate-400">
+              A cookie banner that loads analytics / chatbots / embeds only after consent. When off,{' '}
+              <code>{'{{sw-consent}}'}</code> renders nothing.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Enable consent manager"
+            className={toggleInput}
+            checked={form.consent?.enabled === true}
+            onChange={(e) => patch({ consent: { ...(form.consent ?? {}), enabled: e.target.checked } })}
+          />
+        </label>
+        {form.consent?.enabled === true && (
+          <div className="mt-3">
+            <button
+              type="button"
+              aria-label="Edit consent settings"
+              onClick={() => setConsentOpen(true)}
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-slate-700">Consent settings</span>
+                <span className="block text-[11px] text-slate-400">Banner, categories, third-party integrations</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+                <Pencil className="h-4 w-4" /> Edit
+              </span>
+            </button>
+            <p className="mt-2 text-[11px] text-slate-400">
+              Add <code>{'{{sw-consent}}'}</code> to the Bottom slot (below) to show the banner;{' '}
+              <code>{'{{sw-embed "youtube" "…"}}'}</code> in a page gives click-to-load videos/maps.
+            </p>
+          </div>
+        )}
+        {consentOpen && <ConsentSettingsModal form={form} patch={patch} onClose={() => setConsentOpen(false)} />}
       </GlassCard>
 
       <GlassCard title="Localization" icon={<Languages className="h-4 w-4" />} wide>

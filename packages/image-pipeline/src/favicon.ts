@@ -41,7 +41,7 @@ export const FAVICON_FILES = {
  *  opacity guarantee for the apple-touch + maskable icons. */
 function safeBackground(bg: string | undefined): string {
   const v = (bg ?? '').trim();
-  return /^#(?:[0-9a-fA-F]{3}){1,2}$|^[a-zA-Z]+$/.test(v) ? v : '#ffffff';
+  return /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^[a-zA-Z]+$/.test(v) ? v : '#ffffff';
 }
 
 /** Square cover-resize → PNG. `flatten` composites any alpha onto `bg` (for opaque-required slots). */

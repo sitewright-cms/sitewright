@@ -17,15 +17,15 @@ describe('generateFaviconSet', () => {
       [FAVICON_FILES.ico, FAVICON_FILES.png32, FAVICON_FILES.apple, FAVICON_FILES.png192, FAVICON_FILES.png512, FAVICON_FILES.maskable].sort(),
     );
 
-    const dim = async (b: Buffer) => {
-      const m = await sharp(b).metadata();
+    const dim = async (b: Buffer | undefined) => {
+      const m = await sharp(b!).metadata();
       return { w: m.width, h: m.height, fmt: m.format, alpha: m.hasAlpha };
     };
     expect(await dim(byName[FAVICON_FILES.png32])).toMatchObject({ w: 32, h: 32, fmt: 'png' });
     expect(await dim(byName[FAVICON_FILES.apple])).toMatchObject({ w: 180, h: 180, fmt: 'png', alpha: false }); // opaque (iOS)
     expect(await dim(byName[FAVICON_FILES.png192])).toMatchObject({ w: 192, h: 192, fmt: 'png' });
     expect(await dim(byName[FAVICON_FILES.png512])).toMatchObject({ w: 512, h: 512, fmt: 'png' });
-    expect(await dim(byName[FAVICON_FILES.maskable])).toMatchObject({ w: 512, h: 512, fmt: 'png', alpha: false }); // padded + opaque
+    expect(await dim(byName[FAVICON_FILES.maskable])).toMatchObject({ w: 512, h: 512, fmt: 'png', alpha: false }); // full-bleed + opaque
   });
 
   it('keeps an OPAQUE full-bleed master edge-to-edge in the maskable (no shrink border)', async () => {
@@ -34,7 +34,8 @@ describe('generateFaviconSet', () => {
     const mask = set.find((f) => f.name === FAVICON_FILES.maskable)!.data;
     // The top-left corner is the icon's OWN colour (full-bleed), not the white pad background.
     const { data } = await sharp(mask).raw().toBuffer({ resolveWithObject: true });
-    expect(data[0] < 90 && data[1] > 170 && data[2] > 110).toBe(true); // ≈ #22cc88, not #ffffff
+    const [r, g, b] = [data[0]!, data[1]!, data[2]!];
+    expect(r < 90 && g > 170 && b > 110).toBe(true); // ≈ #22cc88, not #ffffff
   });
 
   it('emits a valid PNG-in-ICO (reserved=0, type=1, count=1) wrapping the 32px PNG', async () => {

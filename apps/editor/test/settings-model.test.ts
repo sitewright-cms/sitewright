@@ -12,7 +12,6 @@ const full: SettingsBundle = {
     description: 'Maker of things',
     businessType: 'Organization',
     logo: '/logo.svg',
-    favicon: '/favicon.ico',
     icon: '/icon.png',
     image: '/og.png',
     email: 'hi@acme.test',

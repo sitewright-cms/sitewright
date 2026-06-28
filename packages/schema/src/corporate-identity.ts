@@ -266,9 +266,9 @@ const CorporateIdentityObject = z.object({
   logo: AssetRefSchema.optional(),
   logoLight: AssetRefSchema.optional(),
   logoDark: AssetRefSchema.optional(),
-  /** Favicon source (preferred); falls back to `favicon`. */
+  /** Square site icon — the SINGLE source for the favicon, the apple-touch icon, and the PWA
+   *  manifest icons (the publish step derives every size/format from it). ≥512×512 reads best. */
   icon: AssetRefSchema.optional(),
-  favicon: AssetRefSchema.optional(),
   /** OG / social share image. */
   image: AssetRefSchema.optional(),
 

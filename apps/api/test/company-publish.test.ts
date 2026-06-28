@@ -107,8 +107,7 @@ describe('company → schema.org + favicon on publish', () => {
     expect(item.identity).toMatchObject({
       name: 'ClassCar', // from brand.name
       legalName: 'ClassCar Hire CC', // from company
-      icon: '/brand/icon.png', // company.icon
-      favicon: '/fav.ico', // brand.logo.favicon
+      icon: '/brand/icon.png', // company.icon wins; brand.logo.favicon folds into `icon` only when no company.icon
       logoLight: '/light.svg', // brand.logo.light
       colors: { primary: '#e11' }, // brand tokens
       social: [{ link: 'https://x.com/cc', name: 'X', icon: 'brand:x' }], // string[] migrated to objects

@@ -25,7 +25,7 @@ The most important framing: most blocks belong to one of two audiences.
 
 | Block | What it is | Scope | Authored by | Edited by | Data-backed | Referenced in code as |
 |---|---|---|---|---|---|---|
-| **Component** | Interactive primitive + `data-sw-component` contract (Carousel, Lightbox, Tabs, Modal, Form, CookieConsent, ShaderBg) | element/block | platform | coder/agent (writes the markup) | no — you bring content | `data-sw-component="…"` + `data-sw-part` |
+| **Component** | Interactive primitive + `data-sw-component` contract (Carousel, Lightbox, Tabs, Modal, Form, CookieConsent, Notice, ShaderBg) | element/block | platform | coder/agent (writes the markup) | no — you bring content | `data-sw-component="…"` + `data-sw-part` |
 | **Dataset** | Structured content store — collections of typed records (a "database replacement") | data layer | coder/agent/user | end-user (grid + entry editor) | *is* the data | `{{#each dataset.<slug>}}` |
 | **Snippet** | **Reference** markup — a worked recipe to learn from / copy & own ("how to build a slider from primitives"); the built-ins are a curated cookbook (see below) | any | platform/coder | nobody (you copy it and own the result) | no | `{{> name}}` (or copy the source) |
 | **Widget** | **Managed**, data-backed, editable drop-in block (hero slider, testimonials, logo wall) | block | platform/coder (defines it) | end-user (no-code) | yes — owns a dataset | `{{> name}}` + a `provides` manifest |

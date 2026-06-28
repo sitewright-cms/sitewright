@@ -34,6 +34,7 @@ import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/d
 // ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
+import { NOTICE_CSS, NOTICE_JS } from './notice.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -708,6 +709,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
+  ['Notice', { css: NOTICE_CSS, js: NOTICE_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
@@ -726,6 +728,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['lightbox', 'Lightbox'],
   ['modal', 'Modal'],
   ['cookie-consent', 'CookieConsent'],
+  ['notice', 'Notice'],
   ['tabs', 'Tabs'],
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],

@@ -323,6 +323,45 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     notes: 'Place it ONCE, site-wide, in the website `bottom` slot (not on individual pages). For a second, independent banner (e.g. on a campaign microsite) give it a different data-cookiename so consent is tracked separately. DaisyUI has no equivalent.',
   },
   {
+    type: 'Notice',
+    marker: 'notice',
+    summary:
+      'A free-content dismissible banner / announcement (promos, "see our latest product"). You author the content + the action buttons; the runtime reveals it and remembers the dismissal in localStorage per its frequency. Server HTML ships it hidden.',
+    authoring: 'markup',
+    parts: [
+      { part: 'dismiss', element: 'button', required: false, description: 'Dismisses the notice for the configured data-frequency (for "once", permanently).' },
+      { part: 'dismiss-forever', element: 'button', required: false, description: 'Permanently dismisses ("don\'t show again") regardless of frequency.' },
+      { part: 'remind', element: 'button', required: false, description: 'Snoozes the notice; it reappears after data-remind-days (default 1).' },
+    ],
+    attributes: [
+      { name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or once dismissed) the notice never shows.' },
+      {
+        name: 'data-sw-notice-id',
+        on: 'root',
+        description: 'The localStorage key suffix the dismissal is stored under (default "default"). Give EACH notice a unique id so they are remembered independently.',
+      },
+      {
+        name: 'data-frequency',
+        on: 'root',
+        description: 'How often it reappears after a plain dismiss: "once" (default, permanent), "session", "days:N", or "always" (never persisted — shows every load until dismissed).',
+      },
+      {
+        name: 'data-position',
+        on: 'root',
+        description: 'Placement: bottom | top | bottom-left | bottom-right (default) | top-left | top-right | center | inline.',
+      },
+      { name: 'data-delay', on: 'root', description: 'Optional. Milliseconds to wait before showing, or "scroll" to reveal after the first scroll.' },
+      { name: 'data-remind-days', on: 'root', description: 'Optional. Days the "remind" button snoozes for (default 1).' },
+    ],
+    skeleton: `<div data-sw-component="notice" data-sw-notice-id="promo" data-position="bottom-right" data-frequency="once" hidden>
+  <p>To see our latest product, <a class="link" href="{{sw-url "products"}}">click here</a>.</p>
+  <button type="button" class="btn btn-sm btn-ghost" data-sw-part="dismiss-forever">Don't show again</button>
+</div>`,
+    noJs: 'No notice at all — and with no JS there is nothing to dismiss.',
+    notes:
+      'Place each notice ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific notice. Use a UNIQUE data-sw-notice-id per notice (omitting it falls back to "default" — two notices then share one dismissal). For a cookie/consent banner use the CookieConsent component instead. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Recipes to copy: notice-bar, notice-card, notice-modal.',
+  },
+  {
     type: 'Form',
     marker: 'form',
     summary: 'The platform form runtime: JSON submit to the injected endpoint, honeypot + time-trap, optional hCaptcha, inline success/error or redirect.',

@@ -563,7 +563,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     ovRow.style.display = 'flex';
     var left = r.left; if (left < 2) left = 2;
     var maxLeft = window.innerWidth - ovRow.offsetWidth - 2; if (left > maxLeft) left = maxLeft > 2 ? maxLeft : 2;
-    var top = r.top - ovRow.offsetHeight - 2; if (top < 2) top = r.top + 2; // flush to viewport top → just inside
+    // Sit the badge tab RIGHT ON the element's top edge — OVERLAP it by 2px (no gap) so moving the cursor
+    // from the element up onto a badge never crosses a pointer-events:none dead zone that hides the HUD.
+    var top = r.top - ovRow.offsetHeight + 2; if (top < 2) top = r.top + 2; // flush to viewport top → just inside
     ovRow.style.left = left + 'px'; ovRow.style.top = top + 'px';
   }
   function showHud(stack) {

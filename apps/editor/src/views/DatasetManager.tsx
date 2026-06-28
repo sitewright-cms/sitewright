@@ -785,13 +785,14 @@ export function DatasetManager({ project }: { project: Project }) {
                   projectId={project.id}
                   dataset={selected}
                   entries={datasetEntries}
-                  existingSlugs={new Set(datasets.map((d) => d.id))}
-                  onRenamed={async (slug) => {
-                    // Await the reload BEFORE selecting, so the schema-draft effect resolves the
+                  existingSlugs={new Set(datasets.map((d) => d.slug))}
+                  onRenamed={async () => {
+                    // The server rename keeps the dataset's id stable (only its slug changes), so reselect
+                    // by id. Await the reload BEFORE selecting so the schema-draft effect resolves the
                     // renamed dataset from fresh state (else draftFields would sync to []).
                     setRenaming(false);
                     await load();
-                    setSelId(slug);
+                    setSelId(selected.id);
                   }}
                   onClose={() => setRenaming(false)}
                 />

@@ -683,14 +683,16 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     rejects('<div class={{ dataset.cls }}>x</div>');
   });
 
-  it('rejects interpolation in event-handler and style attributes', () => {
+  it('rejects interpolation in event-handler attributes, but ALLOWS it in a quoted style attribute', () => {
     rejects('<button onclick="{{ dataset.x }}">x</button>');
-    rejects('<div style="color:{{ dataset.c }}">x</div>');
+    // A quoted style attribute is allowed: the value is HTML-escaped (no breakout) and inline CSS can't
+    // run script — so per-row values like style="color:{{c}}" are fine.
+    allows('<div style="color:{{ dataset.c }}">x</div>');
   });
 
-  it('rejects interpolation in <script>, <style>, and HTML comments', () => {
+  it('rejects interpolation in <script>, <style> ELEMENT bodies, and HTML comments', () => {
     rejects('<script>var x = {{ dataset.x }};</script>');
-    rejects('<style>.a { color: {{ dataset.c }} }</style>');
+    rejects('<style>.a { color: {{ dataset.c }} }</style>'); // <style> body is NOT escaped → still blocked
     rejects('<!-- {{ page.title }} -->');
   });
 
@@ -698,6 +700,12 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     rejects('<a href="{{ page.link }}">x</a>');
     allows('<a href="{{sw-url page.link}}">x</a>');
     allows('<a href="/p/{{ page.slug }}">x</a>'); // literal prefix fixes the scheme → allowed
+  });
+
+  it('allows interpolation after the inert mailto:/tel: schemes (a literal-prefixed contact link)', () => {
+    allows('<a href="mailto:{{ company.email }}">email</a>');
+    allows('<a href="tel:{{ company.telephone }}">call</a>');
+    rejects('<a href="javascript:{{ page.x }}">x</a>'); // executable scheme still rejected
   });
 
   it('gates the lazy-load data-src / data-bg URL attributes like src / background', () => {

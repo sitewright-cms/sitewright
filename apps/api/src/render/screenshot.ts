@@ -285,13 +285,19 @@ export async function captureScreenshots(
       const fullHeight = await page
         .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
         .catch(() => vp.height);
+      // Capture the WHOLE page. Use Playwright `fullPage` (Chromium captures beyond the viewport WITHOUT
+      // resizing the layout viewport) so below-the-fold is included AND `vh`-based sections keep their real
+      // height — resizing the viewport would make a `100vh`/`80vh` hero grow with it, inflating the page
+      // toward the cap. Only a PATHOLOGICALLY tall page (over the DoS cap) falls back to a capped capture.
       const height = Math.min(Math.max(fullHeight, vp.height), vp.capHeight);
-      // Grow the viewport to the full (capped) page height, then capture — a `clip` taller than the
-      // viewport is silently CLAMPED to the viewport by the browser, which produced top-of-page-only
-      // screenshots (everything below the fold was invisible). Resizing makes the whole page paint.
-      await page.setViewportSize({ width: vp.width, height }).catch(() => {});
-      await page.waitForTimeout(200).catch(() => {});
-      const buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY });
+      let buf: Buffer;
+      if (fullHeight <= vp.capHeight) {
+        buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, fullPage: true });
+      } else {
+        await page.setViewportSize({ width: vp.width, height: vp.capHeight }).catch(() => {});
+        await page.waitForTimeout(150).catch(() => {});
+        buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY });
+      }
       out.push([name, { base64: buf.toString('base64'), mimeType: 'image/jpeg', width: vp.width, height }]);
     } finally {
       await context?.close().catch(() => {});

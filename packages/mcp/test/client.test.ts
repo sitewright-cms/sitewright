@@ -280,6 +280,23 @@ describe('SitewrightClient', () => {
     expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ folder: 'Main', filename: 'logo.svg' });
   });
 
+  it('deleteMedia DELETEs /media/:id', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 204, body: '' },
+    );
+    expect(await client.deleteMedia('m1')).toEqual({ ok: true });
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('DELETE https://cms.test/projects/p1/media/m1');
+  });
+
+  it('renameDataset POSTs /datasets/:id/rename with slug + cascade', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify({ newSlug: 'features' }) },
+    );
+    await client.renameDataset('ds1', 'features');
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('POST https://cms.test/projects/p1/datasets/ds1/rename');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ slug: 'features', cascade: true });
+  });
+
   it('compareToSource GETs /compare/:id (encoded) with optional viewports', async () => {
     const payload = { sourceUrl: 'https://x.test/', route: '', build: {}, source: {} };
     const { client, calls } = await introspected((input) =>

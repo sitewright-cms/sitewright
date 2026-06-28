@@ -3,13 +3,14 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { Dataset, Entry } from '@sitewright/schema';
 import type { Project } from '../src/api';
 
-const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry } = vi.hoisted(() => ({
+const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset } = vi.hoisted(() => ({
   listDatasets: vi.fn<() => Promise<{ items: Dataset[] }>>(),
   listEntries: vi.fn<() => Promise<{ items: Entry[] }>>(),
   putDataset: vi.fn<(pid: string, d: Dataset) => Promise<unknown>>(),
   putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>(),
   deleteDataset: vi.fn<(pid: string, id: string) => Promise<unknown>>(),
   deleteEntry: vi.fn<(pid: string, id: string) => Promise<unknown>>(),
+  renameDataset: vi.fn<(pid: string, id: string, slug: string, cascade: boolean) => Promise<unknown>>(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -19,6 +20,7 @@ vi.mock('../src/api', () => ({
     putEntry: (pid: string, e: Entry) => putEntry(pid, e),
     deleteDataset: (pid: string, id: string) => deleteDataset(pid, id),
     deleteEntry: (pid: string, id: string) => deleteEntry(pid, id),
+    renameDataset: (pid: string, id: string, slug: string, cascade: boolean) => renameDataset(pid, id, slug, cascade),
   },
 }));
 
@@ -37,11 +39,12 @@ const entries: Entry[] = [
 ];
 
 beforeEach(() => {
-  for (const m of [listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry]) m.mockReset();
+  for (const m of [listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset]) m.mockReset();
   listDatasets.mockResolvedValue({ items: datasets });
   listEntries.mockResolvedValue({ items: entries });
   putDataset.mockResolvedValue({});
   putEntry.mockResolvedValue({});
+  renameDataset.mockResolvedValue({ oldSlug: 'alpha', newSlug: 'articles', cascaded: true, entriesUpdated: 2, pagesUpdated: 0, templatesUpdated: 0, referencesUpdated: 0 });
 });
 
 async function renderAndSelectAlpha() {
@@ -157,36 +160,31 @@ describe('DatasetManager', () => {
     expect(deleteDataset).not.toHaveBeenCalled();
   });
 
-  it('migrates the SLUG: creates the new dataset, re-points entries (same ids), deletes the old', async () => {
+  it('renames the SLUG with cascade via the server endpoint (id stays; no client migration)', async () => {
     const dlg = await openRename();
     fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'articles' } });
-    // The migration warning appears once the slug changes.
-    expect(dlg.getByText(/re-points all/)).toBeInTheDocument();
-    fireEvent.click(dlg.getByRole('button', { name: /^Save$/ }));
-
-    await waitFor(() =>
-      expect(putDataset).toHaveBeenCalledWith(
-        'p',
-        expect.objectContaining({ id: 'articles', slug: 'articles', name: 'Alpha' }),
-      ),
-    );
-    await waitFor(() => {
-      const repointed = putEntry.mock.calls.filter(([, e]) => e.dataset === 'articles');
-      expect(repointed).toHaveLength(2);
-      // Entry ids are PRESERVED across the migration (only the dataset segment changes).
-      expect(repointed.map(([, e]) => e.id).sort()).toEqual(['e1', 'e2']);
-    });
-    await waitFor(() => expect(deleteDataset).toHaveBeenCalledWith('p', 'alpha'));
+    // The slug change reveals the cascade choice (the header Save is hidden in favour of it).
+    fireEvent.click(dlg.getByRole('button', { name: /Rename \+ update all references/ }));
+    await waitFor(() => expect(renameDataset).toHaveBeenCalledWith('p', 'alpha', 'articles', true));
+    // No client-side create/re-point/delete migration anymore.
+    expect(putEntry).not.toHaveBeenCalled();
+    expect(deleteDataset).not.toHaveBeenCalled();
   });
 
-  it('aborts the slug migration if an entry re-point fails — the old dataset is NOT deleted', async () => {
+  it('offers a no-cascade "Rename only" choice (server handles it, cascade=false)', async () => {
     const dlg = await openRename();
-    putEntry.mockRejectedValueOnce(new Error('boom')); // one re-point fails
     fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'articles' } });
-    fireEvent.click(dlg.getByRole('button', { name: /^Save$/ }));
-    // The error surfaces in the modal and the old dataset row survives (no data loss).
-    await waitFor(() => expect(dlg.getByText(/boom/)).toBeInTheDocument());
-    expect(deleteDataset).not.toHaveBeenCalled();
+    fireEvent.click(dlg.getByRole('button', { name: /Rename slug only/ }));
+    await waitFor(() => expect(renameDataset).toHaveBeenCalledWith('p', 'alpha', 'articles', false));
+  });
+
+  it('rejects a slug with disallowed characters (allow-list: lowercase alphanumeric + hyphens)', async () => {
+    const dlg = await openRename();
+    fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'My Articles!' } });
+    // Invalid slug → the cascade choice is NOT offered + a clear allow-list message shows.
+    expect(dlg.queryByRole('button', { name: /Rename \+ update all references/ })).not.toBeInTheDocument();
+    expect(dlg.getByText(/only lowercase letters, numbers, and hyphens/i)).toBeInTheDocument();
+    expect(renameDataset).not.toHaveBeenCalled();
   });
 
   it('badges the FIRST text field as the entry title (reorder to change which one)', async () => {

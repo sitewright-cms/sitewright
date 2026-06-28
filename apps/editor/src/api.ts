@@ -803,6 +803,13 @@ export const api = {
     request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${encodeURIComponent(dataset.id)}`, dataset),
   deleteDataset: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/dataset/${encodeURIComponent(id)}`),
+  /** Rename a dataset's slug. `cascade` (default true) also rewrites entries + page/template references. */
+  renameDataset: (projectId: string, id: string, slug: string, cascade: boolean) =>
+    request<{ oldSlug: string; newSlug: string; cascaded: boolean; entriesUpdated: number; pagesUpdated: number; templatesUpdated: number; referencesUpdated: number }>(
+      'POST',
+      `/projects/${projectId}/datasets/${encodeURIComponent(id)}/rename`,
+      { slug, cascade },
+    ),
 
   // --- entries ---
   listEntries: (projectId: string) =>

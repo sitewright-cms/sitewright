@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import type { Dataset, Entry } from '@sitewright/schema';
-import { slugify } from '../../lib/entry-form';
 import { api } from '../../api';
 import { glassInput } from '../../theme';
 import { Modal } from '../ui/Modal';
@@ -9,22 +8,25 @@ import { useDialogs } from '../ui/Dialogs';
 interface RenameDatasetModalProps {
   projectId: string;
   dataset: Dataset;
-  /** The dataset's entries — re-pointed to the new slug on a slug change (ids preserved). */
+  /** The dataset's entries — only used to show how many a cascade will re-point. */
   entries: Entry[];
-  /** Every dataset id/slug in the project, to reject a colliding slug. */
+  /** Every OTHER dataset's slug in the project, to reject a colliding slug client-side. */
   existingSlugs: ReadonlySet<string>;
-  /** Called after a successful rename with the (possibly new) slug to select. */
-  onRenamed: (slug: string) => void;
+  /** Called after a successful rename — the dataset id is unchanged, so the caller reselects by id. */
+  onRenamed: () => void | Promise<void>;
   onClose: () => void;
 }
 
+// The slug allow-list (mirrors the server's SlugSchema): lowercase letters/digits in hyphen-separated
+// groups — no spaces, symbols, leading/trailing/double hyphens.
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 /**
- * Rename a dataset's display NAME and/or its SLUG (the binding key). The name is cosmetic; changing
- * the slug is a MIGRATION — there is no atomic server rename, so we create the dataset under the new
- * slug, re-point every entry to it (entry ids are preserved), then delete the old dataset row
- * (deleting a dataset does NOT cascade to entries, so this is loss-free at every step). Page-source
- * references ({{#each dataset.<slug>}} / {{item.<slug>…}}) cannot be auto-rewritten — the modal warns
- * that they must be updated by hand.
+ * Rename a dataset's display NAME and/or its SLUG (the binding key). The name is cosmetic. Changing the
+ * slug is a server-side, ATOMIC operation (`api.renameDataset`) that CASCADES — every entry's `dataset`
+ * field and every page/template `{{#each dataset.<slug>}}` / `dataset="<slug>"` reference is rewritten so
+ * nothing breaks. The slug is allow-list validated (lowercase alphanumeric + hyphens). On a slug change
+ * the user picks: Cancel (close) · Rename + update references (cascade) · Rename only (leave references).
  */
 export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs, onRenamed, onClose }: RenameDatasetModalProps) {
   const { confirm, dialog } = useDialogs();
@@ -32,56 +34,27 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
   const [slugInput, setSlugInput] = useState(dataset.slug);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const submitting = useRef(false); // synchronous re-entry guard (Cmd+S can fire before `saving` flushes)
+  const submitting = useRef(false);
 
-  const computedSlug = slugify(slugInput);
-  const slugChanged = computedSlug !== dataset.slug;
-  const slugInvalid = computedSlug === '';
-  // existingSlugs includes this dataset's own slug, so exclude self via slugChanged.
-  const slugTaken = slugChanged && existingSlugs.has(computedSlug);
+  const slug = slugInput.trim().toLowerCase();
+  const slugChanged = slug !== dataset.slug;
+  const slugValid = SLUG_RE.test(slug);
+  const slugTaken = slugChanged && existingSlugs.has(slug);
   const trimmedName = name.trim();
   const nameInvalid = trimmedName === '';
   const nameChanged = trimmedName !== dataset.name;
   const dirty = nameChanged || slugChanged;
+  const blocked = nameInvalid || (slugChanged && (!slugValid || slugTaken));
 
-  async function submit() {
-    if (submitting.current) return; // a migration is already in flight (don't double-delete the old row)
-    if (nameInvalid) {
-      setError('Name cannot be empty.');
-      return;
-    }
-    if (slugInvalid) {
-      setError('Slug must contain letters or numbers.');
-      return;
-    }
-    if (slugTaken) {
-      setError(`A dataset with the slug “${computedSlug}” already exists.`);
-      return;
-    }
+  async function run(cascade: boolean) {
+    if (submitting.current || blocked) return;
     submitting.current = true;
     setSaving(true);
     setError(null);
     try {
-      if (!slugChanged) {
-        // Name-only: update the dataset row in place (id/slug unchanged).
-        await api.putDataset(projectId, { ...dataset, name: trimmedName });
-      } else {
-        // Slug migration: create-new → re-point entries (same ids) → delete-old. Re-fetch the
-        // authoritative entry list first so a concurrently-added entry isn't stranded on the old
-        // slug after the old dataset row is deleted (deleting a dataset does NOT cascade).
-        const live = (await api.listEntries(projectId)).items.filter((e) => e.dataset === dataset.slug);
-        await api.putDataset(projectId, {
-          id: computedSlug,
-          name: trimmedName,
-          slug: computedSlug,
-          fields: dataset.fields.map((f) => ({ ...f })),
-        });
-        // If any re-point rejects, Promise.all rejects and the old dataset is NOT deleted — the
-        // entries are never lost (worst case: a retriable split between the two slugs).
-        await Promise.all(live.map((e) => api.putEntry(projectId, { ...e, dataset: computedSlug })));
-        await api.deleteDataset(projectId, dataset.id);
-      }
-      onRenamed(slugChanged ? computedSlug : dataset.id);
+      if (nameChanged) await api.putDataset(projectId, { ...dataset, name: trimmedName }); // cosmetic; keeps old slug
+      if (slugChanged) await api.renameDataset(projectId, dataset.id, slug, cascade);
+      await onRenamed();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to rename dataset');
     } finally {
@@ -95,15 +68,19 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
     return confirm({ title: 'Discard changes', message: 'Discard the rename?', confirmLabel: 'Discard' });
   }
 
+  const entryCount = entries.length;
   return (
     <Modal
       title={`Rename ${dataset.name}`}
       size="md"
       onClose={onClose}
       onBeforeClose={confirmClose}
-      onSave={() => void submit()}
+      // No slug change → the Save button just updates the name. A slug change is committed via the explicit
+      // choice buttons below (so the cascade decision is deliberate), so the header Save is hidden then.
+      onSave={slugChanged ? undefined : () => void run(false)}
       saving={saving}
-      saveDisabled={!dirty || nameInvalid || slugInvalid || slugTaken}
+      saveDisabled={!dirty || nameInvalid}
+      saveLabel="Save"
     >
       <div className="flex flex-col gap-3 p-5">
         <label className="flex flex-col gap-1">
@@ -113,7 +90,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500">
-            Slug <span className="text-slate-300">— the binding key used in <code>{`{{#each dataset.<slug>}}`}</code></span>
+            Slug <span className="text-slate-300">— the binding key in <code>{`{{#each dataset.<slug>}}`}</code></span>
           </span>
           <input
             aria-label="Dataset slug"
@@ -122,29 +99,37 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
             onChange={(e) => setSlugInput(e.target.value)}
             placeholder={dataset.slug}
           />
-          <span className={`text-[11px] ${slugTaken || slugInvalid ? 'text-rose-500' : 'text-slate-400'}`}>
-            {slugInvalid ? (
-              'enter lowercase letters, digits, or hyphens'
-            ) : (
-              <>→ <code>{computedSlug}</code>{slugTaken ? ' · already used by another dataset' : ''}</>
-            )}
+          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500' : 'text-slate-400'}`}>
+            {slugChanged && !slugValid
+              ? 'Use only lowercase letters, numbers, and hyphens (no spaces, symbols, or leading/trailing hyphens).'
+              : slugTaken
+                ? `“${slug}” is already used by another dataset.`
+                : 'Lowercase letters, numbers, and hyphens only.'}
           </span>
         </label>
 
-        {slugChanged && !slugInvalid && (
-          <div className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-700">
-            Changing the slug re-points all {entries.length} {entries.length === 1 ? 'entry' : 'entries'} to{' '}
-            <code>{computedSlug}</code> and changes the binding key. Page code is <strong>not</strong> updated
-            automatically — update every reference:
-            <ul className="ml-4 mt-1 list-disc">
-              <li>
-                <code>{`{{#each dataset.${dataset.slug}}}`}</code> → <code>{`{{#each dataset.${computedSlug}}}`}</code>
-              </li>
-              <li>
-                <code>{`{{item.${dataset.slug}.…}}`}</code> → <code>{`{{item.${computedSlug}.…}}`}</code>
-              </li>
-            </ul>
-            Localized variants (<code>{dataset.slug}-&lt;locale&gt;</code>) are separate datasets and are not renamed.
+        {slugChanged && slugValid && !slugTaken && (
+          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 px-3 py-3 text-[11px] leading-relaxed text-amber-800">
+            <p>
+              Renaming the slug to <code>{slug}</code> changes the binding key. Choose how to handle the{' '}
+              {entryCount} {entryCount === 1 ? 'entry' : 'entries'} and any page/template references:
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void run(true)}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              Rename + update all references (recommended)
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void run(false)}
+              className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+            >
+              Rename slug only — leave references (advanced; loops will break until you fix them)
+            </button>
           </div>
         )}
 

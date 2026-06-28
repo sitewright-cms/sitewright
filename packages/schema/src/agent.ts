@@ -490,7 +490,18 @@ SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (
 COMPONENT is a runtime you activate with data-sw-component=… (behaviour — see get_components); a
 WIDGET is a snippet packaged with auto-provisioning. The built-in {{> hero-slider}} renders a
 full-bleed background SLIDESHOW (Ken-Burns drift + rising captions, the standard frontpage hero);
-its slides are EDITED AS DATA (a "hero" dataset it sets up), no code. Just include it.
+its slides are EDITED AS DATA, no code. Just include {{> hero-slider}} — saving the page auto-provisions
+its config dataset (slug "hero"). To POPULATE it programmatically, create ONE \`hero\` entry (or several —
+the widget renders the entry whose id = page.data.hero_config, else the first) with these fields:
+  • slides — a LIST; each item = { image (media url), caption (richtext; blank caption → no pill) }
+  • autoplay (boolean), interval (number, ms), kenburns (boolean), show_arrows (boolean), show_indicators (boolean)
+So a cloned hero carousel = put the slide images/captions as a \`hero\` entry's \`slides\` list + set the toggles;
+you do NOT hand-author the carousel markup.
+The other built-in widget is {{> logo-marquee}} — a CSS-only auto-scrolling logo strip; its \`marquee\` dataset
+entry has { speed (select: Normal/Slow/Fast), logos (LIST of { image, alt, link }), or a \`folder\` name to
+pull every image in a media folder }. Same pattern: include the partial, populate the dataset, no markup.
+(Those are the only two WIDGETS; ordinary interactive sliders/tabs are plain snippets — see
+get_guide("components") + the System Library slider recipes for their data-* contract.)
 `,
   },
   icons: {
@@ -594,6 +605,9 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
+   The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
+   rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). Do NOT
+   change a dataset's slug via put_content: that renames only the dataset and orphans its entries + loops.
 5. INTERACTIVITY: rebuild sliders/carousels/lightboxes/tabs/accordions/modals with the matching platform
    COMPONENT (get_guide("components")) so they keep working — the import stripped their JS.
 6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content.
@@ -604,13 +618,21 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    a page has a cluster of ~3+, e.g. \`Management Team\`; a shared role folder for once-per-page assets like
    \`Header Images\`; \`Main\` for sitewide singletons — logo, favicon). Use slugified names, never bare UUIDs
    (\`ronald-kubas.jpg\`). PRUNE files no page references. Tools: list_media_folders (look first),
-   create_media_folder, move_media (re-file + rename one asset), rename_media_folder. This is SAFE: moving or
-   renaming only changes the folder TAG — the \`/media/...\` URL is content-addressed and stable, so page
-   references never break. End state: a tree a human dev reads at a glance, with no \`imported/\` left.
+   create_media_folder, move_media (re-file + rename one asset), rename_media_folder, and delete_media
+   (permanently remove an orphaned file — needs the content:delete capability; if you lack it, move the
+   file to an \`Unused\` folder instead). Moving/renaming is SAFE — it only changes the folder TAG, and the
+   \`/media/...\` URL is content-addressed + stable, so page references never break (only delete_media is
+   destructive). End state: a tree a human dev reads at a glance, with no \`imported/\` left.
 
 CHROME (do this too — it isn't done until the slots are ported). The header / footer slots
 (in the settings entity, website.mainNav/.footer) still hold literal foreign HTML. Port them the
 same way — same layout, native classes + tokens + {{company.*}} — editing the settings entity.
+STANDARDIZE THE CHROME: the slots are SITE-WIDE — author ONE header + ONE footer that every page shares.
+When the original site styles its chrome INCONSISTENTLY across pages (e.g. a white header on one page, the
+brand-colour header on another), DO NOT copy the divergence — pick the treatment that reflects the brand's
+intent (usually the one in the brand/primary colour, or the most common one) and use it everywhere. If a
+SPECIFIC page genuinely needs a different chrome look, don't fork the slot — add a per-page \`<style>\`
+override in THAT page's source (scoped to it) on top of the shared chrome.
 
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
 (website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
@@ -700,5 +722,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
+  { name: 'delete_media', description: "Permanently delete a media asset (DB row + binary) — prune orphaned files. Its URL stops resolving; ensure nothing references it.", capability: 'content:delete' },
+  { name: 'rename_dataset', description: "Rename a dataset's slug — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

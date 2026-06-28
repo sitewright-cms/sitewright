@@ -32,6 +32,7 @@ import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
+import { rewriteDatasetRefsInSource, sourceReferencesDataset, rewriteReferenceTargets } from './dataset-rename.js';
 
 /**
  * The project's settings singleton (Corporate Identity + website settings + locale).
@@ -396,6 +397,83 @@ export class ContentRepository {
       this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'delete', actor: ctx.actor });
     }
     return { pages: putPages };
+  }
+
+  /**
+   * Rename a dataset's `slug` (its reference handle; the entity `id`/key is unchanged). When `cascade`,
+   * also rewrite — in ONE transaction — every place that referenced the OLD slug: each entry's `dataset`
+   * field, each page/template `source` (`dataset.<slug>` paths + `dataset="<slug>"` picker args), and any
+   * other dataset's `reference` field whose `config.target` pointed at it. Without `cascade`, only the
+   * dataset's own slug changes (entries/pages are left pointing at the old slug — the caller is warned).
+   * Events fire AFTER commit so live-preview reloads against committed state. Returns per-kind counts.
+   */
+  async renameDataset(
+    ctx: ProjectContext,
+    datasetId: string,
+    newSlug: string,
+    opts: { cascade: boolean },
+  ): Promise<{ oldSlug: string; newSlug: string; cascaded: boolean; entriesUpdated: number; pagesUpdated: number; templatesUpdated: number; referencesUpdated: number }> {
+    const ds = (await this.get(ctx, 'dataset', datasetId)) as Dataset; // throws NotFoundError if absent
+    const oldSlug = ds.slug;
+    // Validate the new slug by re-parsing the dataset through its schema (reuses SlugSchema rules).
+    const renamed = DatasetSchema.parse({ ...ds, slug: newSlug }) as Dataset;
+    if (renamed.slug === oldSlug) {
+      return { oldSlug, newSlug: oldSlug, cascaded: opts.cascade, entriesUpdated: 0, pagesUpdated: 0, templatesUpdated: 0, referencesUpdated: 0 };
+    }
+    const datasets = (await this.list(ctx, 'dataset')) as Dataset[];
+    if (datasets.some((d) => d.id !== datasetId && d.slug === renamed.slug)) {
+      throw new ConflictError(`a dataset with slug "${renamed.slug}" already exists`);
+    }
+
+    const entriesToUpdate: Entry[] = [];
+    const pagesToUpdate: Array<{ p: Page; source: string }> = [];
+    const templatesToUpdate: Array<{ t: Template; source: string }> = [];
+    const refDatasets: Dataset[] = [];
+    if (opts.cascade) {
+      for (const e of (await this.list(ctx, 'entry')) as Entry[]) {
+        if (e.dataset === oldSlug) entriesToUpdate.push({ ...e, dataset: renamed.slug });
+      }
+      for (const p of (await this.list(ctx, 'page')) as Page[]) {
+        if (typeof p.source === 'string' && sourceReferencesDataset(p.source, oldSlug)) {
+          pagesToUpdate.push({ p, source: rewriteDatasetRefsInSource(p.source, oldSlug, renamed.slug) });
+        }
+      }
+      for (const t of (await this.list(ctx, 'template')) as Template[]) {
+        if (typeof t.source === 'string' && sourceReferencesDataset(t.source, oldSlug)) {
+          templatesToUpdate.push({ t, source: rewriteDatasetRefsInSource(t.source, oldSlug, renamed.slug) });
+        }
+      }
+      for (const d of datasets) {
+        if (d.id === datasetId) continue;
+        const { fields, changed } = rewriteReferenceTargets(d.fields ?? [], oldSlug, renamed.slug);
+        if (changed) refDatasets.push({ ...d, fields });
+      }
+    }
+
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      await this.writeRow(exec, ctx, 'dataset', datasetId, renamed);
+      for (const e of entriesToUpdate) await this.writeRow(exec, ctx, 'entry', e.id, e);
+      for (const { p, source } of pagesToUpdate) await this.writeRow(exec, ctx, 'page', p.id, { ...p, source });
+      for (const { t, source } of templatesToUpdate) await this.writeRow(exec, ctx, 'template', t.id, { ...t, source });
+      for (const d of refDatasets) await this.writeRow(exec, ctx, 'dataset', d.id, d);
+    });
+
+    this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: datasetId, op: 'put', actor: ctx.actor });
+    for (const e of entriesToUpdate) this.events?.emit(ctx.projectId, { kind: 'entry', entityId: e.id, op: 'put', actor: ctx.actor });
+    for (const { p } of pagesToUpdate) this.events?.emit(ctx.projectId, { kind: 'page', entityId: p.id, op: 'put', actor: ctx.actor });
+    for (const { t } of templatesToUpdate) this.events?.emit(ctx.projectId, { kind: 'template', entityId: t.id, op: 'put', actor: ctx.actor });
+    for (const d of refDatasets) this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: d.id, op: 'put', actor: ctx.actor });
+
+    return {
+      oldSlug,
+      newSlug: renamed.slug,
+      cascaded: opts.cascade,
+      entriesUpdated: entriesToUpdate.length,
+      pagesUpdated: pagesToUpdate.length,
+      templatesUpdated: templatesToUpdate.length,
+      referencesUpdated: refDatasets.length,
+    };
   }
 
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */

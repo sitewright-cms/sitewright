@@ -192,15 +192,19 @@ export function validateTemplate(source: string): void {
     if (mode === 'tag') {
       if (sub !== 'value') reject('an interpolation in an unquoted attribute or tag structure');
       if (quote === '') reject('an interpolation in an unquoted attribute value');
-      if (attrName.startsWith('on') || attrName === 'style') reject(`an interpolation in the "${attrName}" attribute`);
+      // Only inline event handlers stay forbidden (they execute JS). A QUOTED `style` attribute is
+      // allowed: the value is HTML-escaped (no tag/attribute breakout) and inline CSS can't run script,
+      // so per-row values like style="color:{{color}}" are fine. (A `<style>` ELEMENT body stays blocked
+      // above — that content isn't escaped.)
+      if (attrName.startsWith('on')) reject(`an interpolation in the "${attrName}" event-handler attribute`);
       if (URL_ATTRS.has(attrName)) {
         const isUrlHelper = /^sw-url(\s|$)/.test(inner);
         if (valuePrefix === '') {
           // The interpolation is the whole value → it must be sanitized by {{sw-url …}}.
           if (!isUrlHelper) reject(`a bare value in the URL attribute "${attrName}" (use {{sw-url …}})`);
-        } else if (!/^(#|\/(?!\/)|https?:\/\/)/i.test(valuePrefix)) {
-          // A literal prefix only fixes the scheme when it starts with /, #, or http(s)://.
-          // `j{{x}}` (→ javascript:) and `//{{x}}` (protocol-relative) are rejected here.
+        } else if (!/^(#|\/(?!\/)|https?:\/\/|mailto:|tel:)/i.test(valuePrefix)) {
+          // A literal prefix only fixes the scheme when it's a known-inert one: /, #, http(s)://, or the
+          // non-executable mailto:/tel: schemes. `j{{x}}` (→ javascript:) and `//{{x}}` stay rejected.
           reject(`an interpolation in URL attribute "${attrName}" whose scheme is not fixed by a safe prefix`);
         }
       }

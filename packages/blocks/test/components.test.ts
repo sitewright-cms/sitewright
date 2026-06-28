@@ -11,7 +11,7 @@ describe('componentTypesInSource (code-first detection)', () => {
   });
 
   it('maps every emitted component name to a registered type (so its JS/CSS actually bundles)', () => {
-    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'tabs', 'form', 'datetimepicker']) {
+    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'notice', 'tabs', 'form', 'datetimepicker']) {
       const [type] = componentTypesInSource(`<div data-sw-component="${name}"></div>`);
       expect(type, name).toBeDefined();
       expect(COMPONENT_TYPES.has(type!), name).toBe(true);
@@ -49,6 +49,7 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Lightbox')).toBe(true);
     expect(COMPONENT_TYPES.has('Modal')).toBe(true);
     expect(COMPONENT_TYPES.has('CookieConsent')).toBe(true);
+    expect(COMPONENT_TYPES.has('Notice')).toBe(true);
     expect(COMPONENT_TYPES.has('Tabs')).toBe(true);
     expect(COMPONENT_TYPES.has('DateTimePicker')).toBe(true);
     expect(COMPONENT_TYPES.has('Tab')).toBe(false); // a Tab is a plain child panel

@@ -74,6 +74,32 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
   });
 
+  it('ships the Notice runtime for a code-first page that authors a dismissible notice', async () => {
+    const proj = client.project(projectId);
+    const source =
+      '<section><div data-sw-component="notice" data-sw-notice-id="promo" data-frequency="once" data-position="bottom-right" hidden>' +
+      '<p>Latest product</p>' +
+      '<button data-sw-part="dismiss-forever" class="btn btn-sm">No thanks</button>' +
+      '</div></section>';
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    // The notice markers survive the directive-strip + the notice ships hidden (PE-safe).
+    expect(index.body).toContain('data-sw-component="notice"');
+    expect(index.body).toContain('data-sw-part="dismiss-forever"');
+    expect(index.body).toContain('hidden');
+    expect(index.body).toContain('<script defer src="components.js"></script>');
+
+    // components.js carries the Notice runtime (its per-notice storage namespace) + CSS.
+    const comp = await client.get(`/sites/${slug}/components.js`);
+    expect(comp.statusCode).toBe(200);
+    expect(comp.body).toContain("'sw-notice:'");
+    expect(comp.body).toContain('data-sw-component="notice"');
+  });
+
   it('ships ONLY the dialog runtime when a code-first page authors a bare <dialog> (no component, no placeholder)', async () => {
     const proj = client.project(projectId);
     // A global modal opened from an in-content anchor — no nav placeholder, no component wrapper.

@@ -707,6 +707,50 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">OK, got it</button>
 </div>`,
   },
+  {
+    name: 'notice-card',
+    label: 'Notice — promo card',
+    category: 'chrome',
+    description: 'A free-content dismissible promo card (corner). "Don\'t show again" remembers the dismissal forever.',
+    demonstrates: ['notice', 'data-sw-part:dismiss-forever', 'data-frequency', 'data-position'],
+    // Ships HIDDEN (the `hidden` attribute is REQUIRED). The runtime reveals it until dismissed.
+    // Give each notice a UNIQUE data-sw-notice-id so dismissals are remembered independently.
+    source: `{{!-- A dismissible promo card. Place ONCE (a chrome slot or a single page body). --}}
+<div data-sw-component="notice" data-sw-notice-id="promo" data-position="bottom-right" data-frequency="once" hidden>
+  <p>To see our latest product, <a class="link link-primary" href="{{sw-url "products"}}">click here</a>.</p>
+  <button type="button" class="btn btn-sm btn-ghost" data-sw-part="dismiss-forever">Don't show again</button>
+</div>`,
+  },
+  {
+    name: 'notice-bar',
+    label: 'Notice — announcement bar',
+    category: 'chrome',
+    description: 'A full-width top announcement bar that reappears once per browser session after dismissal.',
+    demonstrates: ['notice', 'data-sw-part:dismiss', 'data-frequency:session', 'data-position:top'],
+    source: `{{!-- A top announcement bar (returns once per session after dismissal). --}}
+<div data-sw-component="notice" data-sw-notice-id="announce" data-position="top" data-frequency="session" hidden>
+  <p>Free shipping this week — <a class="link" href="{{sw-url "shop"}}">shop now</a>.</p>
+  <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
+</div>`,
+  },
+  {
+    name: 'notice-modal',
+    label: 'Notice — centered card',
+    category: 'chrome',
+    description: 'A centered notice that fades in after a short delay, with a "remind me later" snooze and a permanent dismiss.',
+    demonstrates: ['notice', 'data-sw-part:remind', 'data-delay', 'data-remind-days', 'data-position:center'],
+    source: `{{!-- A centered welcome notice; fades in after a short delay. --}}
+<div data-sw-component="notice" data-sw-notice-id="welcome" data-position="center" data-frequency="once" data-delay="1200" data-remind-days="7" hidden>
+  <div>
+    <h3 class="mb-1 text-lg font-semibold">Welcome!</h3>
+    <p>Thanks for visiting. Read <a class="link link-primary" href="{{sw-url "about"}}">our story</a>.</p>
+  </div>
+  <div class="flex w-full justify-end gap-2">
+    <button type="button" class="btn btn-sm btn-ghost" data-sw-part="remind">Later</button>
+    <button type="button" class="btn btn-sm btn-primary" data-sw-part="dismiss-forever">Got it</button>
+  </div>
+</div>`,
+  },
 
   // ── Effects (pure-CSS motion, no JS) ────────────────────────────────────────────────────────────
   {

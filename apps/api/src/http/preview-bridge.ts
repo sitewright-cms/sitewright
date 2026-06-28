@@ -113,10 +113,15 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-ov-row{position:fixed;display:flex;flex-wrap:wrap;align-items:flex-end;gap:4px;pointer-events:none;max-width:90vw}' +
       // all:unset wipes host inheritance; an explicit MONOSPACE font + WHITE svg icon make every badge
       // uniform regardless of the element it marks. pointer-events:auto → the badge itself is clickable.
-      '.sw-ov-badge{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;pointer-events:auto;cursor:pointer;padding:2px 6px 2px 5px;border-radius:5px 5px 5px 0;background:#6366f1;color:#fff;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35)}' +
-      '.sw-ov-badge:hover{filter:brightness(1.12)}' +
+      '.sw-ov-badge{all:unset;position:relative;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;pointer-events:auto;cursor:pointer;padding:2px 6px 2px 5px;border-radius:5px 5px 5px 0;background:#6366f1;color:#fff;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35)}' +
+      '.sw-ov-badge:hover{filter:brightness(1.12);z-index:3}' + // raise the hovered badge so its tooltip clears its neighbours
       '.sw-ov-badge.sw-b-tr{background:#059669}.sw-ov-badge.sw-b-entry{background:#14b8a6}' +
       '.sw-ov-badge svg{width:13px;height:13px;flex:0 0 auto;display:block;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
+      // DaisyUI-style DETAIL tooltip on a badge (self-contained — never depends on the rendered site CSS).
+      // It names the binding TYPE + the FULL path of the field to edit, BELOW the badge (the badge sits on
+      // the element's top edge, so below keeps the bubble in view + over the element). content=data-tip.
+      '.sw-ov-badge[data-tip]:hover::after,.sw-ov-badge[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:1;width:max-content;max-width:300px;white-space:normal;word-break:break-word;padding:5px 9px;border-radius:5px;background:#111827;color:#fff;font:500 11.5px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:normal;text-align:left;box-shadow:0 6px 20px rgba(0,0,0,.45)}' +
+      '.sw-ov-badge[data-tip]:hover::before,.sw-ov-badge[data-tip]:focus-visible::before{content:"";position:absolute;left:11px;top:calc(100% + 1px);z-index:1;border:5px solid transparent;border-bottom-color:#111827}' +
       // Locate flash: a brief amber ring when the Regions panel jumps to an element (fades out via the keyframe).
       '@keyframes sw-flash{0%{box-shadow:0 0 0 3px #f59e0b}100%{box-shadow:0 0 0 3px rgba(245,158,11,0)}}' +
       '.sw-flash{animation:sw-flash 1.2s ease-out;border-radius:3px}' +
@@ -500,6 +505,43 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (kind === 'bg') return el.getAttribute('data-sw-bg') || 'background';
     return el.getAttribute('data-sw-' + kind) || kind;
   }
+  // ---- Badge TOOLTIP text: a human TYPE name + the FULL path of the field to edit, per directive. The
+  //      type/path mirror the server's resolution exactly (see directives.ts / control.ts): text/html/
+  //      href/src/bg read the page.data store (a bare key = top-level page.data, a page.data.x key is
+  //      nested); src/bg may instead carry an already-resolved URL (a dataset loop image value);
+  //      translate reads website.translations; a control targets a page field / page.data / website.data.
+  // A direct URL/path value (vs a page.data KEY) — matches directives.ts DIRECT_URL without a regex slash
+  // (a literal regex inside this template string would need double-escaping; plain checks sidestep that).
+  function isDirectUrl(v) { v = '' + v; return v.charAt(0) === '/' || v.indexOf('./') === 0 || v.indexOf('../') === 0 || /^https?:/i.test(v) || v.indexOf('data:') === 0; }
+  function tipTrunc(s) { s = '' + s; return s.length > 80 ? s.slice(0, 79) + '…' : s; }
+  function pageVarPath(key) { key = key || ''; if (key === '') return 'page.data'; return key.indexOf('page.data.') === 0 ? key : 'page.data.' + key; }
+  function controlTip(el) {
+    var target = el.getAttribute('data-sw-control') || '', as = el.getAttribute('data-sw-control-as') || 'text';
+    var label = el.getAttribute('data-sw-control-label') || '';
+    var lead = label ? label + ' — ' : '', suffix = as && as !== 'text' ? ' (' + as + ')' : '';
+    if (target === 'page.title') return lead + 'Page Title: page.title';
+    if (target === 'page.description') return lead + 'SEO Description: page.description';
+    if (target === 'page.image') return lead + 'Social Image: page.image';
+    if (target.indexOf('website.data.') === 0) return lead + 'Website Variable' + suffix + ': ' + tipTrunc(target);
+    if (target.indexOf('page.data.') === 0) return lead + 'Page Variable' + suffix + ': ' + tipTrunc(target);
+    if (target.indexOf('.') === -1) return lead + 'Page Variable' + suffix + ': page.data.' + tipTrunc(target); // bare key → top-level page.data
+    return lead + 'Control' + suffix + ': ' + tipTrunc(target); // any other dotted target (server may reject) — show verbatim, don't mislabel
+  }
+  function tipText(el, kind) {
+    if (kind === 'translate') return 'Translation: website.translations.' + tipTrunc(el.getAttribute('data-sw-translate') || '');
+    if (kind === 'entry') {
+      var ds = el.getAttribute('data-sw-dataset') || '', id = el.getAttribute('data-sw-entry') || '';
+      return 'Dataset: ' + (ds ? ds + (id ? '/' + tipTrunc(id) : '') : tipTrunc(id || 'entry'));
+    }
+    if (kind === 'control') return controlTip(el);
+    if (kind === 'html') return 'Page Variable (rich text): ' + tipTrunc(pageVarPath(el.getAttribute('data-sw-html')));
+    if (kind === 'href') return 'Link URL: ' + tipTrunc(pageVarPath(el.getAttribute('data-sw-href')));
+    if (kind === 'image' || kind === 'bg') {
+      var attr = kind === 'image' ? 'data-sw-src' : 'data-sw-bg', v = el.getAttribute(attr) || '', name = kind === 'image' ? 'Image' : 'Background Image';
+      return isDirectUrl(v) ? name + ' (current value): ' + tipTrunc(v) : name + ': ' + tipTrunc(pageVarPath(v));
+    }
+    return 'Page Variable: ' + tipTrunc(pageVarPath(el.getAttribute('data-sw-text'))); // text
+  }
   // Every editable directive present on ONE element (content-first order) → one badge each.
   function directivesOf(el) {
     var ks = [];
@@ -543,7 +585,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var k = badgeKlass(kind); b.className = 'sw-ov-badge' + (k ? ' ' + k : '');
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[kind] || ICONS.text) + '</svg>'; // fixed icon markup only
     b.appendChild(document.createTextNode(dirLabel(el, kind))); // the variable name as TEXT (no injection)
-    b.title = kind + ': ' + dirLabel(el, kind);
+    var tip = tipText(el, kind);
+    b.setAttribute('data-tip', tip); // the styled detail tooltip (CSS ::after, content:attr(data-tip))
+    b.setAttribute('aria-label', tip); // a11y: the full typed description is the badge's accessible name
     b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // don't blur a contenteditable mid-edit
     b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); editDirective(el, kind); });
     b.addEventListener('mouseenter', function () { outlineFor(el, kind); }); // highlight THIS badge's target, in its colour

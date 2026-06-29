@@ -42,7 +42,7 @@ export const EXAMPLE_WEBSITE = {
     </div>
     <div>
       <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_legal', 'Legal')}</h6>
-      <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.footer}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
+      <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.footer}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}{{#if website.consent.enabled}}<li>{{sw-consent-settings class="appearance-none cursor-pointer border-0 bg-transparent p-0 text-neutral-content/65 transition hover:text-neutral-content"}}</li>{{/if}}</ul>
     </div>
     <div>
       <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_contact', 'Contact')}</h6>

@@ -11,19 +11,29 @@ describe('back-to-top', () => {
     expect(html).toContain('aria-label="Back to top"');
   });
 
-  it('is a compact 2.5rem square FAB with a proportional chevron', () => {
-    expect(BACK_TO_TOP_CSS).toContain('width:2.5rem;height:2.5rem');
-    expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top] svg{width:1.2rem;height:1.2rem}');
+  it('is a wide-but-short FAB (4.5rem × 2.5rem) with a proportional chevron', () => {
+    expect(BACK_TO_TOP_CSS).toContain('width:4.5rem;height:2.5rem');
+    expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top] svg{width:1.4rem;height:1.4rem}');
     // fixed bottom-centre, above content but below the consent/preloader floats; hidden on mobile
     expect(BACK_TO_TOP_CSS).toContain('position:fixed');
     expect(BACK_TO_TOP_CSS).toContain('z-index:9996');
     expect(BACK_TO_TOP_CSS).toContain('@media (max-width:639.98px)');
   });
 
-  it('runtime is a passive, self-invoking scroll-to-top — no </script> or backtick breakout', () => {
+  it('the slide transition is scoped to `.btn` so it outranks the utility-sheet `.btn` transition (no pop)', () => {
+    // The transition rules carry `.btn` (0,2,0 / 0,3,0) so they beat the later `.btn{transition:transform…}`
+    // baseline that would otherwise clobber `translate` and make the button POP instead of slide.
+    expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top].btn{transition:translate .35s');
+    expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top].btn.sw-visible{transition:translate .35s');
+  });
+
+  it('runtime: passive scroll-to-top, shows after a screen, HIDES at the page bottom — no breakout', () => {
     expect(BACK_TO_TOP_JS.startsWith('(function(){')).toBe(true);
     expect(BACK_TO_TOP_JS).toContain('scrollTo');
     expect(BACK_TO_TOP_JS).toContain('{passive:true}');
+    // hides near the very bottom so it never covers the footer
+    expect(BACK_TO_TOP_JS).toContain('scrollHeight');
+    expect(BACK_TO_TOP_JS).toContain('atBottom');
     expect(BACK_TO_TOP_JS).not.toContain('`');
     expect(BACK_TO_TOP_JS).not.toContain('</script');
   });

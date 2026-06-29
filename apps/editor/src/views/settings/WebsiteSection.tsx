@@ -300,6 +300,28 @@ export function WebsiteSection({
             onChange={(e) => patch({ backToTop: e.target.checked })}
           />
         </label>
+        <label className="mt-4 flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>ScrollSpy (highlight section in view)</span>
+            <span className="block text-[11px] text-slate-400">
+              Highlights the main &amp; mobile nav link whose in-page section (a link to{' '}
+              <code className="rounded bg-slate-700/60 px-1">#about</code> → a{' '}
+              <code className="rounded bg-slate-700/60 px-1">&lt;section id=&quot;about&quot;&gt;</code>) is scrolled
+              into view. Best for one-page / landing layouts — on the page that holds the sections it takes over the
+              nav&apos;s active state; pages without in-page sections keep normal link highlighting. For a custom
+              on-page nav, add the <code className="rounded bg-slate-700/60 px-1">data-sw-scrollspy</code> attribute
+              instead.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Enable scrollspy"
+            className={toggleInput}
+            checked={form.scrollSpy}
+            onChange={(e) => patch({ scrollSpy: e.target.checked })}
+          />
+        </label>
       </GlassCard>
 
       {editing && (

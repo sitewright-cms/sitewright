@@ -73,6 +73,8 @@ import {
   BACK_TO_TOP_CSS,
   BACK_TO_TOP_JS,
   STICKY_HEADER_JS,
+  SCROLLSPY_JS,
+  usesScrollSpy,
   NAV_EFFECTS_JS,
   usesNavEffects,
   BUTTON_EFFECTS_JS,
@@ -93,6 +95,7 @@ import {
   navEffectUsesRuntime,
   buttonEffectUsesRuntime,
   stickyHeaderUsesRuntime,
+  scrollSpyUsesRuntime,
   buildConsentMetaCsp,
   authorContentCspOrigins,
   gateAuthorIframes,
@@ -128,6 +131,8 @@ const PRELOADER_SCRIPT = 'preloader.js';
 const BACK_TO_TOP_SCRIPT = 'back-to-top.js';
 /** The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink), linked per page. */
 const STICKY_HEADER_SCRIPT = 'sticky-header.js';
+/** The SCROLLSPY runtime (highlight the nav link whose in-page section is in view), linked per page. */
+const SCROLLSPY_SCRIPT = 'scrollspy.js';
 /** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
 const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
 /** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
@@ -537,6 +542,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // shrink), which toggle scroll-state classes. 'pinned' is pure CSS (no runtime); the fixed
     // positioning + offset token are emitted by renderDocument (gated on the mode) for every mode.
     const usesStickyHeaderRuntime = stickyHeaderUsesRuntime(website?.effects?.stickyHeader);
+    // SCROLLSPY runtime — ships when the site-wide toggle is on (effects.scrollSpy, governs #main-nav)
+    // OR a page/slot/snippet uses a per-element `data-sw-scrollspy` (same only-used-ships discipline as
+    // cart/nav-effects). The marker substring `sw-scrollspy` matches BOTH the attribute and the body
+    // class, so the source scan can't drift from the runtime.
+    const usesScrollSpyRuntime =
+      scrollSpyUsesRuntime(website?.effects?.scrollSpy) || usesMarker(usesScrollSpy);
     // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
     // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
     // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
@@ -793,6 +804,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
           ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
           ...(usesStickyHeaderRuntime ? [`${siteRoot}${STICKY_HEADER_SCRIPT}`] : []),
+          ...(usesScrollSpyRuntime ? [`${siteRoot}${SCROLLSPY_SCRIPT}`] : []),
         ];
         // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
         // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
@@ -1006,6 +1018,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, STICKY_HEADER_SCRIPT), STICKY_HEADER_JS, 'utf8');
       bytes += Buffer.byteLength(STICKY_HEADER_JS);
+    }
+    // The SCROLLSPY runtime (highlight the nav link whose in-page section is in view; only-used-ships).
+    if (usesScrollSpyRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, SCROLLSPY_SCRIPT), SCROLLSPY_JS, 'utf8');
+      bytes += Buffer.byteLength(SCROLLSPY_JS);
     }
     // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
     if (usesNavRuntime) {

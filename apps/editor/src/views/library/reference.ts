@@ -553,6 +553,29 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */',
         note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition — and note a transform on #main-nav makes it the containing block for position:fixed children, so a full-height nav drawer/overlay must set its own h-dvh (the default mobile drawer already does).',
       },
+      {
+        id: 'fx-scrollspy',
+        syntax: 'Website settings → ScrollSpy · data-sw-scrollspy · <a href="#id"> → <section id="id">',
+        name: 'ScrollSpy (highlight section in view)',
+        keywords:
+          'scrollspy scroll spy active current section in view one-page landing anchor nav navigation highlight aria-current table of contents toc data-sw-scrollspy',
+        description:
+          'Highlights the nav link whose in-page section is currently scrolled into view — for one-page / landing layouts. It toggles the SAME active state the nav uses (.active + aria-current="true"), so pair it with a Nav effect (or any .active styling) to see the highlight. Turn it on site-wide in Website settings → ScrollSpy (it governs the main + mobile nav), OR add the data-sw-scrollspy attribute to any custom on-page nav (e.g. a sidebar table of contents). Links target sections by id: a link to #about activates when <section id="about"> is in view. Path-prefixed anchors work (/#about, /en/#about) — they spy only on the page that has #about, so a global header can link home sections from anywhere. A nav with in-page sections takes over its own active state (it clears .active from every link, then lights the in-view one); a nav without any is left alone (normal route highlighting). Above the first section a hashless "Home" link lights; at the page bottom the last section lights. The trigger line auto-offsets by the sticky header (--sw-header-h).',
+        example:
+          '{{! Custom on-page nav (table of contents) — add data-sw-scrollspy to the list: }}\n' +
+          '<ul class="menu sw-nav-line-bottom" data-sw-scrollspy>\n' +
+          '  <li><a href="#intro">Intro</a></li>\n' +
+          '  <li><a href="#features">Features</a></li>\n' +
+          '  <li><a href="#pricing">Pricing</a></li>\n' +
+          '</ul>\n' +
+          '<section id="intro">…</section>\n' +
+          '<section id="features">…</section>\n' +
+          '<section id="pricing">…</section>\n' +
+          '\n{{! Or turn ScrollSpy on in Website settings to spy the main + mobile nav site-wide. }}\n' +
+          '{{! A global header can use path-prefixed anchors so they work from any page: }}\n' +
+          '<a href="/#features">Features</a>',
+        note: 'ScrollSpy only toggles the class — give .active a visible style via a Nav effect or Custom CSS. It is highlight-only; the smooth-scroll on click is handled separately. Without JavaScript the links still work, just with no auto-highlight; under reduced motion scrollspy still highlights (it toggles classes, not animation — the indicator’s own transition is gated by the nav effect’s reduced-motion CSS).',
+      },
     ],
   },
 ];

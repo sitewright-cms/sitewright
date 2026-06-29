@@ -20,6 +20,7 @@ import {
   STICKY_HEADER_LABELS,
   JS_STICKY_HEADER_MODES,
   stickyHeaderUsesRuntime,
+  scrollSpyUsesRuntime,
   MAX_TRANSLATION_ENTRIES,
   containerWidthVar,
   DEFAULT_CONTAINER_WIDTH,
@@ -379,6 +380,25 @@ describe('WebsiteSettingsSchema', () => {
       // every mode has a non-empty picker label
       for (const m of STICKY_HEADER_MODES) expect(STICKY_HEADER_LABELS[m]).toBeTruthy();
       for (const m of JS_STICKY_HEADER_MODES) expect(STICKY_HEADER_MODES).toContain(m);
+    });
+
+    it('scrollSpy is an optional site-wide boolean → the sw-scrollspy body class + the runtime gate', () => {
+      // round-trips through the schema (boolean, optional)
+      expect(WebsiteSettingsSchema.parse({ effects: { scrollSpy: true } }).effects?.scrollSpy).toBe(true);
+      expect(WebsiteSettingsSchema.parse({ effects: {} }).effects?.scrollSpy).toBeUndefined();
+      expect(() => WebsiteSettingsSchema.parse({ effects: { scrollSpy: 'yes' } })).toThrow();
+      // emits the body class only when on; false/absent stays byte-identical
+      expect(websiteEffectsClasses({ scrollSpy: true })).toBe('sw-scrollspy');
+      expect(websiteEffectsClasses({ scrollSpy: false })).toBe('');
+      expect(websiteEffectsClasses({})).toBe('');
+      // composes with the other effect classes, scrollspy last
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink', scrollSpy: true })).toBe(
+        'sw-nav-box-solid sw-header-shrink sw-scrollspy',
+      );
+      // the runtime gate is just the flag (a per-element data-sw-scrollspy is scanned separately)
+      expect(scrollSpyUsesRuntime(true)).toBe(true);
+      expect(scrollSpyUsesRuntime(false)).toBe(false);
+      expect(scrollSpyUsesRuntime(undefined)).toBe(false);
     });
 
     it('accepts per-effect custom code and websiteEffectsCustomCode applies it only when the effect is "none"', () => {

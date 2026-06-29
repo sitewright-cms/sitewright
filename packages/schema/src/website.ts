@@ -562,6 +562,16 @@ export function stickyHeaderUsesRuntime(mode: string | null | undefined): boolea
 }
 
 /**
+ * Whether the site-wide SCROLLSPY toggle is on (`website.effects.scrollSpy`). When true the runtime
+ * ships and governs `#main-nav` (its desktop + mobile menus). A per-element `data-sw-scrollspy`
+ * attribute is detected separately by the publish/preview source scan (`usesScrollSpy`), so a custom
+ * on-page nav opts in without this flag. Source-of-truth for the publish/preview runtime gate.
+ */
+export function scrollSpyUsesRuntime(enabled: boolean | null | undefined): boolean {
+  return enabled === true;
+}
+
+/**
  * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no built-in
  * scheme — the author may instead supply their OWN effect as a custom-code blob (the `*Code` fields,
  * edited via the "None / Custom Code" option), or apply a scheme class per element. The chosen
@@ -594,6 +604,13 @@ export const WebsiteEffectsSchema = z.object({
    * 'hide-on-scroll'/'shrink' also ship the scroll-state runtime. See {@link STICKY_HEADER_MODES}.
    */
   stickyHeader: z.enum(STICKY_HEADER_CHOICES).optional(),
+  /**
+   * SCROLLSPY — highlight the main + mobile nav link whose in-page section (`<a href="#about">` →
+   * `<section id="about">`) is currently scrolled into view. Emits the `sw-scrollspy` body class; the
+   * runtime then governs the `#main-nav` landmark. A per-element `data-sw-scrollspy` attribute opts a
+   * custom on-page nav in independently (no flag needed). See {@link scrollSpyUsesRuntime}.
+   */
+  scrollSpy: z.boolean().optional(),
   /** Custom nav effect — raw HTML (style/script) injected at body-end when navEffect is 'none'. */
   navCode: z.string().max(HTML_MAX).optional(),
   /** Custom button effect — raw HTML injected at body-end when buttonEffect is 'none'. */
@@ -622,7 +639,10 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
   // The sticky-header mode rides on `<body>` too — the JS runtime reads it to pick its scroll behavior
   // (the CSS is emitted by renderDocument, keyed on the mode, not on this class).
   const header = effects.stickyHeader && effects.stickyHeader !== 'none' ? `sw-header-${effects.stickyHeader}` : '';
-  return [nav, btnFx, btnAccent, btnShape, header].filter(Boolean).join(' ');
+  // The site-wide scrollspy flag rides on `<body>` too — the runtime reads `sw-scrollspy` to govern the
+  // `#main-nav` landmark (its desktop + mobile menus). A custom on-page nav uses the per-element attribute.
+  const spy = effects.scrollSpy ? 'sw-scrollspy' : '';
+  return [nav, btnFx, btnAccent, btnShape, header, spy].filter(Boolean).join(' ');
 }
 
 /**

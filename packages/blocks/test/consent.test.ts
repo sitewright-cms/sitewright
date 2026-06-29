@@ -7,12 +7,19 @@ describe('consent stylesheet', () => {
     expect(CONSENT_CSS).toContain('[data-sw-consent][data-sw-enhanced="true"]{display:block');
   });
 
-  it('reads --sw-color-* tokens (dark-ready surface) and offers a box layout', () => {
+  it('reads --sw-color-* tokens (dark-ready surface), offers a box layout, and styles toggles', () => {
     expect(CONSENT_CSS).toContain('var(--sw-color-base-100');
     expect(CONSENT_CSS).toContain('var(--sw-color-base-content');
     expect(CONSENT_CSS).toContain('[data-layout="box"]');
-    expect(CONSENT_CSS).toContain('accent-color:var(--sw-color-primary');
+    // The category checkboxes render as toggles (green = on via the success token).
+    expect(CONSENT_CSS).toContain('.sw-consent-cat input:checked{background:var(--sw-color-success');
     expect(CONSENT_CSS.toLowerCase()).not.toContain('</style');
+  });
+
+  it('drives visibility via data-open with a slide transition (not the overridable [hidden] attr)', () => {
+    expect(CONSENT_CSS).toContain('[data-sw-consent][data-sw-enhanced="true"][data-open]');
+    expect(CONSENT_CSS).toContain('transition:transform');
+    expect(CONSENT_CSS).toContain('prefers-reduced-motion');
   });
 
   it('only reveals the preferences panel when data-prefs is open', () => {

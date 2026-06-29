@@ -380,6 +380,10 @@ overlay \`[data-sw-preloader]\` (a sibling of #main-nav that STAYS in the DOM), 
 \`[data-sw-preloader].loading ~ #main-nav{visibility:hidden}\` and
 \`[data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
 \`animation\` (NOT \`transition\`) so the entrance doesn't clobber the shrink mode's own \`#main-nav{transition}\`.
+GOTCHA: a transform/translate on #main-nav (an entrance like the above) makes it the CONTAINING BLOCK for
+its \`position:fixed\` children — the default mobile-drawer recipe pins itself with \`h-dvh\` so it's unaffected,
+but a CUSTOM full-height nav drawer/overlay MUST set its own viewport height (\`h-dvh\`) or it gets clamped to
+the header's height.
 
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`

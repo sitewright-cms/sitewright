@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
 import { buildNav } from '../src/index.js';
+import { GLOBAL_SNIPPET_PARTIALS } from '../src/global-snippets.js';
 
 // `path` is a SLUG SEGMENT; the full route is computed from the parent chain (pagePath),
 // so the expected NavItem.path values below are the COMPUTED routes.
@@ -111,5 +112,18 @@ describe('buildNav', () => {
     expect(buildNav(pages, 'header')).toEqual([
       { label: 'P', rich: true, placeholder: true, path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c' }] },
     ]);
+  });
+});
+
+describe('nav-header recipe — mobile drawer viewport height', () => {
+  // A sticky-header ENTRANCE animation puts a transform on #main-nav, which makes it the containing
+  // block for its position:fixed children — so the slide-in drawer + backdrop MUST pin their own
+  // viewport height (h-dvh), else they get clamped to the header's height. (Regression: the mobile
+  // nav rendered ~71px tall instead of full screen.)
+  it('pins the slide-in drawer panel + backdrop to h-dvh', () => {
+    const src = GLOBAL_SNIPPET_PARTIALS['nav-header'];
+    expect(src).toBeTruthy();
+    expect(src).toMatch(/fixed inset-0 h-dvh[^"]*bg-black\/40/); // backdrop
+    expect(src).toMatch(/fixed inset-y-0 left-0 h-dvh[^"]*w-72/); // slide-in panel
   });
 });

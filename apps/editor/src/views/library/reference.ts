@@ -561,7 +561,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '  [data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\n' +
           '}\n' +
           '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */',
-        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition.',
+        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition — and note a transform on #main-nav makes it the containing block for position:fixed children, so a full-height nav drawer/overlay must set its own h-dvh (the default mobile drawer already does).',
       },
     ],
   },

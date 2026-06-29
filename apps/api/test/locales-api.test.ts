@@ -63,6 +63,15 @@ async function getTranslations(t: string, projectId: string): Promise<Record<str
   return (res.json() as { item: { website?: { translations?: Record<string, Record<string, string>> } } }).item.website?.translations;
 }
 
+async function getSettingsItem(t: string, projectId: string): Promise<Record<string, unknown>> {
+  const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t } });
+  return (res.json() as { item: Record<string, unknown> }).item;
+}
+
+async function putSettingsItem(t: string, projectId: string, item: Record<string, unknown>) {
+  return app.inject({ method: 'PUT', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t }, payload: item });
+}
+
 describe('locale management API', () => {
   it('a new project is seeded with the DEFAULT Main Navigation + footer (nav-header / nav-footer)', async () => {
     const { t, projectId } = await setup('navdefault@i18n.test', 'navsite');
@@ -236,5 +245,62 @@ describe('translation catalog API', () => {
     expect(del.statusCode).toBe(200);
     // de cells gone; greeting keeps its en cell, de_only (de-only) is dropped entirely.
     expect(await getTranslations(t, projectId)).toEqual({ greeting: { en: 'Hi' } });
+  });
+
+  it('PUT /locales/default re-labels the main language to a NOT-yet-active locale (settings only, no page migration)', async () => {
+    const { t, projectId } = await setup();
+    // add a translation so there is an active non-default locale to preserve
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/locales`, cookies: { sw_session: t }, payload: { locale: 'de' } });
+    const idsBefore = (await listPages(t, projectId)).map((p) => p.id).sort();
+
+    // change the main language to French (NOT active) — a relabel
+    const res = await app.inject({ method: 'PUT', url: `/projects/${projectId}/locales/default`, cookies: { sw_session: t }, payload: { locale: 'fr' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ defaultLocale: 'fr', locales: ['fr', 'de'] });
+
+    // settings reflect it: en is replaced by fr in the list; de remains
+    const s = (await app.inject({ method: 'GET', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t } }).then((r) => r.json())) as {
+      item: { settings: { defaultLocale: string; locales: string[] } };
+    };
+    expect(s.item.settings.defaultLocale).toBe('fr');
+    expect(s.item.settings.locales).toEqual(['fr', 'de']);
+
+    // pages are UNTOUCHED (no migration): same ids; the now-French main home still carries no explicit locale
+    const pagesAfter = await listPages(t, projectId);
+    expect(pagesAfter.map((p) => p.id).sort()).toEqual(idsBefore);
+    const home = pagesAfter.find((p) => p.path === '' && !p.locale);
+    expect(home).toBeTruthy();
+  });
+
+  it('refuses to make an ACTIVE locale (or the current default) the main language', async () => {
+    const { t, projectId } = await setup();
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/locales`, cookies: { sw_session: t }, payload: { locale: 'de' } });
+    // de is already a translation → cannot become the main language
+    const active = await app.inject({ method: 'PUT', url: `/projects/${projectId}/locales/default`, cookies: { sw_session: t }, payload: { locale: 'de' } });
+    expect(active.statusCode).toBe(409);
+    // en is already the default
+    const same = await app.inject({ method: 'PUT', url: `/projects/${projectId}/locales/default`, cookies: { sw_session: t }, payload: { locale: 'en' } });
+    expect(same.statusCode).toBe(409);
+  });
+
+  it('relabel prunes the OLD default catalog column and moves its locale_flags entry to the new code', async () => {
+    const { t, projectId } = await setup();
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/locales`, cookies: { sw_session: t }, payload: { locale: 'de' } });
+    // seed a catalog cell for the OLD default (en) + the de translation, and a locale_flags map
+    await setTranslation(t, projectId, 'greeting', 'en', 'Hi');
+    await setTranslation(t, projectId, 'greeting', 'de', 'Hallo');
+    const item = await getSettingsItem(t, projectId);
+    const website = { ...((item.website as Record<string, unknown>) ?? {}), data: { locale_flags: { en: 'gb', de: 'de' } } };
+    expect((await putSettingsItem(t, projectId, { ...item, website })).statusCode).toBe(200);
+
+    // relabel en → fr (not active)
+    const res = await app.inject({ method: 'PUT', url: `/projects/${projectId}/locales/default`, cookies: { sw_session: t }, payload: { locale: 'fr' } });
+    expect(res.statusCode).toBe(200);
+
+    // the en catalog cell is pruned; de remains
+    expect(await getTranslations(t, projectId)).toEqual({ greeting: { de: 'Hallo' } });
+    // locale_flags: the old default's entry follows to the new code (value preserved); de unchanged
+    const after = await getSettingsItem(t, projectId);
+    expect((after.website as { data: { locale_flags: Record<string, string> } }).data.locale_flags).toEqual({ fr: 'gb', de: 'de' });
   });
 });

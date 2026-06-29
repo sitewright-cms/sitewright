@@ -632,6 +632,10 @@ export const api = {
     request<{ key: string; value: string }>('PUT', `/projects/${projectId}/website-data`, { key, value }),
   removeLocale: (projectId: string, locale: string) =>
     request<{ locale: string; removed: number }>('DELETE', `/projects/${projectId}/locales/${encodeURIComponent(locale)}`),
+  // Change the MAIN (default) language by re-labelling it to a NOT-yet-active locale code (the old
+  // default is replaced in the locales list). Relabel only — no content is translated/migrated.
+  setDefaultLocale: (projectId: string, locale: string) =>
+    request<{ defaultLocale: string; locales: string[] }>('PUT', `/projects/${projectId}/locales/default`, { locale }),
   // Make an existing default-language page available in all (or the given) languages.
   translatePage: (projectId: string, pageId: string, locales?: string[]) =>
     request<{ created: number; pages: Page[] }>(

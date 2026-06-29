@@ -29,11 +29,13 @@ export const BACK_TO_TOP_CSS = [
   '[data-sw-back-to-top].btn{position:fixed;left:50%;bottom:1.5rem;z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:-50% calc(100% + 2rem);pointer-events:none}',
   '[data-sw-back-to-top].sw-visible{visibility:visible;translate:-50% 0;pointer-events:auto}',
   '@media (max-width:639.98px){[data-sw-back-to-top].btn{display:none}}',
-  // The transition selectors carry `.btn` (0,2,0 / 0,3,0) so they OUTRANK the `.btn{transition:transform,
-  // box-shadow}` baseline that the compiled utility sheet (loaded LAST, equal 0,1,0 specificity) would
-  // otherwise win with by source order — that clobbered the `translate` transition and made the button POP
-  // instead of slide. transform/box-shadow stay listed so the hover lift/shadow still ease.
-  '@media (prefers-reduced-motion:no-preference){[data-sw-back-to-top].btn{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s linear .35s}[data-sw-back-to-top].btn.sw-visible{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s}}',
+  // The slide transition is !important so it OWNS the `translate` easing: the button-effects baseline
+  // `.btn:not([class*=sw-btn-fx-]){transition:transform,box-shadow}` is (0,2,0) — its `:not([class*=…])`
+  // ties the specificity of `[data-sw-back-to-top].btn` — and it ships in styles.css (loaded LAST), so by
+  // source order it would WIN and clobber `translate` (a single `transition` prop, last wins) → the button
+  // POPS instead of slides. !important on this self-contained FAB's transition is the robust fix; transform/
+  // box-shadow stay listed so the hover lift/shadow still ease.
+  '@media (prefers-reduced-motion:no-preference){[data-sw-back-to-top].btn{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s linear .35s!important}[data-sw-back-to-top].btn.sw-visible{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s!important}}',
   '[data-sw-back-to-top] svg{width:1.4rem;height:1.4rem}',
 ].join('');
 

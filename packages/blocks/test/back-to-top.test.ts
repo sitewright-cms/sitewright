@@ -25,6 +25,10 @@ describe('back-to-top', () => {
     // baseline that would otherwise clobber `translate` and make the button POP instead of slide.
     expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top].btn{transition:translate .35s');
     expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top].btn.sw-visible{transition:translate .35s');
+    // !important — the styles.css baseline `.btn:not([class*=sw-btn-fx-])` (0,2,0, loaded last) ties the
+    // specificity, so the transition must be !important to own the `translate` easing (else it pops).
+    expect(BACK_TO_TOP_CSS).toContain('visibility 0s linear .35s!important');
+    expect(BACK_TO_TOP_CSS).toContain('visibility 0s!important');
   });
 
   it('runtime: passive scroll-to-top, shows after a screen, HIDES at the page bottom — no breakout', () => {

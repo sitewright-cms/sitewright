@@ -6,7 +6,6 @@ import { pageComponentsSlider } from './components-slider.js';
 import { pageComponentsLightbox } from './components-lightbox.js';
 import { pageComponentsTabs } from './components-tabs.js';
 import { pageComponentsModal } from './components-modal.js';
-import { pageComponentsCookieConsent } from './components-cookieconsent.js';
 import { pageComponentsForms } from './components-forms.js';
 import { pageComponentsDateTimePicker } from './components-datetimepicker.js';
 import { pageComponentsParallax } from './components-parallax.js';
@@ -39,7 +38,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsLightbox(),
     pageComponentsTabs(),
     pageComponentsModal(),
-    pageComponentsCookieConsent(),
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
     pageComponentsParallax(),

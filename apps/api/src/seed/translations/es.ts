@@ -139,15 +139,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
-  'comp-cookie': {
-    path: 'consentimiento-cookies',
-    title: 'Consentimiento de cookies',
-    navTitle: 'Cookies',
-    description:
-      'Un banner de consentimiento guardado en localStorage — se entrega oculto, se muestra una vez en la primera visita y se oculta para siempre al aceptarlo. Es un componente de slot de plantilla, activo en todo el sitio.',
-    data: {
-    },
-  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

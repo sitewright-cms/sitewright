@@ -492,7 +492,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...consentClassNames,
     ];
     const usesUtilities = classNames.length > 0;
-    // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
+    // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships
     // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
     // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
     const componentTypes = [

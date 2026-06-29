@@ -141,15 +141,6 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
-  'comp-cookie': {
-    path: 'cookie-consent',
-    title: 'Cookie-Hinweis',
-    navTitle: 'Cookie-Hinweis',
-    description:
-      'Ein Einwilligungsbanner, das in localStorage gespeichert wird — verborgen ausgeliefert, beim ersten Besuch einmal eingeblendet und nach der Zustimmung endgültig ausgeblendet. Eine Skeleton-Slot-Komponente, die site-weit läuft.',
-    data: {
-    },
-  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

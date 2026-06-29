@@ -194,10 +194,10 @@ CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not
   },
   components: {
     title: "Components & forms",
-    summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, notice, datetimepicker, shader-bg) + Forms",
+    summary: "interactive widgets (carousel, tabs, lightbox, modal, banner, datetimepicker, shader-bg) + Forms",
     body: `
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
-data-sw-component="carousel|tabs|lightbox|modal|cookie-consent|notice|datetimepicker" — author semantic HTML with
+data-sw-component="carousel|tabs|lightbox|modal|banner|datetimepicker" — author semantic HTML with
 data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades
 to usable HTML without JS — never add your own script). Call the \`get_components\` tool for the
 machine-readable contracts: markers, parts, config attributes, and copy-paste markup skeletons.
@@ -229,15 +229,16 @@ Quick rules vs the similar-looking DaisyUI classes:
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
   Recipes to copy: modal-basic (link trigger + editable body) / modal-confirm (forced-choice).
-- Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
-  \`bottom\` slot, with the \`hidden\` attribute authored on it. Recipe to copy: cookie-consent.
-- Notice / announcement / promo → data-sw-component="notice" (the free-content sibling of
-  cookie-consent): YOU author the body + action buttons; the runtime reveals it and remembers the
-  dismissal. data-sw-part="dismiss" (frequency-bound) / "dismiss-forever" ("don't show again") /
+- Cookie / consent banner → DON'T author one. Enable the Consent Manager (website.consent.enabled)
+  and the banner AUTO-INJECTS on every page (it also gates third-party scripts/iframes + derives CSP).
+  See the consent guide.
+- Banner / announcement / promo → data-sw-component="banner" (a free-content dismissible banner —
+  NOT the consent banner): YOU author the body + action buttons; the runtime reveals it and remembers
+  the dismissal. data-sw-part="dismiss" (frequency-bound) / "dismiss-forever" ("don't show again") /
   "remind" (snooze data-remind-days). data-frequency="once|session|days:N|always", data-position
   (bottom/top/corners/center/inline), data-delay (ms or "scroll"); give each a UNIQUE
-  data-sw-notice-id. Place ONCE per notice (a chrome slot OR a single page body). Recipes to copy:
-  notice-bar / notice-card / notice-modal.
+  data-sw-banner-id. Place ONCE per banner (a chrome slot OR a single page body). Recipes to copy:
+  banner-bar / banner-card / banner-modal.
 - DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):
   a CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
   one field, shown as a DUAL-PANEL two-month view) | "datetime" | "time". Full control via data-*
@@ -553,7 +554,7 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
   {{> folder-gallery}} ({{#sw-folder}} media reads), {{> i18n}} (sw-translate +
   data-sw-translate + sw-flag switcher), {{> page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
-- Chrome & effects → {{> navbar}}, {{> cookie-consent}}, {{> logo-marquee}}, {{> rotating-tiles}},
+- Chrome & effects → {{> navbar}}, {{> banner-bar}}, {{> logo-marquee}}, {{> rotating-tiles}},
   {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).
 
 SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (edit it freely); a

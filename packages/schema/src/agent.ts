@@ -468,21 +468,27 @@ Functional, Analytics, Marketing. The choice is remembered (versioned localStora
 ALL banner COPY is TRANSLATABLE — it lives in website.translations under the reserved consent_* keys
 (consent_title, consent_intro, consent_accept_all, consent_reject_all, consent_customize, consent_save,
 consent_necessary[_desc], consent_functional[_desc], consent_analytics[_desc], consent_marketing[_desc],
-consent_settings, consent_privacy). website.consent holds only STRUCTURE:
+consent_settings, consent_privacy, consent_allow_once, consent_always_allow, consent_embed_note).
+website.consent holds only STRUCTURE:
   consent: { enabled:true, version:1, layout:"bar"|"box", denyButton:true, privacyHref:"/privacy",
-             categories:["functional","analytics","marketing"],
+             categories:["functional","analytics","marketing"], defaultEmbedCategory:"functional",
              integrations:[ {id:"ga", name:"Google Analytics", category:"analytics", preset:"ga4",
                               measurementId:"G-XXXXXXX"},
                             {id:"chat", name:"Support chat", category:"functional", preset:"custom",
-                              src:"https://widget.example.com/c.js"} ] }
+                              src:"https://widget.example.com/c.js", frameOrigins:["*.example.com"]} ] }
 INTEGRATIONS = the third-party scripts to gate. Each loads ONLY after its category is consented. Presets:
-ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra CSP hosts in \`origins\`). On
-publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these origins — no manual
-allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
-CLICK-TO-LOAD EMBEDS: instead of a raw YouTube/Maps iframe (which loads on view + sets cookies), use
-{{sw-embed "youtube" "<video-id-or-url>"}} or {{sw-embed "google-maps" "<place-or-embed-url>"}} — it shows a
-placeholder and loads the iframe only after consent or a click, and the page's frame-src CSP is derived
-automatically. Embeds work even with consent off (pure click-to-load). Optional: category= / title= / ratio=.
+ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra script/connect CSP hosts in
+\`origins\`, and — if the SDK injects its OWN widget iframe like a chat bubble — its frame-src hosts in
+\`frameOrigins\`). On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
+origins — no manual allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
+EMBEDS / IFRAMES: there is NO embed helper — just paste the provider's normal <iframe …> (YouTube, Vimeo,
+Maps, Calendly, …). With the manager enabled, ANY cross-origin iframe is automatically HELD behind an
+"Allow once / Always allow" placeholder until consent, and its frame-src CSP origin is derived automatically.
+It falls into \`defaultEmbedCategory\` (default "functional"); override one iframe with data-sw-consent="marketing",
+customize the placeholder text with data-sw-consent-note="…", or skip gating with data-sw-consent-skip.
+(Consent off → iframes load normally.) A raw third-party <script> in
+website.head/scripts stays UNGATED by default — to gate it, write <script type="text/plain"
+data-sw-consent="analytics" src="…"></script> and the runtime activates it on consent.
 The whole thing is also configurable no-code in Settings → Website → Consent.
 `,
   },

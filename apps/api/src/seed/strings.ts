@@ -72,6 +72,9 @@ export interface ChromeStrings {
   consent_analytics_desc: string;
   consent_marketing: string;
   consent_marketing_desc: string;
+  consent_allow_once: string;
+  consent_always_allow: string;
+  consent_embed_note: string;
   // SYSTEM component UI strings (RESERVED) — the first-party component runtimes read these via the
   // injected window.__SW_T__ (modal close button + carousel a11y). {n}/{total} are runtime-filled.
   close: string;
@@ -130,6 +133,9 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     consent_analytics_desc: 'Helps us understand how visitors use the site.',
     consent_marketing: 'Marketing',
     consent_marketing_desc: 'Used to deliver relevant ads and measure campaigns.',
+    consent_allow_once: 'Allow once',
+    consent_always_allow: 'Always allow',
+    consent_embed_note: 'This content is loaded from a third party. Allow it to load?',
     close: 'Close',
     slide_prev: 'Previous slide',
     slide_next: 'Next slide',
@@ -184,6 +190,9 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     consent_analytics_desc: 'Hilft uns zu verstehen, wie Besucher die Website nutzen.',
     consent_marketing: 'Marketing',
     consent_marketing_desc: 'Dient dazu, relevante Werbung auszuspielen und Kampagnen zu messen.',
+    consent_allow_once: 'Einmal erlauben',
+    consent_always_allow: 'Immer erlauben',
+    consent_embed_note: 'Dieser Inhalt wird von einem Drittanbieter geladen. Laden zulassen?',
     close: 'Schließen',
     slide_prev: 'Vorherige Folie',
     slide_next: 'Nächste Folie',
@@ -238,6 +247,9 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     consent_analytics_desc: 'Nos ayuda a entender cómo usan el sitio los visitantes.',
     consent_marketing: 'Marketing',
     consent_marketing_desc: 'Se usa para mostrar anuncios relevantes y medir campañas.',
+    consent_allow_once: 'Permitir una vez',
+    consent_always_allow: 'Permitir siempre',
+    consent_embed_note: 'Este contenido se carga desde un tercero. ¿Permitir que se cargue?',
     close: 'Cerrar',
     slide_prev: 'Diapositiva anterior',
     slide_next: 'Diapositiva siguiente',

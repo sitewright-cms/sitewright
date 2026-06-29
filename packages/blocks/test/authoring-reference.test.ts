@@ -69,6 +69,7 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
     | 'partials'
     | 'media'
     | 'preview'
+    | 'previewConsent'
     | 'markEntries'
     | 'forms'
     | 'hcaptchaSiteKey'

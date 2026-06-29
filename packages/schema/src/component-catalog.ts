@@ -362,27 +362,6 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       'Place each notice ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific notice. Use a UNIQUE data-sw-notice-id per notice (omitting it falls back to "default" — two notices then share one dismissal). For a cookie/consent banner use the CookieConsent component instead. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Recipes to copy: notice-bar, notice-card, notice-modal.',
   },
   {
-    type: 'Embed',
-    marker: 'embed',
-    summary:
-      'A CLICK-TO-LOAD media embed (YouTube / Google Maps): the real <iframe> is HELD until the visitor consents to its category or clicks "Load". Nothing third-party loads on page view, and the per-page CSP frame-src is derived from the provider used.',
-    authoring: 'embed',
-    parts: [
-      { part: 'placeholder', element: 'div', required: false, description: 'Generated (class="sw-embed-ph", not a data-sw-part): the click-to-load card (provider name + Load button + optional "Always allow") shown until consent/click.' },
-      { part: 'iframe', element: 'iframe', required: false, description: 'Generated: the real embed <iframe>, injected only after consent or a click.' },
-    ],
-    attributes: [
-      { name: 'data-embed-src', on: 'root', description: 'The held iframe URL (https); the runtime sets it only after consent/click.' },
-      { name: 'data-embed-category', on: 'root', description: 'The consent category that gates it: functional | analytics | marketing.' },
-      { name: 'data-embed-provider', on: 'root', description: 'The display name shown on the placeholder (e.g. "YouTube").' },
-      { name: 'data-embed-poster', on: 'root', description: 'Optional thumbnail image shown behind the placeholder.' },
-    ],
-    skeleton: `{{sw-embed "youtube" "dQw4w9WgXcQ"}}`,
-    noJs: 'A <noscript> link to view the content at the provider — nothing third-party loads without JS.',
-    notes:
-      'Author by REFERENCE: {{sw-embed "youtube" "<video-id-or-url>"}} or {{sw-embed "google-maps" "<place-or-embed-url>"}} (optional category= / title= / ratio= / poster=). The iframe loads only after the visitor consents to its category (auto via the {{sw-consent}} banner) or clicks Load; "Always allow" grants that category for every embed. Works without a consent manager too (pure click-to-load). Defaults: YouTube → marketing category + 16/9; Maps → functional + 4/3.',
-  },
-  {
     type: 'Form',
     marker: 'form',
     summary: 'The platform form runtime: JSON submit to the injected endpoint, honeypot + time-trap, optional hCaptcha, inline success/error or redirect.',

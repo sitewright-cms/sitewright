@@ -88,6 +88,31 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
         </div>
 
         <div>
+          <SubLabel>Embedded content (videos, maps, …)</SubLabel>
+          <p className="mb-2 text-[11px] text-slate-400">
+            Any third-party <code>&lt;iframe&gt;</code> you paste into a page is held behind an “Allow once / Always allow”
+            placeholder until the visitor consents — nothing loads from the provider before then. Choose the category it
+            falls into (override a single embed with <code>data-sw-consent=&quot;marketing&quot;</code>, or skip gating with{' '}
+            <code>data-sw-consent-skip</code>).
+          </p>
+          <label className="block sm:max-w-xs">
+            <span className={fieldLabel}>Default embed category</span>
+            <select
+              className={glassInput}
+              aria-label="Default embed category"
+              value={c.defaultEmbedCategory ?? 'functional'}
+              onChange={(e) => setConsent({ defaultEmbedCategory: e.target.value === 'functional' ? undefined : (e.target.value as 'analytics' | 'marketing') })}
+            >
+              {CATS.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div>
           <SubLabel>Third-party integrations</SubLabel>
           <p className="mb-2 text-[11px] text-slate-400">Each loads ONLY after its category is consented; the site’s Content-Security-Policy is widened automatically to allow just these.</p>
           <ConsentIntegrationsEditor rows={c.integrations ?? []} onChange={(integrations) => setConsent({ integrations: integrations.length ? integrations : undefined })} />

@@ -196,25 +196,91 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).not.toContain('http-equiv="Content-Security-Policy"'); // no baked meta
   });
 
-  it('a click-to-load YouTube embed ships the runtime + derives the frame-src CSP (no consent registry needed)', async () => {
+  it('with consent ON, a pasted cross-origin <iframe> is HELD click-to-load + derives the frame-src CSP', async () => {
     const proj = client.project(projectId);
-    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>{{sw-embed "youtube" "dQw4w9WgXcQ"}}</section>' };
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="640" title="v"></iframe></section>',
+    };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The embed renders HELD (data-embed-src, never an eager iframe) + ships the component runtime.
-    expect(index.body).toContain('data-sw-component="embed"');
-    expect(index.body).toContain('data-embed-src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
-    expect(index.body).not.toContain('<iframe'); // nothing third-party in the published HTML
-    expect(index.body).toContain('<script defer src="components.js"></script>');
-    expect((await client.get(`/sites/${slug}/components.js`)).body).toContain('data-sw-component="embed"');
-    // The per-page CSP (response header + baked meta) allows the YouTube frame-src — derived from the embed alone.
+    // The iframe is HELD: src moved to data-sw-consent-src (no eager third-party load), category stamped.
+    expect(index.body).toContain('data-sw-consent-src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
+    expect(index.body).toContain('data-sw-consent-cat="functional"'); // default embed category
+    expect(index.body).not.toMatch(/<iframe[^>]*\ssrc=/); // no live third-party src in the published HTML
+    expect(index.body).toContain('width="640"'); // author attrs preserved
+    // The consent runtime ships (it hydrates the held iframe) even though no integration is registered.
+    expect(index.body).toContain('<script defer src="consent.js"></script>');
+    // The per-page CSP (response header + baked meta) allows the iframe's frame-src — derived from the iframe.
     const csp = index.headers['content-security-policy'] as string;
-    expect(csp).toContain("frame-src 'self' https://www.youtube-nocookie.com");
+    expect(csp).toContain("frame-src 'self' https://www.youtube.com");
     expect(index.body).toContain('http-equiv="Content-Security-Policy"');
-    expect(index.body).toContain('www.youtube-nocookie.com');
+  });
+
+  it('with consent OFF, a pasted cross-origin <iframe> loads normally but its origin is allow-listed in the CSP', async () => {
+    const proj = client.project(projectId);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://player.vimeo.com/video/76979871"></iframe></section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('src="https://player.vimeo.com/video/76979871"'); // NOT held (no consent manager)
+    expect(index.body).not.toContain('data-sw-consent-src');
+    expect(index.body).not.toContain('consent.js'); // no consent runtime
+    // But the iframe's origin IS allow-listed in frame-src so it isn't CSP-blocked by the platform default.
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("frame-src 'self' https://player.vimeo.com");
+  });
+
+  it('with consent ON, an iframe marked data-sw-consent-skip loads immediately but its origin is still allow-listed', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://maps.example.com/m" data-sw-consent-skip></iframe></section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('src="https://maps.example.com/m"'); // NOT held (opted out)
+    expect(index.body).not.toContain('data-sw-consent-src');
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("frame-src 'self' https://maps.example.com"); // still allow-listed
   });
 
   it('ships ONLY the dialog runtime when a code-first page authors a bare <dialog> (no component, no placeholder)', async () => {

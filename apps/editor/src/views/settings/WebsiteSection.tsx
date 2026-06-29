@@ -580,8 +580,8 @@ export function WebsiteSection({
               </span>
             </button>
             <p className="mt-2 text-[11px] text-slate-400">
-              Add <code>{'{{sw-consent}}'}</code> to the Bottom slot (below) to show the banner;{' '}
-              <code>{'{{sw-embed "youtube" "…"}}'}</code> in a page gives click-to-load videos/maps.
+              Add <code>{'{{sw-consent}}'}</code> to the Bottom slot (below) to show the banner. With it on, any third-party{' '}
+              <code>&lt;iframe&gt;</code> you paste (YouTube, Vimeo, Maps, Calendly…) is automatically held click-to-load until consent.
             </p>
           </div>
         )}

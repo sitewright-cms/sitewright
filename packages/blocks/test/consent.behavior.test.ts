@@ -237,3 +237,101 @@ describe('Consent integration injection (jsdom)', () => {
     expect((injected('sync') as HTMLScriptElement).async).toBe(false);
   });
 });
+
+describe('Consent author-content gating (jsdom)', () => {
+  // Mount a consent banner + held author content together, then run the real runtime over it.
+  function runWith(bodyHtml: string, cfg: object = CONFIG): void {
+    document.body.innerHTML = `<div data-sw-consent></div>${bodyHtml}`;
+    document.querySelector('[data-sw-consent]')!.setAttribute('data-sw-consent-config', JSON.stringify(cfg));
+    (0, eval)(CONSENT_JS);
+  }
+  const heldIframe = (): HTMLIFrameElement => document.querySelector('iframe') as HTMLIFrameElement;
+  const gateBtn = (text: string): HTMLButtonElement =>
+    Array.from(document.querySelectorAll('.sw-gate-ph button')).find((b) => b.textContent === text) as HTMLButtonElement;
+  const HELD_MARKETING = '<iframe data-sw-consent-src="https://x.example/v" data-sw-consent-cat="marketing"></iframe>';
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  it('holds a cross-origin iframe behind an Allow once / Always allow placeholder until consent', () => {
+    runWith(HELD_MARKETING);
+    const fr = heldIframe();
+    expect(fr.getAttribute('src')).toBeNull(); // not loaded
+    expect(fr.style.display).toBe('none');
+    expect(document.querySelector('.sw-gate-ph')).not.toBeNull();
+    expect(gateBtn('Allow once')).toBeTruthy();
+    expect(gateBtn('Always allow')).toBeTruthy();
+  });
+
+  it('Allow once loads ONLY this iframe — no category grant, nothing persisted', () => {
+    runWith(HELD_MARKETING);
+    gateBtn('Allow once').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+    expect(stored()).toBeNull();
+    expect((window as unknown as { swConsent: { get: () => Record<string, boolean> } }).swConsent.get().marketing).toBe(false);
+  });
+
+  it('Always allow grants the category (persists) and loads the iframe', () => {
+    runWith(HELD_MARKETING);
+    gateBtn('Always allow').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(stored()).toMatchObject({ cats: { marketing: true } });
+  });
+
+  it('loads a held iframe when its category is granted via the banner (consentchange)', () => {
+    runWith('<iframe data-sw-consent-src="https://x.example/v" data-sw-consent-cat="analytics"></iframe>');
+    expect(heldIframe().getAttribute('src')).toBeNull();
+    btn('Accept all').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+  });
+
+  it('loads a held iframe immediately when its category was already consented (returning visitor)', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: true } }));
+    runWith(HELD_MARKETING);
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+  });
+
+  it('grantAll (preview) loads gated content immediately on init, no placeholder', () => {
+    runWith(HELD_MARKETING, { ...CONFIG, grantAll: true });
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+  });
+
+  it('activates a gated <script type=text/plain data-sw-consent> only once its category is granted', () => {
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).not.toBeNull(); // inert
+    btn('Accept all').click(); // grants analytics
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).toBeNull(); // replaced
+    const active = Array.from(document.querySelectorAll('script')).find((s) => s.getAttribute('src') === 'https://cdn.example/a.js');
+    expect(active).toBeTruthy();
+    expect(active!.getAttribute('type')).not.toBe('text/plain');
+  });
+
+  it('does NOT activate a gated script whose category is rejected', () => {
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    btn('Reject all').click();
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).not.toBeNull(); // still inert
+  });
+
+  it('activates an already-consented gated script on load (returning visitor)', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: true, marketing: false } }));
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).toBeNull(); // activated on load
+    expect(Array.from(document.querySelectorAll('script')).some((s) => s.getAttribute('src') === 'https://cdn.example/a.js')).toBe(true);
+  });
+
+  it('shows ONLY "Allow once" (no "Always allow") when there is no consent banner to grant against', () => {
+    // A held iframe but NO [data-sw-consent] mount → "Always allow" would silently degrade, so it is hidden.
+    document.body.innerHTML = HELD_MARKETING;
+    (0, eval)(CONSENT_JS);
+    expect(document.querySelector('.sw-gate-ph')).not.toBeNull();
+    expect(gateBtn('Allow once')).toBeTruthy();
+    expect(Array.from(document.querySelectorAll('.sw-gate-ph button')).find((b) => b.textContent === 'Always allow')).toBeUndefined();
+    gateBtn('Allow once').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v'); // load-once still works
+  });
+});

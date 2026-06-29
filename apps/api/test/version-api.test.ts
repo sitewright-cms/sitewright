@@ -18,6 +18,7 @@ describe('GET /version', () => {
       latest: 'v1.2.0',
       updateAvailable: true,
       releaseUrl: 'https://example.com/releases/latest',
+      build: null, // no editorDist in this harness → the SPA build hash is unavailable
     });
   });
 

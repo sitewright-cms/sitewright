@@ -54,8 +54,9 @@ describe('buildSite', () => {
     // The skeleton wraps the page body in <main id="page-content"> (the author wrote a neutral <div>).
     expect(home).toContain('<body><main id="page-content"><div class="grid"><h1>Acme</h1></div></main>');
     expect(home).not.toContain('<section data-sw-block="Section"');
-    // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    // The source's literal Tailwind class is compiled into the shared, root-linked sheet, with a
+    // cache-bust `?v=` token = the publish timestamp's digits (so a republish busts the browser cache).
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=20260529000000000"');
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
@@ -234,7 +235,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<button class="btn btn-primary">Sign up</button>');
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
     // The button is VENDORED (daisyUI's button component is excluded): its CSS + the brand primary
     // ship INLINE in the page head (baseStyles + brandToCss), not the compiled sheet.
     expect(home).toMatch(/\.btn\s*\{/); // the vendored .btn base
@@ -277,7 +278,7 @@ describe('buildSite', () => {
     expect(home).toContain('<a href="about">About</a>');
     // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
     expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
     // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet (the button is vendored
     // inline, but .navbar / .menu are real daisyUI components and still compile here).
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
@@ -718,7 +719,7 @@ describe('buildSite', () => {
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
     const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
-    expect(head).toContain('<script src="theme.js"></script>');
+    expect(head).toContain('<script src="theme.js?v=');
     expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain("localStorage.setItem(KEY,next)");
   });
 
@@ -801,8 +802,8 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-component="modal"'); // the snippet's component expanded into the page
-    expect(home).toContain('<script defer src="components.js"></script>');
-    expect(home).toContain('<script defer src="nav-link.js"></script>');
+    expect(home).toContain('<script defer src="components.js?v=');
+    expect(home).toContain('<script defer src="nav-link.js?v=');
     expect(await readFile(join(outDir, 'components.js'), 'utf8')).toContain('[data-sw-component="modal"]');
     expect(await readFile(join(outDir, 'nav-link.js'), 'utf8')).toContain('scrollIntoView');
   });

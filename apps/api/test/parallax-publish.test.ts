@@ -60,13 +60,13 @@ describe('parallax → publish + preview', () => {
     expect(index.body).toContain('data-sw-parallax-translate="40,-40"'); // authored attrs survive
     expect(index.body).toContain('data-sw-parallax-opacity-range="0,0.5"');
     expect(index.body).toContain('data-sw-parallax-scene'); // the scene container
-    expect(index.body).toContain('<script defer src="parallax.js"></script>'); // runtime linked
+    expect(index.body).toContain('<script defer src="parallax.js?v='); // runtime linked
     expect(index.body).toContain('[data-sw-parallax-scene]{position:relative;overflow:hidden}'); // structural CSS inlined
 
     // Site-wide asset: a nested page links it rebased to its depth.
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../parallax.js"></script>');
+    expect(aboutPage.body).toContain('<script defer src="../parallax.js?v=');
 
     // The runtime itself is served from the site root + bails under reduced motion.
     const js = await client.get(`/sites/${slug}/parallax.js`);
@@ -98,7 +98,7 @@ describe('parallax → publish + preview', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-parallax-scale="0.9,1"');
-    expect(index.body).toContain('<script defer src="parallax.js"></script>');
+    expect(index.body).toContain('<script defer src="parallax.js?v=');
   });
 
   it('serves the builder preview DOC as a sandboxed text/html route so the inline runtime can run', async () => {

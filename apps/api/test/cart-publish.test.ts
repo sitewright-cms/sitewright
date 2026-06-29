@@ -92,12 +92,12 @@ describe('mini shop cart → publish', () => {
     expect(index.body).toContain('paypal.me/acme/{total}'); // payment urlTemplate survives verbatim
     expect(index.body).toContain('14155550123'); // whatsapp number
     // The runtime is linked at the site root.
-    expect(index.body).toContain('<script defer src="cart.js"></script>');
+    expect(index.body).toContain('<script defer src="cart.js?v=');
 
     // Site-wide asset: the nested page links it rebased to its depth (footer mount → every page).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../cart.js"></script>');
+    expect(aboutPage.body).toContain('<script defer src="../cart.js?v=');
 
     // The runtime itself is served from the site root.
     const js = await client.get(`/sites/${slug}/cart.js`);

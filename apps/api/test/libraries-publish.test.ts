@@ -42,7 +42,7 @@ describe('lazyload + ripple runtimes → publish', () => {
   it('ships lazyload.js + CSS only when a page uses data-bg', async () => {
     const html = await publishWith('<section data-bg="/media/hero.jpg" class="h-64">Hero</section>');
     expect(html).toContain('data-bg="/media/hero.jpg"');
-    expect(html).toContain('<script defer src="lazyload.js"></script>');
+    expect(html).toContain('<script defer src="lazyload.js?v=');
     expect(html).toContain('.lazyloaded'); // inline lazyload CSS
     const js = await client.get(`/sites/${slug}/lazyload.js`);
     expect(js.statusCode).toBe(200);
@@ -52,7 +52,7 @@ describe('lazyload + ripple runtimes → publish', () => {
   it('ships ripple.js + CSS only when a page uses waves-effect', async () => {
     const html = await publishWith('<a class="btn btn-primary waves-effect waves-light" href="/contact">Go</a>');
     expect(html).toContain('waves-effect waves-light');
-    expect(html).toContain('<script defer src="ripple.js"></script>');
+    expect(html).toContain('<script defer src="ripple.js?v=');
     expect(html).toContain('@keyframes sw-waves'); // inline ripple CSS
     const js = await client.get(`/sites/${slug}/ripple.js`);
     expect(js.statusCode).toBe(200);
@@ -78,7 +78,7 @@ describe('lazyload + ripple runtimes → publish', () => {
     ).toBe(200);
     const html = await publishWith('<section><h1>No ripple in the page body</h1></section>');
     expect(html).toContain('waves-effect'); // the slot
-    expect(html).toContain('<script defer src="ripple.js"></script>');
+    expect(html).toContain('<script defer src="ripple.js?v=');
   });
 
   it('a plain site ships NONE of the library runtimes', async () => {
@@ -95,8 +95,8 @@ describe('lazyload + ripple runtimes → publish', () => {
       '<section data-bg="/media/bg.jpg"><h1 data-aos="fade-up">Hi</h1>' +
         '<a class="btn waves-effect waves-light">Act</a></section>',
     );
-    expect(html).toContain('<script defer src="animations.js"></script>');
-    expect(html).toContain('<script defer src="lazyload.js"></script>');
-    expect(html).toContain('<script defer src="ripple.js"></script>');
+    expect(html).toContain('<script defer src="animations.js?v=');
+    expect(html).toContain('<script defer src="lazyload.js?v=');
+    expect(html).toContain('<script defer src="ripple.js?v=');
   });
 });

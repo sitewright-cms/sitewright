@@ -10,6 +10,11 @@ import '@fontsource/inter/700.css';
 import './styles.css';
 import { App } from './App';
 import { ToastProvider } from './views/ui/Toast';
+import { recordRunningBuild } from './buildId';
+
+// Record this bundle's build hash (from its own asset URL) so the UpdateBanner can detect a stale tab
+// after a redeploy and prompt a reload. Runs before any component renders.
+recordRunningBuild(import.meta.url);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');

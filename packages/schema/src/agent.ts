@@ -357,6 +357,17 @@ FACE = the daisyUI variant (\`btn-primary\`/\`btn-ghost\`=transparent/\`btn-outl
 a button OVERRIDES the site default for that axis. \`magnetic\`/\`spotlight\` (+ the ripple) load a tiny
 runtime automatically. Prefer these over hand-rolled hover CSS.
 
+STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
+so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away
+on scroll-down, back on scroll-up), or \`shrink\` (condenses past a threshold). 'none' (default) = a normal
+static header. THE OFFSET IS OPT-IN: a fixed header is out of flow, so you MUST add class \`sw-top-padding\`
+to the first section of each page so its content clears the bar (without it, content sits UNDER the header).
+For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and instead put
+\`sw-top-padding\` on an INNER element (so the background bleeds while the text clears the header). The
+offset is preset to the default header height; a custom header of a non-standard height overrides it with
+\`:root{--sw-header-h:5rem}\` in website.criticalCss. The hide/shrink modes also expose \`html.sw-scrolled\`
+(set once the page is scrolled) for your own scroll-triggered CSS.
+
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at

@@ -635,6 +635,69 @@ describe('buildSite', () => {
     expect(home).not.toContain('back-to-top.js');
   });
 
+  it('sticky header (hide-on-scroll): fixes #main-nav, emits the offset token + ships the runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { mainNav: '<div class="navbar">Acme</div>', effects: { stickyHeader: 'hide-on-scroll' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section class="sw-top-padding"><h1>Hi</h1></section>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}'); // landmark pinned
+    expect(home).toContain('--sw-header-h:4.5rem'); // offset token, first-paint (breakpoint-aware)
+    expect(home).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}'); // the opt-in spacer
+    expect(home).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}'); // hide-on-scroll rule
+    expect(home).toContain('sw-header-hide-on-scroll'); // the <body> mode class (runtime reads it)
+    expect(home).toContain('sticky-header.js'); // runtime linked
+    expect(await readFile(join(outDir, 'sticky-header.js'), 'utf8')).toContain('sw-nav-hidden');
+  });
+
+  it('sticky header (pinned): fixed + offset CSS, but NO runtime (pure CSS); none = static', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { stickyHeader: 'pinned' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('#main-nav{position:fixed'); // fixed
+    expect(home).not.toContain('sticky-header.js'); // pinned = pure CSS, no runtime
+    expect(home).not.toContain('sw-nav-hidden'); // no scroll-state rules
+  });
+
+  it('static header (no stickyHeader): no fixed positioning, no offset token, no runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('--sw-header-h');
+    expect(home).not.toContain('#main-nav{position:fixed');
+    expect(home).not.toContain('sticky-header.js');
+  });
+
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

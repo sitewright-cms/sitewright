@@ -16,6 +16,10 @@ import {
   BUTTON_DEFAULT_SHAPES,
   BUTTON_ACCENTS,
   PRELOADER_EFFECTS,
+  STICKY_HEADER_MODES,
+  STICKY_HEADER_LABELS,
+  JS_STICKY_HEADER_MODES,
+  stickyHeaderUsesRuntime,
   MAX_TRANSLATION_ENTRIES,
   containerWidthVar,
   DEFAULT_CONTAINER_WIDTH,
@@ -353,6 +357,28 @@ describe('WebsiteSettingsSchema', () => {
       // every JS-backed scheme is a real scheme; every scheme has a non-empty picker label.
       for (const n of JS_NAV_EFFECTS) expect(NAV_EFFECTS).toContain(n);
       for (const n of NAV_EFFECTS) expect(NAV_EFFECT_LABELS[n]).toBeTruthy();
+    });
+
+    it('sticky header: schema accepts each mode + "none"; rejects unknown; classes + runtime gate', () => {
+      // every mode round-trips through the schema, plus the explicit 'none'
+      for (const stickyHeader of STICKY_HEADER_MODES)
+        expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader } }).effects?.stickyHeader).toBe(stickyHeader);
+      expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'none' } }).effects?.stickyHeader).toBe('none');
+      expect(() => WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'floaty' } })).toThrow();
+      // the mode rides on the <body> effect class; 'none'/absent emits nothing
+      expect(websiteEffectsClasses({ stickyHeader: 'pinned' })).toBe('sw-header-pinned');
+      expect(websiteEffectsClasses({ stickyHeader: 'hide-on-scroll' })).toBe('sw-header-hide-on-scroll');
+      expect(websiteEffectsClasses({ stickyHeader: 'none' })).toBe('');
+      // composes with the other effect classes, header last
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink' })).toBe('sw-nav-box-solid sw-header-shrink');
+      // only the scroll-driven modes need the runtime; 'pinned' is pure CSS
+      for (const m of JS_STICKY_HEADER_MODES) expect(stickyHeaderUsesRuntime(m)).toBe(true);
+      expect(stickyHeaderUsesRuntime('pinned')).toBe(false);
+      expect(stickyHeaderUsesRuntime('none')).toBe(false);
+      expect(stickyHeaderUsesRuntime(undefined)).toBe(false);
+      // every mode has a non-empty picker label
+      for (const m of STICKY_HEADER_MODES) expect(STICKY_HEADER_LABELS[m]).toBeTruthy();
+      for (const m of JS_STICKY_HEADER_MODES) expect(STICKY_HEADER_MODES).toContain(m);
     });
 
     it('accepts per-effect custom code and websiteEffectsCustomCode applies it only when the effect is "none"', () => {

@@ -29,7 +29,9 @@ import {
   passwordSchema,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
+  stickyHeaderUsesRuntime,
   isLinkPage,
+  type StickyHeaderMode,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -77,6 +79,7 @@ import {
   RIPPLE_JS,
   usesNavEffects,
   NAV_EFFECTS_JS,
+  STICKY_HEADER_JS,
   usesButtonEffects,
   BUTTON_EFFECTS_JS,
   usesCart,
@@ -505,6 +508,8 @@ interface PreviewShell {
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
+  /** Sticky/fixed top-header mode (`website.effects.stickyHeader`) — passed straight to renderDocument. */
+  stickyHeader?: StickyHeaderMode | 'none';
   /** Opt-in light/dark color schemes (Website settings) — passed through to renderDocument. */
   theme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
@@ -572,6 +577,10 @@ async function styledSourceDocument(
   const navRuntime = usesNavEffects(scanHtml);
   // Button-effects runtime — ripple on every .btn (+ magnetic / spotlight); inline it live for preview parity.
   const btnRuntime = usesButtonEffects(scanHtml);
+  // STICKY top-header — the caller passes the validated mode via `shell.stickyHeader` (carried into
+  // renderDocument by the `...shell` spread below, so the fixed `#main-nav` + offset token render in
+  // the preview — WYSIWYG layout). Inline the scroll-state runtime for the JS-backed modes (hide/shrink).
+  const stickyHeaderRuntime = stickyHeaderUsesRuntime(shell.stickyHeader);
   // A RAW-HTML page (the explicit page setting) renders free-form: renderDocument omits the platform base
   // CSS, the linked utility sheet, and the platform JS. The editor canvas INLINES a per-page utility sheet
   // (renderDocument can't skip a linked one here), so we ALSO skip that compile + every platform
@@ -605,6 +614,7 @@ async function styledSourceDocument(
         ...(waves ? [RIPPLE_JS] : []),
         ...(navRuntime ? [NAV_EFFECTS_JS] : []),
         ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
+        ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
         ...(dialog ? [NAV_LINK_JS] : []),
         // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
         // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
@@ -621,6 +631,7 @@ async function styledSourceDocument(
     headInlineScripts: themeToggle ? [THEME_TOGGLE_JS] : undefined,
     // SYSTEM i18n dict for the component runtimes (only when a component ships).
     systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
+    // `...shell` carries `stickyHeader` straight through to renderDocument (fixed `#main-nav` + offset).
     ...shell,
   });
 }
@@ -2556,6 +2567,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           preloader: fxCode.preloader,
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
           bodyClass: websiteEffectsClasses(website?.effects),
+          stickyHeader: website?.effects?.stickyHeader,
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
@@ -4334,6 +4346,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
       let themeCustomScripts: string | undefined;
       let themePreloader: string | undefined;
       let themeEmitContentTokens = false;
@@ -4351,6 +4364,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        themeStickyHeader = settings.website?.effects?.stickyHeader;
         const fx = websiteEffectsCustomCode(settings.website?.effects);
         themeCustomScripts = fx.bodyEnd || undefined;
         themePreloader = fx.preloader;
@@ -4419,6 +4433,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           bodyClass: themeBodyClass,
+          stickyHeader: themeStickyHeader,
           customScripts: themeCustomScripts,
           preloader: themePreloader,
           emitBrandContentTokens: themeEmitContentTokens,
@@ -4488,6 +4503,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
       let themeFxBodyEnd: string | undefined;
       let containerWidth: string | undefined;
       try {
@@ -4498,6 +4514,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent } : undefined;
         containerWidth = settings.website?.containerWidth;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        themeStickyHeader = settings.website?.effects?.stickyHeader;
         // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a
         // custom PRELOADER is deliberately omitted — a snippet hover doesn't want a loading overlay.
         themeFxBodyEnd = websiteEffectsCustomCode(settings.website?.effects).bodyEnd || undefined;
@@ -4520,6 +4537,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           bodyClass: themeBodyClass,
+          stickyHeader: themeStickyHeader,
           customScripts: themeFxBodyEnd,
           emitBrandContentTokens: !!themeFxBodyEnd,
           containerWidth,

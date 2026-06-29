@@ -181,4 +181,47 @@ describe('renderDocument — document shell', () => {
       expect(doc).not.toContain('--sw-container:1440px');
     });
   });
+
+  describe('sticky (fixed) header', () => {
+    it('a static header (none/absent) emits no sticky CSS — byte-identical default', () => {
+      const off = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
+      expect(off).not.toContain('--sw-header-h');
+      expect(off).not.toContain('.sw-top-padding');
+      expect(off).not.toContain('#main-nav{position:fixed');
+      // explicit 'none' is identical to absent
+      expect(renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', stickyHeader: 'none' })).toBe(off);
+    });
+
+    it('every mode fixes #main-nav + emits the offset token, spacer utility and anchor offset', () => {
+      for (const mode of ['pinned', 'hide-on-scroll', 'shrink'] as const) {
+        const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', stickyHeader: mode });
+        expect(doc).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}');
+        expect(doc).toContain('--sw-header-h:4.5rem');
+        expect(doc).toContain('@media (min-width:1024px){:root{--sw-header-h:4.75rem}}');
+        expect(doc).toContain('scroll-padding-top:var(--sw-header-h)');
+        expect(doc).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}');
+      }
+    });
+
+    it('hide-on-scroll slides the header out; shrink condenses it — each its own state rule', () => {
+      const hide = renderDocument(page, { brand, stickyHeader: 'hide-on-scroll' });
+      expect(hide).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}');
+      expect(hide).not.toContain('html.sw-scrolled #main-nav .navbar');
+
+      const shrink = renderDocument(page, { brand, stickyHeader: 'shrink' });
+      expect(shrink).toContain('html.sw-scrolled #main-nav .navbar');
+      expect(shrink).not.toContain('sw-nav-hidden');
+
+      // 'pinned' is pure positioning — no scroll-state rule at all
+      const pinned = renderDocument(page, { brand, stickyHeader: 'pinned' });
+      expect(pinned).not.toContain('sw-nav-hidden');
+      expect(pinned).not.toContain('sw-scrolled');
+    });
+
+    it('omits the sticky CSS on a raw-fidelity page (no platform CSS)', () => {
+      const doc = renderDocument(page, { brand, rawFidelity: true, stickyHeader: 'pinned' });
+      expect(doc).not.toContain('--sw-header-h');
+      expect(doc).not.toContain('#main-nav{position:fixed');
+    });
+  });
 });

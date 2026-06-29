@@ -6,9 +6,12 @@ import {
   BUTTON_EFFECT_LABELS,
   BUTTON_SHAPE_LABELS,
   PRELOADER_EFFECTS,
+  STICKY_HEADER_MODES,
+  STICKY_HEADER_LABELS,
   type JsonValue,
   type NavEffect,
   type PreloaderEffect,
+  type StickyHeaderMode,
 } from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
@@ -253,6 +256,31 @@ export function WebsiteSection({
             </div>
           </label>
         </div>
+        <label className="mt-4 flex flex-col">
+          <span className={fieldLabel}>Sticky header</span>
+          <span className="mb-1 block text-[11px] text-slate-400">
+            Fix the top navigation to the viewport so it stays visible as the page scrolls. Add the{' '}
+            <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> class to your first section (or an inner
+            element, so a full-bleed hero bleeds under the header) to clear the fixed bar.
+          </span>
+          <select
+            aria-label="Sticky header mode"
+            className={`${glassInput} min-w-0`}
+            value={form.stickyHeader}
+            onChange={(e) =>
+              patch({
+                stickyHeader: e.target.value === 'none' ? 'none' : (e.target.value as StickyHeaderMode),
+              })
+            }
+          >
+            <option value="none">Off — static header</option>
+            {STICKY_HEADER_MODES.map((m) => (
+              <option key={m} value={m}>
+                {STICKY_HEADER_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Back-to-top button</span>

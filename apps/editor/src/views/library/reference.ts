@@ -537,6 +537,23 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<a class="btn btn-ghost sw-btn-fx-outline-fill sw-btn-accent-primary" href="/contact">Contact</a>',
         note: 'Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only. The ripple + magnetic/spotlight load a tiny runtime automatically.',
       },
+      {
+        id: 'fx-sticky-header',
+        syntax: 'Website settings → Sticky header · class="sw-top-padding"',
+        name: 'Sticky header (sw-top-padding)',
+        keywords:
+          'sticky fixed header nav top pinned hide shrink scroll offset padding sw-top-padding overlay hero bleed appearance',
+        description:
+          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls — Pinned (always visible), Hide on scroll down, or Shrink on scroll. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset is preset to the default header height; override it with :root{--sw-header-h:5rem} in Custom CSS for a custom header. The hide/shrink modes also expose html.sw-scrolled for your own scroll-triggered CSS.',
+        example:
+          '{{! Website settings → Sticky header: Pinned, then on each page: }}\n' +
+          '<section class="sw-top-padding">…first section, cleared below the fixed header…</section>\n' +
+          '\n{{! Full-bleed hero that bleeds under the header — offset the inner text only: }}\n' +
+          '<section data-sw-component="shader-bg">\n' +
+          '  <div class="sw-top-padding mx-auto max-w-3xl">…hero text, clears the header…</div>\n' +
+          '</section>',
+        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. Anchor (#section) jumps land below the fixed header automatically.',
+      },
     ],
   },
 ];

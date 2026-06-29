@@ -264,6 +264,16 @@ export const ConsentIntegrationSchema = z
       .array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path'))
       .max(20)
       .optional(),
+    /**
+     * ADVANCED — extra `frame-src` hosts for a script SDK that injects its OWN `<iframe>` widget (e.g. a
+     * chat bubble / support panel). Without this a consented SDK's script loads but its widget iframe is
+     * CSP-blocked. Bare hostnames or a single `*.` wildcard; NO scheme/path/port/bare-`*` (the publisher
+     * prepends `https://`). Added to frame-src (gated by the integration's category like the script).
+     */
+    frameOrigins: z
+      .array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path'))
+      .max(20)
+      .optional(),
   })
   .superRefine((v, ctx) => {
     const preset = v.preset ?? 'custom';
@@ -315,6 +325,13 @@ export const ConsentSchema = z.object({
   denyButton: z.boolean().optional(),
   /** Privacy-policy link shown in the banner — an internal page path or absolute URL (render-sanitized). */
   privacyHref: z.string().max(2048).optional(),
+  /**
+   * Default consent category for an auto-gated author `<iframe>` (a cross-origin embed: YouTube/Vimeo/
+   * Maps/Calendly/…) that carries no explicit `data-sw-consent="<category>"` marker. Third-party iframes
+   * are held click-to-load whenever the manager is `enabled`; this is the bucket they fall into. Default
+   * `functional`.
+   */
+  defaultEmbedCategory: z.enum(CONSENT_CATEGORY_VALUES).optional(),
   /**
    * Managed third-party INTEGRATIONS (analytics / chatbots / scripts). Each is loaded ONLY after its
    * category is consented; publish derives the per-site CSP origin allow-list from them. See

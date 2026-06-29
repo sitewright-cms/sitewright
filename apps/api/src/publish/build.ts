@@ -39,7 +39,6 @@ import {
   resolveInternalUrl,
   relativizeInternalLinks,
   componentTypesInSource,
-  embedProvidersInSource,
   componentAssets,
   systemI18nData,
   usesDialog,
@@ -92,6 +91,9 @@ import {
   navEffectUsesRuntime,
   buttonEffectUsesRuntime,
   buildConsentMetaCsp,
+  authorContentCspOrigins,
+  gateAuthorIframes,
+  DEFAULT_EMBED_CATEGORY,
   type FormPublic,
   type MediaAsset,
 } from '@sitewright/schema';
@@ -460,9 +462,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
-    // Click-to-load embed providers used anywhere on the site → the per-page CSP frame-src allow-list
-    // (an unused provider's frame-src is harmless, so a site-wide union keeps it simple + correct).
-    const embedProviders = [...effectiveSources, ...slotSources, ...Object.values(usedSnippets)].flatMap((s) => [...embedProvidersInSource(s)]);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
@@ -506,7 +505,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(usesCart);
-    const usesConsentRuntime = usesMarker(usesConsent);
+    // The consent runtime also hydrates HELD author iframes/scripts, which only exist when the manager is
+    // enabled — so ship it whenever consent is on, not only when a {{sw-consent}} marker is authored.
+    const usesConsentRuntime = website?.consent?.enabled === true || usesMarker(usesConsent);
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -670,6 +671,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
+          // PREVIEW-ONLY consent pre-grant (draft whole-site preview): the {{sw-consent}} helper reads this
+          // to auto-accept all categories so gated embeds/scripts render WYSIWYG. NOT the directive-keeping
+          // `preview` flag — markers are still stripped like a publish. False (omitted effect) on publish.
+          previewConsent: previewMode,
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -774,6 +779,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
           ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
         ];
+        // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
+        // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
+        // Independent of consent.enabled (a held iframe still needs its frame-src origin to load on consent).
+        const authorCspOrigins = authorContentCspOrigins(
+          [bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml, website?.head, website?.scripts]
+            .filter((s): s is string => Boolean(s))
+            .join('\n'),
+        );
         const html = renderDocument(page, {
           brand,
           bodyHtml,
@@ -825,7 +838,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           head: website?.head,
           // Baked CSP for static-export parity (a strict external host then allows the consented
           // third-party origins). Platform-local serving ALSO sets it as a response header. Omit = none.
-          metaCsp: buildConsentMetaCsp(website?.consent, embedProviders),
+          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).
@@ -867,7 +880,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
         const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
-        const finalHtml = opts.minifyHtml ? await minifyPageHtml(portableHtml) : portableHtml;
+        // When the consent manager is enabled, HOLD every cross-origin author `<iframe>` (move its `src`
+        // to `data-sw-consent-src`) so nothing third-party loads until consent — the consent runtime then
+        // hydrates it (placeholder Allow once / Always allow). Consent off → iframes load normally (their
+        // origin is still allow-listed in the baked CSP above). Same-origin / `data-sw-consent-skip` pass.
+        const gatedHtml =
+          website?.consent?.enabled === true
+            ? gateAuthorIframes(portableHtml, { defaultCategory: website?.consent?.defaultEmbedCategory ?? DEFAULT_EMBED_CATEGORY })
+            : portableHtml;
+        const finalHtml = opts.minifyHtml ? await minifyPageHtml(gatedHtml) : gatedHtml;
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, finalHtml, 'utf8');
         bytes += Buffer.byteLength(finalHtml);

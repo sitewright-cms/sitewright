@@ -1,18 +1,25 @@
-// CONSENT MANAGER (core) — a first-party, dependency-free cookie-consent runtime for PUBLISHED
-// static sites. PR2 of the consent epic ships the STATE MACHINE + UI only; the actual third-party
-// gating (registry-injected scripts, click-to-load embeds) hooks onto this in later PRs.
+// CONSENT MANAGER — a first-party, dependency-free cookie-consent runtime for PUBLISHED static sites.
+// It runs the banner state machine + UI, injects managed registry integrations on consent, AND gates
+// author content: cross-origin `<iframe>` embeds (held click-to-load) and `<script type="text/plain"
+// data-sw-consent="cat">` tags (activated on consent). One runtime, shipped whenever the manager is on.
 //
 // What it does: shows a consent banner (first layer: Accept all / Reject all / Customize) with an
 // expandable preferences panel (per-category toggles; "Strictly necessary" is always on), remembers
 // the choice in localStorage (versioned — bump `website.consent.version` to re-prompt), and broadcasts
-// the decision so other runtimes can react:
+// the decision so other runtimes (and its own gates) react:
 //   - window dispatches a `sw:consentchange` CustomEvent { detail: {necessary, functional, analytics,
 //     marketing} } whenever consent is set or changed (and once on load if already stored).
 //   - window.swConsent = { get(): categories, open(): re-open preferences, set(categories) }.
 //
-// Same "only-used-ships" discipline as cart.ts: ships CONSENT_CSS + a `consent.js` file ONLY when a
-// page uses the {{sw-consent}} helper (the `data-sw-consent` marker). First-party, audited, static
-// code — tenants supply only DATA (category copy, version, layout) via an escaped config attribute.
+// AUTHOR-CONTENT GATING: at publish a cross-origin author `<iframe>` is emitted HELD (its `src` moved to
+// `data-sw-consent-src`, category in `data-sw-consent-cat`); a `<script type="text/plain" data-sw-consent>`
+// stays inert. This runtime loads/activates them when their category is consented (or via the placeholder's
+// "Allow once" = this one only / "Always allow" = grant the category). In PREVIEW a `grantAll` config flag
+// pre-grants everything so the editor renders WYSIWYG. createElement/textContent only — never innerHTML.
+//
+// Same "only-used-ships" discipline as cart.ts: ships CONSENT_CSS + a `consent.js` file ONLY when the
+// manager is enabled (the `{{sw-consent}}` marker, or any held author content). First-party, audited,
+// static code — tenants supply only DATA (category copy, version, layout) via an escaped config attribute.
 //
 // Security contract (a reviewer should check): the config + all copy reach the DOM via `textContent` /
 // `setAttribute` — NEVER `innerHTML` (the UI is built with createElement). The privacy `href` is
@@ -49,6 +56,11 @@ export const CONSENT_CSS = [
   '[data-sw-consent] .sw-consent-cat-desc{margin:.1rem 0 0;font-size:.82rem;opacity:.8}',
   '[data-sw-consent] .sw-consent-link{color:var(--sw-color-primary,#4f46e5);text-decoration:underline}',
   '@media (max-width:520px){[data-sw-consent] .sw-consent-actions .btn{flex:1 1 auto}}',
+  // Click-to-load placeholder for a HELD author <iframe>. A self-contained bordered card (the gated iframe
+  // may sit anywhere, so the placeholder owns its own box) — themed via the same --sw-color-* tokens.
+  '.sw-gate-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.7rem;text-align:center;width:100%;min-height:11rem;padding:1.25rem;box-sizing:border-box;background:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem}',
+  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:28rem}',
+  '.sw-gate-ph .sw-gate-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}',
 ].join('');
 
 // ES5-style (var / function) — served raw, never transpiled, like the other runtime bundles.
@@ -66,6 +78,58 @@ export const CONSENT_JS = `(function(){
   // The live consent the page is operating under (necessary always true). Updated on store/apply.
   var current=withNecessary(emptyCats(false));
   function broadcast(){try{window.dispatchEvent(new CustomEvent('sw:consentchange',{detail:withNecessary(current)}));}catch(e){}}
+
+  // ── AUTHOR-CONTENT GATING ───────────────────────────────────────────────────────────────────────
+  // A held <iframe data-sw-consent-src> / inert <script type="text/plain" data-sw-consent> is loaded or
+  // activated once its category is granted (current[cat] / a consentchange event), or via the placeholder.
+  var GCATS={functional:1,analytics:1,marketing:1};
+  function gcat(node){var c=node.getAttribute('data-sw-consent-cat')||node.getAttribute('data-sw-consent')||'';return GCATS[c]?c:'functional';}
+  function loadGatedIframe(fr){
+    if(fr.getAttribute('data-sw-gate-done')==='1')return;fr.setAttribute('data-sw-gate-done','1');
+    var src=fr.getAttribute('data-sw-consent-src');fr.removeAttribute('data-sw-consent-src');
+    if(src)fr.setAttribute('src',src);
+    fr.style.display='';var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
+  }
+  function activateGatedScript(sc){
+    if(sc.getAttribute('data-sw-gate-done')==='1')return;sc.setAttribute('data-sw-gate-done','1');
+    var ns=document.createElement('script'),src=sc.getAttribute('src');
+    if(src){ns.src=src;if(sc.getAttribute('async')!==null)ns.async=true;if(sc.getAttribute('defer')!==null)ns.defer=true;var co=sc.getAttribute('crossorigin');if(co!==null)ns.setAttribute('crossorigin',co);}
+    else{ns.text=sc.textContent||'';}
+    var id=sc.getAttribute('id');if(id)ns.id=id;
+    if(sc.parentNode)sc.parentNode.replaceChild(ns,sc); // replacing a type=text/plain node with a typed one runs it
+  }
+  function gatePlaceholder(fr,cat,labels){
+    var ph=el('div',{cls:'sw-gate-ph'});
+    ph.appendChild(el('p',{cls:'sw-gate-note',text:(fr.getAttribute('data-sw-consent-note')||labels.note||'This content is loaded from a third party. Allow it to load?')}));
+    var row=el('div',{cls:'sw-gate-actions'});
+    var once=el('button',{cls:'btn btn-sm btn-primary',text:labels.once||'Allow once',attrs:{type:'button'}});
+    once.addEventListener('click',function(){loadGatedIframe(fr);});
+    row.appendChild(once);
+    // "Always allow" grants the whole category — only meaningful when a consent banner is mounted (so the
+    // grant persists + re-broadcasts). Without a [data-sw-consent] mount it would silently degrade to a
+    // one-shot load, so we hide it rather than show a button that doesn't do what it says.
+    if(window.swConsent&&document.querySelector('[data-sw-consent]')){
+      var always=el('button',{cls:'btn btn-sm btn-ghost',text:labels.always||'Always allow',attrs:{type:'button'}});
+      always.addEventListener('click',function(){try{var c=window.swConsent.get();c[cat]=true;window.swConsent.set(c);}catch(e){loadGatedIframe(fr);}});
+      row.appendChild(always);
+    }
+    ph.appendChild(row);
+    var w=fr.getAttribute('width');if(w&&/^[0-9]+$/.test(w))ph.style.maxWidth=w+'px';
+    fr.style.display='none';fr.__swPh=ph;
+    if(fr.parentNode)fr.parentNode.insertBefore(ph,fr);
+  }
+  function initGates(mountCfg){
+    var t=(mountCfg&&mountCfg.t)||{};
+    var labels={once:t.allowOnce,always:t.alwaysAllow,note:t.embedNote};
+    var frames=document.querySelectorAll('iframe[data-sw-consent-src]');
+    for(var i=0;i<frames.length;i++){var fr=frames[i],fc=gcat(fr);if(current[fc])loadGatedIframe(fr);else gatePlaceholder(fr,fc,labels);}
+    var scripts=document.querySelectorAll('script[type="text/plain"][data-sw-consent]');
+    for(var j=0;j<scripts.length;j++){var sc=scripts[j];if(current[gcat(sc)])activateGatedScript(sc);}
+    window.addEventListener('sw:consentchange',function(e){try{var d=e.detail||{};
+      var fs=document.querySelectorAll('iframe[data-sw-consent-src]');for(var a=0;a<fs.length;a++){if(d[gcat(fs[a])])loadGatedIframe(fs[a]);}
+      var ss=document.querySelectorAll('script[type="text/plain"][data-sw-consent]');for(var b=0;b<ss.length;b++){if(d[gcat(ss[b])])activateGatedScript(ss[b]);}
+    }catch(_e){}});
+  }
 
   function enhance(root){
     if(root.getAttribute('data-sw-enhanced')==='true')return;
@@ -137,9 +201,12 @@ export const CONSENT_JS = `(function(){
     root.appendChild(title);root.appendChild(intro);root.appendChild(prefs);root.appendChild(actions);
     root.setAttribute('data-sw-enhanced','true');
 
-    // Decide visibility from the stored record (versioned).
+    // Decide visibility. PREVIEW pre-grant (grantAll) auto-accepts everything so the editor renders
+    // gated embeds + integrations WYSIWYG — never set on a real publish. Else honor the stored record.
     var rec=readStore();
-    if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
+    if(cfg.grantAll){
+      apply(emptyCats(true)); // sets current, hides the banner, broadcasts + loadConsented (gates read current in initGates)
+    }else if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
       current=withNecessary(rec.cats);
       root.setAttribute('hidden','');
       broadcast(); // already-consented: tell late listeners the current state
@@ -158,7 +225,9 @@ export const CONSENT_JS = `(function(){
 
   function init(){
     var roots=document.querySelectorAll('[data-sw-consent]');
-    if(roots[0])enhance(roots[0]); // one consent manager per site
+    var mountCfg=roots[0]?cfgOf(roots[0]):{};
+    if(roots[0])enhance(roots[0]); // one consent manager per site — sets current + window.swConsent
+    initGates(mountCfg); // hydrate held author iframes/scripts AFTER enhance has applied current/grantAll
     document.addEventListener('click',function(e){
       var t=e.target;while(t&&t!==document){if(t.getAttribute&&t.getAttribute('data-sw-consent-open')!=null){e.preventDefault();if(window.swConsent)window.swConsent.open();return;}t=t.parentNode;}
     });

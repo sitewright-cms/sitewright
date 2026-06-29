@@ -28,9 +28,14 @@ const MAX = 20;
  */
 export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentIntegration[]; onChange: (rows: ConsentIntegration[]) => void }) {
   const set = (id: string, patch: Partial<ConsentIntegration>): void => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const splitHosts = (text: string): string[] => text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
   const setOrigins = (id: string, text: string): void => {
-    const arr = text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+    const arr = splitHosts(text);
     set(id, { origins: arr.length ? arr : undefined });
+  };
+  const setFrameOrigins = (id: string, text: string): void => {
+    const arr = splitHosts(text);
+    set(id, { frameOrigins: arr.length ? arr : undefined });
   };
   return (
     <div className="flex flex-col gap-2">
@@ -47,7 +52,7 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
                   value={preset}
                   // Clear the OTHER preset's identifying fields so a stale G-XXX / src doesn't fail the new
                   // preset's validation on save (e.g. a ga4 measurementId left on a gtm row → 400).
-                  onChange={(e) => set(r.id, { preset: e.target.value as NonNullable<ConsentIntegration['preset']>, measurementId: undefined, src: undefined, origins: undefined })}
+                  onChange={(e) => set(r.id, { preset: e.target.value as NonNullable<ConsentIntegration['preset']>, measurementId: undefined, src: undefined, origins: undefined, frameOrigins: undefined })}
                 >
                   {PRESETS.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -73,7 +78,8 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
                 {preset === 'custom' && (
                   <>
                     <input aria-label={`Integration ${i + 1} script url`} className={glassInput} value={r.src ?? ''} placeholder="https://widget.example.com/c.js" onChange={(e) => set(r.id, { src: e.target.value.trim() || undefined })} />
-                    <input aria-label={`Integration ${i + 1} extra origins`} className={glassInput} value={(r.origins ?? []).join(' ')} placeholder="Extra hosts (optional): *.intercom.io" onChange={(e) => setOrigins(r.id, e.target.value)} />
+                    <input aria-label={`Integration ${i + 1} extra origins`} className={glassInput} value={(r.origins ?? []).join(' ')} placeholder="Extra script hosts (optional): *.intercom.io" onChange={(e) => setOrigins(r.id, e.target.value)} />
+                    <input aria-label={`Integration ${i + 1} widget iframe hosts`} className={`${glassInput} sm:col-span-2`} value={(r.frameOrigins ?? []).join(' ')} placeholder="Widget iframe hosts (optional, for a chat bubble): *.intercom.io" onChange={(e) => setFrameOrigins(r.id, e.target.value)} />
                   </>
                 )}
               </div>

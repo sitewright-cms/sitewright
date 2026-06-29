@@ -15,8 +15,7 @@
 // The remaining hard limits (CPU/time/memory/output) are enforced by the isolated render
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
-import { safeUrl, cssUrlEscape } from './url.js';
-import { buildEmbed, EMBED_PROVIDER_META } from './embed.js';
+import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
@@ -99,6 +98,12 @@ export interface TemplateContext {
    * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
    */
   preview?: boolean;
+  /**
+   * PREVIEW-ONLY consent pre-grant, WITHOUT the directive-keeping `preview` flag. Set by the build in
+   * draft-preview mode so the consent runtime auto-accepts all categories (gated embeds/scripts render
+   * WYSIWYG) while the page's `data-sw-*` markers are STILL stripped like a publish. Never set on publish.
+   */
+  previewConsent?: boolean;
   /**
    * PREVIEW-ONLY: when true, the dataset-aware `{{#each}}` helper wraps each entry iteration in a
    * `<div data-sw-entry data-sw-dataset>` so the editor can open that entry's editor on click. Never
@@ -702,7 +707,11 @@ function createInstance(): typeof Handlebars {
   // version, layout, denyButton, categories, privacyHref); the config rides on an escaped JSON attribute.
   hb.registerHelper('sw-consent', function swConsentBanner(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const root = (options.data?.root ?? {}) as { website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> } };
+    const root = (options.data?.root ?? {}) as {
+      website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> };
+      preview?: boolean;
+      previewConsent?: boolean;
+    };
     const consent = (root.website?.consent ?? {}) as Record<string, unknown>;
     if (consent.enabled !== true) return new Handlebars.SafeString('');
     // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* key; RESERVED_TRANSLATION_DEFAULTS is a frozen const registry (missing → undefined → '')
@@ -728,8 +737,16 @@ function createInstance(): typeof Handlebars {
         necessary: tr('consent_necessary'),
         necessaryDesc: tr('consent_necessary_desc'),
         privacyLabel: tr('consent_privacy'),
+        // Click-to-load placeholder for a held author <iframe> embed.
+        allowOnce: tr('consent_allow_once'),
+        alwaysAllow: tr('consent_always_allow'),
+        embedNote: tr('consent_embed_note'),
       },
     };
+    // PREVIEW pre-grant: the editor page preview (`root.preview`) and the draft whole-site preview
+    // (`root.previewConsent`, set by the build in previewMode) auto-accept all categories so gated embeds
+    // and integrations render WYSIWYG. Never set on a real publish, so the published banner still prompts.
+    if (root.preview === true || root.previewConsent === true) cfg.grantAll = true;
     // Managed integrations the runtime injects on consent (each {id,cat,kind,src,mid,async}); only the
     // valid ones are baked. The per-site CSP origin allow-list is derived from the SAME registry at publish.
     const ints = consentRuntimeIntegrations(consent as unknown as Consent);
@@ -755,38 +772,6 @@ function createInstance(): typeof Handlebars {
     const cls = str(h.class);
     const classAttr = escapeAttr(cls || 'sw-consent-link');
     return new Handlebars.SafeString(`<button type="button" data-sw-consent-open class="${classAttr}">${escapeHtml(label)}</button>`);
-  });
-  // {{sw-embed "youtube"|"google-maps" "<id-or-url>" [category=] [title=] [ratio=] [poster=] [load=] [note=]}}
-  // → a CLICK-TO-LOAD media embed. The real iframe is HELD until the visitor consents to its category (auto-
-  // loads via sw:consentchange) or clicks "Load". Privacy-first: nothing third-party loads on page view. The
-  // per-page CSP `frame-src` is derived from the provider used. A <noscript> link views the content directly.
-  hb.registerHelper('sw-embed', function swEmbed(this: unknown, ...args: unknown[]) {
-    const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const h = (options.hash ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
-    const provider = str(args[0]);
-    if (provider !== 'youtube' && provider !== 'google-maps') return new Handlebars.SafeString('');
-    const built = buildEmbed(provider, str(args[1]));
-    if (!built) return new Handlebars.SafeString('');
-    const src = safeUrl(built.src);
-    if (!src || src === '#') return new Handlebars.SafeString('');
-    const meta = EMBED_PROVIDER_META[provider];
-    const cat = (['functional', 'analytics', 'marketing'] as const).includes(str(h.category) as never) ? str(h.category) : meta.category;
-    const ratioRaw = str(h.ratio);
-    const ratio = /^[0-9]+\s*\/\s*[0-9]+$/.test(ratioRaw) ? ratioRaw : meta.ratio; // guard against CSS injection via ratio
-    const title = str(h.title) || `${meta.name} embed`;
-    // The poster lands in a CSS `url("…")` at runtime → cssUrlEscape (on top of safeUrl) so it can't break out.
-    const rawPoster = h.poster !== undefined ? safeUrl(str(h.poster)) : built.poster;
-    const poster = rawPoster && rawPoster !== '#' ? cssUrlEscape(rawPoster) : '';
-    const watch = safeUrl(built.watch);
-    let attrs =
-      `data-sw-component="embed" data-embed-providerkey="${escapeAttr(provider)}" data-embed-provider="${escapeAttr(meta.name)}"` +
-      ` data-embed-category="${escapeAttr(cat)}" data-embed-src="${escapeAttr(src)}" data-embed-title="${escapeAttr(title)}"`;
-    if (poster) attrs += ` data-embed-poster="${escapeAttr(poster)}"`;
-    if (h.load) attrs += ` data-embed-load="${escapeAttr(str(h.load))}"`;
-    if (h.note) attrs += ` data-embed-note="${escapeAttr(str(h.note))}"`;
-    const noscript = watch && watch !== '#' ? `<noscript><a href="${escapeAttr(watch)}" rel="noopener noreferrer">${escapeHtml(`View on ${meta.name}`)}</a></noscript>` : '';
-    return new Handlebars.SafeString(`<div ${attrs} style="aspect-ratio:${escapeAttr(ratio)}">${noscript}</div>`);
   });
   // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN themes
   // feature (Settings → Website → enable themes). It carries both a sun + a moon icon;

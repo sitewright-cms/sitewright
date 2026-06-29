@@ -269,16 +269,6 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'Pairs with {{sw-consent}}. Any element carrying data-sw-consent-open re-opens the banner too.',
       },
       {
-        id: 'h-embed',
-        syntax: '{{sw-embed "youtube"|"google-maps" "id-or-url" [category="…"] [title="…"] [ratio="16/9"] [poster="…"]}}',
-        name: 'sw-embed',
-        keywords: 'youtube video map google maps embed iframe click to load consent privacy gdpr cookie',
-        description:
-          'A CLICK-TO-LOAD media embed. Instead of loading a YouTube video or Google Map on page view (which sets third-party cookies), it shows a lightweight placeholder; the real iframe loads only after the visitor consents to its category (via the cookie banner) or clicks “Load”. Privacy-first by default, and the page’s Content-Security-Policy is widened automatically to allow just that provider. Pass a YouTube video id (or any YouTube URL) / a Maps place query (or a Maps embed URL).',
-        example: '{{sw-embed "youtube" "dQw4w9WgXcQ" title="Our story"}}',
-        note: 'Works with or without the consent manager (always click-to-load). “Always allow” on the placeholder remembers the category for every embed. Defaults: YouTube → marketing + 16/9, Maps → functional + 4/3.',
-      },
-      {
         id: 'h-theme-toggle',
         syntax: '{{sw-theme-toggle [label="…"] [class="…"]}}',
         name: 'sw-theme-toggle',

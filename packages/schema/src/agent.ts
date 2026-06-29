@@ -360,13 +360,26 @@ runtime automatically. Prefer these over hand-rolled hover CSS.
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
 so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away
 on scroll-down, back on scroll-up), or \`shrink\` (condenses past a threshold). 'none' (default) = a normal
-static header. THE OFFSET IS OPT-IN: a fixed header is out of flow, so you MUST add class \`sw-top-padding\`
-to the first section of each page so its content clears the bar (without it, content sits UNDER the header).
-For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and instead put
-\`sw-top-padding\` on an INNER element (so the background bleeds while the text clears the header). The
-offset is preset to the default header height; a custom header of a non-standard height overrides it with
-\`:root{--sw-header-h:5rem}\` in website.criticalCss. The hide/shrink modes also expose \`html.sw-scrolled\`
-(set once the page is scrolled) for your own scroll-triggered CSS.
+static header. THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
+first section of a page so its content clears the bar (without it, content sits UNDER the header) — UNLESS
+that section already has enough top padding to clear the ~75px bar (e.g. \`pt-24\`/\`py-24\` = 96px), in which
+case you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section
+flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
+the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
+desktop = the default header height; a custom header of a non-standard height overrides it with
+\`:root{--sw-header-h:5rem}\` in website.criticalCss). The header sits at z-index 30 (below the mobile drawer
++ back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once scrolled,
+shrink + hide modes) and \`html.sw-nav-hidden\` (hide-on-scroll only — header translated off-screen).
+
+STICKY HEADER ENTRANCE animation (the platform keeps entrance AUTHOR-CONTROLLED — write it in
+website.criticalCss). Simplest (no preloader): \`@media(prefers-reduced-motion:no-preference){@keyframes
+sw-hdr-in{from{translate:0 -110%;opacity:0}to{translate:0 0;opacity:1}}#main-nav{animation:sw-hdr-in .6s
+cubic-bezier(.16,1,.3,1) both}}\`. With a PRELOADER enabled, COORDINATE it so the bar slides in AFTER the
+overlay clears (otherwise it animates hidden behind it): the preloader toggles class \`loading\` on the
+overlay \`[data-sw-preloader]\` (a sibling of #main-nav that STAYS in the DOM), so add
+\`[data-sw-preloader].loading ~ #main-nav{visibility:hidden}\` and
+\`[data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
+\`animation\` (NOT \`transition\`) so the entrance doesn't clobber the shrink mode's own \`#main-nav{transition}\`.
 
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`

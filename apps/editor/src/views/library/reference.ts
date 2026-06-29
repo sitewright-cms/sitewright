@@ -539,20 +539,29 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'fx-sticky-header',
-        syntax: 'Website settings → Sticky header · class="sw-top-padding"',
+        syntax: 'Website settings → Sticky header · class="sw-top-padding" · --sw-header-h · html.sw-scrolled',
         name: 'Sticky header (sw-top-padding)',
         keywords:
-          'sticky fixed header nav top pinned hide shrink scroll offset padding sw-top-padding overlay hero bleed appearance',
+          'sticky fixed header nav top pinned hide shrink scroll offset padding sw-top-padding overlay hero bleed entrance animation slide fade appearance sw-header-h sw-scrolled',
         description:
-          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls — Pinned (always visible), Hide on scroll down, or Shrink on scroll. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset is preset to the default header height; override it with :root{--sw-header-h:5rem} in Custom CSS for a custom header. The hide/shrink modes also expose html.sw-scrolled for your own scroll-triggered CSS.',
+          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls — Pinned (always visible), Hide on scroll down, or Shrink on scroll. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar — UNLESS that section already has enough top padding to clear the ~75px bar (e.g. pt-24 / py-24 = 96px), then you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset reads the --sw-header-h token (preset to the default header height, 4.5rem mobile / 4.75rem desktop); override it with :root{--sw-header-h:5rem} in Custom CSS for a custom header. State hooks for your own scroll CSS: html.sw-scrolled (set once scrolled — shrink + hide) and html.sw-nav-hidden (hide-on-scroll only — the bar is translated off-screen). The ENTRANCE animation is author-controlled — write it in Custom CSS (see the example).',
         example:
-          '{{! Website settings → Sticky header: Pinned, then on each page: }}\n' +
+          '{{! Website settings → Sticky header: Shrink. Add sw-top-padding ONLY where the first }}\n' +
+          '{{! section does not already clear the bar (pages with pt-24 / py-24 need nothing): }}\n' +
           '<section class="sw-top-padding">…first section, cleared below the fixed header…</section>\n' +
           '\n{{! Full-bleed hero that bleeds under the header — offset the inner text only: }}\n' +
           '<section data-sw-component="shader-bg">\n' +
           '  <div class="sw-top-padding mx-auto max-w-3xl">…hero text, clears the header…</div>\n' +
-          '</section>',
-        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. Anchor (#section) jumps land below the fixed header automatically.',
+          '</section>\n' +
+          '\n/* Custom CSS → ENTRANCE: slide the bar in on load. Coordinate with the preloader */\n' +
+          '/* (the overlay toggles .loading and stays in the DOM) so it plays AFTER it clears: */\n' +
+          '@keyframes sw-hdr-in{from{translate:0 -110%;opacity:0}to{translate:0 0;opacity:1}}\n' +
+          '@media (prefers-reduced-motion:no-preference){\n' +
+          '  [data-sw-preloader].loading ~ #main-nav{visibility:hidden}\n' +
+          '  [data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\n' +
+          '}\n' +
+          '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */',
+        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition.',
       },
     ],
   },

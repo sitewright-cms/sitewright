@@ -616,10 +616,12 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </a>
     </div>
     <div class="navbar-end">{{sw-theme-toggle}}</div>
-    {{!-- backdrop (closes on click) --}}
-    <label for="sw-nav-drawer" class="pointer-events-none fixed inset-0 z-40 bg-black/40 opacity-0 transition-opacity duration-300 peer-checked:pointer-events-auto peer-checked:opacity-100" aria-hidden="true"></label>
-    {{!-- slide-in panel --}}
-    <div class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0">
+    {{!-- backdrop (closes on click). h-dvh pins it to the viewport even when a sticky-header ENTRANCE
+         animation puts a transform on #main-nav (a transformed ancestor becomes the containing block
+         for these position:fixed children, otherwise clamping them to the header's height). --}}
+    <label for="sw-nav-drawer" class="pointer-events-none fixed inset-0 h-dvh z-40 bg-black/40 opacity-0 transition-opacity duration-300 peer-checked:pointer-events-auto peer-checked:opacity-100" aria-hidden="true"></label>
+    {{!-- slide-in panel (h-dvh: full viewport height regardless of a transformed #main-nav ancestor) --}}
+    <div class="fixed inset-y-0 left-0 h-dvh z-50 flex w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0">
       <div class="flex items-center justify-between border-b border-base-200 p-4">
         <a class="flex items-center gap-2 text-base font-bold tracking-tight" href="{{sw-url '/'}}">{{#if company.icon}}<img class="h-7 w-7 rounded-lg object-cover" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{/if}}{{ company.name }}</a>
         <label for="sw-nav-drawer" class="btn btn-ghost btn-square btn-sm" aria-label="Close">{{sw-icon "x" "h-5 w-5"}}</label>

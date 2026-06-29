@@ -11,7 +11,7 @@ describe('componentTypesInSource (code-first detection)', () => {
   });
 
   it('maps every emitted component name to a registered type (so its JS/CSS actually bundles)', () => {
-    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'notice', 'tabs', 'form', 'datetimepicker']) {
+    for (const name of ['carousel', 'lightbox', 'modal', 'banner', 'tabs', 'form', 'datetimepicker']) {
       const [type] = componentTypesInSource(`<div data-sw-component="${name}"></div>`);
       expect(type, name).toBeDefined();
       expect(COMPONENT_TYPES.has(type!), name).toBe(true);
@@ -48,8 +48,9 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Carousel')).toBe(true);
     expect(COMPONENT_TYPES.has('Lightbox')).toBe(true);
     expect(COMPONENT_TYPES.has('Modal')).toBe(true);
-    expect(COMPONENT_TYPES.has('CookieConsent')).toBe(true);
-    expect(COMPONENT_TYPES.has('Notice')).toBe(true);
+    expect(COMPONENT_TYPES.has('Banner')).toBe(true);
+    expect(COMPONENT_TYPES.has('Notice')).toBe(false); // renamed to Banner
+    expect(COMPONENT_TYPES.has('CookieConsent')).toBe(false); // retired → Consent Manager auto-injects
     expect(COMPONENT_TYPES.has('Tabs')).toBe(true);
     expect(COMPONENT_TYPES.has('DateTimePicker')).toBe(true);
     expect(COMPONENT_TYPES.has('Tab')).toBe(false); // a Tab is a plain child panel
@@ -104,7 +105,7 @@ describe('component registry', () => {
     expect(none.js).toBe('');
   });
 
-  it('Modal uses the native <dialog> API; CookieConsent guards localStorage', () => {
+  it('Modal uses the native <dialog> API', () => {
     const modal = componentAssets(['Modal']);
     expect(modal.css).toContain('::backdrop');
     expect(modal.js).toContain('showModal');
@@ -113,21 +114,15 @@ describe('component registry', () => {
     expect(modal.css).toContain('max-width:32rem');
     expect(modal.css).toContain('@media (max-width:36rem)');
     expect(modal.css).toContain('max-width:calc(100vw - 4rem)');
-    const cc = componentAssets(['CookieConsent']);
-    expect(cc.js).toContain('localStorage');
-    expect(cc.js).toContain('try{'); // storage access is guarded (sandbox/disabled)
-    // The storage key is overridable per-root via data-cookiename (default sw-cookie-consent),
-    // so independent banners track consent separately.
-    expect(cc.js).toContain("getAttribute('data-cookiename')");
-    expect(cc.js).toContain("'sw-cookie-consent'"); // the default when the attribute is absent
   });
 
-  it('CookieConsent styling keys on data-sw-component (no redundant data-sw-block)', () => {
-    // The banner already carries data-sw-component="cookie-consent" for the JS + asset scan;
-    // its CSS keys on the same marker so authors need not also write a parallel data-sw-block.
-    const cc = componentAssets(['CookieConsent']);
-    expect(cc.css).toContain('[data-sw-component="cookie-consent"]');
-    expect(cc.css).not.toContain('data-sw-block');
+  it('Banner guards localStorage + keys on data-sw-component (no redundant data-sw-block)', () => {
+    const bn = componentAssets(['Banner']);
+    expect(bn.js).toContain('localStorage');
+    expect(bn.js).toContain('try{'); // storage access is guarded (sandbox/disabled)
+    expect(bn.js).toContain("'sw-banner:'"); // per-id dismissal key prefix
+    expect(bn.css).toContain('[data-sw-component="banner"]');
+    expect(bn.css).not.toContain('data-sw-block');
   });
 
   it('Modal fades in from the top / out to the top across the <dialog> display toggle', () => {

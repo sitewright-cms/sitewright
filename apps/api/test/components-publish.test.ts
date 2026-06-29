@@ -10,7 +10,7 @@ import { RenderPool } from '../src/render/render-pool.js';
 // publish path renders synchronously and ignores it). The worker is the test blocks-render fixture.
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
-// Regression: interactive component JS (modal / tabs / carousel / lightbox / cookie-consent / form)
+// Regression: interactive component JS (modal / tabs / carousel / lightbox / banner / form)
 // and the <dialog>/anchor runtime must ship for CODE-FIRST pages. Code-first pages render from a
 // Handlebars `source` and have an EMPTY block tree, so detection that only walks the tree never saw
 // their `data-sw-component="…"` markers or authored `<dialog>` — the runtime was silently missing and
@@ -74,10 +74,10 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
   });
 
-  it('ships the Notice runtime for a code-first page that authors a dismissible notice', async () => {
+  it('ships the Banner runtime for a code-first page that authors a dismissible banner', async () => {
     const proj = client.project(projectId);
     const source =
-      '<section><div data-sw-component="notice" data-sw-notice-id="promo" data-frequency="once" data-position="bottom-right" hidden>' +
+      '<section><div data-sw-component="banner" data-sw-banner-id="promo" data-frequency="once" data-position="bottom-right" hidden>' +
       '<p>Latest product</p>' +
       '<button data-sw-part="dismiss-forever" class="btn btn-sm">No thanks</button>' +
       '</div></section>';
@@ -87,17 +87,17 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The notice markers survive the directive-strip + the notice ships hidden (PE-safe).
-    expect(index.body).toContain('data-sw-component="notice"');
+    // The banner markers survive the directive-strip + the banner ships hidden (PE-safe).
+    expect(index.body).toContain('data-sw-component="banner"');
     expect(index.body).toContain('data-sw-part="dismiss-forever"');
     expect(index.body).toContain('hidden');
     expect(index.body).toContain('<script defer src="components.js?v=');
 
-    // components.js carries the Notice runtime (its per-notice storage namespace) + CSS.
+    // components.js carries the Banner runtime (its per-banner storage namespace) + CSS.
     const comp = await client.get(`/sites/${slug}/components.js`);
     expect(comp.statusCode).toBe(200);
-    expect(comp.body).toContain("'sw-notice:'");
-    expect(comp.body).toContain('data-sw-component="notice"');
+    expect(comp.body).toContain("'sw-banner:'");
+    expect(comp.body).toContain('data-sw-component="banner"');
   });
 
   it('AUTO-INJECTS the consent banner + ships the runtime when enabled (NO {{sw-consent}} placeholder)', async () => {

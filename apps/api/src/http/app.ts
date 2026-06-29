@@ -564,7 +564,7 @@ async function styledSourceDocument(
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
   // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
-  // Interactive components (modal / tabs / carousel / lightbox / cookie-consent / form) authored in
+  // Interactive components (modal / tabs / carousel / lightbox / banner / form) authored in
   // CODE-FIRST source carry their `data-sw-component="…"` marker into the rendered body/slots — scan
   // for them here (the block tree is an empty stub for code-first), mirroring the publish path.
   const componentTypes = componentTypesInSource(scanHtml);

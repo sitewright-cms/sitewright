@@ -694,55 +694,39 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </div>`,
   },
   {
-    name: 'cookie-consent',
-    label: 'Cookie consent banner',
-    category: 'chrome',
-    description:
-      'A consent banner that the runtime reveals only until accepted (stored in localStorage). Place it ONCE site-wide.',
-    demonstrates: ['cookie-consent', 'data-sw-part:accept', 'hidden'],
-    // Ships HIDDEN (the `hidden` attribute is REQUIRED) — the runtime reveals it only when consent
-    // is not yet stored, and the accept button hides it for good. Put this ONCE in the website
-    // `bottom` slot (not per page); give a second banner a different data-cookiename to track separately.
-    source: `{{!-- Place ONCE in the website "bottom" slot. The "hidden" attribute is required. --}}
-<div data-sw-component="cookie-consent" hidden class="fixed inset-x-0 bottom-0 z-50 flex flex-wrap items-center justify-center gap-3 border-t border-base-300 bg-base-100 p-4 text-sm shadow-lg">
-  <p class="text-base-content/70">We use a few essential cookies. <a class="link" href="/privacy">Learn more</a>.</p>
-  <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">OK, got it</button>
-</div>`,
-  },
-  {
-    name: 'notice-card',
-    label: 'Notice — promo card',
+    name: 'banner-card',
+    label: 'Banner — promo card',
     category: 'chrome',
     description: 'A free-content dismissible promo card (corner). "Don\'t show again" remembers the dismissal forever.',
-    demonstrates: ['notice', 'data-sw-part:dismiss-forever', 'data-frequency', 'data-position'],
+    demonstrates: ['banner', 'data-sw-part:dismiss-forever', 'data-frequency', 'data-position'],
     // Ships HIDDEN (the `hidden` attribute is REQUIRED). The runtime reveals it until dismissed.
-    // Give each notice a UNIQUE data-sw-notice-id so dismissals are remembered independently.
+    // Give each banner a UNIQUE data-sw-banner-id so dismissals are remembered independently.
     source: `{{!-- A dismissible promo card. Place ONCE (a chrome slot or a single page body). --}}
-<div data-sw-component="notice" data-sw-notice-id="promo" data-position="bottom-right" data-frequency="once" hidden>
+<div data-sw-component="banner" data-sw-banner-id="promo" data-position="bottom-right" data-frequency="once" hidden>
   <p>To see our latest product, <a class="link link-primary" href="{{sw-url "products"}}">click here</a>.</p>
   <button type="button" class="btn btn-sm btn-ghost" data-sw-part="dismiss-forever">Don't show again</button>
 </div>`,
   },
   {
-    name: 'notice-bar',
-    label: 'Notice — announcement bar',
+    name: 'banner-bar',
+    label: 'Banner — announcement bar',
     category: 'chrome',
     description: 'A full-width top announcement bar that reappears once per browser session after dismissal.',
-    demonstrates: ['notice', 'data-sw-part:dismiss', 'data-frequency:session', 'data-position:top'],
+    demonstrates: ['banner', 'data-sw-part:dismiss', 'data-frequency:session', 'data-position:top'],
     source: `{{!-- A top announcement bar (returns once per session after dismissal). --}}
-<div data-sw-component="notice" data-sw-notice-id="announce" data-position="top" data-frequency="session" hidden>
+<div data-sw-component="banner" data-sw-banner-id="announce" data-position="top" data-frequency="session" hidden>
   <p>Free shipping this week — <a class="link" href="{{sw-url "shop"}}">shop now</a>.</p>
   <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
 </div>`,
   },
   {
-    name: 'notice-modal',
-    label: 'Notice — centered card',
+    name: 'banner-modal',
+    label: 'Banner — centered card',
     category: 'chrome',
-    description: 'A centered notice that fades in after a short delay, with a "remind me later" snooze and a permanent dismiss.',
-    demonstrates: ['notice', 'data-sw-part:remind', 'data-delay', 'data-remind-days', 'data-position:center'],
-    source: `{{!-- A centered welcome notice; fades in after a short delay. --}}
-<div data-sw-component="notice" data-sw-notice-id="welcome" data-position="center" data-frequency="once" data-delay="1200" data-remind-days="7" hidden>
+    description: 'A centered banner that fades in after a short delay, with a "remind me later" snooze and a permanent dismiss.',
+    demonstrates: ['banner', 'data-sw-part:remind', 'data-delay', 'data-remind-days', 'data-position:center'],
+    source: `{{!-- A centered welcome banner; fades in after a short delay. --}}
+<div data-sw-component="banner" data-sw-banner-id="welcome" data-position="center" data-frequency="once" data-delay="1200" data-remind-days="7" hidden>
   <div>
     <h3 class="mb-1 text-lg font-semibold">Welcome!</h3>
     <p>Thanks for visiting. Read <a class="link link-primary" href="{{sw-url "about"}}">our story</a>.</p>

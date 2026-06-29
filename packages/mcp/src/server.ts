@@ -195,7 +195,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_components',
     {
       description:
-        'The authoring contracts of the first-party interactive components (carousel, tabs, lightbox, modal, cookie-consent, form): markers, data-sw-part roles, config attributes, and copy-paste markup skeletons. Optionally filter by type or marker.',
+        'The authoring contracts of the first-party interactive components (carousel, tabs, lightbox, modal, banner, form): markers, data-sw-part roles, config attributes, and copy-paste markup skeletons. Optionally filter by type or marker.',
       inputSchema: { type: z.string().max(100).optional() },
     },
     ({ type }: { type?: string }) => {

@@ -1,5 +1,5 @@
 // Platform-authored behavior + styling for INTERACTIVE component blocks (Carousel,
-// Lightbox, Modal, Tabs, CookieConsent, Form).
+// Lightbox, Modal, Tabs, Banner, Form).
 //
 // These are NOT tenant code — they are first-party, audited, static assets shipped
 // only when the matching block is used (the same "only-used-ships" discipline as
@@ -34,7 +34,7 @@ import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/d
 // ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
-import { NOTICE_CSS, NOTICE_JS } from './notice.js';
+import { BANNER_CSS, BANNER_JS } from './banner.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -185,7 +185,7 @@ const LIGHTBOX_CSS = [
   ':where([data-sw-component="lightbox"]) img{cursor:zoom-in}',
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
   // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
-  // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other
+  // site chrome — the vendor's z-index:100 sits UNDER the consent banner / dismissible banner and other
   // overlays; a fullscreen image modal must be top-most. font-family:inherit adopts the site's CI
   // body font instead of the vendor's hard-coded sans-serif.
   '.sw-lightbox{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:inherit}',
@@ -405,38 +405,6 @@ const MODAL_JS = `(function(){
     }
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
-  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
-})();`;
-
-// --- CookieConsent -----------------------------------------------------------
-// A dismissable banner, hidden until JS confirms consent isn't yet stored. PE-safe:
-// rendered with the `hidden` attribute, so with no JS there is no banner (and no
-// JS means nothing to consent to). localStorage access is guarded (sandboxed
-// preview / disabled storage).
-// Styling keys on `data-sw-component="cookie-consent"` (the marker every banner already
-// carries for the JS + asset scan) rather than a parallel `data-sw-block` — a banner has
-// exactly one authoring form, so the extra attribute was pure duplication.
-const COOKIE_CONSENT_CSS = [
-  '[data-sw-component="cookie-consent"][hidden]{display:none}',
-  '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
-  '[data-sw-component="cookie-consent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
-  // The accept button uses the vendored .btn (authored as `class="btn btn-primary btn-sm"`); no face CSS here.
-].join('');
-
-// State is carried by the \`hidden\` attribute (already in the server HTML and
-// toggled here) rather than a \`data-sw-enhanced\` marker — no separate flag needed.
-// The localStorage key defaults to \`sw-cookie-consent\`; an optional \`data-cookiename\`
-// on the root overrides it so independent banners (e.g. a second one on a campaign
-// microsite) track consent separately. Read per-root, so each banner uses its own key.
-const COOKIE_CONSENT_JS = `(function(){
-  function enhance(root){
-    var key=root.getAttribute('data-cookiename')||'sw-cookie-consent';
-    try{if(localStorage.getItem(key)==='1'){return;}}catch(e){}
-    root.removeAttribute('hidden');
-    var accept=root.querySelector('[data-sw-part="accept"]');
-    if(accept)accept.addEventListener('click',function(){try{localStorage.setItem(key,'1');}catch(e){}root.setAttribute('hidden','');});
-  }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="cookie-consent"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
@@ -713,8 +681,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
-  ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
-  ['Notice', { css: NOTICE_CSS, js: NOTICE_JS }],
+  ['Banner', { css: BANNER_CSS, js: BANNER_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
@@ -732,8 +699,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['carousel', 'Carousel'],
   ['lightbox', 'Lightbox'],
   ['modal', 'Modal'],
-  ['cookie-consent', 'CookieConsent'],
-  ['notice', 'Notice'],
+  ['banner', 'Banner'],
   ['tabs', 'Tabs'],
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],

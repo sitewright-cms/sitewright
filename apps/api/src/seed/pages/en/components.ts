@@ -12,7 +12,7 @@ export function pageComponents(): Page {
     id: 'components',
     path: 'components',
     title: 'Components',
-    description: 'The first-party interactive components this site is built with — sliders, lightbox galleries, tabs, modals, cookie consent, and forms — each in every variant the platform ships.',
+    description: 'The first-party interactive components this site is built with — sliders, lightbox galleries, tabs, modals, and forms — each in every variant the platform ships.',
     parent: 'home',
     // dropdown:true folds the child pages under "Components" in the header nav + the editor tree.
     nav: { title: 'Components', slots: ['header'], order: 8, dropdown: true },

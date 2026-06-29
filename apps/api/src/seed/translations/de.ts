@@ -141,14 +141,13 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
-  'comp-cookie': {
-    path: 'cookie-consent',
-    title: 'Cookie-Hinweis',
-    navTitle: 'Cookie-Hinweis',
+  'comp-banner': {
+    path: 'banner',
+    title: 'Banner',
+    navTitle: 'Banner',
     description:
-      'Ein Einwilligungsbanner, das in localStorage gespeichert wird — verborgen ausgeliefert, beim ersten Besuch einmal eingeblendet und nach der Zustimmung endgültig ausgeblendet. Eine Skeleton-Slot-Komponente, die site-weit läuft.',
-    data: {
-    },
+      'Ein frei gestaltbares, schließbares Hinweis-Banner — Promos, Hinweise, „seht euch unser neuestes Produkt an“. Die Runtime blendet es ein und merkt sich die Schließung je nach Häufigkeit in localStorage. Nicht das Consent-Banner.',
+    data: {},
   },
   'comp-parallax': {
     path: 'parallax',

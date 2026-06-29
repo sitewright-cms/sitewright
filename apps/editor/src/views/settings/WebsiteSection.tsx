@@ -574,15 +574,15 @@ export function WebsiteSection({
       <GlassCard
         title="Consent / cookies"
         icon={<ShieldCheck className="h-4 w-4" />}
-        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. Place {{sw-consent}} once in the Bottom slot."
+        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled."
         wide
       >
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable consent manager</span>
             <span className="block text-[11px] text-slate-400">
-              A cookie banner that loads analytics / chatbots / embeds only after consent. When off,{' '}
-              <code>{'{{sw-consent}}'}</code> renders nothing.
+              A cookie banner that loads analytics / chatbots / embeds only after consent. Off by default — the
+              banner appears on every page once you turn it on.
             </span>
           </span>
           <input
@@ -611,8 +611,9 @@ export function WebsiteSection({
               </span>
             </button>
             <p className="mt-2 text-[11px] text-slate-400">
-              Add <code>{'{{sw-consent}}'}</code> to the Bottom slot (below) to show the banner. With it on, any third-party{' '}
-              <code>&lt;iframe&gt;</code> you paste (YouTube, Vimeo, Maps, Calendly…) is automatically held click-to-load until consent.
+              The banner appears automatically on every page. Any third-party <code>&lt;iframe&gt;</code> you paste
+              (YouTube, Vimeo, Maps, Calendly…) is held click-to-load until consent. Add a “Cookie settings” re-open
+              link anywhere with <code>&lt;a href=&quot;#sw-consent&quot;&gt;</code>.
             </p>
           </div>
         )}

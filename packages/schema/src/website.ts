@@ -307,7 +307,7 @@ export type ConsentIntegration = z.infer<typeof ConsentIntegrationSchema>;
  */
 export const ConsentSchema = z.object({
   /**
-   * Master ON switch. When not `true` the {{sw-consent}} / {{sw-consent-settings}} helpers render
+   * Master ON switch. When not `true` no consent banner is auto-injected and the {{sw-consent-settings}} button renders
    * NOTHING (no banner site-wide, so `consent.js` is never shipped) and the editor hides the consent
    * translation ghost rows. A fresh project starts OFF; the operator opts in.
    */
@@ -777,7 +777,7 @@ const WebsiteSettingsObject = z.object({
   shop: ShopSchema.optional(),
   /**
    * CONSENT MANAGER — front-end cookie-consent (banner + per-category preferences). Exposed to templates
-   * as `{{ website.consent }}` and emitted onto the consent mount by the `{{sw-consent}}` helper for the
+   * as `{{ website.consent }}` and emitted onto the AUTO-INJECTED consent mount for the
    * first-party consent.js runtime. Copy is translatable (reserved `consent_*` keys). See {@link ConsentSchema}.
    */
   consent: ConsentSchema.optional(),

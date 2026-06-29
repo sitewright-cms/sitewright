@@ -158,7 +158,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('localizes the site chrome from one shared source (cookie banner, footer columns, mobile nav)', async () => {
     const en = await page('index.html');
-    expect(en).toContain('data-sw-consent'); // the consent-manager banner mount ({{sw-consent}})
+    expect(en).toContain('data-sw-consent'); // the AUTO-INJECTED consent-manager banner mount
     expect(en).toContain('We value your privacy'); // consent banner heading (en), from the consent_title catalog key
     expect(en).toContain('>Legal<'); // footer Legal column heading
     // The chrome now localizes via the EDITABLE data-sw-translate directive (S()→T()); the marker must

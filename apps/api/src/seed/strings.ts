@@ -54,7 +54,7 @@ export interface ChromeStrings {
   cart_currency_code: string;
   // COLOR SCHEMES (RESERVED) — accessible label for the {{sw-theme-toggle}} light/dark button.
   theme_toggle: string;
-  // CONSENT MANAGER (RESERVED) — the {{sw-consent}} banner + per-category preferences copy.
+  // CONSENT MANAGER (RESERVED) — the auto-injected consent banner + per-category preferences copy.
   consent_title: string;
   consent_intro: string;
   consent_accept_all: string;

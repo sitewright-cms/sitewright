@@ -299,10 +299,27 @@ describe('Consent author-content gating (jsdom)', () => {
     runWith(HELD_MARKETING);
     const fr = heldIframe();
     expect(fr.getAttribute('src')).toBeNull(); // not loaded
-    expect(fr.style.display).toBe('none');
-    expect(document.querySelector('.sw-gate-ph')).not.toBeNull();
+    // The iframe is wrapped + the placeholder OVERLAYS it (at the iframe's exact dimensions), with a skeleton.
+    expect(fr.parentElement?.classList.contains('sw-gate-wrap')).toBe(true);
+    const ph = document.querySelector('.sw-gate-ph') as HTMLElement;
+    expect(ph).not.toBeNull();
+    expect(ph.classList.contains('skeleton')).toBe(true);
+    expect(fr.parentElement?.contains(ph)).toBe(true); // overlay is a sibling of the iframe inside the wrapper
+    expect(document.querySelector('.sw-gate-url')?.textContent).toBe('https://x.example/v'); // URL eyebrow
     expect(gateBtn('Allow once')).toBeTruthy();
     expect(gateBtn('Always allow')).toBeTruthy();
+  });
+
+  it('does NOT wrap an already-positioned (responsive) iframe — overlays in the author box instead', () => {
+    // The padding-top responsive pattern: the iframe is position:absolute inside the author's own box. A
+    // wrapper would collapse, so the placeholder is dropped in as a sibling that fills the same box.
+    runWith('<div style="position:relative"><iframe style="position:absolute" data-sw-consent-src="https://x.example/v" data-sw-consent-cat="marketing"></iframe></div>');
+    const fr = heldIframe();
+    expect(fr.parentElement?.classList.contains('sw-gate-wrap')).toBe(false); // NOT wrapped
+    expect(fr.parentElement?.querySelector('.sw-gate-ph')).not.toBeNull(); // overlay is a sibling in the author box
+    gateBtn('Allow once').click();
+    expect(fr.getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull(); // overlay removed on load
   });
 
   it('Allow once loads ONLY this iframe — no category grant, nothing persisted', () => {

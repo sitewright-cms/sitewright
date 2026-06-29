@@ -99,6 +99,12 @@ export interface RenderDocumentOptions extends RenderContext {
    * bottom slot, before the script slot) when the site enables it. Built by `backToTopHtml()`.
    */
   backToTop?: string;
+  /**
+   * Pre-rendered CONSENT MANAGER mount (`<div id="sw-consent" data-sw-consent …>`), auto-injected at
+   * body-END whenever `website.consent.enabled`. Built by `consentMountMarkup()`. position:fixed, so its
+   * DOM location is irrelevant — the author no longer places a `{{sw-consent}}` marker.
+   */
+  consentMount?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` is always overridden by the page title (there is no separate SEO title). */
@@ -222,6 +228,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     stickyHeader,
     preloader,
     backToTop,
+    consentMount,
     mainNav,
     sidebarLeft,
     sidebarRight,
@@ -358,6 +365,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('footer', 'footer', footer) +
     slotLandmark('div', 'bottom', bottom) +
     `${backToTop ?? ''}` +
+    // CONSENT MANAGER mount — auto-injected at body-end when consent is enabled (position:fixed; order N/A).
+    `${consentMount ?? ''}` +
     `${customScripts ?? ''}` +
     // RAW-HTML pages omit the platform component runtimes (the page brings its own scripts).
     (rawFidelity ? [] : (scripts ?? []))

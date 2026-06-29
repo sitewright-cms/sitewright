@@ -100,13 +100,14 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(comp.body).toContain('data-sw-component="notice"');
   });
 
-  it('ships the Consent Manager runtime for a site with {{sw-consent}} in the bottom slot (enabled)', async () => {
+  it('AUTO-INJECTS the consent banner + ships the runtime when enabled (NO {{sw-consent}} placeholder)', async () => {
     const proj = client.project(projectId);
     expect(
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}{{sw-consent-settings}}' },
+          // No {{sw-consent}} anywhere — only the re-open button. The banner mount auto-injects.
+          website: { consent: { enabled: true }, footer: '{{sw-consent-settings}}' },
           settings: {},
         })
       ).statusCode,
@@ -117,8 +118,8 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The helper rendered the mount + the escaped config; the re-open button carries the open marker.
-    expect(index.body).toContain('data-sw-consent');
+    // The mount + escaped config were AUTO-INJECTED (no authored placeholder); the re-open button carries the marker.
+    expect(index.body).toContain('id="sw-consent"');
     expect(index.body).toContain('data-sw-consent-config');
     expect(index.body).toContain('data-sw-consent-open');
     expect(index.body).toContain('<script defer src="consent.js"></script>');
@@ -148,7 +149,6 @@ describe('interactive component + dialog runtimes → code-first publish + previ
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           website: {
             consent: { enabled: true, integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' }] },
-            bottom: '{{sw-consent}}',
           },
           settings: {},
         })
@@ -180,7 +180,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
           settings: {},
         })
       ).statusCode,
@@ -202,7 +202,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
           settings: {},
         })
       ).statusCode,
@@ -260,7 +260,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
           settings: {},
         })
       ).statusCode,

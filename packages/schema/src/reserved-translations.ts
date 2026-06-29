@@ -92,7 +92,7 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
   },
   {
     // CONSENT group (gated on `website.consent.enabled`): the cookie-consent banner + preferences copy.
-    // The render helper ({{sw-consent}}) resolves each per page-locale and floors to these English defaults.
+    // The consent runtime resolves each per page-locale and floors to these English defaults.
     id: 'consent',
     label: 'Consent · Cookie banner',
     feature: 'consent',

@@ -65,10 +65,9 @@ export const EXAMPLE_WEBSITE = {
     <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${T('footer_built', 'Built with Sitewright — code-first, instantly fast.')}</p>
   </div>
 </div>`,
-  // Site-wide bottom slot: the CONSENT MANAGER banner ({{sw-consent}} — gated on website.consent.enabled
-  // above). It shows a cookie banner with per-category preferences, gates the third-party integrations, and
-  // its copy localizes per page-locale from the reserved consent_* catalog keys. Place it ONCE, site-wide.
-  bottom: `{{sw-consent}}`,
+  // The CONSENT MANAGER banner is AUTO-INJECTED site-wide when website.consent.enabled (above) — no bottom
+  // slot / {{sw-consent}} placeholder needed. Its copy localizes per page-locale from the reserved consent_*
+  // catalog keys, and it gates the third-party integrations.
   // RAW slot (not validated, not escaped): CSS-only motion + the demo's design-system utilities,
   // so the site looks alive in the JS-blocked preview AND on export. Scroll-reveal sections use
   // the first-party data-aos runtime (PE: fully visible without JS); these utilities cover the
@@ -133,7 +132,7 @@ export const EXAMPLE_WEBSITE = {
     ],
   },
   // CONSENT MANAGER — the demo enables it to showcase the feature: a cookie banner with per-category
-  // preferences ({{sw-consent}} in the bottom slot) that gates a placeholder Google Analytics tracker, and
+  // preferences (auto-injected site-wide when enabled) that gates a placeholder Google Analytics tracker, and
   // derives the site Content-Security-Policy from it. The banner copy localizes from the reserved consent_*
   // keys (seeded in strings.ts, en/de/es). A fresh project starts OFF — the operator opts in.
   consent: {

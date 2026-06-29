@@ -62,6 +62,7 @@ import {
   usesConsent,
   CONSENT_CSS,
   CONSENT_JS,
+  consentMountMarkup,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -96,6 +97,7 @@ import {
   authorContentCspOrigins,
   gateAuthorIframes,
   DEFAULT_EMBED_CATEGORY,
+  RESERVED_TRANSLATION_DEFAULTS,
   type FormPublic,
   type MediaAsset,
 } from '@sitewright/schema';
@@ -474,12 +476,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The platform-injected BACK-TO-TOP button (renderDocument) carries `btn sw-btn-shape-square` — feed
     // those classes in so the (tree-shaken) square-shape utility compiles into the sheet.
     const backToTopClassNames = website?.effects?.backToTop !== false ? ['btn', 'sw-btn-shape-square'] : [];
+    // The consent gate's click-to-load placeholder uses daisyUI `.skeleton` (loading shimmer); it's added by
+    // the runtime, so the source scan never sees it — feed it in when consent is on so it compiles.
+    const consentClassNames = website?.consent?.enabled === true ? ['skeleton'] : [];
     const classNames = [
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
       ...themeClassNames,
       ...backToTopClassNames,
+      ...consentClassNames,
     ];
     const usesUtilities = classNames.length > 0;
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
@@ -679,10 +685,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
-          // PREVIEW-ONLY consent pre-grant (draft whole-site preview): the {{sw-consent}} helper reads this
-          // to auto-accept all categories so gated embeds/scripts render WYSIWYG. NOT the directive-keeping
-          // `preview` flag — markers are still stripped like a publish. False (omitted effect) on publish.
-          previewConsent: previewMode,
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -815,6 +817,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           bottom: bottomHtml,
           preloader: fxCode.preloader ?? preloaderMarkup,
           backToTop: backToTopMarkup,
+          // CONSENT MANAGER mount — auto-injected when consent is enabled (no authored {{sw-consent}}). The
+          // copy localizes from the page's reserved consent_* translations → English defaults. grantAll only
+          // in the draft whole-site preview (previewMode) so gated embeds render WYSIWYG; never on publish.
+          consentMount: consentMountMarkup(
+            website?.consent,
+            // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* slug; pageT + RESERVED_TRANSLATION_DEFAULTS are string-valued/frozen registries (missing → '')
+            (key) => { const v = (pageT as Record<string, unknown> | undefined)?.[key]; return typeof v === 'string' && v ? v : RESERVED_TRANSLATION_DEFAULTS[key] ?? ''; },
+            { grantAll: previewMode },
+          ),
           // Custom effect code references the brand's text-on-brand tokens — make sure they're defined
           // even on a themes-off site (themes already emit them; this only fires for custom sites).
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),

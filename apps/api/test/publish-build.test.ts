@@ -717,6 +717,7 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
     expect(home).toContain('scrollspy.js'); // runtime linked
+    expect(home).toContain('nav-link.js'); // smooth-scroll runtime ships with scrollspy (in-page anchors)
     expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain("getElementById('main-nav')");
   });
 
@@ -742,6 +743,7 @@ describe('buildSite', () => {
     expect(home).toContain('<body>'); // bare body — no site-wide sw-scrollspy class (opted in per element)
     expect(home).toContain('data-sw-scrollspy'); // the author attribute survives to the published page
     expect(home).toContain('scrollspy.js'); // source-scan gate caught the per-element attribute
+    expect(home).toContain('nav-link.js'); // and the smooth-scroll runtime ships alongside it
   });
 
   it('scrollspy (off): no flag, no attribute → no runtime', async () => {
@@ -760,6 +762,7 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).not.toContain('scrollspy.js');
     expect(home).not.toContain('sw-scrollspy');
+    expect(home).not.toContain('nav-link.js'); // no scrollspy / dialog / link-placeholder → no smooth-scroll runtime
   });
 
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {

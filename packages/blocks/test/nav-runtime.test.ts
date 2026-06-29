@@ -55,6 +55,19 @@ describe('NAV_LINK_JS', () => {
     expect(NAV_LINK_JS.trim().startsWith('(function')).toBe(true);
   });
 
+  it('treats a path-prefixed anchor (/#id) as in-page when the path matches, is root, or is a path suffix', () => {
+    // so a shared-nav /#features smooth-scrolls on its own page AND in the path-served preview (/sites/<slug>)
+    expect(NAV_LINK_JS).toContain('samePath');
+    expect(NAV_LINK_JS).toContain('location.pathname');
+    expect(NAV_LINK_JS).toContain('here.endsWith(path)');
+  });
+
+  it('is embeddable as an inline <script> — no raw backtick, interpolation, or </script> breakout', () => {
+    expect(NAV_LINK_JS).not.toContain('`');
+    expect(NAV_LINK_JS).not.toContain('${');
+    expect(NAV_LINK_JS).not.toContain('</script');
+  });
+
   it('global backdrop-close respects data-backdrop-close="false" (Modal opt-out)', () => {
     // The document-level backdrop handler must bail when the dialog or its owning component opts
     // out — otherwise it would close a data-backdrop-close="false" Modal that the component itself

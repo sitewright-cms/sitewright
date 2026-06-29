@@ -622,7 +622,9 @@ async function styledSourceDocument(
         ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
         ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
         ...(scrollSpyRuntime ? [SCROLLSPY_JS] : []),
-        ...(dialog ? [NAV_LINK_JS] : []),
+        // NAV_LINK_JS smooth-scrolls #section links + opens <dialog> modals; ship it for a <dialog> OR for
+        // scrollspy (its nav is in-page section navigation, so the links must smooth-scroll in the preview too).
+        ...(dialog || scrollSpyRuntime ? [NAV_LINK_JS] : []),
         // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
         // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
         PREVIEW_BRIDGE_JS,

@@ -263,12 +263,17 @@ const MODAL_CSS = [
   // and a closed <dialog> is display:none until opened).
   `${M}:not(dialog){display:inline-block}`,
   // Appearance defaults at ZERO specificity (:where) so utility classes on the <dialog> win
-  // without !important — global bg/text vars, rounded corners, 1.5rem padding, a max width and a
+  // without !important — global bg/text vars, rounded corners, 1.5rem padding, a 32rem max width and a
   // soft shadow. Override any of them with e.g. bg-transparent / text-white / p-0 / max-w-2xl /
   // rounded-none / shadow-none on the dialog. overflow:visible lets the close button overhang the
   // top-right corner; a TALL dialog instead scrolls its content (the JS moves it into a
   // [data-sw-part="body"] scroll region) so the overhang and scrolling coexist.
-  `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
+  `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:32rem;overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
+  // GUARANTEED side gutter on small screens (normal specificity, NOT :where, so it beats an author
+  // max-w-* override): cap the box to the viewport LESS 4rem so it always keeps a 2rem margin to each
+  // edge instead of touching — pairs with the `max-height:calc(100vh - 4rem)` vertical cap below. Only
+  // applies ≤36rem (576px), where 100vw-4rem < the 32rem default, so wider screens keep author widths.
+  `@media (max-width:36rem){${mdlg()}{max-width:calc(100vw - 4rem)}}`,
   // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
   // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
   // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and

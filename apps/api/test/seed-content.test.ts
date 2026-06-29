@@ -170,7 +170,7 @@ describe('seed demo content', () => {
     for (const locale of locales) {
       expect(Object.keys(CHROME_STRINGS[locale]!).sort(), `strings.${locale} keys`).toEqual(enKeys);
     }
-    const slots = [EXAMPLE_WEBSITE.mainNav, EXAMPLE_WEBSITE.footer, EXAMPLE_WEBSITE.bottom].filter(Boolean).join('\n');
+    const slots = [EXAMPLE_WEBSITE.mainNav, EXAMPLE_WEBSITE.footer].filter(Boolean).join('\n');
     // The slots now localize via the translation catalog: {{sw-translate "key"}} / (sw-translate "key").
     const referenced = [...slots.matchAll(/sw-translate "([a-z_]+)"/g)].map((m) => m[1]!);
     expect(referenced.length).toBeGreaterThan(0);

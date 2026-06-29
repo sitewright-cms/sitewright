@@ -1,5 +1,5 @@
 // CONSENT MANAGER — third-party gating support: the curated CSP origin bundles per preset, the runtime
-// descriptors the {{sw-consent}} helper bakes into the config, and the per-site CSP builders consumed by
+// descriptors the auto-injected consent mount bakes into the config, and the per-site CSP builders consumed by
 // BOTH the serve-time response header (apps/api app.ts /sites/:slug/*) and the build-time <meta> (build.ts).
 //
 // SECURITY MODEL (the invariants a reviewer checks): CSP allowlists ORIGINS, never URLs. We add only
@@ -185,7 +185,7 @@ const hostOf = (url: string): string | null => {
   }
 };
 
-/** The runtime descriptor the {{sw-consent}} helper bakes into the config for one integration. */
+/** The runtime descriptor the consent mount bakes into the config for one integration. */
 export function integrationRuntimeInfo(i: ConsentIntegration): ConsentIntegrationRuntime | null {
   const preset = i.preset ?? 'custom';
   if (preset === 'ga4' && i.measurementId)

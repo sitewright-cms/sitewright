@@ -25,7 +25,7 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
-import { RESERVED_TRANSLATION_DEFAULTS, consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
+import { RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -98,12 +98,6 @@ export interface TemplateContext {
    * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
    */
   preview?: boolean;
-  /**
-   * PREVIEW-ONLY consent pre-grant, WITHOUT the directive-keeping `preview` flag. Set by the build in
-   * draft-preview mode so the consent runtime auto-accepts all categories (gated embeds/scripts render
-   * WYSIWYG) while the page's `data-sw-*` markers are STILL stripped like a publish. Never set on publish.
-   */
-  previewConsent?: boolean;
   /**
    * PREVIEW-ONLY: when true, the dataset-aware `{{#each}}` helper wraps each entry iteration in a
    * `<div data-sw-entry data-sw-dataset>` so the editor can open that entry's editor on click. Never
@@ -700,66 +694,8 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
-  // {{sw-consent}} → the CONSENT MANAGER banner mount (cookie-consent). Gated by the master switch
-  // (website.consent.enabled): OFF → renders nothing, so consent.js is never shipped. Place it ONCE in the
-  // website `bottom` slot. ALL copy auto-localizes per page-locale from the reserved consent_* catalog keys
-  // (catalog → built-in English default). Settings (website.consent) holds only STRUCTURE (enabled,
-  // version, layout, denyButton, categories, privacyHref); the config rides on an escaped JSON attribute.
-  hb.registerHelper('sw-consent', function swConsentBanner(this: unknown, ...args: unknown[]) {
-    const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const root = (options.data?.root ?? {}) as {
-      website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> };
-      preview?: boolean;
-      previewConsent?: boolean;
-    };
-    const consent = (root.website?.consent ?? {}) as Record<string, unknown>;
-    if (consent.enabled !== true) return new Handlebars.SafeString('');
-    // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* key; RESERVED_TRANSLATION_DEFAULTS is a frozen const registry (missing → undefined → '')
-    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
-    const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
-    const wantRaw = Array.isArray(consent.categories) ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string') : null;
-    const want = wantRaw && wantRaw.length ? wantRaw : [...CAT_KEYS];
-    const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
-    const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
-    const cfg: Record<string, unknown> = {
-      v: version,
-      layout: consent.layout === 'box' ? 'box' : 'bar',
-      deny: consent.denyButton !== false,
-      cats,
-      t: {
-        title: tr('consent_title'),
-        intro: tr('consent_intro'),
-        acceptAll: tr('consent_accept_all'),
-        rejectAll: tr('consent_reject_all'),
-        customize: tr('consent_customize'),
-        save: tr('consent_save'),
-        prefsTitle: tr('consent_prefs_title'),
-        necessary: tr('consent_necessary'),
-        necessaryDesc: tr('consent_necessary_desc'),
-        privacyLabel: tr('consent_privacy'),
-        // Click-to-load placeholder for a held author <iframe> embed.
-        allowOnce: tr('consent_allow_once'),
-        alwaysAllow: tr('consent_always_allow'),
-        embedNote: tr('consent_embed_note'),
-      },
-    };
-    // PREVIEW pre-grant: the editor page preview (`root.preview`) and the draft whole-site preview
-    // (`root.previewConsent`, set by the build in previewMode) auto-accept all categories so gated embeds
-    // and integrations render WYSIWYG. Never set on a real publish, so the published banner still prompts.
-    if (root.preview === true || root.previewConsent === true) cfg.grantAll = true;
-    // Managed integrations the runtime injects on consent (each {id,cat,kind,src,mid,async}); only the
-    // valid ones are baked. The per-site CSP origin allow-list is derived from the SAME registry at publish.
-    const ints = consentRuntimeIntegrations(consent as unknown as Consent);
-    if (ints.length) cfg.ints = ints;
-    const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
-    if (privacy && privacy !== '#') cfg.privacy = privacy;
-    // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip
-    // (runs on any page with data-sw-*) intact + byte-stable, then attr-escape for the attribute value.
-    const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
-    const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
-    // `id="sw-consent"` so an author can re-open the manager with a plain <a href="#sw-consent">.
-    return new Handlebars.SafeString(`<div id="sw-consent" data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`);
-  });
+  // (The CONSENT MANAGER banner mount is AUTO-INJECTED by the publish pipeline whenever
+  // website.consent.enabled — there is no `{{sw-consent}}` helper. See consentMountMarkup + renderDocument.)
   // {{sw-consent-settings [label="…"] [class="…"]}} → a button that RE-OPENS the consent preferences
   // (e.g. a footer "Cookie settings" link for GDPR withdrawal). Gated on website.consent.enabled. Carries
   // data-sw-consent-open, which the consent.js runtime delegates. The label localizes (consent_settings).

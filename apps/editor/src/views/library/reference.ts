@@ -249,16 +249,6 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
       },
       {
-        id: 'h-consent',
-        syntax: '{{sw-consent}}',
-        name: 'sw-consent',
-        keywords: 'cookie consent banner gdpr privacy preferences categories analytics marketing tracking',
-        description:
-          'CONSENT MANAGER: the cookie-consent banner — first layer (Accept all / Reject all / Customize) plus an expandable preferences panel with per-category toggles (Strictly necessary, Functional, Analytics, Marketing; necessary is always on). The choice is remembered in localStorage and re-prompts when you bump the version. Enable it under Settings → Website → Consent; with consent OFF it renders nothing, so it is safe to leave in. Drop it ONCE in the bottom slot. All copy localizes via the reserved consent_* translation keys.',
-        example: '{{sw-consent}}',
-        note: 'Front-end only. It broadcasts the decision (a `sw:consentchange` event + `window.swConsent`) so third-party scripts/embeds can gate on it; the actual gating arrives in a later update. The runtime ships only on sites that use it.',
-      },
-      {
         id: 'h-consent-settings',
         syntax: '{{sw-consent-settings [label="…"] [class="…"]}}',
         name: 'sw-consent-settings',

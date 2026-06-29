@@ -1,5 +1,57 @@
 import { describe, it, expect } from 'vitest';
-import { CONSENT_CSS, CONSENT_JS, usesConsent, CONSENT_CATEGORIES } from '../src/consent.js';
+import { CONSENT_CSS, CONSENT_JS, usesConsent, CONSENT_CATEGORIES, consentMountMarkup } from '../src/consent.js';
+import type { Consent } from '@sitewright/schema';
+
+// Identity translator (returns the reserved key itself, so we can assert which key fed each slot) unless a
+// specific map is supplied. The real build feeds page-locale translations → English defaults.
+const idTr = (k: string): string => k;
+const enTr = (map: Record<string, string>) => (k: string): string => map[k] ?? k;
+
+describe('consentMountMarkup — the auto-injected mount (config builder, no {{sw-consent}})', () => {
+  const on = (extra: Partial<Consent> = {}): Consent => ({ enabled: true, ...extra } as Consent);
+
+  it('returns "" when consent is off / undefined', () => {
+    expect(consentMountMarkup(undefined, idTr)).toBe('');
+    expect(consentMountMarkup({ enabled: false } as Consent, idTr)).toBe('');
+  });
+
+  it('emits the mount with id + data-sw-consent + escaped config when enabled', () => {
+    const out = consentMountMarkup(on(), idTr);
+    expect(out).toContain('id="sw-consent"');
+    expect(out).toContain('data-sw-consent ');
+    expect(out).toContain('data-sw-consent-config="');
+    expect(out).toContain('consent_accept_all'); // the t.acceptAll slot fed by idTr
+  });
+
+  it('honors layout + denyButton + version + a category subset', () => {
+    const out = consentMountMarkup(on({ layout: 'box', denyButton: false, version: 3, categories: ['analytics'] }), idTr);
+    expect(out).toContain('data-layout="box"');
+    expect(out).toMatch(/&quot;v&quot;:3/); // escaped JSON in the attribute
+    expect(out).toContain('consent_analytics');
+    expect(out).not.toContain('consent_marketing'); // only the requested category is offered
+  });
+
+  it('localizes copy via the tr function', () => {
+    expect(consentMountMarkup(on(), enTr({ consent_accept_all: 'Alle akzeptieren' }))).toContain('Alle akzeptieren');
+  });
+
+  it('sanitizes the privacy link (javascript: dropped; internal path kept)', () => {
+    expect(consentMountMarkup(on({ privacyHref: 'javascript:alert(1)' } as Partial<Consent>), idTr)).not.toContain('javascript:');
+    expect(consentMountMarkup(on({ privacyHref: '/privacy' } as Partial<Consent>), idTr)).toContain('/privacy');
+  });
+
+  it('bakes the integration registry as runtime descriptors', () => {
+    const out = consentMountMarkup(on({ integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }] } as Partial<Consent>), idTr);
+    expect(out).toContain('ga4');
+    expect(out).toContain('googletagmanager.com');
+    expect(out).toContain('G-X');
+  });
+
+  it('sets grantAll only when the preview flag is passed', () => {
+    expect(consentMountMarkup(on(), idTr, { grantAll: true })).toContain('grantAll');
+    expect(consentMountMarkup(on(), idTr)).not.toContain('grantAll');
+  });
+});
 
 describe('consent stylesheet', () => {
   it('hides the banner until the runtime marks it enhanced (PE: no inert UI pre-JS)', () => {

@@ -488,11 +488,12 @@ prefixed by the Corporate-Identity name ("Hi <name> — …").
     title: "Cookie consent & third-party gating",
     summary: "a cookie banner that loads analytics/chatbots/embeds ONLY after consent (+ derives the CSP)",
     body: `
-CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. Turn it on
-with website.consent.enabled, then place {{sw-consent}} ONCE in the bottom slot. It shows a banner
-(Accept all / Reject all / Customize) + a per-category preferences panel: Strictly necessary (always on),
-Functional, Analytics, Marketing. The choice is remembered (versioned localStorage). Add a footer
-"Cookie settings" re-open link with {{sw-consent-settings}}.
+CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. Just turn it
+on with website.consent.enabled — the banner is AUTO-INJECTED on every page (there is NO {{sw-consent}}
+placeholder; don't add one). It shows a banner (Accept all / Reject all / Customize) + a per-category
+preferences panel: Strictly necessary (always on), Functional, Analytics, Marketing. The choice is remembered
+(versioned localStorage). Add a footer "Cookie settings" re-open link with {{sw-consent-settings}} (or a plain
+<a href="#sw-consent">).
 ALL banner COPY is TRANSLATABLE — it lives in website.translations under the reserved consent_* keys
 (consent_title, consent_intro, consent_accept_all, consent_reject_all, consent_customize, consent_save,
 consent_necessary[_desc], consent_functional[_desc], consent_analytics[_desc], consent_marketing[_desc],

@@ -18,8 +18,9 @@
 // pre-grants everything so the editor renders WYSIWYG. createElement/textContent only — never innerHTML.
 //
 // Same "only-used-ships" discipline as cart.ts: ships CONSENT_CSS + a `consent.js` file ONLY when the
-// manager is enabled (the `{{sw-consent}}` marker, or any held author content). First-party, audited,
-// static code — tenants supply only DATA (category copy, version, layout) via an escaped config attribute.
+// manager is enabled (`consent.enabled`). The mount itself is AUTO-INJECTED by the publish pipeline (no
+// authored `{{sw-consent}}` needed); tenants supply only DATA (category copy, version, layout) via an
+// escaped config attribute.
 //
 // Security contract (a reviewer should check): the config + all copy reach the DOM via `textContent` /
 // `setAttribute` — NEVER `innerHTML` (the UI is built with createElement). The privacy `href` is
@@ -27,16 +28,72 @@
 // guarded and the stored record is re-validated on read. No network, no eval. PE: the mount ships empty
 // + display:none, so with no JS there is no banner — and with no JS no third-party scripts load anyway.
 
-// Only-used-ships detection. A code-first SOURCE / skeleton slot contains the HELPER call `{{sw-consent}}`
-// (or `{{sw-consent-settings}}`); the `data-sw-consent` attribute only appears after Handlebars runs. The
-// substring `sw-consent` covers every form (`{{sw-consent}}`, `{{sw-consent-settings}}`, `data-sw-consent`,
-// `data-sw-consent-open`). A stray prose match only over-ships a few KB — benign, like the other runtimes.
+import { consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
+import { safeUrl } from './url.js';
+import { escapeAttr } from './escape.js';
+
+// Only-used-ships detection. The `data-sw-consent` attribute appears only on the auto-injected mount; the
+// substring `sw-consent` also covers `{{sw-consent-settings}}` (re-open button) + `data-sw-consent-open`.
+// A stray prose match only over-ships a few KB — benign, like the other runtimes. (The build also ships
+// the runtime whenever `consent.enabled`, so the mount + held author content are always hydrated.)
 export function usesConsent(s: string | null | undefined): boolean {
   return typeof s === 'string' && s.includes('sw-consent');
 }
 
 // The optional categories the platform offers (Necessary is implicit + always granted).
 export const CONSENT_CATEGORIES = ['functional', 'analytics', 'marketing'] as const;
+
+/**
+ * The CONSENT MANAGER mount markup — the `<div id="sw-consent" data-sw-consent …>` carrying the escaped
+ * runtime config. AUTO-INJECTED by the publish/render pipeline whenever `consent.enabled` (no authored
+ * `{{sw-consent}}` needed). `tr(key)` localizes a reserved `consent_*` key for the page locale; `grantAll`
+ * pre-grants every category (PREVIEW only, for WYSIWYG). Returns '' when the manager is off.
+ */
+export function consentMountMarkup(
+  consent: Consent | undefined,
+  tr: (key: string) => string,
+  opts: { grantAll?: boolean } = {},
+): string {
+  if (!consent || consent.enabled !== true) return '';
+  const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
+  const want =
+    Array.isArray(consent.categories) && consent.categories.length
+      ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string')
+      : [...CAT_KEYS];
+  const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
+  const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
+  const cfg: Record<string, unknown> = {
+    v: version,
+    layout: consent.layout === 'box' ? 'box' : 'bar',
+    deny: consent.denyButton !== false,
+    cats,
+    t: {
+      title: tr('consent_title'),
+      intro: tr('consent_intro'),
+      acceptAll: tr('consent_accept_all'),
+      rejectAll: tr('consent_reject_all'),
+      customize: tr('consent_customize'),
+      save: tr('consent_save'),
+      prefsTitle: tr('consent_prefs_title'),
+      necessary: tr('consent_necessary'),
+      necessaryDesc: tr('consent_necessary_desc'),
+      privacyLabel: tr('consent_privacy'),
+      allowOnce: tr('consent_allow_once'),
+      alwaysAllow: tr('consent_always_allow'),
+      embedNote: tr('consent_embed_note'),
+    },
+  };
+  if (opts.grantAll) cfg.grantAll = true;
+  const ints = consentRuntimeIntegrations(consent);
+  if (ints.length) cfg.ints = ints;
+  const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
+  if (privacy && privacy !== '#') cfg.privacy = privacy;
+  // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip + is
+  // byte-stable, then attr-escape for the attribute value.
+  const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+  const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
+  return `<div id="sw-consent" data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`;
+}
 
 // Brand-themed, dark-mode aware (every surface/text reads a `--sw-color-*` token whose fallback is the
 // light value). The banner is hidden until the runtime adds `data-sw-enhanced` (PE-first).
@@ -68,10 +125,14 @@ export const CONSENT_CSS = [
   '[data-sw-consent] .sw-consent-cat-desc{margin:.1rem 0 0;font-size:.82rem;opacity:.8}',
   '[data-sw-consent] .sw-consent-link{color:var(--sw-color-primary,#4f46e5);text-decoration:underline}',
   '@media (max-width:520px){[data-sw-consent] .sw-consent-actions .btn{flex:1 1 auto}}',
-  // Click-to-load placeholder for a HELD author <iframe>. A self-contained bordered card (the gated iframe
-  // may sit anywhere, so the placeholder owns its own box) — themed via the same --sw-color-* tokens.
-  '.sw-gate-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.7rem;text-align:center;width:100%;min-height:11rem;padding:1.25rem;box-sizing:border-box;background:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem}',
-  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:28rem}',
+  // Click-to-load placeholder for a HELD author <iframe>. The wrapper hugs the (held, empty) iframe so it
+  // keeps the iframe's exact dimensions; the placeholder is laid OVER it. `.skeleton` (daisyUI) supplies the
+  // loading shimmer; `background-color` (not the shorthand) is a fallback that lets the shimmer layer on top.
+  '.sw-gate-wrap{position:relative;display:inline-block;max-width:100%;line-height:0}',
+  '.sw-gate-wrap>iframe{display:block;max-width:100%}',
+  '.sw-gate-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;text-align:center;padding:1rem;box-sizing:border-box;line-height:1.4;overflow:hidden;border-radius:.5rem;background-color:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23)}',
+  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:32rem}',
+  '.sw-gate-ph .sw-gate-url{font-style:italic;font-size:.75rem;opacity:.7;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.sw-gate-ph .sw-gate-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}',
 ].join('');
 
@@ -104,7 +165,8 @@ export const CONSENT_JS = `(function(){
     if(fr.getAttribute('data-sw-gate-done')==='1')return;fr.setAttribute('data-sw-gate-done','1');
     var src=fr.getAttribute('data-sw-consent-src');fr.removeAttribute('data-sw-consent-src');
     if(src)fr.setAttribute('src',src);
-    fr.style.display='';var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
+    // Remove the overlay placeholder — the iframe (which sized the wrapper) now shows its content inside it.
+    var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
   }
   function activateGatedScript(sc){
     if(sc.getAttribute('data-sw-gate-done')==='1')return;sc.setAttribute('data-sw-gate-done','1');
@@ -115,8 +177,13 @@ export const CONSENT_JS = `(function(){
     if(sc.parentNode)sc.parentNode.replaceChild(ns,sc); // replacing a type=text/plain node with a typed one runs it
   }
   function gatePlaceholder(fr,cat,labels){
-    var ph=el('div',{cls:'sw-gate-ph'});
+    // The placeholder OVERLAYS the iframe at its exact dimensions: wrap the (held, empty) iframe in a
+    // relative box — the iframe sizes the box — and lay an absolutely-positioned card over it. The
+    // sw-gate-ph skeleton class gives the daisyUI loading shimmer.
+    var ph=el('div',{cls:'sw-gate-ph skeleton'});
     ph.appendChild(el('p',{cls:'sw-gate-note',text:(fr.getAttribute('data-sw-consent-note')||labels.note||'This content is loaded from a third party. Allow it to load?')}));
+    var url=fr.getAttribute('data-sw-consent-src')||'';
+    if(url)ph.appendChild(el('div',{cls:'sw-gate-url',text:url,attrs:{title:url}})); // the embed URL, italic eyebrow
     var row=el('div',{cls:'sw-gate-actions'});
     var once=el('button',{cls:'btn btn-sm btn-primary',text:labels.once||'Allow once',attrs:{type:'button'}});
     once.addEventListener('click',function(){loadGatedIframe(fr);});
@@ -130,9 +197,20 @@ export const CONSENT_JS = `(function(){
       row.appendChild(always);
     }
     ph.appendChild(row);
-    var w=fr.getAttribute('width');if(w&&/^[0-9]+$/.test(w))ph.style.maxWidth=w+'px';
-    fr.style.display='none';fr.__swPh=ph;
-    if(fr.parentNode)fr.parentNode.insertBefore(ph,fr);
+    // If the author ALREADY positions the iframe (the responsive padding-top pattern: iframe is
+    // position:absolute/fixed inside their own box), our wrapper would collapse to 0×0 — so drop the overlay
+    // in as a SIBLING that fills the same positioned box. Otherwise wrap the (held, in-flow) iframe so the
+    // overlay takes the iframe's own dimensions.
+    var pos='';try{pos=(window.getComputedStyle(fr)||{}).position;}catch(e){}
+    if(pos==='absolute'||pos==='fixed'){
+      if(fr.parentNode)fr.parentNode.insertBefore(ph,fr.nextSibling);
+    }else{
+      var wrap=el('span',{cls:'sw-gate-wrap'});
+      if(fr.parentNode)fr.parentNode.insertBefore(wrap,fr);
+      wrap.appendChild(fr); // move the iframe into the wrapper (it stays in flow → gives the box its size)
+      wrap.appendChild(ph); // overlay
+    }
+    fr.__swPh=ph;
   }
   function initGates(mountCfg){
     var t=(mountCfg&&mountCfg.t)||{};

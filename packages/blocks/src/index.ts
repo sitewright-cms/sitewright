@@ -10,6 +10,7 @@ export * from './consent.js';
 export * from './embed.js';
 export * from './preloader.js';
 export * from './back-to-top.js';
+export * from './sticky-header.js';
 export * from './parallax.js';
 export * from './theme-mode.js';
 export * from './escape.js';

@@ -513,6 +513,38 @@ export const PRELOADER_EFFECTS = [
 export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
 
 /**
+ * STICKY (fixed) TOP-HEADER modes — the no-code "make the `#main-nav` landmark stick to the top"
+ * picker. 'none' (or absent) = today's static in-flow header (scrolls away with the page; zero
+ * overhead). The other modes set the header `position:fixed` and emit the `--sw-header-h` offset
+ * token consumed by the opt-in `.sw-top-padding` utility (clears content under the fixed header) +
+ * `scroll-padding-top` (in-page anchors land below it). See {@link stickyHeaderUsesRuntime} and the
+ * CSS/runtime in @sitewright/blocks sticky-header.ts.
+ *   - pinned         — fixed + always visible. PURE CSS (no runtime).
+ *   - hide-on-scroll — fixed; slides up out of view on scroll-down, back in on scroll-up. Needs JS.
+ *   - shrink         — fixed; condenses (compact padding + shadow) past a scroll threshold. Needs JS.
+ */
+export const STICKY_HEADER_MODES = ['pinned', 'hide-on-scroll', 'shrink'] as const;
+export type StickyHeaderMode = (typeof STICKY_HEADER_MODES)[number];
+const STICKY_HEADER_CHOICES = ['none', ...STICKY_HEADER_MODES] as const;
+export const STICKY_HEADER_LABELS: Record<StickyHeaderMode, string> = {
+  pinned: 'Pinned (always visible)',
+  'hide-on-scroll': 'Hide on scroll down',
+  shrink: 'Shrink on scroll',
+};
+
+/**
+ * The fixed-header modes that need the sticky-header JS runtime — those that toggle a state class as
+ * the visitor scrolls (`html.sw-nav-hidden` for hide-on-scroll direction, `html.sw-scrolled` for the
+ * shrink/shadow threshold). `pinned` is pure CSS. Source-of-truth for the publish/preview runtime gate.
+ */
+export const JS_STICKY_HEADER_MODES = ['hide-on-scroll', 'shrink'] as const;
+
+/** Whether a chosen sticky-header mode needs the sticky-header JS runtime (scroll state classes). */
+export function stickyHeaderUsesRuntime(mode: string | null | undefined): boolean {
+  return !!mode && (JS_STICKY_HEADER_MODES as readonly string[]).includes(mode);
+}
+
+/**
  * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no built-in
  * scheme — the author may instead supply their OWN effect as a custom-code blob (the `*Code` fields,
  * edited via the "None / Custom Code" option), or apply a scheme class per element. The chosen
@@ -539,6 +571,12 @@ export const WebsiteEffectsSchema = z.object({
     .optional(),
   /** Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll). */
   backToTop: z.boolean().optional(),
+  /**
+   * STICKY top-header mode — fixes the `#main-nav` landmark to the top ('none' = today's static
+   * header). Sets `position:fixed` + the `--sw-header-h` offset token (consumed by `.sw-top-padding`);
+   * 'hide-on-scroll'/'shrink' also ship the scroll-state runtime. See {@link STICKY_HEADER_MODES}.
+   */
+  stickyHeader: z.enum(STICKY_HEADER_CHOICES).optional(),
   /** Custom nav effect — raw HTML (style/script) injected at body-end when navEffect is 'none'. */
   navCode: z.string().max(HTML_MAX).optional(),
   /** Custom button effect — raw HTML injected at body-end when buttonEffect is 'none'. */
@@ -564,7 +602,10 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
     effects.buttonAccent && effects.buttonAccent !== DEFAULT_BUTTON_ACCENT ? `sw-btn-accent-${effects.buttonAccent}` : '';
   const btnShape =
     effects.buttonShape && effects.buttonShape !== DEFAULT_BUTTON_SHAPE ? `sw-btn-shape-${effects.buttonShape}` : '';
-  return [nav, btnFx, btnAccent, btnShape].filter(Boolean).join(' ');
+  // The sticky-header mode rides on `<body>` too — the JS runtime reads it to pick its scroll behavior
+  // (the CSS is emitted by renderDocument, keyed on the mode, not on this class).
+  const header = effects.stickyHeader && effects.stickyHeader !== 'none' ? `sw-header-${effects.stickyHeader}` : '';
+  return [nav, btnFx, btnAccent, btnShape, header].filter(Boolean).join(' ');
 }
 
 /**

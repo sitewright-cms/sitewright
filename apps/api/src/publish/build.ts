@@ -72,6 +72,7 @@ import {
   backToTopHtml,
   BACK_TO_TOP_CSS,
   BACK_TO_TOP_JS,
+  STICKY_HEADER_JS,
   NAV_EFFECTS_JS,
   usesNavEffects,
   BUTTON_EFFECTS_JS,
@@ -91,6 +92,7 @@ import {
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
   buttonEffectUsesRuntime,
+  stickyHeaderUsesRuntime,
   buildConsentMetaCsp,
   type FormPublic,
   type MediaAsset,
@@ -120,6 +122,8 @@ const NAV_LINK_SCRIPT = 'nav-link.js';
 const PRELOADER_SCRIPT = 'preloader.js';
 /** The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top), linked per page. */
 const BACK_TO_TOP_SCRIPT = 'back-to-top.js';
+/** The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink), linked per page. */
+const STICKY_HEADER_SCRIPT = 'sticky-header.js';
 /** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
 const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
 /** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
@@ -518,6 +522,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
     // The platform injects the button markup (renderDocument), so this is gated on the setting only.
     const usesBackToTopRuntime = website?.effects?.backToTop !== false;
+    // STICKY-HEADER runtime — ships only for the JS-backed fixed-header modes (hide-on-scroll /
+    // shrink), which toggle scroll-state classes. 'pinned' is pure CSS (no runtime); the fixed
+    // positioning + offset token are emitted by renderDocument (gated on the mode) for every mode.
+    const usesStickyHeaderRuntime = stickyHeaderUsesRuntime(website?.effects?.stickyHeader);
     // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
     // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
     // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
@@ -773,6 +781,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
           ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
           ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
+          ...(usesStickyHeaderRuntime ? [`${siteRoot}${STICKY_HEADER_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -783,6 +792,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
+          // Sticky/fixed top-header → the fixed `#main-nav` + `--sw-header-h` offset token, emitted at
+          // first paint by renderDocument ('none'/absent = static header, byte-identical).
+          stickyHeader: website?.effects?.stickyHeader,
           mainNav: mainNavHtml,
           sidebarLeft: sidebarLeftHtml,
           sidebarRight: sidebarRightHtml,
@@ -952,6 +964,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, BACK_TO_TOP_SCRIPT), BACK_TO_TOP_JS, 'utf8');
       bytes += Buffer.byteLength(BACK_TO_TOP_JS);
+    }
+    // The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink; only-used-ships).
+    if (usesStickyHeaderRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, STICKY_HEADER_SCRIPT), STICKY_HEADER_JS, 'utf8');
+      bytes += Buffer.byteLength(STICKY_HEADER_JS);
     }
     // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
     if (usesNavRuntime) {

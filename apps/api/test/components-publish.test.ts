@@ -61,8 +61,8 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="modal"');
     expect(index.body).toContain('data-sw-part="open"');
     // Both runtimes are linked.
-    expect(index.body).toContain('<script defer src="components.js"></script>');
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="components.js?v=');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
 
     // components.js carries the modal behavior; nav-link.js carries the general dialog/anchor handler.
     const comp = await client.get(`/sites/${slug}/components.js`);
@@ -91,7 +91,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="notice"');
     expect(index.body).toContain('data-sw-part="dismiss-forever"');
     expect(index.body).toContain('hidden');
-    expect(index.body).toContain('<script defer src="components.js"></script>');
+    expect(index.body).toContain('<script defer src="components.js?v=');
 
     // components.js carries the Notice runtime (its per-notice storage namespace) + CSS.
     const comp = await client.get(`/sites/${slug}/components.js`);
@@ -122,12 +122,21 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('id="sw-consent"');
     expect(index.body).toContain('data-sw-consent-config');
     expect(index.body).toContain('data-sw-consent-open');
-    expect(index.body).toContain('<script defer src="consent.js"></script>');
+    expect(index.body).toContain('<script defer src="consent.js?v=');
+    // CACHE: the page itself revalidates so a republish/redeploy is picked up immediately.
+    expect(index.headers['cache-control']).toBe('no-cache');
 
-    const js = await client.get(`/sites/${slug}/consent.js`);
+    // CACHE: the VERSIONED runtime asset (as the page references it, with ?v) is hard-cached.
+    const js = await client.get(`/sites/${slug}/consent.js?v=1`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('sw:consentchange');
     expect(js.body).toContain('window.swConsent');
+    expect(js.headers['cache-control']).toContain('immutable');
+    // CACHE: a BARE (unversioned) asset URL must revalidate — `immutable` is gated on the ?v token, so
+    // unversioned root files (manifest / robots / sitemap / direct hits) never cache stale across a republish.
+    const bare = await client.get(`/sites/${slug}/consent.js`);
+    expect(bare.statusCode).toBe(200);
+    expect(bare.headers['cache-control']).toBe('no-cache');
   });
 
   it('ships NO consent runtime for a site that uses no consent banner', async () => {
@@ -225,7 +234,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).not.toMatch(/<iframe[^>]*\ssrc=/); // no live third-party src in the published HTML
     expect(index.body).toContain('width="640"'); // author attrs preserved
     // The consent runtime ships (it hydrates the held iframe) even though no integration is registered.
-    expect(index.body).toContain('<script defer src="consent.js"></script>');
+    expect(index.body).toContain('<script defer src="consent.js?v=');
     // The per-page CSP (response header + baked meta) allows the iframe's frame-src — derived from the iframe.
     const csp = index.headers['content-security-policy'] as string;
     expect(csp).toContain("frame-src 'self' https://www.youtube.com");
@@ -294,7 +303,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
     expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
     // No component marker → components.js is NOT shipped.
     expect(index.body).not.toContain('components.js');
@@ -321,7 +330,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('<dialog id="newsletter"');
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
   });
 
   it('ships NOTHING extra for a plain code-first page (no component, no dialog)', async () => {

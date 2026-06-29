@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId } from '../id.js';
@@ -3617,7 +3617,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.type(binary.contentType).send(binary.body);
         }
         const asset = await store.readAsset(slug, path);
-        if (asset !== null) return reply.type(asset.contentType).send(asset.body);
+        if (asset !== null) {
+          // Cache hard ONLY when the URL carries the per-publish `?v=` token (styles.css / consent.js / …,
+          // referenced that way from the page) — a republish then changes the URL. Unversioned root files
+          // (site.webmanifest / robots.txt / sitemap.xml / favicons, and bare direct hits) MUST revalidate
+          // so a republish is reflected — they share a fixed URL with changing content.
+          const versioned = Boolean((req.query as { v?: string } | undefined)?.v);
+          return reply
+            .header('cache-control', versioned ? 'public, max-age=31536000, immutable' : 'no-cache')
+            .type(asset.contentType)
+            .send(asset.body);
+        }
         const html = await store.readHtml(slug, path);
         // Unknown / unpublished path → a bare HTTP 404 (empty body), not a styled error page.
         if (html === null) return reply.code(404).send();
@@ -3701,7 +3711,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
         const siteCsp = siteCspHeaderFromHtml(html);
         if (siteCsp) reply.header('content-security-policy', siteCsp).header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
-        return reply.type('text/html').send(html);
+        // The PAGE always revalidates (it references the `?v=`-versioned assets above + changes per
+        // republish), so a redeploy/republish is picked up immediately while its assets stay hard-cached.
+        return reply.header('cache-control', 'no-cache').type('text/html').send(html);
       },
     );
   }
@@ -4244,7 +4256,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     })),
   }));
 
-  // Pull-based update check for the in-app banner. Public + informational.
+  // The DEPLOYED editor SPA's build id — the content hash of its main bundle, read ONCE from the served
+  // index.html (it only changes on a redeploy = a new container). The editor compares this to its own
+  // running bundle hash to detect "a newer version is deployed; reload your stale tab". Cached after first read.
+  let editorBuildId: string | null | undefined;
+  const getEditorBuildId = async (): Promise<string | null> => {
+    if (editorBuildId !== undefined) return editorBuildId;
+    editorBuildId = null;
+    if (opts.editorDist) {
+      try {
+        const indexHtml = await readFile(join(opts.editorDist, 'index.html'), 'utf8');
+        const m = indexHtml.match(/assets\/index-([A-Za-z0-9_-]+)\.js/);
+        if (m) editorBuildId = m[1]!;
+      } catch {
+        /* editorDist missing / unreadable → leave null (no stale-tab check) */
+      }
+    }
+    return editorBuildId;
+  };
+
+  // Pull-based update check for the in-app banner. Public + informational. `build` = the running editor
+  // SPA's content hash (for stale-tab reload); `current`/`latest` = the self-hosted release-upgrade check.
   app.get('/version', async () => {
     const current = opts.version ?? '0.0.0';
     const latest = opts.latestVersion ? await opts.latestVersion() : null;
@@ -4253,6 +4285,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       latest,
       updateAvailable: latest ? isNewer(latest, current) : false,
       releaseUrl: opts.releaseUrl ?? null,
+      build: await getEditorBuildId(),
     };
   });
 
@@ -4279,13 +4312,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (path.endsWith('index.html')) {
           res.setHeader('content-security-policy', editorCsp);
           res.setHeader('x-frame-options', 'DENY');
+          // The SPA entry must always revalidate so a new deploy's content-hashed asset URLs are picked up.
+          res.setHeader('cache-control', 'no-cache');
+        } else if (/[/\\]assets[/\\]/.test(path)) {
+          // Vite content-hashes asset filenames (the build's `?v`), so cache them forever.
+          res.setHeader('cache-control', 'public, max-age=31536000, immutable');
         }
       },
     });
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {
-        return reply.header('content-security-policy', editorCsp).header('x-frame-options', 'DENY').sendFile('index.html');
+        return reply
+          .header('content-security-policy', editorCsp)
+          .header('x-frame-options', 'DENY')
+          .header('cache-control', 'no-cache') // SPA shell: revalidate so a new deploy is picked up on refresh
+          .sendFile('index.html');
       }
       return reply.code(404).send({ error: 'not found' });
     });

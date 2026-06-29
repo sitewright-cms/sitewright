@@ -556,7 +556,7 @@ export const api = {
   passkeyLoginVerify: (handle: string, response: AuthenticationResponseJSON) =>
     request<{ userId: string } | { mfaRequired: true; ticket: string }>('POST', '/auth/passkey/verify', { handle, response }),
   version: () =>
-    request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
+    request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null; build: string | null }>(
       'GET',
       '/version',
     ),

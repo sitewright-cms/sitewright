@@ -57,14 +57,14 @@ describe('scroll-reveal animations → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('data-aos="fade-up"');
-    expect(index.body).toContain('<script defer src="animations.js"></script>');
+    expect(index.body).toContain('<script defer src="animations.js?v=');
     expect(index.body).toContain('[data-aos].aos-init'); // inline animation stylesheet
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
 
     // Site-wide asset: a nested page on the same site links it rebased to its depth.
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../animations.js"></script>');
+    expect(aboutPage.body).toContain('<script defer src="../animations.js?v=');
 
     // The runtime itself is served from the site root.
     const js = await client.get(`/sites/${slug}/animations.js`);
@@ -97,7 +97,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     // The footer slot's neutral <div> is wrapped by the skeleton's own <footer id="footer"> landmark.
     expect(index.body).toContain('<footer id="footer"><div data-aos="fade">© Acme</div></footer>');
-    expect(index.body).toContain('<script defer src="animations.js"></script>');
+    expect(index.body).toContain('<script defer src="animations.js?v=');
   });
 
   it('ships NOTHING extra for a site that uses no animations', async () => {

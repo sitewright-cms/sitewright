@@ -345,6 +345,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // value AND its clear-on-load handshake is unreliable cross-origin (it would cover the page), so
   // the preloader is omitted entirely from preview builds. The published site is unaffected.
   const previewMode = opts.previewRuntime !== undefined;
+  // Per-publish cache-bust token (the publish timestamp's digits) appended as `?v=` to the fixed-name
+  // runtime assets (styles.css / consent.js / components.js / …). A republish writes fresh assets AND a new
+  // token → the browser cache busts instantly, while the assets are served `immutable` between publishes.
+  const assetVer = publishedAt.replace(/\D/g, '') || '0';
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -804,7 +808,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
-          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
+          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}?v=${assetVer}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
           // Sticky/fixed top-header → the fixed `#main-nav` + `--sw-header-h` offset token, emitted at
@@ -871,10 +875,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
-          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
+          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
-          scripts: pageScripts.length > 0 ? pageScripts : undefined,
+          scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
           // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
           systemI18n: usesComponents && components.js ? systemI18nData(pageT) : undefined,
           // PREVIEW only: the parent-bridge runtime (reports this iframe's location to the editor

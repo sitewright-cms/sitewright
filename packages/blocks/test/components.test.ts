@@ -108,6 +108,11 @@ describe('component registry', () => {
     const modal = componentAssets(['Modal']);
     expect(modal.css).toContain('::backdrop');
     expect(modal.js).toContain('showModal');
+    // Side gutter: a 32rem default cap + a small-screen guarantee so the box keeps a 2rem margin
+    // to each edge (≤36rem) instead of touching — beats author max-w-* overrides (not :where).
+    expect(modal.css).toContain('max-width:32rem');
+    expect(modal.css).toContain('@media (max-width:36rem)');
+    expect(modal.css).toContain('max-width:calc(100vw - 4rem)');
     const cc = componentAssets(['CookieConsent']);
     expect(cc.js).toContain('localStorage');
     expect(cc.js).toContain('try{'); // storage access is guarded (sandbox/disabled)

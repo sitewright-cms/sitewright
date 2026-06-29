@@ -27,6 +27,14 @@ describe('Banner component', () => {
     // The surface reads a --sw-color-* token so it flips in dark mode (no raw light background).
     expect(BANNER_CSS).toContain('var(--sw-color-base-100');
     expect(BANNER_CSS).toContain('prefers-reduced-motion:reduce');
+    // The built-in fade/rise reveal is gated on :not([data-aos]) so an author's data-aos owns the entrance.
+    expect(BANNER_CSS).toContain('[data-sw-component="banner"]:not([data-aos]){opacity:0');
+    expect(BANNER_CSS).toContain('[data-sw-component="banner"]:not([data-aos])[data-sw-banner-shown]{opacity:1');
+    // Inline fades (in AND out) — it no longer pins opacity:1, which used to make it snap shut.
+    expect(BANNER_CSS).not.toContain('[data-position="inline"]{position:static;max-width:none;opacity:1');
+    // Center is transform-FREE (margin centering) so a data-aos transform effect can animate it.
+    expect(BANNER_CSS).toContain('[data-position="center"]{inset:0;margin:auto');
+    expect(BANNER_CSS).not.toContain('translate(-50%,-50%)');
   });
 
   it('runtime guards Web Storage and consumes every documented data-* switch', () => {
@@ -39,6 +47,11 @@ describe('Banner component', () => {
     expect(BANNER_JS).toContain("getAttribute('data-frequency')");
     expect(BANNER_JS).toContain("getAttribute('data-delay')");
     expect(BANNER_JS).toContain("getAttribute('data-remind-days')");
+    // data-aos entrance: drives the AOS effect classes itself + applies the AOS timing attributes inline.
+    expect(BANNER_JS).toContain("getAttribute('data-aos')");
+    expect(BANNER_JS).toContain("'aos-init'");
+    expect(BANNER_JS).toContain("'aos-animate'");
+    expect(BANNER_JS).toContain("getAttribute('data-aos-duration')");
     // The three dismissal parts.
     expect(BANNER_JS).toContain('[data-sw-part="dismiss"]');
     expect(BANNER_JS).toContain('[data-sw-part="dismiss-forever"]');

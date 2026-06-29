@@ -757,7 +757,8 @@ function createInstance(): typeof Handlebars {
     // (runs on any page with data-sw-*) intact + byte-stable, then attr-escape for the attribute value.
     const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
     const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
-    return new Handlebars.SafeString(`<div data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`);
+    // `id="sw-consent"` so an author can re-open the manager with a plain <a href="#sw-consent">.
+    return new Handlebars.SafeString(`<div id="sw-consent" data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`);
   });
   // {{sw-consent-settings [label="…"] [class="…"]}} → a button that RE-OPENS the consent preferences
   // (e.g. a footer "Cookie settings" link for GDPR withdrawal). Gated on website.consent.enabled. Carries

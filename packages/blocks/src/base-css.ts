@@ -257,6 +257,9 @@ const PLATFORM_DEFAULTS = `
 
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }
+/* Embeds (YouTube/Vimeo/Maps/…) carry a UA default border + inline-gap — normalize to a clean block so a
+   pasted (or consent-gated) iframe has no chrome unless the author styles it. */
+iframe { border: 0; max-width: 100%; }
 
 /* Hover dropdowns (the documented \`.dropdown.dropdown-hover\` nav-submenu pattern).
    Two fixes so the recommended markup behaves without per-site CSS:

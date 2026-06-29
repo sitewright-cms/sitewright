@@ -30,6 +30,7 @@ const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'navCode', 'buttonCode', 'preloaderCode',
   'enableThemes', 'defaultTheme', 'containerWidth',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
+  'consent',
   'defaultLocale', 'locales', 'translations',
 ]);
 

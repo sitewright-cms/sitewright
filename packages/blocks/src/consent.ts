@@ -42,8 +42,13 @@ export const CONSENT_CATEGORIES = ['functional', 'analytics', 'marketing'] as co
 // light value). The banner is hidden until the runtime adds `data-sw-enhanced` (PE-first).
 export const CONSENT_CSS = [
   '[data-sw-consent]{display:none}',
-  '[data-sw-consent][data-sw-enhanced="true"]{display:block;position:fixed;z-index:9996;left:1rem;right:1rem;bottom:1rem;margin:0 auto;max-width:min(64rem,calc(100vw - 2rem));background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.75rem;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:1.25rem 1.4rem;font-size:.9rem;line-height:1.5}',
-  '[data-sw-consent][data-layout="box"][data-sw-enhanced="true"]{right:auto;max-width:min(26rem,calc(100vw - 2rem))}',
+  // Visibility is driven by `data-open` (NOT the `hidden` attr — this enhanced rule would override
+  // `[hidden]{display:none}` on specificity). Closed = slid down + faded + non-interactive; `[data-open]`
+  // slides it up. The transition gives the slideUp/slideDown on open/close.
+  '[data-sw-consent][data-sw-enhanced="true"]{display:block;position:fixed;z-index:9996;left:1rem;right:1rem;bottom:1rem;margin:0 auto;max-width:min(64rem,calc(100vw - 2rem));background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.75rem;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:1.25rem 1.4rem;font-size:.9rem;line-height:1.5;transform:translateY(calc(100% + 1.5rem));opacity:0;visibility:hidden;transition:transform .35s cubic-bezier(.22,1,.36,1),opacity .3s ease,visibility .35s}',
+  '[data-sw-consent][data-sw-enhanced="true"][data-open]{transform:none;opacity:1;visibility:visible}',
+  '[data-sw-consent][data-layout="box"][data-sw-enhanced="true"]{right:auto;max-width:min(32rem,calc(100vw - 2rem))}',
+  '@media (prefers-reduced-motion:reduce){[data-sw-consent][data-sw-enhanced="true"]{transition:none}}',
   '[data-sw-consent] .sw-consent-title{margin:0 0 .35rem;font-size:1.05rem;font-weight:700}',
   '[data-sw-consent] .sw-consent-intro{margin:0 0 .9rem}',
   '[data-sw-consent] .sw-consent-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:flex-end}',
@@ -51,7 +56,14 @@ export const CONSENT_CSS = [
   '[data-sw-consent] .sw-consent-prefs{display:none;margin:.5rem 0 1rem;border-top:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);padding-top:.85rem}',
   '[data-sw-consent][data-prefs="open"] .sw-consent-prefs{display:block}',
   '[data-sw-consent] .sw-consent-cat{display:flex;gap:.7rem;align-items:flex-start;padding:.5rem 0}',
-  '[data-sw-consent] .sw-consent-cat input{margin-top:.2rem;width:1.05rem;height:1.05rem;accent-color:var(--sw-color-primary,#4f46e5);flex:none}',
+  // Toggle switch (self-contained, no daisyUI `toggle` util needed — the published sheet wouldn\'t scan it):
+  // green when on (success), grey when off; the knob slides. The locked "necessary" toggle reads disabled.
+  '[data-sw-consent] .sw-consent-cat input{appearance:none;-webkit-appearance:none;margin:.1rem 0 0;flex:none;position:relative;width:2.25rem;height:1.3rem;border-radius:999px;background:color-mix(in oklab,var(--sw-color-base-content,#000) 25%,transparent);cursor:pointer;transition:background .2s}',
+  '[data-sw-consent] .sw-consent-cat input:checked{background:var(--sw-color-success,#16a34a)}',
+  '[data-sw-consent] .sw-consent-cat input::before{content:"";position:absolute;top:.15rem;left:.15rem;width:1rem;height:1rem;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s}',
+  '[data-sw-consent] .sw-consent-cat input:checked::before{transform:translateX(.95rem)}',
+  '[data-sw-consent] .sw-consent-cat input:disabled{opacity:.55;cursor:not-allowed}',
+  '[data-sw-consent] .sw-consent-cat input:focus-visible{outline:2px solid var(--sw-color-primary,#4f46e5);outline-offset:2px}',
   '[data-sw-consent] .sw-consent-cat-name{font-weight:600}',
   '[data-sw-consent] .sw-consent-cat-desc{margin:.1rem 0 0;font-size:.82rem;opacity:.8}',
   '[data-sw-consent] .sw-consent-link{color:var(--sw-color-primary,#4f46e5);text-decoration:underline}',
@@ -66,8 +78,12 @@ export const CONSENT_CSS = [
 // ES5-style (var / function) — served raw, never transpiled, like the other runtime bundles.
 export const CONSENT_JS = `(function(){
   var STORE='sw-consent';
-  function siteKey(){try{var s=document.currentScript;if(s&&s.src)return new URL('.',s.src).href;}catch(e){}return location.pathname||'/';}
-  function keyOf(){return STORE+':'+siteKey();}
+  // Resolve the per-site storage key ONCE, at script-execution time: document.currentScript is the consent.js
+  // element HERE, but is NULL inside a later event handler — so deriving it lazily would key a click→writeStore
+  // off location.pathname yet key the init→readStore off the script URL, and consent would be silently lost on
+  // reload (write key != read key). Caching it makes both sides use the same key.
+  var SITE_KEY=(function(){try{var s=document.currentScript;if(s&&s.src)return new URL('.',s.src).href;}catch(e){}return location.pathname||'/';})();
+  function keyOf(){return STORE+':'+SITE_KEY;}
   function readStore(){try{var raw=localStorage.getItem(keyOf());if(!raw)return null;var o=JSON.parse(raw);return (o&&typeof o==='object'&&!(o instanceof Array))?o:null;}catch(e){return null;}}
   function writeStore(rec){try{localStorage.setItem(keyOf(),JSON.stringify(rec));}catch(e){}}
   function cfgOf(root){try{return JSON.parse(root.getAttribute('data-sw-consent-config')||'{}')||{};}catch(e){return {};}}
@@ -140,7 +156,9 @@ export const CONSENT_JS = `(function(){
     function txt(k,fb){return (typeof t[k]==='string'&&t[k])?t[k]:fb;}
 
     // Build the banner UI ONCE (idempotent). createElement + textContent only — no HTML-string sinks.
-    var title=el('h2',{cls:'sw-consent-title',text:txt('title','We value your privacy')});
+    // Title is a <div> (not a heading): the banner sits on every page and an <h1>/<h2> would pollute the
+    // document outline / SEO. The region's aria-label carries the accessible name instead.
+    var title=el('div',{cls:'sw-consent-title',text:txt('title','We value your privacy')});
     var intro=el('p',{cls:'sw-consent-intro'});
     intro.appendChild(document.createTextNode(txt('intro','We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.')+' '));
     if(cfg.privacy){intro.appendChild(el('a',{cls:'sw-consent-link',text:txt('privacyLabel','Privacy policy'),attrs:{href:cfg.privacy,rel:'noopener noreferrer'}}));}
@@ -184,8 +202,12 @@ export const CONSENT_JS = `(function(){
         else{injectScript(it.src,it.async!==false,it.id);}
       }
     }
-    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});root.setAttribute('hidden','');broadcast();loadConsented();}
-    function openPrefs(){root.setAttribute('data-prefs','open');btnSave.style.display='';for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}}
+    function showBanner(){root.setAttribute('data-open','');}
+    function hideBanner(){root.removeAttribute('data-open');}
+    function syncBoxes(){for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}} // reflect current on the toggles
+    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});syncBoxes();hideBanner();broadcast();loadConsented();}
+    // Open preferences: reveal the panel + Save, HIDE the now-redundant Customize button, sync the toggles.
+    function openPrefs(){root.setAttribute('data-prefs','open');btnCustomize.style.display='none';btnSave.style.display='';syncBoxes();}
     btnCustomize.addEventListener('click',openPrefs);
     if(btnReject)btnReject.addEventListener('click',function(){apply(emptyCats(false));});
     btnAccept.addEventListener('click',function(){apply(emptyCats(true));});
@@ -205,21 +227,20 @@ export const CONSENT_JS = `(function(){
     // gated embeds + integrations WYSIWYG — never set on a real publish. Else honor the stored record.
     var rec=readStore();
     if(cfg.grantAll){
-      apply(emptyCats(true)); // sets current, hides the banner, broadcasts + loadConsented (gates read current in initGates)
+      apply(emptyCats(true)); // sets current, stays closed, broadcasts + loadConsented (gates read current in initGates)
     }else if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
-      current=withNecessary(rec.cats);
-      root.setAttribute('hidden','');
-      broadcast(); // already-consented: tell late listeners the current state
+      current=withNecessary(rec.cats); // already-consented → stays closed
+      broadcast(); // tell late listeners the current state
       loadConsented(); // re-inject the integrations the visitor already consented to (on every page load)
     }else{
-      root.removeAttribute('hidden');
+      showBanner(); // first visit → slide the banner up
     }
 
-    // Public API + the re-open trigger ([data-sw-consent-open] / {{sw-consent-settings}}).
+    // Public API + the re-open trigger ([data-sw-consent-open] / {{sw-consent-settings}} / a[href="#sw-consent"]).
     window.swConsent={
       get:function(){return withNecessary(current);},
       set:function(c){apply({functional:!!(c&&c.functional),analytics:!!(c&&c.analytics),marketing:!!(c&&c.marketing)});},
-      open:function(){root.removeAttribute('hidden');openPrefs();}
+      open:function(){showBanner();openPrefs();}
     };
   }
 
@@ -228,9 +249,24 @@ export const CONSENT_JS = `(function(){
     var mountCfg=roots[0]?cfgOf(roots[0]):{};
     if(roots[0])enhance(roots[0]); // one consent manager per site — sets current + window.swConsent
     initGates(mountCfg); // hydrate held author iframes/scripts AFTER enhance has applied current/grantAll
+    // Re-open triggers: a [data-sw-consent-open] element OR a SAME-PAGE anchor href="#sw-consent"
+    // (e.g. <a href="#sw-consent">Cookie settings</a>). Match the LITERAL href (not the resolved
+    // .hash, which a cross-page /other#sw-consent link would also report) and only swallow the click
+    // when there's a manager to open — so a cross-page link still navigates normally.
     document.addEventListener('click',function(e){
-      var t=e.target;while(t&&t!==document){if(t.getAttribute&&t.getAttribute('data-sw-consent-open')!=null){e.preventDefault();if(window.swConsent)window.swConsent.open();return;}t=t.parentNode;}
+      var t=e.target;while(t&&t!==document){
+        if(t.getAttribute){
+          if(t.getAttribute('data-sw-consent-open')!=null&&window.swConsent){e.preventDefault();window.swConsent.open();return;}
+          if(t.getAttribute('href')==='#sw-consent'&&window.swConsent){e.preventDefault();window.swConsent.open();return;}
+        }
+        t=t.parentNode;
+      }
     });
+    // Also open when the URL targets #sw-consent via hash navigation (a cross-page link landing here, or
+    // back/forward). Guarded on a stored decision so a FIRST-time visitor still sees the normal banner.
+    function fromHash(){if(location.hash==='#sw-consent'&&window.swConsent&&readStore())window.swConsent.open();}
+    window.addEventListener('hashchange',fromHash);
+    fromHash();
     // Enforce-with-a-loud-error: if the CSP blocks a consented integration's origin, name it so the owner
     // can add it to that integration's allowed origins (the gating still worked — this is the hardening layer).
     window.addEventListener('securitypolicyviolation',function(e){try{if(e.blockedURI&&/script-src|connect-src|frame-src|img-src/.test(e.violatedDirective||'')){console.error('[sw-consent] CSP blocked '+e.blockedURI+' ('+e.violatedDirective+'). If this is a consented integration, add its origin to that integration\\'s allowed origins.');}}catch(_e){}});

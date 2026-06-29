@@ -27,6 +27,9 @@ const CONFIG = {
   },
 };
 
+// In jsdom `document.currentScript` is always null, so the runtime's cached SITE_KEY falls back to
+// location.pathname — matching this KEY. The currentScript-vs-pathname persistence bug therefore can't be
+// reproduced here; the cross-reload key stability is verified live in a real browser (Playwright on :2003).
 const KEY = `sw-consent:${location.pathname || '/'}`;
 let lastDetail: Record<string, boolean> | null = null;
 
@@ -58,7 +61,7 @@ describe('Consent runtime behavior (jsdom)', () => {
 
   it('shows the banner on a first visit, with the necessary toggle locked on', () => {
     run();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
     expect(root().getAttribute('data-sw-enhanced')).toBe('true');
     expect(boxes()[0]!.disabled).toBe(true); // necessary is always-on
     expect(boxes()[0]!.checked).toBe(true);
@@ -67,7 +70,7 @@ describe('Consent runtime behavior (jsdom)', () => {
   it('Accept all → stores all categories, hides the banner, and broadcasts (necessary always true)', () => {
     run();
     btn('Accept all').click();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(stored()).toMatchObject({ v: 1, cats: { functional: true, analytics: true, marketing: true } });
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: true, marketing: true });
   });
@@ -92,31 +95,31 @@ describe('Consent runtime behavior (jsdom)', () => {
   it('a returning visitor (same version) sees no banner but the stored consent is re-broadcast on load', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: true, analytics: false, marketing: false } }));
     run();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: false, marketing: false });
   });
 
   it('bumping the consent version re-prompts a previously-consented visitor', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: true, analytics: true, marketing: true } }));
     run({ ...CONFIG, v: 2 });
-    expect(root().hasAttribute('hidden')).toBe(false); // stored v1 < config v2 → ask again
+    expect(root().hasAttribute('data-open')).toBe(true); // stored v1 < config v2 → ask again
   });
 
   it('re-opens preferences via window.swConsent.open() and a [data-sw-consent-open] trigger', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: false } }));
     run();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     (window as unknown as { swConsent: { open: () => void } }).swConsent.open();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
     expect(root().getAttribute('data-prefs')).toBe('open');
     // and via the delegated click trigger
     btn('Accept all').click(); // hide again
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     const link = document.createElement('a');
     link.setAttribute('data-sw-consent-open', '');
     document.body.appendChild(link);
     link.click();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
   });
 
   it('window.swConsent.get() reflects the live decision', () => {
@@ -141,9 +144,46 @@ describe('Consent runtime behavior (jsdom)', () => {
     run();
     const api = (window as unknown as { swConsent: { set: (c: Record<string, boolean>) => void } }).swConsent;
     api.set({ functional: true, analytics: false, marketing: true });
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(stored()).toMatchObject({ cats: { functional: true, analytics: false, marketing: true } });
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: false, marketing: true });
+  });
+
+  it('renders the title as a NON-heading element (no h1-h6, for SEO)', () => {
+    run();
+    const title = root().querySelector('.sw-consent-title') as HTMLElement;
+    expect(/^H[1-6]$/.test(title.tagName)).toBe(false);
+  });
+
+  it('hides the Customize button once the preferences panel opens, and shows Save', () => {
+    run();
+    const customize = btn('Customize');
+    expect(customize.style.display).not.toBe('none');
+    customize.click();
+    expect(customize.style.display).toBe('none');
+    expect(btn('Save preferences').style.display).not.toBe('none');
+  });
+
+  it('Accept all / Reject all immediately sync the preference toggles', () => {
+    run();
+    const optional = (): HTMLInputElement[] => boxes().filter((b) => !b.disabled);
+    btn('Customize').click();
+    btn('Reject all').click();
+    expect(optional().every((b) => !b.checked)).toBe(true);
+    btn('Accept all').click();
+    expect(optional().every((b) => b.checked)).toBe(true);
+  });
+
+  it('re-opens via an <a href="#sw-consent"> anchor', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: false } }));
+    run();
+    expect(root().hasAttribute('data-open')).toBe(false);
+    const a = document.createElement('a');
+    a.setAttribute('href', '#sw-consent');
+    document.body.appendChild(a);
+    a.click();
+    expect(root().hasAttribute('data-open')).toBe(true);
+    expect(root().getAttribute('data-prefs')).toBe('open');
   });
 });
 
@@ -197,7 +237,7 @@ describe('Consent integration injection (jsdom)', () => {
   it('a returning visitor with stored consent re-injects on load', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: true, marketing: false } }));
     run(cfgInts);
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(injected('ga')).not.toBeNull();
   });
 

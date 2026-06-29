@@ -18,6 +18,12 @@ import {
   EXAMPLE_FORMS,
   EXAMPLE_SETTINGS,
 } from './seed/index.js';
+import {
+  SCROLLSPY_DEMO_IDENTITY,
+  SCROLLSPY_DEMO_WEBSITE,
+  SCROLLSPY_DEMO_SETTINGS,
+  scrollspyDemoPages,
+} from './seed/scrollspy-demo.js';
 
 /** The built-in first-boot admin identity (override with SW_ADMIN_EMAIL). */
 export const DEFAULT_ADMIN_EMAIL = 'admin@sitewright.example';
@@ -184,4 +190,31 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
       `${EXAMPLE_DATASETS.length} datasets, ${entries.length} entries, ${EXAMPLE_FORMS.length} form` +
       `${imageCount > 0 ? `, ${imageCount} local images` : ''}) — delete it from the editor once you've explored it.`,
   );
+
+  // A second, focused showcase: the ScrollSpy demo — a small single-locale site (a one-page landing whose
+  // main + mobile nav are spied with MIXED anchor/route links, plus a /docs page with a custom on-page
+  // table of contents). Additive (its own project), so it never affects the Example Project above. No
+  // generated imagery/fonts — it ships with inline copy + the CI defaults, so it seeds even without
+  // MEDIA_ROOT. Same best-effort spirit: a failure here must not abort the already-seeded admin/example.
+  try {
+    const spyProject = await projects.create({ name: 'ScrollSpy Demo', slug: 'scrollspy-demo' }, userId);
+    const spyCtx = { userId, projectId: spyProject.id, role: 'owner' as const };
+    await contentRepo.put(spyCtx, 'settings', 'settings', {
+      identity: SCROLLSPY_DEMO_IDENTITY,
+      website: SCROLLSPY_DEMO_WEBSITE,
+      settings: SCROLLSPY_DEMO_SETTINGS,
+    });
+    // Local Hosting target so it serves at /sites/scrollspy-demo/ after a publish (mirrors the example).
+    await contentRepo.put(spyCtx, 'deploy_target', 'local-hosting', { id: 'local-hosting', name: 'Local Hosting', protocol: 'local' });
+    const spyPages = scrollspyDemoPages();
+    for (const page of spyPages) {
+      await contentRepo.put(spyCtx, 'page', page.id, page);
+    }
+    log(`[sitewright/seed] seeded "ScrollSpy Demo" (${spyPages.length} pages) — a self-contained ScrollSpy showcase.`);
+  } catch (err) {
+    log(
+      `[sitewright/seed] WARNING: ScrollSpy Demo seed failed (${err instanceof Error ? err.message : String(err)}); ` +
+        `the admin + Example Project are unaffected.`,
+    );
+  }
 }

@@ -34,6 +34,7 @@ export interface LocaleDeps {
 }
 
 const AddLocaleBody = z.object({ locale: LocaleSchema });
+const SetDefaultLocaleBody = z.object({ locale: LocaleSchema });
 const TranslateBody = z.object({ locales: z.array(LocaleSchema).max(100).optional() });
 // One translation-catalog cell write (the inline `data-sw-translate` editor). `value` reuses the
 // schema's TranslationCellsSchema bound (TRANSLATION_VALUE_MAX); an empty value clears the cell.
@@ -117,6 +118,76 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
       }
       await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings });
       return reply.send({ locale, removed: removePageIds.length });
+    },
+  );
+
+  // Change the MAIN (default) language by RE-LABELLING it: the default-language content keeps its
+  // pages/datasets and simply becomes the new language code, which replaces the old default in the
+  // configured-locales list. This is a relabel, NOT a promotion of a translation — so the new main
+  // language MUST NOT already be an active locale (that would collide with its translation). Nothing
+  // is translated and no datasets are renamed: the default-locale pages carry no explicit `locale`
+  // (they follow `defaultLocale`) and resolve the bare/base datasets, so only settings change. The
+  // old default's catalog column is dropped (the default language never holds catalog cells).
+  app.put<{ Params: { projectId: string }; Body: unknown }>(
+    '/projects/:projectId/locales/default',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const { locale } = SetDefaultLocaleBody.parse(req.body);
+      const { settings, pages } = await loadContext(contentRepo, ctx);
+      const old = settings.settings.defaultLocale;
+      if (locale === old) {
+        return reply.code(409).send({ error: `"${locale}" is already the main language` });
+      }
+      if (settings.settings.locales.includes(locale)) {
+        return reply
+          .code(409)
+          .send({ error: `"${locale}" is already a language on this site — the new main language must be one that isn't added yet` });
+      }
+      // Invariant: the default locale is always in the configured list — bail rather than write a
+      // self-inconsistent settings record (new default set but the list still naming the old one).
+      if (!settings.settings.locales.includes(old)) {
+        return reply.code(409).send({ error: 'settings inconsistency: the current main language is not in the locales list' });
+      }
+      // The old default keeps its slot in the list; the new code takes its place.
+      const locales = settings.settings.locales.map((l) => (l === old ? locale : l));
+      // Default-locale pages carry no explicit `locale` (so they follow the new default automatically).
+      // Defensively re-tag any page that WAS explicitly the old default → unset, so it can't orphan.
+      const putPages = pages
+        .filter((p) => p.locale === old)
+        .map((p) => {
+          const next: Page = { ...p };
+          delete next.locale;
+          return next;
+        });
+      const nextSettings: Settings = {
+        ...settings,
+        settings: { ...settings.settings, defaultLocale: locale, locales },
+      };
+      // Carry the locale-keyed website settings over to the new code: the catalog drops the old
+      // default's column (defensive — the default language uses inline `default=` copy), and the
+      // `locale_flags` map (the documented convention the default nav reads) moves its old-default
+      // entry to the new code so the language switcher's main-language flag keeps rendering.
+      const websiteHasTranslations = !!settings.website?.translations;
+      const flags = (settings.website?.data as { locale_flags?: Record<string, unknown> } | undefined)?.locale_flags;
+      const flagsHaveOld = !!flags && typeof flags === 'object' && Object.prototype.hasOwnProperty.call(flags, old);
+      if (websiteHasTranslations || flagsHaveOld) {
+        const w: WebsiteSettings = { ...settings.website };
+        if (websiteHasTranslations) {
+          const pruned = pruneTranslationsLocale(settings.website!.translations!, old);
+          if (Object.keys(pruned).length) w.translations = pruned;
+          else delete w.translations;
+        }
+        if (flagsHaveOld) {
+          const nextFlags = { ...(flags as Record<string, unknown>) };
+          nextFlags[locale] = nextFlags[old];
+          delete nextFlags[old];
+          w.data = { ...(settings.website!.data as Record<string, unknown>), locale_flags: nextFlags } as WebsiteSettings['data'];
+        }
+        nextSettings.website = w;
+      }
+      await contentRepo.applyLocaleChange(ctx, { putPages, settings: nextSettings });
+      return reply.send({ defaultLocale: locale, locales });
     },
   );
 

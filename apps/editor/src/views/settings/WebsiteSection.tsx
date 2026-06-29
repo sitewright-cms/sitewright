@@ -71,12 +71,15 @@ export function WebsiteSection({
   patch,
   projectId,
   onLocalesChanged,
+  onReloadSettings,
 }: {
   form: SettingsForm;
   patch: Patch;
   projectId: string;
   /** Bubbles a language add/remove up so the pages list refreshes. */
   onLocalesChanged?: () => void;
+  /** Re-hydrate the whole settings form after a server-side change (e.g. main-language relabel). */
+  onReloadSettings?: () => Promise<void> | void;
 }) {
   const [dataOpen, setDataOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
@@ -623,6 +626,7 @@ export function WebsiteSection({
           defaultLocale={form.defaultLocale}
           onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
           onLocalesChanged={onLocalesChanged}
+          onReloadSettings={onReloadSettings}
         />
       </GlassCard>
 

@@ -141,6 +141,14 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
+  'comp-banner': {
+    path: 'banner',
+    title: 'Banner',
+    navTitle: 'Banner',
+    description:
+      'Ein frei gestaltbares, schließbares Hinweis-Banner — Promos, Hinweise, „seht euch unser neuestes Produkt an“. Die Runtime blendet es ein und merkt sich die Schließung je nach Häufigkeit in localStorage. Nicht das Consent-Banner.',
+    data: {},
+  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

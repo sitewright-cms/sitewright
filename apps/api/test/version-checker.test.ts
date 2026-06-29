@@ -21,6 +21,13 @@ function jsonResponse(body: unknown, ok = true) {
 }
 
 describe('createReleaseChecker', () => {
+  it('constructs with the default fetch when none is injected (no network call until invoked)', () => {
+    // Covers the `options.fetchImpl ?? fetch` default — constructing must not require an injected fetch
+    // and must not touch the network (latest() is never called here).
+    const latest = createReleaseChecker({ repo: 'sitewright-cms/sitewright' });
+    expect(typeof latest).toBe('function');
+  });
+
   it('returns the tag and caches within the TTL', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ tag_name: 'v1.5.0' }));
     let t = 1000;

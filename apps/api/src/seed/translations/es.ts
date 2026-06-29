@@ -139,6 +139,14 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
+  'comp-banner': {
+    path: 'banner',
+    title: 'Banner',
+    navTitle: 'Banner',
+    description:
+      'Un banner de aviso de contenido libre y descartable — promos, alertas, «mira nuestro último producto». El runtime lo muestra y recuerda el cierre en localStorage según su frecuencia. No es el banner de consentimiento.',
+    data: {},
+  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

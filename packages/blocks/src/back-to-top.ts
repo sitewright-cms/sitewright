@@ -21,20 +21,25 @@ export const BACK_TO_TOP_CSS = [
   // hover scale instead of clobbering it). Hidden = faded + slid DOWN; the runtime adds `.sw-visible`
   // after the first viewport of scroll → it slides UP into view. `[data-…].btn` beats the base `.btn`
   // position. HIDDEN ON MOBILE (a small viewport scrolls fast + has little room for a floating button).
-  // Compact square FAB — explicit width/height (the square shape's aspect-ratio:1 ties height to width,
-  // so bumping padding alone can't grow it) + padding:0 so the chevron centres cleanly. SLIDE-ONLY:
-  // hidden = slid FULLY below the viewport (NO opacity), .sw-visible = slid home. `visibility:hidden`
-  // (delayed to the end of the slide-out) keeps the hidden button out of the TAB ORDER + a11y tree; on
-  // show the delay is 0 so it becomes focusable at once. `[data-…].btn` beats the base `.btn` sizing.
-  '[data-sw-back-to-top].btn{position:fixed;left:50%;bottom:1.5rem;z-index:9996;width:2.5rem;height:2.5rem;padding:0;visibility:hidden;translate:-50% calc(100% + 2rem);pointer-events:none}',
+  // Wide, short FAB — explicit width 4.5rem × height 2.5rem (the square-shape's aspect-ratio:1 is
+  // overridden when BOTH dims are set) + padding:0 so the chevron centres cleanly. SLIDE-ONLY: hidden =
+  // slid FULLY below the viewport (NO opacity), .sw-visible = slid home. `visibility:hidden` (delayed to
+  // the end of the slide-out) keeps the hidden button out of the TAB ORDER + a11y tree; on show the delay
+  // is 0 so it becomes focusable at once. `[data-…].btn` beats the base `.btn` sizing.
+  '[data-sw-back-to-top].btn{position:fixed;left:50%;bottom:1.5rem;z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:-50% calc(100% + 2rem);pointer-events:none}',
   '[data-sw-back-to-top].sw-visible{visibility:visible;translate:-50% 0;pointer-events:auto}',
   '@media (max-width:639.98px){[data-sw-back-to-top].btn{display:none}}',
-  '@media (prefers-reduced-motion:no-preference){[data-sw-back-to-top]{transition:translate .35s cubic-bezier(.16,1,.3,1),visibility 0s linear .35s}[data-sw-back-to-top].sw-visible{transition:translate .35s cubic-bezier(.16,1,.3,1),visibility 0s}}',
-  '[data-sw-back-to-top] svg{width:1.2rem;height:1.2rem}',
+  // The transition selectors carry `.btn` (0,2,0 / 0,3,0) so they OUTRANK the `.btn{transition:transform,
+  // box-shadow}` baseline that the compiled utility sheet (loaded LAST, equal 0,1,0 specificity) would
+  // otherwise win with by source order — that clobbered the `translate` transition and made the button POP
+  // instead of slide. transform/box-shadow stay listed so the hover lift/shadow still ease.
+  '@media (prefers-reduced-motion:no-preference){[data-sw-back-to-top].btn{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s linear .35s}[data-sw-back-to-top].btn.sw-visible{transition:translate .35s cubic-bezier(.16,1,.3,1),transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s ease,visibility 0s}}',
+  '[data-sw-back-to-top] svg{width:1.4rem;height:1.4rem}',
 ].join('');
 
 // --- runtime ----------------------------------------------------------------
-// Toggles `.sw-visible` once the page is scrolled past the first viewport; clicking scrolls to top
+// Toggles `.sw-visible` once the page is scrolled past the first viewport AND hides again at the very
+// bottom (so the fixed FAB never sits on top of the footer / sub-footer text); clicking scrolls to top
 // (smooth, unless the visitor prefers reduced motion). rAF-throttled. No-JS → the button never appears.
 export const BACK_TO_TOP_JS = `(function(){
   var b=document.querySelector('[data-sw-back-to-top]');
@@ -42,8 +47,13 @@ export const BACK_TO_TOP_JS = `(function(){
   var shown=false, ticking=false;
   function update(){
     ticking=false;
-    var y=window.pageYOffset||document.documentElement.scrollTop||0;
-    var want=y>(window.innerHeight||600);
+    var doc=document.documentElement;
+    var y=window.pageYOffset||doc.scrollTop||0;
+    var vh=window.innerHeight||600;
+    // Hide within ~80px of the page bottom — that's the FAB's footprint (bottom:1.5rem + 2.5rem tall),
+    // so it slides away before it would overlap the footer instead of covering it.
+    var atBottom=(y+vh)>=((doc.scrollHeight||0)-80);
+    var want=y>vh && !atBottom;
     if(want!==shown){shown=want;b.classList.toggle('sw-visible',shown);}
   }
   function onScroll(){if(!ticking){ticking=true;window.requestAnimationFrame(update);}}

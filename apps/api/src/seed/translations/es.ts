@@ -182,6 +182,34 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
         'Cada elemento permanece exactamente donde está en el documento — el runtime solo añade encima una transformación/opacidad/filtro, así que nada se desplaza, se solapa ni desaparece. El parallax es decoración, nunca estructura.',
     },
   },
+  'comp-scrollspy': {
+    path: 'scrollspy',
+    title: 'ScrollSpy',
+    navTitle: 'ScrollSpy',
+    description:
+      'Resalta el enlace de navegación cuya sección está a la vista. Añade data-sw-scrollspy a cualquier navegación de la página (aquí un índice fijo) — al desplazarte alterna .active + aria-current, compensado por la cabecera fija, y se combina con cualquier efecto de navegación para el estado visible.',
+    data: {
+      ss_intro:
+        'Dale a una página larga un índice vivo. Añade data-sw-scrollspy a una navegación y enlaza cada elemento a una sección por id — la rutina resalta al desplazarte el enlace cuya sección está a la vista, compensado por la cabecera fija. Alterna el mismo estado activo que la navegación ya usa (.active + aria-current), así que hereda el estilo activo que tengas. Desplaza las secciones de la derecha y observa cómo el menú las sigue.',
+      toc_eyebrow: 'En esta página',
+      nav_overview: 'Resumen',
+      nav_how: 'Cómo funciona',
+      nav_anchors: 'Anclas y todo el sitio',
+      nav_a11y: 'Accesibilidad',
+      overview_t: 'Un índice vivo',
+      overview_d:
+        'Este menú fijo lleva data-sw-scrollspy. Cada enlace apunta por id a una sección de abajo (un enlace a #how apunta a la sección con id="how"). Cuando esa sección entra en vista, su enlace recibe el estado activo — exactamente uno a la vez. El menú que tiene secciones en la página asume su propio resaltado; un menú sin ellas se deja al resaltado de ruta habitual.',
+      how_t: 'Cómo funciona',
+      how_d:
+        'La rutina encuentra la última sección cuyo borde superior ha cruzado una línea de activación cerca de la parte alta del viewport — compensada por la cabecera fija, para que la sección activa sea la que realmente puedes leer. En el fondo de la página gana la última sección — así una sección final corta también se activa — y por encima de la primera sección no se resalta nada (o un enlace de Inicio). Funciona con un escuchador de scroll pasivo y regulado; sin trabajo pesado por fotograma.',
+      anchors_t: 'Anclas con prefijo de ruta y el interruptor de todo el sitio',
+      anchors_d:
+        'Los enlaces solo resuelven a una sección cuando esa sección existe en la página actual, así que las anclas con prefijo de ruta también funcionan: una cabecera global puede enlazar a /#pricing desde cualquier página — simplemente navega a inicio y, una vez allí, espía la sección. ¿Prefieres no tocar el marcado? Activa ScrollSpy en los ajustes del sitio web y la navegación principal y móvil se espían en todo el sitio.',
+      a11y_t: 'Accesible y resistente',
+      a11y_d:
+        'El enlace activo se marca con aria-current="true" para la tecnología de asistencia, y el resaltado automático nunca roba el foco. Sin JavaScript los enlaces siguen saltando a sus secciones; solo se omite el resaltado en vivo. Con movimiento reducido sigue resaltando — alterna clases, no movimiento. ScrollSpy decora la navegación; nunca la reemplaza.',
+    },
+  },
   'comp-shader': {
     path: 'fondo-animado',
     title: 'Fondo animado',

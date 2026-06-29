@@ -80,6 +80,8 @@ import {
   usesNavEffects,
   NAV_EFFECTS_JS,
   STICKY_HEADER_JS,
+  usesScrollSpy,
+  SCROLLSPY_JS,
   usesButtonEffects,
   BUTTON_EFFECTS_JS,
   usesCart,
@@ -581,6 +583,10 @@ async function styledSourceDocument(
   // renderDocument by the `...shell` spread below, so the fixed `#main-nav` + offset token render in
   // the preview — WYSIWYG layout). Inline the scroll-state runtime for the JS-backed modes (hide/shrink).
   const stickyHeaderRuntime = stickyHeaderUsesRuntime(shell.stickyHeader);
+  // SCROLLSPY — the marker `sw-scrollspy` is in scanHtml via either a per-element `data-sw-scrollspy`
+  // attribute (rendered body/slots) or the site-wide `sw-scrollspy` body class (shell.bodyClass). Run it
+  // live in the preview (harmless: it only toggles .active/aria-current, so it never fights the bridge).
+  const scrollSpyRuntime = usesScrollSpy(scanHtml);
   // A RAW-HTML page (the explicit page setting) renders free-form: renderDocument omits the platform base
   // CSS, the linked utility sheet, and the platform JS. The editor canvas INLINES a per-page utility sheet
   // (renderDocument can't skip a linked one here), so we ALSO skip that compile + every platform
@@ -615,6 +621,7 @@ async function styledSourceDocument(
         ...(navRuntime ? [NAV_EFFECTS_JS] : []),
         ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
         ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
+        ...(scrollSpyRuntime ? [SCROLLSPY_JS] : []),
         ...(dialog ? [NAV_LINK_JS] : []),
         // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
         // is never the publish path (build.ts calls renderDocument directly), so it can't leak.

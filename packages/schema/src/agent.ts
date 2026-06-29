@@ -385,6 +385,24 @@ its \`position:fixed\` children — the default mobile-drawer recipe pins itself
 but a CUSTOM full-height nav drawer/overlay MUST set its own viewport height (\`h-dvh\`) or it gets clamped to
 the header's height.
 
+SCROLLSPY (highlight the section in view): on a one-page / landing layout, highlight the nav link whose
+in-page section is currently scrolled into view. It toggles the SAME active state the nav uses (\`.active\`
++ \`aria-current="true"\`), so pair it with a nav effect (or any \`.active\` styling) to actually SEE the
+highlight. Two ways to turn it on: (1) site-wide — set website.effects.scrollSpy: true → it governs the
+main + mobile nav (\`#main-nav\`); (2) per element — add the \`data-sw-scrollspy\` attribute to ANY nav
+container (e.g. a custom on-page table-of-contents \`<ul class="menu" data-sw-scrollspy>\`). Links point at
+sections by id: \`<a href="#about">\` → \`<section id="about">\`. PATH-PREFIXED anchors work too
+(\`<a href="/#about">\`, \`<a href="/en/#about">\`) — they spy only on the page that actually has \`#about\`
+(so a global header can link to home sections from any page). RULES: a link is a target only if its
+section EXISTS on the current page (anchors only — plain route links are ignored). A nav that HAS in-page
+sections takes over its own active state (it clears \`.active\` from every link, including route links, then
+lights the in-view one); a nav with NO in-page sections is left alone (normal route highlighting). Above
+the first section a hashless self-link (a "Home" item) lights; at the page bottom the last section's link
+lights. The trigger line auto-offsets by the sticky header (\`--sw-header-h\`). No-JS: the links still work,
+they just carry no auto-highlight. Reduced motion: scrollspy STILL highlights — it toggles classes, not
+animation; the indicator's own transition is separately gated by the nav effect's prefers-reduced-motion
+CSS. Smooth-scroll on click is already handled — scrollspy only manages the highlight.
+
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at

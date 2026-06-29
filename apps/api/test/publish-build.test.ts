@@ -697,6 +697,69 @@ describe('buildSite', () => {
     expect(home).not.toContain('--sw-header-h');
     expect(home).not.toContain('#main-nav{position:fixed');
     expect(home).not.toContain('sticky-header.js');
+    expect(home).not.toContain('scrollspy.js');
+  });
+
+  it('scrollspy (site-wide toggle): emits the sw-scrollspy body class + ships the runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { mainNav: '<ul class="menu"><li><a href="#a">A</a></li></ul>', effects: { scrollSpy: true } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section id="a"><h1>A</h1></section>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
+    expect(home).toContain('scrollspy.js'); // runtime linked
+    expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain("getElementById('main-nav')");
+  });
+
+  it('scrollspy (per-element attribute): source scan ships the runtime without the site-wide flag', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home',
+            source: '<ul class="menu" data-sw-scrollspy><li><a href="#a">A</a></li></ul><section id="a"><h1>A</h1></section>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<body>'); // bare body — no site-wide sw-scrollspy class (opted in per element)
+    expect(home).toContain('data-sw-scrollspy'); // the author attribute survives to the published page
+    expect(home).toContain('scrollspy.js'); // source-scan gate caught the per-element attribute
+  });
+
+  it('scrollspy (off): no flag, no attribute → no runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('scrollspy.js');
+    expect(home).not.toContain('sw-scrollspy');
   });
 
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {

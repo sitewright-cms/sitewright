@@ -221,6 +221,26 @@ describe('settings model', () => {
     expect(toForm(empty()).buttonEffect).toBe('none');
   });
 
+  it('round-trips the scrollSpy toggle (OFF by default; only the explicit ON state is serialized)', () => {
+    const on: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { effects: { scrollSpy: true } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toForm(on).scrollSpy).toBe(true);
+    expect(toBundle(toForm(on), on).website?.effects).toEqual({ scrollSpy: true });
+
+    // default OFF: loads as false, and toBundle drops it (no effects block when nothing else is set).
+    expect(toForm(empty()).scrollSpy).toBe(false);
+    expect(toBundle(toForm(empty()), empty()).website?.effects).toBeUndefined();
+
+    // composes with other effects without disturbing them.
+    const f = toForm(empty());
+    f.navEffect = 'box-solid';
+    f.scrollSpy = true;
+    expect(toBundle(f, empty()).website?.effects).toEqual({ navEffect: 'box-solid', scrollSpy: true });
+  });
+
   it('round-trips per-effect custom code (preserved even when a built-in effect is chosen)', () => {
     const withCode: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

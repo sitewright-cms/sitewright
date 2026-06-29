@@ -13,7 +13,7 @@ const ANIMATION_EFFECTS: readonly string[] = [
 // The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
 // LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
-export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'parallax' | 'lazyload' | 'ripple' | 'daisyui';
+export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'parallax' | 'scrollspy' | 'lazyload' | 'ripple' | 'daisyui';
 
 /**
  * One documented VARIANT of a component (e.g. "Primary", "Outline", "Large") — a labeled,
@@ -272,6 +272,28 @@ const PARALLAX_ITEMS: LibraryItem[] = [
   },
 ];
 
+// ScrollSpy (data-sw-scrollspy) — highlight the nav link whose in-page section is in view. Toggles
+// .active + aria-current, so it composes with the Nav effects above. Site-wide via Website settings.
+const SCROLLSPY_ITEMS: LibraryItem[] = [
+  {
+    id: 'spy-nav',
+    name: 'On-page nav (data-sw-scrollspy)',
+    keywords: 'scrollspy scroll spy active in view section one-page landing toc table of contents anchor data-sw-scrollspy',
+    description:
+      'Add data-sw-scrollspy to a nav/list and link to sections by id — the link whose <section id> is in view gets .active + aria-current. Pair with a Nav effect (or .active CSS) to see it. Or enable ScrollSpy in Website settings to spy the main + mobile nav site-wide.',
+    example:
+      '<ul class="menu sw-nav-line-bottom" data-sw-scrollspy>\n  <li><a href="#intro">Intro</a></li>\n  <li><a href="#pricing">Pricing</a></li>\n</ul>\n<section id="intro">…</section>\n<section id="pricing">…</section>',
+  },
+  {
+    id: 'spy-prefixed',
+    name: 'Path-prefixed anchor (/#id)',
+    keywords: 'scrollspy global header home section anchor path prefix locale /#about cross-page',
+    description:
+      'A global header can point at home sections from any page with a path-prefixed anchor — it spies only on the page that actually has that section, and just navigates elsewhere.',
+    example: '<a href="/#features">Features</a>\n<a href="/en/#features">Features (locale home)</a>',
+  },
+];
+
 export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'icons', label: 'Icons', blurb: 'The full Lucide icon set. Insert with {{sw-icon "name"}} — searchable by name + keyword.', items: [], lazy: 'icons' },
   { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{sw-icon "brand:slug"}}.', items: [], lazy: 'brand' },
@@ -279,6 +301,7 @@ export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
   { category: 'parallax', label: 'Parallax (scroll-linked)', blurb: 'Depth, fade, scale & blur tied to scroll via data-sw-parallax* — or compose one in the builder above.', items: PARALLAX_ITEMS },
+  { category: 'scrollspy', label: 'ScrollSpy (section in view)', blurb: 'Highlight the nav link whose in-page section is scrolled into view via data-sw-scrollspy (or the site-wide toggle in Website settings).', items: SCROLLSPY_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },
   { category: 'ripple', label: 'Ripple effect', blurb: 'Material “waves” click ripple via waves-effect.', items: RIPPLE_ITEMS },
   { category: 'daisyui', label: 'DaisyUI components', blurb: 'Brand-themed component classes (Tailwind + DaisyUI).', items: DAISYUI_ITEMS, preview: true },

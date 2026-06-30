@@ -145,7 +145,7 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Banner',
     description:
       'Un banner de aviso de contenido libre y descartable — promos, alertas, «mira nuestro último producto». El runtime lo muestra y recuerda el cierre en localStorage según su frecuencia. No es el banner de consentimiento.',
-    data: {},
+    data: { bn_bg: assets['blog-design'] ?? '' }, // the rich-background demo image (locale-independent)
   },
   'comp-parallax': {
     path: 'parallax',

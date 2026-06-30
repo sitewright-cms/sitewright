@@ -147,7 +147,7 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     navTitle: 'Banner',
     description:
       'Ein frei gestaltbares, schließbares Hinweis-Banner — Promos, Hinweise, „seht euch unser neuestes Produkt an“. Die Runtime blendet es ein und merkt sich die Schließung je nach Häufigkeit in localStorage. Nicht das Consent-Banner.',
-    data: {},
+    data: { bn_bg: assets['blog-design'] ?? '' }, // the rich-background demo image (locale-independent)
   },
   'comp-parallax': {
     path: 'parallax',

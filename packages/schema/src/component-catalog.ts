@@ -332,6 +332,39 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-remind-days', on: 'root', description: 'Optional. Days the "remind" button snoozes for (default 1).' },
       { name: 'data-aos', on: 'root', description: 'Optional. A scroll-reveal effect (fade-up | zoom-in | flip-left | …) used for the ENTRANCE instead of the built-in fade+rise; data-aos-delay/-duration/-easing tune it. The dismiss reverses whichever entrance was used. On an inline (in-flow) banner prefer a plain "fade" — a transform effect animates the banner over its reserved box.' },
     ],
+    examples: [
+      {
+        label: 'Top announcement bar with a data-aos entrance + reveal delay',
+        code: `<div data-sw-component="banner" data-sw-banner-id="sale" data-position="top" data-frequency="session" data-aos="fade-up" data-aos-duration="600" data-delay="800" hidden>
+  <p>Free shipping this week — <a class="link" href="{{sw-url "shop"}}">shop now</a>.</p>
+  <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
+</div>`,
+        note: 'data-position="top"|"bottom" = full-width bar; data-delay reveals it after 800ms; data-aos="fade-up" drives the entrance (the dismiss reverses it). data-frequency="session" → returns next browser session.',
+      },
+      {
+        label: 'Centered welcome card, snooze + permanent dismiss',
+        code: `<div data-sw-component="banner" data-sw-banner-id="welcome" data-position="center" data-frequency="once" data-delay="1200" data-remind-days="7" hidden>
+  <div><h3 class="mb-1 text-lg font-semibold">Welcome!</h3><p>Thanks for visiting.</p></div>
+  <div class="flex w-full justify-end gap-2">
+    <button type="button" class="btn btn-sm btn-ghost" data-sw-part="remind">Later</button>
+    <button type="button" class="btn btn-sm btn-primary" data-sw-part="dismiss-forever">Got it</button>
+  </div>
+</div>`,
+        note: 'data-position="center" is a NON-modal centered card (no focus trap). "remind" snoozes for data-remind-days (7); "dismiss-forever" hides it for good. Recipe: banner-modal.',
+      },
+      {
+        label: 'Full-bleed background (photo or live shader) — inner wrapper required',
+        code: `<div data-sw-component="banner" data-sw-banner-id="promo" data-position="inline" class="overflow-hidden border-0 p-0 text-white" hidden>
+  <div class="relative flex w-full items-center gap-3 p-4">       <!-- INNER positioning context (an inline banner is position:static) -->
+    <div data-sw-component="shader-bg" data-preset="silk-flow" class="absolute inset-0"></div>  <!-- or: <img class="absolute inset-0 h-full w-full object-cover" src="…"> -->
+    <div class="absolute inset-0 bg-black/30"></div>             <!-- legibility scrim -->
+    <div class="relative grow"><p class="font-semibold">Now showing: summer collection</p></div>
+    <button type="button" class="btn btn-sm btn-ghost relative text-white" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
+  </div>
+</div>`,
+        note: 'GOTCHA: an inline banner is position:static, so the absolute media/scrim MUST live in an INNER relative wrapper (else they escape to the viewport). overflow-hidden clips to the rounded corners; set a light text colour over the scrim.',
+      },
+    ],
     skeleton: `<div data-sw-component="banner" data-sw-banner-id="promo" data-position="bottom-right" data-frequency="once" hidden>
   <p>To see our latest product, <a class="link" href="{{sw-url "products"}}">click here</a>.</p>
   <button type="button" class="btn btn-sm btn-ghost" data-sw-part="dismiss-forever">Don't show again</button>

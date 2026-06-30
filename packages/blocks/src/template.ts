@@ -66,10 +66,11 @@ export interface TemplateContext {
   website?: Record<string, unknown>;
   page?: Record<string, unknown>;
   /**
-   * Cross-page DIRECT access by slug path — `{{ pages.services.seo.data.<key> }}` reads ANOTHER page's
-   * `page.data`. Rooted at the current page's locale HOME and walked by slug; each node also exposes
-   * title/slug/path/locale. Built REFERENCED-ONLY + same-locale by `pagesContext` in @sitewright/core
-   * (no payload unless the source names `pages`). A top-level author binding (see BINDING_NAMESPACES).
+   * Cross-page DIRECT access by slug path — `{{ pages.services.seo._attributes.data.<key> }}` reads
+   * ANOTHER page's fields. Rooted at the current page's locale HOME and walked by bare slug; a node's OWN
+   * fields (title/slug/path/locale/image/description/data/children/template/code) live under `_attributes`
+   * so any slug is legal and never collides. Built REFERENCED-ONLY + same-locale by `pagesContext` in
+   * @sitewright/core (no payload unless the source names `pages`). A top-level author binding.
    */
   pages?: Record<string, unknown>;
   /**
@@ -507,6 +508,23 @@ function createInstance(): typeof Handlebars {
   // these cover the common comparison need so authors don't reach for one that doesn't exist.
   hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
   hb.registerHelper('ne', (a: unknown, b: unknown) => a !== b);
+  // {{json value}} → the value pretty-printed as JSON (2-space indent) — object/array/string/number/bool.
+  // For inspecting/debugging data (e.g. <pre>{{json page.data}}</pre>) or emitting a small JSON-LD blob.
+  // The return is a plain string → HTML-ESCAPED, so it's safe in any text/attribute position. `{{json}}`
+  // with no value (or an unstringifiable/circular value) → ''; output is length-capped so a large object
+  // can't blow up the response. Compose with {{#each}} etc. as usual.
+  hb.registerHelper('json', function json(this: unknown, ...args: unknown[]) {
+    // Handlebars always appends the options object, so a bare `{{json}}` has length 1 (no value).
+    const value = args.length > 1 ? args[0] : undefined;
+    if (value === undefined) return '';
+    try {
+      const out = JSON.stringify(value, null, 2);
+      if (typeof out !== 'string') return ''; // e.g. a function/symbol → JSON.stringify returns undefined
+      return out.length > 100_000 ? `${out.slice(0, 100_000)}\n…(truncated)` : out;
+    } catch {
+      return ''; // circular / non-serializable
+    }
+  });
   // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
   // page locale, from the project translation catalog (website.translations). The render projection
   // pre-resolves the catalog per page-locale into `website.t` (a flat key→string map, defaultLocale

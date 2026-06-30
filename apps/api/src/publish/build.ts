@@ -401,6 +401,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       header: buildNav(pubBundle.pages, 'header'),
       footer: buildNav(pubBundle.pages, 'footer'),
       mobile: buildNav(pubBundle.pages, 'mobile'),
+      // Author-only slot the default chrome never reads — exposed for {{#each nav.custom}}.
+      custom: buildNav(pubBundle.pages, 'custom'),
     });
     // Multilingual model (see docs/i18n-content-model.md): a locale VARIANT of a
     // page is itself a Page (own path/title/description/data), so each route renders
@@ -424,6 +426,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         header: buildNav(pagesIn, 'header'),
         footer: buildNav(pagesIn, 'footer'),
         mobile: buildNav(pagesIn, 'mobile'),
+        custom: buildNav(pagesIn, 'custom'),
       }));
     }
     // `usesNavLink` (the <dialog>/smooth-scroll runtime) is computed below, once the source/slot/
@@ -687,8 +690,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Locale-resolved translation catalog for this page — shared by the render context AND the
         // SYSTEM i18n dict injected for the component runtimes (window.__SW_T__).
         const pageT = resolveTranslations(website?.translations, pageLocale, defaultLocale);
-        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
-        // scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
+        // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
+        // same-locale, scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
         // slots, so a footer/nav can reference another page too); no-ops when nothing names `pages`.
         const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, [pageSource, ...slotSources].filter(Boolean).join('\n'));
         // Fail fast (clear error) if a pathological source named many data-heavy pages — bound it like
@@ -723,6 +726,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             translations: pageTranslations,
             data: page.data,
             children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
+            // `page.template` — the template ref id this page renders from ('' = own code). `page.code` —
+            // the EFFECTIVE source rendering this page (resolved through its template, if any). Gated:
+            // the (large) source ships only when `{{page.code}}` is referenced.
+            template: page.template ?? '',
+            code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
           },
           // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`); absent at the
           // tree root. Built only when the source references it (gates the parent's own `data` like children).

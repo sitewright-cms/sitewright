@@ -19,13 +19,14 @@ const ctx: TemplateContext = {
 describe('pages binding (cross-page access — whitelisted into the render context)', () => {
   // Built upstream by pagesContext in @sitewright/core; here we only verify renderTemplate WHITELISTS the
   // `pages` key (an un-whitelisted top-level key is silently dropped — template.ts line ~849).
-  const pages = { services: { title: 'Services', path: '/services', seo: { data: { header_title: 'SEO & Performance' } } } };
-  it('resolves a deep pages.<slug>.<slug>.data.<key> path', () => {
-    expect(renderTemplate('{{pages.services.seo.data.header_title}}', { pages })).toBe('SEO &amp; Performance');
-    expect(renderTemplate('{{pages.services.path}}', { pages })).toBe('/services');
+  // A node's own fields live under `_attributes`; child pages sit at the node's top level by slug.
+  const pages = { _attributes: { title: 'Home' }, services: { _attributes: { title: 'Services', path: '/services' }, seo: { _attributes: { data: { header_title: 'SEO & Performance' } } } } };
+  it('resolves a deep pages.<slug>.<slug>._attributes.data.<key> path', () => {
+    expect(renderTemplate('{{pages.services.seo._attributes.data.header_title}}', { pages })).toBe('SEO &amp; Performance');
+    expect(renderTemplate('{{pages.services._attributes.path}}', { pages })).toBe('/services');
   });
   it('an unknown pages path renders empty (no error)', () => {
-    expect(renderTemplate('[{{pages.bogus.x.data.y}}]', { pages })).toBe('[]');
+    expect(renderTemplate('[{{pages.bogus.x._attributes.data.y}}]', { pages })).toBe('[]');
   });
 });
 
@@ -267,6 +268,20 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
   it('{{sw-truncate}} clips long text', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
+  });
+
+  it('{{json}} pretty-prints any value (HTML-escaped) and is empty/safe for nothing or a cycle', () => {
+    // Object → indented JSON (2-space). Output is HTML-escaped like every mustache (the " become &quot;,
+    // which a browser renders back as " inside <pre>) — so it can never break out of text/attribute context.
+    expect(renderTemplate('{{json page.data}}', { page: { data: { a: 1, b: 'x' } } })).toBe('{\n  &quot;a&quot;: 1,\n  &quot;b&quot;: &quot;x&quot;\n}');
+    // Scalars all serialize.
+    expect(renderTemplate('{{json page.n}}', { page: { n: 42 } })).toBe('42');
+    expect(renderTemplate('{{json page.b}}', { page: { b: true } })).toBe('true');
+    expect(renderTemplate('{{json page.s}}', { page: { s: 'hi & <b>' } })).toBe('&quot;hi &amp; &lt;b&gt;&quot;'); // escaped
+    // Bare {{json}} (no value) and a circular value → '' (never throws).
+    expect(renderTemplate('[{{json}}]', {})).toBe('[]');
+    const cyc: Record<string, unknown> = {}; cyc.self = cyc;
+    expect(renderTemplate('[{{json page.c}}]', { page: { c: cyc } })).toBe('[]');
   });
 
   it('{{#unless (sw-blank v)}} omits a wrapper only when the value has visible content', () => {

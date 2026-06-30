@@ -2434,6 +2434,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           header: buildNav(navPages, 'header'),
           footer: buildNav(navPages, 'footer'),
           mobile: buildNav(navPages, 'mobile'),
+          // Author-only slot the default chrome never reads — exposed for {{#each nav.custom}}.
+          custom: buildNav(navPages, 'custom'),
         });
         // The page's FULL route is computed from the parent chain; include the (possibly
         // unsaved/edited) previewed page in the index so its own slug/parent apply.
@@ -2465,6 +2467,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           translations: translationsOf(savedPages, page, defaultLocale),
           data: page.data,
           children: previewChildren,
+          // `page.template` — the template ref id ('' = own code); `page.code` — the EFFECTIVE source
+          // rendering this page (template-resolved). Source is gated to {{page.code}} uses (it's large).
+          template: page.template ?? '',
+          code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
         };
         // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`) — absent
         // at the tree root. Built only when the source references it (the parent carries its own
@@ -2478,8 +2484,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
-        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
-        // shared by the page render AND the slots (a footer/nav may reference another page too).
+        // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
+        // same-locale, shared by the page render AND the slots (a footer/nav may reference another page too).
         const previewPages = pagesContext(
           savedPages,
           page,

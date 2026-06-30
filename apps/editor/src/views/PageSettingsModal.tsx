@@ -17,8 +17,9 @@ import { AssetField } from './files/AssetField';
 import { glassInput, toggleInput } from '../theme';
 
 /** Human labels for the nav slots: header = the Main Navigation (desktop + mobile drawer), mobile = the
- *  drawer's own curated menu (else it mirrors Main navigation), footer = the footer. */
-const NAV_SLOT_LABELS: Record<NavSlot, string> = { header: 'Main navigation', mobile: 'Mobile menu', footer: 'Footer' };
+ *  drawer's own curated menu (else it mirrors Main navigation), footer = the footer, custom = an
+ *  author-only slot the default chrome ignores (loop it yourself with {{#each nav.custom}}). */
+const NAV_SLOT_LABELS: Record<NavSlot, string> = { header: 'Main navigation', mobile: 'Mobile menu', footer: 'Footer', custom: 'Custom' };
 
 /** The editable page-settings fields, flattened for form state. */
 export interface PageSettingsValues {
@@ -539,6 +540,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </label>
             ))}
           </div>
+          {v.navSlots.includes('custom') && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              “Custom” isn’t shown by the default menus — loop it in your page or snippet code with <code>{'{{#each nav.custom}}'}</code>.
+            </p>
+          )}
           {isLink && v.navSlots.length === 0 && (
             <p className="mt-2 text-[11px] font-medium text-amber-600">
               This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.

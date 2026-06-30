@@ -167,6 +167,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '<p>{{sw-truncate summary 80}}</p>',
       },
       {
+        id: 'h-json',
+        syntax: '{{json value}}',
+        name: 'json',
+        keywords: 'json stringify pretty print debug inspect object array data dump',
+        description:
+          'Pretty-prints any value as indented JSON — an object, array, string, number, or boolean. HTML-escaped like every output, so drop it in a <pre> to inspect data while building (e.g. <pre>{{json page.data}}</pre>) or to emit a small JSON blob. Empty for a missing or non-serializable (circular) value; the output is length-capped.',
+        args: [{ name: 'value', desc: 'Any bound value to serialize.' }],
+        example: '<pre>{{json page.data}}</pre>\n{{json company.social}}',
+      },
+      {
         id: 'h-active',
         syntax: '{{#if (sw-active path)}}…{{/if}}',
         name: 'sw-active',

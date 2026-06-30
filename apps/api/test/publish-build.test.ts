@@ -66,7 +66,7 @@ describe('buildSite', () => {
       outDir,
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo.data.header_title}}</p><a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>' },
+          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo._attributes.data.header_title}}</p><a href="{{sw-url pages.services._attributes.path}}">{{pages.services._attributes.title}}</a>' },
           { id: 'services', path: 'services', parent: 'home', title: 'Services', data: { svc: 'ours' } },
           { id: 'service-seo', path: 'seo', parent: 'services', title: 'SEO', data: { header_title: 'SEO & Performance' } },
         ] as unknown as ProjectBundle['pages'],

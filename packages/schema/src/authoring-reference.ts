@@ -215,9 +215,9 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     id: 'n-page',
     syntax: 'page.*',
     name: 'page',
-    keywords: 'title path slug locale translations route data children',
+    keywords: 'title path slug locale translations route data children template code source html',
     description:
-      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.description (its meta description), page.image (its OG/share image — wrap in {{sw-url page.image}}), page.locale, page.defaultLocale (the site’s default language — equals page.locale on an unprefixed default-locale page), page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
+      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.description (its meta description), page.image (its OG/share image — wrap in {{sw-url page.image}}), page.locale, page.defaultLocale (the site’s default language — equals page.locale on an unprefixed default-locale page), page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), page.children (its child pages), page.template (the id of the template this page renders from, or "" when it has its own code), and page.code (the EFFECTIVE source HTML rendering this page, template-resolved — for a “view source”/docs block; pretty-print with {{json}} or wrap in <pre>) — see their own entries.',
     example: '<title>{{page.title}}</title>\n<body id="{{page.slug}}">',
   },
   {
@@ -288,16 +288,16 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
   {
     namespace: 'pages',
     id: 'n-pages',
-    syntax: 'pages.<slug>.<slug>…',
+    syntax: 'pages.<slug>…._attributes.<field>',
     name: 'pages',
-    keywords: 'pages cross-page other page data shared global slug tree navigate sibling children subtree overview index',
+    keywords: 'pages cross-page other page data shared global slug tree navigate sibling children subtree overview index attributes code template',
     description:
-      'DIRECT access to ANOTHER page by slug PATH. Walk the page tree by slug from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo”. Each node exposes .title, .slug, .path (its full route — use {{sw-url pages.x.path}}), .description (its meta description), .image (its OG/share image — {{sw-url pages.x.image}}), .locale, .data (that page’s page.data), and .children (its direct child pages, the SAME array shape as page.children — so an overview on ANOTHER page can list a subtree, e.g. a home grid that lists the service pages). Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty. NOTE: the node fields (data, title, path, slug, locale, description, image, children) take precedence, so a child page whose slug is exactly one of those words can’t be reached this way (rename it).',
+      'DIRECT access to ANOTHER page by slug PATH. Descend the tree with BARE slugs from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo” (a hyphenated slug needs brackets, pages.[web-design]). A node’s OWN fields all live under ._attributes — never bare — so a child slug can NEVER collide with a field and ANY slug is allowed: ._attributes.title, .slug, .path (its full route — {{sw-url pages.x._attributes.path}}), .locale, .description, .image, .template (its template id), and the gated heavy ones ._attributes.data (that page’s page.data), ._attributes.children (its child pages — the SAME array shape as page.children, for an overview ON ANOTHER page), ._attributes.code (its rendered source HTML). pages on its own is the HOME node (pages._attributes.title, pages._attributes.children). Because fields and slugs never share a key, a page slugged exactly “data” is fine — pages.data._attributes.title (that page) vs pages._attributes.data (home’s data) are unambiguous. Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty.',
     example:
       '{{! reuse another page’s data, link to it, and list its children }}\n' +
-      '<h2>{{pages.services.seo.data.header_title}}</h2>\n' +
-      '<a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>\n' +
-      '{{#each pages.services.children}}<a href="{{sw-url path}}">{{title}}</a>{{/each}}',
+      '<h2>{{pages.services.seo._attributes.data.header_title}}</h2>\n' +
+      '<a href="{{sw-url pages.services._attributes.path}}">{{pages.services._attributes.title}}</a>\n' +
+      '{{#each pages.services._attributes.children}}<a href="{{sw-url path}}">{{title}}</a>{{/each}}',
   },
   {
     namespace: 'dataset',
@@ -331,11 +331,11 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     id: 'n-nav',
     syntax: 'nav.<slot>',
     name: 'nav',
-    keywords: 'menu navigation header footer mobile',
+    keywords: 'menu navigation header footer mobile custom',
     description:
-      'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
+      'Auto-built menus from the page tree, one per nav slot: nav.header, nav.footer, nav.mobile, and nav.custom — an AUTHOR-ONLY slot the default chrome never renders (put a page in the “Custom” nav slot in its settings, then loop {{#each nav.custom}} yourself for a bespoke menu/list anywhere). Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
     example:
-      '{{#each nav.header}}\n' +
+      '{{#each nav.custom}}\n' +
       '  <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>\n' +
       '{{/each}}',
   },

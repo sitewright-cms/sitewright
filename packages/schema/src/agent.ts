@@ -59,10 +59,12 @@ In \`source\`:
   {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
   parent (absent at the tree root); and {{#each page.children}} for its CHILD pages — a section
   index or a blog overview that lists its sub-pages (each child has .title/.slug/.path/.data).
-  CROSS-PAGE: read ANOTHER page's data by SLUG path with
-  {{ pages.<slug>.<slug>….data.<key> }} — walk the tree from home, e.g. {{ pages.services.seo.data.header_title }}
-  (and {{ sw-url pages.services.path }} to link it). Same-locale (German page → German slugs,
-  pages.leistungen.seo); each node also has .title/.slug/.path/.locale; an unknown path renders empty.
+  {{ page.template }} = its template id; {{ page.code }} = its rendered source HTML.
+  CROSS-PAGE: read ANOTHER page by SLUG path from home; a page's OWN fields are under ._attributes (so ANY
+  slug is legal), e.g. {{ pages.services.seo._attributes.data.header_title }},
+  {{ sw-url pages.services._attributes.path }}, {{#each pages.services._attributes.children}}. pages = the
+  HOME node; same-locale (pages.leistungen.seo); ._attributes also has
+  .title/.slug/.path/.locale/.image/.description/.template; unknown path → empty.
   {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
@@ -70,10 +72,10 @@ In \`source\`:
   may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
   {{<field>.<key>}}), so an entry can hold structured/nested data.
 - CONDITIONALS / COMPARISON: {{#if x}}/{{#unless x}} are built in; for value comparison use {{#if (eq a b)}}
-  / {{#if (ne a b)}} (=== / !==). Handlebars has NO other built-in comparison, and calling a helper that
-  is NOT registered HARD-FAILS the whole render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick
-  to eq/ne (+ the {{sw-*}} helpers in get_reference). For "is this the current page?" use {{#if (sw-active
-  path)}} (route-aware), not eq.
+  / {{#if (ne a b)}} (=== / !==), and {{json value}} pretty-prints any value as JSON (a debug <pre>; escaped).
+  Handlebars has NO other built-in comparison, and calling a helper that is NOT registered HARD-FAILS the whole
+  render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick to eq/ne/json (+ the {{sw-*}} helpers in
+  get_reference). For "is this the current page?" use {{#if (sw-active path)}} (route-aware), not eq.
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -634,10 +636,13 @@ Read one with get_content("snippet","nav-header"). New projects already ship {{>
 Main Navigation slot. The notes below explain how it works so you can adapt it.
 
 NAV SLOTS (page settings): each page's nav.slots places it in a menu — "header" (the Main Navigation),
-"mobile" (the mobile drawer), and/or "footer". nav.title overrides the menu label (else the page title);
-nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus are
-built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}}, each item exposing
-path, children (sub-pages, when nav.dropdown is on), newTab, external, and the label.
+"mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
+title); nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus
+are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each
+nav.custom}}, each item exposing path, children (sub-pages, when nav.dropdown is on), newTab, external, and
+the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — use it to build a bespoke
+secondary menu / link list anywhere (pages opt in via the "Custom" nav slot in their settings; you then
+loop {{#each nav.custom}} yourself).
 
 ONE MENU ITEM: output the label with {{sw-label}} (renders a placeholder's rich name; a page title is
 escaped — never use {{{ }}}), the link with {{sw-url path}}, honor {{#if newTab}} target/rel, and mark the
@@ -722,8 +727,9 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    description, and its own data — instead of duplicating those pages into a dataset (the import infers a
    dataset because it can't tell; consolidate + delete the redundant dataset). page.children is the CURRENT
    page's direct children (fits the index page itself, e.g. the services index). For a grid on a DIFFERENT
-   page (e.g. the HOME page showing the pages under /services) use {{#each pages.services.children}} (the
-   pages binding reaches ANY page's children by slug — same item shape as page.children). Reserve datasets
+   page (e.g. the HOME page showing the pages under /services) use {{#each pages.services._attributes.children}}
+   (the pages binding reaches ANY page's children by slug — a node's own fields live under ._attributes; same
+   item shape as page.children). Reserve datasets
    for content that is NOT already a page. Loop fields stay BARE (no data-sw-* inside the children loop).
    The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
    rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset

@@ -66,7 +66,7 @@ describe('buildSite', () => {
       outDir,
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo.data.header_title}}</p><a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>' },
+          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo._attributes.data.header_title}}</p><a href="{{sw-url pages.services._attributes.path}}">{{pages.services._attributes.title}}</a>' },
           { id: 'services', path: 'services', parent: 'home', title: 'Services', data: { svc: 'ours' } },
           { id: 'service-seo', path: 'seo', parent: 'services', title: 'SEO', data: { header_title: 'SEO & Performance' } },
         ] as unknown as ProjectBundle['pages'],
@@ -76,6 +76,26 @@ describe('buildSite', () => {
     expect(home).toContain('X=SEO &amp; Performance'); // grand-child page's data, walked by slug
     expect(home).toContain('<a href="services">Services</a>'); // pages.services.path (sw-url page-relative) + .title
     // A page that doesn't reference `pages` ships no pages payload — covered by the referenced-only core tests.
+  });
+
+  it('exposes page.template (the template id) + page.code (the effective rendered source) at publish', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        templates: [{ id: 't1', name: 'T1', source: 'TPL[{{page.template}}][{{page.code}}]' }],
+        pages: [
+          // Code-first page: page.template is '' (own code); page.code is its OWN effective source (HTML-escaped).
+          { id: 'home', path: '', title: 'Home', source: 'OWN[{{page.template}}][{{page.code}}]' },
+          // Template-driven page: page.template is the template id; page.code is the RESOLVED template source.
+          { id: 'tp', path: 'tp', parent: 'home', title: 'TP', template: 't1' },
+        ] as unknown as ProjectBundle['pages'],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('OWN[][OWN[{{page.template}}][{{page.code}}]]'); // template '' + own source echoed
+    const tp = await readFile(join(outDir, 'tp', 'index.html'), 'utf8');
+    expect(tp).toContain('TPL[t1][TPL[{{page.template}}][{{page.code}}]]'); // template id + resolved source
   });
 
   it('resolves a composed Widget ({{> hero-slider}}) at publish AND feeds its classes to the sheet', async () => {

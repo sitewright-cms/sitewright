@@ -4,28 +4,34 @@ import { localeOf, localeHomeFor } from './i18n.js';
 import { childrenOf as childViewsOf } from './children.js';
 
 // The `pages` namespace: cross-page DIRECT access by slug path, rooted at the CURRENT page's locale
-// HOME and walked by slug — `{{ pages.services.seo.data.header_title }}` reads the /services/seo page's
-// page.data. Each node exposes a lean read-only view (title/slug/path/locale) + its `data`, PLUS its
-// child pages keyed by their slug, so the walk descends the page tree. Same-locale (a German page reads
-// the German subtree via localized slugs) and built REFERENCED-ONLY — a page that never names `pages`
-// ships no `pages` payload (the gate below), and only the nodes actually referenced are serialized.
+// HOME and walked by slug — `{{ pages.services.seo._attributes.data.header_title }}` reads the
+// /services/seo page's page.data. Same-locale (a German page reads the German subtree via localized
+// slugs) and built REFERENCED-ONLY — a page that never names `pages` ships no `pages` payload (the gate
+// below), and only the nodes actually referenced are serialized.
 //
-// Each node also exposes `children` — an ARRAY of its direct child pages (same projection as
-// `page.children`: title/navTitle/path/image/description/data) — so an overview on ANOTHER page can list a
-// subtree: `{{#each pages.services.children}}…{{path}}…{{/each}}`. (page.children only sees the CURRENT
-// page's children; `pages.X.children` reaches any page's.)
+// NO COLLISIONS, ANY SLUG. A node mixes two things that would otherwise share one key space: its CHILD
+// pages (addressed by their slug — `pages.services`, `pages.[web-design]`) and its OWN fields (title,
+// data, image, …). They are kept in SEPARATE namespaces so a page may use ANY slug (no reserved words,
+// no SEO restriction): a node's children sit at its top level by slug, and everything the node OWNS lives
+// under the single `_attributes` key. No traversable node can EVER have path `_attributes`: a normal slug
+// (`^[a-z0-9]+(?:-[a-z0-9]+)*$`, PageSlugSchema) can't contain an underscore at all, and the only paths that
+// can — bracketed `[param]` collection slugs — belong to collection pages, which are EXCLUDED from this tree
+// (the `!p.collection` filters below). So a child slug and `_attributes` can never clash. Read a page's own fields through
+// `_attributes` (`pages.about._attributes.image`, `pages._attributes.data` for home); descend to a child
+// with a bare slug (`pages.about`, `pages.services.[web-design]`). Thus a page literally slugged `data`
+// or `image` is fully reachable: `pages.data._attributes.title` (the page) vs `pages._attributes.data`
+// (home's data) are unambiguous.
 //
-// COLLISIONS: a node carries both child pages (by slug) AND its own fields, so a child whose slug is one
-// of the RESERVED field names (`data`/`title`/`path`/`slug`/`locale`/`children`) would be ambiguous. We
-// resolve it deterministically — the reserved fields are assigned LAST, so they always WIN: `pages.x.data`
-// is always the data object, `pages.x.children` always the child array. Such a child is simply not
-// reachable via the bare-slug walk (slugs are lowercase [a-z0-9-], so only those words can ever collide).
+// `_attributes` exposes the lean always-present fields (title/slug/path/locale/image/description/template)
+// plus the heavy fields gated to referenced uses (`data`, `children` — same array view as `page.children`,
+// `code` — the page's own source). `{{#each pages.services._attributes.children}}` lists a subtree from
+// ANOTHER page (page.children only sees the CURRENT page's children).
 
-/** A built page node: the lean view + `data` + `children`, plus child nodes keyed by slug. Reserved keys win. */
+/** The single key under which a node exposes its OWN fields (kept apart from its child slugs). */
+export const PAGE_ATTRS_KEY = '_attributes';
+
+/** A built page node: child nodes keyed by slug + one `_attributes` object of the node's own fields. */
 type PageNode = Record<string, unknown>;
-
-/** Node field names that take precedence over a same-named child slug (the collision rule). */
-const RESERVED_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale', 'children', 'image', 'description']);
 
 /** Upper bound on total nodes built for one page's `pages` context (payload / DoS guard). */
 export const MAX_PAGES_NODES = 500;
@@ -37,6 +43,7 @@ const MAX_PAGES_DEPTH = 24;
 // and the access form is required so prose like "our pages are fast" / "browse the pages." does NOT
 // trip it (that `pages` is followed by whitespace / a bare `.`, not `.<letter>`). The cheap gate that
 // keeps the page-data-carrying `pages` object off the render-worker IPC unless the source uses it.
+// (`_attributes` starts with `_`, which `[A-Za-z_]` matches, so `pages._attributes.x` still fires.)
 const PAGES_REF_RE = /(?<![\w.-])pages(?:\.\[?[A-Za-z_]|}|\))/;
 
 /** Whether a template source references the `pages` binding — build the tree only when it does. */
@@ -47,11 +54,11 @@ export function referencesPages(source: string | null | undefined): boolean {
 // Every `pages.<seg>(.<seg>)*` chain in the source, each as its raw segment list (a segment is a dotted
 // identifier OR a `[bracketed]` key, so a localized slug like `web-design` works as `pages.[web-design]`).
 // Regex-only (no parser) — keeps core dependency-free, like `extractRegions`. The builder decides which
-// segments are slugs vs a trailing field by walking the actual tree (so it needs no field guessing here).
+// segments are slugs vs the `_attributes` field hop by walking the actual tree.
 const CHAIN_RE = /(?<![\w.-])pages((?:\.[A-Za-z_][\w-]*|\.\[[^\]]+\])+)/g;
 const SEG_RE = /\.\[([^\]]+)\]|\.([A-Za-z_][\w-]*)/g;
 
-/** The slug/field chains referenced off `pages` (e.g. `pages.services.seo.data.h1` → ['services','seo','data','h1']). */
+/** The slug/field chains referenced off `pages` (e.g. `pages.services._attributes.data.h1` → ['services','_attributes','data','h1']). */
 export function referencedPagePaths(source: string): string[][] {
   const chains: string[][] = [];
   for (const m of source.matchAll(CHAIN_RE)) {
@@ -90,6 +97,7 @@ export function pagesContext(
     const childChains = new Map<string, string[][]>(); // child slug → remaining chains
     let needData = false;
     let needChildren = false;
+    let needCode = false;
     if (depth < MAX_PAGES_DEPTH) {
       // At the ROOT (depth 0), a "top-level" page is reachable by slug whether it's a CHILD of the home
       // page or a root-level SIBLING of it (both render at `/<slug>`) — the import makes top-level pages
@@ -101,11 +109,13 @@ export function pagesContext(
       for (const chain of chains) {
         if (chain.length === 0) continue;
         const seg = chain[0]!;
-        // A RESERVED field name is a field access on THIS node — checked BEFORE child matching so a
-        // child whose slug is e.g. "data" can never be descended into (reserved wins, deterministically).
-        if (RESERVED_FIELDS.has(seg)) {
-          if (seg === 'data') needData = true; // gate the (only large) field; title/slug/path/locale are always present
-          else if (seg === 'children') needChildren = true; // gate the child-array build to referenced uses
+        // `_attributes` is a FIELD hop on THIS node (never a child slug — slugs can't start with `_`).
+        // Look at the next segment to gate the heavy fields; the lean ones are always present.
+        if (seg === PAGE_ATTRS_KEY) {
+          const field = chain[1];
+          if (field === 'data') needData = true;
+          else if (field === 'children') needChildren = true;
+          else if (field === 'code') needCode = true;
           continue;
         }
         const kid = kids.find((k) => k.path === seg);
@@ -120,24 +130,24 @@ export function pagesContext(
         if (budget.n >= MAX_PAGES_NODES) break;
         budget.n++;
         const kid = kids.find((k) => k.path === slug)!;
-        out[slug] = build(kid, list, depth + 1); // slug = a page's own `path` (identifierize'd), not user input; out is a fresh object
+        out[slug] = build(kid, list, depth + 1); // slug = a page's own `path`, not user input; out is a fresh object
       }
     }
-    // Reserved fields assigned LAST → they WIN over a same-named child slug (see COLLISIONS note above).
-    // `data` is gated to referenced uses (it's the only field large enough to matter for payload); the
-    // lean fields are tiny and always present. `{}` keeps `pages.x.data` deterministic when not referenced.
-    out.title = node.title;
-    out.slug = node.path;
-    out.path = pagePath(node, byId);
-    out.locale = locale;
-    // The page's OG/share image + meta description — small lean fields (like title/path), always present,
-    // so another page can reuse them: `<img src="{{sw-url pages.about.image}}">`, `{{pages.about.description}}`.
-    out.image = node.image ?? '';
-    out.description = node.description ?? '';
-    out.data = needData ? ((node.data as JsonValue | undefined) ?? {}) : {};
-    // `children`: the SAME flattened view as `page.children` (title/navTitle/path/image/description/data),
-    // built only when referenced. `[]` keeps `pages.x.children` deterministic when not referenced.
-    out.children = needChildren ? childViewsOf(pages, node, defaultLocale) : [];
+    // The node's OWN fields, namespaced under `_attributes` so they never collide with a child slug.
+    // Lean fields (tiny) are always present; the heavy ones (`data`/`children`/`code`) are gated to
+    // referenced uses — `{}`/`[]`/`''` keeps them deterministic when not referenced.
+    out[PAGE_ATTRS_KEY] = {
+      title: node.title,
+      slug: node.path,
+      path: pagePath(node, byId),
+      locale,
+      image: node.image ?? '',
+      description: node.description ?? '',
+      template: node.template ?? '',
+      data: needData ? ((node.data as JsonValue | undefined) ?? {}) : {},
+      children: needChildren ? childViewsOf(pages, node, defaultLocale) : [],
+      code: needCode ? (node.source ?? '') : '',
+    };
     return out;
   };
 

@@ -80,8 +80,8 @@ describe('PublishStore HTML serving', () => {
     expect(bin?.attachment).toBe(true);
   });
 
-  it('still rejects traversal segments', () => {
+  it('still rejects traversal segments', async () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
-    expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();
+    await expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();
   });
 });

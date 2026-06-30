@@ -150,6 +150,20 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.get(`/sites/${slug}/consent.js`)).statusCode).toBe(404);
   });
 
+  it('ships the consent runtime when a page references the manager (#sw-consent) even with consent OFF', async () => {
+    // consent.enabled is OFF, but the page hand-references the manager (a "Cookie settings" re-open link). The
+    // only-used-ships discipline still ships the runtime via the marker path (usesConsent matches the
+    // 'sw-consent' substring), so the href="#sw-consent" open handler works.
+    const proj = client.project(projectId);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><a href="#sw-consent">Cookie settings</a></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.body).toContain('<script defer src="consent.js?v=');
+    expect((await client.get(`/sites/${slug}/consent.js?v=1`)).statusCode).toBe(200);
+  });
+
   it('widens the per-site CSP (response header + baked meta) for a consent site with a GA integration', async () => {
     const proj = client.project(projectId);
     expect(

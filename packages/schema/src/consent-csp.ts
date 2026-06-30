@@ -133,7 +133,8 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
 
 /**
  * Neutralize cross-origin author `<iframe>`s so they don't load until consent: move `src` → a held
- * `data-sw-consent-src` and stamp the gating category (`data-sw-consent="x"` override, else `defaultCategory`).
+ * `data-sw-consent-src`, and read the INPUT category override (`data-sw-consent="x"`, else `defaultCategory`)
+ * to stamp the OUTPUT as `data-sw-consent-cat` — the input `data-sw-consent` marker is REMOVED (see below).
  * Same-origin/relative iframes, an explicit `data-sw-consent-skip` opt-out, and already-gated iframes pass
  * through untouched. Caller invokes this ONLY when the consent manager is enabled (consent off → iframes load
  * normally, their origin still allow-listed via {@link authorContentCspOrigins}). Idempotent.
@@ -146,7 +147,16 @@ export function gateAuthorIframes(html: string, opts: { defaultCategory?: Consen
     const src = attrValue(attrs, 'src');
     if (!src || !externalHttpsHost(src)) return full; // same-origin / relative / non-https → leave as-is
     const cat = markerCategory(attrs) ?? def;
-    const stripped = attrs.replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '');
+    // Strip BOTH `src` AND the author's `data-sw-consent` marker (valued `="<cat>"` OR the rare value-less
+    // boolean form). The category is preserved in `data-sw-consent-cat` below; leaving ANY `data-sw-consent`
+    // on the held iframe would violate the runtime invariant "data-sw-consent appears only on the mount" — the
+    // mount's own selectors (`[data-sw-consent][data-sw-enhanced]`, `querySelectorAll('[data-sw-consent]')`)
+    // would then match the iframe and style it as a fixed full-screen banner. The `-skip`/`-cat`/`-src`/`-note`
+    // variants (a `-` follows `data-sw-consent`, so neither pattern can match the prefix boundary) are untouched.
+    const stripped = attrs
+      .replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+      .replace(/\s+data-sw-consent\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+      .replace(/\s+data-sw-consent(?=[\s/>]|$)/i, '');
     // `src` may be SINGLE-quoted or unquoted (raw `website.head`/import HTML isn't attribute-escaped), so it can
     // carry a `"`. Re-embedding it in a DOUBLE-quoted attribute requires escaping `"` → `&quot;` (the only
     // breakout char here) so it can't open a new attribute (e.g. onload=/style=). NOT escaping `&` — that would

@@ -47,6 +47,20 @@ describe('gateAuthorIframes — hold cross-origin author iframes', () => {
     expect(gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent="marketing"></iframe>')).toContain('data-sw-consent-cat="marketing"');
     expect(gateAuthorIframes('<iframe src="https://x.example/v"></iframe>', { defaultCategory: 'analytics' })).toContain('data-sw-consent-cat="analytics"');
   });
+
+  it('STRIPS the author data-sw-consent marker (category moves to -cat) so the held iframe is not matched by the mount selectors', () => {
+    // Catch any surviving `data-sw-consent` that is NOT one of the -src/-cat/-skip/-note variants (= the mount marker).
+    const hasBareMarker = (s: string): boolean => /\sdata-sw-consent(?![\w-])/.test(s);
+    const quoted = gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent="marketing" data-sw-consent-note="Video"></iframe>');
+    expect(quoted).toContain('data-sw-consent-cat="marketing"');
+    expect(hasBareMarker(quoted)).toBe(false); // the marker is gone (else it'd match the banner's [data-sw-consent] CSS/JS)
+    expect(quoted).toContain('data-sw-consent-note="Video"'); // the -note variant is preserved (the `-` guards it)
+    // single-quoted + the rare value-less boolean form are ALSO stripped.
+    expect(hasBareMarker(gateAuthorIframes(`<iframe src="https://x.example/v" data-sw-consent='analytics'></iframe>`))).toBe(false);
+    const boolForm = gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent></iframe>');
+    expect(hasBareMarker(boolForm)).toBe(false);
+    expect(boolForm).toContain(`data-sw-consent-cat="${DEFAULT_EMBED_CATEGORY}"`); // no value → default category
+  });
   it('leaves data-sw-consent-skip, same-origin, and already-gated iframes untouched', () => {
     const skip = '<iframe src="https://x.example/v" data-sw-consent-skip></iframe>';
     expect(gateAuthorIframes(skip)).toBe(skip);

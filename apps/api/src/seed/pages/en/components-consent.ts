@@ -27,9 +27,11 @@ export function pageComponentsConsent(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-16">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_consent.sec_embed_t">A gated YouTube embed</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_consent.sec_embed_d">The video is held until you allow it — no request to YouTube, no cookies, until consent.</p>
-  <div class="mt-8 max-w-2xl">
-    {{!-- A real YouTube embed; loading="lazy" is omitted on purpose — the gate strips src until consent, so it would be inert. --}}
-    <iframe src="https://www.youtube.com/embed/jNQXAC9IVRw" data-sw-consent="marketing" title="Me at the zoo — the first video on YouTube (2005)" class="aspect-video w-full rounded-xl border border-base-200 shadow-sm" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  {{!-- A real YouTube embed. The aspect-ratio box + an ABSOLUTE iframe is the responsive pattern the consent
+       gate's placeholder overlays cleanly (a held iframe loses its intrinsic size, so it must be constrained by
+       the wrapper, not by w-full on the iframe). loading="lazy" is omitted — the gate strips src until consent. --}}
+  <div class="relative mt-8 aspect-video w-full max-w-2xl overflow-hidden rounded-xl border border-base-200 shadow-sm">
+    <iframe src="https://www.youtube.com/embed/jNQXAC9IVRw" data-sw-consent="marketing" title="Me at the zoo — the first video on YouTube (2005)" class="absolute inset-0 h-full w-full" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
   </div>
 </section>
 

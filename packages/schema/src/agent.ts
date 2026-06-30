@@ -72,7 +72,7 @@ In \`source\`:
   may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
   {{<field>.<key>}}), so an entry can hold structured/nested data.
 - CONDITIONALS / COMPARISON: {{#if x}}/{{#unless x}} are built in; for value comparison use {{#if (eq a b)}}
-  / {{#if (ne a b)}} (=== / !==), and {{json value}} pretty-prints any value as JSON (debug <pre> / JSON blob).
+  / {{#if (ne a b)}} (=== / !==), and {{json value}} pretty-prints any value as JSON (a debug <pre>; escaped).
   Handlebars has NO other built-in comparison, and calling a helper that is NOT registered HARD-FAILS the whole
   render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick to eq/ne/json (+ the {{sw-*}} helpers in
   get_reference). For "is this the current page?" use {{#if (sw-active path)}} (route-aware), not eq.

@@ -13,8 +13,10 @@ import { childrenOf as childViewsOf } from './children.js';
 // pages (addressed by their slug — `pages.services`, `pages.[web-design]`) and its OWN fields (title,
 // data, image, …). They are kept in SEPARATE namespaces so a page may use ANY slug (no reserved words,
 // no SEO restriction): a node's children sit at its top level by slug, and everything the node OWNS lives
-// under the single `_attributes` key. A page slug can NEVER be `_attributes` because PageSlugSchema
-// forbids a leading underscore — so the two can never clash. Read a page's own fields through
+// under the single `_attributes` key. No traversable node can EVER have path `_attributes`: a normal slug
+// (`^[a-z0-9]+(?:-[a-z0-9]+)*$`, PageSlugSchema) can't contain an underscore at all, and the only paths that
+// can — bracketed `[param]` collection slugs — belong to collection pages, which are EXCLUDED from this tree
+// (the `!p.collection` filters below). So a child slug and `_attributes` can never clash. Read a page's own fields through
 // `_attributes` (`pages.about._attributes.image`, `pages._attributes.data` for home); descend to a child
 // with a bare slug (`pages.about`, `pages.services.[web-design]`). Thus a page literally slugged `data`
 // or `image` is fully reachable: `pages.data._attributes.title` (the page) vs `pages._attributes.data`

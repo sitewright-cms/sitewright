@@ -2472,6 +2472,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           template: page.template ?? '',
           code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
         };
+        // `page.code` duplicates the (already body-limited) source into the IPC payload — bound it against
+        // the same 4 MiB ceiling as the other heavy preview fields, for a consistent defensive guard.
+        if (typeof previewPage.code === 'string' && previewPage.code.length > 4 * 1024 * 1024) {
+          return reply.code(413).send({ error: 'project data is too large to render' });
+        }
         // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`) — absent
         // at the tree root. Built only when the source references it (the parent carries its own
         // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the

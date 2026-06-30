@@ -509,7 +509,9 @@ function createInstance(): typeof Handlebars {
   hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
   hb.registerHelper('ne', (a: unknown, b: unknown) => a !== b);
   // {{json value}} → the value pretty-printed as JSON (2-space indent) — object/array/string/number/bool.
-  // For inspecting/debugging data (e.g. <pre>{{json page.data}}</pre>) or emitting a small JSON-LD blob.
+  // For INSPECTING/DEBUGGING data (e.g. <pre>{{json page.data}}</pre>) — the output is HTML-escaped, so it
+  // is NOT valid for a <script type="application/ld+json"> block (the quotes become &quot;); use it to read,
+  // not to emit machine-parsed JSON.
   // The return is a plain string → HTML-ESCAPED, so it's safe in any text/attribute position. `{{json}}`
   // with no value (or an unstringifiable/circular value) → ''; output is length-capped so a large object
   // can't blow up the response. Compose with {{#each}} etc. as usual.

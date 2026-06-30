@@ -63,7 +63,9 @@ export const SCROLLSPY_DEMO_WEBSITE: WebsiteSettings = {
 
 export const SCROLLSPY_DEMO_SETTINGS = { defaultLocale: 'en', locales: ['en'] } as const;
 
-const SECTION = 'flex min-h-[88vh] scroll-mt-28 flex-col justify-center px-6 py-12';
+// No scroll-margin on the sections: the sticky header already sets `scroll-padding-top:var(--sw-header-h)`
+// on the scroll container, so an anchor jump / smooth-scroll lands the section snug below the fixed header.
+const SECTION = 'flex min-h-[88vh] flex-col justify-center px-6 py-12';
 
 export function scrollspyDemoPages(): Page[] {
   return [
@@ -138,19 +140,19 @@ export function scrollspyDemoPages(): Page[] {
       </ul>
     </div>
     <div class="min-w-0">
-      <section id="install" class="flex min-h-[80vh] scroll-mt-28 flex-col justify-center border-b border-base-200 py-10">
+      <section id="install" class="flex min-h-[80vh] flex-col justify-center border-b border-base-200 py-10">
         <h2 class="text-3xl font-bold tracking-tight">Install</h2>
         <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60">Drop data-sw-scrollspy on any nav and link its items to sections by id. The platform ships the tiny runtime only when it is used.</p>
       </section>
-      <section id="usage" class="flex min-h-[80vh] scroll-mt-28 flex-col justify-center border-b border-base-200 py-10">
+      <section id="usage" class="flex min-h-[80vh] flex-col justify-center border-b border-base-200 py-10">
         <h2 class="text-3xl font-bold tracking-tight">Usage</h2>
         <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60">As each section scrolls past the header line, its link in this menu becomes active. Exactly one is active at a time; at the bottom of the page the last one wins.</p>
       </section>
-      <section id="anchors" class="flex min-h-[80vh] scroll-mt-28 flex-col justify-center border-b border-base-200 py-10">
+      <section id="anchors" class="flex min-h-[80vh] flex-col justify-center border-b border-base-200 py-10">
         <h2 class="text-3xl font-bold tracking-tight">Anchors</h2>
         <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60">A link is spied only when its section exists on the current page, so a global header can use path-prefixed anchors like /#features and they spy only on the page that has them.</p>
       </section>
-      <section id="api" class="flex min-h-[80vh] scroll-mt-28 flex-col justify-center py-10">
+      <section id="api" class="flex min-h-[80vh] flex-col justify-center py-10">
         <h2 class="text-3xl font-bold tracking-tight">Reference</h2>
         <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60">ScrollSpy toggles .active + aria-current and offsets by the sticky header. Without JavaScript the links still jump; under reduced motion it still highlights (it toggles classes, not motion).</p>
         <p class="mt-6"><a href="/" class="btn btn-ghost">← Back to the one-page demo</a></p>

@@ -343,7 +343,10 @@ NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for
 \`box-solid\`,\`box-fill-left\`,\`box-fill-up\`,\`box-draw\`,\`box-shadow\`,\`line-bottom\`,\`line-sliding-bottom\`,
 \`line-top-down\`,\`line-squiggle\`,\`sliding-pill\`,\`glass-pill\`,\`dot-to-pill\`,\`highlighter\`,\`brackets\`,
 \`brackets-curly\`,\`blob\`,\`chevron\`,\`corner-ticks\`,\`spotlight-sliding\`). Nav colors auto-derive from
-the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-pill\` fill a surface.
+the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-pill\` fill a surface. A
+\`sw-nav-*\` class on a SPECIFIC \`.menu\` OVERRIDES the site-wide website.effects.navEffect for that menu
+(they don't collide) — so a custom menu (e.g. a scrollspy table of contents) can run its OWN effect while
+the rest of the site keeps the site-wide one.
 
 BUTTONS: every \`.btn\` already has a BASELINE — a ripple on click, a small hover lift + shadow, and its
 background fills to the hover ACCENT (default secondary). Layer three independent axes as classes (each

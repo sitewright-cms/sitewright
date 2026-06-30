@@ -512,7 +512,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
           '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
           '{{/each}}</ul>',
-        note: 'Every scheme keeps WCAG contrast for ANY brand color and flips correctly in dark mode. Want your own scheme? Leave Nav effect "None" in Website settings and write it in Custom CSS (target .active / the nav links).',
+        note: 'Every scheme keeps WCAG contrast for ANY brand color and flips correctly in dark mode. A per-element sw-nav-* on a specific .menu OVERRIDES the site-wide pick for THAT menu (they never collide) — so a custom menu like a scrollspy table of contents can use its own effect (e.g. sw-nav-line-bottom) while the rest of the site keeps the Website-settings scheme. Want your own scheme? Leave Nav effect "None" in Website settings and write it in Custom CSS (target .active / the nav links).',
       },
       {
         id: 'fx-btn',

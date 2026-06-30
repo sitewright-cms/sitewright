@@ -217,7 +217,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'page',
     keywords: 'title path slug locale translations route data children',
     description:
-      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.locale, page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
+      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.description (its meta description), page.image (its OG/share image — wrap in {{sw-url page.image}}), page.locale, page.defaultLocale (the site’s default language — equals page.locale on an unprefixed default-locale page), page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
     example: '<title>{{page.title}}</title>\n<body id="{{page.slug}}">',
   },
   {
@@ -290,13 +290,14 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     id: 'n-pages',
     syntax: 'pages.<slug>.<slug>…',
     name: 'pages',
-    keywords: 'pages cross-page other page data shared global slug tree navigate sibling',
+    keywords: 'pages cross-page other page data shared global slug tree navigate sibling children subtree overview index',
     description:
-      'DIRECT access to ANOTHER page’s data by slug PATH. Walk the page tree by slug from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo”. Each node exposes .title, .slug, .path (its full route — use {{sw-url pages.x.path}}), .locale and .data (that page’s page.data). Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty. NOTE: the 5 node fields (data, title, path, slug, locale) take precedence, so a child page whose slug is exactly one of those words can’t be reached this way (rename it).',
+      'DIRECT access to ANOTHER page by slug PATH. Walk the page tree by slug from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo”. Each node exposes .title, .slug, .path (its full route — use {{sw-url pages.x.path}}), .description (its meta description), .image (its OG/share image — {{sw-url pages.x.image}}), .locale, .data (that page’s page.data), and .children (its direct child pages, the SAME array shape as page.children — so an overview on ANOTHER page can list a subtree, e.g. a home grid that lists the service pages). Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty. NOTE: the node fields (data, title, path, slug, locale, description, image, children) take precedence, so a child page whose slug is exactly one of those words can’t be reached this way (rename it).',
     example:
-      '{{! reuse another page’s data + link to it }}\n' +
+      '{{! reuse another page’s data, link to it, and list its children }}\n' +
       '<h2>{{pages.services.seo.data.header_title}}</h2>\n' +
-      '<a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>',
+      '<a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>\n' +
+      '{{#each pages.services.children}}<a href="{{sw-url path}}">{{title}}</a>{{/each}}',
   },
   {
     namespace: 'dataset',

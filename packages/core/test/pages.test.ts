@@ -76,6 +76,34 @@ describe('pagesContext', () => {
     expect(dig(ctx, 'services', 'seo')).toBeUndefined(); // seo never referenced
   });
 
+  it('exposes a node.children ARRAY (same view as page.children) so another page can list a subtree', () => {
+    // The home page lists the services page's children via pages.services.children.
+    const ctx = pagesContext(PAGES, home, 'en', '{{#each pages.services.children}}{{path}}{{/each}}');
+    const kids = dig(ctx, 'services', 'children') as Array<Record<string, unknown>>;
+    expect(Array.isArray(kids)).toBe(true);
+    expect(kids.map((k) => k.path)).toEqual(['/services/seo']); // the one child of /services, full route
+    expect(kids[0]!.title).toBe('SEO');
+    // children is GATED to referenced uses: when not referenced it is an empty array.
+    const unref = pagesContext(PAGES, home, 'en', '{{pages.services.path}}');
+    expect(dig(unref, 'services', 'children')).toEqual([]);
+  });
+
+  it('exposes a node’s image + description (always present, like title) for cross-page reuse', () => {
+    const withMeta = [...PAGES, page({ id: 'about', path: 'about', title: 'About', description: 'Who we are', image: '/media/og.jpg' })];
+    const ctx = pagesContext(withMeta, home, 'en', '{{pages.about.image}} {{pages.about.description}} {{pages.services.image}}');
+    expect(dig(ctx, 'about', 'image')).toBe('/media/og.jpg');
+    expect(dig(ctx, 'about', 'description')).toBe('Who we are');
+    expect(dig(ctx, 'services', 'image')).toBe(''); // present-but-empty when the referenced page has none
+  });
+
+  it('reaches a ROOT-LEVEL sibling of home (not just home’s children) — the import structure', () => {
+    // `contact` is a top-level page with NO parent (a sibling of home), like an imported site's pages.
+    const withSibling = [...PAGES, page({ id: 'contact', path: 'contact', title: 'Contact', data: { phone: '123' } })];
+    const ctx = pagesContext(withSibling, home, 'en', '{{pages.contact.data.phone}} {{#each pages.services.children}}{{path}}{{/each}}');
+    expect(dig(ctx, 'contact', 'data', 'phone')).toBe('123'); // root sibling resolves
+    expect((dig(ctx, 'services', 'children') as Array<Record<string, unknown>>).map((k) => k.path)).toEqual(['/services/seo']);
+  });
+
   it('returns undefined when pages is not referenced or the locale has no home', () => {
     expect(pagesContext(PAGES, home, 'en', '<p>no refs</p>')).toBeUndefined();
     expect(pagesContext(PAGES, page({ id: 'x', locale: 'fr' }), 'en', '{{pages.x}}')).toBeUndefined();

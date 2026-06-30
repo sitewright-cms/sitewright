@@ -10,6 +10,7 @@ export {
   applyFoundation,
   extractColors,
   extractTypography,
+  extractBodyBgImage,
   foundationCriticalCss,
   nativeMainNav,
   nativeFooter,

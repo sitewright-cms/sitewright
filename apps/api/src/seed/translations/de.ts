@@ -149,6 +149,14 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       'Ein frei gestaltbares, schließbares Hinweis-Banner — Promos, Hinweise, „seht euch unser neuestes Produkt an“. Die Runtime blendet es ein und merkt sich die Schließung je nach Häufigkeit in localStorage. Nicht das Consent-Banner.',
     data: { bn_bg: assets['blog-design'] ?? '' }, // the rich-background demo image (locale-independent)
   },
+  'comp-consent': {
+    path: 'einwilligung',
+    title: 'Consent Manager',
+    navTitle: 'Consent Manager',
+    description:
+      'DSGVO-/ePrivacy-Einwilligung für Drittinhalte: Eine echte YouTube-Einbettung wird BLOCKIERT (keine Anfrage an Google, keine Cookies), bis der Besucher eine vorherige, informierte, granulare Einwilligung gibt. Der Consent Manager fügt das Banner automatisch ein, sperrt Einbettungen + Skripte pro Kategorie und leitet die CSP ab.',
+    data: {},
+  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

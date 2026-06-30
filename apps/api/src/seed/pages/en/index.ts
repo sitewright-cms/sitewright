@@ -7,6 +7,7 @@ import { pageComponentsLightbox } from './components-lightbox.js';
 import { pageComponentsTabs } from './components-tabs.js';
 import { pageComponentsModal } from './components-modal.js';
 import { pageComponentsBanner } from './components-banner.js';
+import { pageComponentsConsent } from './components-consent.js';
 import { pageComponentsForms } from './components-forms.js';
 import { pageComponentsDateTimePicker } from './components-datetimepicker.js';
 import { pageComponentsParallax } from './components-parallax.js';
@@ -41,6 +42,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsTabs(),
     pageComponentsModal(),
     pageComponentsBanner(assets),
+    pageComponentsConsent(),
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
     pageComponentsParallax(),

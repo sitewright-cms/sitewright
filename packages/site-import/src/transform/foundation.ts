@@ -29,6 +29,25 @@ export function readCssVars(cssText: string): Map<string, string> {
   return out;
 }
 
+/**
+ * The source site's CONTENT-CONTAINER width (px) → website.containerWidth, so the clone's --sw-container
+ * matches the original (the platform default is 1200; a real site is often 1140/1320/1400). Read from a
+ * width-ish CSS custom property (e.g. --template-width:1400px, --container-width, --content-width, --site-
+ * width, --wrapper) — the most reliable signal; the `.container` rule itself is media-query-noisy. Returns
+ * undefined when there's no clear signal (keep the default). Bounded to a sane content range.
+ */
+export function extractContentWidth(cssText: string): string | undefined {
+  let best: number | undefined;
+  for (const [name, raw] of readCssVars(cssText)) {
+    if (!/^(template|container|content|site|page|wrapper|wrap|layout|max)[-_]?width$/i.test(name)) continue;
+    const m = /(\d{3,4})px/.exec(raw);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (n >= 960 && n <= 1920 && (best === undefined || n > best)) best = n;
+  }
+  return best === undefined ? undefined : `${best}px`;
+}
+
 /** Resolve a value that may be `var(--x[, fallback])`, one or a few levels deep. */
 function resolveVar(value: string, vars: Map<string, string>, depth = 0): string {
   if (depth > 5) return value;
@@ -343,6 +362,8 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   delete websiteIn.sidebarRight;
   const bodyImage = input.assetMap ? extractBodyBgImage(input.cssText, input.assetMap) : '';
   websiteIn.criticalCss = foundationCriticalCss(colors['base-200'], bodyImage);
+  const contentWidth = extractContentWidth(input.cssText);
+  if (contentWidth) websiteIn.containerWidth = contentWidth; // match the source's content width (default is 1200)
   websiteIn.mainNav = nativeMainNav(identity); // single consolidated nav slot
   websiteIn.footer = nativeFooter(identity);
   const website = WebsiteSettingsSchema.parse(websiteIn);

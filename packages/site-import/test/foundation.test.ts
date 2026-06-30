@@ -5,6 +5,7 @@ import {
   cleanNavLabel,
   configurePageNav,
   extractBodyBgImage,
+  extractContentWidth,
   extractColors,
   extractTypography,
   foundationCriticalCss,
@@ -119,6 +120,17 @@ describe('foundationCriticalCss', () => {
     const css = foundationCriticalCss('#cccccc', real);
     expect(css).toContain(real);
     expect(css).not.toContain('fractalNoise');
+  });
+});
+
+describe('extractContentWidth', () => {
+  it('reads a width-ish CSS var (the reliable signal)', () => {
+    expect(extractContentWidth(':root{--template-width:1400px}body{x:1}')).toBe('1400px');
+    expect(extractContentWidth('--content-width: 1320px;')).toBe('1320px');
+  });
+  it('ignores out-of-range + non-width vars, returns undefined with no signal', () => {
+    expect(extractContentWidth('--gap-width:24px;--primary-color:#fff')).toBeUndefined();
+    expect(extractContentWidth('.container{max-width:1140px}')).toBeUndefined(); // not a var → no false positive
   });
 });
 

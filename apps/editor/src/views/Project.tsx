@@ -308,11 +308,15 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       setAddError(id === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${id}" already exists.`);
       return;
     }
+    // A new page is added as the LAST child of (its locale's) home — one past the highest sibling order.
+    const newParent = localeOnly ? localeHomeId(currentLocale) : homeId;
+    const sibOrders = pages.filter((p) => p.parent === newParent).map((p) => p.order ?? 0);
     const starter: Page = {
       id,
       path: seg,
       title,
       source: CODE_PAGE_STARTER,
+      order: sibOrders.length ? Math.max(...sibOrders) + 1 : 0,
       ...(localeOnly
         ? { parent: localeHomeId(currentLocale), locale: currentLocale } // standalone, lives only in this language
         : { parent: homeId }), // the default-language owner (the code source of truth)

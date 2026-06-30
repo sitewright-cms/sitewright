@@ -76,6 +76,18 @@ describe('pagesContext', () => {
     expect(dig(ctx, 'services', 'seo')).toBeUndefined(); // seo never referenced
   });
 
+  it('exposes a node.children ARRAY (same view as page.children) so another page can list a subtree', () => {
+    // The home page lists the services page's children via pages.services.children.
+    const ctx = pagesContext(PAGES, home, 'en', '{{#each pages.services.children}}{{path}}{{/each}}');
+    const kids = dig(ctx, 'services', 'children') as Array<Record<string, unknown>>;
+    expect(Array.isArray(kids)).toBe(true);
+    expect(kids.map((k) => k.path)).toEqual(['/services/seo']); // the one child of /services, full route
+    expect(kids[0]!.title).toBe('SEO');
+    // children is GATED to referenced uses: when not referenced it is an empty array.
+    const unref = pagesContext(PAGES, home, 'en', '{{pages.services.path}}');
+    expect(dig(unref, 'services', 'children')).toEqual([]);
+  });
+
   it('returns undefined when pages is not referenced or the locale has no home', () => {
     expect(pagesContext(PAGES, home, 'en', '<p>no refs</p>')).toBeUndefined();
     expect(pagesContext(PAGES, page({ id: 'x', locale: 'fr' }), 'en', '{{pages.x}}')).toBeUndefined();

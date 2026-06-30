@@ -720,10 +720,11 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    pages (a services index linking to /services/*, a blog/team index), iterate {{#each page.children}} —
    each child exposes navTitle/title, path (wrap href in {{sw-url path}}), image ({{sw-url image}}),
    description, and its own data — instead of duplicating those pages into a dataset (the import infers a
-   dataset because it can't tell; consolidate to page.children + delete the redundant dataset). page.children
-   is the CURRENT page's direct children, so this fits the parent/index page (the services index). A grid on
-   a DIFFERENT page (e.g. the home page showing services that live under /services) is NOT its child — those
-   stay a dataset (or hand-authored links). Reserve datasets for content that is NOT already a page.
+   dataset because it can't tell; consolidate + delete the redundant dataset). page.children is the CURRENT
+   page's direct children (fits the index page itself, e.g. the services index). For a grid on a DIFFERENT
+   page (e.g. the HOME page showing the pages under /services) use {{#each pages.services.children}} (the
+   pages binding reaches ANY page's children by slug — same item shape as page.children). Reserve datasets
+   for content that is NOT already a page. Loop fields stay BARE (no data-sw-* inside the children loop).
    The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
    rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
    slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it

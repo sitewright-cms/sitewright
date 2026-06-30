@@ -1,6 +1,7 @@
 import type { JsonValue, Page } from '@sitewright/schema';
 import { pagesById, pagePath } from './routes.js';
 import { localeOf, localeHomeFor } from './i18n.js';
+import { childrenOf as childViewsOf } from './children.js';
 
 // The `pages` namespace: cross-page DIRECT access by slug path, rooted at the CURRENT page's locale
 // HOME and walked by slug — `{{ pages.services.seo.data.header_title }}` reads the /services/seo page's
@@ -9,17 +10,22 @@ import { localeOf, localeHomeFor } from './i18n.js';
 // the German subtree via localized slugs) and built REFERENCED-ONLY — a page that never names `pages`
 // ships no `pages` payload (the gate below), and only the nodes actually referenced are serialized.
 //
+// Each node also exposes `children` — an ARRAY of its direct child pages (same projection as
+// `page.children`: title/navTitle/path/image/description/data) — so an overview on ANOTHER page can list a
+// subtree: `{{#each pages.services.children}}…{{path}}…{{/each}}`. (page.children only sees the CURRENT
+// page's children; `pages.X.children` reaches any page's.)
+//
 // COLLISIONS: a node carries both child pages (by slug) AND its own fields, so a child whose slug is one
-// of the 5 RESERVED field names (`data`/`title`/`path`/`slug`/`locale`) would be ambiguous. We resolve it
-// deterministically — the reserved fields are assigned LAST, so they always WIN: `pages.x.data` is always
-// the data object, `pages.x.title` always the title string. Such a child is simply not reachable via the
-// bare-slug walk (slugs are lowercase [a-z0-9-], so only those 5 words can ever collide — very rare).
+// of the RESERVED field names (`data`/`title`/`path`/`slug`/`locale`/`children`) would be ambiguous. We
+// resolve it deterministically — the reserved fields are assigned LAST, so they always WIN: `pages.x.data`
+// is always the data object, `pages.x.children` always the child array. Such a child is simply not
+// reachable via the bare-slug walk (slugs are lowercase [a-z0-9-], so only those words can ever collide).
 
-/** A built page node: the lean view + `data`, plus child nodes keyed by slug. Reserved keys win. */
+/** A built page node: the lean view + `data` + `children`, plus child nodes keyed by slug. Reserved keys win. */
 type PageNode = Record<string, unknown>;
 
 /** Node field names that take precedence over a same-named child slug (the collision rule). */
-const RESERVED_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale']);
+const RESERVED_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale', 'children']);
 
 /** Upper bound on total nodes built for one page's `pages` context (payload / DoS guard). */
 export const MAX_PAGES_NODES = 500;
@@ -83,6 +89,7 @@ export function pagesContext(
     const out: PageNode = {};
     const childChains = new Map<string, string[][]>(); // child slug → remaining chains
     let needData = false;
+    let needChildren = false;
     if (depth < MAX_PAGES_DEPTH) {
       const kids = childrenOf(node.id);
       for (const chain of chains) {
@@ -92,6 +99,7 @@ export function pagesContext(
         // child whose slug is e.g. "data" can never be descended into (reserved wins, deterministically).
         if (RESERVED_FIELDS.has(seg)) {
           if (seg === 'data') needData = true; // gate the (only large) field; title/slug/path/locale are always present
+          else if (seg === 'children') needChildren = true; // gate the child-array build to referenced uses
           continue;
         }
         const kid = kids.find((k) => k.path === seg);
@@ -117,6 +125,9 @@ export function pagesContext(
     out.path = pagePath(node, byId);
     out.locale = locale;
     out.data = needData ? ((node.data as JsonValue | undefined) ?? {}) : {};
+    // `children`: the SAME flattened view as `page.children` (title/navTitle/path/image/description/data),
+    // built only when referenced. `[]` keeps `pages.x.children` deterministic when not referenced.
+    out.children = needChildren ? childViewsOf(pages, node, defaultLocale) : [];
     return out;
   };
 

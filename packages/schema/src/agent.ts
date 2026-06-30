@@ -731,15 +731,12 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    its entries + loops. rename_dataset ALSO takes a "name" — set a human display name so the dataset doesn't
    stay the import's generic "List"/"List 2" in the editor. ITEM KEYS (entry ids) follow the same rule: they
    are underscore identifiers (used as {{item.<dataset>.<id>}} paths + data-sw-entry edit handles), NEVER
-   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). And make the loop EDITABLE: put
-   data-sw-text / data-sw-html on each field INSIDE the {{#each}} ({{title}} → <span data-sw-text="title">
-   {{title}}</span>) so the client can edit every item — a loop with bare {{field}} and no directives renders
-   but can't be edited. EDITING UX (tell the client): once every field carries a data-sw-* directive the whole
-   card is editable leaves, so a CLICK on a field edits THAT field in place — it does NOT open the structured
-   item editor. To open the full item editor, hover the row and click its teal "entry" badge (or use the
-   Regions side-panel, or click the row's non-field whitespace). This is expected, not a bug. (Don't worry
-   that clicking the visible content edits a field — that is the in-place edit; the item editor is the badge.)
-   GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
+   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). LOOP FIELDS STAY BARE — do NOT put
+   data-sw-* directives inside a {{#each dataset.X}} ({{title}}, src="{{sw-url image}}", NOT
+   <span data-sw-text>). A dataset is edited in the DATASET EDITOR (the data rail), and the editor auto-marks
+   each rendered row with data-sw-entry so a CLICK on the row in the preview opens that item's editor — you
+   don't (and must not) add per-field directives. data-sw-* is for page-level content (page.data / {{sw-control}}),
+   not dataset rows. GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
    rows by slug — so after rename_dataset, any entry you re-put (e.g. to add a field) must carry the NEW slug
    in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
    rename, or set the "dataset" field to the new slug explicitly.

@@ -358,18 +358,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function closeControlPop() { if (cpop) cpop.style.display = 'none'; cpopEl = null; document.removeEventListener('mousedown', onControlDocDown, true); }
   function onControlClick(e) { if (!editing) return; e.preventDefault(); e.stopPropagation(); openControlPop(e.currentTarget); }
 
-  // --- Dataset rows ([data-sw-entry]): click opens that entry's editor (unless the click is on an
-  //     editable leaf, which wins). data-sw-href/src/bg already stopPropagation in their handlers. ---
+  // --- Dataset rows ([data-sw-entry]): a click ANYWHERE in the row opens that entry's item editor (the
+  //     structured form edits every field). In-place editing is DISABLED for fields inside a loop (see
+  //     setEditing) — a fully data-sw-* editable card would otherwise swallow the click into a field and
+  //     the item editor would be unreachable. Capture phase + stopPropagation so this beats a field's own
+  //     bubble handler (img picker / link popover) AND a component's click (e.g. carousel advance). ---
   function onEntryClick(e) {
     if (!editing) return;
-    // Capture phase: let a click on an editable LEAF inside the entry reach that leaf's own handler
-    // (text/html inline edit, href/src/bg/control popovers + pickers — which stopPropagation in bubble);
-    // only a click on the entry's NON-editable chrome (e.g. the hero slide body) opens the entry.
-    if (e.target && e.target.closest && e.target.closest('[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control]')) return;
     var el = closestAttr(e.target, 'data-sw-entry');
     if (!el) return;
     e.preventDefault();
-    e.stopPropagation(); // win over a component's own click handler (e.g. carousel data-click-next)
+    e.stopPropagation();
     post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
   }
 
@@ -405,6 +404,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function postRegions() {
     var items = [], rid = 0;
     eachEl(REGION_SEL, function (el) {
+      // A field INSIDE a dataset row isn't a standalone region — the whole row is one "entry" region that
+      // opens the item editor (its fields are edited there), so list the row, not its inner leaves.
+      if (!el.hasAttribute('data-sw-entry') && el.closest && el.closest('[data-sw-entry]')) return;
       el.setAttribute('data-sw-rid', String(rid));
       var info = regionInfo(el); info.rid = rid;
       items.push(info); rid++;
@@ -450,6 +452,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   // Open the editor for a SPECIFIC directive on el — reused by both an overlay badge click and editRegion.
   function editDirective(el, kind) {
     closePop(); closeControlPop(); closeTextPop(); // never stack popovers
+    // A FIELD inside a dataset row (incl. a tile whose ROOT carries data-sw-bg/src, so the whole card is an
+    // image leaf) is edited via the row's item editor — redirect a field badge / region click to open it.
+    if (kind !== 'entry') {
+      var row = el.closest && el.closest('[data-sw-entry]');
+      if (row) { post({ type: 'open-entry', dataset: row.getAttribute('data-sw-dataset') || '', id: row.getAttribute('data-sw-entry') || '' }); return; }
+    }
     var onScreen = el.getClientRects().length;
     if (kind === 'entry') { post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' }); return; }
     if (kind === 'control') { openControlPop(el); return; }
@@ -647,9 +655,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (on === editing) return;
     editing = on;
     if (on) ensureStyle();
+    // A FIELD inside a dataset loop row is edited via the row's item editor (a click opens it — onEntryClick),
+    // NOT in-place: a fully-editable card would otherwise capture every click into a field, leaving the item
+    // editor unreachable. So skip in-place wiring for any leaf inside a [data-sw-entry].
+    var inEntry = function (el) { return !!(el.closest && el.closest('[data-sw-entry]')); };
     // Plain text — skip anchors that are link-editable (their text rides in the popover).
     eachEl('[data-sw-text]', function (el) {
-      if (el.hasAttribute('data-sw-href')) return;
+      if (el.hasAttribute('data-sw-href') || inEntry(el)) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
     });
@@ -660,17 +672,19 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     });
     // Rich
     eachEl('[data-sw-html]', function (el) {
+      if (inEntry(el)) return;
       if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
-      if (el.hasAttribute('data-sw-html')) return;
+      if (el.hasAttribute('data-sw-html') || inEntry(el)) return;
       if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
     });
     // Images + backgrounds — click to replace via the editor's file picker.
     eachEl('[data-sw-src],[data-sw-bg]', function (el) {
+      if (inEntry(el)) return;
       if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
     });

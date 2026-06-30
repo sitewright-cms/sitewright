@@ -310,6 +310,21 @@ describe('Consent author-content gating (jsdom)', () => {
     expect(gateBtn('Always allow')).toBeTruthy();
   });
 
+  it('UNWRAPS the iframe on load so it regains its authored (fluid) sizing', () => {
+    // jsdom's getBoundingClientRect returns 0, so the PIN path (wrap.style.width/height) is not hit here — the
+    // Playwright render matrix covers the pin. This test covers only the wrap creation + unwrap-on-load.
+    runWith(HELD_MARKETING);
+    const fr = heldIframe();
+    const wrap = fr.parentElement!;
+    expect(wrap.classList.contains('sw-gate-wrap')).toBe(true);
+    const originalParent = wrap.parentElement!; // where the iframe lived before wrapping
+    gateBtn('Allow once').click();
+    expect(fr.getAttribute('src')).toBe('https://x.example/v'); // loaded
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // the sizing wrapper is gone
+    expect(document.querySelector('.sw-gate-ph')).toBeNull(); // overlay removed
+    expect(fr.parentElement).toBe(originalParent); // iframe restored to its original spot (fluid sizing intact)
+  });
+
   it('does NOT wrap an already-positioned (responsive) iframe — overlays in the author box instead', () => {
     // The padding-top responsive pattern: the iframe is position:absolute inside the author's own box. A
     // wrapper would collapse, so the placeholder is dropped in as a sibling that fills the same box.
@@ -336,6 +351,7 @@ describe('Consent author-content gating (jsdom)', () => {
     gateBtn('Always allow').click();
     expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
     expect(stored()).toMatchObject({ cats: { marketing: true } });
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // unwrapped on this load path too
   });
 
   it('loads a held iframe when its category is granted via the banner (consentchange)', () => {
@@ -343,6 +359,7 @@ describe('Consent author-content gating (jsdom)', () => {
     expect(heldIframe().getAttribute('src')).toBeNull();
     btn('Accept all').click();
     expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // unwrapped on the consentchange load path too
   });
 
   it('loads a held iframe immediately when its category was already consented (returning visitor)', () => {

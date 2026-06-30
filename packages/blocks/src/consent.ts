@@ -163,10 +163,14 @@ export const CONSENT_JS = `(function(){
   function gcat(node){var c=node.getAttribute('data-sw-consent-cat')||node.getAttribute('data-sw-consent')||'';return GCATS[c]?c:'functional';}
   function loadGatedIframe(fr){
     if(fr.getAttribute('data-sw-gate-done')==='1')return;fr.setAttribute('data-sw-gate-done','1');
+    // Remove the overlay placeholder, then UNWRAP — restore the iframe to its original spot so it regains its
+    // authored (fluid) sizing; the pinned wrapper existed only to give the overlay the iframe's dimensions while
+    // held. Do this BEFORE setting src: re-parenting an iframe reloads it, so moving it first means src is set
+    // once, in its final position (no double navigation, no flicker).
+    var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
+    var wrap=fr.__swWrap;if(wrap&&wrap.parentNode){wrap.parentNode.insertBefore(fr,wrap);wrap.parentNode.removeChild(wrap);}fr.__swWrap=null;
     var src=fr.getAttribute('data-sw-consent-src');fr.removeAttribute('data-sw-consent-src');
     if(src)fr.setAttribute('src',src);
-    // Remove the overlay placeholder — the iframe (which sized the wrapper) now shows its content inside it.
-    var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
   }
   function activateGatedScript(sc){
     if(sc.getAttribute('data-sw-gate-done')==='1')return;sc.setAttribute('data-sw-gate-done','1');
@@ -205,10 +209,17 @@ export const CONSENT_JS = `(function(){
     if(pos==='absolute'||pos==='fixed'){
       if(fr.parentNode)fr.parentNode.insertBefore(ph,fr.nextSibling);
     }else{
+      // MEASURE the iframe's natural rendered box BEFORE moving it, then PIN the wrapper to it. A width:100%
+      // / auto-width iframe (no intrinsic size — YouTube's responsive snippet, aspect-video + w-full, attrs +
+      // width:100%) has nothing for the shrink-to-fit wrapper to hug, so without this it collapses to the
+      // ~300px iframe default. The overlay (inset:0) then fills the pinned box; loadGatedIframe unwraps on load.
+      var rect=null;try{rect=fr.getBoundingClientRect();}catch(e){}
       var wrap=el('span',{cls:'sw-gate-wrap'});
+      if(rect&&rect.width>1&&rect.height>1){wrap.style.width=Math.round(rect.width)+'px';wrap.style.height=Math.round(rect.height)+'px';}
       if(fr.parentNode)fr.parentNode.insertBefore(wrap,fr);
-      wrap.appendChild(fr); // move the iframe into the wrapper (it stays in flow → gives the box its size)
+      wrap.appendChild(fr); // move the iframe into the wrapper
       wrap.appendChild(ph); // overlay
+      fr.__swWrap=wrap;
     }
     fr.__swPh=ph;
   }

@@ -237,7 +237,11 @@ Quick rules vs the similar-looking DaisyUI classes:
   the dismissal. data-sw-part="dismiss" (frequency-bound) / "dismiss-forever" ("don't show again") /
   "remind" (snooze data-remind-days). data-frequency="once|session|days:N|always", data-position
   (bottom/top/corners/center/inline), data-delay (ms or "scroll"); give each a UNIQUE
-  data-sw-banner-id. Place ONCE per banner (a chrome slot OR a single page body). Recipes to copy:
+  data-sw-banner-id. Place ONCE per banner (a chrome slot OR a single page body). ENTRANCE: a fade+rise
+  by default, or add data-aos="fade-up|zoom-in|flip-left|…" (+ data-aos-delay/-duration/-easing) — the
+  dismiss reverses it. RICH BACKGROUND (photo / gradient / nested data-sw-component="shader-bg"): an
+  inline banner is position:static, so put the absolute media + scrim in an INNER relative wrapper (else
+  they escape the box), give the root overflow-hidden + a light text colour. Recipes to copy:
   banner-bar / banner-card / banner-modal.
 - DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):
   a CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in

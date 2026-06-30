@@ -40,7 +40,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsLightbox(),
     pageComponentsTabs(),
     pageComponentsModal(),
-    pageComponentsBanner(),
+    pageComponentsBanner(assets),
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
     pageComponentsParallax(),

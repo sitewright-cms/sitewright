@@ -88,6 +88,14 @@ describe('pagesContext', () => {
     expect(dig(unref, 'services', 'children')).toEqual([]);
   });
 
+  it('reaches a ROOT-LEVEL sibling of home (not just home’s children) — the import structure', () => {
+    // `contact` is a top-level page with NO parent (a sibling of home), like an imported site's pages.
+    const withSibling = [...PAGES, page({ id: 'contact', path: 'contact', title: 'Contact', data: { phone: '123' } })];
+    const ctx = pagesContext(withSibling, home, 'en', '{{pages.contact.data.phone}} {{#each pages.services.children}}{{path}}{{/each}}');
+    expect(dig(ctx, 'contact', 'data', 'phone')).toBe('123'); // root sibling resolves
+    expect((dig(ctx, 'services', 'children') as Array<Record<string, unknown>>).map((k) => k.path)).toEqual(['/services/seo']);
+  });
+
   it('returns undefined when pages is not referenced or the locale has no home', () => {
     expect(pagesContext(PAGES, home, 'en', '<p>no refs</p>')).toBeUndefined();
     expect(pagesContext(PAGES, page({ id: 'x', locale: 'fr' }), 'en', '{{pages.x}}')).toBeUndefined();

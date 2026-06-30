@@ -91,7 +91,13 @@ export function pagesContext(
     let needData = false;
     let needChildren = false;
     if (depth < MAX_PAGES_DEPTH) {
-      const kids = childrenOf(node.id);
+      // At the ROOT (depth 0), a "top-level" page is reachable by slug whether it's a CHILD of the home
+      // page or a root-level SIBLING of it (both render at `/<slug>`) — the import makes top-level pages
+      // root siblings, so `pages.services` must find them either way. Deeper levels: a node's own children.
+      const kids =
+        depth === 0
+          ? pages.filter((p) => p.id !== home.id && (p.parent === home.id || !p.parent) && !p.collection && localeOf(p, defaultLocale) === locale)
+          : childrenOf(node.id);
       for (const chain of chains) {
         if (chain.length === 0) continue;
         const seg = chain[0]!;

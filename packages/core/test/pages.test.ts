@@ -88,6 +88,14 @@ describe('pagesContext', () => {
     expect(dig(unref, 'services', 'children')).toEqual([]);
   });
 
+  it('exposes a node’s image + description (always present, like title) for cross-page reuse', () => {
+    const withMeta = [...PAGES, page({ id: 'about', path: 'about', title: 'About', description: 'Who we are', image: '/media/og.jpg' })];
+    const ctx = pagesContext(withMeta, home, 'en', '{{pages.about.image}} {{pages.about.description}} {{pages.services.image}}');
+    expect(dig(ctx, 'about', 'image')).toBe('/media/og.jpg');
+    expect(dig(ctx, 'about', 'description')).toBe('Who we are');
+    expect(dig(ctx, 'services', 'image')).toBe(''); // present-but-empty when the referenced page has none
+  });
+
   it('reaches a ROOT-LEVEL sibling of home (not just home’s children) — the import structure', () => {
     // `contact` is a top-level page with NO parent (a sibling of home), like an imported site's pages.
     const withSibling = [...PAGES, page({ id: 'contact', path: 'contact', title: 'Contact', data: { phone: '123' } })];

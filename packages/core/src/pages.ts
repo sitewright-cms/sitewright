@@ -25,7 +25,7 @@ import { childrenOf as childViewsOf } from './children.js';
 type PageNode = Record<string, unknown>;
 
 /** Node field names that take precedence over a same-named child slug (the collision rule). */
-const RESERVED_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale', 'children']);
+const RESERVED_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale', 'children', 'image', 'description']);
 
 /** Upper bound on total nodes built for one page's `pages` context (payload / DoS guard). */
 export const MAX_PAGES_NODES = 500;
@@ -130,6 +130,10 @@ export function pagesContext(
     out.slug = node.path;
     out.path = pagePath(node, byId);
     out.locale = locale;
+    // The page's OG/share image + meta description — small lean fields (like title/path), always present,
+    // so another page can reuse them: `<img src="{{sw-url pages.about.image}}">`, `{{pages.about.description}}`.
+    out.image = node.image ?? '';
+    out.description = node.description ?? '';
     out.data = needData ? ((node.data as JsonValue | undefined) ?? {}) : {};
     // `children`: the SAME flattened view as `page.children` (title/navTitle/path/image/description/data),
     // built only when referenced. `[]` keeps `pages.x.children` deterministic when not referenced.

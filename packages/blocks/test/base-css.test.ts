@@ -34,6 +34,14 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('.prose :where(p, ul, ol, blockquote, figure, pre, table, hr, h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *))');
       expect(css).toContain('.prose > :where(:first-child):not(:where(.not-prose, .not-prose *)) { margin-top: 0; }');
     });
+    it('tames the UA list indent to a sane 1.25rem (not the ~40px browser default)', () => {
+      expect(css).toContain('ul, ol { padding-inline-start: 1.25rem; }');
+      // It must sit in the weak layer so daisyUI .menu + author pl-* utilities still win.
+      const ruleIdx = css.indexOf('ul, ol { padding-inline-start: 1.25rem; }');
+      const layerOpen = css.lastIndexOf('@layer sw-normalize {', ruleIdx);
+      expect(layerOpen).toBeGreaterThan(-1);
+      expect(ruleIdx).toBeGreaterThan(layerOpen);
+    });
     it('keeps both the reset and .prose inside the weak sw-normalize layer (utilities win)', () => {
       const resetIdx = css.indexOf('fieldset { margin: 0; }');
       const layerOpen = css.lastIndexOf('@layer sw-normalize {', resetIdx);
@@ -59,6 +67,16 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('/* Foundational box model');
       const platform = css.slice(css.indexOf('/* Foundational box model'));
       expect(platform).toMatch(/\*,\s*\*::before,\s*\*::after\s*{\s*box-sizing: border-box;/);
+    });
+
+    it('ships the content container + a full-bleed break-out utility (in the weak layer)', () => {
+      expect(css).toContain('.sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: var(--sw-container-gutter, 2rem); }');
+      // .sw-bleed cancels exactly the container gutter so a band spans the container edge-to-edge.
+      expect(css).toContain('.sw-bleed { margin-inline: calc(var(--sw-container-gutter, 2rem) * -1); }');
+      const bleedIdx = css.indexOf('.sw-bleed {');
+      const layerOpen = css.lastIndexOf('@layer sw-normalize {', bleedIdx);
+      expect(layerOpen).toBeGreaterThan(-1);
+      expect(bleedIdx).toBeGreaterThan(layerOpen);
     });
 
     it('links inherit colour (never UA blue); nav / menu / button links also drop the underline', () => {

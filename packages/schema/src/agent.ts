@@ -699,6 +699,13 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    the foreign content container (a .container / centered max-width wrapper) to the platform .sw-container so
    every section aligns to the site-wide Content width (the --sw-container var); keep full-bleed backgrounds
    on the <section> with the .sw-container inside. Sections are full-width (w-full), not pinned pixel widths.
+   FULL-BLEED INSIDE A CONTAINER: .sw-container carries a horizontal GUTTER (--sw-container-gutter, default
+   2rem). A colour band / hero / image strip placed INSIDE a padded .sw-container (e.g. a sheet-card layout
+   that wraps the whole page in one .sw-container) must add the .sw-bleed utility to span the container
+   EDGE-TO-EDGE — it cancels exactly the gutter; the band then supplies its own inner padding (px-6 etc.).
+   A coloured band sitting in a .sw-container WITHOUT .sw-bleed shows white side-gutters (a common miss).
+   (For a band that bleeds to the full VIEWPORT instead, make the <section> itself full-width with the
+   .sw-container nested inside, as above — don't wrap that band in an outer container at all.)
    AVOID DaisyUI RESERVED component class names as plain layout classes — steps / tabs / carousel / collapse
    / card / badge / menu etc. are COMPONENTS; e.g. <ol class="steps"> lays items out horizontally. Name your
    own wrappers something else (howto-steps), or you'll inherit a component's styling by accident.
@@ -708,6 +715,14 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
+   PREFER page.children FOR AN OVERVIEW OF REAL PAGES: when a grid lists pages that ALREADY EXIST as child
+   pages (a services index linking to /services/*, a blog/team index), iterate {{#each page.children}} —
+   each child exposes navTitle/title, path (wrap href in {{sw-url path}}), image ({{sw-url image}}),
+   description, and its own data — instead of duplicating those pages into a dataset (the import infers a
+   dataset because it can't tell; consolidate to page.children + delete the redundant dataset). page.children
+   is the CURRENT page's direct children, so this fits the parent/index page (the services index). A grid on
+   a DIFFERENT page (e.g. the home page showing services that live under /services) is NOT its child — those
+   stay a dataset (or hand-authored links). Reserve datasets for content that is NOT already a page.
    The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
    rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
    slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it
@@ -719,7 +734,12 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). And make the loop EDITABLE: put
    data-sw-text / data-sw-html on each field INSIDE the {{#each}} ({{title}} → <span data-sw-text="title">
    {{title}}</span>) so the client can edit every item — a loop with bare {{field}} and no directives renders
-   but can't be edited. GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
+   but can't be edited. EDITING UX (tell the client): once every field carries a data-sw-* directive the whole
+   card is editable leaves, so a CLICK on a field edits THAT field in place — it does NOT open the structured
+   item editor. To open the full item editor, hover the row and click its teal "entry" badge (or use the
+   Regions side-panel, or click the row's non-field whitespace). This is expected, not a bug. (Don't worry
+   that clicking the visible content edits a field — that is the in-place edit; the item editor is the badge.)
+   GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
    rows by slug — so after rename_dataset, any entry you re-put (e.g. to add a field) must carry the NEW slug
    in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
    rename, or set the "dataset" field to the new slug explicitly.
@@ -784,7 +804,13 @@ data-driven desktop bar + pure-CSS mobile drawer + language/theme toggles; ADAPT
 look: wrap it in the right CONTAINER (e.g. a .sw-container / centered max-width bar — the etaxi header needs
 one), set the brand-bar background + height, logo placement, spacing, and link styling. KEEP IT DATA-DRIVEN —
 build the items from the loop {{#each nav.header}}…{{sw-label}}…{{/each}}; NEVER write a fixed list of <a href>
-entries. A nav <ul> needs an explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
+entries. KEEP THE LIST AS <ul class="menu menu-horizontal"> (the default recipe's structure): the nav-effect
+and scrollspy CSS target ".menu a", so if you strip .menu the site-wide nav effects + scroll-spy SILENTLY
+stop working. Put whitespace-nowrap on the nav links (or the menu) so a label like "About Us" / "Contact Us"
+never WRAPS to two lines when the bar is tight. If the brand has a TAGLINE/slogan next to the logo, keep it
+SMALL + secondary (e.g. text-xs leading-tight text-base-content/60, hidden below xl) — a large slogan eats the
+bar's width and forces the nav to wrap; the logo + name stay the primary mark. A nav <ul> also needs an
+explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
 appears otherwise). A menu item exists because a PAGE opts into the slot: set each page's nav:{ slots:["header"],
 title:"<short label>", order } (footer links the same via {{#each nav.footer}} / {{> nav-footer}}, also usually
 copied + adapted). See get_guide("nav").

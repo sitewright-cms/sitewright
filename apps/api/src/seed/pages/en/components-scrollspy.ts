@@ -59,19 +59,19 @@ export function pageComponentsScrollSpy(): Page {
   </div>
 
   <div class="min-w-0">
-    <section id="overview" class="flex min-h-[78vh] flex-col justify-center border-b border-base-200 py-10">
+    <section id="overview" class="flex min-h-[78vh] flex-col border-b border-base-200 py-10">
       <h2 class="text-3xl font-bold tracking-tight" data-sw-text="overview_t">A live table of contents</h2>
       <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="overview_d">This sticky menu carries data-sw-scrollspy.</p>
     </section>
-    <section id="how" class="flex min-h-[78vh] flex-col justify-center border-b border-base-200 py-10">
+    <section id="how" class="flex min-h-[78vh] flex-col border-b border-base-200 py-10">
       <h2 class="text-3xl font-bold tracking-tight" data-sw-text="how_t">How it works</h2>
       <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="how_d">The runtime finds the section under the header offset.</p>
     </section>
-    <section id="anchors" class="flex min-h-[78vh] flex-col justify-center border-b border-base-200 py-10">
+    <section id="anchors" class="flex min-h-[78vh] flex-col border-b border-base-200 py-10">
       <h2 class="text-3xl font-bold tracking-tight" data-sw-text="anchors_t">Path-prefixed anchors &amp; the site-wide toggle</h2>
       <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="anchors_d">Links resolve only to sections on the current page.</p>
     </section>
-    <section id="a11y" class="flex min-h-[78vh] flex-col justify-center py-10">
+    <section id="a11y" class="flex min-h-[78vh] flex-col py-10">
       <h2 class="text-3xl font-bold tracking-tight" data-sw-text="a11y_t">Accessible &amp; resilient</h2>
       <p class="mt-3 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="a11y_d">The active link is marked aria-current; focus is never stolen.</p>
     </section>

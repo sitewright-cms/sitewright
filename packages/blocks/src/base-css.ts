@@ -161,6 +161,12 @@ const PLATFORM_DEFAULTS = `
    none\` → full-bleed (no cap). In the weak sw-normalize layer so author utilities/CSS override it. */
 @layer sw-normalize {
   .sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: var(--sw-container-gutter, 2rem); }
+  /* FULL-BLEED escape hatch: a DIRECT child of a padded \`.sw-container\` (or any box with the same
+     gutter) breaks OUT of the inline gutter to span the container edge-to-edge — for a colour band /
+     hero / image strip that must touch the container edges while neighbouring content keeps the gutter.
+     The element supplies its OWN inner padding (e.g. \`px-6\`) for its content. Cancels exactly the
+     \`--sw-container-gutter\` (default 2rem). In the weak layer so an author \`mx-*\` utility still wins. */
+  .sw-bleed { margin-inline: calc(var(--sw-container-gutter, 2rem) * -1); }
 }
 
 /* Inline code / keyboard / sample / preformatted text get a light "chip" treatment
@@ -240,6 +246,11 @@ const PLATFORM_DEFAULTS = `
    would close the CSS comment early and drop the rule below (the original bug this fixes). */
 @layer sw-normalize {
   h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr, ul, ol, fieldset { margin: 0; }
+  /* Tame the UA list indent: browsers default ul/ol to ~40px padding-inline-start, which over-indents
+     authored lists (a footer link column reads pushed-in). A 1.25rem default keeps markers visible for
+     \`.prose\` lists while looking intentional everywhere else. Weak layer → daisyUI \`.menu\` and author
+     utilities (\`pl-0\`, \`list-none\` + \`pl-*\`, \`px-*\`) still win. */
+  ul, ol { padding-inline-start: 1.25rem; }
 }
 
 /* Rich/markdown content opt-in: class="prose" restores a readable vertical rhythm to authored

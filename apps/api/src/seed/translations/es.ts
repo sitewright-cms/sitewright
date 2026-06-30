@@ -147,6 +147,14 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       'Un banner de aviso de contenido libre y descartable — promos, alertas, «mira nuestro último producto». El runtime lo muestra y recuerda el cierre en localStorage según su frecuencia. No es el banner de consentimiento.',
     data: { bn_bg: assets['blog-design'] ?? '' }, // the rich-background demo image (locale-independent)
   },
+  'comp-consent': {
+    path: 'consentimiento',
+    title: 'Consent Manager',
+    navTitle: 'Consent Manager',
+    description:
+      'Consentimiento RGPD/ePrivacy para contenido de terceros: una incrustación real de YouTube se BLOQUEA (sin petición a Google, sin cookies) hasta que el visitante da un consentimiento previo, informado y granular. El Consent Manager inyecta el banner, bloquea incrustaciones + scripts por categoría y deriva la CSP.',
+    data: {},
+  },
   'comp-parallax': {
     path: 'parallax',
     title: 'Parallax',

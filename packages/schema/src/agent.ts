@@ -514,7 +514,11 @@ prefixed by the Corporate-Identity name ("Hi <name> — …").
     title: "Cookie consent & third-party gating",
     summary: "a cookie banner that loads analytics/chatbots/embeds ONLY after consent (+ derives the CSP)",
     body: `
-CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. Just turn it
+CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. It helps a site
+meet GDPR (Art. 6/7 — a lawful basis + freely-given, informed consent) and the ePrivacy "Cookie Law" (Art.
+5(3) — PRIOR consent before any cookie/tracker is set): third-party embeds (YouTube/Maps) + scripts (GA/chat)
+are BLOCKED until the visitor consents by category, withdrawal is one click, and nothing third-party loads
+before consent. (It's a tool to help comply — a privacy policy + a lawful basis are still on you.) Just turn it
 on with website.consent.enabled — the banner is AUTO-INJECTED on every page (there is NO {{sw-consent}}
 placeholder; don't add one). It shows a banner (Accept all / Reject all / Customize) + a per-category
 preferences panel: Strictly necessary (always on), Functional, Analytics, Marketing. The choice is remembered

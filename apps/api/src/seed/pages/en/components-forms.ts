@@ -14,7 +14,7 @@ export function pageComponentsForms(): Page {
     title: 'Forms',
     description: 'Embed a configured form anywhere with one tag — fields, validation, anti-spam, and inline success all generated for you, and the right language picked automatically.',
     parent: 'components',
-    order: 6,
+    order: 7,
     data: {
       frm_intro: 'Build a form once in the Forms tab, then embed it anywhere — {{sw-form "id"}} or data-sw-form="id" expands the whole thing at render: fields, labels, validation, a honeypot, and an inline success message. There is no markup to hand-author and nothing to wire up.',
       sec_helper_t: 'Embed with the helper',

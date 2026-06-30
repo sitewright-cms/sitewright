@@ -83,7 +83,10 @@ export const ANIMATION_JS = `(function(){
   'use strict';
   if(!('IntersectionObserver' in window))return;
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  var els=document.querySelectorAll('[data-aos]');
+  // Banner roots are EXCLUDED: a Banner with a data-aos effect drives the same aos-init/aos-animate
+  // classes itself on reveal (the reveal, not a scroll, is the trigger — and fixed banners near a viewport
+  // edge are dropped by this observer's rootMargin, which would yank their entrance back off).
+  var els=document.querySelectorAll('[data-aos]:not([data-sw-component="banner"])');
   if(els.length===0)return;
   // Null-prototype map: a hostile key ('constructor', 'toString', …) must miss,
   // not resolve to an inherited Object.prototype member.

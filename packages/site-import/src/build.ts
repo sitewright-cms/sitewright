@@ -333,6 +333,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       website,
       pages: routeRes.pages,
       hostedFonts: collectHostedFonts(refs, assetMap),
+      assetMap,
     });
     bundleIdentity = fnd.identity;
     website = fnd.website;

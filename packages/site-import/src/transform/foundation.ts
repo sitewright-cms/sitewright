@@ -14,6 +14,7 @@
 import type { CorporateIdentity, FontSlot, Page, WebsiteSettings } from '@sitewright/schema';
 import { CorporateIdentitySchema, WebsiteSettingsSchema } from '@sitewright/schema';
 import type { ImportDiagnostic } from '../types.js';
+import { rewriteCssUrls } from './css.js';
 
 // ─────────────────────────────── CSS parsing helpers ───────────────────────────────
 
@@ -169,10 +170,33 @@ const NOISE =
 const SQUARES =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='280'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.16'%3E%3Crect x='24' y='34' width='74' height='74' rx='13'/%3E%3Crect x='312' y='18' width='92' height='92' rx='15'/%3E%3Crect x='168' y='168' width='62' height='62' rx='11'/%3E%3C/g%3E%3Cg fill='%23ffffff' opacity='0.09'%3E%3Crect x='118' y='66' width='54' height='54' rx='11'/%3E%3Crect x='250' y='138' width='86' height='86' rx='15'/%3E%3C/g%3E%3C/svg%3E\")";
 
-/** Reusable site CSS: page background, the `.bp-hero` colored-band texture, and `.bp-card` elevation. */
-export function foundationCriticalCss(bg = '#e9e9ec'): string {
+/**
+ * The source's real body/html background-image, with url()s rewritten to the self-hosted /media refs
+ * (the assets were hosted during the import's media pass even in foundation mode). Returns '' when the
+ * source declares no body background-image or it can't be resolved to a hosted asset — the caller then
+ * falls back to the generic NOISE texture. Captures the ACTUAL site texture (e.g. a brushed-metal PNG)
+ * instead of approximating it, so a clone reads like the original.
+ */
+export function extractBodyBgImage(cssText: string, assetMap: ReadonlyMap<string, string>): string {
+  let img = '';
+  // Last body/html rule wins (cascade). Only the background-image longhand (or a shorthand carrying a url).
+  for (const m of cssText.matchAll(/(?:^|[};,>\s])(?:html|body)\b[^{}]*\{([^{}]*)\}/gi)) {
+    const block = m[1] ?? '';
+    const bi = block.match(/background-image\s*:\s*([^;}]+)/i)?.[1] ?? block.match(/background\s*:\s*([^;}]*url\([^;}]*)/i)?.[1];
+    if (bi && /url\(/i.test(bi)) img = bi.trim();
+  }
+  if (!img) return '';
+  const rewritten = rewriteCssUrls(img, assetMap);
+  // Ship ONLY a hosted /media ref or an inline data: texture — never an unresolved foreign hotlink.
+  return /url\(\s*['"]?(?:\/media\/|data:)/i.test(rewritten) ? rewritten : '';
+}
+
+/** Reusable site CSS: page background, the `.bp-hero` colored-band texture, and `.bp-card` elevation.
+ *  `bodyImage` (when given) is the source's REAL body background-image; else the generic NOISE texture. */
+export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string): string {
+  const image = bodyImage && bodyImage.trim() ? bodyImage.trim() : NOISE;
   return [
-    `body{background-color:${isColor(bg) ? bg : '#e9e9ec'};background-image:${NOISE};}`,
+    `body{background-color:${isColor(bg) ? bg : '#e9e9ec'};background-image:${image};}`,
     `.bp-hero{position:relative;overflow:hidden;}`,
     `.bp-hero::before{content:"";position:absolute;inset:0;background-image:${SQUARES};background-size:420px 280px;background-position:center;pointer-events:none;}`,
     `.bp-hero>*{position:relative;}`,
@@ -289,6 +313,9 @@ export interface FoundationInput {
   website: WebsiteSettings | undefined;
   pages: Page[];
   hostedFonts: readonly HostedFont[];
+  /** Foreign-url → hosted `/media` map (from the import's media pass); lets the body background-image be
+   *  captured as the REAL self-hosted texture rather than a generic approximation. */
+  assetMap?: ReadonlyMap<string, string>;
 }
 export interface FoundationResult {
   identity: CorporateIdentity;
@@ -314,7 +341,8 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const hadSidebar = !!((websiteIn.sidebarLeft as string)?.trim?.() || (websiteIn.sidebarRight as string)?.trim?.());
   delete websiteIn.sidebarLeft;
   delete websiteIn.sidebarRight;
-  websiteIn.criticalCss = foundationCriticalCss(colors['base-200']);
+  const bodyImage = input.assetMap ? extractBodyBgImage(input.cssText, input.assetMap) : '';
+  websiteIn.criticalCss = foundationCriticalCss(colors['base-200'], bodyImage);
   websiteIn.mainNav = nativeMainNav(identity); // single consolidated nav slot
   websiteIn.footer = nativeFooter(identity);
   const website = WebsiteSettingsSchema.parse(websiteIn);
@@ -327,6 +355,7 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
 
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';
   const colorNote = Object.keys(extractedColors).join('/') || 'defaults';
-  diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, data-driven nav + footer, foreign css/js discarded` });
+  const bgNote = bodyImage ? 'real-texture' : 'noise-texture';
+  diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, ${bgNote}, data-driven nav + footer, foreign css/js discarded` });
   return { identity, website, pages: input.pages, diagnostics };
 }

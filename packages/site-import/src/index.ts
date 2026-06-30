@@ -11,6 +11,7 @@ export {
   extractColors,
   extractTypography,
   extractBodyBgImage,
+  extractContentWidth,
   foundationCriticalCss,
   nativeMainNav,
   nativeFooter,

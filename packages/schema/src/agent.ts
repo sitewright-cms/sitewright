@@ -697,15 +697,16 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    (e.g. d-flex, row/col, custom utility names) and the folded-in CSS rules into the EQUIVALENT Tailwind/
    DaisyUI utilities — same layout, native classes. Don't invent new sections or drop existing ones. Port
    the foreign content container (a .container / centered max-width wrapper) to the platform .sw-container so
-   every section aligns to the site-wide Content width (the --sw-container var); keep full-bleed backgrounds
-   on the <section> with the .sw-container inside. Sections are full-width (w-full), not pinned pixel widths.
-   FULL-BLEED INSIDE A CONTAINER: .sw-container carries a horizontal GUTTER (--sw-container-gutter, default
-   2rem). A colour band / hero / image strip placed INSIDE a padded .sw-container (e.g. a sheet-card layout
-   that wraps the whole page in one .sw-container) must add the .sw-bleed utility to span the container
-   EDGE-TO-EDGE — it cancels exactly the gutter; the band then supplies its own inner padding (px-6 etc.).
-   A coloured band sitting in a .sw-container WITHOUT .sw-bleed shows white side-gutters (a common miss).
-   (For a band that bleeds to the full VIEWPORT instead, make the <section> itself full-width with the
-   .sw-container nested inside, as above — don't wrap that band in an outer container at all.)
+   every section aligns to the site-wide Content width (the --sw-container var); set website.containerWidth to
+   the SOURCE'S content width (default is 1200px; e.g. "1400px") so the clone is as wide as the original.
+   CONTAINER PATTERNS (two ways to get a full-width element; pick by structure):
+   (a) Per-SECTION (preferred): a full-bleed band is a full-width <section> (the bg/colour) with .sw-container
+       INSIDE for its content — the background spans the viewport, the text stays aligned.
+   (b) SHEET-CARD (a single centred white card holding the whole page, e.g. content over a textured body):
+       wrap the page in <div class="sw-container px-0 ...">. The px-0 ZEROES the container gutter so the card
+       has NO inner padding — then bands/hero IMAGES span the card edge-to-edge and each inner text block
+       supplies its OWN padding (p-6 / px-6). Do NOT use a padded .sw-container as the card (the 2rem gutter
+       insets the bands + a w-full hero image, a common miss).
    AVOID DaisyUI RESERVED component class names as plain layout classes — steps / tabs / carousel / collapse
    / card / badge / menu etc. are COMPONENTS; e.g. <ol class="steps"> lays items out horizontally. Name your
    own wrappers something else (howto-steps), or you'll inherit a component's styling by accident.
@@ -841,6 +842,14 @@ CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). T
 no longer referenced (trim the criticalCss/head to nothing once every section is token-driven; delete unused
 self-hosted .js/.css media). The page is NOT done until the media library is also a clean tree (step 8) — no
 leftover \`imported/\` UUID dump. Re-render and confirm nothing regressed.
+
+RE-ENABLE SITE-WIDE FEATURES THE IMPORT STRIPPED (it removes foreign JS — the import diagnostics name what
+was dropped; turn each back on with the PLATFORM equivalent, in the settings entity): a loading PRELOADER
+("preloader-removed") -> theme.preloaderEffect (get_guide("effects")); a sticky/shrinking header -> website.
+effects.stickyHeader; a back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded
+side widget ("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin =
+a consent-gated <iframe>, see get_guide("consent")). Footer/nav LISTS: a <ul> needs list-none pl-0 or items
+sit indented.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,

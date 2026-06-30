@@ -21,11 +21,15 @@ export function EntryEditorLoader({ projectId, dataset, id, onSaved, onClose }: 
   const [found, setFound] = useState<{ dataset: Dataset; entry: Entry } | null>(null);
   useEffect(() => {
     let alive = true;
-    // Targeted fetch of the one dataset (id === slug) + the one entry — not the whole project.
-    void Promise.all([api.getDataset(projectId, dataset), api.getEntry(projectId, id)])
-      .then(([d, e]) => {
+    // `dataset` is the SLUG carried by data-sw-dataset, which is NOT the dataset's entity id once the
+    // dataset has been renamed (rename_dataset changes the slug but keeps the id) — so resolve it by SLUG
+    // from the dataset list, not by id (getDataset(slug) 404s for a renamed dataset). Fall back to an id
+    // match for safety. The entry is fetched by its (globally-unique) id.
+    void Promise.all([api.listDatasets(projectId), api.getEntry(projectId, id)])
+      .then(([ds, e]) => {
         if (!alive) return;
-        if (d.item && e.item && e.item.dataset === dataset) setFound({ dataset: d.item, entry: e.item });
+        const d = ds.items.find((x) => x.slug === dataset) ?? ds.items.find((x) => x.id === dataset);
+        if (d && e.item && e.item.dataset === d.slug) setFound({ dataset: d, entry: e.item });
         else onClose();
       })
       .catch(() => alive && onClose()); // 404 (deleted) or load error → just close

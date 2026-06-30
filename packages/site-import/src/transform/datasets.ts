@@ -253,8 +253,22 @@ export function uniformChildren(children: Element[]): { types: SlotType[] } | nu
   return { types: sig };
 }
 
-/** Infer datasets from a page document (mutates: qualifying containers → a sentinel marker). */
-export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<string>, markerPrefix: string): DatasetInference {
+/**
+ * Infer datasets from a page document (mutates: qualifying containers → a sentinel marker).
+ *
+ * `usedEntryIds` is threaded across EVERY page of the import (like `usedSlugs`) because an entry id is
+ * the content row's storage key — entries are stored under `(projectId, kind:'entry', entityId)`, so the
+ * id must be unique across ALL datasets in the project, not just within its own. Two pages that repeat the
+ * same content (e.g. a service grid shown on both `/` and `/services/`) would otherwise infer two datasets
+ * whose entries collide on the same bare id and fail the bundle's referential-integrity check.
+ */
+export function inferDatasets(
+  doc: Document,
+  ctx: TransformCtx,
+  usedSlugs: Set<string>,
+  usedEntryIds: Set<string>,
+  markerPrefix: string,
+): DatasetInference {
   const datasets: Dataset[] = [];
   const entries: Entry[] = [];
   const markers = new Map<string, { loop: string; slug: string }>();
@@ -296,11 +310,11 @@ export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<s
     // Entry id from its title value (e.g. `team-jane-doe`) so entries read meaningfully; deduped, with a
     // positional fallback. The first text field is the title (fieldNames puts it first).
     const titleField = fields.find((f) => f.type === 'text')?.name;
-    const usedEntryIds = new Set<string>();
     rows.forEach((values, n) => {
       // Entry ids are ITEM KEYS — used as `{{item.<dataset>.<id>.<field>}}` Handlebars PATHS and as
       // data-sw-entry edit handles — so they must be underscore identifiers (no hyphens) and NOT prefixed
-      // with the dataset slug. Derive from the title; fall back to a neutral row key.
+      // with the dataset slug. Derive from the title; fall back to a neutral row key. Deduped against the
+      // BUNDLE-WIDE set so the id is unique across every dataset (the entry storage key is project-global).
       const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
       let id = base;
       for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;

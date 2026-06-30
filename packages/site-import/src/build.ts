@@ -221,6 +221,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   opts.onProgress?.({ phase: 'transform', total: parsed.length });
   const pageById = new Map(routeRes.pages.map((p) => [p.id, p] as const));
   const usedSlugs = new Set<string>();
+  // Entry ids are project-global storage keys (see inferDatasets) — dedupe across the WHOLE import, not
+  // per page, so two pages repeating the same content don't infer colliding entry ids (bundle-invalid).
+  const usedEntryIds = new Set<string>();
   const datasets: Dataset[] = [];
   const entries: Entry[] = [];
   let scriptsDropped = 0;
@@ -241,7 +244,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     };
     // Conservative dataset inference (runs BEFORE the transform so its sentinel markers serialize as
     // plain text); each marker is swapped for the generated {{#each}} loop after the page transform.
-    const inf = inferDatasets(x.doc, ctx, usedSlugs, `@@SWDS${transformed}_`);
+    const inf = inferDatasets(x.doc, ctx, usedSlugs, usedEntryIds, `@@SWDS${transformed}_`);
     const { source: rawSource, diagnostics: pageDiags } = transformBody(x.doc, ctx);
     // Splice each loop in, but ONLY keep the dataset if its marker survived the transform AND the swap
     // leaves the page validateTemplate-clean (the marker can be dropped by fitSource or land inside a

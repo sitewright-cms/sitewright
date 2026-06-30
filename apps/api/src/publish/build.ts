@@ -562,10 +562,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
-    // actually opens. NAV_LINK_JS is a general document-wide a[href^="#"] handler, so this is enough.
+    // actually opens. ALSO ship it whenever SCROLLSPY is used: a scrollspy nav is in-page section
+    // navigation by definition, so its links (`#about`, `/#about`) must smooth-scroll on click.
     const usesNavLink =
       pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
-      usesMarker(usesDialog);
+      usesMarker(usesDialog) ||
+      usesScrollSpyRuntime;
     // Public form definitions (recipient stripped) + the submission endpoint per form — consumed
     // by the form-embed pass in renderTemplate ({{sw-form}} / data-sw-form) and the cart's form
     // channel. Built once (same for every page); absolute when a publicBaseUrl is configured,

@@ -103,12 +103,17 @@ export const SCROLLSPY_JS = `(function(){
     for(i=0;i<g.links.length;i++){g.links[i].classList.remove('active');g.links[i].removeAttribute('aria-current');}
     for(i=0;i<set.length;i++){set[i].classList.add('active');set[i].setAttribute('aria-current','true');}
   }
+  // Scroll metrics read from whatever actually scrolls: the viewport on a published site (html), but the
+  // BODY in the editor preview (html{overflow:hidden} → body{overflow-y:auto}) — window.pageYOffset stays 0
+  // there. Section activation itself is viewport-relative (getBoundingClientRect), so only the bottom-edge
+  // check needs the real scroll position/height.
+  function scrollPos(){return window.pageYOffset||root.scrollTop||document.body.scrollTop||0;}
+  function scrollMax(){return Math.max(root.scrollHeight,document.body.scrollHeight);}
   var ticking=false;
   function update(){
     ticking=false;
     var line=offset()+1;
-    var sy=window.pageYOffset||root.scrollTop||0;
-    var atBottom=(window.innerHeight+sy)>=(root.scrollHeight-2);
+    var atBottom=(window.innerHeight+scrollPos())>=(scrollMax()-2);
     for(var s=0;s<governed.length;s++){
       var g=governed[s],set,key;
       if(atBottom){var last=g.secs[g.secs.length-1];set=last.links;key='b'+(g.secs.length-1);}
@@ -122,7 +127,9 @@ export const SCROLLSPY_JS = `(function(){
     }
   }
   function onScroll(){if(!ticking){ticking=true;(window.requestAnimationFrame||function(f){return f();})(update);}}
-  window.addEventListener('scroll',onScroll,{passive:true});
+  // capture:true so a BODY scroll (the editor preview's scroll container) still reaches this — a scroll
+  // event on a non-root scroller does NOT fire a bubbling window listener, but the capture phase sees it.
+  window.addEventListener('scroll',onScroll,{passive:true,capture:true});
   window.addEventListener('resize',onScroll,{passive:true});
   update();
 })();`;

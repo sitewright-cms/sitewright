@@ -110,9 +110,15 @@ export const NAV_LINK_JS = `(function(){
     var i = href.indexOf('#');
     if (i < 0) return;
     if (i > 0) {
+      // A PATH-PREFIXED anchor (e.g. /#features, /en/#features) is IN-PAGE when its path equals the current
+      // page, is root-relative-only, OR is a SUFFIX of the current path — so it still resolves under the
+      // /sites/<slug> (or /preview/<token>) base the editor preview + local hosting serve from. A genuine
+      // cross-page link (a different page, different last segment) keeps navigating. go() then scrolls only
+      // when the section is actually present here (else the browser navigates), so a same-page miss is safe.
       var path = href.slice(0, i).replace(/\\/$/, '');
       var here = location.pathname.replace(/\\/$/, '');
-      if (path !== here && path !== '.' && path !== './') return;
+      var samePath = path === '' || path === '.' || path === './' || path === here || here.endsWith(path);
+      if (!samePath) return;
     }
     if (go(href.slice(i))) e.preventDefault();
   });

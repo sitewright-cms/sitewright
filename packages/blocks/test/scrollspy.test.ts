@@ -16,8 +16,15 @@ describe('SCROLLSPY_JS', () => {
   it('is a self-invoking, passive, rAF-throttled scroll runtime', () => {
     expect(SCROLLSPY_JS.startsWith('(function(){')).toBe(true);
     expect(SCROLLSPY_JS.trimEnd().endsWith('})();')).toBe(true);
-    expect(SCROLLSPY_JS).toContain('{passive:true}');
+    expect(SCROLLSPY_JS).toContain('{passive:true}'); // the resize listener
     expect(SCROLLSPY_JS).toContain('requestAnimationFrame');
+  });
+
+  it('catches BODY scroll (the editor preview container) via the capture phase + reads its scroll position', () => {
+    // html{overflow:hidden}→body scrolls in the preview; a non-capture window listener never fires for a
+    // body scroll, and window.pageYOffset stays 0 — so use a capture-phase scroll listener + body.scrollTop.
+    expect(SCROLLSPY_JS).toContain('{passive:true,capture:true}');
+    expect(SCROLLSPY_JS).toContain('document.body.scrollTop');
   });
 
   it('reads both scope sources — the attribute and the site-wide body class scoped to #main-nav menus', () => {

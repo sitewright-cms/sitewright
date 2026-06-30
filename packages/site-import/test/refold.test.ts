@@ -8,7 +8,7 @@ const probe = (t: string, extra: Record<string, unknown>): Promise<string> => Pr
 describe('refoldLoops', () => {
   it('re-folds a uniform text+link grid into a {{#each}} loop + dataset + entries', async () => {
     const cards = [0, 1, 2, 3].map((i) => `<a class="card" href="/p${i}"><h3>Title ${i}</h3><p>Body ${i}</p></a>`).join('');
-    const res = await refoldLoops(`<h2>Our Team</h2><section class="grid">${cards}</section>`, new Set<string>(), probe);
+    const res = await refoldLoops(`<h2>Our Team</h2><section class="grid">${cards}</section>`, new Set<string>(), new Set<string>(), probe);
     expect(res.datasets).toHaveLength(1);
     expect(res.datasets[0]!.slug).toBe('ourteam');
     expect(res.datasets[0]!.fields.map((f) => f.name)).toEqual(['link', 'title', 'description']);
@@ -20,7 +20,7 @@ describe('refoldLoops', () => {
 
   it('does NOT fold cards with per-card SVG icons (the loop would bake card 0 icon → render-mismatch)', async () => {
     const cards = [0, 1, 2, 3].map((i) => `<a class="card" href="/p${i}"><svg viewBox="0 0 2 2"><path d="M${i} ${i}h1"/></svg><h3>Title ${i}</h3></a>`).join('');
-    const res = await refoldLoops(`<section class="grid">${cards}</section>`, new Set<string>(), probe);
+    const res = await refoldLoops(`<section class="grid">${cards}</section>`, new Set<string>(), new Set<string>(), probe);
     expect(res.datasets).toHaveLength(0);
     expect(res.html).toContain('Title 3'); // every card stays literal (its own icon preserved)
   });
@@ -32,7 +32,7 @@ describe('refoldLoops', () => {
     const row = (i: number, w: number, h: number) =>
       `<div class="grid grid-cols-[minmax(0,${w}fr)_minmax(0,90fr)] h-${h} rounded"><span>Project ${i}</span><a href="/files/${i}.pdf"><span>{{sw-icon "eye"}} VIEW</span></a></div>`;
     const html = `<section class="list">${[0, 1, 2, 3].map((i) => row(i, 80 + i, 10 + i)).join('')}</section>`;
-    const res = await refoldLoops(html, new Set<string>(), probe);
+    const res = await refoldLoops(html, new Set<string>(), new Set<string>(), probe);
     expect(res.datasets).toHaveLength(1);
     expect(res.datasets[0]!.fields.map((f) => f.type)).toEqual(['text', 'text']); // name + file href; the action label is constant → static
     expect(res.entries).toHaveLength(4);
@@ -41,7 +41,7 @@ describe('refoldLoops', () => {
   });
 
   it('leaves html unchanged when there is no qualifying grid', async () => {
-    const res = await refoldLoops('<div><p>just some prose</p></div>', new Set<string>(), probe);
+    const res = await refoldLoops('<div><p>just some prose</p></div>', new Set<string>(), new Set<string>(), probe);
     expect(res.datasets).toHaveLength(0);
     expect(res.html).toContain('just some prose');
   });
@@ -49,7 +49,22 @@ describe('refoldLoops', () => {
   it('keeps slugs unique against the shared used-set', async () => {
     const used = new Set<string>(['ourteam']);
     const cards = [0, 1, 2, 3].map((i) => `<article class="x"><h3>T${i}</h3><p>B${i}</p></article>`).join('');
-    const res = await refoldLoops(`<h2>Our Team</h2><section>${cards}</section>`, used, probe);
+    const res = await refoldLoops(`<h2>Our Team</h2><section>${cards}</section>`, used, new Set<string>(), probe);
     expect(res.datasets[0]!.slug).toBe('ourteam2'); // deduped
+  });
+
+  it('keeps entry ids unique against the shared used-id set (no project-global collision)', async () => {
+    // Two pages re-folding the same content must not mint colliding entry ids — the entry storage key is
+    // project-global. The shared used-id set suffixes the repeats.
+    const sharedIds = new Set<string>();
+    const cards = [0, 1, 2, 3].map((i) => `<a class="card" href="/p${i}"><h3>Member ${i}</h3><p>B${i}</p></a>`).join('');
+    const a = await refoldLoops(`<h2>Team A</h2><section class="g1">${cards}</section>`, new Set<string>(), sharedIds, probe);
+    const b = await refoldLoops(`<h2>Team B</h2><section class="g2">${cards}</section>`, new Set<string>(['teamb']), sharedIds, probe);
+    const aIds = a.entries.map((e) => e.id);
+    const bIds = b.entries.map((e) => e.id);
+    expect(aIds).toHaveLength(4);
+    expect(bIds).toEqual(aIds.map((id) => `${id}_2`)); // suffixed against the shared set
+    const all = [...aIds, ...bIds];
+    expect(new Set(all).size).toBe(all.length); // globally unique
   });
 });

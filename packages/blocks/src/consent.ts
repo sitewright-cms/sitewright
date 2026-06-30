@@ -125,14 +125,15 @@ export const CONSENT_CSS = [
   '[data-sw-consent] .sw-consent-cat-desc{margin:.1rem 0 0;font-size:.82rem;opacity:.8}',
   '[data-sw-consent] .sw-consent-link{color:var(--sw-color-primary,#4f46e5);text-decoration:underline}',
   '@media (max-width:520px){[data-sw-consent] .sw-consent-actions .btn{flex:1 1 auto}}',
-  // Click-to-load placeholder for a HELD author <iframe>. The wrapper hugs the (held, empty) iframe so it
-  // keeps the iframe's exact dimensions; the placeholder is laid OVER it. `.skeleton` (daisyUI) supplies the
-  // loading shimmer; `background-color` (not the shorthand) is a fallback that lets the shimmer layer on top.
-  '.sw-gate-wrap{position:relative;display:inline-block;max-width:100%;line-height:0}',
+  // Click-to-load placeholder for a HELD author <iframe>. The wrapper is pinned to the iframe's measured box
+  // (see gatePlaceholder) and the placeholder is laid OVER it. `.skeleton` (daisyUI) supplies the loading
+  // shimmer; `background-color` (not the shorthand) is a fallback that lets the shimmer layer on top.
+  // `display:flex` is block-level on purpose — a held embed sits on its own line (no inline descender gap).
+  '.sw-gate-wrap{position:relative;display:flex;max-width:100%}',
   '.sw-gate-wrap>iframe{display:block;max-width:100%}',
-  '.sw-gate-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;text-align:center;padding:1rem;box-sizing:border-box;line-height:1.4;overflow:hidden;border-radius:.5rem;background-color:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23)}',
-  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:32rem}',
-  '.sw-gate-ph .sw-gate-url{font-style:italic;font-size:.75rem;opacity:.7;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.sw-gate-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;text-align:center;padding:1rem;box-sizing:border-box;line-height:1.4;overflow:hidden;border-radius:0;background-color:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23)}',
+  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:32rem;font-weight:bold;border-bottom:1px solid var(--sw-color-primary,#4f46e5)}',
+  '.sw-gate-ph .sw-gate-url{font-style:italic;font-size:.75rem;opacity:.7;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.sw-gate-ph .sw-gate-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}',
 ].join('');
 

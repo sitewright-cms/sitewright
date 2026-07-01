@@ -662,6 +662,32 @@ export function websiteEffectsCustomCode(effects: WebsiteEffects | undefined): {
   return { bodyEnd: [navOn, btnOn].filter(Boolean).join('\n'), preloader: preOn };
 }
 
+/**
+ * Validate a site base URL (`website.siteUrl`), returning a human-readable error message or `null`
+ * when it's acceptable. Shared by the schema refinement (server, on save) AND the editor's inline
+ * field validation (client) so both enforce the SAME rules with the SAME message.
+ *
+ * Accepts an absolute http(s) URL, with or without a path, and WITH OR WITHOUT a trailing slash (the
+ * slash is normalized away at build time — see `siteBase`). Rejects a missing scheme, a query or
+ * fragment, embedded whitespace, and HTML-significant characters.
+ */
+export function siteUrlIssue(value: string): string | null {
+  // Specific, format-oriented checks first (so the message names the exact problem); the generic
+  // URL-parse catch-all runs LAST — otherwise `new URL()` would reject e.g. an embedded space with
+  // a vague "not a valid URL" before the precise "remove the spaces" message could fire.
+  if (value.length > 2048) return 'URL is too long (max 2048 characters).';
+  if (!/^https?:\/\//i.test(value)) return 'Enter an absolute URL that starts with https:// (or http://) — for example https://acme.com';
+  if (/\s/.test(value)) return 'Remove the spaces from the URL.';
+  if (/[?#]/.test(value)) return 'Use the base URL only — no "?" query or "#" fragment.';
+  if (/["<>'&]/.test(value)) return `Remove special characters from the URL (" < > ' &).`;
+  try {
+    new URL(value);
+  } catch {
+    return 'That is not a valid URL — for example https://acme.com';
+  }
+  return null;
+}
+
 const WebsiteSettingsObject = z.object({
   // --- RAW owner-only slots: injected UNESCAPED, NOT run through the no-JS template validator.
   // They hold the tenant's own trusted head/CSS/script content for their own exported site — same
@@ -745,19 +771,16 @@ const WebsiteSettingsObject = z.object({
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the
    * sitemap. No trailing slash needed (normalized at build time).
    */
+  // One shared validator (siteUrlIssue) so the server rejection and the editor's inline field error
+  // report the SAME rule + message. It covers: absolute http(s), valid URL, no query/fragment (would
+  // break robots.txt / the sitemap <loc>), no whitespace, and no HTML-significant chars (defense in
+  // depth — harmless where escaped, but rejected at the boundary so it can't reach a future raw sink).
   siteUrl: z
     .string()
-    .max(2048)
-    .url()
-    .refine((u) => /^https?:\/\//i.test(u), 'siteUrl must be http(s)')
-    .refine((u) => !/[#?]/.test(u), 'siteUrl must not contain a query or fragment')
-    // Zod's `.url()` does NOT reject embedded whitespace; a literal newline here
-    // would inject a directive into robots.txt / break the sitemap <loc>. Reject all.
-    .refine((u) => !/\s/.test(u), 'siteUrl must not contain whitespace')
-    // Defense-in-depth: `.url()` also permits `"<>'&` — harmless where the value is
-    // escaped (hreflang/sitemap), but reject at the boundary so it can never reach a
-    // future unescaped sink. Real site base URLs never contain these.
-    .refine((u) => !/["<>'&]/.test(u), 'siteUrl must not contain HTML-significant characters')
+    .superRefine((u, ctx) => {
+      const issue = siteUrlIssue(u);
+      if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
+    })
     .optional(),
   /**
    * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on

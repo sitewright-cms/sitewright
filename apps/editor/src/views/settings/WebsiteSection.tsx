@@ -8,6 +8,7 @@ import {
   PRELOADER_EFFECTS,
   STICKY_HEADER_MODES,
   STICKY_HEADER_LABELS,
+  siteUrlIssue,
   type JsonValue,
   type NavEffect,
   type PreloaderEffect,
@@ -123,6 +124,9 @@ export function WebsiteSection({
   const localeCodes = Array.from(
     new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
   );
+  // Inline siteUrl validation — same rule/message the server enforces on save. Empty is valid (it
+  // just skips the sitemap), so only a non-blank value is checked.
+  const siteUrlError = form.siteUrl.trim() ? siteUrlIssue(form.siteUrl.trim()) : null;
   return (
     <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon={<Globe className="h-4 w-4" />} wide>
@@ -132,6 +136,8 @@ export function WebsiteSection({
           onChange={(v) => patch({ siteUrl: v })}
           type="url"
           placeholder="https://acme.com"
+          error={siteUrlError}
+          hint="Absolute URL, e.g. https://acme.com — a trailing slash is optional; no path query or #fragment."
         />
         <div className="mt-3">
           <Field

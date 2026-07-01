@@ -10,6 +10,7 @@ import {
   renderHtaccess,
   renderNetlifyRedirects,
   siteUrlFor,
+  siteBase,
 } from '../src/publish/seo.js';
 
 describe('seo renderers', () => {
@@ -17,6 +18,16 @@ describe('seo renderers', () => {
     expect(siteUrlFor('https://acme.com/', undefined)).toBe('https://acme.com/');
     expect(siteUrlFor('https://acme.com', 'about')).toBe('https://acme.com/about/');
     expect(siteUrlFor('https://acme.com', 'de/about')).toBe('https://acme.com/de/about/');
+  });
+
+  it('siteBase strips CR/LF (defense-in-depth against robots.txt/sitemap injection)', () => {
+    // The schema rejects whitespace at the boundary; this guards a non-API DB write from smuggling
+    // a newline into the UNESCAPED robots.txt "Sitemap:" line or a sitemap <loc>.
+    expect(siteBase('https://acme.com\nDisallow: x')).toBe('https://acme.comDisallow: x');
+    expect(siteBase('https://acme.com\r\n')).toBe('https://acme.com');
+    // With the newline stripped, the robots.txt Sitemap line stays ONE line — no injected directive.
+    expect(renderRobots(`${siteBase('https://acme.com\nDisallow: /')}/sitemap.xml`)).not.toContain('\nDisallow');
+    expect(siteBase('https://acme.com/')).toBe('https://acme.com'); // still strips the trailing slash
   });
 
   it('renders a sitemap with escaped locs', () => {

@@ -116,6 +116,24 @@ describe('SettingsView', () => {
     expect((putSettings.mock.calls[0]![1] as SettingsBundle).website?.siteUrl).toBe('https://acme.com');
   });
 
+  it('shows an inline error for a malformed siteUrl on input and clears it once corrected', async () => {
+    renderView();
+    await screen.findByLabelText('Display name');
+    fireEvent.click(screen.getByRole('tab', { name: 'Website' }));
+    const siteUrl = await screen.findByLabelText(/Production URL/);
+    // A scheme-less value is invalid → the inline message appears + the input is marked invalid.
+    fireEvent.change(siteUrl, { target: { value: 'acme.com' } });
+    expect(await screen.findByText(/starts with https:\/\//i)).toBeInTheDocument();
+    expect(siteUrl).toHaveAttribute('aria-invalid', 'true');
+    // A query string is rejected too (would break the sitemap <loc>).
+    fireEvent.change(siteUrl, { target: { value: 'https://acme.com?x=1' } });
+    expect(await screen.findByText(/no "\?" query/i)).toBeInTheDocument();
+    // Correcting it clears the error (and a trailing slash is accepted — normalized at build).
+    fireEvent.change(siteUrl, { target: { value: 'https://acme.com/' } });
+    await waitFor(() => expect(screen.queryByText(/starts with https:\/\//i)).toBeNull());
+    expect(siteUrl).not.toHaveAttribute('aria-invalid');
+  });
+
   it('toasts a save error', async () => {
     putSettings.mockRejectedValue(new Error('input too large'));
     renderView();

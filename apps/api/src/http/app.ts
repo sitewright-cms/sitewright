@@ -198,7 +198,7 @@ import {
   resolveOidcUser,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
-import { sweepExpiredAuthRows } from '../repo/maintenance.js';
+import { sweepExpiredAuthRows, reapDeletedMedia } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
 import { OidcRepository } from '../repo/oidc.js';
 import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
@@ -3094,18 +3094,40 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.delete<{ Params: { projectId: string; id: string } }>(
       '/projects/:projectId/media/:id',
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req, 'content:delete');
-        // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
-        // whereas a leaked DB row would block re-creating the same asset id.
-        await contentRepo.remove(ctx, 'media', req.params.id);
-        try {
-          await storage.remove(project.slug, req.params.id);
-        } catch (err) {
-          app.log.error({ err }, 'media binary removal failed after DB delete');
-        }
+        const { ctx } = await resolveProject(req, 'content:delete');
+        // SOFT-delete → the Recycle Bin: the row + binary are RETAINED so it can be restored; a 90-day
+        // reaper purges older entries. This is what makes an autonomous agent media delete recoverable.
+        await contentRepo.softDeleteMedia(ctx, req.params.id);
         return reply.code(204).send();
       },
     );
+
+    // --- Recycle Bin: list soft-deleted media, restore one, or purge it permanently -----------
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/deleted', { config: rl(60) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:read');
+      return reply.send({ items: await contentRepo.listDeletedMedia(ctx) });
+    });
+
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/restore', { config: rl(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      await contentRepo.restoreMedia(ctx, req.params.id);
+      return reply.code(204).send();
+    });
+
+    app.delete<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/purge', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:delete');
+      // PERMANENT (Recycle Bin only): drop the DB row + the binary. `purgeMedia` guards on
+      // `deletedAt IS NOT NULL`, so a LIVE asset can't be hard-deleted here — the bin + 90-day
+      // recovery window can never be skipped. A leaked binary (if fs removal fails) is harmless +
+      // GC-able; a leaked row would block re-creating the same asset id.
+      await contentRepo.purgeMedia(ctx, req.params.id);
+      try {
+        await storage.remove(project.slug, req.params.id);
+      } catch (err) {
+        app.log.error({ err }, 'media binary removal failed after purge');
+      }
+      return reply.code(204).send();
+    });
 
     // --- folder + asset OPERATIONS (rename/move/copy/delete) ---------------------
     // Folders are persisted as `mediafolder` records so an EMPTY folder survives a reload;
@@ -3221,23 +3243,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ ok: true });
     });
 
-    // Delete a folder RECURSIVELY: every folder record + asset (and its binaries) under it.
+    // Delete a folder RECURSIVELY. Its assets are SOFT-deleted (→ Recycle Bin, recoverable for 90
+    // days) — consistent with single-file delete; nothing is destroyed here. The folder RECORDS are
+    // removed (structural shells with no binary), so the folder disappears from the tree; a restored
+    // asset re-materializes its folder from its retained `folder` path (FileBrowser derives folders
+    // from asset paths too), so restore stays coherent even though the record is gone.
     app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:delete');
+      const { ctx } = await resolveProject(req, 'content:delete');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = FolderPathBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
       const folder = body.data.path;
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
       for (const a of assets) {
-        if (isUnderFolder(a.folder, folder)) {
-          await contentRepo.remove(ctx, 'media', a.id);
-          try {
-            await storage.remove(project.slug, a.id);
-          } catch (e) {
-            app.log.error({ err: e }, 'media binary removal failed during folder delete');
-          }
-        }
+        if (isUnderFolder(a.folder, folder)) await contentRepo.softDeleteMedia(ctx, a.id);
       }
       const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
       for (const f of folders) {
@@ -3256,7 +3275,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = PatchAssetBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid update' });
-      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      // `getLiveMedia` rejects a soft-deleted (binned) asset — you restore it, you don't rename it in place.
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const next = {
         ...asset,
         ...(body.data.folder !== undefined ? { folder: body.data.folder } : {}),
@@ -3272,7 +3292,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CopyAssetBody.safeParse(req.body ?? {});
       if (!body.success) return reply.code(400).send({ error: 'invalid folder' });
-      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      // `getLiveMedia` rejects a soft-deleted (binned) asset — copying one would resurrect it outside restore.
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const copy = await duplicateAsset(ctx, project.slug, asset, body.data.folder ?? asset.folder);
       return reply.code(201).send({ item: copy });
     });
@@ -4705,6 +4726,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const sweepTimer = setInterval(() => {
       void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
       void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
+      if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
     }, sweepMs);
     sweepTimer.unref();
     app.addHook('onClose', async () => clearInterval(sweepTimer));

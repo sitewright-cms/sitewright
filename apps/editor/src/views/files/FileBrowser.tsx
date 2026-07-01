@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Dra
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { api } from '../../api';
 import { StockPicker } from '../media/StockPicker';
+import { RecycleBinModal } from './RecycleBinModal';
 import { FileTypeIcon, FolderIcon } from '../media/file-icons';
 import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
@@ -108,6 +109,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
+  const [recycleOpen, setRecycleOpen] = useState(false);
   const [folder, setFolder] = useState('');
   const [view, setView] = useState<'list' | 'grid'>(pick ? 'grid' : 'list');
   const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' });
@@ -289,9 +291,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       message:
         fileCount === 0 && subCount === 0
           ? 'This empty folder will be removed.'
-          : `This permanently deletes ${fileCount} file${fileCount === 1 ? '' : 's'}` +
+          : `This moves ${fileCount} file${fileCount === 1 ? '' : 's'}` +
             (subCount > 0 ? ` and ${subCount} subfolder${subCount === 1 ? '' : 's'}` : '') +
-            ' inside it.',
+            ' to the Recycle Bin. You can restore them for 90 days.',
       confirmLabel: 'Delete all',
     });
     if (!ok) return;
@@ -310,7 +312,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     await run(() => api.copyMedia(projectId, m.id, m.folder));
   }
   async function deleteAsset(m: MediaAsset) {
-    if (!(await confirm({ title: 'Delete file', message: `Delete “${m.filename}”? This cannot be undone.`, confirmLabel: 'Delete' }))) return;
+    if (!(await confirm({ title: 'Delete file', message: `Move “${m.filename}” to the Recycle Bin? You can restore it for 90 days.`, confirmLabel: 'Delete' }))) return;
     await run(() => api.deleteMedia(projectId, m.id));
   }
 
@@ -387,6 +389,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         </div>
         <button type="button" onClick={() => setStockOpen(true)} className={ghostButton}>
           Search stock images
+        </button>
+        <button type="button" onClick={() => setRecycleOpen(true)} className={ghostButton}>
+          Recycle Bin
         </button>
       </div>
 
@@ -637,6 +642,8 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
           </div>
         </Modal>
       )}
+
+      {recycleOpen && <RecycleBinModal projectId={projectId} onClose={() => setRecycleOpen(false)} onChanged={() => void load()} />}
 
       {/* In-app image preview (replaces opening images in a new tab). */}
       {preview && preview.kind === 'image' && (

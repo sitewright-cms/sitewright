@@ -18,8 +18,9 @@ function startOfMonthUTC(now: Date): Date {
 
 /** Capabilities an on-page agent may ever hold (never `deploy` — there is no deploy tool). */
 const AGENT_MAX_CAPS: readonly ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish'];
-/** Not yet recoverable (no media tombstone until the recycle bin ships) → keep it out of the agent's hands. */
-const WITHHELD_TOOLS = new Set(['delete_media']);
+/** Tools never offered to the agent regardless of capability. Empty now that media deletes are
+ *  recoverable (soft-delete → 90-day Recycle Bin), so `delete_media` is safe behind `content:delete`. */
+const WITHHELD_TOOLS = new Set<string>();
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
 const AGENT_TOKEN_TTL_MS = 15 * 60_000;
 const MAX_ITERATIONS = 25;

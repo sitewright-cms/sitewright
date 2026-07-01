@@ -782,10 +782,11 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    \`Header Images\`; \`Main\` for sitewide singletons — logo, favicon). Use slugified names, never bare UUIDs
    (\`ronald-kubas.jpg\`). PRUNE files no page references. Tools: list_media_folders (look first),
    create_media_folder, move_media (re-file + rename one asset), rename_media_folder, and delete_media
-   (permanently remove an orphaned file — needs the content:delete capability; if you lack it, move the
-   file to an \`Unused\` folder instead). Moving/renaming is SAFE — it only changes the folder TAG, and the
-   \`/media/...\` URL is content-addressed + stable, so page references never break (only delete_media is
-   destructive). End state: a tree a human dev reads at a glance, with no \`imported/\` left.
+   (bin an orphaned file — RECOVERABLE for 90 days in the File Manager Recycle Bin; needs the
+   content:delete capability; if you lack it, move the file to an \`Unused\` folder instead). Moving/renaming
+   is SAFE — it only changes the folder TAG, and the \`/media/...\` URL is content-addressed + stable, so page
+   references never break (only delete_media removes an asset — and only from the NEXT publish). End state:
+   a tree a human dev reads at a glance, with no \`imported/\` left.
 9. MATCH THE VISUAL SCALE (not just the structure — these "looks-close-but-off" misses are the most common):
    - TYPE SIZES: don't shrink text. Match the source's body + heading scale (read the original's font sizes;
      a real site's body is usually ~16-18px and headings are large). Defaulting everything to small text is a
@@ -946,7 +947,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
-  { name: 'delete_media', description: "Permanently delete a media asset (DB row + binary) — prune orphaned files. Its URL stops resolving; ensure nothing references it.", capability: 'content:delete' },
+  { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

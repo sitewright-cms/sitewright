@@ -478,10 +478,17 @@ export const content = sqliteTable(
     data: text('data', { mode: 'json' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * SOFT-DELETE marker (currently only `media`): NULL = live. When set, the asset is hidden from every
+     * list (File Manager, render, exports) but its row + on-disk binary are RETAINED so it can be
+     * RESTORED from the File Manager's Recycle Bin. A 90-day reaper permanently purges older entries.
+     */
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     uniqueIndex('uniq_content').on(t.projectId, t.kind, t.entityId),
     index('content_project_kind_idx').on(t.projectId, t.kind),
+    index('content_deleted_idx').on(t.projectId, t.kind, t.deletedAt),
   ],
 );
 

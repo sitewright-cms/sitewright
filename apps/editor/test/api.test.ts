@@ -580,6 +580,23 @@ describe('api client', () => {
     expect(init.method).toBe('DELETE');
   });
 
+  it('drives the media Recycle Bin: list deleted, restore, purge', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'm1', deletedAt: 123 }] }));
+    expect((await api.listDeletedMedia('p')).items[0]!.id).toBe('m1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/media/deleted');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.restoreMedia('p', 'm1');
+    const [rUrl, rInit] = fetchMock.mock.calls[1]!;
+    expect(rUrl).toBe('/projects/p/media/m1/restore');
+    expect(rInit.method).toBe('POST');
+
+    await api.purgeMedia('p', 'm1');
+    const [pUrl, pInit] = fetchMock.mock.calls[2]!;
+    expect(pUrl).toBe('/projects/p/media/m1/purge');
+    expect(pInit.method).toBe('DELETE');
+  });
+
   it('manages saved deploy targets', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listDeployTargets('p');

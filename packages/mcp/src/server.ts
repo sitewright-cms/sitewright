@@ -556,7 +556,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'delete_media',
     {
       description:
-        'PERMANENTLY delete a single media asset (its DB row + stored binary). Its `/media/...` URL stops resolving, so make sure NO page/dataset still references it first (prefer moving an asset to an "Unused" folder if unsure). Use to prune orphaned imported files. Needs the `content:delete` capability (opt-in, not implied by content:write) — if your connection lacks it, ask the user to grant it or remove the asset in the editor.',
+        'Delete a single media asset — it moves to the File Manager Recycle Bin (RECOVERABLE for 90 days, then auto-purged). It is hidden from the media list and EXCLUDED from the next publish (a still-referenced page would then show a broken image on the republished site), so make sure NO page/dataset still references it first (prefer moving an asset to an "Unused" folder if unsure). Use to prune orphaned imported files. Needs the `content:delete` capability (opt-in, not implied by content:write) — if your connection lacks it, ask the user to grant it or remove the asset in the editor.',
       inputSchema: { id: z.string() },
     },
     gate('content:delete', ({ id }) => client.deleteMedia(id)),

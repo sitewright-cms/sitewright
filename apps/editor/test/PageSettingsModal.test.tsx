@@ -247,3 +247,32 @@ describe('PageSettingsModal — create mode (the New-page form)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ path: 'alle', locale: '' }));
   });
 });
+
+describe('PageSettingsModal — unified language handling (no per-page Language selector in edit)', () => {
+  const home: Page = { id: 'home', path: '', title: 'Home' };
+  const aboutEn: Page = { id: 'about', path: 'about', title: 'About', status: 'published', translationGroup: 'about' };
+  const aboutDe: Page = { id: 'about-de', path: 'about', title: 'Über', status: 'published', locale: 'de', translationGroup: 'about' };
+
+  it('EDIT mode shows neither the old Language dropdown nor the create-only scope control', () => {
+    render(
+      <PageSettingsModal page={aboutDe} projectId="p" initial={pageSettingsFromPage(aboutDe)} pages={[home, aboutEn, aboutDe]} templates={[]} locales={['en', 'de']} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    // The per-page Language selector is gone (unified with the New-page modal, which never had one).
+    expect(screen.queryByLabelText('Page language')).toBeNull();
+    // The "Available in" scope is a CREATE-only control — absent in edit too.
+    expect(screen.queryByText('Available in')).toBeNull();
+  });
+
+  it('EDIT preserves the page’s existing locale on save even without a selector (round-trips via applyPageSettings)', () => {
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal page={aboutDe} projectId="p" initial={pageSettingsFromPage(aboutDe)} pages={[home, aboutEn, aboutDe]} templates={[]} locales={['en', 'de']} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ locale: 'de' }));
+    // And applyPageSettings keeps the locale + translation group it does not edit.
+    const saved = applyPageSettings(aboutDe, onSubmit.mock.calls[0]![0]);
+    expect(saved.locale).toBe('de');
+    expect(saved.translationGroup).toBe('about');
+  });
+});

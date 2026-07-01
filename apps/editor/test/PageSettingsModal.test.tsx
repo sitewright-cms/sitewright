@@ -11,7 +11,7 @@ const base: Page = {
   // schema), so the round-trip normalizes to the explicit form.
   status: 'published',
   
-  // Flat SEO fields: description/image are managed by the modal; noindex is NOT (it passes through).
+  // Flat SEO fields managed by the modal: description, image, and (now) noindex.
   noindex: true,
   description: 'old description',
   nav: { slots: ['header'], order: 2, dropdown: true },
@@ -37,7 +37,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     // The cleared description is GONE (not ''); the set image persists.
     expect(next.description).toBeUndefined();
     expect(next.image).toBe('https://x.test/og.png');
-    // The unmanaged flat page field (noindex) passes through untouched.
+    // noindex is managed now — base had it set and these values keep it on, so it persists.
     expect(next.noindex).toBe(true);
     expect(next.parent).toBeUndefined();
     expect(next.template).toBeUndefined();
@@ -82,6 +82,31 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     const next = applyPageSettings(de, { ...pageSettingsFromPage(de), locale: '' });
     expect(next.locale).toBeUndefined(); // default locale stored as absence
     expect(next.translationGroup).toBe('about'); // group untouched
+  });
+});
+
+describe('PageSettingsModal — noindex (hide from search) toggle', () => {
+  const home: Page = { id: 'home', path: '', title: 'Home' };
+
+  it('reflects + toggles the noindex flag and submits it', () => {
+    const page: Page = { id: 'p', path: 'p', title: 'P', status: 'published', noindex: false };
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal page={page} projectId="p" initial={pageSettingsFromPage(page)} pages={[home, page]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    const toggle = screen.getByLabelText('Hide from search engines (noindex)') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ noindex: true }));
+  });
+
+  it('applyPageSettings persists noindex true and drops it when false (absence = indexable)', () => {
+    const page: Page = { id: 'p', path: 'p', title: 'P', status: 'published' };
+    expect(applyPageSettings(page, { ...pageSettingsFromPage(page), noindex: true }).noindex).toBe(true);
+    const on: Page = { ...page, noindex: true };
+    expect(applyPageSettings(on, { ...pageSettingsFromPage(on), noindex: false }).noindex).toBeUndefined();
   });
 });
 

@@ -41,6 +41,8 @@ export interface PageSettingsValues {
   description: string;
   /** Open Graph / share image (`page.image`). */
   image: string;
+  /** Exclude from search indexing + the sitemap (`page.noindex`). */
+  noindex: boolean;
   /**
    * For a TRANSLATED page only: how it gets its code — `inherit` (follows the main
    * language, no own code), `fork` (its own editable source), or `template`. Undefined on a
@@ -72,6 +74,7 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     locale: page.locale ?? '',
     description: page.description ?? '',
     image: page.image ?? '',
+    noindex: page.noindex ?? false,
     linkTarget: page.link?.target ?? '',
     linkNewTab: page.link?.newTab ?? false,
     rawHtml: page.rawHtml ?? false,
@@ -124,8 +127,8 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
   } else if (v.codeMode === 'template') {
     source = undefined;
   }
-  // The flat SEO fields this modal manages: empty → dropped (undefined). The fields it does NOT
-  // manage (canonical/noindex) pass through untouched via the page spread.
+  // The flat SEO fields this modal manages: empty/false → dropped (undefined). The fields it does
+  // NOT manage (canonical) pass through untouched via the page spread.
   return {
     ...page, // preserves translationGroup (set by "Add translation", not edited here)
     title: v.title,
@@ -138,6 +141,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     locale: v.locale || undefined,
     description: v.description || undefined,
     image: v.image || undefined,
+    noindex: v.noindex || undefined,
     rawHtml: v.rawHtml || undefined,
   };
 }
@@ -365,6 +369,25 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           projectId={projectId}
           placeholder="https://… or /media/… (used in link previews)"
         />
+
+        <div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className={toggleInput}
+              aria-label="Hide from search engines (noindex)"
+              checked={v.noindex}
+              onChange={(e) => patch({ noindex: e.target.checked })}
+            />
+            <span>
+              <span className="font-bold text-slate-700">Hide from search engines</span>
+              <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                Adds a <code>noindex</code> robots tag and drops this page from the sitemap, so search
+                engines won't list it. The page stays published and reachable by direct link.
+              </span>
+            </span>
+          </label>
+        </div>
         </>
         )}
 

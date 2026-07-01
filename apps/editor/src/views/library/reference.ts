@@ -168,13 +168,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-json',
-        syntax: '{{json value}}',
-        name: 'json',
+        syntax: '{{sw-json value}}',
+        name: 'sw-json',
         keywords: 'json stringify pretty print debug inspect object array data dump',
         description:
-          'Pretty-prints any value as indented JSON — an object, array, string, number, or boolean. For INSPECTING/DEBUGGING data: drop it in a <pre> to read a value while building (e.g. <pre>{{json page.data}}</pre>). Output is HTML-escaped like every binding, so it is NOT valid inside a <script type="application/ld+json"> block (quotes become &quot;) — use it to read, not to emit machine-parsed JSON. Empty for a missing or non-serializable (circular) value; the output is length-capped.',
+          'Pretty-prints any value as indented JSON — an object, array, string, number, or boolean. For INSPECTING/DEBUGGING data: drop it in a <pre> to read a value while building (e.g. <pre>{{sw-json page.data}}</pre>). Output is HTML-escaped like every binding, so it is NOT valid inside a <script type="application/ld+json"> block (quotes become &quot;) — use it to read, not to emit machine-parsed JSON. Empty for a missing or non-serializable (circular) value; the output is length-capped.',
         args: [{ name: 'value', desc: 'Any bound value to serialize.' }],
-        example: '<pre>{{json page.data}}</pre>\n{{json company.social}}',
+        example: '<pre>{{sw-json page.data}}</pre>\n{{sw-json company.social}}',
       },
       {
         id: 'h-active',

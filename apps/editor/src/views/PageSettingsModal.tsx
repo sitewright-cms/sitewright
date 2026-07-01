@@ -14,6 +14,7 @@ import {
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { AssetField } from './files/AssetField';
+import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { glassInput, toggleInput } from '../theme';
 
 /** Human labels for the nav slots: header = the Main Navigation (desktop + mobile drawer), mobile = the
@@ -178,6 +179,21 @@ interface PageSettingsModalProps {
   onClose: () => void;
   /** Receives the edited values; the CALLER persists (list) or applies to its draft (editor). */
   onSubmit: (values: PageSettingsValues) => void;
+  /**
+   * 'create' turns this into the NEW-PAGE form: the home/link/translated branches are forced
+   * off (a fresh page is a normal page), the slug is editable, the parent defaults to the home
+   * of the chosen language, and — when multilingual — the Language selector is replaced by the
+   * `scope` control. The caller's `onSubmit` performs id derivation + persistence + fan-out and
+   * reports any failure back via `error` (the modal stays open). Defaults to 'edit'.
+   */
+  mode?: 'create' | 'edit';
+  /** The language the pages list is showing — the target of a "this language only" create. */
+  currentLocale?: string;
+  /** create-mode: 'all' languages (owner + inherit variants) or 'current' (a locale-only page). */
+  scope?: 'all' | 'current';
+  onScopeChange?: (scope: 'all' | 'current') => void;
+  /** create-mode: a submit error from the caller (slug taken / reserved / failed) — shown inline. */
+  error?: string | null;
 }
 
 /**
@@ -186,12 +202,18 @@ interface PageSettingsModalProps {
  * title, path, status, meta description, OG image, parent page, show-children-
  * in-dropdown, template reference, and nav placement.
  */
-export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
+export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit, mode = 'edit', currentLocale, scope = 'all', onScopeChange, error }: PageSettingsModalProps) {
   const defaultLocale = locales[0] ?? 'en';
+  const multilingual = locales.length > 1;
+  const isCreate = mode === 'create';
+  // A "this language only" create targets the currently-viewed non-default language; everything
+  // else (incl. an all-languages create) is authored in the default language.
+  const createLocale = isCreate && multilingual && scope === 'current' && currentLocale && currentLocale !== defaultLocale ? currentLocale : defaultLocale;
   // A TRANSLATED page is a non-default-locale page whose translation group has a main-language
   // owner — it can inherit that owner's code. The code-source control is shown only for these.
-  const owner = codeOwnerOf(page, pages, defaultLocale);
-  const isTranslated = !!owner && owner.id !== page.id;
+  // A fresh page (create mode) is never home/link/translated — it is a normal, top-of-tree page.
+  const owner = isCreate ? undefined : codeOwnerOf(page, pages, defaultLocale);
+  const isTranslated = !isCreate && !!owner && owner.id !== page.id;
   // Seed the code mode from the page's current state so the radio reflects reality and an
   // untouched save preserves it.
   const [v, setV] = useState<PageSettingsValues>(() =>
@@ -200,15 +222,17 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
   // A navigation placeholder (kind:'link') has no page/code/route — the form drops slug, meta,
   // image, and the code/template controls, and shows a single link Target + new-tab toggle instead.
-  const isLink = isLinkPage(page);
-  const isRootHome = page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
-  const pageLocale = localeOf(page, defaultLocale);
+  const isLink = !isCreate && isLinkPage(page);
+  const isRootHome = !isCreate && page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
+  // The language this page lives in for tree/parent purposes — the chosen create language in
+  // create mode, else the page's own locale.
+  const pageLocale = isCreate ? createLocale : localeOf(page, defaultLocale);
   // A LOCALE HOME is the root of a non-default language's subtree (a variant of the root home):
   // its parent (the site root) and slug (the language code) are fixed — not re-assignable.
   const rootHome = pages.find((p) => p.path === '' && !isLinkPage(p));
   const homeGroup = rootHome?.translationGroup ?? rootHome?.id;
   const isLocaleHome =
-    !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;
+    !isCreate && !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;
   // "Home-like": the root home OR a locale home — slug + parent are fixed.
   const isHomeLike = isRootHome || isLocaleHome;
   /** The main language's effective source (resolved through its template if any) — copied in on fork. */
@@ -258,14 +282,21 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
 
   return (
     <Modal
-      title={`${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
+      title={isCreate ? 'New page' : `${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
       size="lg"
       onClose={onClose}
-      // Coerce the parent: home stays parentless; a non-home page submits its chosen
-      // parent or falls back to home (there is no "None" for non-home pages).
-      onSave={() => onSubmit({ ...v, parent: effectiveParent })}
+      // Coerce the parent: home stays parentless; a non-home page submits its chosen parent or
+      // falls back to home. In create mode also stamp the chosen language (default = absence) so
+      // the caller persists a locale-only page under the right subtree.
+      onSave={() =>
+        onSubmit({
+          ...v,
+          parent: effectiveParent,
+          ...(isCreate ? { locale: createLocale === defaultLocale ? '' : createLocale } : {}),
+        })
+      }
       saving={saving}
-      saveLabel="Save settings"
+      saveLabel={isCreate ? 'Create page' : 'Save settings'}
     >
       <div className="flex flex-col gap-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -346,6 +377,10 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             </div>
           )}
         </div>
+
+        {/* Create-mode submit errors (slug taken / reserved / failed) surface high, right under the
+            title + slug, so they're visible without scrolling this tall form. */}
+        {error && <p className="text-sm font-medium text-red-600" role="alert">{error}</p>}
 
         {!isLink && (
         <>
@@ -518,7 +553,28 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           )}
         </div>
 
-        {locales.length > 1 && (
+        {/* create + multilingual: choose whether the new page exists in every language (one
+            main-language owner + inherit variants) or only the one you're viewing. In edit mode
+            the same slot is the plain Language selector. */}
+        {isCreate && multilingual ? (
+          <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/40 p-3">
+            <legend className="px-1 text-xs font-bold uppercase tracking-wide text-slate-500">Available in</legend>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available in all languages" checked={scope === 'all'} onChange={() => onScopeChange?.('all')} />
+              <span>
+                <span className="font-medium">All languages</span>
+                <span className="block text-[11px] text-slate-500">One main-language page; every other language follows its layout.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available only in the current language" checked={scope === 'current'} onChange={() => onScopeChange?.('current')} />
+              <span>
+                <span className="font-medium">Only {localeFlag(currentLocale ?? defaultLocale)} {localeLabel(currentLocale ?? defaultLocale)}</span>
+                <span className="block text-[11px] text-slate-500">A page that exists only in this language.</span>
+              </span>
+            </label>
+          </fieldset>
+        ) : locales.length > 1 && !isCreate ? (
           <label className="flex flex-col text-xs font-bold text-slate-700">
             Language
             <select
@@ -541,7 +597,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               {siblings.length > 0 && <> Linked translations: {siblings.map((s) => s.locale ?? locales[0]).join(', ')}.</>}
             </span>
           </label>
-        )}
+        ) : null}
 
         <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
           <p className="mb-2 text-xs font-bold text-slate-700">Navigation</p>

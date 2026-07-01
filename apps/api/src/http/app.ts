@@ -146,6 +146,8 @@ import { PublishError, type ReleaseManifest } from '../publish/build.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
+import type { AgentProvider } from '../ai/agent-provider.js';
+import { registerAiAgentRoutes } from './ai-agent-routes.js';
 import { PublishStore } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
 import { signPreview, verifyPreview } from './preview-token.js';
@@ -778,6 +780,8 @@ export interface AppOptions {
   buildRunner?: BuildRunner;
   /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
   aiProvider?: AiProvider;
+  /** Streaming, tool-using provider for the on-page AI assistant. Omit to disable the assistant. */
+  agentProvider?: AgentProvider;
   /** Form-submission mailer (Mode A). Defaults to the global-SMTP mailer; tests inject a fake. */
   mailer?: SubmissionMailer;
   /** Per-project SMTP mailer (Mode B / userSmtp). Defaults to ProjectSmtpMailer; tests inject a fake. */
@@ -800,7 +804,7 @@ export interface AppOptions {
    */
   sitesDomain?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
-  aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
+  aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number; projectMonthlyTokens?: number };
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -868,6 +872,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewStore = new PreviewStore();
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const aiProvider = opts.aiProvider;
+  const agentProvider = opts.agentProvider;
   const aiUsageRepo = new AiUsageRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
@@ -959,6 +964,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     logger: opts.logger
       ? {
           redact: [
+            // Bearer tokens (incl. the short-lived agent token used for in-process /mcp injects) — never
+            // log them, even if a future plugin serializes request headers.
+            'req.headers.authorization',
             // Covers the auth login/register password AND the project-SMTP PUT
             // (SmtpInput.password is top-level) AND deploy-target create.
             'req.body.password',
@@ -4201,6 +4209,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       org: { used: orgUsed, limit: aiQuota.orgMonthlyTokens ?? null },
       user: { used: userUsed, limit: aiQuota.userMonthlyTokens ?? null },
     });
+  });
+
+  // The on-page AI assistant: a streaming, tool-using agent that edits the project's DRAFT
+  // content by driving the same MCP tools an external client would, scoped to capabilities
+  // the user grants. Session-only (the browser never holds a token); metered like /ai/generate.
+  registerAiAgentRoutes(app, {
+    db,
+    agentProvider,
+    aiUsageRepo,
+    aiQuota,
+    resolveProject,
+    isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    isAdmin: isInstanceAdmin,
+    getAgentInstructions: () => instanceSettingsRepo.getEffectiveAgentInstructions(),
+    rl,
   });
 
   app.get('/health', async () => ({ ok: true }));

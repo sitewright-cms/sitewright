@@ -21,6 +21,8 @@ import type {
   StockSearchResult,
   Template,
   WebsiteSettings,
+  AiConfigView,
+  AiConfigInput,
 } from '@sitewright/schema';
 import type {
   AuthenticationResponseJSON,
@@ -1034,6 +1036,14 @@ export const api = {
     request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
   deleteProjectSmtp: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/smtp`),
+
+  // --- per-project AI assistant config ("bring your own agent") ---
+  getAiConfig: (projectId: string) =>
+    request<{ aiConfig: AiConfigView | null }>('GET', `/projects/${projectId}/ai-config`),
+  putAiConfig: (projectId: string, body: AiConfigInput) =>
+    request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config`, body),
+  deleteAiConfig: (projectId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/ai-config`),
 
   // --- form submissions (inbox) ---
   listSubmissions: (projectId: string, formId?: string) =>

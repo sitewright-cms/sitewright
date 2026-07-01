@@ -93,6 +93,16 @@ export function InstanceSettings() {
   const [hasUnsplash, setHasUnsplash] = useState(false);
   const [hasPexels, setHasPexels] = useState(false);
 
+  // Platform-wide AI assistant config (the key is write-only; a presence flag comes back).
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiProvider, setAiProvider] = useState<'anthropic' | 'openai'>('anthropic');
+  const [aiModel, setAiModel] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiKey, setAiKey] = useState('');
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiProjectLimit, setAiProjectLimit] = useState('');
+  const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
+
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
 
   // Max failed login/2FA attempts per IP per minute before throttling (brute-force protection).
@@ -155,6 +165,14 @@ export function InstanceSettings() {
     setHasPexels(s.stock?.hasPexels ?? false);
     setUnsplashKey('');
     setPexelsKey('');
+    setAiEnabled(s.ai?.enabled ?? false);
+    setAiProvider(s.ai?.provider ?? 'anthropic');
+    setAiModel(s.ai?.model ?? '');
+    setAiBaseUrl(s.ai?.baseUrl ?? '');
+    setAiHasKey(s.ai?.hasApiKey ?? false);
+    setAiKey('');
+    setAiProjectLimit(s.ai?.defaultProjectMonthlyTokens != null ? String(s.ai.defaultProjectMonthlyTokens) : '');
+    setAiAdminsUnlimited(s.ai?.adminsUnlimited ?? true);
     setOidcProviders(
       (s.oidcProviders ?? []).map((p) => ({
         _key: nextOidcProviderKey(),
@@ -244,6 +262,17 @@ export function InstanceSettings() {
     input.stock = stockEnabled
       ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
       : null; // disabling clears both keys
+    input.ai = aiEnabled
+      ? {
+          enabled: true,
+          provider: aiProvider,
+          adminsUnlimited: aiAdminsUnlimited,
+          ...(aiModel.trim() ? { model: aiModel.trim() } : {}),
+          ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
+          ...(aiKey ? { apiKey: aiKey } : {}), // blank = keep current
+          ...(aiProjectLimit.trim() !== '' ? { defaultProjectMonthlyTokens: Number(aiProjectLimit) } : {}),
+        }
+      : null; // disabling clears the platform assistant (and its key)
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
     // must leave the stored override alone. When edited: store an override unless it's empty or equals
     // the default (then send null → revert), so we never persist the whole default as an override.
@@ -610,6 +639,56 @@ export function InstanceSettings() {
                 placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPexelsKey(e.target.value)}
               />
+            </label>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          AI Assistant
+          <SectionHelp tip="The on-page AI assistant edits sites on request. Set a provider + API key to enable it platform-wide; projects can override with their own key (Website settings → AI Assistant). The key is encrypted at rest and never leaves the server." />
+        </legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Enable the AI assistant platform-wide"
+            checked={aiEnabled}
+            onChange={(e) => setAiEnabled(e.target.checked)}
+          />
+          Enable the AI assistant platform-wide
+        </label>
+        {aiEnabled && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="flex flex-col text-xs text-slate-500">
+              Provider
+              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as 'anthropic' | 'openai')}>
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI-compatible</option>
+              </select>
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Model
+              <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-haiku-4-5'} />
+            </label>
+            {aiProvider === 'openai' && (
+              <label className="col-span-2 flex flex-col text-xs text-slate-500">
+                Base URL <span className="text-slate-400">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
+                <input className={field} aria-label="AI base URL" type="url" value={aiBaseUrl} onChange={(e) => setAiBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+              </label>
+            )}
+            <label className="flex flex-col text-xs text-slate-500">
+              API key
+              <input className={field} aria-label="AI API key" type="password" value={aiKey} placeholder={aiHasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setAiKey(e.target.value)} />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Default per-project monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
+              <input className={field} aria-label="Default per-project monthly token cap" type="number" min={0} value={aiProjectLimit} onChange={(e) => setAiProjectLimit(e.target.value)} />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" className={toggleInput} aria-label="Admins bypass token caps" checked={aiAdminsUnlimited} onChange={(e) => setAiAdminsUnlimited(e.target.checked)} />
+              Platform admins bypass token caps
             </label>
           </div>
         )}

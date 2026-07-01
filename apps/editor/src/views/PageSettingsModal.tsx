@@ -15,6 +15,7 @@ import {
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { SectionHelp } from './ui/SectionHelp';
+import { SearchableSelect, type SelectOption } from './ui/SearchableSelect';
 import { AssetField } from './files/AssetField';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { glassInput, toggleInput, gradientSurface } from '../theme';
@@ -301,6 +302,13 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   // Index for the live "full URL" preview as the slug/parent are edited.
   const previewById = pagesById(pages);
   const childCount = pages.filter((p) => p.parent === page.id).length;
+  // Template options for the (searchable) template selectors — built-in globals first, then the
+  // project's own templates. Shown by NAME (the naming convention); the empty option differs per
+  // selector ("None (own code)" vs the "Select a template…" placeholder), so it's added at the callsite.
+  const templateEntries: SelectOption[] = [
+    ...GLOBAL_TEMPLATES.map((t) => ({ value: t.id, label: t.name })),
+    ...templates.map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   // Status (Published/Draft) lives in the header — a segmented pill matching the page editor's
   // Code/Content switch (active segment lifts to the brand gradient).
@@ -440,29 +448,26 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                   }
                 />
               </span>
-              <select
-                aria-label="Parent page"
-                className={`mt-1.5 font-normal ${glassInput}`}
-                value={effectiveParent}
-                // The root home and each LOCALE home are fixed roots — their parent can't be reassigned.
-                disabled={isHomeLike}
-                title={isHomeLike ? 'A home page is the root of its language and cannot be re-parented' : undefined}
-                onChange={(e) => patch({ parent: e.target.value })}
-              >
-                {/* Root home → None; a locale home → fixed under the site root; every other page
-                    picks a parent IN ITS OWN LANGUAGE (defaults to that language's home). */}
-                {isRootHome ? (
-                  <option value="">None (home is the root)</option>
-                ) : isLocaleHome ? (
-                  <option value={effectiveParent}>{rootHome?.title ?? 'Home'} (site root)</option>
-                ) : (
-                  parentChoices.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} ({pagePath(p, previewById)})
-                    </option>
-                  ))
-                )}
-              </select>
+              {/* Root home → None; a locale home → fixed under the site root; every other page picks
+                  a parent IN ITS OWN LANGUAGE. Options show the page's PATH (titles get too long) and
+                  are searchable by path OR title (keywords). Home-like pages are fixed → disabled. */}
+              <div className="mt-1.5">
+                <SearchableSelect
+                  ariaLabel="Parent page"
+                  value={effectiveParent}
+                  disabled={isHomeLike}
+                  onChange={(val) => patch({ parent: val })}
+                  searchPlaceholder="Search by path or title…"
+                  options={
+                    isRootHome
+                      ? [{ value: '', label: 'None (home is the root)' }]
+                      : isLocaleHome
+                        ? [{ value: effectiveParent, label: `${rootHome?.title ?? 'Home'} (site root)` }]
+                        : parentChoices.map((p) => ({ value: p.id, label: pagePath(p, previewById), keywords: p.title }))
+                  }
+                  className="w-full"
+                />
+              </div>
             </label>
           </div>
 
@@ -670,20 +675,17 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                         <span className="w-full">
                           Use a template
                           {v.codeMode === 'template' && (
-                            <select
-                              aria-label="Page template"
-                              className={`mt-1.5 font-normal ${glassInput}`}
-                              value={v.template}
-                              onChange={(e) => patch({ template: e.target.value })}
-                            >
-                              <option value="">Select a template…</option>
-                              {GLOBAL_TEMPLATES.map((t) => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                              ))}
-                              {templates.map((t) => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                              ))}
-                            </select>
+                            <div className="mt-1.5">
+                              <SearchableSelect
+                                ariaLabel="Page template"
+                                value={v.template}
+                                options={templateEntries}
+                                placeholder="Select a template…"
+                                searchPlaceholder="Search templates…"
+                                onChange={(val) => patch({ template: val })}
+                                className="w-full"
+                              />
+                            </div>
                           )}
                         </span>
                       </label>
@@ -695,24 +697,16 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                       Template
                       <SectionHelp tip="A templated page renders the template’s code — its editor is locked (fork to customize)." />
                     </span>
-                    <select
-                      aria-label="Page template"
-                      className={`mt-1.5 font-normal ${glassInput}`}
-                      value={v.template}
-                      onChange={(e) => patch({ template: e.target.value })}
-                    >
-                      <option value="">None (own code)</option>
-                      {GLOBAL_TEMPLATES.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1.5">
+                      <SearchableSelect
+                        ariaLabel="Page template"
+                        value={v.template}
+                        options={[{ value: '', label: 'None (own code)' }, ...templateEntries]}
+                        searchPlaceholder="Search templates…"
+                        onChange={(val) => patch({ template: val })}
+                        className="w-full"
+                      />
+                    </div>
                   </label>
                 )}
 

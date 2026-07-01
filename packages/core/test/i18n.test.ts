@@ -18,6 +18,7 @@ import {
   buildLocaleVariant,
   scaffoldLocale,
   propagatePageToLocales,
+  nextChildOrder,
 } from '../src/index.js';
 
 // `path` is a SLUG SEGMENT (empty for home); full routes are computed from the parent chain.
@@ -278,6 +279,55 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     expect(pagePath(byId.get('about-de')!, byId)).toBe('/de/about');
     expect(pagePath(byId.get('team-de')!, byId)).toBe('/de/about/team'); // nested, not orphaned
     expect(created.find((p) => p.id === 'team-de')!.parent).toBe('about-de');
+  });
+
+  it('places the variant LAST within its own locale group, not merely inheriting the owner order', () => {
+    // de already has an extra locale-only page reordered PAST the default-locale group's size.
+    const pages: Page[] = [
+      ...base,
+      page({ id: 'promo-de', path: 'promo', parent: 'home-de', title: 'Promo', locale: 'de', order: 5 }),
+      { ...owner, order: 0 }, // the new all-languages owner is the first en child (order 0)
+    ];
+    const { created } = propagatePageToLocales({ ...owner, order: 0 }, pages, ['en', 'de'], 'en');
+    const variant = created.find((p) => p.id === 'pricing-de')!;
+    // Inheriting owner.order (0) would tie/undershoot promo-de@5; instead it lands last in de → 6.
+    expect(variant.order).toBe(6);
+  });
+
+  it('leaves an orderless owner’s variants orderless (no forced ordinal, preserves title sort)', () => {
+    const orderless = page({ id: 'blog', path: 'blog', parent: 'home', title: 'Blog', source: '<h1>B</h1>' });
+    const { created } = propagatePageToLocales(orderless, [...base, orderless], ['en', 'de'], 'en');
+    expect(created.find((p) => p.id === 'blog-de')!.order).toBeUndefined();
+  });
+});
+
+describe('nextChildOrder', () => {
+  it('returns one past the max effective order among same-parent, same-locale children', () => {
+    const pages: Page[] = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      page({ id: 'a', path: 'a', parent: 'home', title: 'A', order: 0 }),
+      page({ id: 'b', path: 'b', parent: 'home', title: 'B', order: 3 }),
+      page({ id: 'x-de', path: 'x', parent: 'home', title: 'X', locale: 'de', order: 9 }), // other locale, ignored
+    ];
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(4); // past b@3, ignores x-de@9
+    expect(nextChildOrder(pages, 'home', 'de', 'en')).toBe(10); // de group: past x-de@9
+  });
+
+  it('is 0 for a parent with no children in that locale, and counts legacy nav.order', () => {
+    const pages: Page[] = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      page({ id: 'a', path: 'a', parent: 'home', title: 'A', nav: { slots: ['header'], order: 7 } }),
+    ];
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(8); // nav.order fallback
+    expect(nextChildOrder(pages, 'nonexistent', 'en', 'en')).toBe(0);
+  });
+
+  it('caps the result at the schema max when a sibling already sits there', () => {
+    const pages: Page[] = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      page({ id: 'a', path: 'a', parent: 'home', title: 'A', order: 100_000 }),
+    ];
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(100_000);
   });
 });
 

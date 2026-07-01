@@ -13,7 +13,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { HistoryView } from './HistoryView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
-import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
+import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 
@@ -308,14 +308,21 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       setAddError(id === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${id}" already exists.`);
       return;
     }
+    // Land the new page LAST under its home parent (default: append to the bottom of the list),
+    // not sorted in by title. A locale-only page appends under its own language's home; an
+    // all-languages page appends under the root home and its variants append last in each
+    // language too (the locale fan-out recomputes per-locale — see core nextChildOrder).
+    const parentId = localeOnly ? localeHomeId(currentLocale) : homeId;
+    const pageLocale = localeOnly ? currentLocale : defaultLocale;
     const starter: Page = {
       id,
       path: seg,
       title,
       source: CODE_PAGE_STARTER,
+      order: nextSiblingOrder(pages, parentId, pageLocale, defaultLocale),
       ...(localeOnly
-        ? { parent: localeHomeId(currentLocale), locale: currentLocale } // standalone, lives only in this language
-        : { parent: homeId }), // the default-language owner (the code source of truth)
+        ? { parent: parentId, locale: currentLocale } // standalone, lives only in this language
+        : { parent: parentId }), // the default-language owner (the code source of truth)
     };
     try {
       await api.putPage(project.id, starter);
@@ -370,6 +377,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     // Created while viewing a non-default language → a locale-only placeholder; else the
     // default-language owner that fans out to every locale below.
     const localeOnly = multilingual && currentLocale !== defaultLocale;
+    const parentId = localeOnly ? localeHomeId(currentLocale) : homeId;
+    const placeholderLocale = localeOnly ? currentLocale : defaultLocale;
     const placeholder: Page = {
       id,
       path: '', // routing-transparent: no slug, no emitted route
@@ -377,7 +386,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       kind: 'link',
       link: { ...(target ? { target } : {}), ...(phNewTab ? { newTab: true } : {}) },
       nav: { slots: phSlots, ...(phDropdown ? { dropdown: true } : {}) },
-      parent: localeOnly ? localeHomeId(currentLocale) : homeId,
+      parent: parentId,
+      order: nextSiblingOrder(pages, parentId, placeholderLocale, defaultLocale), // append last among siblings
       ...(localeOnly ? { locale: currentLocale } : {}),
     };
     try {

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS } from '../src/agent.js';
+import { NAV_SLOTS } from '../src/page.js';
+import { SW_HELPERS } from '../src/authoring-reference.js';
 
 describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   it('stays brand-neutral — no hardcoded platform name (white-label safe)', () => {
@@ -79,5 +81,50 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     ]) {
       expect(all).toContain(probe);
     }
+  });
+});
+
+// The MCP docs (this CORE + every get_guide body, incl. the import/clone guide) are hand-written PROSE
+// — unlike the get_reference registries (SW_HELPERS / BINDING_NAMESPACES / SW_DIRECTIVES) they are NOT
+// otherwise pinned to the engine, so a binding rename can silently leave a guide EXAMPLE stale. These
+// guards pin the docs' binding SYNTAX to the source of truth so that class of drift fails CI.
+describe('MCP docs ↔ engine binding drift guards', () => {
+  const allDocs = DEFAULT_AGENT_INSTRUCTIONS + '\n' + Object.values(AGENT_GUIDES).map((g) => g.body).join('\n');
+  // Same chain scanner as @sitewright/core pages.ts: a `pages.<seg>(.<seg>)*` chain, each seg a dotted
+  // identifier or a [bracketed] key.
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear (non-overlapping branches); same regex as @sitewright/core pages.ts
+  const CHAIN_RE = /(?<![\w.-])pages((?:\.[A-Za-z_][\w-]*|\.\[[^\]]+\])+)/g;
+  const SEG_RE = /\.\[([^\]]+)\]|\.([A-Za-z_][\w-]*)/g;
+
+  it('no doc uses the retired pre-_attributes cross-page pages.<slug>.<field> syntax', () => {
+    // Since #555 a node's OWN fields live under `_attributes`; a `pages.*` chain that reads one of these
+    // fields WITHOUT the `_attributes` hop is the retired syntax and now renders empty.
+    const NODE_FIELDS = new Set(['data', 'title', 'path', 'slug', 'locale', 'image', 'description', 'children', 'code', 'template']);
+    const stale: string[] = [];
+    for (const m of allDocs.matchAll(CHAIN_RE)) {
+      const segs: string[] = [];
+      for (const s of m[1]!.matchAll(SEG_RE)) segs.push((s[1] ?? s[2])!);
+      if (!segs.includes('_attributes') && segs.some((x) => NODE_FIELDS.has(x))) stale.push(`pages${m[1]}`);
+    }
+    expect(stale, `retired pages.<slug>.<field> — use pages.<slug>._attributes.<field>: ${stale.join(', ')}`).toEqual([]);
+  });
+
+  it('every {{sw-*}} helper invoked in the docs is a real registered helper', () => {
+    // SW_HELPERS is itself pinned to the engine's registered sw-* helpers (blocks authoring-reference.test),
+    // so this transitively pins the docs to the engine. Matches ONLY helper INVOCATIONS ({{sw-x}}, {{#sw-x}},
+    // {{/sw-x}}, or a (sw-x …) subexpression) — never a data-sw-* directive or a class="sw-*" effect.
+    const known = new Set(SW_HELPERS.map((h) => h.name));
+    const unknown = new Set<string>();
+    for (const m of allDocs.matchAll(/(?:\{\{[#/]?\s*|\(\s*)(sw-[a-z][a-z-]*)/g)) if (!known.has(m[1]!)) unknown.add(m[1]!);
+    expect([...unknown], `docs invoke unknown sw-* helper(s) (typo/renamed/removed?): ${[...unknown].join(', ')}`).toEqual([]);
+  });
+
+  it('every nav.<slot> looped in the docs is a real NAV_SLOT', () => {
+    // The render binding `{{#each nav.<slot>}}` / `{{nav.<slot>}}` — NOT the page-settings `nav.slots`/
+    // `nav.order`/`nav.dropdown` config fields (those never appear inside a mustache).
+    const known = new Set<string>(NAV_SLOTS);
+    const unknown = new Set<string>();
+    for (const m of allDocs.matchAll(/\{\{(?:#each\s+|\s*)nav\.([a-z]+)/g)) if (!known.has(m[1]!)) unknown.add(m[1]!);
+    expect([...unknown], `docs loop nav.<slot> that isn't a NAV_SLOT: ${[...unknown].join(', ')}`).toEqual([]);
   });
 });

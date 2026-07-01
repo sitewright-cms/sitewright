@@ -521,8 +521,7 @@ meet GDPR (Art. 6/7 — a lawful basis + freely-given, informed consent) and the
 5(3) — PRIOR consent before any cookie/tracker is set): third-party embeds (YouTube/Maps) + scripts (GA/chat)
 are BLOCKED until the visitor consents by category, withdrawal is one click, and nothing third-party loads
 before consent. (It's a tool to help comply — a privacy policy + a lawful basis are still on you.) Just turn it
-on with website.consent.enabled — the banner is AUTO-INJECTED on every page (there is NO {{sw-consent}}
-placeholder; don't add one). It shows a banner (Accept all / Reject all / Customize) + a per-category
+on with website.consent.enabled — the banner is AUTO-INJECTED on every page (you do NOT add a consent placeholder). It shows a banner (Accept all / Reject all / Customize) + a per-category
 preferences panel: Strictly necessary (always on), Functional, Analytics, Marketing. The choice is remembered
 (versioned localStorage). Add a footer "Cookie settings" re-open link with {{sw-consent-settings}} (or a plain
 <a href="#sw-consent">).

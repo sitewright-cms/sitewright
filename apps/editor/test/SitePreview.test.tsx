@@ -13,6 +13,7 @@ vi.mock('../src/api', () => ({
     agentPresence: (id: string) => agentPresence(id),
     previewLocate: (id: string, entity: string) => previewLocate(id, entity),
     previewBase: (id: string) => previewBase(id),
+    agentStatus: () => Promise.resolve({ enabled: false }), // no on-page assistant button in these tests
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
   // Mirror the real implementation's trailing-slash logic so assertions match production behavior.

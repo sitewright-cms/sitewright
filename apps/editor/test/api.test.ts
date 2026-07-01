@@ -901,6 +901,93 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
+  it('reads/sets the agent consent grant and reads agent status', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { configured: false, capabilities: ['content:read', 'content:write'], autonomy: 'full' }));
+    const g = await api.getAgentGrant('p');
+    expect(g.configured).toBe(false);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/agent/grant');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { configured: true, capabilities: ['content:read'], autonomy: 'ask' }));
+    await api.putAgentGrant('p', { capabilities: ['content:read'], autonomy: 'ask' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/agent/grant');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toEqual({ capabilities: ['content:read'], autonomy: 'ask' });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { enabled: true }));
+    expect((await api.agentStatus('p')).enabled).toBe(true);
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/agent/status');
+  });
+
+  it('streamAgentMessage POSTs to /agent/messages and dispatches all named SSE events', async () => {
+    const enc = new TextEncoder();
+    const frames = [
+      'event: start\ndata: {"conversationId":"c1","model":"m"}\n\n',
+      'event: text\ndata: {"delta":"Hel"}\n\n',
+      'event: text\ndata: {"delta":"lo"}\n\n',
+      'event: tool\ndata: {"id":"t1","name":"put_page","input":{}}\n\n',
+      'event: tool_result\ndata: {"id":"t1","name":"put_page","ok":true,"summary":"done"}\n\n',
+      'event: usage\ndata: {"inputTokens":5,"outputTokens":2,"projectMonthToDate":7}\n\n',
+      'event: done\ndata: {"message":"Hello"}\n\n',
+    ];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+
+    const events: string[] = [];
+    let convId = '';
+    let text = '';
+    let done = '';
+    await api.streamAgentMessage(
+      'p',
+      { message: 'hi', context: { path: '/' } },
+      {
+        onStart: (e) => {
+          convId = e.conversationId;
+          events.push('start');
+        },
+        onText: (d) => (text += d),
+        onTool: (t) => events.push(`tool:${t.name}`),
+        onToolResult: (r) => events.push(`tool_result:${r.ok}`),
+        onUsage: (u) => events.push(`usage:${u.projectMonthToDate}`),
+        onDone: (m) => {
+          done = m;
+          events.push('done');
+        },
+      },
+    );
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p/agent/messages');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toMatchObject({ message: 'hi', context: { path: '/' } });
+    expect(convId).toBe('c1');
+    expect(text).toBe('Hello');
+    expect(done).toBe('Hello');
+    expect(events).toEqual(['start', 'tool:put_page', 'tool_result:true', 'usage:7', 'done']);
+  });
+
+  it('streamAgentMessage surfaces a preflight error and an error frame via onError', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 429, statusText: 'Too Many', json: async () => ({ error: 'AI project quota exhausted for this month' }) } as Response);
+    let err = '';
+    await api.streamAgentMessage('p', { message: 'hi' }, { onError: (m) => (err = m) });
+    expect(err).toMatch(/quota exhausted/);
+
+    const enc = new TextEncoder();
+    const frames = ['event: error\ndata: {"code":"provider","message":"boom"}\n\n'];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+    let err2 = '';
+    await api.streamAgentMessage('p', { message: 'hi' }, { onError: (m) => (err2 = m) });
+    expect(err2).toBe('boom');
+  });
+
   it('lists and deletes submissions, passing the formId filter', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listSubmissions('p');

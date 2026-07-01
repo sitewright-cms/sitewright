@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage } from '../src/views/PageSettingsModal';
 
@@ -274,5 +274,56 @@ describe('PageSettingsModal — unified language handling (no per-page Language 
     const saved = applyPageSettings(aboutDe, onSubmit.mock.calls[0]![0]);
     expect(saved.locale).toBe('de');
     expect(saved.translationGroup).toBe('about');
+  });
+});
+
+describe('PageSettingsModal — UX: status in header, collapsible Advanced, hint tooltips', () => {
+  const home: Page = { id: 'home', path: '', title: 'Home' };
+  const plain: Page = { id: 'p', path: 'p', title: 'P', status: 'published' };
+
+  it('puts the Published/Draft switch in the header and toggles + submits status', () => {
+    const onSubmit = vi.fn();
+    render(<PageSettingsModal page={plain} projectId="p" initial={pageSettingsFromPage(plain)} pages={[home, plain]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />);
+    const statusGroup = screen.getByRole('group', { name: 'Status' });
+    const draftBtn = within(statusGroup).getByRole('button', { name: 'draft' });
+    expect(draftBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(draftBtn);
+    expect(draftBtn).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
+  });
+
+  it('collapses Advanced in EDIT (Template hidden until expanded)', () => {
+    render(<PageSettingsModal page={plain} projectId="p" initial={pageSettingsFromPage(plain)} pages={[home, plain]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    // Template lives under Advanced, which is collapsed by default in edit → not rendered yet.
+    expect(screen.queryByLabelText('Page template')).toBeNull();
+    const advanced = screen.getByRole('button', { name: /Advanced/ });
+    expect(advanced).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(advanced);
+    expect(advanced).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Page template')).toBeInTheDocument();
+  });
+
+  it('opens Advanced up front in CREATE (template picker visible immediately)', () => {
+    const draft = { id: '__new__', path: '', title: '' } as Page;
+    render(<PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    expect(screen.getByLabelText('Page template')).toBeInTheDocument();
+  });
+
+  it('opens Advanced when the page already uses a power setting (rawHtml)', () => {
+    const raw: Page = { ...plain, rawHtml: true };
+    render(<PageSettingsModal page={raw} projectId="p" initial={pageSettingsFromPage(raw)} pages={[home, raw]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    expect(screen.getByRole('button', { name: /Advanced/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Raw HTML page')).toBeInTheDocument();
+  });
+
+  it('renders field hints as (?) tooltip affordances, not inline description paragraphs', () => {
+    render(<PageSettingsModal page={plain} projectId="p" initial={pageSettingsFromPage(plain)} pages={[home, plain]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    // The noindex explanation is now the SectionHelp tooltip's aria-label (a button), not prose.
+    expect(screen.getByRole('button', { name: /Adds a noindex robots tag/ })).toBeInTheDocument();
+    // Sanity: the sections are labeled.
+    expect(screen.getByRole('heading', { name: 'Basics' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'SEO & Social' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Navigation' })).toBeInTheDocument();
   });
 });

@@ -16,6 +16,8 @@ import {
   type SmtpStored,
   type HcaptchaStored,
   type StockKeysStored,
+  type AiStored,
+  type AiProviderKind,
   type OidcProviderStored,
   type PlatformLogo,
 } from '@sitewright/schema';
@@ -232,6 +234,28 @@ export class InstanceSettingsRepository {
       next.stock = stock;
     }
 
+    // Platform AI config: an object sets it (apiKey preserved when omitted), `null` clears the whole
+    // section (disables the platform assistant), and undefined keeps whatever was stored.
+    if (input.ai === null) {
+      // cleared — leave next.ai undefined
+    } else if (input.ai === undefined) {
+      if (current.ai) next.ai = current.ai;
+    } else {
+      const apiKey = input.ai.apiKey !== undefined ? this.encrypt(input.ai.apiKey) : current.ai?.apiKey;
+      const ai: AiStored = {
+        enabled: input.ai.enabled,
+        provider: input.ai.provider,
+        adminsUnlimited: input.ai.adminsUnlimited,
+        ...(input.ai.model !== undefined ? { model: input.ai.model } : {}),
+        ...(input.ai.baseUrl !== undefined ? { baseUrl: input.ai.baseUrl } : {}),
+        ...(apiKey !== undefined ? { apiKey } : {}),
+        ...(input.ai.defaultProjectMonthlyTokens !== undefined
+          ? { defaultProjectMonthlyTokens: input.ai.defaultProjectMonthlyTokens }
+          : {}),
+      };
+      next.ai = ai;
+    }
+
     // Agent instructions: a string sets the override, `null` clears it (revert to default),
     // and undefined keeps whatever was stored.
     if (input.agentInstructions === null) {
@@ -347,6 +371,22 @@ export class InstanceSettingsRepository {
     const stored = await this.getStored();
     const enc = provider === 'unsplash' ? stored.stock?.unsplash : stored.stock?.pexels;
     return enc ? this.decrypt(enc) : null;
+  }
+
+  /** The platform AI config with the API key DECRYPTED for server-side use, or null if unset. */
+  async getAiConfig(): Promise<{
+    enabled: boolean;
+    provider: AiProviderKind;
+    model?: string;
+    baseUrl?: string;
+    apiKey: string | null;
+    defaultProjectMonthlyTokens?: number;
+    adminsUnlimited: boolean;
+  } | null> {
+    const stored = await this.getStored();
+    if (!stored.ai) return null;
+    const { apiKey, ...rest } = stored.ai;
+    return { ...rest, apiKey: apiKey ? this.decrypt(apiKey) : null };
   }
 
   /** Enabled OIDC providers for the unauthenticated login screen (id + label only, no secrets). */

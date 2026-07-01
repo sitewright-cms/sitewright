@@ -38,11 +38,26 @@ const MessageBody = z.object({
     .optional(),
 });
 
+/** The effective assistant for one project: the provider + the caps that govern its usage. */
+export interface ResolvedAgent {
+  provider: AgentProvider;
+  /** Effective per-project monthly token cap (undefined/0 = unlimited). */
+  projectMonthlyTokens?: number;
+  /** Whether platform admins bypass all caps under this config. */
+  adminsUnlimited: boolean;
+  /** true = the platform's key (the org + per-user caps apply); false = a project's OWN key (BYO —
+   *  only its own per-project cap applies, never the platform budget). */
+  platformFunded: boolean;
+}
+
 export interface AiAgentRoutesDeps {
   db: Database;
-  agentProvider?: AgentProvider;
+  /** Resolves the effective assistant for a project (per-project BYO → instance → env), or null when
+   *  the assistant is not configured for this project. */
+  resolveAgent: (ctx: ProjectContext) => Promise<ResolvedAgent | null>;
   aiUsageRepo: AiUsageRepository;
-  aiQuota: { orgMonthlyTokens?: number; userMonthlyTokens?: number; projectMonthlyTokens?: number };
+  /** Platform + per-user monthly caps (from env). The per-project cap comes from the resolved agent. */
+  aiQuota: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
   resolveProject: (
     req: FastifyRequest<{ Params: { projectId: string } }>,
     access: ApiKeyCapability | 'session-only',
@@ -81,11 +96,20 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
    * caller (they don't change within a request), so a 25-turn loop doesn't re-query the platform role
    * or recompute the month window on every turn.
    */
-  const overQuota = async (ctx: ProjectContext, userIsAdmin: boolean, since: Date): Promise<'platform' | 'user' | 'project' | null> => {
-    if (userIsAdmin) return null;
-    if (deps.aiQuota.orgMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since)) >= deps.aiQuota.orgMonthlyTokens) return 'platform';
-    if (deps.aiQuota.userMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since, ctx.userId)) >= deps.aiQuota.userMonthlyTokens) return 'user';
-    if (deps.aiQuota.projectMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since, undefined, ctx.projectId)) >= deps.aiQuota.projectMonthlyTokens) return 'project';
+  const overQuota = async (
+    ctx: ProjectContext,
+    userIsAdmin: boolean,
+    since: Date,
+    resolved: ResolvedAgent,
+  ): Promise<'platform' | 'user' | 'project' | null> => {
+    if (userIsAdmin && resolved.adminsUnlimited) return null;
+    // The platform org/user budget applies only to the platform-funded key — a project's own BYO key
+    // is metered solely against its own per-project cap.
+    if (resolved.platformFunded) {
+      if (deps.aiQuota.orgMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since)) >= deps.aiQuota.orgMonthlyTokens) return 'platform';
+      if (deps.aiQuota.userMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since, ctx.userId)) >= deps.aiQuota.userMonthlyTokens) return 'user';
+    }
+    if (resolved.projectMonthlyTokens && (await deps.aiUsageRepo.tokensSince(since, undefined, ctx.projectId)) >= resolved.projectMonthlyTokens) return 'project';
     return null;
   };
 
@@ -93,13 +117,14 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     // --- Preflight (JSON errors) BEFORE hijacking the socket ---
     const { ctx } = await deps.resolveProject(req, 'session-only');
     if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    if (!deps.agentProvider) return reply.code(501).send({ error: 'AI assistant is not configured' });
+    const resolved = await deps.resolveAgent(ctx);
+    if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
     const body = MessageBody.parse(req.body);
 
     // Hoisted for the whole request (admin status + month window don't change mid-loop).
     const userIsAdmin = await deps.isAdmin(ctx.userId);
     const since = startOfMonthUTC(new Date());
-    const over = await overQuota(ctx, userIsAdmin, since);
+    const over = await overQuota(ctx, userIsAdmin, since, resolved);
     if (over) return reply.code(429).send({ error: `AI ${over} quota exhausted for this month` });
 
     const requested = (body.capabilities ?? ['content:read', 'content:write', 'publish']) as ApiKeyCapability[];
@@ -125,7 +150,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     convo.busy = true;
     conversations.set(conversationId, convo);
 
-    const provider = deps.agentProvider;
+    const provider = resolved.provider;
     const instructions = await deps.getAgentInstructions();
     const system = `${instructions}\n\n${pageContext(body.context)}`;
     // Seed a LOCAL copy — don't mutate the stored history until the turn completes, so a failed
@@ -183,7 +208,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
         outputTokens: usage.outputTokens,
         projectMonthToDate: await deps.aiUsageRepo.tokensSince(since, undefined, ctx.projectId),
       });
-      const over2 = await overQuota(ctx, userIsAdmin, since);
+      const over2 = await overQuota(ctx, userIsAdmin, since, resolved);
       if (over2) throw new Error(`AI ${over2} quota exhausted for this month`);
     };
 

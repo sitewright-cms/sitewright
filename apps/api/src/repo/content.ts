@@ -6,6 +6,7 @@ import {
   mergeLegacyIdentity,
   DatasetSchema,
   DeployTargetSchema,
+  AiConfigSchema,
   EntrySchema,
   FormSchema,
   SmtpStoredSchema,
@@ -77,6 +78,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Saved deploy targets (encrypted credentials). Managed via dedicated endpoints,
   // excluded from export/import bundles (never export secrets).
   ['deploy_target', DeployTargetSchema],
+  // Per-project "bring your own agent" AI config (encrypted API key). Singleton per project,
+  // managed via dedicated /ai-config routes; excluded from export/import bundles (never export secrets).
+  ['ai_config', AiConfigSchema],
 ]);
 
 /** The content kinds, derived from the schema map (single source of truth). */
@@ -181,7 +185,7 @@ export class ContentRepository {
       .where(
         and(
           eq(content.projectId, ctx.projectId),
-          notInArray(content.kind, ['deploy_target', 'project_smtp']),
+          notInArray(content.kind, ['deploy_target', 'project_smtp', 'ai_config']),
         ),
       )
       .orderBy(desc(content.updatedAt))

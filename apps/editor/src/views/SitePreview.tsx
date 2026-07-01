@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { api, eventsUrl, previewUrlFrom } from '../api';
+import { AgentDrawer } from './AgentDrawer';
 import type { PreviewTarget } from '../lib/preview-target';
 
 /** Coalesce a burst of edits into one reload/navigate. */
@@ -35,6 +37,20 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
   const workingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The on-page AI assistant: available only when configured (platform or per-project) + the user can write.
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .agentStatus(projectId)
+      .then((s) => active && setAgentEnabled(s.enabled))
+      .catch(() => {}); // status is best-effort — no assistant button on failure
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
 
   // Fetch the signed base on mount, then load the initial route into the iframe.
   useEffect(() => {
@@ -216,6 +232,20 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
             {working ? 'Agent working…' : `Agent connected${connectedCount > 1 ? ` · ${connectedCount}` : ''}`}
           </span>
         </div>
+      )}
+      {agentEnabled && !drawerOpen && (
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open the AI assistant"
+          className="sw-brand-gradient sw-brand-shadow-lg absolute bottom-5 right-5 z-20 inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110"
+        >
+          <Sparkles className="h-4 w-4" />
+          AI
+        </button>
+      )}
+      {agentEnabled && (
+        <AgentDrawer projectId={projectId} open={drawerOpen} onClose={() => setDrawerOpen(false)} getPath={() => currentPath.current} />
       )}
     </div>
   );

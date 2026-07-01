@@ -261,6 +261,89 @@ async function streamSse<P, D>(
   }
 }
 
+/** Provider-neutral status events from the on-page assistant's chat stream. */
+export interface AgentChatHandlers {
+  onStart?: (e: { conversationId: string; model: string }) => void;
+  onText?: (delta: string) => void;
+  onTool?: (e: { id: string; name: string; input: unknown }) => void;
+  onToolResult?: (e: { id: string; name: string; ok: boolean; summary: string }) => void;
+  onUsage?: (e: { inputTokens: number; outputTokens: number; projectMonthToDate: number }) => void;
+  onDone?: (message: string) => void;
+  onError?: (message: string) => void;
+}
+
+/**
+ * Consume the assistant's SSE chat stream. Unlike {@link streamSse} (progress/done/error), the agent
+ * emits richer named events — start / text / tool / tool_result / usage / done / error — dispatched to
+ * typed handlers here. Aborting `signal` (drawer closed / user stops) ends the read quietly.
+ */
+async function streamAgentChat(url: string, body: unknown, handlers: AgentChatHandlers, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(url, { method: 'POST', credentials: 'include', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    let message = res.statusText || 'request failed';
+    try {
+      const j = (await res.json()) as { error?: unknown };
+      if (typeof j.error === 'string') message = j.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    notifyIfUnauthorized(res.status);
+    handlers.onError?.(message);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return; // aborted → quiet end
+      throw err;
+    }
+    if (chunk.done) {
+      buf += decoder.decode(); // flush any trailing multi-byte sequence
+      break;
+    }
+    buf += decoder.decode(chunk.value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).replace(/^ /, '');
+      }
+      if (!data) continue;
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      switch (event) {
+        case 'start': handlers.onStart?.(parsed as { conversationId: string; model: string }); break;
+        case 'text': handlers.onText?.(String(parsed.delta ?? '')); break;
+        case 'tool': handlers.onTool?.(parsed as { id: string; name: string; input: unknown }); break;
+        case 'tool_result': handlers.onToolResult?.(parsed as { id: string; name: string; ok: boolean; summary: string }); break;
+        case 'usage': handlers.onUsage?.(parsed as { inputTokens: number; outputTokens: number; projectMonthToDate: number }); break;
+        case 'done': handlers.onDone?.(String(parsed.message ?? '')); break;
+        case 'error': handlers.onError?.(typeof parsed.message === 'string' ? parsed.message : 'agent error'); break;
+      }
+    }
+  }
+}
+
+/** The user's consent grant for the assistant on a project (from GET/PUT /agent/grant). */
+export interface AgentGrantView {
+  configured: boolean;
+  capabilities: ApiKeyCapability[];
+  autonomy: 'full' | 'ask';
+}
+
 /** A project the user can reach, with their role in it (the flat surface). */
 export interface Project {
   id: string;
@@ -1046,6 +1129,23 @@ export const api = {
     request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config`, body),
   deleteAiConfig: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/ai-config`),
+
+  // --- on-page AI assistant (chat + consent grant + availability) ---
+  /** Whether the assistant is available for this project (configured + the user can write). */
+  agentStatus: (projectId: string) =>
+    request<{ enabled: boolean }>('GET', `/projects/${projectId}/agent/status`),
+  /** The user's consent grant (capabilities + autonomy); `configured:false` → show the consent panel. */
+  getAgentGrant: (projectId: string) =>
+    request<AgentGrantView>('GET', `/projects/${projectId}/agent/grant`),
+  putAgentGrant: (projectId: string, body: { capabilities: ApiKeyCapability[]; autonomy: 'full' | 'ask' }) =>
+    request<AgentGrantView>('PUT', `/projects/${projectId}/agent/grant`, body),
+  /** Stream one chat turn; the server drives the agent + edits the DRAFT (the preview auto-reloads). */
+  streamAgentMessage: (
+    projectId: string,
+    body: { conversationId?: string; message: string; context?: { pageId?: string; path?: string; selection?: string } },
+    handlers: AgentChatHandlers,
+    signal?: AbortSignal,
+  ) => streamAgentChat(`${BASE}/projects/${projectId}/agent/messages`, body, handlers, signal),
 
   // --- form submissions (inbox) ---
   listSubmissions: (projectId: string, formId?: string) =>

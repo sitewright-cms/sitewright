@@ -44,11 +44,11 @@ describe('instance AI settings', () => {
       method: 'PUT',
       url: '/admin/settings',
       cookies: { sw_session: c },
-      payload: { ai: { enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-secret', defaultProjectMonthlyTokens: 100000, adminsUnlimited: true } },
+      payload: { ai: { enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-secret', defaultProjectMonthlyTokens: 100000, maxOutputTokens: 16000, adminsUnlimited: true } },
     });
     expect(put.statusCode).toBe(200);
-    const body = put.json() as { settings: { ai: { enabled: boolean; provider: string; model: string; hasApiKey: boolean; defaultProjectMonthlyTokens: number } } };
-    expect(body.settings.ai).toMatchObject({ enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', hasApiKey: true, defaultProjectMonthlyTokens: 100000 });
+    const body = put.json() as { settings: { ai: { enabled: boolean; provider: string; model: string; hasApiKey: boolean; defaultProjectMonthlyTokens: number; maxOutputTokens: number } } };
+    expect(body.settings.ai).toMatchObject({ enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', hasApiKey: true, defaultProjectMonthlyTokens: 100000, maxOutputTokens: 16000 });
 
     // Re-PUT without the key → it's preserved; the model changes.
     const edit = await app.inject({
@@ -82,13 +82,13 @@ describe('per-project ai-config (BYO)', () => {
       method: 'PUT',
       url,
       cookies: { sw_session: c },
-      payload: { enabled: true, provider: 'openai', model: 'gpt-4o-mini', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-proj', monthlyTokenLimit: 50000 },
+      payload: { enabled: true, provider: 'openai', model: 'gpt-4o-mini', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-proj', monthlyTokenLimit: 50000, maxOutputTokens: 12000 },
     });
     expect(put.statusCode).toBe(200);
     expect((put.json() as { aiConfig: { hasKey: boolean; provider: string } }).aiConfig).toMatchObject({ hasKey: true, provider: 'openai', enabled: true });
 
     const get = await app.inject({ method: 'GET', url, cookies: { sw_session: c } });
-    expect((get.json() as { aiConfig: { hasKey: boolean; model: string } }).aiConfig).toMatchObject({ hasKey: true, model: 'gpt-4o-mini' });
+    expect((get.json() as { aiConfig: { hasKey: boolean; model: string; maxOutputTokens: number } }).aiConfig).toMatchObject({ hasKey: true, model: 'gpt-4o-mini', maxOutputTokens: 12000 });
     expect(JSON.stringify(get.json())).not.toContain('sk-proj'); // secret never returned
 
     // Re-PUT without the key → preserved.

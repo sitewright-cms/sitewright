@@ -4265,6 +4265,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return {
           provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
           projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
+          maxOutputTokens: parsed.data.maxOutputTokens || undefined,
           adminsUnlimited: false, // a project's own budget applies to everyone on it
           platformFunded: false,
         };
@@ -4275,6 +4276,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return {
         provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
         projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
+        maxOutputTokens: inst.maxOutputTokens || undefined,
         adminsUnlimited: inst.adminsUnlimited,
         platformFunded: true,
       };

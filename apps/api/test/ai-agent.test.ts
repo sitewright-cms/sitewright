@@ -53,6 +53,25 @@ describe('provider adapters (streaming tool-use)', () => {
     expect(events.at(-1)).toEqual({ type: 'stop', reason: 'tool_use' });
   });
 
+  it('Anthropic: a tool block CUT OFF at max_tokens (no content_block_stop) drops the call + reports stop:max_tokens', async () => {
+    const stream = [
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":9}}}',
+      'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me build"}}',
+      'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}',
+      'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tu_x","name":"put_page"}}',
+      // partial input JSON — the page never finished streaming, so NO content_block_stop for index 1.
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"page\\":{\\"source\\":\\"<section"}}',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":8192}}',
+      'event: message_stop\ndata: {"type":"message_stop"}',
+      '',
+    ].join('\n\n');
+    const provider = new AnthropicAgentProvider('k', 'm', async () => sseResponse(stream));
+    const events = await collect(provider.runTurn({ system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [] }));
+    expect(events.some((e) => e.type === 'tool_call')).toBe(false); // the truncated call is dropped
+    expect(events.at(-1)).toEqual({ type: 'stop', reason: 'max_tokens' });
+  });
+
   it('OpenAI-compat: parses content + index-keyed tool_calls fragments + trailing usage + [DONE]', async () => {
     const stream = [
       'data: {"choices":[{"delta":{"content":"Hi"}}]}',
@@ -111,6 +130,32 @@ describe('agent loop', () => {
     expect(events).toContainEqual({ type: 'tool', id: 't1', name: 'echo', input: { x: 1 } });
     expect(events).toContainEqual(expect.objectContaining({ type: 'tool_result', ok: true }));
     expect(events.at(-1)).toEqual({ type: 'done', message: 'all done' });
+  });
+
+  it('surfaces a max_tokens truncation as an actionable error, not a silent done', async () => {
+    // The model streamed a preamble then got cut off at the output limit mid tool call (so no
+    // completed tool_call arrives) — the loop must NOT report success/waiting, it must error.
+    const truncatedProvider: AgentProvider = {
+      model: 'm',
+      async *runTurn(): AsyncIterable<AgentStreamEvent> {
+        yield { type: 'text_delta', text: 'Perfect! Let me build the page' };
+        yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 8192 } };
+        yield { type: 'stop', reason: 'max_tokens' };
+      },
+    };
+    const bridge = { listTools: async () => [], callTool: async () => ({ content: [], isError: false }) };
+    const events: Array<{ type: string; code?: string; message?: string }> = [];
+    const gen = runAgentLoop({ provider: truncatedProvider, bridge: bridge as never, system: 's', tools: [], messages: [{ role: 'user', content: 'make a landing page' }] });
+    let n = await gen.next();
+    while (!n.done) {
+      events.push(n.value as { type: string; code?: string });
+      n = await gen.next();
+    }
+    expect(n.value.state).toBe('error');
+    const err = events.find((e) => e.type === 'error');
+    expect(err?.code).toBe('max_tokens');
+    expect(err?.message).toMatch(/output-token limit/i);
+    expect(events.some((e) => e.type === 'done')).toBe(false);
   });
 
   it('stops on the quota hook throwing, surfacing an error event', async () => {

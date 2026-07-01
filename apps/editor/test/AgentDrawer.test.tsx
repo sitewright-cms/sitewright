@@ -60,6 +60,24 @@ describe('AgentDrawer', () => {
     expect(screen.getByText('Editing a page')).toBeInTheDocument(); // the tool activity line
   });
 
+  it('shows WHY an edit failed and the response token count', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
+    streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {
+      handlers.onStart?.({ conversationId: 'c1', model: 'm' });
+      handlers.onTool?.({ id: 't1', name: 'put_page', input: {} });
+      handlers.onToolResult?.({ id: 't1', name: 'put_page', ok: false, summary: 'unsafe template: an inline "onclick" event-handler attribute.' });
+      handlers.onUsage?.({ inputTokens: 1200, outputTokens: 340, projectMonthToDate: 5000 });
+      handlers.onDone?.('I could not apply that change.');
+    });
+    render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'add a script' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // The failure reason is shown (not just a ✗), and the per-response token total appears.
+    expect(await screen.findByText(/unsafe template: an inline "onclick"/)).toBeInTheDocument();
+    expect(await screen.findByText(/1,540 tokens/)).toBeInTheDocument();
+  });
+
   it('aborts the in-flight stream when the drawer closes', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
     let capturedSignal: AbortSignal | undefined;

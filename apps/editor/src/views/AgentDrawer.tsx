@@ -12,10 +12,10 @@ const CONSENT_CAPS: { cap: ApiKeyCapability; label: string; hint: string }[] = [
   { cap: 'publish', label: 'Publish', hint: 'build & publish the live site' },
 ];
 
-type ToolActivity = { id: string; name: string; ok?: boolean };
+type ToolActivity = { id: string; name: string; ok?: boolean; summary?: string };
 type ChatMsg =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string; tools: ToolActivity[]; streaming: boolean };
+  | { role: 'assistant'; text: string; tools: ToolActivity[]; streaming: boolean; tokens?: number };
 
 type Status = 'idle' | 'thinking' | 'working';
 
@@ -24,7 +24,20 @@ type Status = 'idle' | 'thinking' | 'working';
  * consent panel (the user picks the agent's capabilities); after that, a streaming chat. The server
  * drives the agent + edits the DRAFT, so the preview reloads itself as the agent works.
  */
-export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: string; open: boolean; onClose: () => void; getPath: () => string }) {
+export function AgentDrawer({
+  projectId,
+  open,
+  onClose,
+  getPath,
+  onStatusChange,
+}: {
+  projectId: string;
+  open: boolean;
+  onClose: () => void;
+  getPath: () => string;
+  /** Reports the live turn status up so the preview shell can animate its AI button. */
+  onStatusChange?: (s: Status) => void;
+}) {
   const [grant, setGrant] = useState<AgentGrantView | null>(null);
   const [caps, setCaps] = useState<Set<ApiKeyCapability>>(new Set());
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -34,6 +47,7 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
   const conversationId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   // Load the consent grant on first open.
   useEffect(() => {
@@ -72,6 +86,19 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight; // scrollTop (not scrollTo) works in jsdom too
   }, [messages, status]);
+
+  // Auto-grow the composer with its content up to ~50vh, then it scrolls internally.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, Math.round(window.innerHeight * 0.5))}px`;
+  }, [input]);
+
+  // Surface the live turn status to the shell (animates the preview's AI button).
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   // Closing the drawer aborts any in-flight turn (the drawer stays mounted, so nothing else would).
   useEffect(() => {
@@ -126,8 +153,12 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
           },
           onToolResult: (r) => {
             setStatus('thinking');
-            patchAssistant((a) => ({ ...a, tools: a.tools.map((tool) => (tool.id === r.id ? { ...tool, ok: r.ok } : tool)) }));
+            // Keep the result summary — on a FAILED tool it's the reason (e.g. a validation error),
+            // which the bubble shows so a failed edit isn't just a silent ✗.
+            patchAssistant((a) => ({ ...a, tools: a.tools.map((tool) => (tool.id === r.id ? { ...tool, ok: r.ok, summary: r.summary } : tool)) }));
           },
+          // Accumulate this response's token usage across all its turns → shown under the bubble.
+          onUsage: (u) => patchAssistant((a) => ({ ...a, tokens: (a.tokens ?? 0) + u.inputTokens + u.outputTokens })),
           onDone: (msg) => patchAssistant((a) => ({ ...a, text: a.text || msg, streaming: false })),
           onError: (msg) => {
             setError(msg);
@@ -223,7 +254,8 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
             <div className="border-t border-slate-200/70 p-3">
               <div className="flex items-end gap-2">
                 <textarea
-                  className={`${glassInput} max-h-32 min-h-[2.5rem] flex-1 resize-none`}
+                  ref={taRef}
+                  className={`${glassInput} max-h-[50vh] min-h-[2.5rem] flex-1 resize-none overflow-y-auto`}
                   aria-label="Message the assistant"
                   placeholder="Ask the assistant to edit this page…"
                   rows={1}
@@ -255,16 +287,20 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
 }
 
 function StatusPill({ status, label }: { status: Status; label: string }) {
+  // During activity the indicator is a prominent, pulsing pill so it's obvious the agent is busy.
   if (status === 'working')
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
-        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+      <span className="relative inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-300">
+        <span aria-hidden className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        </span>
         {label}
       </span>
     );
   if (status === 'thinking')
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600">
+      <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-300">
         <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
         {label}
       </span>
@@ -282,20 +318,29 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
       {msg.tools.length > 0 && (
         <ul className="mb-1.5 flex flex-col gap-1">
           {msg.tools.map((t, i) => (
-            <li key={i} className="flex items-center gap-1.5 text-xs text-slate-500">
-              {t.ok === undefined ? (
-                <Wrench className="h-3.5 w-3.5 animate-pulse text-amber-500" />
-              ) : t.ok ? (
-                <CircleCheck className="h-3.5 w-3.5 text-emerald-500" />
-              ) : (
-                <CircleX className="h-3.5 w-3.5 text-rose-500" />
+            <li key={i} className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                {t.ok === undefined ? (
+                  <Wrench className="h-3.5 w-3.5 animate-pulse text-amber-500" />
+                ) : t.ok ? (
+                  <CircleCheck className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <CircleX className="h-3.5 w-3.5 text-rose-500" />
+                )}
+                {toolLabel(t.name)}
+              </span>
+              {/* On a failure, show WHY (e.g. a validation error) so the user isn't left with a bare ✗. */}
+              {t.ok === false && t.summary && (
+                <span className="ml-5 whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-600">{t.summary}</span>
               )}
-              {toolLabel(t.name)}
             </li>
           ))}
         </ul>
       )}
       {msg.text ? <span className="whitespace-pre-wrap">{msg.text}</span> : msg.streaming ? <span className="text-slate-400">…</span> : null}
+      {msg.tokens != null && msg.tokens > 0 && !msg.streaming && (
+        <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">{msg.tokens.toLocaleString()} tokens</div>
+      )}
     </div>
   );
 }

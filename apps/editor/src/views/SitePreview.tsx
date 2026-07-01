@@ -40,6 +40,8 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   // The on-page AI assistant: available only when configured (platform or per-project) + the user can write.
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Live turn status lifted from the drawer, so the AI button animates while it thinks/works.
+  const [agentActivity, setAgentActivity] = useState<'idle' | 'thinking' | 'working'>('idle');
 
   useEffect(() => {
     let active = true;
@@ -237,15 +239,33 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          aria-label="Open the AI assistant"
+          aria-label={working ? 'AI assistant is working' : 'Open the AI assistant'}
           className="sw-brand-gradient sw-brand-shadow-lg absolute bottom-5 right-5 z-20 inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110"
         >
-          <Sparkles className="h-4 w-4" />
-          AI
+          <Sparkles className={`h-4 w-4 ${working ? 'animate-pulse' : ''}`} />
+          {working ? 'AI working…' : 'AI'}
         </button>
       )}
+      {/* While the drawer is open it covers the RIGHT side, so this animated status chip sits on the
+          LEFT — the AI stays visibly informative (thinking vs working) throughout the turn. */}
+      {agentEnabled && drawerOpen && agentActivity !== 'idle' && (
+        <div className="pointer-events-none absolute bottom-5 left-5 z-[62] inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+          {agentActivity === 'working' ? (
+            <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+          ) : (
+            <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          )}
+          {agentActivity === 'working' ? 'AI is working…' : 'AI is thinking…'}
+        </div>
+      )}
       {agentEnabled && (
-        <AgentDrawer projectId={projectId} open={drawerOpen} onClose={() => setDrawerOpen(false)} getPath={() => currentPath.current} />
+        <AgentDrawer
+          projectId={projectId}
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          getPath={() => currentPath.current}
+          onStatusChange={setAgentActivity}
+        />
       )}
     </div>
   );

@@ -252,6 +252,7 @@ export class InstanceSettingsRepository {
         ...(input.ai.defaultProjectMonthlyTokens !== undefined
           ? { defaultProjectMonthlyTokens: input.ai.defaultProjectMonthlyTokens }
           : {}),
+        ...(input.ai.maxOutputTokens !== undefined ? { maxOutputTokens: input.ai.maxOutputTokens } : {}),
       };
       next.ai = ai;
     }
@@ -381,6 +382,7 @@ export class InstanceSettingsRepository {
     baseUrl?: string;
     apiKey: string | null;
     defaultProjectMonthlyTokens?: number;
+    maxOutputTokens?: number;
     adminsUnlimited: boolean;
   } | null> {
     const stored = await this.getStored();

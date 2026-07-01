@@ -19,6 +19,14 @@ export const AiBaseUrlSchema = z
   .max(512)
   .refine((u) => !targetsPrivateHost(u), 'baseUrl must be a public host (use SW_AI_BASE_URL env for a local/internal endpoint)');
 
+/**
+ * Per-turn output-token ceiling for the on-page agent. Bounded so a single model turn can hold a
+ * full page's worth of HTML (a `put_page` call) without truncating mid-tool-call, yet stays within
+ * real model limits. Absent → the server's built-in default. Raise toward the configured model's
+ * actual max output tokens.
+ */
+export const MaxOutputTokensSchema = z.number().int().min(1024).max(32000);
+
 /** The fixed entity id of a project's AI-config singleton (content kind `ai_config`). */
 export const AI_CONFIG_ID = 'ai-config';
 
@@ -38,6 +46,8 @@ export const AiConfigSchema = z.object({
   secret: EncryptedSecretSchema.optional(),
   /** Per-project monthly token cap override (0/absent → fall back to the instance default). */
   monthlyTokenLimit: z.number().int().min(0).optional(),
+  /** Per-turn output-token ceiling override (absent → instance/default). */
+  maxOutputTokens: MaxOutputTokensSchema.optional(),
 });
 export type AiConfig = z.infer<typeof AiConfigSchema>;
 
@@ -52,6 +62,7 @@ export const AiConfigInputSchema = z.object({
   baseUrl: AiBaseUrlSchema.optional(),
   apiKey: z.string().min(1).max(1024).optional(),
   monthlyTokenLimit: z.number().int().min(0).optional(),
+  maxOutputTokens: MaxOutputTokensSchema.optional(),
 });
 export type AiConfigInput = z.infer<typeof AiConfigInputSchema>;
 

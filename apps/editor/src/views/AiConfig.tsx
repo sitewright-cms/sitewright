@@ -17,6 +17,7 @@ export function AiConfig({ projectId }: { projectId: string }) {
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [limit, setLimit] = useState('');
+  const [maxTokens, setMaxTokens] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
@@ -34,6 +35,7 @@ export function AiConfig({ projectId }: { projectId: string }) {
           setBaseUrl(aiConfig.baseUrl ?? '');
           setHasKey(aiConfig.hasKey);
           setLimit(aiConfig.monthlyTokenLimit != null ? String(aiConfig.monthlyTokenLimit) : '');
+          setMaxTokens(aiConfig.maxOutputTokens != null ? String(aiConfig.maxOutputTokens) : '');
         }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'failed to load AI config');
@@ -56,6 +58,11 @@ export function AiConfig({ projectId }: { projectId: string }) {
         setError('Monthly token limit must be a non-negative whole number.');
         return;
       }
+      const maxTokensNum = maxTokens.trim() === '' ? undefined : Number(maxTokens);
+      if (maxTokensNum !== undefined && (!Number.isInteger(maxTokensNum) || maxTokensNum < 1024 || maxTokensNum > 32000)) {
+        setError('Max output tokens must be a whole number between 1024 and 32000.');
+        return;
+      }
       const body: AiConfigInput = {
         enabled,
         provider,
@@ -63,6 +70,7 @@ export function AiConfig({ projectId }: { projectId: string }) {
         ...(provider === 'openai' && baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
         ...(apiKey ? { apiKey } : {}),
         ...(limitNum !== undefined ? { monthlyTokenLimit: limitNum } : {}),
+        ...(maxTokensNum !== undefined ? { maxOutputTokens: maxTokensNum } : {}),
       };
       const { aiConfig } = await api.putAiConfig(projectId, body);
       setHasKey(aiConfig.hasKey);
@@ -112,6 +120,19 @@ export function AiConfig({ projectId }: { projectId: string }) {
             <label className="flex flex-col text-xs text-slate-500">
               Monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
               <input className={field} aria-label="Monthly token cap" type="number" min={0} value={limit} onChange={(e) => setLimit(e.target.value)} />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Max output tokens / reply <span className="text-slate-400">(blank = default 8192)</span>
+              <input
+                className={field}
+                aria-label="Max output tokens per reply"
+                type="number"
+                min={1024}
+                max={32000}
+                value={maxTokens}
+                placeholder="8192"
+                onChange={(e) => setMaxTokens(e.target.value)}
+              />
             </label>
           </div>
         )}

@@ -14,8 +14,8 @@ import {
   MCP_TOOL_CATALOG,
   type PlatformLogo,
 } from '@sitewright/schema';
-import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
-import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
+import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
+import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
@@ -103,6 +103,43 @@ export function InstanceSettings() {
   const [aiProjectLimit, setAiProjectLimit] = useState('');
   const [aiMaxTokens, setAiMaxTokens] = useState('');
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
+  const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
+
+  async function testAi() {
+    setAiTesting(true);
+    setAiTest(null);
+    try {
+      setAiTest(
+        await api.testInstanceAi({
+          provider: aiProvider,
+          ...(aiModel.trim() ? { model: aiModel.trim() } : {}),
+          ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
+          ...(aiKey ? { apiKey: aiKey } : {}),
+        }),
+      );
+    } catch (e) {
+      setAiTest({ ok: false, model: aiModel.trim(), error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setAiTesting(false);
+    }
+  }
+
+  async function testStock(provider: 'unsplash' | 'pexels', key: string) {
+    const set = provider === 'unsplash' ? setUnsplashTest : setPexelsTest;
+    setStockTesting(provider);
+    set(null);
+    try {
+      set(await api.testStockKey({ provider, ...(key ? { key } : {}) }));
+    } catch (e) {
+      set({ ok: false, error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setStockTesting(null);
+    }
+  }
 
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
 
@@ -640,6 +677,12 @@ export function InstanceSettings() {
                 placeholder={hasUnsplash ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setUnsplashKey(e.target.value)}
               />
+              <span className="mt-1 flex items-center gap-2">
+                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('unsplash', unsplashKey)} disabled={stockTesting === 'unsplash' || (!unsplashKey && !hasUnsplash)}>
+                  {stockTesting === 'unsplash' ? 'Testing…' : 'Test'}
+                </button>
+                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={unsplashTest.error}>✗ {unsplashTest.error}</span>)}
+              </span>
             </label>
             <label className="flex flex-col text-xs text-slate-500">
               Pexels API key
@@ -651,6 +694,12 @@ export function InstanceSettings() {
                 placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPexelsKey(e.target.value)}
               />
+              <span className="mt-1 flex items-center gap-2">
+                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('pexels', pexelsKey)} disabled={stockTesting === 'pexels' || (!pexelsKey && !hasPexels)}>
+                  {stockTesting === 'pexels' ? 'Testing…' : 'Test'}
+                </button>
+                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={pexelsTest.error}>✗ {pexelsTest.error}</span>)}
+              </span>
             </label>
           </div>
         )}
@@ -715,6 +764,17 @@ export function InstanceSettings() {
               <input type="checkbox" className={toggleInput} aria-label="Admins bypass token caps" checked={aiAdminsUnlimited} onChange={(e) => setAiAdminsUnlimited(e.target.checked)} />
               Platform admins bypass token caps
             </label>
+            <div className="col-span-2 flex flex-wrap items-center gap-3">
+              <button type="button" className={ghostButton} onClick={() => void testAi()} disabled={aiTesting}>
+                {aiTesting ? 'Testing…' : 'Test connection'}
+              </button>
+              {aiTest &&
+                (aiTest.ok ? (
+                  <span className="text-sm text-green-600">✓ Connected{aiTest.model ? ` (${aiTest.model})` : ''}</span>
+                ) : (
+                  <span className="text-sm text-red-600" title={aiTest.error}>✗ {aiTest.error}</span>
+                ))}
+            </div>
           </div>
         )}
       </fieldset>

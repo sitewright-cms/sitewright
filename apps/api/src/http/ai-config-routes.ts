@@ -1,9 +1,19 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { AiConfigInputSchema, AiConfigSchema, maskAiConfig, AI_CONFIG_ID, type AiConfig } from '@sitewright/schema';
-import { encryptSecret } from '../crypto/secret.js';
+import { AiConfigInputSchema, AiConfigSchema, AiProviderKindSchema, AiBaseUrlSchema, maskAiConfig, AI_CONFIG_ID, type AiConfig } from '@sitewright/schema';
+import { z } from 'zod';
+import { encryptSecret, decryptSecret } from '../crypto/secret.js';
+import { testAiProvider } from '../ai/connectivity.js';
 import type { ContentRepository } from '../repo/content.js';
 import { NotFoundError, type ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
+
+/** Body for a connectivity check — the current form values; a blank key falls back to the stored one. */
+export const AiTestBodySchema = z.object({
+  provider: AiProviderKindSchema,
+  model: z.string().min(1).max(120).optional(),
+  baseUrl: AiBaseUrlSchema.optional(),
+  apiKey: z.string().min(1).max(1024).optional(),
+});
 
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
@@ -59,6 +69,18 @@ export function registerAiConfigRoutes(app: FastifyInstance, deps: AiConfigDeps)
     });
     const saved = (await contentRepo.put(ctx, 'ai_config', AI_CONFIG_ID, stored)) as AiConfig;
     return reply.send({ aiConfig: maskAiConfig(saved) });
+  });
+
+  // Verify connectivity + model for this project's BYO provider. Tests the just-typed key if present,
+  // else the stored one. Writer-only; heavily rate-limited (it makes an outbound provider call).
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/ai-config/test', { config: rl(10) }, async (req, reply) => {
+    const { ctx } = await resolveProject(req, 'session-only');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const input = AiTestBodySchema.parse(req.body);
+    const existing = await loadStored(contentRepo, ctx);
+    const apiKey = input.apiKey ?? (existing?.secret ? decryptSecret(existing.secret, encryptionKey) : undefined);
+    if (!apiKey) return reply.send({ ok: false, model: input.model ?? '', error: 'Enter an API key to test.' });
+    return reply.send(await testAiProvider({ provider: input.provider, apiKey, model: input.model, baseUrl: input.baseUrl }));
   });
 
   app.delete<{ Params: { projectId: string } }>('/projects/:projectId/ai-config', { config: rl(30) }, async (req, reply) => {

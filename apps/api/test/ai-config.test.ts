@@ -163,3 +163,78 @@ describe('resolveAiProvider precedence', () => {
     expect(res.statusCode).toBe(501);
   });
 });
+
+describe('credential connectivity tests', () => {
+  // A minimal valid Anthropic SSE stream → the probe completes without a provider error.
+  function okAnthropicSse(): Response {
+    const body = [
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":1}}}',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+      'event: message_stop\ndata: {"type":"message_stop"}',
+      '',
+    ].join('\n\n');
+    return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(body)); c.close(); } }), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  }
+
+  async function ownerProject(): Promise<{ c: string; projectId: string }> {
+    const email = `own-${Math.random().toString(36).slice(2)}@e2e.test`;
+    await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+    const c = cookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
+    const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: c }, payload: { name: 'S', slug: `pt-${Date.now()}-${Math.random().toString(36).slice(2)}` } });
+    return { c, projectId: (proj.json() as { project: { id: string } }).project.id };
+  }
+
+  it('admin AI test: ok + model when the provided key authenticates', async () => {
+    const c = await adminSession();
+    vi.stubGlobal('fetch', async () => okAnthropicSse());
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/ai/test', cookies: { sw_session: c }, payload: { provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, model: 'claude-haiku-4-5' });
+  });
+
+  it('admin AI test: no key to test → ok:false with a hint, no network call', async () => {
+    const c = await adminSession();
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/ai/test', cookies: { sw_session: c }, payload: { provider: 'anthropic' } });
+    expect(res.json()).toMatchObject({ ok: false });
+    expect((res.json() as { error: string }).error).toMatch(/api key/i);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('per-project AI test: writer-only, ok with a provided key', async () => {
+    const { c, projectId } = await ownerProject();
+    vi.stubGlobal('fetch', async () => okAnthropicSse());
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/ai-config/test`, cookies: { sw_session: c }, payload: { provider: 'anthropic', model: 'm', apiKey: 'sk-x' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, model: 'm' });
+  });
+
+  it('stock test: admin-gated, returns the service result (ok / error) for the given key', async () => {
+    // Inject a fake stock service so the route test is deterministic (the real providers capture
+    // `fetch` at construction, so a per-test stub wouldn't reach them). testKey's own ok/error logic
+    // is unit-tested in ai-connectivity.test.ts.
+    const fakeStock = {
+      availability: async () => ({ providers: [] }),
+      search: async () => ({ provider: 'unsplash' as const, page: 1, results: [] }),
+      testKey: async (_n: 'openverse' | 'unsplash' | 'pexels', key?: string) =>
+        key === 'good' ? { ok: true } : { ok: false, error: 'invalid key (401)' },
+      fetchForImport: async () => null,
+    };
+    const app2 = await createApp({ db, publishRoot, encryptionKey: randomBytes(32), stockService: fakeStock });
+    await app2.ready();
+    try {
+      const email = `sadm-${Math.random().toString(36).slice(2)}@e2e.test`;
+      await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'admin' });
+      const c = cookie(await app2.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
+      const ok = await app2.inject({ method: 'POST', url: '/admin/settings/stock/test', cookies: { sw_session: c }, payload: { provider: 'unsplash', key: 'good' } });
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json()).toMatchObject({ ok: true });
+      const bad = await app2.inject({ method: 'POST', url: '/admin/settings/stock/test', cookies: { sw_session: c }, payload: { provider: 'pexels', key: 'nope' } });
+      expect(bad.json()).toMatchObject({ ok: false });
+      expect((bad.json() as { error?: string }).error).toBeTruthy();
+    } finally {
+      await app2.close();
+    }
+  });
+});

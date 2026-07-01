@@ -22,6 +22,7 @@ type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 export interface StockServiceLike {
   availability(): Promise<StockProvidersStatus>;
   search(name: StockProviderName, query: string, page: number): Promise<StockSearchResult>;
+  testKey(name: StockProviderName, key?: string): Promise<{ ok: boolean; error?: string }>;
   fetchForImport(
     name: StockProviderName,
     id: string,

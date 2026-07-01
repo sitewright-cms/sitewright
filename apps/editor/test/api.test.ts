@@ -1141,4 +1141,20 @@ describe('unauthorized (401) handling', () => {
       ['DELETE', '/projects/p1/media/folders'],
     ]);
   });
+
+  it('posts the credential connectivity tests (AI instance/project + stock)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, model: 'claude-haiku-4-5' }));
+    const ai = await api.testInstanceAi({ provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' });
+    expect(ai).toEqual({ ok: true, model: 'claude-haiku-4-5' });
+    await api.testAiConfig('p1', { provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' });
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: false, error: 'invalid key' }));
+    const stock = await api.testStockKey({ provider: 'unsplash', key: 'uk' });
+    expect(stock).toEqual({ ok: false, error: 'invalid key' });
+    expect(fetchMock.mock.calls.map((c) => [c[1].method, c[0]])).toEqual([
+      ['POST', '/admin/settings/ai/test'],
+      ['POST', '/projects/p1/ai-config/test'],
+      ['POST', '/admin/settings/stock/test'],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' });
+  });
 });

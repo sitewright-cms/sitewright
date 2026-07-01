@@ -38,6 +38,26 @@ describe('AgentDrawer', () => {
     expect(await screen.findByPlaceholderText(/Ask the assistant/)).toBeInTheDocument();
   });
 
+  it('attaches an image and sends it with the message', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
+    streamAgentMessage.mockResolvedValue(undefined);
+    const { container } = render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/' } />);
+    await screen.findByPlaceholderText(/Ask the assistant/);
+
+    const file = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' });
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    // The attachment chip shows the filename once the FileReader resolves.
+    expect(await screen.findByText('shot.png')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(streamAgentMessage).toHaveBeenCalled());
+    const body = streamAgentMessage.mock.calls[0]![1] as { attachments?: Array<{ kind: string; mimeType: string; data: string }> };
+    expect(body.attachments).toHaveLength(1);
+    expect(body.attachments![0]).toMatchObject({ kind: 'image', mimeType: 'image/png' });
+    expect(body.attachments![0]!.data.length).toBeGreaterThan(0); // base64, no data: prefix
+  });
+
   it('sends a message with the current page as context and streams the reply', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
     streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {

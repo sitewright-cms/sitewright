@@ -251,6 +251,21 @@ describe('POST /projects/:id/agent/messages (end-to-end)', () => {
     expect(JSON.stringify(got.json())).toContain('Agent Was Here');
   });
 
+  it('accepts an attachment-only message and rejects an empty one / a bad attachment type', async () => {
+    const { cookie, projectId } = await ownerSession();
+    const url = `/projects/${projectId}/agent/messages`;
+    // Empty text + an image attachment → runs (200 SSE stream).
+    const ok = await app.inject({ method: 'POST', url, cookies: { sw_session: cookie }, payload: { message: '', attachments: [{ kind: 'image', mimeType: 'image/png', data: 'AAAA' }] } });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.payload).toContain('event: start');
+    // Empty text + no attachment → 400.
+    const empty = await app.inject({ method: 'POST', url, cookies: { sw_session: cookie }, payload: { message: '   ' } });
+    expect(empty.statusCode).toBe(400);
+    // A disallowed attachment type → 400 (zod refine).
+    const bad = await app.inject({ method: 'POST', url, cookies: { sw_session: cookie }, payload: { message: 'hi', attachments: [{ kind: 'image', mimeType: 'image/svg+xml', data: 'AAAA' }] } });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('binds a conversation to its owner+project — a known id from another user is 404', async () => {
     const a = await ownerSession();
     const resA = await app.inject({
@@ -373,6 +388,62 @@ describe('adapter translation + error branches', () => {
 
     const bad = new OpenAiAgentProvider('k', 'm', 'https://x/v1', async () => new Response('nope', { status: 502 }));
     await expect(collect(bad.runTurn({ system: 's', messages: [{ role: 'user', content: 'x' }], tools: [] }))).rejects.toThrow(/502/);
+  });
+
+  it('Anthropic: user attachments become image + document content blocks (attachments before text)', async () => {
+    let body: { messages?: Array<{ role: string; content: unknown }> } = {};
+    const provider = new AnthropicAgentProvider('k', 'm', async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      return sseResponse('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+    });
+    await collect(
+      provider.runTurn({
+        system: 's',
+        tools: [],
+        messages: [
+          {
+            role: 'user',
+            content: 'match this',
+            attachments: [
+              { kind: 'image', mimeType: 'image/png', data: 'IMG' },
+              { kind: 'document', mimeType: 'application/pdf', data: 'PDF', name: 'spec.pdf' },
+            ],
+          },
+        ],
+      }),
+    );
+    const content = body.messages![0]!.content as Array<Record<string, unknown>>;
+    expect(content[0]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'IMG' } });
+    expect(content[1]).toEqual({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'PDF' } });
+    expect(content[2]).toEqual({ type: 'text', text: 'match this' }); // text LAST
+  });
+
+  it('OpenAI: user image attachments become image_url data URLs; a PDF is noted as text', async () => {
+    let body: { messages?: Array<{ role: string; content: unknown }> } = {};
+    const provider = new OpenAiAgentProvider('k', 'm', 'https://x/v1', async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      return sseResponse('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    await collect(
+      provider.runTurn({
+        system: 's',
+        tools: [],
+        messages: [
+          {
+            role: 'user',
+            content: 'see this',
+            attachments: [
+              { kind: 'image', mimeType: 'image/jpeg', data: 'JPG' },
+              { kind: 'document', mimeType: 'application/pdf', data: 'PDF' },
+            ],
+          },
+        ],
+      }),
+    );
+    const content = body.messages![1]!.content as Array<Record<string, unknown>>; // [0] is the system message
+    expect(content[0]).toMatchObject({ type: 'text' });
+    expect((content[0] as { text: string }).text).toContain('document attachment');
+    expect(content[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,JPG' } });
   });
 });
 

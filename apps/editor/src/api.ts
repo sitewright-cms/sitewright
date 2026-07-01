@@ -261,6 +261,14 @@ async function streamSse<P, D>(
   }
 }
 
+/** A chat attachment (image or PDF) sent with a message so the agent can see it. `data` is base64. */
+export interface AgentAttachment {
+  kind: 'image' | 'document';
+  mimeType: string;
+  data: string;
+  name?: string;
+}
+
 /** The result of an AI provider connectivity check (verify credentials + model). */
 export interface AiTestResult {
   ok: boolean;
@@ -1167,7 +1175,12 @@ export const api = {
   /** Stream one chat turn; the server drives the agent + edits the DRAFT (the preview auto-reloads). */
   streamAgentMessage: (
     projectId: string,
-    body: { conversationId?: string; message: string; context?: { pageId?: string; path?: string; selection?: string } },
+    body: {
+      conversationId?: string;
+      message: string;
+      attachments?: AgentAttachment[];
+      context?: { pageId?: string; path?: string; selection?: string };
+    },
     handlers: AgentChatHandlers,
     signal?: AbortSignal,
   ) => streamAgentChat(`${BASE}/projects/${projectId}/agent/messages`, body, handlers, signal),

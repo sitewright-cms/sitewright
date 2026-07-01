@@ -6,6 +6,7 @@ import {
   canReorder,
   reorderWithinParent,
   orderedSiblings,
+  nextSiblingOrder,
 } from '../src/views/pages-order';
 
 /** Minimal Page factory — only the fields the ordering logic reads. */
@@ -121,6 +122,65 @@ describe('reorderWithinParent', () => {
     const pages = tree();
     const snapshot = JSON.stringify(pages);
     reorderWithinParent(pages, 'a', 'c', 'after', DL);
+    expect(JSON.stringify(pages)).toBe(snapshot);
+  });
+});
+
+describe('nextSiblingOrder (append a new page last under its parent)', () => {
+  it('returns one past the current max order among siblings', () => {
+    // home has children a,b,c at 0,1,2 → a new child appends at 3.
+    expect(nextSiblingOrder(tree(), 'home', 'en', DL)).toBe(3);
+  });
+
+  it('is 0 when the parent has no siblings yet', () => {
+    const pages = [page('home', { path: '', title: 'Home' })];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(0);
+  });
+
+  it('counts the effective order (legacy nav.order) when top-level order is absent', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('a', { parent: 'home', title: 'A', nav: { slots: ['header'], order: 5 } }),
+    ];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(6);
+  });
+
+  it('scopes to the target parent — a deep child does not affect a home append', () => {
+    const pages = [...tree(), page('deep', { parent: 'a', title: 'Deep', order: 9 })];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(3); // unaffected by deep@9 under 'a'
+    expect(nextSiblingOrder(pages, 'a', 'en', DL)).toBe(10); // last under 'a'
+  });
+
+  it('scopes to the locale — a locale-only page appends within its own language group', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('a', { parent: 'home', title: 'A', order: 0 }),
+      page('b', { parent: 'home', title: 'B', order: 1 }),
+      page('x-de', { parent: 'home', title: 'X', locale: 'de', order: 0 }),
+    ];
+    // Appending an en page sees a,b (→2); appending a de page sees only x-de (→1).
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(2);
+    expect(nextSiblingOrder(pages, 'home', 'de', DL)).toBe(1);
+  });
+
+  it('never counts Home itself as a sibling', () => {
+    // Home carries no order; a first real child still appends at 0, not after a phantom home.
+    const pages = [page('home', { path: '', title: 'Home', order: 7 })];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(0);
+  });
+
+  it('caps at the schema max even if a sibling already sits there (tie is expected, then title order)', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('a', { parent: 'home', title: 'A', order: 100_000 }),
+    ];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(100_000);
+  });
+
+  it('does not mutate the input pages', () => {
+    const pages = tree();
+    const snapshot = JSON.stringify(pages);
+    nextSiblingOrder(pages, 'home', 'en', DL);
     expect(JSON.stringify(pages)).toBe(snapshot);
   });
 });

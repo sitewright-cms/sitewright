@@ -65,13 +65,43 @@ export function orderPagesByTree(pages: readonly Page[], defaultLocale: string):
 }
 
 /**
+ * The reorder-group key for a (parent, locale) pair: pages that share the SAME resolved parent
+ * AND the same locale sit in one draggable group. A parent that isn't present resolves to the
+ * root group, mirroring `orderPagesByTree`.
+ */
+function groupKey(parent: string | undefined, locale: string | undefined, present: Set<string>, defaultLocale: string): string {
+  const p = parent && present.has(parent) ? parent : '';
+  return `${p}::${locale ?? defaultLocale}`;
+}
+
+/**
  * Identifies a page's reorder group: pages that share the SAME resolved parent AND the same
- * locale sit in one draggable group (matching how `bySiblingOrder` groups the list). A parent
- * that isn't present resolves to the root group, mirroring `orderPagesByTree`.
+ * locale sit in one draggable group (matching how `bySiblingOrder` groups the list).
  */
 export function siblingKey(p: Page, present: Set<string>, defaultLocale: string): string {
-  const parent = p.parent && present.has(p.parent) ? p.parent : '';
-  return `${parent}::${p.locale ?? defaultLocale}`;
+  return groupKey(p.parent, p.locale, present, defaultLocale);
+}
+
+/**
+ * The `order` value to give a NEW page/placeholder so it lands LAST among its siblings — the
+ * pages sharing its resolved parent + locale — i.e. one past the current maximum. Home is never
+ * counted (it's the pinned root/parent, not a sibling). Returns 0 when there are no siblings yet.
+ * Keeps "add a page" appending to the bottom of the list instead of sorting in by title. An
+ * all-languages page's variants are likewise placed last within EACH language by the locale
+ * fan-out (`nextChildOrder` in @sitewright/core). Capped at the schema max — at that (practically
+ * unreachable) boundary the new page ties the last sibling and falls back to title order.
+ */
+export function nextSiblingOrder(
+  pages: readonly Page[],
+  parentId: string,
+  locale: string,
+  defaultLocale: string,
+): number {
+  const present = new Set(pages.map((p) => p.id));
+  const key = groupKey(parentId, locale, present, defaultLocale);
+  const siblings = pages.filter((p) => !isHome(p) && siblingKey(p, present, defaultLocale) === key);
+  if (siblings.length === 0) return 0;
+  return Math.min(100_000, Math.max(...siblings.map(orderValue)) + 1);
 }
 
 /**

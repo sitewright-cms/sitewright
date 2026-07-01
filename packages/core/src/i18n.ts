@@ -337,6 +337,28 @@ export function scaffoldLocale(pages: readonly Page[], locale: string, defaultLo
  * any (ancestor or owner) already present in its group. Also links owners that lacked a
  * `translationGroup`.
  */
+/**
+ * The `order` to give a NEW child of `parentId` in `locale` so it sorts LAST among its siblings —
+ * one past the current maximum effective order (`order ?? nav.order ?? 0`), 0 when it has none,
+ * capped at the schema max. The server-side twin of the editor's `nextSiblingOrder`: used by the
+ * locale fan-out so an "all languages" page lands last within EACH language's group, not merely
+ * inheriting the owner's default-locale ordinal (which can TIE when that locale holds extra,
+ * reordered locale-only pages). The slugless root home is never counted as a sibling.
+ */
+export function nextChildOrder(
+  pages: readonly Page[],
+  parentId: string | undefined,
+  locale: string,
+  defaultLocale: string,
+): number {
+  const siblings = pages.filter(
+    (p) => p.parent === parentId && localeOf(p, defaultLocale) === locale && !(p.path === '' && !isLinkPage(p)),
+  );
+  if (siblings.length === 0) return 0;
+  const max = Math.max(...siblings.map((p) => p.order ?? p.nav?.order ?? 0));
+  return Math.min(100_000, max + 1);
+}
+
 export function propagatePageToLocales(
   owner: Page,
   pages: readonly Page[],
@@ -378,7 +400,13 @@ export function propagatePageToLocales(
         (p) => (p.translationGroup ?? p.id) === groupId && localeOf(p, defaultLocale) === locale,
       );
       if (present) continue;
-      const variant = buildLocaleVariant(linked, locale, working, defaultLocale);
+      let variant = buildLocaleVariant(linked, locale, working, defaultLocale);
+      // The owner carried an explicit order → place the variant LAST within its OWN locale group
+      // (that locale may hold extra, reordered locale-only pages), rather than inheriting the owner's
+      // default-locale ordinal, which could tie. An orderless owner keeps the title-sort default.
+      if (variant.order !== undefined) {
+        variant = { ...variant, order: nextChildOrder(working, variant.parent, locale, defaultLocale) };
+      }
       created.push(variant);
       working = [...working, variant];
     }

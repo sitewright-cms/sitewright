@@ -44,8 +44,13 @@ export class AnthropicAgentProvider implements AgentProvider {
         model: req.model ?? this.model,
         max_tokens: req.maxTokens ?? 8192,
         stream: true,
-        system: req.system,
-        tools: req.tools.map(toAnthropicTool),
+        // PROMPT CACHING: the system prompt + the (large, always-identical) tool schemas are resent on
+        // EVERY turn of the loop (up to 25 per user message). Two ephemeral cache breakpoints — one on
+        // the last tool, one on the system block — let Anthropic reuse that prefix (tool-defs cache
+        // across ALL messages; system caches within a loop / for same-page follow-ups), cutting input
+        // cost + latency. (Prompt caching is GA; no beta header needed. OpenAI-compat caches server-side.)
+        system: cacheableSystem(req.system),
+        tools: withToolCache(req.tools.map(toAnthropicTool)),
         messages: toAnthropicMessages(req.messages),
       }),
       signal: req.signal,
@@ -112,6 +117,28 @@ export class AnthropicAgentProvider implements AgentProvider {
 
 function toAnthropicTool(def: AgentToolDef): Record<string, unknown> {
   return { name: def.name, description: def.description, input_schema: def.parameters };
+}
+
+/** The `ephemeral` cache breakpoint marker (5-minute TTL, GA prompt caching). */
+const CACHE_CONTROL = { type: 'ephemeral' as const };
+
+/**
+ * System prompt as a cacheable content block. An ephemeral breakpoint here caches the whole prefix up
+ * to and including the system prompt (tools + system) — reused across a loop's turns and for
+ * follow-up messages on the same page. Empty system → omit (nothing to cache).
+ */
+function cacheableSystem(system: string): Array<Record<string, unknown>> | undefined {
+  return system ? [{ type: 'text', text: system, cache_control: CACHE_CONTROL }] : undefined;
+}
+
+/**
+ * Mark the LAST tool with a cache breakpoint so the entire (large, always-identical) tool-schema block
+ * is cached and reused on every request — including across user messages, since the tool set never
+ * changes within a conversation. Returns a NEW array (no mutation of the caller's tools).
+ */
+function withToolCache(tools: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  if (tools.length === 0) return tools;
+  return tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: CACHE_CONTROL } : t));
 }
 
 /** Neutral → Anthropic: merge consecutive tool results into one user message. */

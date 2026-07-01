@@ -318,7 +318,7 @@ describe('POST /projects/:id/agent/messages (end-to-end)', () => {
 
 describe('adapter translation + error branches', () => {
   it('Anthropic: translates assistant tool_use + tool-result-with-image; throws on non-ok', async () => {
-    let body: { system?: string; tools?: Array<Record<string, unknown>>; messages?: Array<Record<string, unknown>> } = {};
+    let body: { system?: unknown; tools?: Array<Record<string, unknown>>; messages?: Array<Record<string, unknown>> } = {};
     const provider = new AnthropicAgentProvider('k', 'm', async (_u, init) => {
       body = JSON.parse(String(init!.body));
       return sseResponse('event: message_stop\ndata: {"type":"message_stop"}\n\n');
@@ -334,8 +334,11 @@ describe('adapter translation + error branches', () => {
         ],
       }),
     );
-    expect(body.system).toBe('sys');
+    // System is sent as a cacheable content block (prompt caching), not a bare string.
+    expect(body.system).toEqual([{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }]);
     expect(body.tools![0]).toMatchObject({ name: 'put_page', input_schema: { type: 'object' } });
+    // The LAST tool carries the cache breakpoint so the whole tool-schema block is reused across turns.
+    expect(body.tools![body.tools!.length - 1]).toMatchObject({ cache_control: { type: 'ephemeral' } });
     const toolMsg = body.messages![2] as { role: string; content: Array<{ type: string; content: unknown[]; is_error?: boolean }> };
     expect(toolMsg.role).toBe('user');
     expect(toolMsg.content[0]!.type).toBe('tool_result');

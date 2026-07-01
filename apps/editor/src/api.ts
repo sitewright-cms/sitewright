@@ -65,6 +65,8 @@ export type {
   StockProvidersStatus,
   StockSearchResult,
   WebsiteSettings,
+  AiConfigView,
+  AiConfigInput,
 };
 
 /** The project's settings singleton as read/written via the content API (the unified shape). */

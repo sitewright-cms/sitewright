@@ -7,8 +7,9 @@ import {
   LOOP_VARIABLES,
   type BindingNamespaceName,
 } from '@sitewright/schema';
+import Handlebars from 'handlebars';
 import { DIRECTIVE_ATTRS } from '../src/directives.js';
-import { renderTemplate, registeredSwHelpers, type TemplateContext } from '../src/template.js';
+import { renderTemplate, registeredSwHelpers, registeredHelperNames, type TemplateContext } from '../src/template.js';
 
 // The authoring-reference registries (@sitewright/schema) are the single source the editor's Template
 // reference DERIVES its Directives / Bindings / Variables tabs from. These tests pin each registry to
@@ -27,6 +28,20 @@ describe('SW_HELPERS ↔ the registered sw-* helpers', () => {
       expect(h.syntax.length).toBeGreaterThan(0);
       expect(h.summary.length).toBeGreaterThan(0);
     }
+  });
+
+  it('no bare content helper ships undocumented: our additions are sw-* or an allowlisted logic helper', () => {
+    // The drift test above only covers `sw-*` helpers (registeredSwHelpers filters by prefix), so a NEW
+    // BARE helper — like the {{json}} that shipped in #555 — would ship, work, and never appear in the
+    // reference, with CI green. This guards that gap: the ONLY bare helpers we add on top of the built-ins
+    // are the pure logic comparators eq/ne (used only in subexpression position; a data field named eq/ne
+    // is implausible, and bare matches ecosystem convention). `each` is a deliberate OVERRIDE of the
+    // built-in loop helper, so it reuses a built-in name and is covered by `builtins` below. Every helper
+    // that EMITS content MUST be `sw-`-prefixed — so it can never shadow a dataset field of the same bare
+    // name AND so the SW_HELPERS drift test forces it into the reference. Add a new bare helper → this fails.
+    const builtins = new Set(Object.keys(Handlebars.create().helpers));
+    const bareAdditions = registeredHelperNames().filter((n) => !n.startsWith('sw-') && !builtins.has(n));
+    expect(bareAdditions).toEqual(['eq', 'ne']);
   });
 });
 

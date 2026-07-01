@@ -508,15 +508,16 @@ function createInstance(): typeof Handlebars {
   // these cover the common comparison need so authors don't reach for one that doesn't exist.
   hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
   hb.registerHelper('ne', (a: unknown, b: unknown) => a !== b);
-  // {{json value}} → the value pretty-printed as JSON (2-space indent) — object/array/string/number/bool.
-  // For INSPECTING/DEBUGGING data (e.g. <pre>{{json page.data}}</pre>) — the output is HTML-escaped, so it
+  // {{sw-json value}} → the value pretty-printed as JSON (2-space indent) — object/array/string/number/bool.
+  // For INSPECTING/DEBUGGING data (e.g. <pre>{{sw-json page.data}}</pre>) — the output is HTML-escaped, so it
   // is NOT valid for a <script type="application/ld+json"> block (the quotes become &quot;); use it to read,
-  // not to emit machine-parsed JSON.
-  // The return is a plain string → HTML-ESCAPED, so it's safe in any text/attribute position. `{{json}}`
+  // not to emit machine-parsed JSON. Prefixed like every other CONTENT helper so it can never shadow a
+  // dataset field literally named `json` (that field stays readable as {{json}}).
+  // The return is a plain string → HTML-ESCAPED, so it's safe in any text/attribute position. `{{sw-json}}`
   // with no value (or an unstringifiable/circular value) → ''; output is length-capped so a large object
   // can't blow up the response. Compose with {{#each}} etc. as usual.
-  hb.registerHelper('json', function json(this: unknown, ...args: unknown[]) {
-    // Handlebars always appends the options object, so a bare `{{json}}` has length 1 (no value).
+  hb.registerHelper('sw-json', function swJson(this: unknown, ...args: unknown[]) {
+    // Handlebars always appends the options object, so a bare `{{sw-json}}` has length 1 (no value).
     const value = args.length > 1 ? args[0] : undefined;
     if (value === undefined) return '';
     try {
@@ -896,14 +897,21 @@ function createInstance(): typeof Handlebars {
 }
 
 /**
+ * EVERY Handlebars helper name the engine registers (built-ins we keep + our additions), sorted. Used by
+ * the namespace-hygiene test to guarantee no NEW bare (non-`sw-`) content helper ever ships undocumented —
+ * every emitter must be `sw-`-prefixed (so it can't shadow a data field and so it's pinned into SW_HELPERS).
+ */
+export function registeredHelperNames(): string[] {
+  return Object.keys(createInstance().helpers).sort();
+}
+
+/**
  * The custom `sw-*` Handlebars helper names the engine registers — the canonical, single-source list
  * the Template reference (apps/editor/src/views/library/reference.ts) must document. A test pins the
  * docs to this set so a new/renamed/removed helper can't silently leave the reference stale.
  */
 export function registeredSwHelpers(): string[] {
-  return Object.keys(createInstance().helpers)
-    .filter((name) => name.startsWith('sw-'))
-    .sort();
+  return registeredHelperNames().filter((name) => name.startsWith('sw-'));
 }
 
 /** The minimal shape of a dataset entry the loop helper recognises (mirrors @sitewright/schema's Entry). */

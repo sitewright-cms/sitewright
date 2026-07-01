@@ -270,18 +270,18 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
 
-  it('{{json}} pretty-prints any value (HTML-escaped) and is empty/safe for nothing or a cycle', () => {
+  it('{{sw-json}} pretty-prints any value (HTML-escaped) and is empty/safe for nothing or a cycle', () => {
     // Object → indented JSON (2-space). Output is HTML-escaped like every mustache (the " become &quot;,
     // which a browser renders back as " inside <pre>) — so it can never break out of text/attribute context.
-    expect(renderTemplate('{{json page.data}}', { page: { data: { a: 1, b: 'x' } } })).toBe('{\n  &quot;a&quot;: 1,\n  &quot;b&quot;: &quot;x&quot;\n}');
+    expect(renderTemplate('{{sw-json page.data}}', { page: { data: { a: 1, b: 'x' } } })).toBe('{\n  &quot;a&quot;: 1,\n  &quot;b&quot;: &quot;x&quot;\n}');
     // Scalars all serialize.
-    expect(renderTemplate('{{json page.n}}', { page: { n: 42 } })).toBe('42');
-    expect(renderTemplate('{{json page.b}}', { page: { b: true } })).toBe('true');
-    expect(renderTemplate('{{json page.s}}', { page: { s: 'hi & <b>' } })).toBe('&quot;hi &amp; &lt;b&gt;&quot;'); // escaped
-    // Bare {{json}} (no value) and a circular value → '' (never throws).
-    expect(renderTemplate('[{{json}}]', {})).toBe('[]');
+    expect(renderTemplate('{{sw-json page.n}}', { page: { n: 42 } })).toBe('42');
+    expect(renderTemplate('{{sw-json page.b}}', { page: { b: true } })).toBe('true');
+    expect(renderTemplate('{{sw-json page.s}}', { page: { s: 'hi & <b>' } })).toBe('&quot;hi &amp; &lt;b&gt;&quot;'); // escaped
+    // Bare {{sw-json}} (no value) and a circular value → '' (never throws).
+    expect(renderTemplate('[{{sw-json}}]', {})).toBe('[]');
     const cyc: Record<string, unknown> = {}; cyc.self = cyc;
-    expect(renderTemplate('[{{json page.c}}]', { page: { c: cyc } })).toBe('[]');
+    expect(renderTemplate('[{{sw-json page.c}}]', { page: { c: cyc } })).toBe('[]');
   });
 
   it('{{#unless (sw-blank v)}} omits a wrapper only when the value has visible content', () => {

@@ -9,6 +9,7 @@ import type { AgentProvider, AgentMessage } from '../ai/agent-provider.js';
 import { runAgentLoop } from '../ai/agent-loop.js';
 import { McpToolBridge } from '../ai/tool-bridge.js';
 import { mintAgentToken, revokeAgentToken } from '../ai/agent-token.js';
+import type { AgentGrantsRepository } from '../repo/agent-grants.js';
 
 /** First instant of the current UTC month — the basis for monthly token quotas. */
 function startOfMonthUTC(now: Date): Date {
@@ -16,7 +17,7 @@ function startOfMonthUTC(now: Date): Date {
 }
 
 /** Capabilities an on-page agent may ever hold (never `deploy` — there is no deploy tool). */
-const AGENT_MAX_CAPS: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish'];
+const AGENT_MAX_CAPS: readonly ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish'];
 /** Not yet recoverable (no media tombstone until the recycle bin ships) → keep it out of the agent's hands. */
 const WITHHELD_TOOLS = new Set(['delete_media']);
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
@@ -25,10 +26,11 @@ const MAX_ITERATIONS = 25;
 /** Idle conversations are dropped from the in-memory store after this long. */
 const CONVERSATION_TTL_MS = 30 * 60_000;
 
+const CapabilityEnum = z.enum(['content:read', 'content:write', 'content:delete', 'publish']);
+
 const MessageBody = z.object({
   conversationId: z.string().min(1).max(64).optional(),
   message: z.string().min(1).max(8000),
-  capabilities: z.array(z.enum(['content:read', 'content:write', 'content:delete', 'publish'])).optional(),
   context: z
     .object({
       pageId: z.string().max(200).optional(),
@@ -36,6 +38,11 @@ const MessageBody = z.object({
       selection: z.string().max(2000).optional(),
     })
     .optional(),
+});
+
+const GrantBody = z.object({
+  capabilities: z.array(CapabilityEnum),
+  autonomy: z.enum(['full', 'ask']).default('full'),
 });
 
 /** The effective assistant for one project: the provider + the caps that govern its usage. */
@@ -55,6 +62,7 @@ export interface AiAgentRoutesDeps {
   /** Resolves the effective assistant for a project (per-project BYO → instance → env), or null when
    *  the assistant is not configured for this project. */
   resolveAgent: (ctx: ProjectContext) => Promise<ResolvedAgent | null>;
+  agentGrants: AgentGrantsRepository;
   aiUsageRepo: AiUsageRepository;
   /** Platform + per-user monthly caps (from env). The per-project cap comes from the resolved agent. */
   aiQuota: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
@@ -113,6 +121,34 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     return null;
   };
 
+  // First-connect CONSENT: the capabilities the user has granted the assistant on this project.
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/agent/grant', { config: deps.rl(30) }, async (req, reply) => {
+    const { ctx } = await deps.resolveProject(req, 'session-only');
+    if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const grant = await deps.agentGrants.get(ctx.userId, ctx.projectId);
+    // Default = full autonomy (all caps pre-checked in the consent panel) until the user narrows it.
+    return reply.send({ configured: grant !== null, capabilities: grant?.capabilities ?? AGENT_MAX_CAPS, autonomy: grant?.autonomy ?? 'full' });
+  });
+
+  app.put<{ Params: { projectId: string } }>('/projects/:projectId/agent/grant', { config: deps.rl(30) }, async (req, reply) => {
+    const { ctx } = await deps.resolveProject(req, 'session-only');
+    if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const body = GrantBody.parse(req.body);
+    // Clamp to what an agent may ever hold (never deploy); content:read is always implied.
+    const granted = body.capabilities as ApiKeyCapability[];
+    const capabilities = AGENT_MAX_CAPS.filter((c) => granted.includes(c));
+    if (!capabilities.includes('content:read')) capabilities.unshift('content:read');
+    const saved = await deps.agentGrants.upsert(ctx.userId, ctx.projectId, { capabilities, autonomy: body.autonomy });
+    return reply.send({ configured: true, ...saved });
+  });
+
+  // Whether the assistant is available on this project — gates the preview "AI" button.
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/agent/status', { config: deps.rl(60) }, async (req, reply) => {
+    const { ctx } = await deps.resolveProject(req, 'session-only');
+    const resolved = deps.isWriter(ctx) ? await deps.resolveAgent(ctx) : null;
+    return reply.send({ enabled: resolved !== null });
+  });
+
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/messages', { config: deps.rl(20) }, async (req, reply) => {
     // --- Preflight (JSON errors) BEFORE hijacking the socket ---
     const { ctx } = await deps.resolveProject(req, 'session-only');
@@ -127,7 +163,13 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     const over = await overQuota(ctx, userIsAdmin, since, resolved);
     if (over) return reply.code(429).send({ error: `AI ${over} quota exhausted for this month` });
 
-    const requested = (body.capabilities ?? ['content:read', 'content:write', 'publish']) as ApiKeyCapability[];
+    // Capabilities come from the stored consent grant — the user chose them on first connect. No grant
+    // yet → FULL autonomy by default (a deliberate product choice: the consent panel pre-checks all and
+    // lets the user NARROW it). Not an escalation: the caller is already a session writer who holds all
+    // of these caps directly, and `deploy` is never included. The editor always PUTs a grant via the
+    // consent panel before the first message, so the no-grant default only applies to direct API use.
+    const grant = await deps.agentGrants.get(ctx.userId, ctx.projectId);
+    const requested = (grant?.capabilities ?? AGENT_MAX_CAPS) as ApiKeyCapability[];
     const capabilities = AGENT_MAX_CAPS.filter((c) => requested.includes(c));
     if (!capabilities.includes('content:read')) capabilities.unshift('content:read');
 

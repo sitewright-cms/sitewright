@@ -178,3 +178,72 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ parent: '' }));
   });
 });
+
+describe('PageSettingsModal — create mode (the New-page form)', () => {
+  const home: Page = { id: 'home', path: '', title: 'Home' };
+  const draft = { id: '__new__', path: '', title: '' } as Page;
+
+  it('shows the New-page chrome: editable slug, a Create button, and full fields — not the home form', () => {
+    render(
+      <PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    expect(screen.getByText('New page')).toBeInTheDocument();
+    // A blank-slug draft must NOT be mistaken for the home page: the slug is editable and defaults
+    // its parent to home (not "None (home is the root)").
+    const slug = screen.getByLabelText('Page path') as HTMLInputElement;
+    expect(slug.disabled).toBe(false);
+    const parent = screen.getByLabelText('Parent page') as HTMLSelectElement;
+    expect(parent.value).toBe('home');
+    // The full field set is present (this is the whole point of the change).
+    expect(screen.getByLabelText('Meta description')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create page' })).toBeInTheDocument();
+  });
+
+  it('submits the entered title + slug and the chosen parent', () => {
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'About us' } });
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'about' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: 'About us', path: 'about', parent: 'home' }));
+  });
+
+  it('renders a caller error inline and keeps the form open', () => {
+    render(
+      <PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} error={'A page "about" already exists.'} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('already exists');
+  });
+
+  it('multilingual: shows the language-scope control and stamps the locale from it', () => {
+    const onSubmit = vi.fn();
+    const onScopeChange = vi.fn();
+    // scope="current" while viewing German → the submitted values carry locale "de".
+    const { rerender } = render(
+      <PageSettingsModal
+        mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]}
+        locales={['en', 'de']} currentLocale="de" scope="current" onScopeChange={onScopeChange} onClose={() => {}} onSubmit={onSubmit}
+      />,
+    );
+    expect(screen.getByLabelText('Available only in the current language')).toBeChecked();
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Nur DE' } });
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'nur-de' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ path: 'nur-de', locale: 'de' }));
+
+    // scope="all" (the default) → the owner is authored in the default language (locale "").
+    onSubmit.mockClear();
+    rerender(
+      <PageSettingsModal
+        mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]}
+        locales={['en', 'de']} currentLocale="de" scope="all" onScopeChange={onScopeChange} onClose={() => {}} onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Alle' } });
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'alle' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ path: 'alle', locale: '' }));
+  });
+});

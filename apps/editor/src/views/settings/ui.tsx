@@ -21,7 +21,8 @@ export function GlassCard({ title, icon, tooltip, children, wide = false }: { ti
   );
 }
 
-/** A labeled single-line input. */
+/** A labeled single-line input. An optional `hint` shows muted helper text under the input; an
+ *  optional `error` replaces it with a red validation message (and reddens the border). */
 export function Field({
   label,
   value,
@@ -29,6 +30,8 @@ export function Field({
   type = 'text',
   placeholder,
   required = false,
+  error,
+  hint,
 }: {
   label: string;
   value: string;
@@ -36,19 +39,32 @@ export function Field({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  error?: string | null;
+  hint?: string;
 }) {
+  // Stable id so aria-describedby can point a screen reader at the inline error text.
+  const errorId = error ? `${label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-error` : undefined;
   return (
     <label className="block">
       <span className={fieldLabel}>{label}</span>
       <input
-        className={glassInput}
+        // `sw-invalid-focus` (defined after `sw-brand-focus`) turns the focus border + ring rose
+        // instead of brand; `!border-red-400` reddens the resting border.
+        className={`${glassInput} ${error ? '!border-red-400 sw-invalid-focus' : ''}`}
         aria-label={label}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
         type={type}
         value={value}
         placeholder={placeholder}
         required={required}
         onChange={(e) => onChange(e.target.value)}
       />
+      {error ? (
+        <span id={errorId} className="mt-1 block text-[11px] font-medium text-red-500">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-[11px] text-slate-400">{hint}</span>
+      ) : null}
     </label>
   );
 }

@@ -13,7 +13,10 @@ function xmlEscape(value: string): string {
 
 /** Normalized site origin+path with any trailing slash(es) stripped. */
 export function siteBase(siteUrl: string): string {
-  return siteUrl.replace(/\/+$/, '');
+  // Defense-in-depth: drop CR/LF before this value reaches the UNESCAPED sinks it feeds — a newline
+  // in `siteUrl` would inject a `robots.txt` directive or break the sitemap `<loc>`. The schema
+  // (siteUrlIssue) already rejects all whitespace at the boundary; this guards a non-API DB write.
+  return siteUrl.replace(/[\r\n]/g, '').replace(/\/+$/, '');
 }
 
 /** Absolute URL for a published route slug (home → `<base>/`, else `<base>/<slug>/`). */

@@ -25,6 +25,7 @@ import {
   containerWidthVar,
   DEFAULT_CONTAINER_WIDTH,
   CONTAINER_WIDTH_PRESETS,
+  siteUrlIssue,
 } from '../src/website.js';
 
 describe('website.consent (ConsentSchema)', () => {
@@ -40,6 +41,33 @@ describe('website.consent (ConsentSchema)', () => {
     expect(() => WebsiteSettingsSchema.parse({ consent: { categories: ['tracking'] } })).toThrow();
     expect(() => WebsiteSettingsSchema.parse({ consent: { layout: 'popup' } })).toThrow();
     expect(() => WebsiteSettingsSchema.parse({ consent: { version: 0 } })).toThrow();
+  });
+});
+
+describe('siteUrlIssue', () => {
+  it('accepts absolute http(s) URLs, with a subpath and with/without a trailing slash', () => {
+    expect(siteUrlIssue('https://acme.com')).toBeNull();
+    expect(siteUrlIssue('https://acme.com/')).toBeNull(); // trailing slash optional (normalized at build)
+    expect(siteUrlIssue('http://acme.com')).toBeNull();
+    expect(siteUrlIssue('https://acme.com/blog')).toBeNull(); // subpath hosting is allowed
+  });
+
+  it('rejects each malformed form with a clear, format-oriented message', () => {
+    expect(siteUrlIssue('acme.com')).toMatch(/starts with https:\/\//i); // no scheme
+    expect(siteUrlIssue('ftp://acme.com')).toMatch(/starts with https:\/\//i);
+    expect(siteUrlIssue('https://acme.com?utm=x')).toMatch(/query/i);
+    expect(siteUrlIssue('https://acme.com#top')).toMatch(/fragment/i);
+    expect(siteUrlIssue('https://acme .com')).toMatch(/spaces/i);
+    expect(siteUrlIssue('https://acme.com/"x')).toMatch(/special characters/i);
+    expect(siteUrlIssue('https://' + 'a'.repeat(2100))).toMatch(/too long/i);
+  });
+
+  it('is the same rule the schema enforces (reject surfaces the message; accept round-trips)', () => {
+    const res = WebsiteSettingsSchema.safeParse({ siteUrl: 'acme.com' });
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.issues[0]!.message).toMatch(/starts with https:\/\//i);
+    expect(WebsiteSettingsSchema.parse({ siteUrl: 'https://acme.com/' }).siteUrl).toBe('https://acme.com/');
+    expect(WebsiteSettingsSchema.parse({}).siteUrl).toBeUndefined(); // still optional
   });
 });
 

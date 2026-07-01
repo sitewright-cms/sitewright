@@ -246,6 +246,15 @@ export function InstanceSettings() {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    // Validate the AI output-token cap inline (mirrors the per-project form) so an out-of-range
+    // value shows a clear message instead of a generic server 400.
+    if (aiEnabled && aiMaxTokens.trim() !== '') {
+      const n = Number(aiMaxTokens);
+      if (!Number.isInteger(n) || n < 1024 || n > 32000) {
+        setError('Max output tokens must be a whole number between 1024 and 32000.');
+        return;
+      }
+    }
     const input: InstanceSettingsInput = { formModes: modes };
     input.smtp = smtpEnabled
       ? {

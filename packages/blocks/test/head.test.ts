@@ -31,6 +31,33 @@ describe('metaTags', () => {
     expect(html).toContain('rel="canonical" href="https://x.io/"');
   });
 
+  it('emits og:site_name, og:locale (+ alternates) and the twitter title/description/image trio', () => {
+    const html = metaTags({
+      title: 'Home',
+      description: 'A site',
+      image: 'https://x.io/og.png',
+      siteName: 'Acme',
+      locale: 'en_US',
+      localeAlternates: ['de_DE', 'es_ES'],
+    });
+    expect(html).toContain('property="og:site_name" content="Acme"');
+    expect(html).toContain('property="og:locale" content="en_US"');
+    expect(html).toContain('property="og:locale:alternate" content="de_DE"');
+    expect(html).toContain('property="og:locale:alternate" content="es_ES"');
+    expect(html).toContain('name="twitter:title" content="Home"');
+    expect(html).toContain('name="twitter:description" content="A site"');
+    expect(html).toContain('name="twitter:image" content="https://x.io/og.png"');
+  });
+
+  it('omits the new social tags when their data is absent (twitter:title always mirrors the title)', () => {
+    const html = metaTags({ title: 'T' });
+    expect(html).not.toContain('og:site_name');
+    expect(html).not.toContain('og:locale');
+    expect(html).toContain('name="twitter:title" content="T"');
+    expect(html).not.toContain('twitter:description');
+    expect(html).not.toContain('twitter:image');
+  });
+
   it('emits theme-color and favicon when provided', () => {
     const html = metaTags({ title: 'T', themeColor: '#0a7', favicon: '/icon.png' });
     expect(html).toContain('name="theme-color" content="#0a7"');

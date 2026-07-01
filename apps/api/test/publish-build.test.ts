@@ -331,6 +331,93 @@ describe('buildSite', () => {
     expect(about).not.toContain('/media/acme/');
   });
 
+  it('emits ABSOLUTE og:image + og:url/canonical + og:site_name + og:locale when a site URL is configured', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const,
+          id: 'p',
+          name: 'Acme',
+          slug: 'acme',
+          identity: { name: 'Acme Inc', colors: { primary: '#0a7' }, image: '/media/acme/og/og-1200.jpg' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>Home</div>' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About</div>' },
+          { id: 'svc', path: 'services', parent: 'home', title: 'Services', source: '<div>Services</div>' },
+          { id: 'web', path: 'web', parent: 'svc', title: 'Web', source: '<div>Web</div>' },
+        ],
+      }),
+    });
+    // Home: og:image is absolutized to the SITE-ROOT _assets path (assets are shared, not per-dir).
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200.jpg"');
+    expect(home).toContain('property="og:url" content="https://acme.example/"');
+    expect(home).toContain('rel="canonical" href="https://acme.example/"');
+    expect(home).toContain('property="og:site_name" content="Acme Inc"');
+    expect(home).toContain('property="og:locale" content="en"');
+    expect(home).toContain('name="twitter:image" content="https://acme.example/_assets/og/og-1200.jpg"');
+    expect(home).not.toContain('/media/acme/');
+    // Nested page (depth 1): the page-relative '../_assets/…' resolves to the SAME site-root asset —
+    // NOT a broken '/about/_assets/…'. This is the bug the absolutize-against-page-URL approach avoids.
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200.jpg"');
+    expect(about).toContain('property="og:url" content="https://acme.example/about/"');
+    expect(about).toContain('rel="canonical" href="https://acme.example/about/"');
+    expect(about).not.toContain('/about/_assets/');
+    // Depth 2 (services/web): '../../_assets/…' must still back all the way up to the site root.
+    const web = await readFile(join(outDir, 'services', 'web', 'index.html'), 'utf8');
+    expect(web).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200.jpg"');
+    expect(web).toContain('property="og:url" content="https://acme.example/services/web/"');
+    expect(web).not.toContain('/services/web/_assets/');
+  });
+
+  it('leaves an already-absolute og:image URL untouched (external CDN)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' }, image: 'https://cdn.example/og.jpg' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div>H</div>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The external URL wins over the base in new URL(rel, base) — it is NOT re-rooted onto acme.example.
+    expect(home).toContain('property="og:image" content="https://cdn.example/og.jpg"');
+    expect(home).toContain('name="twitter:image" content="https://cdn.example/og.jpg"');
+  });
+
+  it('an author-set page.canonical overrides the computed og:url', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>H</div>', canonical: 'https://canonical.example/x' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('property="og:url" content="https://canonical.example/x"');
+    expect(home).toContain('rel="canonical" href="https://canonical.example/x"');
+    expect(home).not.toContain('og:url" content="https://acme.example/"');
+  });
+
   it('generates the favicon / PWA icon set + manifest from the single CI icon (media-backed)', async () => {
     const iconPng = await renderTrustedSvgToPng(
       '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#0a7"/><circle cx="256" cy="256" r="180" fill="#fff"/></svg>',

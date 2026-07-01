@@ -668,6 +668,35 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                 ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
               ]
             : undefined;
+        // og:image MUST be an absolute URL — social crawlers (Facebook/LinkedIn/X) won't fetch a
+        // page-relative one. Resolve the page-relative asset URL (kept in lockstep with the body
+        // rewrite via `rel()`) against THIS page's own absolute URL. Without a configured site URL
+        // there's no absolute base, so we can only ship the relative form (portable static export).
+        const relOgImage = rel(page.image ?? identity.image);
+        // A non-URL image value can't reach `new URL()`'s first arg given the AssetRef schema, but
+        // fall back to the page-relative form rather than throwing a raw TypeError out of the publish
+        // loop (every other tenant-influenced op in here is guarded the same way).
+        let ogImage = relOgImage;
+        if (siteUrl && relOgImage) {
+          try {
+            ogImage = new URL(relOgImage, siteUrlFor(siteUrl, outSlug)).href;
+          } catch {
+            ogImage = relOgImage;
+          }
+        }
+        // og:url + canonical: an author-set canonical always wins; otherwise default to this page's
+        // OWN absolute URL when a site URL is configured (previously nothing was emitted without an
+        // explicit canonical, so most pages shipped no og:url and no canonical link).
+        const ogUrl = page.canonical ?? (siteUrl ? siteUrlFor(siteUrl, outSlug) : undefined);
+        // og:locale: best-effort `language_TERRITORY` from the page locale (we don't fabricate a
+        // territory we don't have — `en` stays `en`, `pt-BR` → `pt_BR`). og:locale:alternate lists
+        // this page's OTHER locale variants (independent of siteUrl — these need no absolute URL).
+        const ogLocale = pageLocale.replace(/-/g, '_');
+        // NOT gated on !page.noindex (unlike the `alternates`/hreflang block above): og:locale:alternate
+        // is a social-sharing hint, not an indexing directive — a noindex page can still be shared and
+        // naming its sibling locales is valid. hreflang IS gated because search engines must not be
+        // pointed at noindex pages.
+        const ogLocaleAlternates = group.filter((m) => m.locale !== pageLocale).map((m) => m.locale.replace(/-/g, '_'));
         // `dataset.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
         // present, else the base dataset (auto locale-suffix). Translation links for a
         // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
@@ -855,9 +884,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           seo: {
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
-            // og:image falls back to the company image; the favicon/PWA icons derive from `icon`.
-            image: rel(page.image ?? identity.image),
-            url: page.canonical,
+            // og:image falls back to the company image (absolutized above); favicon/PWA icons derive from `icon`.
+            image: ogImage,
+            url: ogUrl,
+            // og:site_name = the brand display name; og:locale (+ alternates) from the page's locale set.
+            siteName: identity.name,
+            locale: ogLocale,
+            localeAlternates: ogLocaleAlternates,
             noindex: page.noindex,
             themeColor: identity.colors.primary,
             // The generated set when the icon is an in-project media asset (page-relative); else a

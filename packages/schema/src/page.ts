@@ -42,6 +42,10 @@ const PageObject = z
       .string()
       .url()
       .refine((v) => /^https?:\/\//i.test(v), 'must be an absolute http(s) URL')
+      // Defence-in-depth (mirrors `website.siteUrl`): `.url()` also permits `"<>'&`, harmless where the
+      // value is escaped (og:url + <link rel=canonical> both escapeAttr it) but rejected at the boundary
+      // so it can never reach a future unescaped sink (a redirect rule, an HTTP header, …).
+      .refine((v) => !/["<>'&]/.test(v), 'canonical must not contain HTML-significant characters')
       .optional(),
     /** Exclude from search indexing + the sitemap (`<meta name="robots" content="noindex">`). */
     noindex: z.boolean().optional(),

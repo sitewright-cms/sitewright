@@ -62,7 +62,7 @@ describe('multilingual publish (locale variants are pages)', () => {
     expect(de.body).not.toContain('Welcome');
   });
 
-  it('emits hreflang + x-default from the translation group (with a site URL)', async () => {
+  it('emits hreflang + x-default, per-locale og:url, and og:locale (+ alternate) from the translation group', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {
       identity: { name: 'Acme', colors: { primary: '#0a7' } },
@@ -79,6 +79,16 @@ describe('multilingual publish (locale variants are pages)', () => {
       expect(html).toContain('<link rel="alternate" hreflang="de" href="https://acme.example/de/" />');
       expect(html).toContain('<link rel="alternate" hreflang="x-default" href="https://acme.example/" />');
     }
+    // og:url defaults to each page's OWN absolute URL; og:locale is the page locale and
+    // og:locale:alternate lists its sibling locale(s) in the group.
+    const enHtml = (await client.get(`/sites/${slug}/index.html`)).body;
+    expect(enHtml).toContain('property="og:url" content="https://acme.example/"');
+    expect(enHtml).toContain('property="og:locale" content="en"');
+    expect(enHtml).toContain('property="og:locale:alternate" content="de"');
+    const deHtml = (await client.get(`/sites/${slug}/de/index.html`)).body;
+    expect(deHtml).toContain('property="og:url" content="https://acme.example/de/"');
+    expect(deHtml).toContain('property="og:locale" content="de"');
+    expect(deHtml).toContain('property="og:locale:alternate" content="en"');
   });
 
   it('emits no hreflang for an ungrouped page or when no site URL is set', async () => {

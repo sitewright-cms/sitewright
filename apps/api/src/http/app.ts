@@ -225,6 +225,7 @@ import {
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
+import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -878,6 +879,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const aiProvider = opts.aiProvider;
   const agentProvider = opts.agentProvider;
   const aiUsageRepo = new AiUsageRepository(db);
+  const agentGrantsRepo = new AgentGrantsRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
@@ -4265,6 +4267,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   registerAiAgentRoutes(app, {
     db,
     resolveAgent: resolveAiProvider,
+    agentGrants: agentGrantsRepo,
     aiUsageRepo,
     aiQuota,
     resolveProject,

@@ -11,6 +11,8 @@ import { createReleaseChecker } from './version/checker.js';
 import { parseKey } from './crypto/secret.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
 import { AnthropicProvider } from './ai/provider.js';
+import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
+import { OpenAiAgentProvider } from './ai/openai-agent.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
@@ -113,6 +115,27 @@ const buildRunner =
 const aiProvider = process.env.SW_AI_API_KEY
   ? new AnthropicProvider(process.env.SW_AI_API_KEY, process.env.SW_AI_MODEL)
   : undefined;
+// Validate an operator-set OpenAI-compatible base URL early — a typo (missing scheme) should fail at
+// boot with a clear message, not at the first assistant request.
+if (process.env.SW_AI_BASE_URL) {
+  let u: URL | null = null;
+  try {
+    u = new URL(process.env.SW_AI_BASE_URL);
+  } catch {
+    u = null;
+  }
+  if (!u || (u.protocol !== 'https:' && u.protocol !== 'http:')) {
+    throw new Error(`SW_AI_BASE_URL="${process.env.SW_AI_BASE_URL}" is not a valid http(s) URL`);
+  }
+}
+// The on-page AI assistant's streaming, tool-using provider. Universal by design:
+// `SW_AI_PROVIDER=openai` targets any OpenAI-compatible endpoint (SW_AI_BASE_URL), else
+// native Anthropic. Shares SW_AI_API_KEY / SW_AI_MODEL with the one-shot provider above.
+const agentProvider = process.env.SW_AI_API_KEY
+  ? process.env.SW_AI_PROVIDER === 'openai'
+    ? new OpenAiAgentProvider(process.env.SW_AI_API_KEY, process.env.SW_AI_MODEL, process.env.SW_AI_BASE_URL)
+    : new AnthropicAgentProvider(process.env.SW_AI_API_KEY, process.env.SW_AI_MODEL)
+  : undefined;
 // Parse a positive-integer token cap. A set-but-invalid value (0, negative,
 // non-numeric) yields `undefined` — which means UNLIMITED — so warn loudly:
 // an operator who sets "0" to block AI spend must not silently get no cap.
@@ -130,6 +153,7 @@ const aiNumber = (v: string | undefined, name: string): number | undefined => {
 const aiQuota = {
   orgMonthlyTokens: aiNumber(process.env.SW_AI_ORG_MONTHLY_TOKENS, 'SW_AI_ORG_MONTHLY_TOKENS'),
   userMonthlyTokens: aiNumber(process.env.SW_AI_USER_MONTHLY_TOKENS, 'SW_AI_USER_MONTHLY_TOKENS'),
+  projectMonthlyTokens: aiNumber(process.env.SW_AI_PROJECT_MONTHLY_TOKENS, 'SW_AI_PROJECT_MONTHLY_TOKENS'),
 };
 
 // Isolated template render pool: warm child-process workers inside this container, each
@@ -190,6 +214,7 @@ const app = await createApp({
   sitesDomain: process.env.SW_SITES_DOMAIN,
   buildRunner,
   aiProvider,
+  agentProvider,
   aiQuota,
   version: process.env.SW_VERSION ?? '0.0.0',
   // Pull-based release check (disable for air-gapped installs).

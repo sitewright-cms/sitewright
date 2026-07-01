@@ -71,6 +71,7 @@ function fakeStock(overrides: Partial<StockServiceLike> = {}): StockServiceLike 
         { provider, id: 'hit1', thumbUrl: 'https://cdn.example/hit1', width: 4, height: 3, author: 'Ann', sourceUrl: 'https://src/hit1', license: 'CC0' },
       ],
     }),
+    testKey: async () => ({ ok: true }),
     fetchForImport: async () => ({
       buffer: PNG_1X1,
       contentType: 'image/png',

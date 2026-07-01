@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, type AiConfigInput } from '../api';
-import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
+import { api, type AiConfigInput, type AiTestResult } from '../api';
+import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 
 /**
  * Per-project "bring your own agent" AI config — when enabled + keyed it OVERRIDES the platform-wide
@@ -21,6 +21,28 @@ export function AiConfig({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<AiTestResult | null>(null);
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    setError(null);
+    try {
+      setTestResult(
+        await api.testAiConfig(projectId, {
+          provider,
+          ...(model.trim() ? { model: model.trim() } : {}),
+          ...(provider === 'openai' && baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+          ...(apiKey ? { apiKey } : {}),
+        }),
+      );
+    } catch (e) {
+      setTestResult({ ok: false, model: model.trim(), error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -136,12 +158,23 @@ export function AiConfig({ projectId }: { projectId: string }) {
             </label>
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className={primaryButton}>
             Save AI config
           </button>
+          {enabled && (
+            <button type="button" className={ghostButton} onClick={() => void testConnection()} disabled={testing}>
+              {testing ? 'Testing…' : 'Test connection'}
+            </button>
+          )}
           {saved && <span className="text-sm text-green-600">Saved.</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}
+          {testResult &&
+            (testResult.ok ? (
+              <span className="text-sm text-green-600">✓ Connected{testResult.model ? ` (${testResult.model})` : ''}</span>
+            ) : (
+              <span className="text-sm text-red-600" title={testResult.error}>✗ {testResult.error}</span>
+            ))}
         </div>
       </form>
     </details>

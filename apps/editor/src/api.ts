@@ -261,6 +261,15 @@ async function streamSse<P, D>(
   }
 }
 
+/** The result of an AI provider connectivity check (verify credentials + model). */
+export interface AiTestResult {
+  ok: boolean;
+  /** The model the probe ran against (echoed so the UI confirms the selection). */
+  model: string;
+  /** Present on failure — the provider's error (auth, unknown model, unreachable endpoint, …). */
+  error?: string;
+}
+
 /** Provider-neutral status events from the on-page assistant's chat stream. */
 export interface AgentChatHandlers {
   onStart?: (e: { conversationId: string; model: string }) => void;
@@ -1102,6 +1111,12 @@ export const api = {
     request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Verify the platform AI provider (connectivity + model). A blank apiKey tests the stored one. */
+  testInstanceAi: (body: { provider: 'anthropic' | 'openai'; model?: string; baseUrl?: string; apiKey?: string }) =>
+    request<AiTestResult>('POST', '/admin/settings/ai/test', body),
+  /** Verify a stock-image provider key with a minimal search. A blank key tests the stored one. */
+  testStockKey: (body: { provider: 'unsplash' | 'pexels'; key?: string }) =>
+    request<{ ok: boolean; error?: string }>('POST', '/admin/settings/stock/test', body),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),
@@ -1136,6 +1151,9 @@ export const api = {
     request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config`, body),
   deleteAiConfig: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/ai-config`),
+  /** Verify this project's BYO AI provider (connectivity + model). A blank apiKey tests the stored one. */
+  testAiConfig: (projectId: string, body: { provider: 'anthropic' | 'openai'; model?: string; baseUrl?: string; apiKey?: string }) =>
+    request<AiTestResult>('POST', `/projects/${projectId}/ai-config/test`, body),
 
   // --- on-page AI assistant (chat + consent grant + availability) ---
   /** Whether the assistant is available for this project (configured + the user can write). */

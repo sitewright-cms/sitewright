@@ -149,8 +149,9 @@ import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
 import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
-import { registerAiConfigRoutes } from './ai-config-routes.js';
+import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
 import { buildAgentProvider } from '../ai/build-provider.js';
+import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
@@ -1751,6 +1752,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       throw err;
     }
+  });
+
+  // Verify the platform AI provider — connectivity + model. Tests the just-typed key if present, else
+  // the stored one. Admin-only; heavily rate-limited (it makes an outbound provider call).
+  app.post('/admin/settings/ai/test', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const input = AiTestBodySchema.parse(req.body);
+    const stored = await instanceSettingsRepo.getAiConfig();
+    const apiKey = input.apiKey ?? stored?.apiKey ?? undefined;
+    if (!apiKey) return reply.send({ ok: false, model: input.model ?? '', error: 'Enter an API key to test.' });
+    return reply.send(await testAiProvider({ provider: input.provider, apiKey, model: input.model, baseUrl: input.baseUrl }));
+  });
+
+  // Verify a stock-image provider key with a minimal search. Tests the just-typed key if present, else
+  // the stored one. Admin-only; heavily rate-limited.
+  const StockTestBody = z.object({ provider: z.enum(['unsplash', 'pexels']), key: z.string().min(1).max(512).optional() });
+  app.post('/admin/settings/stock/test', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const body = StockTestBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid provider' });
+    return reply.send(await stockService.testKey(body.data.provider, body.data.key));
   });
 
   // Introspection for a project API key: a bearer client (the CLI / MCP bridge)

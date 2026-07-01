@@ -82,6 +82,28 @@ export class StockService {
     return { provider: name, page: p, results: await provider.search(query, p, key) };
   }
 
+  /**
+   * Verify a provider's key works with a minimal search. Tests the supplied `key` if given (so the
+   * admin can check a just-typed-but-unsaved key), else the stored one. Never throws — the outcome is
+   * returned as `{ ok, error? }` so the route can render a friendly result.
+   */
+  async testKey(name: StockProviderName, key?: string): Promise<{ ok: boolean; error?: string }> {
+    let provider: StockProvider;
+    try {
+      provider = this.provider(name);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'unknown provider' };
+    }
+    const effectiveKey = key ?? (await this.keyFor(name));
+    if (provider.requiresKey && !effectiveKey) return { ok: false, error: `${name} has no key configured` };
+    try {
+      await provider.search('nature', 1, effectiveKey ?? null);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'request failed' };
+    }
+  }
+
   /** Resolves a result by id and downloads the full image. Returns null if not found. */
   async fetchForImport(
     name: StockProviderName,

@@ -933,6 +933,13 @@ export const api = {
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
+  // --- media Recycle Bin (soft-delete → restore / purge) ---
+  listDeletedMedia: (projectId: string) =>
+    request<{ items: Array<MediaAsset & { deletedAt: number }> }>('GET', `/projects/${projectId}/media/deleted`),
+  restoreMedia: (projectId: string, id: string) =>
+    request<void>('POST', `/projects/${projectId}/media/${id}/restore`),
+  purgeMedia: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/media/${id}/purge`),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */
   patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
     request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),

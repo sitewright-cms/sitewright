@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { and, desc, eq, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNull, isNotNull, notInArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   CorporateIdentitySchema,
@@ -23,6 +23,7 @@ import {
   type Dataset,
   type WebsiteSettings,
   type Entry,
+  type MediaAsset,
   type Page,
   type ProjectSettings,
   type Template,
@@ -167,7 +168,10 @@ export class ContentRepository {
     const rows = await this.db
       .select()
       .from(content)
-      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind)));
+      // Exclude soft-deleted rows (currently only media) so every list caller — File Manager, render,
+      // exports, fonts — transparently skips items in the Recycle Bin. `deletedAt` is NULL for all other
+      // kinds, so this is a no-op for them.
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
     return rows.map((row) => row.data);
   }
 
@@ -239,6 +243,68 @@ export class ContentRepository {
       .delete(content)
       .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
     this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor });
+  }
+
+  /**
+   * SOFT-DELETE a media asset → the Recycle Bin. Hides it from every list but RETAINS the row + the
+   * on-disk binary so it can be restored. No revision (media isn't versioned) and no binary removal.
+   * Throws NotFound if the asset doesn't exist or is already deleted.
+   */
+  async softDeleteMedia(ctx: ProjectContext, id: string, now: Date = new Date()): Promise<void> {
+    const res = await this.db
+      .update(content)
+      .set({ deletedAt: now })
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), eq(content.entityId, id), isNull(content.deletedAt)))
+      .returning({ id: content.id });
+    if (res.length === 0) throw new NotFoundError('media not found');
+    this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
+  }
+
+  /** Restore a soft-deleted media asset (clears `deletedAt`). Throws NotFound if it isn't in the bin. */
+  async restoreMedia(ctx: ProjectContext, id: string): Promise<void> {
+    const res = await this.db
+      .update(content)
+      .set({ deletedAt: null })
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), eq(content.entityId, id), isNotNull(content.deletedAt)))
+      .returning({ id: content.id });
+    if (res.length === 0) throw new NotFoundError('deleted media not found');
+    this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'put', actor: ctx.actor });
+  }
+
+  /** The project's SOFT-DELETED media (the Recycle Bin), newest-deleted first, each carrying `deletedAt`. */
+  async listDeletedMedia(ctx: ProjectContext): Promise<Array<MediaAsset & { deletedAt: number }>> {
+    const rows = await this.db
+      .select()
+      .from(content)
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), isNotNull(content.deletedAt)))
+      .orderBy(desc(content.deletedAt));
+    return rows.map((r) => ({ ...(r.data as MediaAsset), deletedAt: (r.deletedAt as Date).getTime() }));
+  }
+
+  /**
+   * Fetch a LIVE (non-binned) media asset. Throws NotFound if it's missing OR soft-deleted, so
+   * mutating routes (rename/move/copy) can't reach a Recycle-Bin row — renaming a trashed asset or
+   * "copying" it back into the library would bypass the restore flow.
+   */
+  async getLiveMedia(ctx: ProjectContext, id: string): Promise<MediaAsset> {
+    const row = await this.row(this.db, ctx, 'media', id);
+    if (!row || row.deletedAt) throw new NotFoundError('media not found');
+    return row.data as MediaAsset;
+  }
+
+  /**
+   * PERMANENTLY delete a media asset from the Recycle Bin: drops the DB row. Guards on
+   * `isNotNull(deletedAt)` so a LIVE asset can NEVER be hard-deleted through this path — purge is a
+   * bin-only operation and the 90-day recovery window can't be skipped. Throws NotFound if the asset
+   * isn't in the bin. Binary removal is the caller's job (it needs the project slug).
+   */
+  async purgeMedia(ctx: ProjectContext, id: string): Promise<void> {
+    const res = await this.db
+      .delete(content)
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), eq(content.entityId, id), isNotNull(content.deletedAt)))
+      .returning({ id: content.id });
+    if (res.length === 0) throw new NotFoundError('deleted media not found');
+    this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
   }
 
   /** Assembles the full project as an on-disk-format bundle (the export side of D11). */

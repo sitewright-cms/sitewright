@@ -202,8 +202,8 @@ describe('FileBrowser (Assets)', () => {
   it('deletes a folder recursively, warning how many items are inside', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Delete Docs' }));
-    // The confirm dialog states the cascade (1 file under Docs).
-    expect(await screen.findByText(/permanently deletes 1 file/)).toBeInTheDocument();
+    // The confirm dialog states the cascade (1 file under Docs) and that it's recoverable.
+    expect(await screen.findByText(/moves 1 file.*to the Recycle Bin/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Delete all' }));
     await waitFor(() => expect(deleteMediaFolder).toHaveBeenCalledWith('p', 'Docs'));
   });

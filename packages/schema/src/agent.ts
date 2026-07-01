@@ -126,6 +126,11 @@ Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`so
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
 pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
+BUILD BIG PAGES IN STAGES: each reply has an OUTPUT-TOKEN LIMIT and a full 6-9 section page can
+exceed it — a reply cut off mid-write LOSES the edit (you'll get a max-output-tokens error). So don't
+emit one giant put_page; put_page an initial version (chrome + 2-3 sections), then in follow-up
+replies get_page it and put_page the next sections appended, previewing as you go. Small complete
+writes beat one oversized write that truncates.
 DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
 often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,

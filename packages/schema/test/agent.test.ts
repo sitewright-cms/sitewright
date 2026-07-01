@@ -18,8 +18,9 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
 
   it('is a SMALL core (feature how-tos moved to on-demand guides)', () => {
     // The served instructions are the core + a generated topic index — kept well under the old ~24k
-    // monolith so it isn't a heavy up-front prompt.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(13_000);
+    // monolith so it isn't a heavy up-front prompt. (Ceiling nudged from 13k to fit the general
+    // "build big pages in stages" workflow rule — a core directive, not a feature how-to.)
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(13_700);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

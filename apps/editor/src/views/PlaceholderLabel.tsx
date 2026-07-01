@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react';
-
-/** Stripped plain-text fallback (shown until the icon renderer chunk loads, and for a label with no
- *  visible text). Drops handlebars helpers (incl. `{{{…}}}`, no stray brace), HTML tags, and entities. */
-function plainText(name: string): string {
-  return name
-    .replace(/\{\{\{?[^}]*\}\}\}?/g, ' ')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&(?:[a-z]+|#\d+);/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+import { plainText } from './plain-text';
 
 // Lazy singleton: the icon renderer pulls the large icon/flag data (a separate chunk shared with the
 // Library gallery), so load it on demand rather than into the editor's main bundle. The dynamic import

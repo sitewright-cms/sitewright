@@ -16,6 +16,7 @@ import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@
 import { Modal } from './ui/Modal';
 import { SectionHelp } from './ui/SectionHelp';
 import { SearchableSelect, type SelectOption } from './ui/SearchableSelect';
+import { plainText } from './plain-text';
 import { AssetField } from './files/AssetField';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { glassInput, toggleInput, gradientSurface } from '../theme';
@@ -463,7 +464,19 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                       ? [{ value: '', label: 'None (home is the root)' }]
                       : isLocaleHome
                         ? [{ value: effectiveParent, label: `${rootHome?.title ?? 'Home'} (site root)` }]
-                        : parentChoices.map((p) => ({ value: p.id, label: pagePath(p, previewById), keywords: p.title }))
+                        : parentChoices.map((p) => {
+                            // A nav PLACEHOLDER (kind:'link') is routing-transparent — its pagePath
+                            // collapses to its parent's (e.g. "/"), which duplicates the home entry and
+                            // is meaningless. Label it by its (plain-text, de-marked-up) NAME instead;
+                            // real pages show their PATH. Both are searchable by name/path (keywords).
+                            const link = isLinkPage(p);
+                            const name = link ? plainText(p.title) || p.id : p.title;
+                            return {
+                              value: p.id,
+                              label: link ? `${name} (menu)` : pagePath(p, previewById),
+                              keywords: name,
+                            };
+                          })
                   }
                   className="w-full"
                 />

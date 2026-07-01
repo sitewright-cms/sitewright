@@ -57,6 +57,30 @@ describe('InstanceSettings', () => {
     expect(body.revisionRetentionDays).toBeNull(); // back to the 90-day default → null (revert)
   });
 
+  it('saves the platform AI assistant config (provider/model/key/limit/admins)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Enable the AI assistant platform-wide'));
+    fireEvent.change(screen.getByLabelText('AI provider'), { target: { value: 'openai' } });
+    fireEvent.change(screen.getByLabelText('AI base URL'), { target: { value: 'https://api.openai.com/v1' } });
+    fireEvent.change(screen.getByLabelText('AI model'), { target: { value: 'gpt-4o-mini' } });
+    fireEvent.change(screen.getByLabelText('AI API key'), { target: { value: 'sk-plat' } });
+    fireEvent.change(screen.getByLabelText('Default per-project monthly token cap'), { target: { value: '100000' } });
+    fireEvent.click(screen.getByLabelText('Admins bypass token caps')); // toggle off (default was true)
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalled());
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.ai).toMatchObject({
+      enabled: true,
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-plat',
+      defaultProjectMonthlyTokens: 100000,
+      adminsUnlimited: false,
+    });
+  });
+
   it('saves a toggled form mode and clears disabled sections to null', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     render(<InstanceSettings />);

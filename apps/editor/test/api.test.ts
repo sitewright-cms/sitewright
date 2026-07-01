@@ -884,6 +884,23 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
+  it('reads, writes, and deletes the per-project AI config', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { aiConfig: null }));
+    expect((await api.getAiConfig('p')).aiConfig).toBeNull();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/ai-config');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { aiConfig: { id: 'ai-config', enabled: true, provider: 'openai', model: 'gpt-4o-mini', hasKey: true } }));
+    await api.putAiConfig('p', { enabled: true, provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/ai-config');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ provider: 'openai', apiKey: 'sk' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteAiConfig('p');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
   it('lists and deletes submissions, passing the formId filter', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listSubmissions('p');

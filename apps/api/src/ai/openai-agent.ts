@@ -115,7 +115,18 @@ function toOpenAiMessages(system: string, messages: AgentMessage[]): Array<Recor
   const out: Array<Record<string, unknown>> = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'user') {
-      out.push({ role: 'user', content: m.content });
+      if (m.attachments?.length) {
+        const images = m.attachments.filter((a) => a.kind === 'image');
+        const docs = m.attachments.filter((a) => a.kind === 'document');
+        // The OpenAI chat message accepts images via `image_url` (data URL). A PDF `document` can't
+        // ride this path, so note it as text rather than dropping it silently.
+        const text = docs.length ? `${m.content}\n[${docs.length} document attachment(s) not supported by this provider]` : m.content;
+        const parts: Array<Record<string, unknown>> = [{ type: 'text', text }];
+        for (const a of images) parts.push({ type: 'image_url', image_url: { url: `data:${a.mimeType};base64,${a.data}` } });
+        out.push({ role: 'user', content: parts });
+      } else {
+        out.push({ role: 'user', content: m.content });
+      }
     } else if (m.role === 'assistant') {
       const text = m.parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map((p) => p.text).join('');
       const toolCalls = m.parts

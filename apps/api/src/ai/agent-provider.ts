@@ -35,13 +35,25 @@ export interface ToolResultImagePart {
 export type ToolResultPart = ToolResultTextPart | ToolResultImagePart;
 
 /**
+ * A user-supplied attachment (image or PDF) sent alongside a chat message so the model can SEE it.
+ * `data` is base64 (no `data:` prefix). Images work on both providers; a `document` (PDF) is
+ * Anthropic-only — the OpenAI-compat adapter notes it as text rather than embedding it.
+ */
+export interface AgentAttachment {
+  kind: 'image' | 'document';
+  mimeType: string;
+  data: string;
+  name?: string;
+}
+
+/**
  * Provider-neutral conversation model. This is the seam that hides the biggest
  * Anthropic↔OpenAI divergence (single-array tool_use/tool_result blocks vs a
  * separate `tool` role). The loop only ever builds/reads these; each adapter
  * translates on the way out.
  */
 export type AgentMessage =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; attachments?: AgentAttachment[] }
   | { role: 'assistant'; parts: AssistantPart[] }
   | { role: 'tool'; toolCallId: string; name: string; content: ToolResultPart[]; isError?: boolean };
 

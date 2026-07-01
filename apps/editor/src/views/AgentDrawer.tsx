@@ -1,8 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, X, Send, Wrench, CircleCheck, CircleX } from 'lucide-react';
-import { api, type AgentGrantView, type ApiKeyCapability } from '../api';
+import { Sparkles, X, Send, Wrench, CircleCheck, CircleX, Paperclip, FileText } from 'lucide-react';
+import { api, type AgentAttachment, type AgentGrantView, type ApiKeyCapability } from '../api';
 import { glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { OVERLAY_STACK } from './ui/overlay';
+
+/** Attachment MIME types the chat accepts (raster images anywhere; PDF is Anthropic-only). */
+const ACCEPT_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+const MAX_ATTACHMENTS = 6;
+const MAX_ATTACHMENT_BYTES = 7_000_000;
+
+/** A pending attachment: the wire payload plus a local preview URL (images) + byte size for display. */
+type PendingAttachment = AgentAttachment & { previewUrl?: string; size: number };
+
+/** Read a File into a base64 attachment (strips the `data:<mime>;base64,` prefix). */
+function fileToAttachment(file: File): Promise<PendingAttachment | null> {
+  return new Promise((resolve) => {
+    if (!ACCEPT_MIME.includes(file.type) || file.size > MAX_ATTACHMENT_BYTES) return resolve(null);
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const url = String(reader.result);
+      const base64 = url.slice(url.indexOf(',') + 1);
+      const kind = file.type === 'application/pdf' ? 'document' : 'image';
+      resolve({ kind, mimeType: file.type, data: base64, name: file.name, size: file.size, previewUrl: kind === 'image' ? url : undefined });
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 /** Capabilities the consent panel offers (never `deploy`). */
 const CONSENT_CAPS: { cap: ApiKeyCapability; label: string; hint: string }[] = [
@@ -14,7 +38,7 @@ const CONSENT_CAPS: { cap: ApiKeyCapability; label: string; hint: string }[] = [
 
 type ToolActivity = { id: string; name: string; ok?: boolean; summary?: string };
 type ChatMsg =
-  | { role: 'user'; text: string }
+  | { role: 'user'; text: string; attachments?: { kind: 'image' | 'document'; previewUrl?: string; name?: string }[] }
   | { role: 'assistant'; text: string; tools: ToolActivity[]; streaming: boolean; tokens?: number };
 
 type Status = 'idle' | 'thinking' | 'working';
@@ -44,10 +68,21 @@ export function AgentDrawer({
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const conversationId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Add dropped/picked/pasted files as attachments (dedup by name+size, cap the count + reject others).
+  async function addFiles(files: FileList | File[]) {
+    const converted = (await Promise.all(Array.from(files).map(fileToAttachment))).filter((a): a is PendingAttachment => a !== null);
+    if (converted.length < Array.from(files).length) {
+      setError('Some files were skipped — only images (PNG/JPEG/WebP/GIF) or PDFs up to 7 MB are accepted.');
+    }
+    setAttachments((prev) => [...prev, ...converted].slice(0, MAX_ATTACHMENTS));
+  }
 
   // Load the consent grant on first open.
   useEffect(() => {
@@ -133,17 +168,25 @@ export function AgentDrawer({
     const text = input.trim();
     // Guard on the abort REF (set synchronously below), not the `status` state — a rapid double-click
     // sees the same pre-render `status` in both closures, but the ref is updated immediately.
-    if (!text || abortRef.current) return;
+    if ((!text && attachments.length === 0) || abortRef.current) return;
     setError(null);
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text }, { role: 'assistant', text: '', tools: [], streaming: true }]);
+    const sent = attachments;
+    setAttachments([]);
+    const shownAttach = sent.map((a) => ({ kind: a.kind, previewUrl: a.previewUrl, name: a.name }));
+    setMessages((m) => [...m, { role: 'user', text, attachments: shownAttach.length ? shownAttach : undefined }, { role: 'assistant', text: '', tools: [], streaming: true }]);
     setStatus('thinking');
     const ac = new AbortController();
     abortRef.current = ac;
     try {
       await api.streamAgentMessage(
         projectId,
-        { conversationId: conversationId.current, message: text, context: { path: getPath() } },
+        {
+          conversationId: conversationId.current,
+          message: text,
+          ...(sent.length ? { attachments: sent.map(({ kind, mimeType, data, name }) => ({ kind, mimeType, data, name })) } : {}),
+          context: { path: getPath() },
+        },
         {
           onStart: (e) => (conversationId.current = e.conversationId),
           onText: (delta) => patchAssistant((a) => ({ ...a, text: a.text + delta })),
@@ -252,7 +295,52 @@ export function AgentDrawer({
               {error && <p className="text-sm text-rose-600">{error}</p>}
             </div>
             <div className="border-t border-slate-200/70 p-3">
+              {attachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachments.map((a, i) => (
+                    <span key={i} className="relative inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white/70 p-1 pr-5 text-xs text-slate-600">
+                      {a.previewUrl ? (
+                        <img src={a.previewUrl} alt={a.name ?? ''} className="h-8 w-8 rounded object-cover" />
+                      ) : (
+                        <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-400">
+                          <FileText className="h-4 w-4" />
+                        </span>
+                      )}
+                      <span className="max-w-[7rem] truncate">{a.name ?? a.mimeType}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${a.name ?? 'attachment'}`}
+                        className="absolute right-0.5 top-0.5 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex items-end gap-2">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="hidden"
+                  accept={ACCEPT_MIME.join(',')}
+                  multiple
+                  onChange={(e) => {
+                    if (e.target.files?.length) void addFiles(e.target.files);
+                    e.target.value = ''; // allow re-selecting the same file
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-label="Attach an image or PDF"
+                  title="Attach an image or PDF"
+                  className={`${ghostButton} px-2.5`}
+                  onClick={() => fileRef.current?.click()}
+                  disabled={attachments.length >= MAX_ATTACHMENTS}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
                 <textarea
                   ref={taRef}
                   className={`${glassInput} max-h-[50vh] min-h-[2.5rem] flex-1 resize-none overflow-y-auto`}
@@ -261,6 +349,17 @@ export function AgentDrawer({
                   rows={1}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onPaste={(e) => {
+                    // Paste image data straight from the clipboard (screenshots, copied images).
+                    const files = Array.from(e.clipboardData.items)
+                      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+                      .map((it) => it.getAsFile())
+                      .filter((f): f is File => f !== null);
+                    if (files.length) {
+                      e.preventDefault();
+                      void addFiles(files);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -269,7 +368,7 @@ export function AgentDrawer({
                   }}
                 />
                 {status === 'idle' ? (
-                  <button type="button" aria-label="Send" className={`${primaryButton} px-3`} onClick={() => void send()} disabled={!input.trim()}>
+                  <button type="button" aria-label="Send" className={`${primaryButton} px-3`} onClick={() => void send()} disabled={!input.trim() && attachments.length === 0}>
                     <Send className="h-4 w-4" />
                   </button>
                 ) : (
@@ -311,7 +410,22 @@ function StatusPill({ status, label }: { status: Status; label: string }) {
 function MessageBubble({ msg }: { msg: ChatMsg }) {
   if (msg.role === 'user')
     return (
-      <div className="self-end rounded-2xl rounded-br-sm bg-indigo-600 px-3 py-2 text-sm text-white shadow-sm">{msg.text}</div>
+      <div className="flex max-w-[85%] flex-col items-end gap-1 self-end">
+        {msg.attachments && msg.attachments.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1">
+            {msg.attachments.map((a, i) =>
+              a.previewUrl ? (
+                <img key={i} src={a.previewUrl} alt={a.name ?? ''} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+              ) : (
+                <span key={i} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                  <FileText className="h-3.5 w-3.5" /> {a.name ?? 'document'}
+                </span>
+              ),
+            )}
+          </div>
+        )}
+        {msg.text && <div className="rounded-2xl rounded-br-sm bg-indigo-600 px-3 py-2 text-sm text-white shadow-sm">{msg.text}</div>}
+      </div>
     );
   return (
     <div className="self-start rounded-2xl rounded-bl-sm border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-700 shadow-sm">

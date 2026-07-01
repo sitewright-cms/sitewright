@@ -1,5 +1,6 @@
 import { AiProviderError, type AiUsage } from './provider.js';
 import type {
+  AgentAttachment,
   AgentMessage,
   AgentProvider,
   AgentStopReason,
@@ -119,6 +120,12 @@ function toAnthropicTool(def: AgentToolDef): Record<string, unknown> {
   return { name: def.name, description: def.description, input_schema: def.parameters };
 }
 
+/** A user attachment → an Anthropic image or document content block (both take base64 sources). */
+function toAnthropicAttachment(a: AgentAttachment): Record<string, unknown> {
+  const type = a.kind === 'document' ? 'document' : 'image';
+  return { type, source: { type: 'base64', media_type: a.mimeType, data: a.data } };
+}
+
 /** The `ephemeral` cache breakpoint marker (5-minute TTL, GA prompt caching). */
 const CACHE_CONTROL = { type: 'ephemeral' as const };
 
@@ -164,7 +171,13 @@ function toAnthropicMessages(messages: AgentMessage[]): Array<Record<string, unk
     }
     flush();
     if (m.role === 'user') {
-      out.push({ role: 'user', content: m.content });
+      if (m.attachments?.length) {
+        // Attachments FIRST, then the text that refers to them (Anthropic's recommended order).
+        const content = [...m.attachments.map(toAnthropicAttachment), { type: 'text', text: m.content }];
+        out.push({ role: 'user', content });
+      } else {
+        out.push({ role: 'user', content: m.content });
+      }
     } else {
       out.push({
         role: 'assistant',

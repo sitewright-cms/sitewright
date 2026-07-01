@@ -35,9 +35,29 @@ const CONVERSATION_TTL_MS = 30 * 60_000;
 
 const CapabilityEnum = z.enum(['content:read', 'content:write', 'content:delete', 'publish']);
 
+/** Allowed attachment MIME types — raster images (both providers) + PDF (Anthropic only). */
+const IMAGE_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+/** ~7.5 MB of raw bytes per attachment (base64 is ~1.34×); the route bodyLimit bounds the whole request. */
+const MAX_ATTACHMENT_B64 = 10_000_000;
+
+const AttachmentSchema = z
+  .object({
+    kind: z.enum(['image', 'document']),
+    mimeType: z.string().min(1).max(100),
+    data: z.string().min(1).max(MAX_ATTACHMENT_B64),
+    name: z.string().max(255).optional(),
+  })
+  // kind ⇔ mime must agree, and only the allowlisted types are accepted (no arbitrary bytes to the model).
+  .refine(
+    (a) => (a.kind === 'image' ? (IMAGE_MIME as readonly string[]).includes(a.mimeType) : a.mimeType === 'application/pdf'),
+    'unsupported attachment type',
+  );
+
 const MessageBody = z.object({
   conversationId: z.string().min(1).max(64).optional(),
-  message: z.string().min(1).max(8000),
+  // A message may be attachment-only, so allow empty text when attachments are present (checked below).
+  message: z.string().max(8000),
+  attachments: z.array(AttachmentSchema).max(6).optional(),
   context: z
     .object({
       pageId: z.string().max(200).optional(),
@@ -158,13 +178,19 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     return reply.send({ enabled: resolved !== null });
   });
 
-  app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/messages', { config: deps.rl(20) }, async (req, reply) => {
+  // A higher bodyLimit than the app default: attachments (base64 images/PDFs) make this request large.
+  // 6 × ~7.5 MB attachments + overhead → 60 MB ceiling.
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/messages', { config: deps.rl(20), bodyLimit: 60 * 1024 * 1024 }, async (req, reply) => {
     // --- Preflight (JSON errors) BEFORE hijacking the socket ---
     const { ctx } = await deps.resolveProject(req, 'session-only');
     if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const resolved = await deps.resolveAgent(ctx);
     if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
     const body = MessageBody.parse(req.body);
+    // A turn needs SOMETHING — text or at least one attachment.
+    if (body.message.trim() === '' && !body.attachments?.length) {
+      return reply.code(400).send({ error: 'a message or an attachment is required' });
+    }
 
     // Hoisted for the whole request (admin status + month window don't change mid-loop).
     const userIsAdmin = await deps.isAdmin(ctx.userId);
@@ -206,7 +232,11 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     const system = `${instructions}\n\n${pageContext(body.context)}`;
     // Seed a LOCAL copy — don't mutate the stored history until the turn completes, so a failed
     // mint/tool-load (502) doesn't leave a dangling user message that would double up on retry.
-    const seed: AgentMessage[] = [...convo.messages, { role: 'user', content: body.message }];
+    // Attachments (images / PDFs) ride on the user turn so the model can SEE them.
+    const seed: AgentMessage[] = [
+      ...convo.messages,
+      { role: 'user', content: body.message, ...(body.attachments?.length ? { attachments: body.attachments } : {}) },
+    ];
 
     // --- Mint the scoped token, build the tool bridge, then stream ---
     const abort = new AbortController();

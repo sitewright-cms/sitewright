@@ -37,6 +37,16 @@ describe('childrenOf', () => {
     expect(kids.find((k) => k.id === 'elsewhere')).toBeUndefined(); // parent !== blog
   });
 
+  it('excludes nav PLACEHOLDERS (kind:"link") — page.children is a CONTENT listing, not menu chrome', () => {
+    const ps = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      page({ id: 'about', path: 'about', parent: 'home', title: 'About' }),
+      // A routing-transparent placeholder parented to home (path:'', rich nav label) — nav-only.
+      page({ id: 'nav-audit', path: '', parent: 'home', kind: 'link', title: '<span>Free site audit</span>', link: { target: '/contact' } }),
+    ];
+    expect(childrenOf(ps, ps[0]!, 'en').map((k) => k.id)).toEqual(['about']); // the placeholder is filtered out
+  });
+
   it('defaults missing fields (no description/image/data/nav/status) sanely', () => {
     const ps = [page({ id: 'parent', path: 'p', title: 'Parent' }), page({ id: 'c', path: 'c', parent: 'parent', title: 'Child' })];
     expect(childrenOf(ps, ps[0]!, 'en')[0]).toMatchObject({
@@ -96,6 +106,16 @@ describe('parentPageView', () => {
   it('defaults the parent data to {} when unset', () => {
     const ps = [page({ id: 'p', path: 'p', title: 'P' }), page({ id: 'c', path: 'c', parent: 'p', title: 'C' })];
     expect(parentPageView(ps, ps[1]!, 'en')?.data).toEqual({});
+  });
+
+  it('is undefined when the parent is a nav PLACEHOLDER (kind:"link") — not a real parent page', () => {
+    const ps = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      // A "Resources" dropdown-group placeholder (routing-transparent) with a real child page.
+      page({ id: 'group', path: '', parent: 'home', kind: 'link', title: '<span>Resources</span>', nav: { slots: ['header'], dropdown: true } }),
+      page({ id: 'faq', path: 'faq', parent: 'group', title: 'FAQ' }),
+    ];
+    expect(parentPageView(ps, ps[2]!, 'en')).toBeUndefined(); // the placeholder is not a page.parent
   });
 });
 

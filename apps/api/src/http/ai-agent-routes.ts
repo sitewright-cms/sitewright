@@ -23,7 +23,9 @@ const AGENT_MAX_CAPS: readonly ApiKeyCapability[] = ['content:read', 'content:wr
 const WITHHELD_TOOLS = new Set<string>();
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
 const AGENT_TOKEN_TTL_MS = 15 * 60_000;
-const MAX_ITERATIONS = 25;
+// A full landing page built incrementally (get_page + put_page per section, plus previews) can take
+// dozens of tool-use turns, so give the loop generous headroom before it hands back for a "continue".
+const MAX_ITERATIONS = 60;
 /**
  * Default per-turn output-token ceiling. 8192 comfortably holds a full page's HTML in one `put_page`
  * call (the old 4096 truncated large edits mid-call, so they silently did nothing). Operators can
@@ -262,6 +264,8 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
 
     reply.hijack();
     const raw = reply.raw;
+    // (A long agentic build can stream for minutes; Node/Fastify apply no default socket idle timeout,
+    //  and the 15s heartbeat below keeps intermediaries from dropping the connection.)
     raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
@@ -275,9 +279,13 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     const send = (event: string, data: unknown): void => {
       if (raw.writable) raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
+    // Heartbeat every 15s keeps intermediaries from dropping an idle connection; it also DETECTS a
+    // dead client (write fails / socket gone) and aborts the loop, so the agent doesn't keep burning
+    // tokens + editing after the user has navigated away or the connection stalled.
     const heartbeat = setInterval(() => {
-      if (raw.writable) raw.write(': ping\n\n');
-    }, 25_000);
+      if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
+      else abort.abort();
+    }, 15_000);
     req.raw.on('close', () => abort.abort());
 
     send('start', { conversationId, model: provider.model });

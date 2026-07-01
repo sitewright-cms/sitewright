@@ -134,7 +134,7 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
     }
   }
 
-  yield { type: 'error', code: 'max_iterations', message: 'Reached the step limit for one message.' };
+  yield { type: 'error', code: 'max_iterations', message: 'Reached the step limit for one message — send “continue” to keep going.' };
   return { state: 'error', messages };
 }
 

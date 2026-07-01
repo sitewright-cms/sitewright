@@ -22,6 +22,28 @@ beforeEach(() => {
 });
 
 describe('AgentDrawer', () => {
+  it('opens a NEW bubble when the agent talks again after a tool, and totals session tokens', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
+    streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {
+      handlers.onStart?.({ conversationId: 'c1', model: 'm' });
+      handlers.onText?.('Adding the hero.');
+      handlers.onTool?.({ id: 't1', name: 'put_page', input: {} });
+      handlers.onToolResult?.({ id: 't1', name: 'put_page', ok: true, summary: 'saved' });
+      handlers.onText?.('Now the features section.'); // resumes AFTER the tool → new bubble
+      handlers.onUsage?.({ inputTokens: 900, outputTokens: 200, projectMonthToDate: 1 });
+      handlers.onDone?.('Now the features section.');
+    });
+    render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'build a landing page' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Two SEPARATE assistant bubbles (not one concatenated blob).
+    expect(await screen.findByText('Adding the hero.')).toBeInTheDocument();
+    expect(await screen.findByText('Now the features section.')).toBeInTheDocument();
+    // Session token total in the header (exact "1,100 tok", distinct from the per-bubble "… tokens").
+    expect(await screen.findByText('1,100 tok')).toBeInTheDocument();
+  });
+
   it('shows the consent panel first, saves the narrowed grant, then reveals the chat', async () => {
     getAgentGrant.mockResolvedValue({ configured: false, capabilities: ['content:read', 'content:write', 'content:delete', 'publish'], autonomy: 'full' });
     putAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write', 'publish'], autonomy: 'full' });

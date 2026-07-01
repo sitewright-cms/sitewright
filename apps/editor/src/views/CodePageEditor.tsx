@@ -59,7 +59,8 @@ interface CodePageEditorProps {
   page: Page;
   /** All project pages — feeds the settings modal's Parent Page selector. */
   pages?: readonly Page[];
-  /** The project's configured locales (default first) — feeds the Language selector + the translate write-locale. */
+  /** The project's configured locales (default first) — feeds the stacked Page Settings modal (its
+   *  create-mode "Available in" scope) and the inline-translate write-locale. */
   locales?: readonly string[];
   onClose: () => void;
   /** Open ANOTHER page's editor (the parent swaps which page is being edited → this modal remounts

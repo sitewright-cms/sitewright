@@ -173,7 +173,8 @@ interface PageSettingsModalProps {
   pages: readonly Page[];
   /** Project templates (built-in globals are added automatically). */
   templates: readonly Template[];
-  /** The project's configured locales (Website Settings) — feeds the Language selector. */
+  /** The project's configured locales (Website Settings) — drives multilingual detection, the
+   *  create-mode "Available in" scope control, and parent/locale subtree filtering. */
   locales?: readonly string[];
   saving?: boolean;
   onClose: () => void;
@@ -277,8 +278,6 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   // Index for the live "full URL" preview as the slug/parent are edited.
   const previewById = pagesById(pages);
   const childCount = pages.filter((p) => p.parent === page.id).length;
-  // Sibling locale variants (same translation group), for context.
-  const siblings = page.translationGroup ? pages.filter((p) => p.translationGroup === page.translationGroup && p.id !== page.id) : [];
 
   return (
     <Modal
@@ -553,10 +552,12 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           )}
         </div>
 
-        {/* create + multilingual: choose whether the new page exists in every language (one
-            main-language owner + inherit variants) or only the one you're viewing. In edit mode
-            the same slot is the plain Language selector. */}
-        {isCreate && multilingual ? (
+        {/* Language is handled by ONE control across BOTH modals: the create-mode "Available in"
+            scope. An existing page's language is fixed by its identity + translation group (chosen
+            at creation here, or via "Add translation") and the base language lives in Website
+            Settings — so edit mode has NO per-page Language selector. Keeping a single control is
+            what keeps the New-page and Page-settings modals from drifting. */}
+        {isCreate && multilingual && (
           <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/40 p-3">
             <legend className="px-1 text-xs font-bold uppercase tracking-wide text-slate-500">Available in</legend>
             <label className="flex items-start gap-2 text-sm">
@@ -574,30 +575,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </span>
             </label>
           </fieldset>
-        ) : locales.length > 1 && !isCreate ? (
-          <label className="flex flex-col text-xs font-bold text-slate-700">
-            Language
-            <select
-              aria-label="Page language"
-              className={`mt-1.5 font-normal ${glassInput}`}
-              value={v.locale}
-              onChange={(e) => patch({ locale: e.target.value })}
-            >
-              {/* The default locale is stored as ABSENCE (value ""); the explicit options
-                  are the non-default locales only — no duplicate entry for the default. */}
-              <option value="">Default ({locales[0]})</option>
-              {locales.slice(1).map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1 font-normal text-[11px] text-slate-400">
-              Sets &lt;html lang&gt;; data bindings resolve to the matching <code>&lt;dataset&gt;-{v.locale || locales[0]}</code> variant.
-              {siblings.length > 0 && <> Linked translations: {siblings.map((s) => s.locale ?? locales[0]).join(', ')}.</>}
-            </span>
-          </label>
-        ) : null}
+        )}
 
         <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
           <p className="mb-2 text-xs font-bold text-slate-700">Navigation</p>

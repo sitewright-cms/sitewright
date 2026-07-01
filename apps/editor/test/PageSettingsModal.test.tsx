@@ -160,10 +160,14 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
     render(
       <PageSettingsModal page={other} projectId="p" initial={pageSettingsFromPage(other)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
     );
-    const select = screen.getByLabelText('Parent page') as HTMLSelectElement;
-    expect(select.disabled).toBe(false);
-    expect(Array.from(select.options).some((o) => /none/i.test(o.text))).toBe(false); // no top-level escape
-    expect(select.value).toBe('home'); // defaults to the home root
+    const combo = screen.getByRole('combobox', { name: 'Parent page' });
+    expect(combo).not.toBeDisabled();
+    // Open the searchable list — it offers the home page (by path) but NO "None"/top-level escape.
+    fireEvent.click(combo);
+    const listbox = screen.getByRole('listbox', { name: 'Parent page' });
+    expect(within(listbox).queryByText(/none/i)).toBeNull();
+    expect(within(listbox).getByText('/')).toBeInTheDocument(); // home shown by its PATH, not its title
+    // Default parent is the home root; saving submits it.
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ parent: 'home' }));
   });
@@ -173,9 +177,27 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
     render(
       <PageSettingsModal page={home} projectId="p" initial={pageSettingsFromPage(home)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
     );
-    expect((screen.getByLabelText('Parent page') as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByRole('combobox', { name: 'Parent page' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ parent: '' }));
+  });
+
+  it('parent options show the PATH (not the long title) and are searchable by title', () => {
+    const svc: Page = { id: 'services', path: 'services', title: 'Our Services & Care Plans' };
+    const about: Page = { id: 'about', path: 'about', title: 'About' };
+    render(
+      <PageSettingsModal page={about} projectId="p" initial={pageSettingsFromPage(about)} pages={[home, svc, about]} templates={[]} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parent page' }));
+    const listbox = screen.getByRole('listbox', { name: 'Parent page' });
+    // Options are the PATH, not the (long) title.
+    expect(within(listbox).getByText('/services')).toBeInTheDocument();
+    expect(within(listbox).queryByText(/Our Services/)).toBeNull();
+    // …but typing the TITLE still finds it (keywords), shown by its path.
+    fireEvent.change(screen.getByLabelText('Search Parent page'), { target: { value: 'care plans' } });
+    const shown = within(listbox).getAllByRole('option');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toHaveTextContent('/services');
   });
 });
 
@@ -192,8 +214,9 @@ describe('PageSettingsModal — create mode (the New-page form)', () => {
     // its parent to home (not "None (home is the root)").
     const slug = screen.getByLabelText('Page path') as HTMLInputElement;
     expect(slug.disabled).toBe(false);
-    const parent = screen.getByLabelText('Parent page') as HTMLSelectElement;
-    expect(parent.value).toBe('home');
+    // The Parent combobox defaults to the home root — shown by home's path "/", not "None".
+    const parent = screen.getByRole('combobox', { name: 'Parent page' });
+    expect(parent).toHaveTextContent('/');
     // The full field set is present (this is the whole point of the change).
     expect(screen.getByLabelText('Meta description')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create page' })).toBeInTheDocument();

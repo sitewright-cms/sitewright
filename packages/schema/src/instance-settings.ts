@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
-import { AiProviderKindSchema, AiBaseUrlSchema, type AiProviderKind } from './ai-config.js';
+import { AiProviderKindSchema, AiBaseUrlSchema, MaxOutputTokensSchema, type AiProviderKind } from './ai-config.js';
 import { AgentInstructionsSchema } from './agent.js';
 import { LocaleSchema } from './project.js';
 import { CssColorSchema } from './primitives.js';
@@ -126,6 +126,9 @@ export const AiStoredSchema = z.object({
   apiKey: EncryptedSecretSchema.optional(),
   /** Default per-project monthly token cap (0/absent → unlimited). */
   defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
+  /** Per-turn output-token ceiling (absent → the built-in default). Raise toward the model's real
+   *  limit so large single-shot edits (a whole page) aren't truncated mid tool call. */
+  maxOutputTokens: MaxOutputTokensSchema.optional(),
   /** Platform admins bypass all token caps (default true). */
   adminsUnlimited: z.boolean().default(true),
 });
@@ -249,6 +252,7 @@ export const AiInputSchema = z.object({
   baseUrl: AiBaseUrlSchema.optional(),
   apiKey: z.string().min(1).max(1024).optional(),
   defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
+  maxOutputTokens: MaxOutputTokensSchema.optional(),
   adminsUnlimited: z.boolean().default(true),
 });
 export type AiInput = z.infer<typeof AiInputSchema>;
@@ -346,6 +350,7 @@ export interface AiPublic {
   baseUrl?: string;
   hasApiKey: boolean;
   defaultProjectMonthlyTokens?: number;
+  maxOutputTokens?: number;
   adminsUnlimited: boolean;
 }
 

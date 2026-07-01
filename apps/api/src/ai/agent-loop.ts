@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentProvider, AgentToolDef, AssistantPart, ToolResultPart } from './agent-provider.js';
+import type { AgentMessage, AgentProvider, AgentStopReason, AgentToolDef, AssistantPart, ToolResultPart } from './agent-provider.js';
 import type { AiUsage } from './provider.js';
 import type { McpToolBridge } from './tool-bridge.js';
 
@@ -11,7 +11,7 @@ export type LoopEvent =
   | { type: 'done'; message: string }
   | { type: 'error'; code: LoopErrorCode; message: string };
 
-export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | 'aborted';
+export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | 'max_tokens' | 'aborted';
 
 export interface LoopOptions {
   provider: AgentProvider;
@@ -55,6 +55,7 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
     let text = '';
     const toolCalls: Array<{ id: string; name: string; input: unknown }> = [];
     let usage: AiUsage = { inputTokens: 0, outputTokens: 0 };
+    let stopReason: AgentStopReason = 'other';
 
     try {
       for await (const ev of opts.provider.runTurn({
@@ -71,6 +72,8 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
           toolCalls.push({ id: ev.id, name: ev.name, input: ev.input });
         } else if (ev.type === 'usage') {
           usage = ev.usage;
+        } else if (ev.type === 'stop') {
+          stopReason = ev.reason;
         }
       }
     } catch (err) {
@@ -94,6 +97,23 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
     yield { type: 'usage', usage };
 
     if (toolCalls.length === 0) {
+      // The model produced NO (completed) tool call this turn. Two very different reasons look
+      // identical at the API surface, so disambiguate on the stop reason:
+      //   • max_tokens → the turn was CUT OFF at the model's output limit — very likely mid tool
+      //     call while streaming a large edit (e.g. a whole page's HTML), so the call never
+      //     completed and was dropped. Silently reporting "done" here is what made large edits
+      //     appear to do nothing ("Waiting for you"). Surface it as an actionable error instead.
+      //   • otherwise → a genuine completion or a question back to the user; hand control back.
+      if (stopReason === 'max_tokens') {
+        yield {
+          type: 'error',
+          code: 'max_tokens',
+          message:
+            'The response hit the model’s output-token limit before it could finish the edit. ' +
+            'Ask for a smaller change (e.g. one section at a time), or raise the assistant’s output-token limit in settings.',
+        };
+        return { state: 'error', messages };
+      }
       yield { type: 'done', message: text };
       return { state: 'done', messages };
     }

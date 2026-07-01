@@ -54,6 +54,7 @@ export function registerAiConfigRoutes(app: FastifyInstance, deps: AiConfigDeps)
       ...(input.model !== undefined ? { model: input.model } : {}),
       ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
       ...(input.monthlyTokenLimit !== undefined ? { monthlyTokenLimit: input.monthlyTokenLimit } : {}),
+      ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
       ...(secret !== undefined ? { secret } : {}),
     });
     const saved = (await contentRepo.put(ctx, 'ai_config', AI_CONFIG_ID, stored)) as AiConfig;

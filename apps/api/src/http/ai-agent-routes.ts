@@ -24,6 +24,12 @@ const WITHHELD_TOOLS = new Set<string>();
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
 const AGENT_TOKEN_TTL_MS = 15 * 60_000;
 const MAX_ITERATIONS = 25;
+/**
+ * Default per-turn output-token ceiling. 8192 comfortably holds a full page's HTML in one `put_page`
+ * call (the old 4096 truncated large edits mid-call, so they silently did nothing). Operators can
+ * raise it per-instance or per-project up to their model's real limit via `maxOutputTokens`.
+ */
+export const DEFAULT_AGENT_MAX_OUTPUT_TOKENS = 8192;
 /** Idle conversations are dropped from the in-memory store after this long. */
 const CONVERSATION_TTL_MS = 30 * 60_000;
 
@@ -51,6 +57,8 @@ export interface ResolvedAgent {
   provider: AgentProvider;
   /** Effective per-project monthly token cap (undefined/0 = unlimited). */
   projectMonthlyTokens?: number;
+  /** Per-turn output-token ceiling for this project's model (undefined → DEFAULT_AGENT_MAX_OUTPUT_TOKENS). */
+  maxOutputTokens?: number;
   /** Whether platform admins bypass all caps under this config. */
   adminsUnlimited: boolean;
   /** true = the platform's key (the org + per-user caps apply); false = a project's OWN key (BYO —
@@ -264,6 +272,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
           tools,
           messages: seed,
           maxIterations: MAX_ITERATIONS,
+          maxTokens: resolved.maxOutputTokens ?? DEFAULT_AGENT_MAX_OUTPUT_TOKENS,
           signal: abort.signal,
           onUsage: meter,
         }),

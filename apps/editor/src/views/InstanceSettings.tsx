@@ -101,6 +101,7 @@ export function InstanceSettings() {
   const [aiKey, setAiKey] = useState('');
   const [aiHasKey, setAiHasKey] = useState(false);
   const [aiProjectLimit, setAiProjectLimit] = useState('');
+  const [aiMaxTokens, setAiMaxTokens] = useState('');
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
 
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
@@ -172,6 +173,7 @@ export function InstanceSettings() {
     setAiHasKey(s.ai?.hasApiKey ?? false);
     setAiKey('');
     setAiProjectLimit(s.ai?.defaultProjectMonthlyTokens != null ? String(s.ai.defaultProjectMonthlyTokens) : '');
+    setAiMaxTokens(s.ai?.maxOutputTokens != null ? String(s.ai.maxOutputTokens) : '');
     setAiAdminsUnlimited(s.ai?.adminsUnlimited ?? true);
     setOidcProviders(
       (s.oidcProviders ?? []).map((p) => ({
@@ -271,6 +273,7 @@ export function InstanceSettings() {
           ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
           ...(aiKey ? { apiKey: aiKey } : {}), // blank = keep current
           ...(aiProjectLimit.trim() !== '' ? { defaultProjectMonthlyTokens: Number(aiProjectLimit) } : {}),
+          ...(aiMaxTokens.trim() !== '' ? { maxOutputTokens: Number(aiMaxTokens) } : {}),
         }
       : null; // disabling clears the platform assistant (and its key)
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
@@ -685,6 +688,19 @@ export function InstanceSettings() {
             <label className="flex flex-col text-xs text-slate-500">
               Default per-project monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
               <input className={field} aria-label="Default per-project monthly token cap" type="number" min={0} value={aiProjectLimit} onChange={(e) => setAiProjectLimit(e.target.value)} />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Max output tokens / reply <span className="text-slate-400">(blank = default 8192)</span>
+              <input
+                className={field}
+                aria-label="Max output tokens per reply"
+                type="number"
+                min={1024}
+                max={32000}
+                value={aiMaxTokens}
+                onChange={(e) => setAiMaxTokens(e.target.value)}
+                placeholder="8192"
+              />
             </label>
             <label className="col-span-2 flex items-center gap-2 text-sm">
               <input type="checkbox" className={toggleInput} aria-label="Admins bypass token caps" checked={aiAdminsUnlimited} onChange={(e) => setAiAdminsUnlimited(e.target.checked)} />

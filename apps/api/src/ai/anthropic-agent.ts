@@ -42,7 +42,7 @@ export class AnthropicAgentProvider implements AgentProvider {
       },
       body: JSON.stringify({
         model: req.model ?? this.model,
-        max_tokens: req.maxTokens ?? 4096,
+        max_tokens: req.maxTokens ?? 8192,
         stream: true,
         system: req.system,
         tools: req.tools.map(toAnthropicTool),

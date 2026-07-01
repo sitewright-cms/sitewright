@@ -48,7 +48,7 @@ export class OpenAiAgentProvider implements AgentProvider {
         model: req.model ?? this.model,
         stream: true,
         stream_options: { include_usage: true },
-        max_tokens: req.maxTokens ?? 4096,
+        max_tokens: req.maxTokens ?? 8192,
         tools: req.tools.map(toOpenAiTool),
         messages: toOpenAiMessages(req.system, req.messages),
       }),

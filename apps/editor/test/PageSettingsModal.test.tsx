@@ -199,6 +199,26 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
     expect(shown).toHaveLength(1);
     expect(shown[0]).toHaveTextContent('/services');
   });
+
+  it('labels a nav placeholder parent by its NAME (menu), not its collapsed "/" — so home is not duplicated', () => {
+    // A routing-transparent placeholder (kind:'link', path:'') parented to home resolves to pagePath "/".
+    // It must NOT show as a second "/" — it shows its (de-marked-up) name + a "(menu)" marker.
+    const ph = { id: 'nav-audit', path: '', title: '<span class="x">Free site audit</span>', kind: 'link', parent: 'home' } as Page;
+    const about: Page = { id: 'about', path: 'about', title: 'About' };
+    render(
+      <PageSettingsModal page={about} projectId="p" initial={pageSettingsFromPage(about)} pages={[home, ph, about]} templates={[]} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parent page' }));
+    const listbox = screen.getByRole('listbox', { name: 'Parent page' });
+    const labels = within(listbox).getAllByRole('option').map((o) => o.textContent?.trim());
+    expect(labels.filter((t) => t === '/')).toHaveLength(1); // ONLY the home page, not the placeholder
+    expect(within(listbox).getByText('Free site audit (menu)')).toBeInTheDocument();
+    // …and it's still findable by typing its name.
+    fireEvent.change(screen.getByLabelText('Search Parent page'), { target: { value: 'audit' } });
+    const shown = within(listbox).getAllByRole('option');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toHaveTextContent('Free site audit (menu)');
+  });
 });
 
 describe('PageSettingsModal — create mode (the New-page form)', () => {

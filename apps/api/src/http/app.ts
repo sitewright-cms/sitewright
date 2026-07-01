@@ -52,6 +52,7 @@ import {
   DEFAULT_SCREENSHOT_VIEWPORTS,
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
+  AiConfigSchema,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -147,7 +148,10 @@ import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
-import { registerAiAgentRoutes } from './ai-agent-routes.js';
+import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
+import { registerAiConfigRoutes } from './ai-config-routes.js';
+import { buildAgentProvider } from '../ai/build-provider.js';
+import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
 import { signPreview, verifyPreview } from './preview-token.js';
@@ -334,7 +338,7 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'ai_config']);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -985,6 +989,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'req.body.hcaptcha.secret',
             'req.body.stock.unsplash',
             'req.body.stock.pexels',
+            // AI keys (plaintext on input before encryption): the platform key on /admin/settings and
+            // the per-project BYO key on /projects/:id/ai-config.
+            'req.body.ai.apiKey',
+            'req.body.apiKey',
             // Not a secret, but the base64 logo upload would otherwise bloat the log line.
             'req.body.platformLogo.data',
           ],
@@ -4069,6 +4077,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       assertHostAllowed: assertSmtpHostAllowed,
       rl,
     });
+    // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.
+    registerAiConfigRoutes(app, {
+      resolveProject,
+      contentRepo,
+      encryptionKey: opts.encryptionKey,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      rl,
+    });
   }
 
   // Google Fonts: download a family's weights server-side (the only Google contact) and self-host
@@ -4214,9 +4230,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The on-page AI assistant: a streaming, tool-using agent that edits the project's DRAFT
   // content by driving the same MCP tools an external client would, scoped to capabilities
   // the user grants. Session-only (the browser never holds a token); metered like /ai/generate.
+  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
+  // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
+  // env-configured fallback. Returns null when the assistant is not configured anywhere.
+  async function resolveAiProvider(ctx: ProjectContext): Promise<ResolvedAgent | null> {
+    if (opts.encryptionKey) {
+      const [row] = await contentRepo.list(ctx, 'ai_config');
+      const parsed = row ? AiConfigSchema.safeParse(row) : null;
+      if (parsed?.success && parsed.data.enabled && parsed.data.secret) {
+        const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
+        return {
+          provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
+          projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
+          adminsUnlimited: false, // a project's own budget applies to everyone on it
+          platformFunded: false,
+        };
+      }
+    }
+    const inst = await instanceSettingsRepo.getAiConfig();
+    if (inst?.enabled && inst.apiKey) {
+      return {
+        provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
+        projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
+        adminsUnlimited: inst.adminsUnlimited,
+        platformFunded: true,
+      };
+    }
+    if (agentProvider) {
+      return { provider: agentProvider, projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined, adminsUnlimited: true, platformFunded: true };
+    }
+    return null;
+  }
+
   registerAiAgentRoutes(app, {
     db,
-    agentProvider,
+    resolveAgent: resolveAiProvider,
     aiUsageRepo,
     aiQuota,
     resolveProject,

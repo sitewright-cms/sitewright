@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
+import { AiProviderKindSchema, AiBaseUrlSchema, type AiProviderKind } from './ai-config.js';
 import { AgentInstructionsSchema } from './agent.js';
 import { LocaleSchema } from './project.js';
 import { CssColorSchema } from './primitives.js';
@@ -115,6 +116,21 @@ export const StockKeysStoredSchema = z.object({
 });
 export type StockKeysStored = z.infer<typeof StockKeysStoredSchema>;
 
+/** Platform-wide AI assistant config as stored: the API key is an encrypted envelope (or absent). */
+export const AiStoredSchema = z.object({
+  enabled: z.boolean(),
+  provider: AiProviderKindSchema,
+  model: z.string().min(1).max(120).optional(),
+  /** OpenAI-compatible base URL (only meaningful when provider = 'openai'). Public host only (SSRF). */
+  baseUrl: AiBaseUrlSchema.optional(),
+  apiKey: EncryptedSecretSchema.optional(),
+  /** Default per-project monthly token cap (0/absent → unlimited). */
+  defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
+  /** Platform admins bypass all token caps (default true). */
+  adminsUnlimited: z.boolean().default(true),
+});
+export type AiStored = z.infer<typeof AiStoredSchema>;
+
 /** A short lowercase slug identifying an OIDC provider (used in `/auth/oidc/<id>/…` routes). */
 const OidcProviderIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'id must be a lowercase slug');
 const OidcScopesSchema = z.array(z.string().min(1).max(60)).max(20);
@@ -143,6 +159,8 @@ export const InstanceSettingsStoredSchema = z.object({
   smtp: SmtpStoredSchema.optional(),
   hcaptcha: HcaptchaStoredSchema.optional(),
   stock: StockKeysStoredSchema.optional(),
+  /** Platform-wide AI assistant config (the API key is encrypted at rest). */
+  ai: AiStoredSchema.optional(),
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
   /**
    * The session-cookie signing key (hex). Auto-generated + persisted on first boot when no
@@ -223,6 +241,18 @@ export const StockKeysInputSchema = z.object({
 });
 export type StockKeysInput = z.infer<typeof StockKeysInputSchema>;
 
+/** Platform AI config on input (plaintext apiKey, OPTIONAL — omit to keep the stored one). */
+export const AiInputSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: AiProviderKindSchema.default('anthropic'),
+  model: z.string().min(1).max(120).optional(),
+  baseUrl: AiBaseUrlSchema.optional(),
+  apiKey: z.string().min(1).max(1024).optional(),
+  defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
+  adminsUnlimited: z.boolean().default(true),
+});
+export type AiInput = z.infer<typeof AiInputSchema>;
+
 /**
  * An OIDC provider on input (plaintext client secret, OPTIONAL — omit to keep the secret already
  * stored for the same `id`). The provider list is replace-semantics (the array sent becomes the new
@@ -245,6 +275,9 @@ export const InstanceSettingsInputSchema = z.object({
   smtp: SmtpInputSchema.nullable().optional(),
   hcaptcha: HcaptchaInputSchema.nullable().optional(),
   stock: StockKeysInputSchema.nullable().optional(),
+  // Platform AI config: an object sets it (apiKey preserved when omitted), `null` clears the whole
+  // section (disables the platform assistant), and an absent value leaves it unchanged.
+  ai: AiInputSchema.nullable().optional(),
   // Merge-only (not nullable): an absent formModes leaves modes unchanged; a
   // partial one merges. To disable every mode, send all four explicitly false —
   // there is no "clear the whole section" semantic for formModes.
@@ -305,6 +338,17 @@ export interface StockKeysPublic {
   hasPexels: boolean;
 }
 
+/** Masked platform AI config — the API key collapses to a presence flag. */
+export interface AiPublic {
+  enabled: boolean;
+  provider: AiProviderKind;
+  model?: string;
+  baseUrl?: string;
+  hasApiKey: boolean;
+  defaultProjectMonthlyTokens?: number;
+  adminsUnlimited: boolean;
+}
+
 /**
  * A configured OIDC provider, masked: the client secret collapses to a presence flag. Returned only
  * from the admin-gated `GET /admin/settings` (not the unauthenticated `/auth/config`, which exposes
@@ -325,6 +369,7 @@ export interface InstanceSettingsPublic {
   smtp?: SmtpPublic;
   hcaptcha?: HcaptchaPublic;
   stock?: StockKeysPublic;
+  ai?: AiPublic;
   formModes: FormModes;
   /** The admin override for agent instructions (NOT a secret), or absent when using the default. */
   agentInstructions?: string;
@@ -352,6 +397,12 @@ export function maskSmtp(smtp: SmtpStored): SmtpPublic {
   return { ...rest, hasPassword: password !== undefined };
 }
 
+/** Masks the platform AI config to its public view (apiKey → hasApiKey flag). */
+export function maskAi(ai: AiStored): AiPublic {
+  const { apiKey, ...rest } = ai;
+  return { ...rest, hasApiKey: apiKey !== undefined };
+}
+
 /** Masks a stored OIDC provider to its public view (clientSecret → hasClientSecret flag). */
 export function maskOidcProvider(p: OidcProviderStored): OidcProviderPublic {
   const { clientSecret, ...rest } = p;
@@ -371,6 +422,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
       hasPexels: stored.stock.pexels !== undefined,
     };
   }
+  if (stored.ai) result.ai = maskAi(stored.ai);
   if (stored.agentInstructions !== undefined) result.agentInstructions = stored.agentInstructions;
   if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
   if (stored.revisionCoalesceMs !== undefined) result.revisionCoalesceMs = stored.revisionCoalesceMs;

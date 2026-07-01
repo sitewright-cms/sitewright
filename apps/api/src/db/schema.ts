@@ -443,7 +443,7 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -474,7 +474,7 @@ export const contentRevisions = sqliteTable(
     // Mirrors content.kind (same text enum, no SQL CHECK). Recording is gated to the user-editable
     // subset in code (REVISIONED_KINDS) — credentials + media binaries are never snapshotted.
     kind: text('kind', {
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
     }).notNull(),
     entityId: text('entity_id').notNull(),
     data: text('data', { mode: 'json' }).notNull(),
@@ -568,4 +568,5 @@ export type ContentKind =
   | 'mediafolder'
   | 'deploy_target'
   | 'form'
-  | 'project_smtp';
+  | 'project_smtp'
+  | 'ai_config';

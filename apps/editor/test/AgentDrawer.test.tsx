@@ -60,6 +60,22 @@ describe('AgentDrawer', () => {
     expect(screen.getByText('Editing a page')).toBeInTheDocument(); // the tool activity line
   });
 
+  it('aborts the in-flight stream when the drawer closes', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
+    let capturedSignal: AbortSignal | undefined;
+    streamAgentMessage.mockImplementation((_id: string, _body: unknown, _h: AgentChatHandlers, signal?: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise<void>(() => {}); // never resolves — a live stream
+    });
+    const { rerender } = render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'hi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+    expect(capturedSignal!.aborted).toBe(false);
+    rerender(<AgentDrawer projectId="p" open={false} onClose={() => {}} getPath={() => '/'} />);
+    expect(capturedSignal!.aborted).toBe(true);
+  });
+
   it('surfaces a stream error', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
     streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {

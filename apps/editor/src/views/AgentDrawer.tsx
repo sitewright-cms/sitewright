@@ -73,6 +73,11 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
     if (el) el.scrollTop = el.scrollHeight; // scrollTop (not scrollTo) works in jsdom too
   }, [messages, status]);
 
+  // Closing the drawer aborts any in-flight turn (the drawer stays mounted, so nothing else would).
+  useEffect(() => {
+    if (!open) abortRef.current?.abort();
+  }, [open]);
+
   function patchAssistant(fn: (a: Extract<ChatMsg, { role: 'assistant' }>) => Extract<ChatMsg, { role: 'assistant' }>) {
     setMessages((ms) => {
       const next = [...ms];
@@ -99,7 +104,9 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
 
   async function send() {
     const text = input.trim();
-    if (!text || status !== 'idle') return;
+    // Guard on the abort REF (set synchronously below), not the `status` state — a rapid double-click
+    // sees the same pre-render `status` in both closures, but the ref is updated immediately.
+    if (!text || abortRef.current) return;
     setError(null);
     setInput('');
     setMessages((m) => [...m, { role: 'user', text }, { role: 'assistant', text: '', tools: [], streaming: true }]);
@@ -132,6 +139,9 @@ export function AgentDrawer({ projectId, open, onClose, getPath }: { projectId: 
     } finally {
       abortRef.current = null;
       setStatus('idle');
+      // Finalize the streaming bubble — an aborted turn returns without a done/error frame, so this
+      // clears the "…" placeholder / streaming flag on Stop or drawer-close.
+      patchAssistant((a) => ({ ...a, streaming: false }));
     }
   }
 

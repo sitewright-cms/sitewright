@@ -302,7 +302,10 @@ async function streamAgentChat(url: string, body: unknown, handlers: AgentChatHa
       if (err instanceof DOMException && err.name === 'AbortError') return; // aborted → quiet end
       throw err;
     }
-    if (chunk.done) break;
+    if (chunk.done) {
+      buf += decoder.decode(); // flush any trailing multi-byte sequence
+      break;
+    }
     buf += decoder.decode(chunk.value, { stream: true });
     let nl: number;
     while ((nl = buf.indexOf('\n\n')) !== -1) {

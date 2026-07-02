@@ -235,27 +235,38 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           </span>
         </div>
       )}
-      {/* ONE persistent bottom-LEFT badge: always shown when the assistant is available (click toggles
-          the drawer), and it doubles as the live status indicator (thinking / working) during a turn.
-          Bottom-left so it never sits under the right-side drawer. Replaces the old right-side FAB. */}
+      {/* ONE persistent, prominent bottom-LEFT FAB: always shown when the assistant is available
+          (click toggles the drawer), and it doubles as the live status indicator during a turn —
+          with a pulsing halo while the agent is thinking/working, VISIBLE even with the drawer
+          closed (closing no longer stops the turn). Bottom-left so it never sits under the drawer. */}
       {agentEnabled && (
-        <button
-          type="button"
-          onClick={() => setDrawerOpen((o) => !o)}
-          aria-label={agentActivity === 'working' ? 'AI is working' : agentActivity === 'thinking' ? 'AI is thinking' : drawerOpen ? 'Close the AI assistant' : 'Open the AI assistant'}
-          className="absolute bottom-5 left-5 z-[62] inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 backdrop-blur transition hover:bg-white"
-        >
-          {agentActivity === 'working' ? (
-            <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-          ) : agentActivity === 'thinking' ? (
-            <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-          ) : (
-            <span aria-hidden className="sw-brand-gradient inline-flex h-5 w-5 items-center justify-center rounded-full text-white">
-              <Sparkles className="h-3 w-3" />
-            </span>
+        <div className="absolute bottom-6 left-6 z-[62]">
+          {/* Pulsing halo — only while a turn is active (thinking/working). */}
+          {agentActivity !== 'idle' && (
+            <span
+              aria-hidden
+              className={`pointer-events-none absolute inset-0 animate-ping rounded-full ${agentActivity === 'working' ? 'bg-emerald-400/60' : 'bg-indigo-400/60'}`}
+            />
           )}
-          {agentActivity === 'working' ? 'AI is working…' : agentActivity === 'thinking' ? 'AI is thinking…' : 'AI'}
-        </button>
+          <button
+            type="button"
+            onClick={() => setDrawerOpen((o) => !o)}
+            aria-label={agentActivity === 'working' ? 'AI is working' : agentActivity === 'thinking' ? 'AI is thinking' : drawerOpen ? 'Close the AI assistant' : 'Open the AI assistant'}
+            className="sw-brand-gradient relative inline-flex items-center gap-2.5 rounded-full px-5 py-3 text-base font-semibold text-white shadow-xl ring-2 ring-white/40 transition hover:brightness-110"
+          >
+            {agentActivity === 'working' ? (
+              <span aria-hidden className="relative flex h-5 w-5 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-white" />
+              </span>
+            ) : agentActivity === 'thinking' ? (
+              <span aria-hidden className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : (
+              <Sparkles className="h-5 w-5" />
+            )}
+            {agentActivity === 'working' ? 'AI is working…' : agentActivity === 'thinking' ? 'AI is thinking…' : 'AI Assistant'}
+          </button>
+        </div>
       )}
       {agentEnabled && (
         <AgentDrawer

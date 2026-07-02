@@ -235,28 +235,27 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           </span>
         </div>
       )}
-      {agentEnabled && !drawerOpen && (
+      {/* ONE persistent bottom-LEFT badge: always shown when the assistant is available (click toggles
+          the drawer), and it doubles as the live status indicator (thinking / working) during a turn.
+          Bottom-left so it never sits under the right-side drawer. Replaces the old right-side FAB. */}
+      {agentEnabled && (
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label={working ? 'AI assistant is working' : 'Open the AI assistant'}
-          className="sw-brand-gradient sw-brand-shadow-lg absolute bottom-5 right-5 z-20 inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110"
+          onClick={() => setDrawerOpen((o) => !o)}
+          aria-label={agentActivity === 'working' ? 'AI is working' : agentActivity === 'thinking' ? 'AI is thinking' : drawerOpen ? 'Close the AI assistant' : 'Open the AI assistant'}
+          className="absolute bottom-5 left-5 z-[62] inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 backdrop-blur transition hover:bg-white"
         >
-          <Sparkles className={`h-4 w-4 ${working ? 'animate-pulse' : ''}`} />
-          {working ? 'AI working…' : 'AI'}
-        </button>
-      )}
-      {/* While the drawer is open it covers the RIGHT side, so this animated status chip sits on the
-          LEFT — the AI stays visibly informative (thinking vs working) throughout the turn. */}
-      {agentEnabled && drawerOpen && agentActivity !== 'idle' && (
-        <div className="pointer-events-none absolute bottom-5 left-5 z-[62] inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 backdrop-blur">
           {agentActivity === 'working' ? (
             <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-          ) : (
+          ) : agentActivity === 'thinking' ? (
             <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          ) : (
+            <span aria-hidden className="sw-brand-gradient inline-flex h-5 w-5 items-center justify-center rounded-full text-white">
+              <Sparkles className="h-3 w-3" />
+            </span>
           )}
-          {agentActivity === 'working' ? 'AI is working…' : 'AI is thinking…'}
-        </div>
+          {agentActivity === 'working' ? 'AI is working…' : agentActivity === 'thinking' ? 'AI is thinking…' : 'AI'}
+        </button>
       )}
       {agentEnabled && (
         <AgentDrawer

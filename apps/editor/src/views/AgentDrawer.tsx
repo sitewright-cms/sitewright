@@ -3,6 +3,7 @@ import { Sparkles, X, Send, Wrench, CircleCheck, CircleX, Paperclip, FileText, S
 import { api, type AgentAttachment, type AgentGrantView, type ApiKeyCapability } from '../api';
 import { glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { OVERLAY_STACK } from './ui/overlay';
+import { ChatMarkdown } from '../lib/chat-markdown';
 
 /** Attachment MIME types the chat accepts (raster images anywhere; PDF is Anthropic-only). */
 const ACCEPT_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
@@ -334,7 +335,8 @@ export function AgentDrawer({
 
   return (
     <>
-      {open && <div className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} aria-hidden />}
+      {/* No full-screen backdrop: the drawer is a NON-MODAL side panel — the preview stays fully
+          visible + interactive on the left while you chat (close via ×, Esc, or the AI badge). */}
       <aside
         className={`fixed right-0 top-0 z-[61] flex h-full w-[26rem] max-w-[92vw] flex-col border-l border-white/60 bg-white/80 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
         role="dialog"
@@ -566,7 +568,7 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
           ))}
         </ul>
       )}
-      {msg.text ? <span className="whitespace-pre-wrap">{msg.text}</span> : msg.streaming ? <span className="text-slate-400">…</span> : null}
+      {msg.text ? <ChatMarkdown text={msg.text} /> : msg.streaming ? <span className="text-slate-400">…</span> : null}
       {msg.tokens != null && msg.tokens > 0 && !msg.streaming && (
         <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">{msg.tokens.toLocaleString()} tokens</div>
       )}

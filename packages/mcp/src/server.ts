@@ -17,7 +17,7 @@ import {
   BINDING_NAMESPACES,
   LOOP_VARIABLES,
   StockProviderNameSchema,
-  ScreenshotViewportNameSchema,
+  LenientScreenshotViewportNameSchema,
   SCREENSHOT_VIEWPORT_NAMES,
   MediaFolderSchema,
   type GuideTopic,
@@ -104,6 +104,43 @@ const KIND_SHAPES = new Map<string, string>([
     'the site settings object (identity, website, seo, shop, effects, translations, …). put_content REPLACES the whole object, so READ it first with get_content("settings","settings"), modify, and write the WHOLE thing back.',
   ],
 ]);
+
+/** A JSON object (not an array, not null) we can safely spread. */
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** put_content kinds that are path-keyed SINGLETONS with no own `id` field — never inject an id into
+ *  their body. Today only `settings`; a set (not a `!== 'settings'` literal) so any future singleton
+ *  kind added to GENERIC_KIND doesn't silently acquire an injected id. */
+const ID_LESS_PUT_KINDS = new Set<string>(['settings']);
+
+/**
+ * Make put_content forgiving for weaker models. Two mistakes recur badly enough to stall a whole run:
+ *   1. `data` sent as a JSON *string* instead of an object → "Expected object, received string".
+ *   2. The schema requires `data.id` (and, for an entry, `data.dataset`) to be present AND to equal
+ *      the `id`/`dataset` args — models omit the "redundant" duplicate → endless "id: Required".
+ * So we parse a stringified object and copy `id`/`dataset` into `data` when the model left them out.
+ * Anything that isn't a JSON object (or a string that isn't parseable JSON) is returned untouched, so
+ * the normal validation error — with its teach-on-error shape hint — still surfaces.
+ */
+function normalizePutData(kind: string, id: string, dataset: string | undefined, data: unknown): unknown {
+  let obj: unknown = data;
+  if (typeof obj === 'string') {
+    const trimmed = obj.trim();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return data; // not JSON — let validation speak
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      return data;
+    }
+  }
+  if (!isPlainRecord(obj)) return obj;
+  const patch: Record<string, unknown> = {};
+  if (!ID_LESS_PUT_KINDS.has(kind) && (obj.id === undefined || obj.id === '') && id) patch.id = id;
+  if (kind === 'entry' && (obj.dataset === undefined || obj.dataset === '') && dataset) patch.dataset = dataset;
+  return Object.keys(patch).length > 0 ? { ...obj, ...patch } : obj;
+}
 
 type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
 type ToolResult = { content: ContentBlock[]; isError?: boolean };
@@ -390,11 +427,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
       inputSchema: {
         page: PageSchema,
         includeHtml: z.boolean().optional(),
-        viewports: z.array(ScreenshotViewportNameSchema).optional(),
+        viewports: z.array(LenientScreenshotViewportNameSchema).optional(),
       },
     },
     async ({ page, includeHtml, viewports }: { page: unknown; includeHtml?: boolean; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
@@ -434,7 +471,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         `Screenshot an imported page's BUILD and its ORIGINAL source at the same viewports and return them SIDE-BY-SIDE, so you can see exactly how your build differs from the real site and fix it. Use this after authoring an imported page and ITERATE until the build matches the source — never call a page done from your own render alone; the source pair here is the ground truth. The source is the reference captured at import time (fast + stable); pass refresh:true to re-snapshot the live site if it has changed. The page must have an import source. Pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to focus breakpoints.`,
-      inputSchema: { pageId: z.string(), viewports: z.array(ScreenshotViewportNameSchema).optional(), refresh: z.boolean().optional() },
+      inputSchema: { pageId: z.string(), viewports: z.array(LenientScreenshotViewportNameSchema).optional(), refresh: z.boolean().optional() },
     },
     async ({ pageId, viewports, refresh }: { pageId: string; viewports?: ScreenshotViewportName[]; refresh?: boolean }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
@@ -558,12 +595,15 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'put_content',
     {
       description:
-        'Create or replace a content entity of the given kind. Args: { kind, id, data }. For PAGES prefer put_page (fully typed). `data` must EXACTLY match that kind’s schema — on a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide.',
-      inputSchema: { kind: GENERIC_KIND, id: z.string(), data: z.unknown() },
+        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional(), data: z.unknown() },
     },
-    gate('content:write', async ({ kind, id, data }) => {
+    gate('content:write', async ({ kind, id, dataset, data }) => {
+      // Weak-model forgiveness: parse a stringified `data` and backfill the id/dataset the schema
+      // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
+      const normalized = normalizePutData(kind, id, dataset, data);
       try {
-        return await client.putContent(kind, id, data);
+        return await client.putContent(kind, id, normalized);
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed
         // the payload wrong can self-correct next turn instead of looping on the same validation error.

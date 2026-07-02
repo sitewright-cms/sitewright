@@ -74,10 +74,18 @@ export class StockService {
     return { providers: out };
   }
 
+  /** "not configured" message that names the providers usable RIGHT NOW, so a caller (esp. an agent)
+   *  switches to an available one instead of retrying the unconfigured one. */
+  private async notConfiguredError(name: StockProviderName): Promise<StockNotConfiguredError> {
+    const usable = (await this.availability()).providers.filter((p) => p.available).map((p) => p.name);
+    const hint = usable.length ? `available now: ${usable.join(', ')} — search one of those instead` : 'no providers are configured';
+    return new StockNotConfiguredError(`${name} is not configured (needs an instance API key); ${hint}`);
+  }
+
   async search(name: StockProviderName, query: string, page: number): Promise<StockSearchResult> {
     const provider = this.provider(name);
     const key = await this.keyFor(name);
-    if (provider.requiresKey && !key) throw new StockNotConfiguredError(`${name} is not configured`);
+    if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
     const p = Math.max(1, Math.min(Number.isFinite(page) ? page : 1, 100));
     return { provider: name, page: p, results: await provider.search(query, p, key) };
   }
@@ -111,7 +119,7 @@ export class StockService {
   ): Promise<{ buffer: Buffer; contentType: string; attribution: ProviderAttribution } | null> {
     const provider = this.provider(name);
     const key = await this.keyFor(name);
-    if (provider.requiresKey && !key) throw new StockNotConfiguredError(`${name} is not configured`);
+    if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
     const resolved = await provider.resolve(id, key);
     if (!resolved) return null;
     const { buffer, contentType } = await this.downloadImage(resolved.downloadUrl);

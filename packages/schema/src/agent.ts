@@ -17,8 +17,9 @@ The writes you'll use most (argument names matter):
 - put_page({ page: { id, path, title, source } }) — the TYPED way to create/replace a page. Prefer
   this for pages (NOT put_content).
 - put_content({ kind, id, data }) — for the OTHER kinds (settings, dataset, entry, form, template,
-  snippet, translation). \`kind\` is REQUIRED and is one of those values; \`data\` must EXACTLY match
-  that kind's schema.
+  snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
+  matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
+  copied from the id/dataset args for you.
 - get_guide({ topic }) needs a topic, e.g. get_guide({ topic: "design" }); call it with NO argument to
   list the topics. get_reference lists every {{sw-*}} helper, data-sw-* directive, and binding.
 If a write is REJECTED, the error names the wrong field AND the expected shape — read it, fix that one
@@ -164,9 +165,10 @@ build matches the original.)
 MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
 must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
 hard-code final copy as plain inline text. USE DATASETS for REPEATING content (service cards, team,
-FAQs, testimonials, logos, pricing tiers): put_content a dataset + its entries and render them with
-{{#each dataset.<slug>}} — never hand-copy the same block N times (that isn't editable and bloats the
-page). get_guide covers datasets + the editable-binding model.
+FAQs, testimonials, logos, pricing tiers): FIRST put_content({kind:"dataset", id, data:{name, slug,
+fields:[{name,type}]}}), THEN one put_content({kind:"entry", id, dataset:<slug>, data:{values:{…}}})
+per row, and render with {{#each dataset.<slug>}} — never hand-copy the same block N times (that isn't
+editable and bloats the page).
 USE THE PLATFORM'S INTERACTIVE COMPONENTS wherever they make a layout richer — carousels/sliders,
 lightbox galleries, tabs, accordions, banners, animated shader/gradient backgrounds, date pickers —
 rather than a flat wall of static sections; prefer a first-party component over hand-rolling. Call

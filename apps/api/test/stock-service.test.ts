@@ -47,6 +47,15 @@ describe('StockService', () => {
     await expect(service({ unsplashKey: null }).search('unsplash', 'x', 1)).rejects.toBeInstanceOf(StockNotConfiguredError);
   });
 
+  it('the not-configured error names the providers usable right now (so the caller switches)', async () => {
+    // openverse is keyless → always usable; pexels has a key here → usable; unsplash does not.
+    await expect(service({ unsplashKey: null, pexelsKey: 'k' }).search('unsplash', 'x', 1)).rejects.toThrow(
+      /unsplash is not configured.*available now:.*openverse.*pexels/s,
+    );
+    // The same guidance guards the import path.
+    await expect(service({ unsplashKey: null }).fetchForImport('unsplash', 'x1')).rejects.toThrow(/available now:.*openverse/s);
+  });
+
   it('throws on an unknown provider', async () => {
     await expect(service({}).search('nope' as StockProviderName, 'x', 1)).rejects.toBeInstanceOf(StockUnknownProviderError);
   });

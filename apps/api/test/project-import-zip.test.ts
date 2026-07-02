@@ -146,6 +146,40 @@ describe('POST /projects/import/zip', () => {
     expect(all).toEqual(['site', 'site-2']);
   });
 
+  it('round-trips DATASET-SCOPED entry ids — two datasets share id `intro` (post-#595)', async () => {
+    const t = await staff('dsround@test.local');
+    const cookies = { sw_session: t };
+    // Source: two datasets, each holding an entry with the SAME id `intro` (only unique per-dataset).
+    const proj = await app.inject({ method: 'POST', url: '/projects', cookies, payload: { name: 'DS', slug: 'ds' } });
+    const projectId = (proj.json() as { project: { id: string } }).project.id;
+    const base = `/projects/${projectId}`;
+    for (const slug of ['team', 'services']) {
+      await app.inject({ method: 'PUT', url: `${base}/content/dataset/${slug}`, cookies, payload: { id: slug, name: slug, slug, fields: [{ name: 'title', type: 'text' }] } });
+      await app.inject({ method: 'PUT', url: `${base}/content/entry/intro`, cookies, payload: { id: 'intro', dataset: slug, status: 'published', values: { title: `${slug} intro` } } });
+    }
+
+    const exp = await app.inject({ method: 'GET', url: `${base}/export.zip`, cookies });
+    expect(exp.statusCode).toBe(200);
+    // The exported bundle carries BOTH `intro` rows (distinct scopes) — no id collapse.
+    const zip = await JSZip.loadAsync(exp.rawPayload);
+    const bundle = JSON.parse(await zip.file('bundle.json')!.async('string')) as { entries: Array<{ id: string; dataset: string }> };
+    expect(bundle.entries.filter((e) => e.id === 'intro').map((e) => e.dataset).sort()).toEqual(['services', 'team']);
+
+    // Import as a NEW project → both scoped entries survive, each resolvable by its dataset.
+    const res = await app.inject({ method: 'POST', url: '/projects/import/zip', cookies, ...multipart('ds.zip', 'application/zip', exp.rawPayload) });
+    expect(res.statusCode).toBe(200);
+    const report = doneReport(res.payload);
+    expect(typeof report.projectId).toBe('string');
+    const newId = report.projectId as string;
+    const nbase = `/projects/${newId}`;
+    const team = await app.inject({ method: 'GET', url: `${nbase}/content/entry/intro?dataset=team`, cookies });
+    const services = await app.inject({ method: 'GET', url: `${nbase}/content/entry/intro?dataset=services`, cookies });
+    expect(team.statusCode).toBe(200);
+    expect(services.statusCode).toBe(200);
+    expect((team.json() as { item: { values: { title: string } } }).item.values.title).toBe('team intro');
+    expect((services.json() as { item: { values: { title: string } } }).item.values.title).toBe('services intro');
+  });
+
   it('rejects a non-zip upload with 400 (before hijacking the stream)', async () => {
     const t = await staff('dev2@test.local');
     const res = await app.inject({

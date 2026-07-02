@@ -185,10 +185,17 @@ export class MediaStorage {
    * uses forward slashes (for zip entry names), transient `.upload` inputs are
    * skipped, and a missing directory yields `[]`. Lets a project export STREAM an
    * asset's binaries into the archive without buffering them.
+   *
+   * `skipNames` (top-level basenames) are omitted — a project export passes an image asset's
+   * DERIVED, regenerable thumbnail names (the on-demand cache the serve route writes into this same
+   * dir) so the archive ships the retained ORIGINAL only. Thumbnails are always written top-level
+   * (`storeFile`'s STORED_FILE charset forbids slashes), so the skip is applied ONLY at depth 0 — a
+   * nested (`file/<name>`) entry that happens to share a basename is never dropped.
    */
   async assetFilePaths(
     projectSlug: string,
     assetId: string,
+    skipNames?: ReadonlySet<string>,
   ): Promise<{ rel: string; abs: string }[]> {
     const dir = this.assetDir(projectSlug, assetId); // segments charset-validated
     const out: { rel: string; abs: string }[] = [];
@@ -210,7 +217,12 @@ export class MediaStorage {
         const abs = join(current, entry.name);
         if (entry.isDirectory()) {
           await walk(abs);
-        } else if (entry.isFile() && !entry.name.endsWith('.upload')) {
+        } else if (
+          entry.isFile() &&
+          !entry.name.endsWith('.upload') &&
+          // Skip derived thumbnails only at the TOP level, where they are always written.
+          !(current === dir && skipNames?.has(entry.name))
+        ) {
           out.push({ rel: relative(dir, abs).split(sep).join('/'), abs });
         }
       }

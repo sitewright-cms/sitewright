@@ -121,6 +121,41 @@ describe('GET /projects/:id/export.zip', () => {
     expect(mediaEntries.length).toBeGreaterThan(0);
   });
 
+  it('ships the retained original but SKIPS the on-demand thumbnail cache (post-#590)', async () => {
+    const { t, projectId, slug } = await setup('thumb@test.local', 'thumbsite');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    const up = await app.inject({
+      method: 'POST',
+      url: `${base}/media`,
+      cookies,
+      ...multipart('photo.png', 'image/png', PNG_1X1),
+    });
+    expect([200, 201]).toContain(up.statusCode);
+    const asset = (up.json() as { item: { id: string; original: string } }).item;
+
+    // Hit the on-demand thumbnailer so a derived `<stem>-sm.webp` is cached INTO the asset dir —
+    // the exact scenario that used to bleed regenerable thumbnails into the export.
+    const thumb = await app.inject({
+      method: 'GET',
+      url: `/media/${slug}/${asset.id}/${asset.original}?size=sm`,
+    });
+    expect(thumb.statusCode).toBe(200);
+    expect(thumb.headers['content-type']).toContain('image/webp');
+
+    const res = await app.inject({ method: 'GET', url: `${base}/export.zip`, cookies });
+    expect(res.statusCode).toBe(200);
+    const zip = await JSZip.loadAsync(res.rawPayload);
+    // Actual files only (JSZip adds an implicit `media/<id>/` directory entry).
+    const names = Object.keys(zip.files).filter((n) => n.startsWith(`media/${asset.id}/`) && !zip.files[n]!.dir);
+    // The retained ORIGINAL travels…
+    expect(names).toContain(`media/${asset.id}/${asset.original}`);
+    // …but the regenerable thumbnail cache does NOT.
+    expect(names.some((n) => /-(sm|md|lg|xl)\.(webp|avif)$/.test(n))).toBe(false);
+    expect(names).toHaveLength(1);
+  });
+
   it('exports a media-less project as a valid zip (manifest + bundle only)', async () => {
     const { t, projectId } = await setup('dev2@test.local', 'site2');
     const res = await app.inject({

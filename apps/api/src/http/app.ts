@@ -156,6 +156,7 @@ import {
 import { MediaStorage } from '../media/storage.js';
 import { buildProjectExportZip, collectExportMedia, ExportSizeLimitError } from '../export/build-zip.js';
 import { buildExportManifest, exportBundleOverCap } from '../export/manifest.js';
+import { buildThumbSkipMap } from '../export/thumb-skip.js';
 import {
   readProjectZip,
   extractProjectMedia,
@@ -2441,9 +2442,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       activeExports += 1;
       let zip: Awaited<ReturnType<typeof buildProjectExportZip>>;
       try {
+        // Ship each image asset's retained ORIGINAL only — its on-demand thumbnail cache (written
+        // into the same asset dir by the media serve route) is regenerable, so skipping it keeps the
+        // archive minimal + deterministic (independent of how often the site has been previewed).
+        const thumbSkip = buildThumbSkipMap(bundle.media);
         const media = mediaStorage
           ? await collectExportMedia(
-              (assetId) => mediaStorage.assetFilePaths(project.slug, assetId),
+              (assetId) => mediaStorage.assetFilePaths(project.slug, assetId, thumbSkip.get(assetId)),
               bundle.media.map((asset) => asset.id),
             )
           : [];

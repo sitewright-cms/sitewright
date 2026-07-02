@@ -21,6 +21,8 @@ interface HeaderSettingsMenuProps {
   onPublishDeploy: () => void;
   /** Any member: download the whole project as a portable zip (absent → item hidden). */
   onExportProject?: () => void;
+  /** Agency-staff-only: duplicate the current project in-instance (absent → item hidden). */
+  onDuplicateProject?: () => void;
   /** Owner/agency-only: import an external website into the current project (absent → item hidden). */
   onImportWebsite?: () => void;
   onSystemSettings: () => void;
@@ -43,6 +45,7 @@ export function HeaderSettingsMenu({
   isInstanceAdmin,
   onPublishDeploy,
   onExportProject,
+  onDuplicateProject,
   onImportWebsite,
   onSystemSettings,
   onClients,
@@ -83,6 +86,7 @@ export function HeaderSettingsMenu({
     [
       { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
       { label: 'Export project (.zip)', onClick: onExportProject ?? (() => {}), show: inProject && !!onExportProject },
+      { label: 'Duplicate project', onClick: onDuplicateProject ?? (() => {}), show: inProject && !!onDuplicateProject },
       { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
       { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
       { label: 'Clients', onClick: onClients, show: owner },

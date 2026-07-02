@@ -580,6 +580,15 @@ export interface ImportReport {
   warnings: string[];
 }
 
+/** The `done` report of a project-zip import (a brand-new project was created). */
+export interface ProjectImportReport {
+  projectId: string;
+  slug: string;
+  name: string;
+  imported: number;
+  media: number;
+}
+
 /** The `done` report of a server-side mechanical nativize. */
 export interface NativizeReport {
   pagesNativized: number;
@@ -1106,6 +1115,32 @@ export const api = {
       { signal, init: { body: form } },
     );
   },
+
+  /**
+   * Import a whole-project export ZIP as a BRAND-NEW project (staff-only), streaming progress over SSE.
+   * `onDone` receives the report (new project id/slug/name + counts).
+   */
+  importProjectZipStream: (
+    file: File,
+    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ProjectImportReport) => void; onError?: (message: string) => void },
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const form = new FormData();
+    form.append('file', file);
+    return streamSse<ImportProgressEvent, { report: ProjectImportReport }>(
+      `${BASE}/projects/import/zip`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
+        onError: handlers.onError,
+      },
+      { signal, init: { body: form } },
+    );
+  },
+
+  /** Duplicate a project in-instance (staff-only); returns the new project. */
+  duplicateProject: (projectId: string): Promise<{ project: Project }> =>
+    request<{ project: Project }>('POST', `/projects/${projectId}/duplicate`),
 
   /**
    * Mechanically nativize a project's imported (rawFidelity) pages server-side, streaming per-page

@@ -45,4 +45,18 @@ describe('HeaderSettingsMenu — Export project', () => {
     open();
     expect(screen.queryByRole('menuitem', { name: 'Export project (.zip)' })).toBeNull();
   });
+
+  it('shows "Duplicate project" when the staff handler is provided, and fires it', () => {
+    const onDuplicateProject = vi.fn();
+    render(<HeaderSettingsMenu {...baseProps} onDuplicateProject={onDuplicateProject} />);
+    open();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate project' }));
+    expect(onDuplicateProject).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides "Duplicate project" for non-staff (no handler passed)', () => {
+    render(<HeaderSettingsMenu {...baseProps} />);
+    open();
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate project' })).toBeNull();
+  });
 });

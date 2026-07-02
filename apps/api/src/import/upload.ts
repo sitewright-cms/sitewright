@@ -52,7 +52,7 @@ interface StreamLike {
  * (even one lying about its size) can't allocate beyond the cap. JSZip's `internalStream` is pull-driven
  * by `resume()`; pausing on overflow halts both memory growth and further inflate work.
  */
-function decompressBounded(file: JSZip.JSZipObject, maxBytes: number): Promise<Uint8Array | null> {
+export function decompressBounded(file: JSZip.JSZipObject, maxBytes: number): Promise<Uint8Array | null> {
   return new Promise((resolve) => {
     const chunks: Uint8Array[] = [];
     let total = 0;

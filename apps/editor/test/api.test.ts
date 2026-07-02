@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, eventsUrl, setUnauthorizedHandler } from '../src/api';
+import { api, ApiError, downloadProjectExport, eventsUrl, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -1156,5 +1156,41 @@ describe('unauthorized (401) handling', () => {
       ['POST', '/admin/settings/stock/test'],
     ]);
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' });
+  });
+});
+
+describe('project transfer api', () => {
+  it('duplicateProject POSTs to the duplicate route', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p2', name: 'X (copy)', slug: 'x-2', role: 'owner' } }));
+    const { project } = await api.duplicateProject('p1');
+    expect(project.slug).toBe('x-2');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/duplicate');
+    expect(init.method).toBe('POST');
+  });
+
+  it('importProjectZipStream uploads a FormData file and surfaces a preflight error', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'invalid project bundle' }));
+    const onError = vi.fn();
+    const file = new File([new Uint8Array([1, 2, 3])], 'p.zip', { type: 'application/zip' });
+    await api.importProjectZipStream(file, { onError });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/import/zip');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(onError).toHaveBeenCalledWith('invalid project bundle');
+  });
+
+  it('downloadProjectExport points a transient anchor at the export route', async () => {
+    const clicks: string[] = [];
+    const realCreate = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag) as HTMLAnchorElement;
+      if (tag === 'a') el.click = () => clicks.push(el.href);
+      return el;
+    });
+    downloadProjectExport('p1');
+    spy.mockRestore();
+    expect(clicks.some((href) => href.endsWith('/projects/p1/export.zip'))).toBe(true);
   });
 });

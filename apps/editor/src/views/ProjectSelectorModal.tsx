@@ -20,6 +20,8 @@ interface ProjectSelectorModalProps {
   onNew: () => void;
   /** Create a new project then open the import wizard against it (the selector closes first). */
   onNewFromWebsite: () => void;
+  /** Import a project export zip as a brand-new project (the selector closes first). */
+  onImportZip: () => void;
 }
 
 /**
@@ -27,7 +29,7 @@ interface ProjectSelectorModalProps {
  * NEW PROJECT button. Shown automatically on first load and reachable anytime by
  * clicking the project name in the header.
  */
-export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onNewFromWebsite }: ProjectSelectorModalProps) {
+export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onNewFromWebsite, onImportZip }: ProjectSelectorModalProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,6 +47,9 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
         // Creating projects is an agency-staff action; clients only ever pick from their invited projects.
         canCreate ? (
           <div className="flex gap-2">
+            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onImportZip}>
+              Import zip
+            </button>
             <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onNewFromWebsite}>
               From website
             </button>

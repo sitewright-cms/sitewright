@@ -19,6 +19,7 @@ import {
   ProjectSettingsSchema,
   WebsiteSettingsSchema,
   PROJECT_FORMAT_VERSION,
+  EXPORT_BUNDLE_CAPS,
   type CorporateIdentity,
   type Dataset,
   type WebsiteSettings,
@@ -391,6 +392,12 @@ export class ContentRepository {
         templates: z.array(TemplateSchema).max(MAX_BUNDLE.templates).default([]),
         datasets: z.array(DatasetSchema).max(MAX_BUNDLE.datasets).default([]),
         entries: z.array(EntrySchema).max(MAX_BUNDLE.entries).default([]),
+        // The whole-project sections (a zip import) — optional so a minimal JSON bundle still imports.
+        snippets: z.array(SnippetSchema).max(EXPORT_BUNDLE_CAPS.snippets).default([]),
+        translations: z.array(PageTranslationSchema).max(EXPORT_BUNDLE_CAPS.translations).default([]),
+        forms: z.array(FormSchema).max(EXPORT_BUNDLE_CAPS.forms).default([]),
+        media: z.array(MediaAssetSchema).max(EXPORT_BUNDLE_CAPS.media).default([]),
+        mediaFolders: z.array(MediaFolderRecordSchema).max(EXPORT_BUNDLE_CAPS.mediaFolders).default([]),
       })
       .parse(raw);
 
@@ -439,6 +446,27 @@ export class ContentRepository {
       }
       for (const entry of input.entries) {
         await this.writeRow(exec, ctx, 'entry', entry.id, entry);
+        imported += 1;
+      }
+      // Whole-project sections (present only for a full/zip import; empty for a legacy JSON bundle).
+      for (const snippet of input.snippets) {
+        await this.writeRow(exec, ctx, 'snippet', snippet.id, snippet);
+        imported += 1;
+      }
+      for (const translation of input.translations) {
+        await this.writeRow(exec, ctx, 'translation', translation.id, translation);
+        imported += 1;
+      }
+      for (const form of input.forms) {
+        await this.writeRow(exec, ctx, 'form', form.id, form);
+        imported += 1;
+      }
+      for (const asset of input.media) {
+        await this.writeRow(exec, ctx, 'media', asset.id, asset);
+        imported += 1;
+      }
+      for (const folder of input.mediaFolders) {
+        await this.writeRow(exec, ctx, 'mediafolder', folder.id, folder);
         imported += 1;
       }
     });

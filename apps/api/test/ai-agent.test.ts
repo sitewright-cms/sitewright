@@ -395,6 +395,16 @@ describe('adapter translation + error branches', () => {
     await expect(collect(bad.runTurn({ system: 's', messages: [{ role: 'user', content: 'x' }], tools: [] }))).rejects.toThrow(/500/);
   });
 
+  it('Anthropic: a plain last user message becomes a cacheable block (history cache breakpoint)', async () => {
+    let body: { messages?: Array<{ content: unknown }> } = {};
+    const provider = new AnthropicAgentProvider('k', 'm', async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      return sseResponse('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+    });
+    await collect(provider.runTurn({ system: 's', tools: [], messages: [{ role: 'user', content: 'just text' }] }));
+    expect(body.messages![0]!.content).toEqual([{ type: 'text', text: 'just text', cache_control: { type: 'ephemeral' } }]);
+  });
+
   it('OpenAI: system-first + assistant tool_calls + tool role image-note; maps stop; throws on non-ok', async () => {
     let body: { messages?: Array<Record<string, unknown>>; tools?: Array<Record<string, unknown>> } = {};
     const provider = new OpenAiAgentProvider('k', 'm', 'https://x/v1', async (_u, init) => {
@@ -446,7 +456,10 @@ describe('adapter translation + error branches', () => {
     const content = body.messages![0]!.content as Array<Record<string, unknown>>;
     expect(content[0]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'IMG' } });
     expect(content[1]).toEqual({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'PDF' } });
-    expect(content[2]).toEqual({ type: 'text', text: 'match this' }); // text LAST
+    // Text LAST — and, as the last block of the last message, it carries the history cache breakpoint
+    // (so an uploaded attachment is cached + reused instead of reprocessed every turn).
+    expect(content[2]).toMatchObject({ type: 'text', text: 'match this' });
+    expect(content[2]).toMatchObject({ cache_control: { type: 'ephemeral' } });
   });
 
   it('OpenAI: user image attachments become image_url data URLs; a PDF is noted as text', async () => {

@@ -39,6 +39,27 @@ export const ScreenshotViewportNameSchema = z.enum(
 );
 
 /**
+ * Everyday words for a breakpoint that aren't the registry's own names. Agents (and people) reach for
+ * "desktop"/"phone" far more naturally than "fullhd"/"mobile", and rejecting them just burns a retry —
+ * so the MCP tools accept these aliases and fold them onto the canonical name.
+ */
+export const SCREENSHOT_VIEWPORT_ALIASES: Record<string, ScreenshotViewportName> = {
+  desktop: 'fullhd',
+  phone: 'mobile',
+};
+
+/**
+ * A forgiving viewport name for tool input: canonical names pass through, and the common aliases above
+ * (case-insensitive) map onto a canonical name before enum validation. Use at the MCP boundary so the
+ * canonical {@link ScreenshotViewportNameSchema} — and the renderer — stay strict.
+ */
+export const LenientScreenshotViewportNameSchema = z.preprocess((v) => {
+  if (typeof v !== 'string') return v;
+  const key = v.trim().toLowerCase();
+  return SCREENSHOT_VIEWPORT_ALIASES[key] ?? key;
+}, ScreenshotViewportNameSchema);
+
+/**
  * Default when the caller doesn't choose — a representative spread across desktop (Full HD), tablet, and
  * mobile, so a plain `preview_page` shows the responsive picture (~3 images). Request specific names (or
  * all five, incl. wqhd/laptop) for a fuller sweep.

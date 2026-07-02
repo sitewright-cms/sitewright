@@ -4,6 +4,7 @@ import {
   SCREENSHOT_VIEWPORT_NAMES,
   DEFAULT_SCREENSHOT_VIEWPORTS,
   ScreenshotViewportNameSchema,
+  LenientScreenshotViewportNameSchema,
   isScreenshotViewportName,
 } from '../src/screenshot-viewports.js';
 
@@ -36,5 +37,16 @@ describe('screenshot viewports registry', () => {
     expect(ScreenshotViewportNameSchema.safeParse('desktop').success).toBe(false); // the old name is gone
     expect(isScreenshotViewportName('desktop')).toBe(false);
     expect(isScreenshotViewportName('')).toBe(false);
+  });
+
+  it('the LENIENT schema folds everyday aliases onto canonical names (case-insensitive)', () => {
+    // Agents reach for "desktop"/"phone" — accept them at the tool boundary rather than burn a retry.
+    expect(LenientScreenshotViewportNameSchema.parse('desktop')).toBe('fullhd');
+    expect(LenientScreenshotViewportNameSchema.parse('Desktop')).toBe('fullhd');
+    expect(LenientScreenshotViewportNameSchema.parse('phone')).toBe('mobile');
+    // canonical names still pass straight through …
+    for (const n of SCREENSHOT_VIEWPORT_NAMES) expect(LenientScreenshotViewportNameSchema.parse(n)).toBe(n);
+    // … and a genuine nonsense value is still rejected.
+    expect(LenientScreenshotViewportNameSchema.safeParse('gigantic').success).toBe(false);
   });
 });

@@ -524,6 +524,52 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const res2 = await mcp2.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'faqs', data: {} } });
     expect(text(res2)).not.toContain('Expected `data` shape');
   });
+
+  it('put_content backfills the omitted data.id from the id arg (weak-model forgiveness)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    // A dataset payload that (like a weak model) leaves out the "redundant" id the schema demands.
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'services', data: { name: 'Services', slug: 'services', fields: [] } } });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('dataset', 'services', expect.objectContaining({ id: 'services', name: 'Services', slug: 'services' }));
+  });
+
+  it('put_content backfills an entry’s id AND dataset from the args', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'entry', id: 'leak', dataset: 'services', data: { values: { title: 'Leak detection' } } } });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('entry', 'leak', expect.objectContaining({ id: 'leak', dataset: 'services', values: { title: 'Leak detection' } }));
+  });
+
+  it('put_content parses a JSON-STRING data payload (models that stringify the object)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: JSON.stringify({ name: 'CTA', source: '<div>hi</div>' }) } });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.objectContaining({ id: 'cta', name: 'CTA', source: '<div>hi</div>' }));
+  });
+
+  it('put_content does NOT inject an id into the settings singleton (it has no id field)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: { identity: { name: 'Acme' } } } });
+    // The settings body is written through verbatim — no stray `id` field injected.
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { identity: { name: 'Acme' } });
+  });
+
+  it('put_content leaves an explicit, matching data.id untouched (no clobber)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<b>x</b>' } } });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'cta', name: 'CTA', source: '<b>x</b>' });
+  });
+
+  it('put_content does NOT rewrite a MISMATCHED explicit data.id (the server’s ConflictError must still fire)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    // A wrong-but-present id is passed through verbatim (id arg 'cta' ≠ data.id 'other') so the API's
+    // entityKey guard raises ConflictError rather than the MCP layer silently "fixing" it.
+    await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'other', name: 'X', source: '<b/>' } } });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'other', name: 'X', source: '<b/>' });
+  });
 });
 
 describe('createSitewrightMcpServer — tool wiring', () => {

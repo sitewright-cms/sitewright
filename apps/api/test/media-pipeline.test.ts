@@ -319,4 +319,42 @@ describe('media pipeline (HTTP layer)', () => {
     const after = await app.inject({ method: 'GET', url: asset.url });
     expect(after.statusCode).toBe(200);
   });
+
+  // (6) A per-project upload cap (website.imageUploadCap) downscales + re-encodes new originals to WebP.
+  it('applies the project upload cap to a new upload (settings-driven)', async () => {
+    const { t, base } = await setup('cap@acme.test');
+    const cookies = { sw_session: t };
+    const cur = (await app.inject({ method: 'GET', url: `${base}/content/settings/settings`, cookies })).json() as {
+      item: { website?: Record<string, unknown> };
+    };
+    const item = cur.item;
+    item.website = { ...(item.website ?? {}), imageUploadCap: 600 };
+    const put = await app.inject({ method: 'PUT', url: `${base}/content/settings/settings`, cookies, payload: item });
+    expect(put.statusCode).toBe(200);
+
+    const up = await upload(base, t, 'big.png', 'image/png', makePng(1600, 900, [1, 2, 3]));
+    expect(up.statusCode).toBe(201);
+    const asset = (up.json() as { item: MediaAsset }).item;
+    expect(asset.width).toBe(600); // capped from 1600, never upscaled
+    expect(asset.format).toBe('webp'); // cap bit → re-encoded to webp
+    expect(asset.original.endsWith('.webp')).toBe(true);
+  });
+
+  // (7) Prune clears the on-demand thumbnail cache (regenerable) but keeps every retained original.
+  it('clears the thumbnail cache via prune-thumbnails, keeping the original', async () => {
+    const { t, base } = await setup('prune@acme.test');
+    const cookies = { sw_session: t };
+    const up = await upload(base, t, 'p.png', 'image/png', makePng(1000, 500, [9, 9, 9]));
+    const asset = (up.json() as { item: MediaAsset }).item;
+    // Generate a couple of cached thumbnails via the on-demand serve route.
+    await app.inject({ method: 'GET', url: asset.url });
+    await app.inject({ method: 'GET', url: `${asset.url}?size=sm` });
+
+    const res = await app.inject({ method: 'POST', url: `${base}/media/prune-thumbnails`, cookies });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { removed: number }).removed).toBeGreaterThanOrEqual(2);
+    // The original still serves after prune (thumbnails regenerate on demand).
+    const orig = await app.inject({ method: 'GET', url: `${asset.url}?size=original` });
+    expect(orig.statusCode).toBe(200);
+  });
 });

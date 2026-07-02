@@ -496,16 +496,23 @@ contract + every preset: get_components.
     summary: "locale-variant pages, translation groups, share-by-inheritance, localized datasets, the key-first translation catalog",
     body: `
 MULTILINGUAL (document-level i18n): each language variant is ITS OWN page, not a field
-overlay. First declare the languages in settings: settings:{ defaultLocale:"en",
-locales:["en","de"] }. Then for a translated page create a sibling page that:
-- sets \`locale\` to its language ("de"); the default-locale page leaves \`locale\` unset.
-- shares a \`translationGroup\` (any stable id, e.g. the primary page's id) with all its
-  variants — this links them for the <link rel="alternate" hreflang> tags and any
-  language switcher, and is what {{#each page.translations}} iterates.
-- nests under that locale's HOME so its route is "/<locale>/…": create a locale-home page
-  first ({ path:"<locale>", parent:"home" } → /<locale>, the localized home), then parent the
-  locale's other pages under it ({ path:"about", parent:"<locale>-home-id" } → /<locale>/about).
-  Each locale's nav lists only its own pages.
+overlay. TO ADD A LANGUAGE, call add_language({ locale:"de" }) — in ONE step it registers the
+locale AND scaffolds an inherited translated page for EVERY existing page (the whole /<locale>/…
+subtree, code inherited from the main language). NEVER add a language by hand-editing
+settings.locales (via put_content("settings", …)) — that registers the locale with ZERO pages,
+which is broken. remove_language({ locale }) removes a language and its whole subtree. Add the
+language AFTER the main-language pages exist, so every page gets a variant; add_language again
+after creating more pages to backfill their variants.
+
+Once scaffolded, each variant page already exists and INHERITS the main page's code — you only
+supply its translated \`data\` (the data-sw-text values) and \`title\`/\`description\`/\`image\` via
+put_page/put_content. How the variants are wired (for understanding + manual tweaks):
+- \`locale\` is set to its language ("de"); the default-locale page leaves \`locale\` unset.
+- a \`translationGroup\` (a stable id) is shared across all variants — it links them for the
+  <link rel="alternate" hreflang> tags and any language switcher, and is what
+  {{#each page.translations}} iterates.
+- the subtree nests under the locale HOME ({ path:"<locale>", parent:"home" } → /<locale>), and
+  each locale's nav lists only its own pages.
 
 SHARE STRUCTURE by INHERITANCE: leave a translated variant's \`source\` AND \`template\` UNSET —
 it then automatically follows the DEFAULT-LOCALE page's code (edit that one page's layout and
@@ -1012,6 +1019,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
+  { name: 'add_language', description: "Add a translation-target language — atomically registers the locale AND scaffolds an inherited translated page for every existing page. The only correct way to add a language.", capability: 'content:write' },
+  { name: 'remove_language', description: "Remove a translation-target language: drops the locale and cascade-deletes its whole page subtree (the default language can't be removed).", capability: 'content:delete' },
   { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },

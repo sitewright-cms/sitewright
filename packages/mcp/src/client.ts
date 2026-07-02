@@ -221,6 +221,18 @@ export class SitewrightClient {
     );
   }
 
+  /** Add a translation-target language: appends the locale AND scaffolds an inherited variant of
+   *  every default-language page, atomically (the editor's "Add language" path). */
+  async addLocale(locale: string): Promise<{ locale: string; created: number; pages: unknown[] }> {
+    return this.request('POST', this.projectPath('/locales'), { locale });
+  }
+
+  /** Remove a translation-target language: drops the locale from settings AND cascade-deletes every
+   *  page in its subtree. The default (main) language cannot be removed. */
+  async removeLocale(locale: string): Promise<{ locale: string; removed: number }> {
+    return this.request('DELETE', this.projectPath(`/locales/${encodeURIComponent(locale)}`));
+  }
+
   async listRevisions(kind: string, entityId: string, dataset?: string): Promise<unknown[]> {
     const res = await this.request<{ items: unknown[] }>(
       'GET',

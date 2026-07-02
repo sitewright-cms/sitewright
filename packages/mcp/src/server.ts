@@ -8,6 +8,7 @@ import {
   DatasetSchema,
   EntrySchema,
   FormSchema,
+  LocaleSchema,
   DEFAULT_AGENT_INSTRUCTIONS,
   COMPONENT_CATALOG,
   AGENT_GUIDES,
@@ -624,6 +625,26 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
     gate('content:delete', ({ kind, id, dataset }) => client.deleteContent(kind, id, dataset).then(() => ({ deleted: `${kind}/${id}` }))),
+  );
+
+  server.registerTool(
+    'add_language',
+    {
+      description:
+        'Add a translation-target LANGUAGE to the site — the ONLY correct way to do so. In ONE atomic step it registers the locale AND scaffolds an inherited translated page for EVERY existing page (the /<locale>/… subtree; each variant inherits the main language\'s code, so you then only fill in its translated `data`/title). Do NOT add a language by editing settings.locales via put_content — that registers the locale with NO pages. `locale` is a BCP-47 code, e.g. "de" or "pt-BR".',
+      inputSchema: { locale: LocaleSchema },
+    },
+    gate('content:write', ({ locale }) => client.addLocale(locale)),
+  );
+
+  server.registerTool(
+    'remove_language',
+    {
+      description:
+        'Remove a translation-target language: drops the locale from settings AND cascade-deletes every page in that language\'s /<locale>/… subtree (and prunes its translation-catalog column). The default (main) language cannot be removed. Needs the content:delete capability.',
+      inputSchema: { locale: LocaleSchema },
+    },
+    gate('content:delete', ({ locale }) => client.removeLocale(locale)),
   );
 
   server.registerTool(

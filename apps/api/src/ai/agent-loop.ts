@@ -175,9 +175,9 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
         type: 'error',
         code: 'stuck',
         message:
-          'The assistant kept making tool calls that failed and isn’t recovering (it never completed a ' +
-          'successful edit). This usually means the selected model isn’t strong enough at tool use — try a ' +
-          'more capable model, or restate the request more simply.',
+          'The assistant kept making tool calls that failed and isn’t recovering. This usually means the ' +
+          'selected model isn’t strong enough at tool use — try a more capable model, or restate the ' +
+          'request more simply.',
       };
       return { state: 'error', messages };
     }

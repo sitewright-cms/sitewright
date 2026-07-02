@@ -506,6 +506,8 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     expect(msg).toContain('Expected `data` shape for kind "dataset"');
     // the derived shape must expose that dataset.fields is an ARRAY (the exact thing the model got wrong)
     expect(msg).toMatch(/fields\??:\s*array/);
+    // …and ONE level deeper so the model learns a field ITEM needs `name` (not the guessed `key`)
+    expect(msg).toMatch(/array<\{[^}]*\bname\b/);
     // a non-400 error is passed through untouched (no hint appended)
     const client2 = fakeClient({
       putContent: vi.fn(async () => {

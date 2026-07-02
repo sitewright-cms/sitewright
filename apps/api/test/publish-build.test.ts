@@ -703,6 +703,60 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
   });
 
+  it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {
+    // Regression: `copyMedia` skips images (they are generated on demand), so the preloader logo must
+    // resolve via `relImage` (records + materializes a thumbnail) — a bare `rel()` shipped a 404.
+    const logoPng = await renderTrustedSvgToPng(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#4f46e5"/><circle cx="256" cy="256" r="180" fill="#fff"/></svg>',
+      512,
+      512,
+    );
+    const logoAsset = {
+      kind: 'image' as const,
+      folder: '',
+      id: 'lg1',
+      filename: 'logo.png',
+      format: 'png',
+      bytes: logoPng.length,
+      width: 512,
+      height: 512,
+      hasAlpha: false,
+      animated: false,
+      original: 'logo.png',
+      url: '/media/acme/lg1/logo.png',
+    };
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      media: [logoAsset],
+      readMedia: async (id, file) => {
+        if (id === 'lg1' && file === 'logo.png') return logoPng;
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' }, logo: '/media/acme/lg1/logo.png' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { preloaderEffect: 'logo-pulse' } },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<h1>About</h1>' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The preloader <img> points at the MATERIALIZED lg thumbnail — never the bare original.
+    expect(home).toContain('class="pl-logo-img" src="_assets/lg1/logo-lg.webp"');
+    expect(home).not.toContain('src="_assets/lg1/logo.png"');
+    // And that thumbnail actually exists on disk in the export (not a dangling reference).
+    await expect(readFile(join(outDir, '_assets', 'lg1', 'logo-lg.webp'))).resolves.toBeTruthy();
+    // At depth 1 the src is rebased onto '../' and still resolves to the same materialized file.
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('class="pl-logo-img" src="../_assets/lg1/logo-lg.webp"');
+  });
+
   it('ships the back-to-top button + CSS + runtime BY DEFAULT (no setting needed)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

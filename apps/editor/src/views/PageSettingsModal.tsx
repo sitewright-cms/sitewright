@@ -105,7 +105,9 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
   const nav = v.navSlots.length
     ? {
         slots: v.navSlots,
-        ...(v.navTitle ? { title: v.navTitle } : {}),
+        // Menu label: persisted when set (the modal mirrors the title into it for new pages, and the
+        // field is required); if ever left blank the menu falls back to the page title at render.
+        ...(v.navTitle.trim() ? { title: v.navTitle.trim() } : {}),
         order: v.navOrder,
         ...(v.navDropdown ? { dropdown: true } : {}),
       }
@@ -246,6 +248,12 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(
     () => isCreate || isTranslated || !!initial.template || initial.rawHtml,
   );
+  // The menu label mirrors the Title for a NEW page until the author edits it directly — so a new
+  // page lands in the menu with a sensible, non-blank label without double-typing. In edit mode we
+  // never mirror (the page already has its own label).
+  const [navLabelEdited, setNavLabelEdited] = useState<boolean>(!isCreate);
+  // The menu label is only meaningful — and only persisted — when the page is actually in a menu.
+  const inMenu = v.navSlots.length > 0;
   // A navigation placeholder (kind:'link') has no page/code/route — the form drops slug, meta,
   // image, and the code/template controls, and shows a single link Target + new-tab toggle instead.
   const isLink = !isCreate && isLinkPage(page);
@@ -346,6 +354,9 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
       onSave={() =>
         onSubmit({
           ...v,
+          // A page in a menu MUST have a label (it's the menu item's text) — guarantee one by
+          // falling back to the page title when the author left it blank.
+          navTitle: inMenu && !v.navTitle.trim() ? v.title : v.navTitle,
           parent: effectiveParent,
           ...(isCreate ? { locale: createLocale === defaultLocale ? '' : createLocale } : {}),
         })
@@ -367,7 +378,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 aria-label={isLink ? 'Placeholder name' : 'Page title'}
                 className={`mt-1.5 font-normal ${glassInput}`}
                 value={v.title}
-                onChange={(e) => patch({ title: e.target.value })}
+                onChange={(e) => {
+                  const title = e.target.value;
+                  // Mirror into the (required) menu label until the author sets it explicitly.
+                  patch(navLabelEdited ? { title } : { title, navTitle: title });
+                }}
               />
             </label>
             {!isLink && (
@@ -581,18 +596,33 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
             </p>
           )}
-          {v.navSlots.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="flex flex-col text-[11px] text-slate-500">
-                Menu label
-                <input
-                  aria-label="Nav menu label"
-                  className={glassInput}
-                  value={v.navTitle}
-                  placeholder={v.title}
-                  onChange={(e) => patch({ navTitle: e.target.value })}
-                />
-              </label>
+          {/* The menu label is ALWAYS shown and required — every page in a menu needs a label. It
+              mirrors / defaults to the page title, so it's pre-filled but overridable. (The Order
+              field moved to Advanced for concrete pages; a link placeholder keeps its Order here
+              because it has no Advanced section.) */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="flex flex-col text-[11px] text-slate-500">
+              <span className="flex items-center gap-1">
+                Menu label {inMenu && <span className="text-rose-500" aria-hidden>*</span>}
+              </span>
+              <input
+                aria-label="Nav menu label"
+                className={glassInput}
+                required={inMenu}
+                value={v.navTitle}
+                placeholder={v.title || 'e.g. Home, Services, About'}
+                onChange={(e) => {
+                  setNavLabelEdited(true);
+                  patch({ navTitle: e.target.value });
+                }}
+              />
+              {inMenu ? (
+                <span className="mt-1 text-slate-400">Defaults to the page title if left blank.</span>
+              ) : (
+                <span className="mt-1 text-slate-400">Only used when the page is in a menu (tick one above).</span>
+              )}
+            </label>
+            {isLink && (
               <label className="flex flex-col text-[11px] text-slate-500">
                 Order
                 <input
@@ -606,6 +636,8 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                   }}
                 />
               </label>
+            )}
+            {v.navSlots.length > 0 && (
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input
                   type="checkbox"
@@ -616,8 +648,8 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 />
                 Show child pages in dropdown
               </label>
-            </div>
-          )}
+            )}
+          </div>
           {v.navDropdown && (
             <p className="text-[11px] text-slate-400">
               {childCount > 0
@@ -735,6 +767,24 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                     Raw HTML
                     <SectionHelp tip="Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts)." />
                   </span>
+                </label>
+
+                {/* Menu order lives here (an occasional tweak) — usually you just drag pages in the list. */}
+                <label className="flex flex-col text-xs font-bold text-slate-700">
+                  <span className="flex items-center gap-1.5">
+                    Menu order
+                    <SectionHelp tip="Position among sibling menu items (lower numbers come first). Usually set by dragging pages in the sidebar list instead." />
+                  </span>
+                  <input
+                    type="number"
+                    aria-label="Nav order"
+                    className={`mt-1.5 w-32 font-normal ${glassInput}`}
+                    value={v.navOrder}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(n)) patch({ navOrder: n });
+                    }}
+                  />
                 </label>
               </div>
             )}

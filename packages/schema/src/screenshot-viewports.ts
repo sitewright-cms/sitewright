@@ -45,6 +45,14 @@ export const ScreenshotViewportNameSchema = z.enum(
  */
 export const DEFAULT_SCREENSHOT_VIEWPORTS: readonly ScreenshotViewportName[] = ['fullhd', 'tablet', 'mobile'];
 
+/**
+ * The default for a plain `preview_page` (the agent's "let me look" render): desktop + mobile only —
+ * two images instead of three, to keep the token cost of design iteration down. The agent can still
+ * request `tablet` or all five for a fuller sweep. NOTE: `compare_to_source` (the nativizer fidelity
+ * check) keeps the full {@link DEFAULT_SCREENSHOT_VIEWPORTS} — do NOT route it through this.
+ */
+export const PREVIEW_DEFAULT_VIEWPORTS: readonly ScreenshotViewportName[] = ['fullhd', 'mobile'];
+
 export function isScreenshotViewportName(v: string): v is ScreenshotViewportName {
   return (SCREENSHOT_VIEWPORT_NAMES as readonly string[]).includes(v);
 }

@@ -90,6 +90,38 @@ describe('provider adapters (streaming tool-use)', () => {
     expect(events).toContainEqual({ type: 'usage', usage: { inputTokens: 12, outputTokens: 4 } });
     expect(events).toContainEqual({ type: 'stop', reason: 'tool_use' });
   });
+
+  it('OpenAI-compat: emits each tool call ONCE even when finish_reason repeats across chunks (Gemini/OpenRouter)', async () => {
+    // Gemini / some OpenRouter-normalised streams send `finish_reason:"tool_calls"` in more than one
+    // chunk. The old code emitted the accumulated call on every such chunk → the agent ran everything
+    // twice. Now we emit once, after the stream ends.
+    const stream = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"put_page","arguments":"{\\"a\\":1}"}}]}}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":3}}',
+      'data: [DONE]',
+      '',
+    ].join('\n\n');
+    const provider = new OpenAiAgentProvider('k', 'm', 'https://x/v1', async () => sseResponse(stream));
+    const events = await collect(provider.runTurn({ system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [] }));
+    const toolCalls = events.filter((e) => e.type === 'tool_call');
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]).toEqual({ type: 'tool_call', id: 'call_1', name: 'put_page', input: { a: 1 } });
+    expect(events.filter((e) => e.type === 'stop')).toEqual([{ type: 'stop', reason: 'tool_use' }]);
+  });
+
+  it('OpenAI-compat: still emits a completed tool call when the provider mislabels finish_reason as "stop"', async () => {
+    const stream = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c2","function":{"name":"get_page","arguments":"{}"}}]}}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+      '',
+    ].join('\n\n');
+    const provider = new OpenAiAgentProvider('k', 'm', 'https://x/v1', async () => sseResponse(stream));
+    const events = await collect(provider.runTurn({ system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [] }));
+    expect(events.filter((e) => e.type === 'tool_call')).toHaveLength(1);
+    expect(events).toContainEqual({ type: 'stop', reason: 'tool_use' });
+  });
 });
 
 describe('agent loop', () => {

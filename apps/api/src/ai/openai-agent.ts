@@ -101,18 +101,25 @@ export class OpenAiAgentProvider implements AgentProvider {
         if (tc.function?.arguments) cur.args += tc.function.arguments;
         toolCalls.set(idx, cur);
       }
+      // Only RECORD the stop reason here — do NOT emit tool calls inside the loop. Gemini / some
+      // OpenRouter-normalised streams repeat `finish_reason` across chunks (or send it alongside a
+      // trailing usage chunk), which previously re-emitted every accumulated tool call → the agent ran
+      // each action twice (double tokens + duplicate edits). Emit exactly once, after the stream ends.
       if (choice.finish_reason) {
-        if (choice.finish_reason === 'tool_calls') {
-          for (const c of [...toolCalls.values()]) {
-            yield { type: 'tool_call', id: c.id || `call_${c.name}`, name: c.name, input: safeJson(c.args) };
-          }
-          stop = 'tool_use';
-        } else if (choice.finish_reason === 'length') {
-          stop = 'max_tokens';
-        } else {
-          stop = 'end_turn';
-        }
+        stop =
+          choice.finish_reason === 'length' ? 'max_tokens' : choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn';
       }
+    }
+
+    // Emit the accumulated tool calls ONCE. Skip on a `length` truncation: a cut-off tool call is
+    // malformed and must be dropped (it surfaces as a max_tokens error), matching the Anthropic path.
+    // Presence of a completed tool call drives `tool_use` even if the provider mislabelled finish_reason
+    // as `stop` (some do) — otherwise a real tool call would be silently swallowed as "done".
+    if (toolCalls.size > 0 && stop !== 'max_tokens') {
+      for (const c of toolCalls.values()) {
+        yield { type: 'tool_call', id: c.id || `call_${c.name}`, name: c.name, input: safeJson(c.args) };
+      }
+      stop = 'tool_use';
     }
 
     yield { type: 'usage', usage };

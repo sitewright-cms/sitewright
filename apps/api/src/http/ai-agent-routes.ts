@@ -8,7 +8,7 @@ import type { AiUsageRepository } from '../repo/ai-usage.js';
 import type { AgentProvider, AgentMessage } from '../ai/agent-provider.js';
 import { runAgentLoop } from '../ai/agent-loop.js';
 import { McpToolBridge } from '../ai/tool-bridge.js';
-import { mintAgentToken, revokeAgentToken } from '../ai/agent-token.js';
+import { mintAgentToken, revokeAgentToken, clearAgentTokenActive } from '../ai/agent-token.js';
 import type { AgentGrantsRepository } from '../repo/agent-grants.js';
 
 /** First instant of the current UTC month — the basis for monthly token quotas. */
@@ -256,11 +256,15 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       bridge = new McpToolBridge(app, minted.token);
       tools = await bridge.listTools(new Set(capabilities), WITHHELD_TOOLS);
     } catch {
-      if (minted) await revokeAgentToken(deps.db, minted.keyId).catch(() => {});
+      if (minted) {
+        clearAgentTokenActive(minted.token);
+        await revokeAgentToken(deps.db, minted.keyId).catch(() => {});
+      }
       convo.busy = false;
       return reply.code(502).send({ error: 'failed to start the assistant' });
     }
     const agentKeyId = minted.keyId;
+    const agentToken = minted.token;
 
     reply.hijack();
     const raw = reply.raw;
@@ -326,6 +330,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       clearInterval(heartbeat);
       convo.busy = false;
       convo.updatedAt = Date.now();
+      clearAgentTokenActive(agentToken);
       await revokeAgentToken(deps.db, agentKeyId).catch(() => {});
       if (raw.writable) raw.end();
     }

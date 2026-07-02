@@ -162,6 +162,7 @@ import type { AgentProvider } from '../ai/agent-provider.js';
 import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
 import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
 import { buildAgentProvider } from '../ai/build-provider.js';
+import { isActiveAgentToken } from '../ai/agent-token.js';
 import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore } from '../publish/store.js';
@@ -1136,6 +1137,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
     keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
+    // Exempt the server-side agent loop's own scoped token: one "build the page in stages" turn fires
+    // many rapid tool calls (each an in-process /mcp + content inject on the same bearer) and would
+    // otherwise self-throttle into spurious 429s the model reads as hard failures. Only server-minted,
+    // in-flight agent tokens are ever in this set (they never reach the browser), and this skips ONLY
+    // rate-limiting — auth still applies. The loop stays bounded by iterations + token metering.
+    allowList: (req) => isActiveAgentToken(bearerToken(req)),
   });
 
   // Resolve the session user ONCE per request and memoize it for the request's lifetime (keyed by the

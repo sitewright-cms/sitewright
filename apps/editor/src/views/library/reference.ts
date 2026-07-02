@@ -167,6 +167,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '<p>{{sw-truncate summary 80}}</p>',
       },
       {
+        id: 'h-json',
+        syntax: '{{sw-json value}}',
+        name: 'sw-json',
+        keywords: 'json stringify pretty print debug inspect object array data dump',
+        description:
+          'Pretty-prints any value as indented JSON — an object, array, string, number, or boolean. For INSPECTING/DEBUGGING data: drop it in a <pre> to read a value while building (e.g. <pre>{{sw-json page.data}}</pre>). Output is HTML-escaped like every binding, so it is NOT valid inside a <script type="application/ld+json"> block (quotes become &quot;) — use it to read, not to emit machine-parsed JSON. Empty for a missing or non-serializable (circular) value; the output is length-capped.',
+        args: [{ name: 'value', desc: 'Any bound value to serialize.' }],
+        example: '<pre>{{sw-json page.data}}</pre>\n{{sw-json company.social}}',
+      },
+      {
         id: 'h-active',
         syntax: '{{#if (sw-active path)}}…{{/if}}',
         name: 'sw-active',
@@ -249,16 +259,6 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
       },
       {
-        id: 'h-consent',
-        syntax: '{{sw-consent}}',
-        name: 'sw-consent',
-        keywords: 'cookie consent banner gdpr privacy preferences categories analytics marketing tracking',
-        description:
-          'CONSENT MANAGER: the cookie-consent banner — first layer (Accept all / Reject all / Customize) plus an expandable preferences panel with per-category toggles (Strictly necessary, Functional, Analytics, Marketing; necessary is always on). The choice is remembered in localStorage and re-prompts when you bump the version. Enable it under Settings → Website → Consent; with consent OFF it renders nothing, so it is safe to leave in. Drop it ONCE in the bottom slot. All copy localizes via the reserved consent_* translation keys.',
-        example: '{{sw-consent}}',
-        note: 'Front-end only. It broadcasts the decision (a `sw:consentchange` event + `window.swConsent`) so third-party scripts/embeds can gate on it; the actual gating arrives in a later update. The runtime ships only on sites that use it.',
-      },
-      {
         id: 'h-consent-settings',
         syntax: '{{sw-consent-settings [label="…"] [class="…"]}}',
         name: 'sw-consent-settings',
@@ -267,16 +267,6 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           'A button that RE-OPENS the consent preferences (for a footer “Cookie settings” link so visitors can change or withdraw consent). Needs consent enabled; with it off it renders nothing. The label localizes via the reserved `consent_settings` key.',
         example: '{{sw-consent-settings class="link"}}',
         note: 'Pairs with {{sw-consent}}. Any element carrying data-sw-consent-open re-opens the banner too.',
-      },
-      {
-        id: 'h-embed',
-        syntax: '{{sw-embed "youtube"|"google-maps" "id-or-url" [category="…"] [title="…"] [ratio="16/9"] [poster="…"]}}',
-        name: 'sw-embed',
-        keywords: 'youtube video map google maps embed iframe click to load consent privacy gdpr cookie',
-        description:
-          'A CLICK-TO-LOAD media embed. Instead of loading a YouTube video or Google Map on page view (which sets third-party cookies), it shows a lightweight placeholder; the real iframe loads only after the visitor consents to its category (via the cookie banner) or clicks “Load”. Privacy-first by default, and the page’s Content-Security-Policy is widened automatically to allow just that provider. Pass a YouTube video id (or any YouTube URL) / a Maps place query (or a Maps embed URL).',
-        example: '{{sw-embed "youtube" "dQw4w9WgXcQ" title="Our story"}}',
-        note: 'Works with or without the consent manager (always click-to-load). “Always allow” on the placeholder remembers the category for every embed. Defaults: YouTube → marketing + 16/9, Maps → functional + 4/3.',
       },
       {
         id: 'h-theme-toggle',
@@ -532,7 +522,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
           '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
           '{{/each}}</ul>',
-        note: 'Every scheme keeps WCAG contrast for ANY brand color and flips correctly in dark mode. Want your own scheme? Leave Nav effect "None" in Website settings and write it in Custom CSS (target .active / the nav links).',
+        note: 'Every scheme keeps WCAG contrast for ANY brand color and flips correctly in dark mode. A per-element sw-nav-* on a specific .menu OVERRIDES the site-wide pick for THAT menu (they never collide) — so a custom menu like a scrollspy table of contents can use its own effect (e.g. sw-nav-line-bottom) while the rest of the site keeps the Website-settings scheme. Want your own scheme? Leave Nav effect "None" in Website settings and write it in Custom CSS (target .active / the nav links).',
       },
       {
         id: 'fx-btn',
@@ -546,6 +536,55 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<button class="btn btn-primary sw-btn-fx-fill-slide sw-btn-shape-pill">Get started</button>\n' +
           '<a class="btn btn-ghost sw-btn-fx-outline-fill sw-btn-accent-primary" href="/contact">Contact</a>',
         note: 'Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only. The ripple + magnetic/spotlight load a tiny runtime automatically.',
+      },
+      {
+        id: 'fx-sticky-header',
+        syntax: 'Website settings → Sticky header · class="sw-top-padding" · --sw-header-h · html.sw-scrolled',
+        name: 'Sticky header (sw-top-padding)',
+        keywords:
+          'sticky fixed header nav top pinned hide shrink scroll offset padding sw-top-padding overlay hero bleed entrance animation slide fade appearance sw-header-h sw-scrolled',
+        description:
+          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls — Pinned (always visible), Hide on scroll down, or Shrink on scroll. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar — UNLESS that section already has enough top padding to clear the ~75px bar (e.g. pt-24 / py-24 = 96px), then you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset reads the --sw-header-h token (preset to the default header height, 4.5rem mobile / 4.75rem desktop); override it with :root{--sw-header-h:5rem} in Custom CSS for a custom header. State hooks for your own scroll CSS: html.sw-scrolled (set once scrolled — shrink + hide) and html.sw-nav-hidden (hide-on-scroll only — the bar is translated off-screen). The ENTRANCE animation is author-controlled — write it in Custom CSS (see the example).',
+        example:
+          '{{! Website settings → Sticky header: Shrink. Add sw-top-padding ONLY where the first }}\n' +
+          '{{! section does not already clear the bar (pages with pt-24 / py-24 need nothing): }}\n' +
+          '<section class="sw-top-padding">…first section, cleared below the fixed header…</section>\n' +
+          '\n{{! Full-bleed hero that bleeds under the header — offset the inner text only: }}\n' +
+          '<section data-sw-component="shader-bg">\n' +
+          '  <div class="sw-top-padding mx-auto max-w-3xl">…hero text, clears the header…</div>\n' +
+          '</section>\n' +
+          '\n/* Custom CSS → ENTRANCE: slide the bar in on load. Coordinate with the preloader */\n' +
+          '/* (the overlay toggles .loading and stays in the DOM) so it plays AFTER it clears: */\n' +
+          '@keyframes sw-hdr-in{from{translate:0 -110%;opacity:0}to{translate:0 0;opacity:1}}\n' +
+          '@media (prefers-reduced-motion:no-preference){\n' +
+          '  [data-sw-preloader].loading ~ #main-nav{visibility:hidden}\n' +
+          '  [data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\n' +
+          '}\n' +
+          '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */',
+        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition — and note a transform on #main-nav makes it the containing block for position:fixed children, so a full-height nav drawer/overlay must set its own h-dvh (the default mobile drawer already does).',
+      },
+      {
+        id: 'fx-scrollspy',
+        syntax: 'Website settings → ScrollSpy · data-sw-scrollspy · <a href="#id"> → <section id="id">',
+        name: 'ScrollSpy (highlight section in view)',
+        keywords:
+          'scrollspy scroll spy active current section in view one-page landing anchor nav navigation highlight aria-current table of contents toc data-sw-scrollspy',
+        description:
+          'Highlights the nav link whose in-page section is currently scrolled into view — for one-page / landing layouts. It toggles the SAME active state the nav uses (.active + aria-current="true"), so pair it with a Nav effect (or any .active styling) to see the highlight. Turn it on site-wide in Website settings → ScrollSpy (it governs the main + mobile nav), OR add the data-sw-scrollspy attribute to any custom on-page nav (e.g. a sidebar table of contents). Links target sections by id: a link to #about activates when <section id="about"> is in view. Path-prefixed anchors work (/#about, /en/#about) — they spy only on the page that has #about, so a global header can link home sections from anywhere. A nav with in-page sections takes over its own active state (it clears .active from every link, then lights the in-view one); a nav without any is left alone (normal route highlighting). Above the first section a hashless "Home" link lights; at the page bottom the last section lights. The trigger line auto-offsets by the sticky header (--sw-header-h).',
+        example:
+          '{{! Custom on-page nav (table of contents) — add data-sw-scrollspy to the list: }}\n' +
+          '<ul class="menu sw-nav-line-bottom" data-sw-scrollspy>\n' +
+          '  <li><a href="#intro">Intro</a></li>\n' +
+          '  <li><a href="#features">Features</a></li>\n' +
+          '  <li><a href="#pricing">Pricing</a></li>\n' +
+          '</ul>\n' +
+          '<section id="intro">…</section>\n' +
+          '<section id="features">…</section>\n' +
+          '<section id="pricing">…</section>\n' +
+          '\n{{! Or turn ScrollSpy on in Website settings to spy the main + mobile nav site-wide. }}\n' +
+          '{{! A global header can use path-prefixed anchors so they work from any page: }}\n' +
+          '<a href="/#features">Features</a>',
+        note: 'ScrollSpy only toggles the class — give .active a visible style via a Nav effect or Custom CSS. It is highlight-only; the smooth-scroll on click is handled separately. Without JavaScript the links still work, just with no auto-highlight; under reduced motion scrollspy still highlights (it toggles classes, not animation — the indicator’s own transition is gated by the nav effect’s reduced-motion CSS).',
       },
     ],
   },

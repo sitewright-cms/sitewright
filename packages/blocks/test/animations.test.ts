@@ -56,6 +56,10 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("classList.add('aos-animate')");
   });
 
+  it('EXCLUDES Banner roots from the scroll observer (a data-aos Banner drives its own entrance on reveal)', () => {
+    expect(ANIMATION_JS).toContain('[data-aos]:not([data-sw-component="banner"])');
+  });
+
   it('clamps delay/duration and resolves easing through a fixed allowlist (no style injection)', () => {
     expect(ANIMATION_JS).toContain('Math.max(0,Math.min(v,5000))');
     expect(ANIMATION_JS).toContain('parseInt');

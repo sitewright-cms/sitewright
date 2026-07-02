@@ -12,6 +12,11 @@ tool and relay its URL + code to the user to approve in their browser (ask them 
 open to watch your changes live), then call get_scope again to confirm before continuing. Use
 \`switch_project\` to connect to a different project.
 
+KEEP CHAT REPLIES SHORT + SNAPPY — you're talking to a non-developer in a small chat panel. Confirm
+what you did in a line or two ("Added a 3-column footer with your offices."), not a long feature
+breakdown; give a detailed outline ONLY when it's genuinely important or the user asks. Your tool
+calls already show the work — don't narrate every step.
+
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
 renders an empty body. Before you lay out a page, call \`get_guide("design")\` for the section
@@ -59,10 +64,12 @@ In \`source\`:
   {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
   parent (absent at the tree root); and {{#each page.children}} for its CHILD pages — a section
   index or a blog overview that lists its sub-pages (each child has .title/.slug/.path/.data).
-  CROSS-PAGE: read ANOTHER page's data by SLUG path with
-  {{ pages.<slug>.<slug>….data.<key> }} — walk the tree from home, e.g. {{ pages.services.seo.data.header_title }}
-  (and {{ sw-url pages.services.path }} to link it). Same-locale (German page → German slugs,
-  pages.leistungen.seo); each node also has .title/.slug/.path/.locale; an unknown path renders empty.
+  {{ page.template }} = its template id; {{ page.code }} = its rendered source HTML.
+  CROSS-PAGE: read ANOTHER page by SLUG path from home; a page's OWN fields are under ._attributes (so ANY
+  slug is legal), e.g. {{ pages.services.seo._attributes.data.header_title }},
+  {{ sw-url pages.services._attributes.path }}, {{#each pages.services._attributes.children}}. pages = the
+  HOME node; same-locale (pages.leistungen.seo); ._attributes also has
+  .title/.slug/.path/.locale/.image/.description/.template; unknown path → empty.
   {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
@@ -70,10 +77,10 @@ In \`source\`:
   may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
   {{<field>.<key>}}), so an entry can hold structured/nested data.
 - CONDITIONALS / COMPARISON: {{#if x}}/{{#unless x}} are built in; for value comparison use {{#if (eq a b)}}
-  / {{#if (ne a b)}} (=== / !==). Handlebars has NO other built-in comparison, and calling a helper that
-  is NOT registered HARD-FAILS the whole render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick
-  to eq/ne (+ the {{sw-*}} helpers in get_reference). For "is this the current page?" use {{#if (sw-active
-  path)}} (route-aware), not eq.
+  / {{#if (ne a b)}} (=== / !==), and {{sw-json value}} pretty-prints any value as JSON (a debug <pre>; escaped).
+  Handlebars has NO other built-in comparison, and calling a helper that is NOT registered HARD-FAILS the whole
+  render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick to eq/ne (+ the {{sw-*}} helpers, incl. {{sw-json}}, in
+  get_reference). For "is this the current page?" use {{#if (sw-active path)}} (route-aware), not eq.
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -124,6 +131,30 @@ Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`so
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
 pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
+BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
+single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
+max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
+(chrome + 2-3 sections), then get_page it and put_page with the next sections appended, and REPEAT
+until the page is complete. Do NOT stop to ask "shall I continue" between sections — keep calling
+tools until the page is DONE or you are genuinely blocked; only then end your turn.
+PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
+preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
+— after building a meaningful chunk of a new page, and once before publishing — not after every tool
+call. (Imported-page fidelity work is the exception: keep iterating with compare_to_source until the
+build matches the original.)
+MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
+must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
+hard-code final copy as plain inline text. USE DATASETS for REPEATING content (service cards, team,
+FAQs, testimonials, logos, pricing tiers): put_content a dataset + its entries and render them with
+{{#each dataset.<slug>}} — never hand-copy the same block N times (that isn't editable and bloats the
+page). get_guide covers datasets + the editable-binding model.
+USE THE PLATFORM'S INTERACTIVE COMPONENTS wherever they make a layout richer — carousels/sliders,
+lightbox galleries, tabs, accordions, banners, animated shader/gradient backgrounds, date pickers —
+rather than a flat wall of static sections; prefer a first-party component over hand-rolling. Call
+get_components (contracts + skeletons) before laying out a page.
+USE ICONS: reach for {{sw-icon "name"}} (Lucide) for iconography — a phone / mail / map-pin in contact
++ footer blocks, a check in feature lists, a chevron/arrow on links — plus brand:<slug> logos and
+{{sw-flag}} country flags. Don't ship an icon-less contact / footer / feature / stats section.
 DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
 often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
@@ -194,10 +225,15 @@ CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not
   },
   components: {
     title: "Components & forms",
-    summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, notice, datetimepicker, shader-bg) + Forms",
+    summary: "interactive widgets (carousel, tabs, lightbox, modal, banner, datetimepicker, shader-bg) + Forms",
     body: `
+USE THE PLATFORM COMPONENTS to make layouts richer + more attractive wherever they fit — reach for a
+hero/testimonials CAROUSEL, a LIGHTBOX gallery, TABS or a native accordion, an animated SHADER /
+gradient background, a BANNER, a date/time picker — instead of a flat wall of static sections. Prefer
+a first-party component over hand-rolling the same effect; call get_components to see what's available
+before laying out a page.
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
-data-sw-component="carousel|tabs|lightbox|modal|cookie-consent|notice|datetimepicker" — author semantic HTML with
+data-sw-component="carousel|tabs|lightbox|modal|banner|datetimepicker" — author semantic HTML with
 data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades
 to usable HTML without JS — never add your own script). Call the \`get_components\` tool for the
 machine-readable contracts: markers, parts, config attributes, and copy-paste markup skeletons.
@@ -229,15 +265,20 @@ Quick rules vs the similar-looking DaisyUI classes:
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
   Recipes to copy: modal-basic (link trigger + editable body) / modal-confirm (forced-choice).
-- Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
-  \`bottom\` slot, with the \`hidden\` attribute authored on it. Recipe to copy: cookie-consent.
-- Notice / announcement / promo → data-sw-component="notice" (the free-content sibling of
-  cookie-consent): YOU author the body + action buttons; the runtime reveals it and remembers the
-  dismissal. data-sw-part="dismiss" (frequency-bound) / "dismiss-forever" ("don't show again") /
+- Cookie / consent banner → DON'T author one. Enable the Consent Manager (website.consent.enabled)
+  and the banner AUTO-INJECTS on every page (it also gates third-party scripts/iframes + derives CSP).
+  See the consent guide.
+- Banner / announcement / promo → data-sw-component="banner" (a free-content dismissible banner —
+  NOT the consent banner): YOU author the body + action buttons; the runtime reveals it and remembers
+  the dismissal. data-sw-part="dismiss" (frequency-bound) / "dismiss-forever" ("don't show again") /
   "remind" (snooze data-remind-days). data-frequency="once|session|days:N|always", data-position
   (bottom/top/corners/center/inline), data-delay (ms or "scroll"); give each a UNIQUE
-  data-sw-notice-id. Place ONCE per notice (a chrome slot OR a single page body). Recipes to copy:
-  notice-bar / notice-card / notice-modal.
+  data-sw-banner-id. Place ONCE per banner (a chrome slot OR a single page body). ENTRANCE: a fade+rise
+  by default, or add data-aos="fade-up|zoom-in|flip-left|…" (+ data-aos-delay/-duration/-easing) — the
+  dismiss reverses it. RICH BACKGROUND (photo / gradient / nested data-sw-component="shader-bg"): an
+  inline banner is position:static, so put the absolute media + scrim in an INNER relative wrapper (else
+  they escape the box), give the root overflow-hidden + a light text colour. Recipes to copy:
+  banner-bar / banner-card / banner-modal.
 - DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):
   a CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
   one field, shown as a DUAL-PANEL two-month view) | "datetime" | "time". Full control via data-*
@@ -342,7 +383,10 @@ NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for
 \`box-solid\`,\`box-fill-left\`,\`box-fill-up\`,\`box-draw\`,\`box-shadow\`,\`line-bottom\`,\`line-sliding-bottom\`,
 \`line-top-down\`,\`line-squiggle\`,\`sliding-pill\`,\`glass-pill\`,\`dot-to-pill\`,\`highlighter\`,\`brackets\`,
 \`brackets-curly\`,\`blob\`,\`chevron\`,\`corner-ticks\`,\`spotlight-sliding\`). Nav colors auto-derive from
-the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-pill\` fill a surface.
+the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-pill\` fill a surface. A
+\`sw-nav-*\` class on a SPECIFIC \`.menu\` OVERRIDES the site-wide website.effects.navEffect for that menu
+(they don't collide) — so a custom menu (e.g. a scrollspy table of contents) can run its OWN effect while
+the rest of the site keeps the site-wide one.
 
 BUTTONS: every \`.btn\` already has a BASELINE — a ripple on click, a small hover lift + shadow, and its
 background fills to the hover ACCENT (default secondary). Layer three independent axes as classes (each
@@ -356,6 +400,52 @@ works on a single .btn OR site-wide via website.effects):
 FACE = the daisyUI variant (\`btn-primary\`/\`btn-ghost\`=transparent/\`btn-outline\`/\`btn-soft\`). A class on
 a button OVERRIDES the site default for that axis. \`magnetic\`/\`spotlight\` (+ the ripple) load a tiny
 runtime automatically. Prefer these over hand-rolled hover CSS.
+
+STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
+so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away
+on scroll-down, back on scroll-up), or \`shrink\` (condenses past a threshold). 'none' (default) = a normal
+static header. THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
+first section of a page so its content clears the bar (without it, content sits UNDER the header) — UNLESS
+that section already has enough top padding to clear the ~75px bar (e.g. \`pt-24\`/\`py-24\` = 96px), in which
+case you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section
+flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
+the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
+desktop = the default header height; a custom header of a non-standard height overrides it with
+\`:root{--sw-header-h:5rem}\` in website.criticalCss). The header sits at z-index 30 (below the mobile drawer
++ back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once scrolled,
+shrink + hide modes) and \`html.sw-nav-hidden\` (hide-on-scroll only — header translated off-screen).
+
+STICKY HEADER ENTRANCE animation (the platform keeps entrance AUTHOR-CONTROLLED — write it in
+website.criticalCss). Simplest (no preloader): \`@media(prefers-reduced-motion:no-preference){@keyframes
+sw-hdr-in{from{translate:0 -110%;opacity:0}to{translate:0 0;opacity:1}}#main-nav{animation:sw-hdr-in .6s
+cubic-bezier(.16,1,.3,1) both}}\`. With a PRELOADER enabled, COORDINATE it so the bar slides in AFTER the
+overlay clears (otherwise it animates hidden behind it): the preloader toggles class \`loading\` on the
+overlay \`[data-sw-preloader]\` (a sibling of #main-nav that STAYS in the DOM), so add
+\`[data-sw-preloader].loading ~ #main-nav{visibility:hidden}\` and
+\`[data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
+\`animation\` (NOT \`transition\`) so the entrance doesn't clobber the shrink mode's own \`#main-nav{transition}\`.
+GOTCHA: a transform/translate on #main-nav (an entrance like the above) makes it the CONTAINING BLOCK for
+its \`position:fixed\` children — the default mobile-drawer recipe pins itself with \`h-dvh\` so it's unaffected,
+but a CUSTOM full-height nav drawer/overlay MUST set its own viewport height (\`h-dvh\`) or it gets clamped to
+the header's height.
+
+SCROLLSPY (highlight the section in view): on a one-page / landing layout, highlight the nav link whose
+in-page section is currently scrolled into view. It toggles the SAME active state the nav uses (\`.active\`
++ \`aria-current="true"\`), so pair it with a nav effect (or any \`.active\` styling) to actually SEE the
+highlight. Two ways to turn it on: (1) site-wide — set website.effects.scrollSpy: true → it governs the
+main + mobile nav (\`#main-nav\`); (2) per element — add the \`data-sw-scrollspy\` attribute to ANY nav
+container (e.g. a custom on-page table-of-contents \`<ul class="menu" data-sw-scrollspy>\`). Links point at
+sections by id: \`<a href="#about">\` → \`<section id="about">\`. PATH-PREFIXED anchors work too
+(\`<a href="/#about">\`, \`<a href="/en/#about">\`) — they spy only on the page that actually has \`#about\`
+(so a global header can link to home sections from any page). RULES: a link is a target only if its
+section EXISTS on the current page (anchors only — plain route links are ignored). A nav that HAS in-page
+sections takes over its own active state (it clears \`.active\` from every link, including route links, then
+lights the in-view one); a nav with NO in-page sections is left alone (normal route highlighting). Above
+the first section a hashless self-link (a "Home" item) lights; at the page bottom the last section's link
+lights. The trigger line auto-offsets by the sticky header (\`--sw-header-h\`). No-JS: the links still work,
+they just carry no auto-highlight. Reduced motion: scrollspy STILL highlights — it toggles classes, not
+animation; the indicator's own transition is separately gated by the nav effect's prefers-reduced-motion
+CSS. Smooth-scroll on click is already handled — scrollspy only manages the highlight.
 
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
@@ -460,29 +550,39 @@ prefixed by the Corporate-Identity name ("Hi <name> — …").
     title: "Cookie consent & third-party gating",
     summary: "a cookie banner that loads analytics/chatbots/embeds ONLY after consent (+ derives the CSP)",
     body: `
-CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. Turn it on
-with website.consent.enabled, then place {{sw-consent}} ONCE in the bottom slot. It shows a banner
-(Accept all / Reject all / Customize) + a per-category preferences panel: Strictly necessary (always on),
-Functional, Analytics, Marketing. The choice is remembered (versioned localStorage). Add a footer
-"Cookie settings" re-open link with {{sw-consent-settings}}.
+CONSENT MANAGER — a front-end cookie banner that ACTUALLY gates third-party code by category. It helps a site
+meet GDPR (Art. 6/7 — a lawful basis + freely-given, informed consent) and the ePrivacy "Cookie Law" (Art.
+5(3) — PRIOR consent before any cookie/tracker is set): third-party embeds (YouTube/Maps) + scripts (GA/chat)
+are BLOCKED until the visitor consents by category, withdrawal is one click, and nothing third-party loads
+before consent. (It's a tool to help comply — a privacy policy + a lawful basis are still on you.) Just turn it
+on with website.consent.enabled — the banner is AUTO-INJECTED on every page (you do NOT add a consent placeholder). It shows a banner (Accept all / Reject all / Customize) + a per-category
+preferences panel: Strictly necessary (always on), Functional, Analytics, Marketing. The choice is remembered
+(versioned localStorage). Add a footer "Cookie settings" re-open link with {{sw-consent-settings}} (or a plain
+<a href="#sw-consent">).
 ALL banner COPY is TRANSLATABLE — it lives in website.translations under the reserved consent_* keys
 (consent_title, consent_intro, consent_accept_all, consent_reject_all, consent_customize, consent_save,
 consent_necessary[_desc], consent_functional[_desc], consent_analytics[_desc], consent_marketing[_desc],
-consent_settings, consent_privacy). website.consent holds only STRUCTURE:
+consent_settings, consent_privacy, consent_allow_once, consent_always_allow, consent_embed_note).
+website.consent holds only STRUCTURE:
   consent: { enabled:true, version:1, layout:"bar"|"box", denyButton:true, privacyHref:"/privacy",
-             categories:["functional","analytics","marketing"],
+             categories:["functional","analytics","marketing"], defaultEmbedCategory:"functional",
              integrations:[ {id:"ga", name:"Google Analytics", category:"analytics", preset:"ga4",
                               measurementId:"G-XXXXXXX"},
                             {id:"chat", name:"Support chat", category:"functional", preset:"custom",
-                              src:"https://widget.example.com/c.js"} ] }
+                              src:"https://widget.example.com/c.js", frameOrigins:["*.example.com"]} ] }
 INTEGRATIONS = the third-party scripts to gate. Each loads ONLY after its category is consented. Presets:
-ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra CSP hosts in \`origins\`). On
-publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these origins — no manual
-allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
-CLICK-TO-LOAD EMBEDS: instead of a raw YouTube/Maps iframe (which loads on view + sets cookies), use
-{{sw-embed "youtube" "<video-id-or-url>"}} or {{sw-embed "google-maps" "<place-or-embed-url>"}} — it shows a
-placeholder and loads the iframe only after consent or a click, and the page's frame-src CSP is derived
-automatically. Embeds work even with consent off (pure click-to-load). Optional: category= / title= / ratio=.
+ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra script/connect CSP hosts in
+\`origins\`, and — if the SDK injects its OWN widget iframe like a chat bubble — its frame-src hosts in
+\`frameOrigins\`). On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
+origins — no manual allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
+EMBEDS / IFRAMES: there is NO embed helper — just paste the provider's normal <iframe …> (YouTube, Vimeo,
+Maps, Calendly, …). With the manager enabled, ANY cross-origin iframe is automatically HELD behind an
+"Allow once / Always allow" placeholder until consent, and its frame-src CSP origin is derived automatically.
+It falls into \`defaultEmbedCategory\` (default "functional"); override one iframe with data-sw-consent="marketing",
+customize the placeholder text with data-sw-consent-note="…", or skip gating with data-sw-consent-skip.
+(Consent off → iframes load normally.) A raw third-party <script> in
+website.head/scripts stays UNGATED by default — to gate it, write <script type="text/plain"
+data-sw-consent="analytics" src="…"></script> and the runtime activates it on consent.
 The whole thing is also configurable no-code in Settings → Website → Consent.
 `,
   },
@@ -518,7 +618,7 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
   {{> folder-gallery}} ({{#sw-folder}} media reads), {{> i18n}} (sw-translate +
   data-sw-translate + sw-flag switcher), {{> page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
-- Chrome & effects → {{> navbar}}, {{> cookie-consent}}, {{> logo-marquee}}, {{> rotating-tiles}},
+- Chrome & effects → {{> navbar}}, {{> banner-bar}}, {{> logo-marquee}}, {{> rotating-tiles}},
   {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).
 
 SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (edit it freely); a
@@ -569,10 +669,13 @@ Read one with get_content("snippet","nav-header"). New projects already ship {{>
 Main Navigation slot. The notes below explain how it works so you can adapt it.
 
 NAV SLOTS (page settings): each page's nav.slots places it in a menu — "header" (the Main Navigation),
-"mobile" (the mobile drawer), and/or "footer". nav.title overrides the menu label (else the page title);
-nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus are
-built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}}, each item exposing
-path, children (sub-pages, when nav.dropdown is on), newTab, external, and the label.
+"mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
+title); nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus
+are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each
+nav.custom}}, each item exposing path, children (sub-pages, when nav.dropdown is on), newTab, external, and
+the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — use it to build a bespoke
+secondary menu / link list anywhere (pages opt in via the "Custom" nav slot in their settings; you then
+loop {{#each nav.custom}} yourself).
 
 ONE MENU ITEM: output the label with {{sw-label}} (renders a placeholder's rich name; a page title is
 escaped — never use {{{ }}}), the link with {{sw-url path}}, honor {{#if newTab}} target/rel, and mark the
@@ -632,8 +735,16 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    (e.g. d-flex, row/col, custom utility names) and the folded-in CSS rules into the EQUIVALENT Tailwind/
    DaisyUI utilities — same layout, native classes. Don't invent new sections or drop existing ones. Port
    the foreign content container (a .container / centered max-width wrapper) to the platform .sw-container so
-   every section aligns to the site-wide Content width (the --sw-container var); keep full-bleed backgrounds
-   on the <section> with the .sw-container inside. Sections are full-width (w-full), not pinned pixel widths.
+   every section aligns to the site-wide Content width (the --sw-container var); set website.containerWidth to
+   the SOURCE'S content width (default is 1200px; e.g. "1400px") so the clone is as wide as the original.
+   CONTAINER PATTERNS (two ways to get a full-width element; pick by structure):
+   (a) Per-SECTION (preferred): a full-bleed band is a full-width <section> (the bg/colour) with .sw-container
+       INSIDE for its content — the background spans the viewport, the text stays aligned.
+   (b) SHEET-CARD (a single centred white card holding the whole page, e.g. content over a textured body):
+       wrap the page in <div class="sw-container px-0 ...">. The px-0 ZEROES the container gutter so the card
+       has NO inner padding — then bands/hero IMAGES span the card edge-to-edge and each inner text block
+       supplies its OWN padding (p-6 / px-6). Do NOT use a padded .sw-container as the card (the 2rem gutter
+       insets the bands + a w-full hero image, a common miss).
    AVOID DaisyUI RESERVED component class names as plain layout classes — steps / tabs / carousel / collapse
    / card / badge / menu etc. are COMPONENTS; e.g. <ol class="steps"> lays items out horizontally. Name your
    own wrappers something else (howto-steps), or you'll inherit a component's styling by accident.
@@ -643,6 +754,16 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
+   PREFER page.children FOR AN OVERVIEW OF REAL PAGES: when a grid lists pages that ALREADY EXIST as child
+   pages (a services index linking to /services/*, a blog/team index), iterate {{#each page.children}} —
+   each child exposes navTitle/title, path (wrap href in {{sw-url path}}), image ({{sw-url image}}),
+   description, and its own data — instead of duplicating those pages into a dataset (the import infers a
+   dataset because it can't tell; consolidate + delete the redundant dataset). page.children is the CURRENT
+   page's direct children (fits the index page itself, e.g. the services index). For a grid on a DIFFERENT
+   page (e.g. the HOME page showing the pages under /services) use {{#each pages.services._attributes.children}}
+   (the pages binding reaches ANY page's children by slug — a node's own fields live under ._attributes; same
+   item shape as page.children). Reserve datasets
+   for content that is NOT already a page. Loop fields stay BARE (no data-sw-* inside the children loop).
    The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
    rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
    slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it
@@ -651,10 +772,12 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    its entries + loops. rename_dataset ALSO takes a "name" — set a human display name so the dataset doesn't
    stay the import's generic "List"/"List 2" in the editor. ITEM KEYS (entry ids) follow the same rule: they
    are underscore identifiers (used as {{item.<dataset>.<id>}} paths + data-sw-entry edit handles), NEVER
-   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). And make the loop EDITABLE: put
-   data-sw-text / data-sw-html on each field INSIDE the {{#each}} ({{title}} → <span data-sw-text="title">
-   {{title}}</span>) so the client can edit every item — a loop with bare {{field}} and no directives renders
-   but can't be edited. GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
+   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). LOOP FIELDS STAY BARE — do NOT put
+   data-sw-* directives inside a {{#each dataset.X}} ({{title}}, src="{{sw-url image}}", NOT
+   <span data-sw-text>). A dataset is edited in the DATASET EDITOR (the data rail), and the editor auto-marks
+   each rendered row with data-sw-entry so a CLICK on the row in the preview opens that item's editor — you
+   don't (and must not) add per-field directives. data-sw-* is for page-level content (page.data / {{sw-control}}),
+   not dataset rows. GOTCHA: an entry's "dataset" field stores the dataset SLUG, and the loop resolves
    rows by slug — so after rename_dataset, any entry you re-put (e.g. to add a field) must carry the NEW slug
    in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
    rename, or set the "dataset" field to the new slug explicitly.
@@ -693,10 +816,11 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    \`Header Images\`; \`Main\` for sitewide singletons — logo, favicon). Use slugified names, never bare UUIDs
    (\`ronald-kubas.jpg\`). PRUNE files no page references. Tools: list_media_folders (look first),
    create_media_folder, move_media (re-file + rename one asset), rename_media_folder, and delete_media
-   (permanently remove an orphaned file — needs the content:delete capability; if you lack it, move the
-   file to an \`Unused\` folder instead). Moving/renaming is SAFE — it only changes the folder TAG, and the
-   \`/media/...\` URL is content-addressed + stable, so page references never break (only delete_media is
-   destructive). End state: a tree a human dev reads at a glance, with no \`imported/\` left.
+   (bin an orphaned file — RECOVERABLE for 90 days in the File Manager Recycle Bin; needs the
+   content:delete capability; if you lack it, move the file to an \`Unused\` folder instead). Moving/renaming
+   is SAFE — it only changes the folder TAG, and the \`/media/...\` URL is content-addressed + stable, so page
+   references never break (only delete_media removes an asset — and only from the NEXT publish). End state:
+   a tree a human dev reads at a glance, with no \`imported/\` left.
 9. MATCH THE VISUAL SCALE (not just the structure — these "looks-close-but-off" misses are the most common):
    - TYPE SIZES: don't shrink text. Match the source's body + heading scale (read the original's font sizes;
      a real site's body is usually ~16-18px and headings are large). Defaulting everything to small text is a
@@ -719,7 +843,13 @@ data-driven desktop bar + pure-CSS mobile drawer + language/theme toggles; ADAPT
 look: wrap it in the right CONTAINER (e.g. a .sw-container / centered max-width bar — the etaxi header needs
 one), set the brand-bar background + height, logo placement, spacing, and link styling. KEEP IT DATA-DRIVEN —
 build the items from the loop {{#each nav.header}}…{{sw-label}}…{{/each}}; NEVER write a fixed list of <a href>
-entries. A nav <ul> needs an explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
+entries. KEEP THE LIST AS <ul class="menu menu-horizontal"> (the default recipe's structure): the nav-effect
+and scrollspy CSS target ".menu a", so if you strip .menu the site-wide nav effects + scroll-spy SILENTLY
+stop working. Put whitespace-nowrap on the nav links (or the menu) so a label like "About Us" / "Contact Us"
+never WRAPS to two lines when the bar is tight. If the brand has a TAGLINE/slogan next to the logo, keep it
+SMALL + secondary (e.g. text-xs leading-tight text-base-content/60, hidden below xl) — a large slogan eats the
+bar's width and forces the nav to wrap; the logo + name stay the primary mark. A nav <ul> also needs an
+explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
 appears otherwise). A menu item exists because a PAGE opts into the slot: set each page's nav:{ slots:["header"],
 title:"<short label>", order } (footer links the same via {{#each nav.footer}} / {{> nav-footer}}, also usually
 copied + adapted). See get_guide("nav").
@@ -753,6 +883,14 @@ CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). T
 no longer referenced (trim the criticalCss/head to nothing once every section is token-driven; delete unused
 self-hosted .js/.css media). The page is NOT done until the media library is also a clean tree (step 8) — no
 leftover \`imported/\` UUID dump. Re-render and confirm nothing regressed.
+
+RE-ENABLE SITE-WIDE FEATURES THE IMPORT STRIPPED (it removes foreign JS — the import diagnostics name what
+was dropped; turn each back on with the PLATFORM equivalent, in the settings entity): a loading PRELOADER
+("preloader-removed") -> theme.preloaderEffect (get_guide("effects")); a sticky/shrinking header -> website.
+effects.stickyHeader; a back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded
+side widget ("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin =
+a consent-gated <iframe>, see get_guide("consent")). Footer/nav LISTS: a <ul> needs list-none pl-0 or items
+sit indented.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
@@ -843,7 +981,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
-  { name: 'delete_media', description: "Permanently delete a media asset (DB row + binary) — prune orphaned files. Its URL stops resolving; ensure nothing references it.", capability: 'content:delete' },
+  { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

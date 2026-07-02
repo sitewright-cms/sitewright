@@ -40,6 +40,29 @@ describe('extractIdentity', () => {
     expect(id.geo).toEqual({ latitude: '-22.55', longitude: '17.08' });
   });
 
+  it('accepts a LocalBusiness SUBTYPE (@type) + captures businessType, legalName/shortName, geo from the map URL', () => {
+    // burmeister-style: @type is a LocalBusiness subtype the old literal filter dropped (losing the address);
+    // no legalName/alternateName/geo in JSON-LD, but the NAME carries a legal suffix + a map iframe has GPS.
+    const html = `<html><head><title>Burmeister & Partners</title>
+      <script type="application/ld+json">{"@type":"HomeAndConstructionBusiness","name":"Burmeister & Partners (PTY) Ltd","address":{"@type":"PostalAddress","streetAddress":"Cnr X & Y","addressLocality":"Windhoek","addressRegion":"Khomas","addressCountry":"Namibia"}}</script>
+      </head><body><iframe src="https://www.google.com/maps/embed?pb=!1m14!2d17.0977039!3d-22.5920485!2sBP"></iframe></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.address).toEqual({ street: 'Cnr X & Y', locality: 'Windhoek', region: 'Khomas', country: 'Namibia' }); // subtype no longer dropped
+    expect(id.businessType).toBe('Home And Construction Business');
+    expect(id.legalName).toBe('Burmeister & Partners (PTY) Ltd'); // name carries a legal suffix → it IS the legal name
+    expect(id.shortName).toBe('Burmeister & Partners'); // suffix stripped
+    expect(id.geo).toEqual({ latitude: '-22.5920485', longitude: '17.0977039' }); // from the map embed (!3d=lat, !2d=lon)
+  });
+
+  it('prefers explicit JSON-LD legalName/alternateName over extrapolation', () => {
+    const html = `<html><head><title>Acme</title>
+      <script type="application/ld+json">{"@type":"Organization","name":"Acme","legalName":"Acme Holdings Inc.","alternateName":"ACME"}</script>
+      </head><body></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.legalName).toBe('Acme Holdings Inc.');
+    expect(id.shortName).toBe('ACME');
+  });
+
   it('scans the DOM for tel:/mailto:, footer social links, and a maps embed (when JSON-LD lacks them)', () => {
     const html = `<html><head><title>Acme</title></head><body><footer>
       <a href="tel:+264 61 379 000">Call</a>

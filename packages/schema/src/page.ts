@@ -6,8 +6,12 @@ import { JsonObjectStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
 
-/** Navigation slots a page can appear in (the page-tree-driven auto-nav). */
-export const NAV_SLOTS = ['header', 'footer', 'mobile'] as const;
+/**
+ * Navigation slots a page can appear in (the page-tree-driven auto-nav). `header`/`footer`/`mobile`
+ * back the default chrome recipes; `custom` is an author-only slot the defaults never read — a page in
+ * it shows up in `{{#each nav.custom}}` so you can build a bespoke menu/list anywhere.
+ */
+export const NAV_SLOTS = ['header', 'footer', 'mobile', 'custom'] as const;
 export type NavSlot = (typeof NAV_SLOTS)[number];
 
 /**
@@ -42,6 +46,10 @@ const PageObject = z
       .string()
       .url()
       .refine((v) => /^https?:\/\//i.test(v), 'must be an absolute http(s) URL')
+      // Defence-in-depth (mirrors `website.siteUrl`): `.url()` also permits `"<>'&`, harmless where the
+      // value is escaped (og:url + <link rel=canonical> both escapeAttr it) but rejected at the boundary
+      // so it can never reach a future unescaped sink (a redirect rule, an HTTP header, …).
+      .refine((v) => !/["<>'&]/.test(v), 'canonical must not contain HTML-significant characters')
       .optional(),
     /** Exclude from search indexing + the sitemap (`<meta name="robots" content="noindex">`). */
     noindex: z.boolean().optional(),

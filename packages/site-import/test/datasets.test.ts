@@ -17,9 +17,9 @@ const card = (i: number): string => `<div class="card"><img src="/a.jpg"><h3>Nam
 const grid = (n: number, heading = '<h2>Our Team</h2>'): string =>
   `<html><body>${heading}<section class="team">${Array.from({ length: n }, (_, i) => card(i)).join('')}</section></body></html>`;
 
-function infer(html: string) {
+function infer(html: string, usedEntryIds: Set<string> = new Set<string>()) {
   const doc = parse(html);
-  const inf = inferDatasets(doc, ctx, new Set<string>(), '@@D_');
+  const inf = inferDatasets(doc, ctx, new Set<string>(), usedEntryIds, '@@D_');
   return { inf, doc };
 }
 
@@ -96,15 +96,31 @@ describe('inferDatasets', () => {
 
   it('does NOT dataset-ify a JS carousel/slider (it needs its literal DOM + script)', () => {
     const slides = Array.from({ length: 4 }, (_, i) => `<div class="slide"><img src="/a.jpg"><h3>S${i}</h3></div>`).join('');
-    const inf = inferDatasets(parse(`<html><body><div class="slider owl-carousel">${slides}</div></body></html>`), ctx, new Set<string>(), '@@D_');
+    const inf = inferDatasets(parse(`<html><body><div class="slider owl-carousel">${slides}</div></body></html>`), ctx, new Set<string>(), new Set<string>(), '@@D_');
     expect(inf.datasets).toHaveLength(0); // left literal, not turned into {{#each}}
   });
 
   it('falls back to "items" + a heading-less container, and keeps slugs unique', () => {
     const used = new Set<string>();
     const doc = parse(`<html><body><section class="x">${Array.from({ length: 4 }, (_, i) => `<article><h3>P${i}</h3><p>B${i}</p></article>`).join('')}</section><section class="y">${Array.from({ length: 4 }, (_, i) => `<article><h3>Q${i}</h3><p>C${i}</p></article>`).join('')}</section></body></html>`);
-    const inf = inferDatasets(doc, ctx, used, '@@D_');
+    const inf = inferDatasets(doc, ctx, used, new Set<string>(), '@@D_');
     expect(inf.datasets.map((d) => d.slug)).toEqual(['x', 'y']); // class-derived, unique
+  });
+
+  it('keeps entry ids unique ACROSS datasets/pages via the shared used-id set (no bundle-invalid collision)', () => {
+    // Regression: the SAME content repeated on two pages (e.g. a service grid on `/` and `/services/`)
+    // inferred two datasets whose entries collided on the same bare id — entries are stored under a
+    // project-global `(projectId,'entry',entityId)` key, so the duplicate failed referential integrity and
+    // aborted the whole import. The bundle-wide used-id set must suffix the repeats.
+    const shared = new Set<string>();
+    const a = infer(grid(4), shared).inf; // first page
+    const b = infer(grid(4), shared).inf; // second page, SAME titles → same base ids
+    const aIds = a.entries.map((e) => e.id);
+    const bIds = b.entries.map((e) => e.id);
+    expect(aIds).toEqual(['name_0', 'name_1', 'name_2', 'name_3']);
+    expect(bIds).toEqual(aIds.map((id) => `${id}_2`)); // suffixed, not colliding
+    const allIds = [...aIds, ...bIds];
+    expect(new Set(allIds).size).toBe(allIds.length); // globally unique
   });
 });
 

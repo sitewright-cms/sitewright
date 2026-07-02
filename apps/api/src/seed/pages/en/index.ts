@@ -6,10 +6,12 @@ import { pageComponentsSlider } from './components-slider.js';
 import { pageComponentsLightbox } from './components-lightbox.js';
 import { pageComponentsTabs } from './components-tabs.js';
 import { pageComponentsModal } from './components-modal.js';
-import { pageComponentsCookieConsent } from './components-cookieconsent.js';
+import { pageComponentsBanner } from './components-banner.js';
+import { pageComponentsConsent } from './components-consent.js';
 import { pageComponentsForms } from './components-forms.js';
 import { pageComponentsDateTimePicker } from './components-datetimepicker.js';
 import { pageComponentsParallax } from './components-parallax.js';
+import { pageComponentsScrollSpy } from './components-scrollspy.js';
 import { pageComponentsShader } from './components-shader.js';
 import { pagesServices } from './services.js';
 import { pagesAbout } from './about.js';
@@ -39,10 +41,12 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsLightbox(),
     pageComponentsTabs(),
     pageComponentsModal(),
-    pageComponentsCookieConsent(),
+    pageComponentsBanner(assets),
+    pageComponentsConsent(),
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
     pageComponentsParallax(),
+    pageComponentsScrollSpy(),
     pageComponentsShader(),
     pageFaq(),
     ...pagesLegal(),

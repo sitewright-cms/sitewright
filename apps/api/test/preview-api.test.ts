@@ -408,6 +408,30 @@ describe('preview API — code-first source page', () => {
     expect((plain.json() as { html: string }).html).not.toContain('aos-init');
   });
 
+  it('bridges body→window scroll in the editor preview when a scroll-linked effect is used', async () => {
+    const { t, projectId } = await setup('scroll@acme.test', poolApp);
+    // A scroll-driven effect (scrollspy) → the shell scrolls on <body>, so the bridge must ship so the
+    // effect's `window` scroll listener fires (same fix path as sticky-header's .sw-scrolled + parallax).
+    const withEffect = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<section data-sw-scrollspy><a href="#a">A</a></section><section id="a">A</section>',
+      },
+    });
+    expect((withEffect.json() as { html: string }).html).toContain("dispatchEvent(new Event('scroll'))");
+    // A plain page has no scroll effect → no bridge (nothing needs it).
+    const plain = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Static</h1></section>' },
+    });
+    expect((plain.json() as { html: string }).html).not.toContain("dispatchEvent(new Event('scroll'))");
+  });
+
   it('skips a broken/unsafe slot in preview without failing the page (publish still hard-validates)', async () => {
     const { t, projectId } = await setup('broken@acme.test', poolApp);
     const base = `/projects/${projectId}`;

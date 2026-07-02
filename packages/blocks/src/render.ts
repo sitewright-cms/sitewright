@@ -11,6 +11,8 @@ import { baseStyles } from './base-css.js';
 import { themeCss, themeHtmlAttr, lightContentTokensCss, type ThemeMode } from './theme-mode.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
+import { stickyHeaderCss } from './sticky-header.js';
+import type { StickyHeaderMode } from '@sitewright/schema';
 
 /** Media context for the document shell — the only render-time inputs the code-first shell reads. */
 export interface RenderContext {
@@ -67,6 +69,13 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   bodyClass?: string;
   /**
+   * STICKY top-header mode (`website.effects.stickyHeader`). When set (not 'none') the `#main-nav`
+   * landmark is fixed to the top and the `--sw-header-h` offset token + `.sw-top-padding` spacer are
+   * emitted into the base `<style>` here — at first paint, so there's no layout shift. The 'hide-on-
+   * scroll'/'shrink' scroll-state runtime is wired by the caller (publish/preview), gated on the mode.
+   */
+  stickyHeader?: StickyHeaderMode | 'none';
+  /**
    * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
    * injected around the page body in this source order:
    *   `mainNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
@@ -90,6 +99,12 @@ export interface RenderDocumentOptions extends RenderContext {
    * bottom slot, before the script slot) when the site enables it. Built by `backToTopHtml()`.
    */
   backToTop?: string;
+  /**
+   * Pre-rendered CONSENT MANAGER mount (`<div id="sw-consent" data-sw-consent …>`), auto-injected at
+   * body-END whenever `website.consent.enabled`. Built by `consentMountMarkup()`. position:fixed, so its
+   * DOM location is irrelevant — the author no longer places a `{{sw-consent}}` marker.
+   */
+  consentMount?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` is always overridden by the page title (there is no separate SEO title). */
@@ -210,8 +225,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     containerWidth,
     bodyHtml,
     bodyClass,
+    stickyHeader,
     preloader,
     backToTop,
+    consentMount,
     mainNav,
     sidebarLeft,
     sidebarRight,
@@ -257,15 +274,23 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const previewScrollCss = previewScroll
     ? '\nhtml{height:100%;overflow:hidden}' +
       '\nbody{height:100%;min-height:0;overflow-y:auto;scrollbar-width:thin;' +
+      // `body` is the scroll container in the preview, so the anchor offset must live here too (it sits
+      // on :root for the published site, where html scrolls). `--sw-header-h` is 0 unless a sticky
+      // header set it, so this is inert for a static-header preview.
+      'scroll-padding-top:var(--sw-header-h,0px);' +
       'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}'
     : '';
+  // Sticky/fixed top-header CSS (the fixed `#main-nav` + the `--sw-header-h` offset token + the
+  // `.sw-top-padding` spacer). Emitted here so the offset is correct at FIRST PAINT (no layout shift);
+  // '' when the site keeps a static header, so a default site is byte-identical.
+  const stickyHeaderStyles = stickyHeaderCss(stickyHeader);
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
     theme?.enabled
       ? `\n${themeCss(brand.colors)}`
       : emitBrandContentTokens
         ? `\n${lightContentTokensCss(brand.colors)}`
         : ''
-  }${containerCss}${previewScrollCss}`;
+  }${containerCss}${previewScrollCss}${stickyHeaderStyles ? `\n${stickyHeaderStyles}` : ''}`;
   // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).
   const dataThemeAttr = theme?.enabled ? themeHtmlAttr(theme.default) : '';
@@ -340,6 +365,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('footer', 'footer', footer) +
     slotLandmark('div', 'bottom', bottom) +
     `${backToTop ?? ''}` +
+    // CONSENT MANAGER mount — auto-injected at body-end when consent is enabled (position:fixed; order N/A).
+    `${consentMount ?? ''}` +
     `${customScripts ?? ''}` +
     // RAW-HTML pages omit the platform component runtimes (the page brings its own scripts).
     (rawFidelity ? [] : (scripts ?? []))

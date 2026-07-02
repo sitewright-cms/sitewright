@@ -195,7 +195,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_components',
     {
       description:
-        'The authoring contracts of the first-party interactive components (carousel, tabs, lightbox, modal, cookie-consent, form): markers, data-sw-part roles, config attributes, and copy-paste markup skeletons. Optionally filter by type or marker.',
+        'The authoring contracts of the first-party interactive components (carousel, tabs, lightbox, modal, banner, form): markers, data-sw-part roles, config attributes, and copy-paste markup skeletons. Optionally filter by type or marker.',
       inputSchema: { type: z.string().max(100).optional() },
     },
     ({ type }: { type?: string }) => {
@@ -302,7 +302,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to Full HD + tablet + mobile; pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
       inputSchema: {
         page: PageSchema,
         includeHtml: z.boolean().optional(),
@@ -556,7 +556,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'delete_media',
     {
       description:
-        'PERMANENTLY delete a single media asset (its DB row + stored binary). Its `/media/...` URL stops resolving, so make sure NO page/dataset still references it first (prefer moving an asset to an "Unused" folder if unsure). Use to prune orphaned imported files. Needs the `content:delete` capability (opt-in, not implied by content:write) — if your connection lacks it, ask the user to grant it or remove the asset in the editor.',
+        'Delete a single media asset — it moves to the File Manager Recycle Bin (RECOVERABLE for 90 days, then auto-purged). It is hidden from the media list and EXCLUDED from the next publish (a still-referenced page would then show a broken image on the republished site), so make sure NO page/dataset still references it first (prefer moving an asset to an "Unused" folder if unsure). Use to prune orphaned imported files. Needs the `content:delete` capability (opt-in, not implied by content:write) — if your connection lacks it, ask the user to grant it or remove the asset in the editor.',
       inputSchema: { id: z.string() },
     },
     gate('content:delete', ({ id }) => client.deleteMedia(id)),

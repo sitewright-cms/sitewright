@@ -26,9 +26,11 @@ const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'siteUrl', 'jsonDataUrl', 'data', 'criticalCss', 'head', 'scripts',
   'mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
   'navEffect', 'buttonEffect', 'buttonAccent', 'buttonShape', 'preloaderEffect',
+  'backToTop', 'stickyHeader', 'scrollSpy',
   'navCode', 'buttonCode', 'preloaderCode',
   'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
+  'consent',
   'defaultLocale', 'locales', 'translations',
 ]);
 
@@ -122,6 +124,19 @@ export function SettingsView({
     setForm(f);
     setBaseline(f);
   }, []);
+
+  // Re-fetch + re-hydrate the whole settings form from the server (form + baseline reset, so it's
+  // clean). Used after a server-side action that changes settings outside the form's save flow —
+  // e.g. changing the main language (LocaleManager) — so the form reflects the new state and isn't
+  // left falsely dirty. (Discards any unsaved settings edits — only invoked behind a confirm.)
+  const reloadSettings = useCallback(async () => {
+    try {
+      const res = await api.getSettings(project.id);
+      applyBundle(res.item);
+    } catch {
+      /* keep the current form if the refetch fails */
+    }
+  }, [project.id, applyBundle]);
 
   useEffect(() => {
     let active = true;
@@ -293,7 +308,7 @@ export function SettingsView({
               {section === 'identity' ? (
                 <IdentitySection form={form} patch={patch} projectId={project.id} />
               ) : (
-                <WebsiteSection form={form} patch={patch} projectId={project.id} onLocalesChanged={onLocalesChanged} />
+                <WebsiteSection form={form} patch={patch} projectId={project.id} onLocalesChanged={onLocalesChanged} onReloadSettings={reloadSettings} />
               )}
             </motion.div>
           </AnimatePresence>

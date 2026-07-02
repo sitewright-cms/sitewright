@@ -28,6 +28,24 @@ export class SitewrightApiError extends Error {
   }
 }
 
+/**
+ * Render a zod `flatten()` payload (`{ fieldErrors, formErrors }`, sent by the API as `details` on a
+ * 400) into a short " — field: msg; field2: msg" suffix so the caller knows exactly what to fix.
+ * Returns '' when there's no usable detail.
+ */
+function formatZodDetails(parsed: unknown): string {
+  const details = (parsed as { details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] } } | null)?.details;
+  if (!details || typeof details !== 'object') return '';
+  const parts: string[] = [];
+  if (details.fieldErrors) {
+    for (const [field, msgs] of Object.entries(details.fieldErrors)) {
+      if (Array.isArray(msgs) && msgs.length) parts.push(`${field}: ${msgs.join(', ')}`);
+    }
+  }
+  if (Array.isArray(details.formErrors) && details.formErrors.length) parts.push(details.formErrors.join(', '));
+  return parts.length ? ` — ${parts.join('; ')}` : '';
+}
+
 /** The slice of `fetch` we use — narrow so it's trivial to mock and needs no DOM lib. */
 export type FetchLike = (
   input: string,
@@ -134,13 +152,16 @@ export class SitewrightClient {
     if (!res.ok) {
       // `||` (not `??`): an HTTP/2 proxy yields an empty `statusText`, which must
       // still fall through to the numeric fallback rather than become an empty message.
-      const message =
+      const base =
         (parsed && typeof parsed === 'object' && 'error' in parsed && typeof parsed.error === 'string'
           ? parsed.error
           : '') ||
         res.statusText ||
         `HTTP ${res.status}`;
-      throw new SitewrightApiError(res.status, message);
+      // A schema (zod) rejection sends `details: { fieldErrors, formErrors }`. Fold that into the
+      // message so a caller (esp. the agent) SEES which field is wrong + self-corrects, instead of
+      // retrying blindly against a bare "invalid request".
+      throw new SitewrightApiError(res.status, base + formatZodDetails(parsed));
     }
     return parsed as T;
   }

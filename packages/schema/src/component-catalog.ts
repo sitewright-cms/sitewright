@@ -301,44 +301,22 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     ],
   },
   {
-    type: 'CookieConsent',
-    marker: 'cookie-consent',
-    summary: 'A consent banner stored in localStorage — server HTML ships it hidden; the runtime reveals it only when consent is not yet stored.',
-    authoring: 'markup',
-    parts: [{ part: 'accept', element: 'button', required: true, description: 'The accept button; stores consent and hides the banner.' }],
-    attributes: [
-      { name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or after consent) the banner never shows.' },
-      {
-        name: 'data-cookiename',
-        on: 'root',
-        description:
-          'Optional. The localStorage key the consent flag is stored under (default "sw-cookie-consent"). Give two banners different names to track their consent independently.',
-      },
-    ],
-    skeleton: `<div data-sw-component="cookie-consent" hidden>
-  <p>We use a few essential cookies. <a class="link" href="/privacy">Learn more</a></p>
-  <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">OK, got it</button>
-</div>`,
-    noJs: 'No banner at all — and with no JS there is nothing to consent to.',
-    notes: 'Place it ONCE, site-wide, in the website `bottom` slot (not on individual pages). For a second, independent banner (e.g. on a campaign microsite) give it a different data-cookiename so consent is tracked separately. DaisyUI has no equivalent.',
-  },
-  {
-    type: 'Notice',
-    marker: 'notice',
+    type: 'Banner',
+    marker: 'banner',
     summary:
-      'A free-content dismissible banner / announcement (promos, "see our latest product"). You author the content + the action buttons; the runtime reveals it and remembers the dismissal in localStorage per its frequency. Server HTML ships it hidden.',
+      'A free-content dismissible banner / announcement (promos, "see our latest product"). You author the content + the action buttons; the runtime reveals it and remembers the dismissal in localStorage per its frequency. Server HTML ships it hidden. NOT the cookie/consent banner — that is the auto-injected Consent Manager.',
     authoring: 'markup',
     parts: [
-      { part: 'dismiss', element: 'button', required: false, description: 'Dismisses the notice for the configured data-frequency (for "once", permanently).' },
+      { part: 'dismiss', element: 'button', required: false, description: 'Dismisses the banner for the configured data-frequency (for "once", permanently).' },
       { part: 'dismiss-forever', element: 'button', required: false, description: 'Permanently dismisses ("don\'t show again") regardless of frequency.' },
-      { part: 'remind', element: 'button', required: false, description: 'Snoozes the notice; it reappears after data-remind-days (default 1).' },
+      { part: 'remind', element: 'button', required: false, description: 'Snoozes the banner; it reappears after data-remind-days (default 1).' },
     ],
     attributes: [
-      { name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or once dismissed) the notice never shows.' },
+      { name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or once dismissed) the banner never shows.' },
       {
-        name: 'data-sw-notice-id',
+        name: 'data-sw-banner-id',
         on: 'root',
-        description: 'The localStorage key suffix the dismissal is stored under (default "default"). Give EACH notice a unique id so they are remembered independently.',
+        description: 'The localStorage key suffix the dismissal is stored under (default "default"). Give EACH banner a unique id so they are remembered independently.',
       },
       {
         name: 'data-frequency',
@@ -350,37 +328,50 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         on: 'root',
         description: 'Placement: bottom | top | bottom-left | bottom-right (default) | top-left | top-right | center | inline.',
       },
-      { name: 'data-delay', on: 'root', description: 'Optional. Milliseconds to wait before showing, or "scroll" to reveal after the first scroll.' },
+      { name: 'data-delay', on: 'root', description: 'Optional. Milliseconds to wait before showing, or "scroll" to reveal after the first scroll. Works on every placement.' },
       { name: 'data-remind-days', on: 'root', description: 'Optional. Days the "remind" button snoozes for (default 1).' },
+      { name: 'data-aos', on: 'root', description: 'Optional. A scroll-reveal effect (fade-up | zoom-in | flip-left | …) used for the ENTRANCE instead of the built-in fade+rise; data-aos-delay/-duration/-easing tune it. The dismiss reverses whichever entrance was used. On an inline (in-flow) banner prefer a plain "fade" — a transform effect animates the banner over its reserved box.' },
     ],
-    skeleton: `<div data-sw-component="notice" data-sw-notice-id="promo" data-position="bottom-right" data-frequency="once" hidden>
+    examples: [
+      {
+        label: 'Top announcement bar with a data-aos entrance + reveal delay',
+        code: `<div data-sw-component="banner" data-sw-banner-id="sale" data-position="top" data-frequency="session" data-aos="fade-up" data-aos-duration="600" data-delay="800" hidden>
+  <p>Free shipping this week — <a class="link" href="{{sw-url "shop"}}">shop now</a>.</p>
+  <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
+</div>`,
+        note: 'data-position="top"|"bottom" = full-width bar; data-delay reveals it after 800ms; data-aos="fade-up" drives the entrance (the dismiss reverses it). data-frequency="session" → returns next browser session.',
+      },
+      {
+        label: 'Centered welcome card, snooze + permanent dismiss',
+        code: `<div data-sw-component="banner" data-sw-banner-id="welcome" data-position="center" data-frequency="once" data-delay="1200" data-remind-days="7" hidden>
+  <div><h3 class="mb-1 text-lg font-semibold">Welcome!</h3><p>Thanks for visiting.</p></div>
+  <div class="flex w-full justify-end gap-2">
+    <button type="button" class="btn btn-sm btn-ghost" data-sw-part="remind">Later</button>
+    <button type="button" class="btn btn-sm btn-primary" data-sw-part="dismiss-forever">Got it</button>
+  </div>
+</div>`,
+        note: 'data-position="center" is a NON-modal centered card (no focus trap). "remind" snoozes for data-remind-days (7); "dismiss-forever" hides it for good. Recipe: banner-modal.',
+      },
+      {
+        label: 'Full-bleed background (photo or live shader) — inner wrapper required',
+        code: `<div data-sw-component="banner" data-sw-banner-id="promo" data-position="inline" class="overflow-hidden border-0 p-0 text-white" hidden>
+  <div class="relative flex w-full items-center gap-3 p-4">       <!-- INNER positioning context (an inline banner is position:static) -->
+    <div data-sw-component="shader-bg" data-preset="silk-flow" class="absolute inset-0"></div>  <!-- or: <img class="absolute inset-0 h-full w-full object-cover" src="…"> -->
+    <div class="absolute inset-0 bg-black/30"></div>             <!-- legibility scrim -->
+    <div class="relative grow"><p class="font-semibold">Now showing: summer collection</p></div>
+    <button type="button" class="btn btn-sm btn-ghost relative text-white" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
+  </div>
+</div>`,
+        note: 'GOTCHA: an inline banner is position:static, so the absolute media/scrim MUST live in an INNER relative wrapper (else they escape to the viewport). overflow-hidden clips to the rounded corners; set a light text colour over the scrim.',
+      },
+    ],
+    skeleton: `<div data-sw-component="banner" data-sw-banner-id="promo" data-position="bottom-right" data-frequency="once" hidden>
   <p>To see our latest product, <a class="link" href="{{sw-url "products"}}">click here</a>.</p>
   <button type="button" class="btn btn-sm btn-ghost" data-sw-part="dismiss-forever">Don't show again</button>
 </div>`,
-    noJs: 'No notice at all — and with no JS there is nothing to dismiss.',
+    noJs: 'No banner at all — and with no JS there is nothing to dismiss.',
     notes:
-      'Place each notice ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific notice. Use a UNIQUE data-sw-notice-id per notice (omitting it falls back to "default" — two notices then share one dismissal). For a cookie/consent banner use the CookieConsent component instead. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Recipes to copy: notice-bar, notice-card, notice-modal.',
-  },
-  {
-    type: 'Embed',
-    marker: 'embed',
-    summary:
-      'A CLICK-TO-LOAD media embed (YouTube / Google Maps): the real <iframe> is HELD until the visitor consents to its category or clicks "Load". Nothing third-party loads on page view, and the per-page CSP frame-src is derived from the provider used.',
-    authoring: 'embed',
-    parts: [
-      { part: 'placeholder', element: 'div', required: false, description: 'Generated (class="sw-embed-ph", not a data-sw-part): the click-to-load card (provider name + Load button + optional "Always allow") shown until consent/click.' },
-      { part: 'iframe', element: 'iframe', required: false, description: 'Generated: the real embed <iframe>, injected only after consent or a click.' },
-    ],
-    attributes: [
-      { name: 'data-embed-src', on: 'root', description: 'The held iframe URL (https); the runtime sets it only after consent/click.' },
-      { name: 'data-embed-category', on: 'root', description: 'The consent category that gates it: functional | analytics | marketing.' },
-      { name: 'data-embed-provider', on: 'root', description: 'The display name shown on the placeholder (e.g. "YouTube").' },
-      { name: 'data-embed-poster', on: 'root', description: 'Optional thumbnail image shown behind the placeholder.' },
-    ],
-    skeleton: `{{sw-embed "youtube" "dQw4w9WgXcQ"}}`,
-    noJs: 'A <noscript> link to view the content at the provider — nothing third-party loads without JS.',
-    notes:
-      'Author by REFERENCE: {{sw-embed "youtube" "<video-id-or-url>"}} or {{sw-embed "google-maps" "<place-or-embed-url>"}} (optional category= / title= / ratio= / poster=). The iframe loads only after the visitor consents to its category (auto via the {{sw-consent}} banner) or clicks Load; "Always allow" grants that category for every embed. Works without a consent manager too (pure click-to-load). Defaults: YouTube → marketing category + 16/9; Maps → functional + 4/3.',
+      'Place each banner ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific banner. Use a UNIQUE data-sw-banner-id per banner (omitting it falls back to "default" — two banners then share one dismissal). For a cookie/consent banner, enable the Consent Manager (website.consent) — it auto-injects, no component needed. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Entrance: a fade+rise by default, or add a data-aos effect for fade-up/zoom/flip/etc. — both reverse on dismiss. For a rich background, wrap an absolute media layer + an overlay scrim inside it (or nest a data-sw-component="shader-bg"), give the root overflow-hidden, and set a light text colour. Recipes to copy: banner-bar, banner-card, banner-modal.',
   },
   {
     type: 'Form',

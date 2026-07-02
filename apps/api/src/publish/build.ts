@@ -41,7 +41,6 @@ import {
   resolveInternalUrl,
   relativizeInternalLinks,
   componentTypesInSource,
-  embedProvidersInSource,
   componentAssets,
   systemI18nData,
   usesDialog,
@@ -65,6 +64,7 @@ import {
   usesConsent,
   CONSENT_CSS,
   CONSENT_JS,
+  consentMountMarkup,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -74,6 +74,9 @@ import {
   backToTopHtml,
   BACK_TO_TOP_CSS,
   BACK_TO_TOP_JS,
+  STICKY_HEADER_JS,
+  SCROLLSPY_JS,
+  usesScrollSpy,
   NAV_EFFECTS_JS,
   usesNavEffects,
   BUTTON_EFFECTS_JS,
@@ -93,7 +96,13 @@ import {
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
   buttonEffectUsesRuntime,
+  stickyHeaderUsesRuntime,
+  scrollSpyUsesRuntime,
   buildConsentMetaCsp,
+  authorContentCspOrigins,
+  gateAuthorIframes,
+  DEFAULT_EMBED_CATEGORY,
+  RESERVED_TRANSLATION_DEFAULTS,
   type FormPublic,
   type MediaAsset,
 } from '@sitewright/schema';
@@ -122,6 +131,10 @@ const NAV_LINK_SCRIPT = 'nav-link.js';
 const PRELOADER_SCRIPT = 'preloader.js';
 /** The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top), linked per page. */
 const BACK_TO_TOP_SCRIPT = 'back-to-top.js';
+/** The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink), linked per page. */
+const STICKY_HEADER_SCRIPT = 'sticky-header.js';
+/** The SCROLLSPY runtime (highlight the nav link whose in-page section is in view), linked per page. */
+const SCROLLSPY_SCRIPT = 'scrollspy.js';
 /** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
 const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
 /** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
@@ -330,11 +343,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  // The live-preview draft build (set when a previewRuntime is injected). Preview is a CONTENT
-  // surface served under a sandboxed, opaque origin: the site's loading overlay adds no preview
-  // value AND its clear-on-load handshake is unreliable cross-origin (it would cover the page), so
-  // the preloader is omitted entirely from preview builds. The published site is unaffected.
+  // The live-preview draft build (set when a previewRuntime is injected). The preview is a faithful
+  // WYSIWYG surface, so it now shows the configured loading overlay too (authors asked to SEE it) —
+  // its clear runs on the iframe's own `window.load` (same-context, reliable) and has an 8s failsafe
+  // in PRELOADER_JS, so it can never stay stuck covering the page. The published site is unaffected.
   const previewMode = opts.previewRuntime !== undefined;
+  // Per-publish cache-bust token (the publish timestamp's digits) appended as `?v=` to the fixed-name
+  // runtime assets (styles.css / consent.js / components.js / …). A republish writes fresh assets AND a new
+  // token → the browser cache busts instantly, while the assets are served `immutable` between publishes.
+  const assetVer = publishedAt.replace(/\D/g, '') || '0';
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -382,6 +399,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       header: buildNav(pubBundle.pages, 'header'),
       footer: buildNav(pubBundle.pages, 'footer'),
       mobile: buildNav(pubBundle.pages, 'mobile'),
+      // Author-only slot the default chrome never reads — exposed for {{#each nav.custom}}.
+      custom: buildNav(pubBundle.pages, 'custom'),
     });
     // Multilingual model (see docs/i18n-content-model.md): a locale VARIANT of a
     // page is itself a Page (own path/title/description/data), so each route renders
@@ -405,6 +424,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         header: buildNav(pagesIn, 'header'),
         footer: buildNav(pagesIn, 'footer'),
         mobile: buildNav(pagesIn, 'mobile'),
+        custom: buildNav(pagesIn, 'custom'),
       }));
     }
     // `usesNavLink` (the <dialog>/smooth-scroll runtime) is computed below, once the source/slot/
@@ -458,9 +478,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
-    // Click-to-load embed providers used anywhere on the site → the per-page CSP frame-src allow-list
-    // (an unused provider's frame-src is harmless, so a site-wide union keeps it simple + correct).
-    const embedProviders = [...effectiveSources, ...slotSources, ...Object.values(usedSnippets)].flatMap((s) => [...embedProvidersInSource(s)]);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
@@ -469,15 +486,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The platform-injected BACK-TO-TOP button (renderDocument) carries `btn sw-btn-shape-square` — feed
     // those classes in so the (tree-shaken) square-shape utility compiles into the sheet.
     const backToTopClassNames = website?.effects?.backToTop !== false ? ['btn', 'sw-btn-shape-square'] : [];
+    // The consent gate's click-to-load placeholder uses daisyUI `.skeleton` (loading shimmer); it's added by
+    // the runtime, so the source scan never sees it — feed it in when consent is on so it compiles.
+    const consentClassNames = website?.consent?.enabled === true ? ['skeleton'] : [];
     const classNames = [
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
       ...themeClassNames,
       ...backToTopClassNames,
+      ...consentClassNames,
     ];
     const usesUtilities = classNames.length > 0;
-    // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
+    // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships
     // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
     // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
     const componentTypes = [
@@ -504,7 +525,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(usesCart);
-    const usesConsentRuntime = usesMarker(usesConsent);
+    // The consent runtime also hydrates HELD author iframes/scripts, which only exist when the manager is
+    // enabled — so ship it whenever consent is on, not only when a {{sw-consent}} marker is authored.
+    const usesConsentRuntime = website?.consent?.enabled === true || usesMarker(usesConsent);
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -512,10 +535,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
-    const usesPreloaderRuntime = !previewMode && (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
     // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
     // The platform injects the button markup (renderDocument), so this is gated on the setting only.
     const usesBackToTopRuntime = website?.effects?.backToTop !== false;
+    // STICKY-HEADER runtime — ships only for the JS-backed fixed-header modes (hide-on-scroll /
+    // shrink), which toggle scroll-state classes. 'pinned' is pure CSS (no runtime); the fixed
+    // positioning + offset token are emitted by renderDocument (gated on the mode) for every mode.
+    const usesStickyHeaderRuntime = stickyHeaderUsesRuntime(website?.effects?.stickyHeader);
+    // SCROLLSPY runtime — ships when the site-wide toggle is on (effects.scrollSpy, governs #main-nav)
+    // OR a page/slot/snippet uses a per-element `data-sw-scrollspy` (same only-used-ships discipline as
+    // cart/nav-effects). The marker substring `sw-scrollspy` matches BOTH the attribute and the body
+    // class, so the source scan can't drift from the runtime.
+    const usesScrollSpyRuntime =
+      scrollSpyUsesRuntime(website?.effects?.scrollSpy) || usesMarker(usesScrollSpy);
     // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
     // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
     // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
@@ -530,10 +563,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
-    // actually opens. NAV_LINK_JS is a general document-wide a[href^="#"] handler, so this is enough.
+    // actually opens. ALSO ship it whenever SCROLLSPY is used: a scrollspy nav is in-page section
+    // navigation by definition, so its links (`#about`, `/#about`) must smooth-scroll on click.
     const usesNavLink =
       pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
-      usesMarker(usesDialog);
+      usesMarker(usesDialog) ||
+      usesScrollSpyRuntime;
     // Public form definitions (recipient stripped) + the submission endpoint per form — consumed
     // by the form-embed pass in renderTemplate ({{sw-form}} / data-sw-form) and the cart's form
     // channel. Built once (same for every page); absolute when a publicBaseUrl is configured,
@@ -642,6 +677,37 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                 ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
               ]
             : undefined;
+        // og:image MUST be an absolute URL — social crawlers (Facebook/LinkedIn/X) won't fetch a
+        // page-relative one. Resolve the page-relative asset URL (kept in lockstep with the body
+        // rewrite via `rel()`) against THIS page's own absolute URL. Without a configured site URL
+        // there's no absolute base, so we can only ship the relative form (portable static export).
+        // og:image points at a MATERIALIZED `lg` thumbnail (relImage records the ref for build-time
+        // generation), not the uncapped original; absolutized below when a site URL is configured.
+        const relOgImage = relImage(page.image ?? identity.image, 'lg');
+        // A non-URL image value can't reach `new URL()`'s first arg given the AssetRef schema, but
+        // fall back to the page-relative form rather than throwing a raw TypeError out of the publish
+        // loop (every other tenant-influenced op in here is guarded the same way).
+        let ogImage = relOgImage;
+        if (siteUrl && relOgImage) {
+          try {
+            ogImage = new URL(relOgImage, siteUrlFor(siteUrl, outSlug)).href;
+          } catch {
+            ogImage = relOgImage;
+          }
+        }
+        // og:url + canonical: an author-set canonical always wins; otherwise default to this page's
+        // OWN absolute URL when a site URL is configured (previously nothing was emitted without an
+        // explicit canonical, so most pages shipped no og:url and no canonical link).
+        const ogUrl = page.canonical ?? (siteUrl ? siteUrlFor(siteUrl, outSlug) : undefined);
+        // og:locale: best-effort `language_TERRITORY` from the page locale (we don't fabricate a
+        // territory we don't have — `en` stays `en`, `pt-BR` → `pt_BR`). og:locale:alternate lists
+        // this page's OTHER locale variants (independent of siteUrl — these need no absolute URL).
+        const ogLocale = pageLocale.replace(/-/g, '_');
+        // NOT gated on !page.noindex (unlike the `alternates`/hreflang block above): og:locale:alternate
+        // is a social-sharing hint, not an indexing directive — a noindex page can still be shared and
+        // naming its sibling locales is valid. hreflang IS gated because search engines must not be
+        // pointed at noindex pages.
+        const ogLocaleAlternates = group.filter((m) => m.locale !== pageLocale).map((m) => m.locale.replace(/-/g, '_'));
         // `dataset.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
         // present, else the base dataset (auto locale-suffix). Translation links for a
         // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
@@ -661,8 +727,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Locale-resolved translation catalog for this page — shared by the render context AND the
         // SYSTEM i18n dict injected for the component runtimes (window.__SW_T__).
         const pageT = resolveTranslations(website?.translations, pageLocale, defaultLocale);
-        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
-        // scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
+        // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
+        // same-locale, scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
         // slots, so a footer/nav can reference another page too); no-ops when nothing names `pages`.
         const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, [pageSource, ...slotSources].filter(Boolean).join('\n'));
         // Fail fast (clear error) if a pathological source named many data-heavy pages — bound it like
@@ -697,6 +763,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             translations: pageTranslations,
             data: page.data,
             children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
+            // `page.template` — the template ref id this page renders from ('' = own code). `page.code` —
+            // the EFFECTIVE source rendering this page (resolved through its template, if any). Gated:
+            // the (large) source ships only when `{{page.code}}` is referenced.
+            template: page.template ?? '',
+            code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
           },
           // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`); absent at the
           // tree root. Built only when the source references it (gates the parent's own `data` like children).
@@ -782,16 +853,29 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
           ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
           ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
+          ...(usesStickyHeaderRuntime ? [`${siteRoot}${STICKY_HEADER_SCRIPT}`] : []),
+          ...(usesScrollSpyRuntime ? [`${siteRoot}${SCROLLSPY_SCRIPT}`] : []),
         ];
+        // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
+        // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
+        // Independent of consent.enabled (a held iframe still needs its frame-src origin to load on consent).
+        const authorCspOrigins = authorContentCspOrigins(
+          [bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml, website?.head, website?.scripts]
+            .filter((s): s is string => Boolean(s))
+            .join('\n'),
+        );
         const html = renderDocument(page, {
           brand,
           bodyHtml,
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
-          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
+          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}?v=${assetVer}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
+          // Sticky/fixed top-header → the fixed `#main-nav` + `--sw-header-h` offset token, emitted at
+          // first paint by renderDocument ('none'/absent = static header, byte-identical).
+          stickyHeader: website?.effects?.stickyHeader,
           mainNav: mainNavHtml,
           sidebarLeft: sidebarLeftHtml,
           sidebarRight: sidebarRightHtml,
@@ -799,6 +883,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           bottom: bottomHtml,
           preloader: fxCode.preloader ?? preloaderMarkup,
           backToTop: backToTopMarkup,
+          // CONSENT MANAGER mount — auto-injected when consent is enabled (no authored {{sw-consent}}). The
+          // copy localizes from the page's reserved consent_* translations → English defaults. grantAll only
+          // in the draft whole-site preview (previewMode) so gated embeds render WYSIWYG; never on publish.
+          consentMount: consentMountMarkup(
+            website?.consent,
+            // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* slug; pageT + RESERVED_TRANSLATION_DEFAULTS are string-valued/frozen registries (missing → '')
+            (key) => { const v = (pageT as Record<string, unknown> | undefined)?.[key]; return typeof v === 'string' && v ? v : RESERVED_TRANSLATION_DEFAULTS[key] ?? ''; },
+            { grantAll: previewMode },
+          ),
           // Custom effect code references the brand's text-on-brand tokens — make sure they're defined
           // even on a themes-off site (themes already emit them; this only fires for custom sites).
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
@@ -810,9 +903,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           seo: {
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
-            // og:image falls back to the company image; the favicon/PWA icons derive from `icon`.
-            image: relImage(page.image ?? identity.image, 'lg'),
-            url: page.canonical,
+            // og:image falls back to the company image (absolutized above); favicon/PWA icons derive from `icon`.
+            image: ogImage,
+            url: ogUrl,
+            // og:site_name = the brand display name; og:locale (+ alternates) from the page's locale set.
+            siteName: identity.name,
+            locale: ogLocale,
+            localeAlternates: ogLocaleAlternates,
             noindex: page.noindex,
             themeColor: identity.colors.primary,
             // The generated set when the icon is an in-project media asset (page-relative); else a
@@ -834,7 +931,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           head: website?.head,
           // Baked CSP for static-export parity (a strict external host then allows the consented
           // third-party origins). Platform-local serving ALSO sets it as a response header. Omit = none.
-          metaCsp: buildConsentMetaCsp(website?.consent, embedProviders),
+          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).
@@ -844,10 +941,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
-          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
+          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
-          scripts: pageScripts.length > 0 ? pageScripts : undefined,
+          scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
           // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
           systemI18n: usesComponents && components.js ? systemI18nData(pageT) : undefined,
           // PREVIEW only: the parent-bridge runtime (reports this iframe's location to the editor
@@ -880,7 +977,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
         const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
-        const finalHtml = opts.minifyHtml ? await minifyPageHtml(portableHtml) : portableHtml;
+        // When the consent manager is enabled, HOLD every cross-origin author `<iframe>` (move its `src`
+        // to `data-sw-consent-src`) so nothing third-party loads until consent — the consent runtime then
+        // hydrates it (placeholder Allow once / Always allow). Consent off → iframes load normally (their
+        // origin is still allow-listed in the baked CSP above). Same-origin / `data-sw-consent-skip` pass.
+        const gatedHtml =
+          website?.consent?.enabled === true
+            ? gateAuthorIframes(portableHtml, { defaultCategory: website?.consent?.defaultEmbedCategory ?? DEFAULT_EMBED_CATEGORY })
+            : portableHtml;
+        const finalHtml = opts.minifyHtml ? await minifyPageHtml(gatedHtml) : gatedHtml;
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, finalHtml, 'utf8');
         bytes += Buffer.byteLength(finalHtml);
@@ -972,6 +1077,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, BACK_TO_TOP_SCRIPT), BACK_TO_TOP_JS, 'utf8');
       bytes += Buffer.byteLength(BACK_TO_TOP_JS);
+    }
+    // The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink; only-used-ships).
+    if (usesStickyHeaderRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, STICKY_HEADER_SCRIPT), STICKY_HEADER_JS, 'utf8');
+      bytes += Buffer.byteLength(STICKY_HEADER_JS);
+    }
+    // The SCROLLSPY runtime (highlight the nav link whose in-page section is in view; only-used-ships).
+    if (usesScrollSpyRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, SCROLLSPY_SCRIPT), SCROLLSPY_JS, 'utf8');
+      bytes += Buffer.byteLength(SCROLLSPY_JS);
     }
     // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
     if (usesNavRuntime) {

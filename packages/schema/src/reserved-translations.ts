@@ -92,7 +92,7 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
   },
   {
     // CONSENT group (gated on `website.consent.enabled`): the cookie-consent banner + preferences copy.
-    // The render helper ({{sw-consent}}) resolves each per page-locale and floors to these English defaults.
+    // The consent runtime resolves each per page-locale and floors to these English defaults.
     id: 'consent',
     label: 'Consent · Cookie banner',
     feature: 'consent',
@@ -118,6 +118,9 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'consent_analytics_desc', label: 'Analytics category description', default: 'Helps us understand how visitors use the site.' },
       { key: 'consent_marketing', label: 'Marketing category name', default: 'Marketing' },
       { key: 'consent_marketing_desc', label: 'Marketing category description', default: 'Used to deliver relevant ads and measure campaigns.' },
+      { key: 'consent_allow_once', label: 'Embed placeholder: load this one', default: 'Allow once' },
+      { key: 'consent_always_allow', label: 'Embed placeholder: always allow this category', default: 'Always allow' },
+      { key: 'consent_embed_note', label: 'Embed placeholder note', default: 'This content is loaded from a third party. Allow it to load?' },
     ],
   },
 ];

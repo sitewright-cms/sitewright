@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, setUnauthorizedHandler, type Project } from './api';
+import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
 import { Login } from './views/Login';
@@ -20,6 +20,8 @@ import { UserMenu } from './views/UserMenu';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
 import { ImportWebsiteModal } from './views/ImportWebsiteModal';
+import { ImportProjectModal } from './views/ImportProjectModal';
+import { DuplicateProjectModal } from './views/DuplicateProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
 import { LivePreview } from './views/LivePreview';
 import { SitePreview } from './views/SitePreview';
@@ -106,10 +108,13 @@ function MainApp({
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [importZipOpen, setImportZipOpen] = useState(false);
   // After a new project is created, either open its editor ('open') or open the import wizard ('import').
   const [newProjectIntent, setNewProjectIntent] = useState<'open' | 'import'>('open');
   // The project the import wizard targets (existing project or a freshly-created one), if open.
   const [importFor, setImportFor] = useState<Project | null>(null);
+  // The project the Duplicate modal targets, if open.
+  const [duplicateFor, setDuplicateFor] = useState<Project | null>(null);
   // Bumped after an import so an already-open project re-mounts and refetches its new content.
   const [projectNonce, setProjectNonce] = useState(0);
   // The Publish & Deploy Options modal (header overflow); `publishRefresh` bumps PublishBar so its
@@ -328,6 +333,8 @@ function MainApp({
           isClient={isClient}
           isInstanceAdmin={isInstanceAdmin}
           onPublishDeploy={() => setPublishModalTab('publish')}
+          onExportProject={inProject ? () => downloadProjectExport(inProject.id) : undefined}
+          onDuplicateProject={inProject && canCreateProjects ? () => setDuplicateFor(inProject) : undefined}
           onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
@@ -378,6 +385,21 @@ function MainApp({
             setNewProjectIntent('import');
             setNewProjectOpen(true);
           }}
+          onImportZip={() => {
+            setSelectorOpen(false);
+            setImportZipOpen(true);
+          }}
+        />
+      )}
+      {importZipOpen && (
+        <ImportProjectModal
+          onClose={() => setImportZipOpen(false)}
+          onImported={(project) => {
+            setImportZipOpen(false);
+            void refresh();
+            setProjects((prev) => (prev.some((p) => p.id === project.id) ? prev : [...prev, project]));
+            openProject(project);
+          }}
         />
       )}
       {newProjectOpen && (
@@ -404,6 +426,18 @@ function MainApp({
             void refresh();
             setProjectNonce((n) => n + 1); // force the project view to refetch the imported content
             openProject(target);
+          }}
+        />
+      )}
+      {duplicateFor && (
+        <DuplicateProjectModal
+          project={duplicateFor}
+          onClose={() => setDuplicateFor(null)}
+          onDuplicated={(copy) => {
+            setDuplicateFor(null);
+            void refresh();
+            setProjects((prev) => (prev.some((p) => p.id === copy.id) ? prev : [...prev, copy]));
+            openProject(copy);
           }}
         />
       )}

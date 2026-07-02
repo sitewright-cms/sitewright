@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
+import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
@@ -13,7 +14,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { HistoryView } from './HistoryView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
-import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
+import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 
@@ -54,6 +55,10 @@ const CODE_PAGE_STARTER = `<section class="mx-auto max-w-3xl px-6 py-16">
   <p class="mt-4 text-lg text-slate-600" data-sw-text="tagline">Edit this tagline</p>
 </section>
 `;
+
+// A blank draft for the "New page" form (the create-mode PageSettingsModal). Its identity — id,
+// final slug, parent, order, language — is assigned from the submitted values in `create()`.
+const NEW_PAGE_DRAFT = { id: '__new__', path: '', title: '' } as Page;
 
 // --- pages-list row icons (lucide-style outlines) -----------------------------
 const rowIcon = (paths: ReactNode) => (
@@ -134,10 +139,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
-  const [slug, setSlug] = useState('');
-  const [title, setTitle] = useState('');
-  // The "Add page" form lives in its own modal, opened from a button atop the list.
+  // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
+  // the list; its fields live inside that modal (no separate slug/title state here).
   const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
   // Add-page errors are scoped to the modal so they never bleed onto the list (and list-op
   // errors never show inside the add form). `error` covers list ops (reorder/delete/copy/…).
   const [addError, setAddError] = useState<string | null>(null);
@@ -243,7 +248,19 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   useEffect(() => {
     void load();
     void refreshLocales();
+    // Templates power the "New page" + Page Settings template selector; load them up front so the
+    // create modal always offers project templates (not just the built-in globals) on first open.
+    void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
   }, [project.id]);
+
+  // LIVE-REFRESH: an agent (or another tab) that creates/edits/deletes a page — or changes the site
+  // settings (e.g. locales) — updates the page list + locale set here, no full SPA reload needed.
+  useProjectEvents(project.id, (c) => {
+    if (c.kind === 'page' || c.kind === 'template') void load();
+    if (c.kind === 'page') void refreshLocales();
+    if (c.kind === 'template') void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
+    if (c.kind === 'settings') void refreshLocales();
+  });
 
   // Keep the selected language valid: when the configured locales load/change (or one is
   // removed), snap back to the default if the current selection is no longer available.
@@ -285,48 +302,60 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     if (dir === 'down' && next) void persistReorder(p.id, next.id, 'after');
   }
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
+  /**
+   * Create a page from the full New-page settings form. The modal supplies the whole field set
+   * (title, slug, meta, OG image, noindex, parent, template, nav, raw-HTML, status); this owns the
+   * identity — slug → id (locale-suffixed for a "this language only" page), uniqueness + reserved
+   * `home` guard, the starter code (or none, for a templated page), the append-last `order`, and the
+   * all-languages fan-out. A failure keeps the modal open with `addError`.
+   */
+  async function create(values: PageSettingsValues) {
     setAddError(null);
-    // The form takes a SLUG (one segment, no slashes) — the full URL is computed from the
-    // parent. Slugify the input: lowercase, spaces/slashes/invalid → hyphens, trimmed.
-    const seg = slug
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    const title = values.title.trim();
+    // The slug is one segment (no slashes); the modal already slugifies as you type — normalize again.
+    const seg = values.path.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     if (!seg) {
       setAddError('Enter a page slug (e.g. "about").');
       return;
     }
-    // A locale-only page (created while viewing a non-default language, "only this language")
-    // gets a locale-suffixed id so it never collides with a future default page of the same
-    // slug; otherwise the id is the slug, with the code authored in the default language.
-    const localeOnly = multilingual && currentLocale !== defaultLocale && newPageScope === 'current';
-    const id = localeOnly ? `${seg}-${currentLocale.toLowerCase()}` : seg;
+    if (!title) {
+      setAddError('Enter a page title.');
+      return;
+    }
+    // The submitted `values.locale` is the canonical target language (the modal stamps it from the
+    // scope control). A non-default locale ⇒ a "this language only" page: a locale-suffixed id (so
+    // it never collides with a future default page of the same slug) nested under that language's
+    // home. A default-locale page (locale '') is authored in the default language.
+    const pageLocale = values.locale || defaultLocale;
+    const localeOnly = pageLocale !== defaultLocale;
+    const id = localeOnly ? `${seg}-${pageLocale.toLowerCase()}` : seg;
     if (pages.some((p) => p.id === id)) {
       setAddError(id === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${id}" already exists.`);
       return;
     }
+    // Respect a chosen parent (a sub-page), else the home of the target language. The new page
+    // lands LAST under that parent (append to the bottom of the list, not sorted in by title);
+    // an all-languages page's variants append last in each language too (core nextChildOrder).
+    const parentId = values.parent || (localeOnly ? localeHomeId(pageLocale) : homeId);
+    // Build the record from the form's full field set (nav/meta/image/noindex/template/rawHtml/
+    // status/parent/locale), then stamp identity + starter code + append-last order. A templated
+    // page carries no own source; a code-first page gets the starter.
+    const base: Page = { id, path: seg, title, source: values.template ? undefined : CODE_PAGE_STARTER };
     const starter: Page = {
-      id,
-      path: seg,
-      title,
-      source: CODE_PAGE_STARTER,
-      ...(localeOnly
-        ? { parent: localeHomeId(currentLocale), locale: currentLocale } // standalone, lives only in this language
-        : { parent: homeId }), // the default-language owner (the code source of truth)
+      ...applyPageSettings(base, { ...values, title, path: seg }),
+      order: nextSiblingOrder(pages, parentId, pageLocale, defaultLocale),
     };
+    setAddSaving(true);
     try {
       await api.putPage(project.id, starter);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'failed to create page');
+      setAddSaving(false);
       return;
     }
     // The page exists now — close the form regardless of what the propagation step does.
-    setSlug('');
-    setTitle('');
     setAddOpen(false);
+    setAddSaving(false);
     // "All languages": the owner was authored in the default language; fan it out into every
     // other configured locale as inherit-mode variants (they follow this page's code). A failure
     // here leaves a valid (un-propagated) page — say so precisely instead of "failed to create".
@@ -370,6 +399,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     // Created while viewing a non-default language → a locale-only placeholder; else the
     // default-language owner that fans out to every locale below.
     const localeOnly = multilingual && currentLocale !== defaultLocale;
+    const parentId = localeOnly ? localeHomeId(currentLocale) : homeId;
+    const placeholderLocale = localeOnly ? currentLocale : defaultLocale;
     const placeholder: Page = {
       id,
       path: '', // routing-transparent: no slug, no emitted route
@@ -377,7 +408,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       kind: 'link',
       link: { ...(target ? { target } : {}), ...(phNewTab ? { newTab: true } : {}) },
       nav: { slots: phSlots, ...(phDropdown ? { dropdown: true } : {}) },
-      parent: localeOnly ? localeHomeId(currentLocale) : homeId,
+      parent: parentId,
+      order: nextSiblingOrder(pages, parentId, placeholderLocale, defaultLocale), // append last among siblings
       ...(localeOnly ? { locale: currentLocale } : {}),
     };
     try {
@@ -939,71 +971,28 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
             </Modal>
           )}
           {addOpen && (
-            <Modal
-              title="Add page"
-              size="md"
+            // The full Page Settings modal in CREATE mode — configure everything (meta, OG image,
+            // noindex, parent, template, nav, language scope) up front, not just title + slug.
+            <PageSettingsModal
+              mode="create"
+              page={NEW_PAGE_DRAFT}
+              projectId={project.id}
+              initial={pageSettingsFromPage(NEW_PAGE_DRAFT)}
+              pages={pages}
+              templates={templates}
+              locales={locales}
+              currentLocale={currentLocale}
+              scope={newPageScope}
+              onScopeChange={setNewPageScope}
+              saving={addSaving}
+              error={addError}
               onClose={() => {
-                // A fresh form each open: drop any abandoned slug/title + error on close.
                 setAddOpen(false);
-                setSlug('');
-                setTitle('');
                 setAddError(null);
+                setNewPageScope('all');
               }}
-            >
-              <form onSubmit={create} className="flex flex-col gap-4 p-5">
-                <div className="flex flex-col">
-                  <label className={fieldLabel}>Page slug</label>
-                  <input
-                    aria-label="Page path"
-                    className={glassInput}
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="about"
-                    title="One slug segment (no slashes) — it nests under Home; the URL is built from the page tree."
-                    autoFocus
-                    required
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className={fieldLabel}>Title</label>
-                  <input
-                    aria-label="Page title"
-                    className={glassInput}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                  />
-                </div>
-                {/* When the site is multilingual, a new page is either available in EVERY
-                    language (one main-language owner + inherit variants) or ONLY the language
-                    you're viewing (a standalone locale-only page). */}
-                {multilingual && (
-                  <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
-                    <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400">Available in</legend>
-                    <label className="flex items-start gap-2 text-sm">
-                      <input type="radio" name="page-scope" className="mt-0.5" checked={newPageScope === 'all'} onChange={() => setNewPageScope('all')} />
-                      <span>
-                        <span className="font-medium">All languages</span>
-                        <span className="block text-xs text-slate-500">One main-language page; every other language follows its layout.</span>
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-2 text-sm">
-                      <input type="radio" name="page-scope" className="mt-0.5" checked={newPageScope === 'current'} onChange={() => setNewPageScope('current')} />
-                      <span>
-                        <span className="font-medium">Only {localeFlag(currentLocale)} {localeLabel(currentLocale)}</span>
-                        <span className="block text-xs text-slate-500">A page that exists only in this language.</span>
-                      </span>
-                    </label>
-                  </fieldset>
-                )}
-                {addError && <p className="text-sm text-red-600">{addError}</p>}
-                <div className="flex justify-end">
-                  <button type="submit" className={primaryButton}>
-                    Add page
-                  </button>
-                </div>
-              </form>
-            </Modal>
+              onSubmit={(values) => void create(values)}
+            />
           )}
           {addLocaleOpen && (
             <LocalePickerModal

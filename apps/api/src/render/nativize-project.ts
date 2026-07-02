@@ -257,6 +257,12 @@ export async function nativizeProject(
   // reserved before any await — so the shared state is race-free under the concurrent pool.)
   const priorDatasets = (await deps.contentRepo.list(ctx, 'dataset')) as Dataset[];
   const refoldSlugs = new Set<string>(priorDatasets.map((d) => d.slug));
+  // Site-wide entry-id reservation (seeded with existing entries) so re-folds across pages don't mint
+  // colliding entry ids — the entry storage key `(projectId,'entry',entityId)` is project-global. Unlike
+  // refoldSlugs, these ids are added AFTER refoldLoops' render-equivalence await; that is still race-free
+  // under the concurrent pool because the reservation runs in a synchronous forEach (a post-await
+  // continuation runs atomically to the next await on JS's single thread) — do NOT add an await inside it.
+  const refoldEntryIds = new Set<string>(entries.map((e) => e.id));
   const refoldDatasets: Dataset[] = [];
   const refoldEntries: Entry[] = [];
 
@@ -294,7 +300,7 @@ export async function nativizeProject(
       try {
         const probe: RenderProbe = (tpl, extra) =>
           Promise.resolve(renderTemplate(tpl, { ...(context as Record<string, unknown>), ...extra, dataset: { ...(localeData as Record<string, unknown>), ...((extra.dataset as Record<string, unknown>) ?? {}) } } as unknown as TemplateContext));
-        const refold = await refoldLoops(html, refoldSlugs, probe);
+        const refold = await refoldLoops(html, refoldSlugs, refoldEntryIds, probe);
         if (refold.datasets.length > 0) {
           validateTemplate(refold.html);
           html = refold.html;

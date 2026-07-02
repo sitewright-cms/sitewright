@@ -76,6 +76,9 @@ interface JsonLdOrg {
   telephone?: string;
   sameAs?: string[];
   type?: string;
+  name?: string;
+  legalName?: string;
+  shortName?: string;
   address?: LdAddress;
   geo?: { latitude: string; longitude: string };
 }
@@ -93,6 +96,37 @@ function ldNum(v: unknown): string | undefined {
   return undefined;
 }
 
+function validGeo(lat: string, lon: string): { latitude: string; longitude: string } | undefined {
+  const la = Number(lat), lo = Number(lon);
+  return Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180 ? { latitude: lat, longitude: lon } : undefined;
+}
+
+/** GPS coords from a Google-Maps embed/link URL — what JSON-LD usually omits but a map iframe carries:
+ *  an embed `pb=…!2d<lon>!3d<lat>…`, a place link `@<lat>,<lon>`, or a `q=`/`ll=<lat>,<lon>` query. */
+export function geoFromMapUrl(url: string | undefined): { latitude: string; longitude: string } | undefined {
+  if (!url) return undefined;
+  const N = '(-?\\d{1,3}\\.\\d{3,})';
+  let m = url.match(new RegExp(`!2d${N}!3d${N}`)); // embed pb: !2d=lon, !3d=lat
+  if (m) return validGeo(m[2]!, m[1]!);
+  m = url.match(new RegExp(`[@=]${N},${N}`)); // @lat,lon  /  q=lat,lon  /  ll=lat,lon
+  if (m) return validGeo(m[1]!, m[2]!);
+  return undefined;
+}
+
+// A trailing legal-entity suffix (optionally a (PTY)/(PTE) wrapper) — e.g. "… (PTY) Ltd", "…, Inc.", "… GmbH".
+const LEGAL_SUFFIX_RE = /[\s,]+\(?(?:pty|pte)?\)?[\s.]*(?:ltd|limited|inc|incorporated|llc|llp|plc|gmbh|corp|corporation|company|co|ag|sa|nv|bv|sarl|srl|kg|oy|ab)\.?\s*$/i;
+const hasLegalSuffix = (s: string): boolean => LEGAL_SUFFIX_RE.test(s);
+/** Strip a trailing legal suffix → a short brand name, or undefined when it doesn't actually shorten it. */
+function stripLegalSuffix(s: string): string | undefined {
+  const out = s.replace(LEGAL_SUFFIX_RE, '').trim();
+  return out && out !== s.trim() && out.length >= 2 ? out.slice(0, 120) : undefined;
+}
+/** Humanize a schema.org @type (HomeAndConstructionBusiness → "Home And Construction Business"). */
+function humanizeType(t: string): string | undefined {
+  const s = t.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim();
+  return s ? s.slice(0, 80) : undefined;
+}
+
 /** Pull Organization-ish fields (incl. postal address + geo) from JSON-LD `application/ld+json` blocks. */
 function parseJsonLd(doc: Document): JsonLdOrg {
   const out: JsonLdOrg = {};
@@ -106,8 +140,14 @@ function parseJsonLd(doc: Document): JsonLdOrg {
     }
     for (const node of flattenLd(data)) {
       const type = String((node['@type'] ?? '') as string);
-      if (!/Organization|LocalBusiness|WebSite/i.test(type)) continue;
-      if (!out.type && /Organization|LocalBusiness/i.test(type)) out.type = type;
+      // Accept Organization, WebSite, AND any LocalBusiness SUBTYPE — schema.org has dozens
+      // (HomeAndConstructionBusiness, ProfessionalService, Store, Restaurant, …), so match the family by
+      // keyword rather than a literal list (the old /LocalBusiness/ dropped "HomeAndConstructionBusiness").
+      if (!/Organization|Business|LocalBusiness|Corporation|Company|Store|Service|Restaurant|Agency|NGO|Professional|Dealer|Practice|Firm|Institution|Medical|Dentist|Lawyer|WebSite/i.test(type)) continue;
+      if (!out.type && !/^WebSite$/i.test(type)) out.type = type; // the business @type → businessType
+      if (!out.name) { const nm = ldStr(node.name); if (nm) out.name = nm; }
+      if (!out.legalName) { const ln = ldStr(node.legalName); if (ln) out.legalName = ln; }
+      if (!out.shortName) { const sn = ldStr(node.alternateName); if (sn) out.shortName = sn; }
       if (!out.email && typeof node.email === 'string') out.email = node.email;
       if (!out.telephone && typeof node.telephone === 'string') out.telephone = node.telephone;
       const sameAs = node.sameAs;
@@ -257,9 +297,19 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
   const email = isEmail(ld.email) ? ld.email : isEmail(dom.email) ? dom.email : undefined;
   const telephone = (ld.telephone ?? dom.phone)?.slice(0, 60);
   const address = ld.address ?? extractAddress(homeDoc); // JSON-LD wins; else scan the DOM (microdata/<address>/icon)
+  const geo = ld.geo ?? geoFromMapUrl(dom.mapUrl); // JSON-LD geo, else the GPS embedded in the map URL
+  // legalName / shortName / businessType: from JSON-LD, else extrapolated from the full org name (the JSON-LD
+  // `name`/`legalName` usually carries the legal suffix; `name` here is the display name from meta/title).
+  const fullName = ld.legalName ?? ld.name ?? name;
+  const legalName = (ld.legalName ?? (hasLegalSuffix(fullName) ? fullName : undefined))?.slice(0, 300);
+  const shortName = (ld.shortName ?? stripLegalSuffix(fullName))?.slice(0, 120);
+  const businessType = ld.type ? humanizeType(ld.type) : undefined;
 
   const input: Record<string, unknown> = {
     name: name.slice(0, 200),
+    legalName,
+    shortName,
+    businessType,
     description: meta.get('description')?.slice(0, 4000),
     slogan: extractSlogan(homeDoc, meta, name),
     logo: assetRef(findLogo(homeDoc), ctx),
@@ -268,7 +318,7 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
     email,
     telephone,
     address, // postal address: JSON-LD PostalAddress, else scanned from the DOM — schema AddressSchema
-    geo: ld.geo,
+    geo,
     mapUrl: dom.mapUrl,
     social: social.length > 0 ? social : undefined,
     ...(primary ? { colors: { primary } } : {}),

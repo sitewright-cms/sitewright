@@ -89,7 +89,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'landing' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const created = putPage.mock.calls[0]![1] as Page;
     expect(created.id).toBe('landing');
@@ -105,7 +105,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: '/Web Design' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'WD' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     expect((putPage.mock.calls[0]![1] as Page).path).toBe('web-design');
 
@@ -115,7 +115,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'home' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Home 2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
     expect(await screen.findByText(/reserved for the site root/i)).toBeInTheDocument();
     expect(putPage).not.toHaveBeenCalled();
   });

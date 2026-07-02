@@ -1,18 +1,26 @@
-// CONSENT MANAGER (core) — a first-party, dependency-free cookie-consent runtime for PUBLISHED
-// static sites. PR2 of the consent epic ships the STATE MACHINE + UI only; the actual third-party
-// gating (registry-injected scripts, click-to-load embeds) hooks onto this in later PRs.
+// CONSENT MANAGER — a first-party, dependency-free cookie-consent runtime for PUBLISHED static sites.
+// It runs the banner state machine + UI, injects managed registry integrations on consent, AND gates
+// author content: cross-origin `<iframe>` embeds (held click-to-load) and `<script type="text/plain"
+// data-sw-consent="cat">` tags (activated on consent). One runtime, shipped whenever the manager is on.
 //
 // What it does: shows a consent banner (first layer: Accept all / Reject all / Customize) with an
 // expandable preferences panel (per-category toggles; "Strictly necessary" is always on), remembers
 // the choice in localStorage (versioned — bump `website.consent.version` to re-prompt), and broadcasts
-// the decision so other runtimes can react:
+// the decision so other runtimes (and its own gates) react:
 //   - window dispatches a `sw:consentchange` CustomEvent { detail: {necessary, functional, analytics,
 //     marketing} } whenever consent is set or changed (and once on load if already stored).
 //   - window.swConsent = { get(): categories, open(): re-open preferences, set(categories) }.
 //
-// Same "only-used-ships" discipline as cart.ts: ships CONSENT_CSS + a `consent.js` file ONLY when a
-// page uses the {{sw-consent}} helper (the `data-sw-consent` marker). First-party, audited, static
-// code — tenants supply only DATA (category copy, version, layout) via an escaped config attribute.
+// AUTHOR-CONTENT GATING: at publish a cross-origin author `<iframe>` is emitted HELD (its `src` moved to
+// `data-sw-consent-src`, category in `data-sw-consent-cat`); a `<script type="text/plain" data-sw-consent>`
+// stays inert. This runtime loads/activates them when their category is consented (or via the placeholder's
+// "Allow once" = this one only / "Always allow" = grant the category). In PREVIEW a `grantAll` config flag
+// pre-grants everything so the editor renders WYSIWYG. createElement/textContent only — never innerHTML.
+//
+// Same "only-used-ships" discipline as cart.ts: ships CONSENT_CSS + a `consent.js` file ONLY when the
+// manager is enabled (`consent.enabled`). The mount itself is AUTO-INJECTED by the publish pipeline (no
+// authored `{{sw-consent}}` needed); tenants supply only DATA (category copy, version, layout) via an
+// escaped config attribute.
 //
 // Security contract (a reviewer should check): the config + all copy reach the DOM via `textContent` /
 // `setAttribute` — NEVER `innerHTML` (the UI is built with createElement). The privacy `href` is
@@ -20,10 +28,14 @@
 // guarded and the stored record is re-validated on read. No network, no eval. PE: the mount ships empty
 // + display:none, so with no JS there is no banner — and with no JS no third-party scripts load anyway.
 
-// Only-used-ships detection. A code-first SOURCE / skeleton slot contains the HELPER call `{{sw-consent}}`
-// (or `{{sw-consent-settings}}`); the `data-sw-consent` attribute only appears after Handlebars runs. The
-// substring `sw-consent` covers every form (`{{sw-consent}}`, `{{sw-consent-settings}}`, `data-sw-consent`,
-// `data-sw-consent-open`). A stray prose match only over-ships a few KB — benign, like the other runtimes.
+import { consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
+import { safeUrl } from './url.js';
+import { escapeAttr } from './escape.js';
+
+// Only-used-ships detection. The `data-sw-consent` attribute appears only on the auto-injected mount; the
+// substring `sw-consent` also covers `{{sw-consent-settings}}` (re-open button) + `data-sw-consent-open`.
+// A stray prose match only over-ships a few KB — benign, like the other runtimes. (The build also ships
+// the runtime whenever `consent.enabled`, so the mount + held author content are always hydrated.)
 export function usesConsent(s: string | null | undefined): boolean {
   return typeof s === 'string' && s.includes('sw-consent');
 }
@@ -31,12 +43,69 @@ export function usesConsent(s: string | null | undefined): boolean {
 // The optional categories the platform offers (Necessary is implicit + always granted).
 export const CONSENT_CATEGORIES = ['functional', 'analytics', 'marketing'] as const;
 
+/**
+ * The CONSENT MANAGER mount markup — the `<div id="sw-consent" data-sw-consent …>` carrying the escaped
+ * runtime config. AUTO-INJECTED by the publish/render pipeline whenever `consent.enabled` (no authored
+ * `{{sw-consent}}` needed). `tr(key)` localizes a reserved `consent_*` key for the page locale; `grantAll`
+ * pre-grants every category (PREVIEW only, for WYSIWYG). Returns '' when the manager is off.
+ */
+export function consentMountMarkup(
+  consent: Consent | undefined,
+  tr: (key: string) => string,
+  opts: { grantAll?: boolean } = {},
+): string {
+  if (!consent || consent.enabled !== true) return '';
+  const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
+  const want =
+    Array.isArray(consent.categories) && consent.categories.length
+      ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string')
+      : [...CAT_KEYS];
+  const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
+  const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
+  const cfg: Record<string, unknown> = {
+    v: version,
+    layout: consent.layout === 'box' ? 'box' : 'bar',
+    deny: consent.denyButton !== false,
+    cats,
+    t: {
+      title: tr('consent_title'),
+      intro: tr('consent_intro'),
+      acceptAll: tr('consent_accept_all'),
+      rejectAll: tr('consent_reject_all'),
+      customize: tr('consent_customize'),
+      save: tr('consent_save'),
+      prefsTitle: tr('consent_prefs_title'),
+      necessary: tr('consent_necessary'),
+      necessaryDesc: tr('consent_necessary_desc'),
+      privacyLabel: tr('consent_privacy'),
+      allowOnce: tr('consent_allow_once'),
+      alwaysAllow: tr('consent_always_allow'),
+      embedNote: tr('consent_embed_note'),
+    },
+  };
+  if (opts.grantAll) cfg.grantAll = true;
+  const ints = consentRuntimeIntegrations(consent);
+  if (ints.length) cfg.ints = ints;
+  const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
+  if (privacy && privacy !== '#') cfg.privacy = privacy;
+  // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip + is
+  // byte-stable, then attr-escape for the attribute value.
+  const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+  const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
+  return `<div id="sw-consent" data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`;
+}
+
 // Brand-themed, dark-mode aware (every surface/text reads a `--sw-color-*` token whose fallback is the
 // light value). The banner is hidden until the runtime adds `data-sw-enhanced` (PE-first).
 export const CONSENT_CSS = [
   '[data-sw-consent]{display:none}',
-  '[data-sw-consent][data-sw-enhanced="true"]{display:block;position:fixed;z-index:9996;left:1rem;right:1rem;bottom:1rem;margin:0 auto;max-width:min(64rem,calc(100vw - 2rem));background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.75rem;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:1.25rem 1.4rem;font-size:.9rem;line-height:1.5}',
-  '[data-sw-consent][data-layout="box"][data-sw-enhanced="true"]{right:auto;max-width:min(26rem,calc(100vw - 2rem))}',
+  // Visibility is driven by `data-open` (NOT the `hidden` attr — this enhanced rule would override
+  // `[hidden]{display:none}` on specificity). Closed = slid down + faded + non-interactive; `[data-open]`
+  // slides it up. The transition gives the slideUp/slideDown on open/close.
+  '[data-sw-consent][data-sw-enhanced="true"]{display:block;position:fixed;z-index:9996;left:1rem;right:1rem;bottom:1rem;margin:0 auto;max-width:min(64rem,calc(100vw - 2rem));background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.75rem;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:1.25rem 1.4rem;font-size:.9rem;line-height:1.5;transform:translateY(calc(100% + 1.5rem));opacity:0;visibility:hidden;transition:transform .35s cubic-bezier(.22,1,.36,1),opacity .3s ease,visibility .35s}',
+  '[data-sw-consent][data-sw-enhanced="true"][data-open]{transform:none;opacity:1;visibility:visible}',
+  '[data-sw-consent][data-layout="box"][data-sw-enhanced="true"]{right:auto;max-width:min(32rem,calc(100vw - 2rem))}',
+  '@media (prefers-reduced-motion:reduce){[data-sw-consent][data-sw-enhanced="true"]{transition:none}}',
   '[data-sw-consent] .sw-consent-title{margin:0 0 .35rem;font-size:1.05rem;font-weight:700}',
   '[data-sw-consent] .sw-consent-intro{margin:0 0 .9rem}',
   '[data-sw-consent] .sw-consent-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:flex-end}',
@@ -44,18 +113,39 @@ export const CONSENT_CSS = [
   '[data-sw-consent] .sw-consent-prefs{display:none;margin:.5rem 0 1rem;border-top:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);padding-top:.85rem}',
   '[data-sw-consent][data-prefs="open"] .sw-consent-prefs{display:block}',
   '[data-sw-consent] .sw-consent-cat{display:flex;gap:.7rem;align-items:flex-start;padding:.5rem 0}',
-  '[data-sw-consent] .sw-consent-cat input{margin-top:.2rem;width:1.05rem;height:1.05rem;accent-color:var(--sw-color-primary,#4f46e5);flex:none}',
+  // Toggle switch (self-contained, no daisyUI `toggle` util needed — the published sheet wouldn\'t scan it):
+  // green when on (success), grey when off; the knob slides. The locked "necessary" toggle reads disabled.
+  '[data-sw-consent] .sw-consent-cat input{appearance:none;-webkit-appearance:none;margin:.1rem 0 0;flex:none;position:relative;width:2.25rem;height:1.3rem;border-radius:999px;background:color-mix(in oklab,var(--sw-color-base-content,#000) 25%,transparent);cursor:pointer;transition:background .2s}',
+  '[data-sw-consent] .sw-consent-cat input:checked{background:var(--sw-color-success,#16a34a)}',
+  '[data-sw-consent] .sw-consent-cat input::before{content:"";position:absolute;top:.15rem;left:.15rem;width:1rem;height:1rem;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s}',
+  '[data-sw-consent] .sw-consent-cat input:checked::before{transform:translateX(.95rem)}',
+  '[data-sw-consent] .sw-consent-cat input:disabled{opacity:.55;cursor:not-allowed}',
+  '[data-sw-consent] .sw-consent-cat input:focus-visible{outline:2px solid var(--sw-color-primary,#4f46e5);outline-offset:2px}',
   '[data-sw-consent] .sw-consent-cat-name{font-weight:600}',
   '[data-sw-consent] .sw-consent-cat-desc{margin:.1rem 0 0;font-size:.82rem;opacity:.8}',
   '[data-sw-consent] .sw-consent-link{color:var(--sw-color-primary,#4f46e5);text-decoration:underline}',
   '@media (max-width:520px){[data-sw-consent] .sw-consent-actions .btn{flex:1 1 auto}}',
+  // Click-to-load placeholder for a HELD author <iframe>. The wrapper is pinned to the iframe's measured box
+  // (see gatePlaceholder) and the placeholder is laid OVER it. `.skeleton` (daisyUI) supplies the loading
+  // shimmer; `background-color` (not the shorthand) is a fallback that lets the shimmer layer on top.
+  // `display:flex` is block-level on purpose — a held embed sits on its own line (no inline descender gap).
+  '.sw-gate-wrap{position:relative;display:flex;max-width:100%}',
+  '.sw-gate-wrap>iframe{display:block;max-width:100%}',
+  '.sw-gate-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;text-align:center;padding:1rem;box-sizing:border-box;line-height:1.4;overflow:hidden;border-radius:0;background-color:var(--sw-color-base-200,#e5e7eb);color:var(--sw-color-base-content,#1a1a23)}',
+  '.sw-gate-ph .sw-gate-note{margin:0;font-size:.9rem;max-width:32rem;font-weight:bold;border-bottom:1px solid var(--sw-color-primary,#4f46e5)}',
+  '.sw-gate-ph .sw-gate-url{font-style:italic;font-size:.75rem;opacity:.7;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.sw-gate-ph .sw-gate-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}',
 ].join('');
 
 // ES5-style (var / function) — served raw, never transpiled, like the other runtime bundles.
 export const CONSENT_JS = `(function(){
   var STORE='sw-consent';
-  function siteKey(){try{var s=document.currentScript;if(s&&s.src)return new URL('.',s.src).href;}catch(e){}return location.pathname||'/';}
-  function keyOf(){return STORE+':'+siteKey();}
+  // Resolve the per-site storage key ONCE, at script-execution time: document.currentScript is the consent.js
+  // element HERE, but is NULL inside a later event handler — so deriving it lazily would key a click→writeStore
+  // off location.pathname yet key the init→readStore off the script URL, and consent would be silently lost on
+  // reload (write key != read key). Caching it makes both sides use the same key.
+  var SITE_KEY=(function(){try{var s=document.currentScript;if(s&&s.src)return new URL('.',s.src).href;}catch(e){}return location.pathname||'/';})();
+  function keyOf(){return STORE+':'+SITE_KEY;}
   function readStore(){try{var raw=localStorage.getItem(keyOf());if(!raw)return null;var o=JSON.parse(raw);return (o&&typeof o==='object'&&!(o instanceof Array))?o:null;}catch(e){return null;}}
   function writeStore(rec){try{localStorage.setItem(keyOf(),JSON.stringify(rec));}catch(e){}}
   function cfgOf(root){try{return JSON.parse(root.getAttribute('data-sw-consent-config')||'{}')||{};}catch(e){return {};}}
@@ -67,6 +157,86 @@ export const CONSENT_JS = `(function(){
   var current=withNecessary(emptyCats(false));
   function broadcast(){try{window.dispatchEvent(new CustomEvent('sw:consentchange',{detail:withNecessary(current)}));}catch(e){}}
 
+  // ── AUTHOR-CONTENT GATING ───────────────────────────────────────────────────────────────────────
+  // A held <iframe data-sw-consent-src> / inert <script type="text/plain" data-sw-consent> is loaded or
+  // activated once its category is granted (current[cat] / a consentchange event), or via the placeholder.
+  var GCATS={functional:1,analytics:1,marketing:1};
+  function gcat(node){var c=node.getAttribute('data-sw-consent-cat')||node.getAttribute('data-sw-consent')||'';return GCATS[c]?c:'functional';}
+  function loadGatedIframe(fr){
+    if(fr.getAttribute('data-sw-gate-done')==='1')return;fr.setAttribute('data-sw-gate-done','1');
+    // Remove the overlay placeholder, then UNWRAP — restore the iframe to its original spot so it regains its
+    // authored (fluid) sizing; the pinned wrapper existed only to give the overlay the iframe's dimensions while
+    // held. Do this BEFORE setting src: re-parenting an iframe reloads it, so moving it first means src is set
+    // once, in its final position (no double navigation, no flicker).
+    var ph=fr.__swPh;if(ph&&ph.parentNode)ph.parentNode.removeChild(ph);fr.__swPh=null;
+    var wrap=fr.__swWrap;if(wrap&&wrap.parentNode){wrap.parentNode.insertBefore(fr,wrap);wrap.parentNode.removeChild(wrap);}fr.__swWrap=null;
+    var src=fr.getAttribute('data-sw-consent-src');fr.removeAttribute('data-sw-consent-src');
+    if(src)fr.setAttribute('src',src);
+  }
+  function activateGatedScript(sc){
+    if(sc.getAttribute('data-sw-gate-done')==='1')return;sc.setAttribute('data-sw-gate-done','1');
+    var ns=document.createElement('script'),src=sc.getAttribute('src');
+    if(src){ns.src=src;if(sc.getAttribute('async')!==null)ns.async=true;if(sc.getAttribute('defer')!==null)ns.defer=true;var co=sc.getAttribute('crossorigin');if(co!==null)ns.setAttribute('crossorigin',co);}
+    else{ns.text=sc.textContent||'';}
+    var id=sc.getAttribute('id');if(id)ns.id=id;
+    if(sc.parentNode)sc.parentNode.replaceChild(ns,sc); // replacing a type=text/plain node with a typed one runs it
+  }
+  function gatePlaceholder(fr,cat,labels){
+    // The placeholder OVERLAYS the iframe at its exact dimensions: wrap the (held, empty) iframe in a
+    // relative box — the iframe sizes the box — and lay an absolutely-positioned card over it. The
+    // sw-gate-ph skeleton class gives the daisyUI loading shimmer.
+    var ph=el('div',{cls:'sw-gate-ph skeleton'});
+    ph.appendChild(el('p',{cls:'sw-gate-note',text:(fr.getAttribute('data-sw-consent-note')||labels.note||'This content is loaded from a third party. Allow it to load?')}));
+    var url=fr.getAttribute('data-sw-consent-src')||'';
+    if(url)ph.appendChild(el('div',{cls:'sw-gate-url',text:url,attrs:{title:url}})); // the embed URL, italic eyebrow
+    var row=el('div',{cls:'sw-gate-actions'});
+    var once=el('button',{cls:'btn btn-sm btn-primary',text:labels.once||'Allow once',attrs:{type:'button'}});
+    once.addEventListener('click',function(){loadGatedIframe(fr);});
+    row.appendChild(once);
+    // "Always allow" grants the whole category — only meaningful when a consent banner is mounted (so the
+    // grant persists + re-broadcasts). Without a [data-sw-consent] mount it would silently degrade to a
+    // one-shot load, so we hide it rather than show a button that doesn't do what it says.
+    if(window.swConsent&&document.querySelector('[data-sw-consent]')){
+      var always=el('button',{cls:'btn btn-sm btn-ghost',text:labels.always||'Always allow',attrs:{type:'button'}});
+      always.addEventListener('click',function(){try{var c=window.swConsent.get();c[cat]=true;window.swConsent.set(c);}catch(e){loadGatedIframe(fr);}});
+      row.appendChild(always);
+    }
+    ph.appendChild(row);
+    // If the author ALREADY positions the iframe (the responsive padding-top pattern: iframe is
+    // position:absolute/fixed inside their own box), our wrapper would collapse to 0×0 — so drop the overlay
+    // in as a SIBLING that fills the same positioned box. Otherwise wrap the (held, in-flow) iframe so the
+    // overlay takes the iframe's own dimensions.
+    var pos='';try{pos=(window.getComputedStyle(fr)||{}).position;}catch(e){}
+    if(pos==='absolute'||pos==='fixed'){
+      if(fr.parentNode)fr.parentNode.insertBefore(ph,fr.nextSibling);
+    }else{
+      // MEASURE the iframe's natural rendered box BEFORE moving it, then PIN the wrapper to it. A width:100%
+      // / auto-width iframe (no intrinsic size — YouTube's responsive snippet, aspect-video + w-full, attrs +
+      // width:100%) has nothing for the shrink-to-fit wrapper to hug, so without this it collapses to the
+      // ~300px iframe default. The overlay (inset:0) then fills the pinned box; loadGatedIframe unwraps on load.
+      var rect=null;try{rect=fr.getBoundingClientRect();}catch(e){}
+      var wrap=el('span',{cls:'sw-gate-wrap'});
+      if(rect&&rect.width>1&&rect.height>1){wrap.style.width=Math.round(rect.width)+'px';wrap.style.height=Math.round(rect.height)+'px';}
+      if(fr.parentNode)fr.parentNode.insertBefore(wrap,fr);
+      wrap.appendChild(fr); // move the iframe into the wrapper
+      wrap.appendChild(ph); // overlay
+      fr.__swWrap=wrap;
+    }
+    fr.__swPh=ph;
+  }
+  function initGates(mountCfg){
+    var t=(mountCfg&&mountCfg.t)||{};
+    var labels={once:t.allowOnce,always:t.alwaysAllow,note:t.embedNote};
+    var frames=document.querySelectorAll('iframe[data-sw-consent-src]');
+    for(var i=0;i<frames.length;i++){var fr=frames[i],fc=gcat(fr);if(current[fc])loadGatedIframe(fr);else gatePlaceholder(fr,fc,labels);}
+    var scripts=document.querySelectorAll('script[type="text/plain"][data-sw-consent]');
+    for(var j=0;j<scripts.length;j++){var sc=scripts[j];if(current[gcat(sc)])activateGatedScript(sc);}
+    window.addEventListener('sw:consentchange',function(e){try{var d=e.detail||{};
+      var fs=document.querySelectorAll('iframe[data-sw-consent-src]');for(var a=0;a<fs.length;a++){if(d[gcat(fs[a])])loadGatedIframe(fs[a]);}
+      var ss=document.querySelectorAll('script[type="text/plain"][data-sw-consent]');for(var b=0;b<ss.length;b++){if(d[gcat(ss[b])])activateGatedScript(ss[b]);}
+    }catch(_e){}});
+  }
+
   function enhance(root){
     if(root.getAttribute('data-sw-enhanced')==='true')return;
     var cfg=cfgOf(root);
@@ -76,7 +246,9 @@ export const CONSENT_JS = `(function(){
     function txt(k,fb){return (typeof t[k]==='string'&&t[k])?t[k]:fb;}
 
     // Build the banner UI ONCE (idempotent). createElement + textContent only — no HTML-string sinks.
-    var title=el('h2',{cls:'sw-consent-title',text:txt('title','We value your privacy')});
+    // Title is a <div> (not a heading): the banner sits on every page and an <h1>/<h2> would pollute the
+    // document outline / SEO. The region's aria-label carries the accessible name instead.
+    var title=el('div',{cls:'sw-consent-title',text:txt('title','We value your privacy')});
     var intro=el('p',{cls:'sw-consent-intro'});
     intro.appendChild(document.createTextNode(txt('intro','We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.')+' '));
     if(cfg.privacy){intro.appendChild(el('a',{cls:'sw-consent-link',text:txt('privacyLabel','Privacy policy'),attrs:{href:cfg.privacy,rel:'noopener noreferrer'}}));}
@@ -120,8 +292,12 @@ export const CONSENT_JS = `(function(){
         else{injectScript(it.src,it.async!==false,it.id);}
       }
     }
-    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});root.setAttribute('hidden','');broadcast();loadConsented();}
-    function openPrefs(){root.setAttribute('data-prefs','open');btnSave.style.display='';for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}}
+    function showBanner(){root.setAttribute('data-open','');}
+    function hideBanner(){root.removeAttribute('data-open');}
+    function syncBoxes(){for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}} // reflect current on the toggles
+    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});syncBoxes();hideBanner();broadcast();loadConsented();}
+    // Open preferences: reveal the panel + Save, HIDE the now-redundant Customize button, sync the toggles.
+    function openPrefs(){root.setAttribute('data-prefs','open');btnCustomize.style.display='none';btnSave.style.display='';syncBoxes();}
     btnCustomize.addEventListener('click',openPrefs);
     if(btnReject)btnReject.addEventListener('click',function(){apply(emptyCats(false));});
     btnAccept.addEventListener('click',function(){apply(emptyCats(true));});
@@ -137,31 +313,50 @@ export const CONSENT_JS = `(function(){
     root.appendChild(title);root.appendChild(intro);root.appendChild(prefs);root.appendChild(actions);
     root.setAttribute('data-sw-enhanced','true');
 
-    // Decide visibility from the stored record (versioned).
+    // Decide visibility. PREVIEW pre-grant (grantAll) auto-accepts everything so the editor renders
+    // gated embeds + integrations WYSIWYG — never set on a real publish. Else honor the stored record.
     var rec=readStore();
-    if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
-      current=withNecessary(rec.cats);
-      root.setAttribute('hidden','');
-      broadcast(); // already-consented: tell late listeners the current state
+    if(cfg.grantAll){
+      apply(emptyCats(true)); // sets current, stays closed, broadcasts + loadConsented (gates read current in initGates)
+    }else if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
+      current=withNecessary(rec.cats); // already-consented → stays closed
+      broadcast(); // tell late listeners the current state
       loadConsented(); // re-inject the integrations the visitor already consented to (on every page load)
     }else{
-      root.removeAttribute('hidden');
+      showBanner(); // first visit → slide the banner up
     }
 
-    // Public API + the re-open trigger ([data-sw-consent-open] / {{sw-consent-settings}}).
+    // Public API + the re-open trigger ([data-sw-consent-open] / {{sw-consent-settings}} / a[href="#sw-consent"]).
     window.swConsent={
       get:function(){return withNecessary(current);},
       set:function(c){apply({functional:!!(c&&c.functional),analytics:!!(c&&c.analytics),marketing:!!(c&&c.marketing)});},
-      open:function(){root.removeAttribute('hidden');openPrefs();}
+      open:function(){showBanner();openPrefs();}
     };
   }
 
   function init(){
     var roots=document.querySelectorAll('[data-sw-consent]');
-    if(roots[0])enhance(roots[0]); // one consent manager per site
+    var mountCfg=roots[0]?cfgOf(roots[0]):{};
+    if(roots[0])enhance(roots[0]); // one consent manager per site — sets current + window.swConsent
+    initGates(mountCfg); // hydrate held author iframes/scripts AFTER enhance has applied current/grantAll
+    // Re-open triggers: a [data-sw-consent-open] element OR a SAME-PAGE anchor href="#sw-consent"
+    // (e.g. <a href="#sw-consent">Cookie settings</a>). Match the LITERAL href (not the resolved
+    // .hash, which a cross-page /other#sw-consent link would also report) and only swallow the click
+    // when there's a manager to open — so a cross-page link still navigates normally.
     document.addEventListener('click',function(e){
-      var t=e.target;while(t&&t!==document){if(t.getAttribute&&t.getAttribute('data-sw-consent-open')!=null){e.preventDefault();if(window.swConsent)window.swConsent.open();return;}t=t.parentNode;}
+      var t=e.target;while(t&&t!==document){
+        if(t.getAttribute){
+          if(t.getAttribute('data-sw-consent-open')!=null&&window.swConsent){e.preventDefault();window.swConsent.open();return;}
+          if(t.getAttribute('href')==='#sw-consent'&&window.swConsent){e.preventDefault();window.swConsent.open();return;}
+        }
+        t=t.parentNode;
+      }
     });
+    // Also open when the URL targets #sw-consent via hash navigation (a cross-page link landing here, or
+    // back/forward). Guarded on a stored decision so a FIRST-time visitor still sees the normal banner.
+    function fromHash(){if(location.hash==='#sw-consent'&&window.swConsent&&readStore())window.swConsent.open();}
+    window.addEventListener('hashchange',fromHash);
+    fromHash();
     // Enforce-with-a-loud-error: if the CSP blocks a consented integration's origin, name it so the owner
     // can add it to that integration's allowed origins (the gating still worked — this is the hardening layer).
     window.addEventListener('securitypolicyviolation',function(e){try{if(e.blockedURI&&/script-src|connect-src|frame-src|img-src/.test(e.violatedDirective||'')){console.error('[sw-consent] CSP blocked '+e.blockedURI+' ('+e.violatedDirective+'). If this is a consented integration, add its origin to that integration\\'s allowed origins.');}}catch(_e){}});

@@ -14,6 +14,8 @@ interface LocaleManagerProps {
   onChange: (locales: string[]) => void;
   /** Fired after a language is actually added/removed server-side, so the pages list can refresh. */
   onLocalesChanged?: () => void;
+  /** Re-hydrate the whole settings form after the main language is changed (default + locales). */
+  onReloadSettings?: () => Promise<void> | void;
 }
 
 /**
@@ -22,11 +24,40 @@ interface LocaleManagerProps {
  * default/main language owns each page's layout and cannot be removed here. Locale add/remove
  * goes through dedicated endpoints; the parent's form locale list is patched locally.
  */
-export function LocaleManager({ projectId, locales, defaultLocale, onChange, onLocalesChanged }: LocaleManagerProps) {
+export function LocaleManager({ projectId, locales, defaultLocale, onChange, onLocalesChanged, onReloadSettings }: LocaleManagerProps) {
   const { confirm, dialog } = useDialogs();
   const [addOpen, setAddOpen] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Change the MAIN language by re-labelling it (server enforces: the target must NOT be an active
+  // locale). The default-language content keeps its pages/datasets and just becomes `locale`; the old
+  // default is replaced in the list. Nothing is translated. Re-hydrates the form on success.
+  async function changeDefault(locale: string) {
+    setChangeOpen(false);
+    setError(null);
+    const ok = await confirm({
+      title: `Make ${localeLabel(locale)} the main language?`,
+      message:
+        `Your main-language content keeps its text but is re-labelled ${localeLabel(locale)} (${locale}), ` +
+        `replacing ${localeLabel(defaultLocale)} (${defaultLocale}) as the site's main language. ` +
+        `Nothing is translated and your other languages are unaffected. ` +
+        `Any unsaved settings changes will be discarded.`,
+      confirmLabel: 'Change main language',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.setDefaultLocale(projectId, locale);
+      await onReloadSettings?.();
+      onLocalesChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to change the main language');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function add(locale: string) {
     setError(null);
@@ -85,7 +116,20 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
             <span className="text-sm font-medium text-slate-800">{localeLabel(loc)}</span>
             <span className="font-mono text-xs uppercase text-slate-400">{loc}</span>
             {loc === defaultLocale ? (
-              <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">main language</span>
+              <span className="ml-auto flex items-center gap-2">
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">main language</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="text-sm font-medium text-indigo-600 transition hover:text-indigo-700 disabled:opacity-50"
+                  onClick={() => {
+                    setError(null);
+                    setChangeOpen(true);
+                  }}
+                >
+                  Change
+                </button>
+              </span>
             ) : (
               <button
                 type="button"
@@ -112,6 +156,20 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
         </button>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {changeOpen && (
+        <LocalePickerModal
+          title="Change the main language"
+          description="Pick the language your site's main content is actually in. It must be a language you haven't added as a translation yet — this re-labels the main language, it doesn't translate anything."
+          actionLabel="Set as main language"
+          exclude={locales}
+          busy={busy}
+          error={error}
+          onPick={(l) => void changeDefault(l)}
+          onClose={() => {
+            if (!busy) setChangeOpen(false);
+          }}
+        />
+      )}
       {addOpen && (
         <LocalePickerModal
           title="Add a language"

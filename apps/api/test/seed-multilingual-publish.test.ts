@@ -23,7 +23,7 @@ const EXAMPLE_ENTRIES = exampleEntries({});
  * the exported site carries the multilingual story it exists to demonstrate — inherit-mode
  * German pages (shared code, translated data), localized slugs/datasets/forms/chrome, hreflang,
  * the flag switcher — plus the feature showcases (carousel/tabs/lightbox/modal/
- * cookie-consent/data-aos/form embed) and the sitemap/noindex behavior of the legal pages.
+ * data-aos/form embed) and the sitemap/noindex behavior of the legal pages.
  */
 describe('seeded demo — flagship multilingual showcase publishes correctly', () => {
   let harness: Harness;
@@ -156,9 +156,9 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(de).toContain('Gründerin &amp; Design-Direktorin'); // manager resolved within team-de
   });
 
-  it('localizes the site chrome from one shared source (cookie banner, footer columns, mobile nav)', async () => {
+  it('localizes the site chrome from one shared source (Consent Manager banner, footer columns, mobile nav)', async () => {
     const en = await page('index.html');
-    expect(en).toContain('data-sw-consent'); // the consent-manager banner mount ({{sw-consent}})
+    expect(en).toContain('data-sw-consent'); // the AUTO-INJECTED consent-manager banner mount
     expect(en).toContain('We value your privacy'); // consent banner heading (en), from the consent_title catalog key
     expect(en).toContain('>Legal<'); // footer Legal column heading
     // The chrome now localizes via the EDITABLE data-sw-translate directive (S()→T()); the marker must

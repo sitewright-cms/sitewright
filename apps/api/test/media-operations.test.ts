@@ -177,7 +177,7 @@ describe('media folders — copy', () => {
 });
 
 describe('media folders — recursive delete', () => {
-  it('deletes the folder, its subfolders, and every asset (binary 404s after)', async () => {
+  it('deletes the folder + subfolders and soft-deletes every asset to the Recycle Bin (binary retained)', async () => {
     const { t, projectId } = await setup('d1@e2e.test');
     const asset = await uploadImage(t, projectId, 'Trash/Sub');
     await app.inject({ method: 'POST', url: `/projects/${projectId}/media/folders`, cookies: { sw_session: t }, payload: { path: 'Trash/Empty' } });
@@ -196,8 +196,11 @@ describe('media folders — recursive delete', () => {
     const media = await listMedia(t, projectId);
     expect(media).toHaveLength(1); // the sibling 'Keep' asset survived
     expect(media[0]!.folder).toBe('Keep');
-    // The deleted asset's binary is gone.
-    expect((await app.inject({ method: 'GET', url: asset.url })).statusCode).toBe(404);
+    // The folder's assets are SOFT-deleted → the Recycle Bin (recoverable): they leave the live
+    // library but the binary is RETAINED (still 200), so a restore can bring them back.
+    const binned = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/media/deleted`, cookies: { sw_session: t } })).json()) as { items: Array<{ id: string }> };
+    expect(binned.items.some((a) => a.id === asset.id)).toBe(true);
+    expect((await app.inject({ method: 'GET', url: asset.url })).statusCode).toBe(200);
   });
 });
 

@@ -141,14 +141,21 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
-  'comp-cookie': {
-    path: 'cookie-consent',
-    title: 'Cookie-Hinweis',
-    navTitle: 'Cookie-Hinweis',
+  'comp-banner': {
+    path: 'banner',
+    title: 'Banner',
+    navTitle: 'Banner',
     description:
-      'Ein Einwilligungsbanner, das in localStorage gespeichert wird — verborgen ausgeliefert, beim ersten Besuch einmal eingeblendet und nach der Zustimmung endgültig ausgeblendet. Eine Skeleton-Slot-Komponente, die site-weit läuft.',
-    data: {
-    },
+      'Ein frei gestaltbares, schließbares Hinweis-Banner — Promos, Hinweise, „seht euch unser neuestes Produkt an“. Die Runtime blendet es ein und merkt sich die Schließung je nach Häufigkeit in localStorage. Nicht das Consent-Banner.',
+    data: { bn_bg: assets['blog-design'] ?? '' }, // the rich-background demo image (locale-independent)
+  },
+  'comp-consent': {
+    path: 'einwilligung',
+    title: 'Consent Manager',
+    navTitle: 'Consent Manager',
+    description:
+      'DSGVO-/ePrivacy-Einwilligung für Drittinhalte: Eine echte YouTube-Einbettung wird BLOCKIERT (keine Anfrage an Google, keine Cookies), bis der Besucher eine vorherige, informierte, granulare Einwilligung gibt. Der Consent Manager fügt das Banner automatisch ein, sperrt Einbettungen + Skripte pro Kategorie und leitet die CSP ab.',
+    data: {},
   },
   'comp-parallax': {
     path: 'parallax',
@@ -182,6 +189,34 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       nojs_t: 'Ohne JavaScript (oder bei reduzierter Bewegung)',
       nojs_d:
         'Jedes Element bleibt genau dort, wo es im Dokument steht — die Laufzeit fügt nur eine Transformation/Deckkraft/Filter darüber hinzu, sodass nichts verrutscht, überlappt oder verschwindet. Parallax ist Dekoration, niemals Struktur.',
+    },
+  },
+  'comp-scrollspy': {
+    path: 'scrollspy',
+    title: 'ScrollSpy',
+    navTitle: 'ScrollSpy',
+    description:
+      'Hebe den Navigationslink hervor, dessen Abschnitt gerade im Sichtbereich ist. Füge einer beliebigen Seitennavigation (hier ein klebriges Inhaltsverzeichnis) data-sw-scrollspy hinzu — beim Scrollen schaltet es .active + aria-current um, versetzt um die fixierte Kopfzeile, und kombiniert sich mit jedem Nav-Effekt für den sichtbaren Zustand.',
+    data: {
+      ss_intro:
+        'Gib einer langen Einzelseite ein lebendiges Inhaltsverzeichnis. Füge einer Navigation data-sw-scrollspy hinzu und verlinke jeden Punkt per id mit einem Abschnitt — die Laufzeit hebt beim Scrollen den Link hervor, dessen Abschnitt gerade sichtbar ist, versetzt um die fixierte Kopfzeile. Sie schaltet denselben aktiven Zustand um, den die Navigation ohnehin nutzt (.active + aria-current), und übernimmt so deine vorhandene Aktiv-Gestaltung. Scrolle die Abschnitte rechts und beobachte, wie das Menü folgt.',
+      toc_eyebrow: 'Auf dieser Seite',
+      nav_overview: 'Überblick',
+      nav_how: 'So funktioniert es',
+      nav_anchors: 'Anker & seitenweit',
+      nav_a11y: 'Barrierefreiheit',
+      overview_t: 'Ein lebendiges Inhaltsverzeichnis',
+      overview_d:
+        'Dieses klebrige Menü trägt data-sw-scrollspy. Jeder Link zeigt per id auf einen Abschnitt darunter (ein Link auf #how zielt auf den Abschnitt mit id="how"). Sobald dieser Abschnitt sichtbar wird, erhält sein Link den aktiven Zustand — immer genau einer. Ein Menü mit eigenen Seitenabschnitten übernimmt seine Hervorhebung selbst; ein Menü ohne solche bleibt bei der normalen Routen-Hervorhebung.',
+      how_t: 'So funktioniert es',
+      how_d:
+        'Die Laufzeit findet den letzten Abschnitt, dessen Oberkante eine Auslöselinie nahe dem oberen Rand des Sichtbereichs überquert hat — versetzt um die fixierte Kopfzeile, damit der aktive Abschnitt der ist, den du tatsächlich lesen kannst. Ganz unten auf der Seite gewinnt der letzte Abschnitt — so wird auch ein kurzer letzter Abschnitt aktiv — und oberhalb des ersten Abschnitts ist nichts (oder ein Start-Link) hervorgehoben. Sie läuft über einen passiven, gedrosselten Scroll-Listener; keine schwere Arbeit pro Frame.',
+      anchors_t: 'Pfad-präfixierte Anker & der seitenweite Schalter',
+      anchors_d:
+        'Links lösen nur dann zu einem Abschnitt auf, wenn dieser auf der aktuellen Seite existiert — daher funktionieren auch pfad-präfixierte Anker: eine globale Kopfzeile kann von jeder Seite aus auf /#pricing verlinken — sie navigiert einfach zur Startseite und spürt dort den Abschnitt auf. Lieber nichts am Markup ändern? Aktiviere ScrollSpy in den Website-Einstellungen, und die Haupt- und mobile Navigation werden seitenweit erfasst.',
+      a11y_t: 'Barrierefrei & robust',
+      a11y_d:
+        'Der aktive Link wird für assistive Technik mit aria-current="true" gekennzeichnet, und die automatische Hervorhebung übernimmt nie den Fokus. Ohne JavaScript springen die Links weiterhin zu ihren Abschnitten; nur die lebendige Hervorhebung entfällt. Bei reduzierter Bewegung hebt es weiterhin hervor — es schaltet Klassen um, keine Bewegung. ScrollSpy schmückt die Navigation; es ersetzt sie nie.',
     },
   },
   'comp-shader': {

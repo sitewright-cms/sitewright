@@ -80,10 +80,10 @@ describe('seed demo content', () => {
     }
   });
 
-  it('every skeleton slot (mainNav, footer, bottom) passes the validator', () => {
+  it('every skeleton slot (mainNav, footer) passes the validator', () => {
     expect(() => validateTemplate(EXAMPLE_WEBSITE.mainNav)).not.toThrow();
     expect(() => validateTemplate(EXAMPLE_WEBSITE.footer)).not.toThrow();
-    expect(() => validateTemplate(EXAMPLE_WEBSITE.bottom)).not.toThrow();
+    // No `bottom` slot any more — the consent banner auto-injects (no {{sw-consent}} placeholder).
   });
 
   it('seeds a content-only blog: an overview page + article children using the global blog templates', () => {
@@ -170,7 +170,7 @@ describe('seed demo content', () => {
     for (const locale of locales) {
       expect(Object.keys(CHROME_STRINGS[locale]!).sort(), `strings.${locale} keys`).toEqual(enKeys);
     }
-    const slots = [EXAMPLE_WEBSITE.mainNav, EXAMPLE_WEBSITE.footer, EXAMPLE_WEBSITE.bottom].join('\n');
+    const slots = [EXAMPLE_WEBSITE.mainNav, EXAMPLE_WEBSITE.footer].filter(Boolean).join('\n');
     // The slots now localize via the translation catalog: {{sw-translate "key"}} / (sw-translate "key").
     const referenced = [...slots.matchAll(/sw-translate "([a-z_]+)"/g)].map((m) => m[1]!);
     expect(referenced.length).toBeGreaterThan(0);

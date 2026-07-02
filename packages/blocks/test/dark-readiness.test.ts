@@ -24,7 +24,7 @@ import { hexToOklch } from '../src/color-oklch.js';
 //    dark controls).
 //  - DateTimePicker: vendored Vanilla Calendar Pro, which ships its own light AND dark theme CSS.
 const SCHEME_EXEMPT_COMPONENTS = ['Lightbox', 'DateTimePicker'] as const;
-const FIRST_PARTY_COMPONENTS = ['CookieConsent', 'Notice', 'Embed', 'Modal', 'Tabs', 'Form', 'Carousel'] as const;
+const FIRST_PARTY_COMPONENTS = ['Banner', 'Modal', 'Tabs', 'Form', 'Carousel'] as const;
 
 // Selector-level allowlist for raw light backgrounds that are deliberately scheme-independent:
 //  - `Unknown`: the [data-sw-block="Unknown"] diagnostic swatch pairs its own light bg + dark text, so
@@ -118,8 +118,8 @@ describe('dark-readiness: scheme-aware chrome flips its surfaces (no hard-coded 
 });
 
 describe('dark-readiness: labels on the brand fill use the on-primary content token', () => {
-  // CookieConsent + Form no longer carry their own brand-fill button — their accept/submit buttons render
-  // as the vendored .btn.btn-primary, whose on-primary content token is asserted from baseStyles below.
+  // Form no longer carries its own brand-fill button — its submit button renders as the vendored
+  // .btn.btn-primary, whose on-primary content token is asserted from baseStyles below.
   const brandChrome: Array<[string, string]> = [
     ['Modal', componentAssets(['Modal']).css],
     ['Tabs', componentAssets(['Tabs']).css],

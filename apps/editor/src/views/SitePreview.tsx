@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { api, eventsUrl, previewUrlFrom } from '../api';
+import { AgentDrawer } from './AgentDrawer';
 import type { PreviewTarget } from '../lib/preview-target';
 
 /** Coalesce a burst of edits into one reload/navigate. */
@@ -35,6 +37,22 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
   const workingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The on-page AI assistant: available only when configured (platform or per-project) + the user can write.
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Live turn status lifted from the drawer, so the AI button animates while it thinks/works.
+  const [agentActivity, setAgentActivity] = useState<'idle' | 'thinking' | 'working'>('idle');
+
+  useEffect(() => {
+    let active = true;
+    api
+      .agentStatus(projectId)
+      .then((s) => active && setAgentEnabled(s.enabled))
+      .catch(() => {}); // status is best-effort — no assistant button on failure
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
 
   // Fetch the signed base on mount, then load the initial route into the iframe.
   useEffect(() => {
@@ -216,6 +234,37 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
             {working ? 'Agent working…' : `Agent connected${connectedCount > 1 ? ` · ${connectedCount}` : ''}`}
           </span>
         </div>
+      )}
+      {/* ONE persistent bottom-LEFT badge: always shown when the assistant is available (click toggles
+          the drawer), and it doubles as the live status indicator (thinking / working) during a turn.
+          Bottom-left so it never sits under the right-side drawer. Replaces the old right-side FAB. */}
+      {agentEnabled && (
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((o) => !o)}
+          aria-label={agentActivity === 'working' ? 'AI is working' : agentActivity === 'thinking' ? 'AI is thinking' : drawerOpen ? 'Close the AI assistant' : 'Open the AI assistant'}
+          className="absolute bottom-5 left-5 z-[62] inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 backdrop-blur transition hover:bg-white"
+        >
+          {agentActivity === 'working' ? (
+            <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+          ) : agentActivity === 'thinking' ? (
+            <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          ) : (
+            <span aria-hidden className="sw-brand-gradient inline-flex h-5 w-5 items-center justify-center rounded-full text-white">
+              <Sparkles className="h-3 w-3" />
+            </span>
+          )}
+          {agentActivity === 'working' ? 'AI is working…' : agentActivity === 'thinking' ? 'AI is thinking…' : 'AI'}
+        </button>
+      )}
+      {agentEnabled && (
+        <AgentDrawer
+          projectId={projectId}
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          getPath={() => currentPath.current}
+          onStatusChange={setAgentActivity}
+        />
       )}
     </div>
   );

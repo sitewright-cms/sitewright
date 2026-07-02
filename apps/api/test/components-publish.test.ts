@@ -10,7 +10,7 @@ import { RenderPool } from '../src/render/render-pool.js';
 // publish path renders synchronously and ignores it). The worker is the test blocks-render fixture.
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
-// Regression: interactive component JS (modal / tabs / carousel / lightbox / cookie-consent / form)
+// Regression: interactive component JS (modal / tabs / carousel / lightbox / banner / form)
 // and the <dialog>/anchor runtime must ship for CODE-FIRST pages. Code-first pages render from a
 // Handlebars `source` and have an EMPTY block tree, so detection that only walks the tree never saw
 // their `data-sw-component="…"` markers or authored `<dialog>` — the runtime was silently missing and
@@ -61,8 +61,8 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="modal"');
     expect(index.body).toContain('data-sw-part="open"');
     // Both runtimes are linked.
-    expect(index.body).toContain('<script defer src="components.js"></script>');
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="components.js?v=');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
 
     // components.js carries the modal behavior; nav-link.js carries the general dialog/anchor handler.
     const comp = await client.get(`/sites/${slug}/components.js`);
@@ -74,10 +74,10 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
   });
 
-  it('ships the Notice runtime for a code-first page that authors a dismissible notice', async () => {
+  it('ships the Banner runtime for a code-first page that authors a dismissible banner', async () => {
     const proj = client.project(projectId);
     const source =
-      '<section><div data-sw-component="notice" data-sw-notice-id="promo" data-frequency="once" data-position="bottom-right" hidden>' +
+      '<section><div data-sw-component="banner" data-sw-banner-id="promo" data-frequency="once" data-position="bottom-right" hidden>' +
       '<p>Latest product</p>' +
       '<button data-sw-part="dismiss-forever" class="btn btn-sm">No thanks</button>' +
       '</div></section>';
@@ -87,26 +87,27 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The notice markers survive the directive-strip + the notice ships hidden (PE-safe).
-    expect(index.body).toContain('data-sw-component="notice"');
+    // The banner markers survive the directive-strip + the banner ships hidden (PE-safe).
+    expect(index.body).toContain('data-sw-component="banner"');
     expect(index.body).toContain('data-sw-part="dismiss-forever"');
     expect(index.body).toContain('hidden');
-    expect(index.body).toContain('<script defer src="components.js"></script>');
+    expect(index.body).toContain('<script defer src="components.js?v=');
 
-    // components.js carries the Notice runtime (its per-notice storage namespace) + CSS.
+    // components.js carries the Banner runtime (its per-banner storage namespace) + CSS.
     const comp = await client.get(`/sites/${slug}/components.js`);
     expect(comp.statusCode).toBe(200);
-    expect(comp.body).toContain("'sw-notice:'");
-    expect(comp.body).toContain('data-sw-component="notice"');
+    expect(comp.body).toContain("'sw-banner:'");
+    expect(comp.body).toContain('data-sw-component="banner"');
   });
 
-  it('ships the Consent Manager runtime for a site with {{sw-consent}} in the bottom slot (enabled)', async () => {
+  it('AUTO-INJECTS the consent banner + ships the runtime when enabled (NO {{sw-consent}} placeholder)', async () => {
     const proj = client.project(projectId);
     expect(
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}{{sw-consent-settings}}' },
+          // No {{sw-consent}} anywhere — only the re-open button. The banner mount auto-injects.
+          website: { consent: { enabled: true }, footer: '{{sw-consent-settings}}' },
           settings: {},
         })
       ).statusCode,
@@ -117,16 +118,25 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The helper rendered the mount + the escaped config; the re-open button carries the open marker.
-    expect(index.body).toContain('data-sw-consent');
+    // The mount + escaped config were AUTO-INJECTED (no authored placeholder); the re-open button carries the marker.
+    expect(index.body).toContain('id="sw-consent"');
     expect(index.body).toContain('data-sw-consent-config');
     expect(index.body).toContain('data-sw-consent-open');
-    expect(index.body).toContain('<script defer src="consent.js"></script>');
+    expect(index.body).toContain('<script defer src="consent.js?v=');
+    // CACHE: the page itself revalidates so a republish/redeploy is picked up immediately.
+    expect(index.headers['cache-control']).toBe('no-cache');
 
-    const js = await client.get(`/sites/${slug}/consent.js`);
+    // CACHE: the VERSIONED runtime asset (as the page references it, with ?v) is hard-cached.
+    const js = await client.get(`/sites/${slug}/consent.js?v=1`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('sw:consentchange');
     expect(js.body).toContain('window.swConsent');
+    expect(js.headers['cache-control']).toContain('immutable');
+    // CACHE: a BARE (unversioned) asset URL must revalidate — `immutable` is gated on the ?v token, so
+    // unversioned root files (manifest / robots / sitemap / direct hits) never cache stale across a republish.
+    const bare = await client.get(`/sites/${slug}/consent.js`);
+    expect(bare.statusCode).toBe(200);
+    expect(bare.headers['cache-control']).toBe('no-cache');
   });
 
   it('ships NO consent runtime for a site that uses no consent banner', async () => {
@@ -140,6 +150,20 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.get(`/sites/${slug}/consent.js`)).statusCode).toBe(404);
   });
 
+  it('ships the consent runtime when a page references the manager (#sw-consent) even with consent OFF', async () => {
+    // consent.enabled is OFF, but the page hand-references the manager (a "Cookie settings" re-open link). The
+    // only-used-ships discipline still ships the runtime via the marker path (usesConsent matches the
+    // 'sw-consent' substring), so the href="#sw-consent" open handler works.
+    const proj = client.project(projectId);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><a href="#sw-consent">Cookie settings</a></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.body).toContain('<script defer src="consent.js?v=');
+    expect((await client.get(`/sites/${slug}/consent.js?v=1`)).statusCode).toBe(200);
+  });
+
   it('widens the per-site CSP (response header + baked meta) for a consent site with a GA integration', async () => {
     const proj = client.project(projectId);
     expect(
@@ -148,7 +172,6 @@ describe('interactive component + dialog runtimes → code-first publish + previ
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           website: {
             consent: { enabled: true, integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' }] },
-            bottom: '{{sw-consent}}',
           },
           settings: {},
         })
@@ -180,7 +203,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { consent: { enabled: true }, bottom: '{{sw-consent}}' },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
           settings: {},
         })
       ).statusCode,
@@ -196,25 +219,91 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).not.toContain('http-equiv="Content-Security-Policy"'); // no baked meta
   });
 
-  it('a click-to-load YouTube embed ships the runtime + derives the frame-src CSP (no consent registry needed)', async () => {
+  it('with consent ON, a pasted cross-origin <iframe> is HELD click-to-load + derives the frame-src CSP', async () => {
     const proj = client.project(projectId);
-    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>{{sw-embed "youtube" "dQw4w9WgXcQ"}}</section>' };
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="640" title="v"></iframe></section>',
+    };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    // The embed renders HELD (data-embed-src, never an eager iframe) + ships the component runtime.
-    expect(index.body).toContain('data-sw-component="embed"');
-    expect(index.body).toContain('data-embed-src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
-    expect(index.body).not.toContain('<iframe'); // nothing third-party in the published HTML
-    expect(index.body).toContain('<script defer src="components.js"></script>');
-    expect((await client.get(`/sites/${slug}/components.js`)).body).toContain('data-sw-component="embed"');
-    // The per-page CSP (response header + baked meta) allows the YouTube frame-src — derived from the embed alone.
+    // The iframe is HELD: src moved to data-sw-consent-src (no eager third-party load), category stamped.
+    expect(index.body).toContain('data-sw-consent-src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
+    expect(index.body).toContain('data-sw-consent-cat="functional"'); // default embed category
+    expect(index.body).not.toMatch(/<iframe[^>]*\ssrc=/); // no live third-party src in the published HTML
+    expect(index.body).toContain('width="640"'); // author attrs preserved
+    // The consent runtime ships (it hydrates the held iframe) even though no integration is registered.
+    expect(index.body).toContain('<script defer src="consent.js?v=');
+    // The per-page CSP (response header + baked meta) allows the iframe's frame-src — derived from the iframe.
     const csp = index.headers['content-security-policy'] as string;
-    expect(csp).toContain("frame-src 'self' https://www.youtube-nocookie.com");
+    expect(csp).toContain("frame-src 'self' https://www.youtube.com");
     expect(index.body).toContain('http-equiv="Content-Security-Policy"');
-    expect(index.body).toContain('www.youtube-nocookie.com');
+  });
+
+  it('with consent OFF, a pasted cross-origin <iframe> loads normally but its origin is allow-listed in the CSP', async () => {
+    const proj = client.project(projectId);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://player.vimeo.com/video/76979871"></iframe></section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('src="https://player.vimeo.com/video/76979871"'); // NOT held (no consent manager)
+    expect(index.body).not.toContain('data-sw-consent-src');
+    expect(index.body).not.toContain('consent.js'); // no consent runtime
+    // But the iframe's origin IS allow-listed in frame-src so it isn't CSP-blocked by the platform default.
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("frame-src 'self' https://player.vimeo.com");
+  });
+
+  it('with consent ON, an iframe marked data-sw-consent-skip loads immediately but its origin is still allow-listed', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { consent: { enabled: true } }, // banner auto-injects — no {{sw-consent}} needed
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><iframe src="https://maps.example.com/m" data-sw-consent-skip></iframe></section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('src="https://maps.example.com/m"'); // NOT held (opted out)
+    expect(index.body).not.toContain('data-sw-consent-src');
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain("frame-src 'self' https://maps.example.com"); // still allow-listed
   });
 
   it('ships ONLY the dialog runtime when a code-first page authors a bare <dialog> (no component, no placeholder)', async () => {
@@ -228,7 +317,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
     expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
     // No component marker → components.js is NOT shipped.
     expect(index.body).not.toContain('components.js');
@@ -255,7 +344,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('<dialog id="newsletter"');
-    expect(index.body).toContain('<script defer src="nav-link.js"></script>');
+    expect(index.body).toContain('<script defer src="nav-link.js?v=');
   });
 
   it('ships NOTHING extra for a plain code-first page (no component, no dialog)', async () => {

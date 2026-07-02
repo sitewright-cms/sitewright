@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import type { Form, FormField, FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
+import { useProjectEvents } from '../lib/use-project-events';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
@@ -74,6 +75,11 @@ export function FormsManager({ project }: { project: Project }) {
       active = false;
     };
   }, [project.id]);
+
+  // LIVE-REFRESH the forms list when an agent (or another tab) adds/edits/removes a form.
+  useProjectEvents(project.id, (c) => {
+    if (c.kind === 'form') void load();
+  });
 
   function create(e: FormEvent) {
     e.preventDefault();

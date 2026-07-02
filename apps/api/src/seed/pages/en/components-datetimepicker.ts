@@ -15,7 +15,7 @@ export function pageComponentsDateTimePicker(): Page {
     title: 'Date & time picker',
     description: 'A CI-themed calendar + slider time picker on a plain text input — date, a dual-panel two-month range, datetime, and time modes, all from one attribute, with full data-* control and a no-JS fallback.',
     parent: 'components',
-    order: 7,
+    order: 8,
     data: {
       dtp_intro: 'Put one attribute on a text input and it becomes a branded calendar with a slider time picker. Date, date-range, datetime, and time — each is a single data-mode value, and the colours and font come from your site’s CI automatically. A range opens as two months side by side, so spans that cross a month are easy.',
       sec_basic_t: 'One line for the common case',

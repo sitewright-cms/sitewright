@@ -264,6 +264,16 @@ export const ConsentIntegrationSchema = z
       .array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path'))
       .max(20)
       .optional(),
+    /**
+     * ADVANCED — extra `frame-src` hosts for a script SDK that injects its OWN `<iframe>` widget (e.g. a
+     * chat bubble / support panel). Without this a consented SDK's script loads but its widget iframe is
+     * CSP-blocked. Bare hostnames or a single `*.` wildcard; NO scheme/path/port/bare-`*` (the publisher
+     * prepends `https://`). Added to frame-src (gated by the integration's category like the script).
+     */
+    frameOrigins: z
+      .array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path'))
+      .max(20)
+      .optional(),
   })
   .superRefine((v, ctx) => {
     const preset = v.preset ?? 'custom';
@@ -297,7 +307,7 @@ export type ConsentIntegration = z.infer<typeof ConsentIntegrationSchema>;
  */
 export const ConsentSchema = z.object({
   /**
-   * Master ON switch. When not `true` the {{sw-consent}} / {{sw-consent-settings}} helpers render
+   * Master ON switch. When not `true` no consent banner is auto-injected and the {{sw-consent-settings}} button renders
    * NOTHING (no banner site-wide, so `consent.js` is never shipped) and the editor hides the consent
    * translation ghost rows. A fresh project starts OFF; the operator opts in.
    */
@@ -315,6 +325,13 @@ export const ConsentSchema = z.object({
   denyButton: z.boolean().optional(),
   /** Privacy-policy link shown in the banner — an internal page path or absolute URL (render-sanitized). */
   privacyHref: z.string().max(2048).optional(),
+  /**
+   * Default consent category for an auto-gated author `<iframe>` (a cross-origin embed: YouTube/Vimeo/
+   * Maps/Calendly/…) that carries no explicit `data-sw-consent="<category>"` marker. Third-party iframes
+   * are held click-to-load whenever the manager is `enabled`; this is the bucket they fall into. Default
+   * `functional`.
+   */
+  defaultEmbedCategory: z.enum(CONSENT_CATEGORY_VALUES).optional(),
   /**
    * Managed third-party INTEGRATIONS (analytics / chatbots / scripts). Each is loaded ONLY after its
    * category is consented; publish derives the per-site CSP origin allow-list from them. See
@@ -513,6 +530,48 @@ export const PRELOADER_EFFECTS = [
 export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
 
 /**
+ * STICKY (fixed) TOP-HEADER modes — the no-code "make the `#main-nav` landmark stick to the top"
+ * picker. 'none' (or absent) = today's static in-flow header (scrolls away with the page; zero
+ * overhead). The other modes set the header `position:fixed` and emit the `--sw-header-h` offset
+ * token consumed by the opt-in `.sw-top-padding` utility (clears content under the fixed header) +
+ * `scroll-padding-top` (in-page anchors land below it). See {@link stickyHeaderUsesRuntime} and the
+ * CSS/runtime in @sitewright/blocks sticky-header.ts.
+ *   - pinned         — fixed + always visible. PURE CSS (no runtime).
+ *   - hide-on-scroll — fixed; slides up out of view on scroll-down, back in on scroll-up. Needs JS.
+ *   - shrink         — fixed; condenses (compact padding + shadow) past a scroll threshold. Needs JS.
+ */
+export const STICKY_HEADER_MODES = ['pinned', 'hide-on-scroll', 'shrink'] as const;
+export type StickyHeaderMode = (typeof STICKY_HEADER_MODES)[number];
+const STICKY_HEADER_CHOICES = ['none', ...STICKY_HEADER_MODES] as const;
+export const STICKY_HEADER_LABELS: Record<StickyHeaderMode, string> = {
+  pinned: 'Pinned (always visible)',
+  'hide-on-scroll': 'Hide on scroll down',
+  shrink: 'Shrink on scroll',
+};
+
+/**
+ * The fixed-header modes that need the sticky-header JS runtime — those that toggle a state class as
+ * the visitor scrolls (`html.sw-nav-hidden` for hide-on-scroll direction, `html.sw-scrolled` for the
+ * shrink/shadow threshold). `pinned` is pure CSS. Source-of-truth for the publish/preview runtime gate.
+ */
+export const JS_STICKY_HEADER_MODES = ['hide-on-scroll', 'shrink'] as const;
+
+/** Whether a chosen sticky-header mode needs the sticky-header JS runtime (scroll state classes). */
+export function stickyHeaderUsesRuntime(mode: string | null | undefined): boolean {
+  return !!mode && (JS_STICKY_HEADER_MODES as readonly string[]).includes(mode);
+}
+
+/**
+ * Whether the site-wide SCROLLSPY toggle is on (`website.effects.scrollSpy`). When true the runtime
+ * ships and governs `#main-nav` (its desktop + mobile menus). A per-element `data-sw-scrollspy`
+ * attribute is detected separately by the publish/preview source scan (`usesScrollSpy`), so a custom
+ * on-page nav opts in without this flag. Source-of-truth for the publish/preview runtime gate.
+ */
+export function scrollSpyUsesRuntime(enabled: boolean | null | undefined): boolean {
+  return enabled === true;
+}
+
+/**
  * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no built-in
  * scheme — the author may instead supply their OWN effect as a custom-code blob (the `*Code` fields,
  * edited via the "None / Custom Code" option), or apply a scheme class per element. The chosen
@@ -539,6 +598,19 @@ export const WebsiteEffectsSchema = z.object({
     .optional(),
   /** Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll). */
   backToTop: z.boolean().optional(),
+  /**
+   * STICKY top-header mode — fixes the `#main-nav` landmark to the top ('none' = today's static
+   * header). Sets `position:fixed` + the `--sw-header-h` offset token (consumed by `.sw-top-padding`);
+   * 'hide-on-scroll'/'shrink' also ship the scroll-state runtime. See {@link STICKY_HEADER_MODES}.
+   */
+  stickyHeader: z.enum(STICKY_HEADER_CHOICES).optional(),
+  /**
+   * SCROLLSPY — highlight the main + mobile nav link whose in-page section (`<a href="#about">` →
+   * `<section id="about">`) is currently scrolled into view. Emits the `sw-scrollspy` body class; the
+   * runtime then governs the `#main-nav` landmark. A per-element `data-sw-scrollspy` attribute opts a
+   * custom on-page nav in independently (no flag needed). See {@link scrollSpyUsesRuntime}.
+   */
+  scrollSpy: z.boolean().optional(),
   /** Custom nav effect — raw HTML (style/script) injected at body-end when navEffect is 'none'. */
   navCode: z.string().max(HTML_MAX).optional(),
   /** Custom button effect — raw HTML injected at body-end when buttonEffect is 'none'. */
@@ -564,7 +636,13 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
     effects.buttonAccent && effects.buttonAccent !== DEFAULT_BUTTON_ACCENT ? `sw-btn-accent-${effects.buttonAccent}` : '';
   const btnShape =
     effects.buttonShape && effects.buttonShape !== DEFAULT_BUTTON_SHAPE ? `sw-btn-shape-${effects.buttonShape}` : '';
-  return [nav, btnFx, btnAccent, btnShape].filter(Boolean).join(' ');
+  // The sticky-header mode rides on `<body>` too — the JS runtime reads it to pick its scroll behavior
+  // (the CSS is emitted by renderDocument, keyed on the mode, not on this class).
+  const header = effects.stickyHeader && effects.stickyHeader !== 'none' ? `sw-header-${effects.stickyHeader}` : '';
+  // The site-wide scrollspy flag rides on `<body>` too — the runtime reads `sw-scrollspy` to govern the
+  // `#main-nav` landmark (its desktop + mobile menus). A custom on-page nav uses the per-element attribute.
+  const spy = effects.scrollSpy ? 'sw-scrollspy' : '';
+  return [nav, btnFx, btnAccent, btnShape, header, spy].filter(Boolean).join(' ');
 }
 
 /**
@@ -582,6 +660,32 @@ export function websiteEffectsCustomCode(effects: WebsiteEffects | undefined): {
   const btnOn = (effects.buttonEffect ?? 'none') === 'none' && effects.buttonCode ? effects.buttonCode : '';
   const preOn = (effects.preloaderEffect ?? 'none') === 'none' && effects.preloaderCode ? effects.preloaderCode : undefined;
   return { bodyEnd: [navOn, btnOn].filter(Boolean).join('\n'), preloader: preOn };
+}
+
+/**
+ * Validate a site base URL (`website.siteUrl`), returning a human-readable error message or `null`
+ * when it's acceptable. Shared by the schema refinement (server, on save) AND the editor's inline
+ * field validation (client) so both enforce the SAME rules with the SAME message.
+ *
+ * Accepts an absolute http(s) URL, with or without a path, and WITH OR WITHOUT a trailing slash (the
+ * slash is normalized away at build time — see `siteBase`). Rejects a missing scheme, a query or
+ * fragment, embedded whitespace, and HTML-significant characters.
+ */
+export function siteUrlIssue(value: string): string | null {
+  // Specific, format-oriented checks first (so the message names the exact problem); the generic
+  // URL-parse catch-all runs LAST — otherwise `new URL()` would reject e.g. an embedded space with
+  // a vague "not a valid URL" before the precise "remove the spaces" message could fire.
+  if (value.length > 2048) return 'URL is too long (max 2048 characters).';
+  if (!/^https?:\/\//i.test(value)) return 'Enter an absolute URL that starts with https:// (or http://) — for example https://acme.com';
+  if (/\s/.test(value)) return 'Remove the spaces from the URL.';
+  if (/[?#]/.test(value)) return 'Use the base URL only — no "?" query or "#" fragment.';
+  if (/["<>'&]/.test(value)) return `Remove special characters from the URL (" < > ' &).`;
+  try {
+    new URL(value);
+  } catch {
+    return 'That is not a valid URL — for example https://acme.com';
+  }
+  return null;
 }
 
 const WebsiteSettingsObject = z.object({
@@ -667,19 +771,16 @@ const WebsiteSettingsObject = z.object({
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the
    * sitemap. No trailing slash needed (normalized at build time).
    */
+  // One shared validator (siteUrlIssue) so the server rejection and the editor's inline field error
+  // report the SAME rule + message. It covers: absolute http(s), valid URL, no query/fragment (would
+  // break robots.txt / the sitemap <loc>), no whitespace, and no HTML-significant chars (defense in
+  // depth — harmless where escaped, but rejected at the boundary so it can't reach a future raw sink).
   siteUrl: z
     .string()
-    .max(2048)
-    .url()
-    .refine((u) => /^https?:\/\//i.test(u), 'siteUrl must be http(s)')
-    .refine((u) => !/[#?]/.test(u), 'siteUrl must not contain a query or fragment')
-    // Zod's `.url()` does NOT reject embedded whitespace; a literal newline here
-    // would inject a directive into robots.txt / break the sitemap <loc>. Reject all.
-    .refine((u) => !/\s/.test(u), 'siteUrl must not contain whitespace')
-    // Defense-in-depth: `.url()` also permits `"<>'&` — harmless where the value is
-    // escaped (hreflang/sitemap), but reject at the boundary so it can never reach a
-    // future unescaped sink. Real site base URLs never contain these.
-    .refine((u) => !/["<>'&]/.test(u), 'siteUrl must not contain HTML-significant characters')
+    .superRefine((u, ctx) => {
+      const issue = siteUrlIssue(u);
+      if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
+    })
     .optional(),
   /**
    * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on
@@ -719,7 +820,7 @@ const WebsiteSettingsObject = z.object({
   shop: ShopSchema.optional(),
   /**
    * CONSENT MANAGER — front-end cookie-consent (banner + per-category preferences). Exposed to templates
-   * as `{{ website.consent }}` and emitted onto the consent mount by the `{{sw-consent}}` helper for the
+   * as `{{ website.consent }}` and emitted onto the AUTO-INJECTED consent mount for the
    * first-party consent.js runtime. Copy is translatable (reserved `consent_*` keys). See {@link ConsentSchema}.
    */
   consent: ConsentSchema.optional(),

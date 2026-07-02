@@ -102,7 +102,7 @@ describe('templates → publish (code-first sources)', () => {
 
     const html = await publishAndFetch('offer/index.html');
     expect(html).toContain('data-aos="fade-up"');
-    expect(html).toContain('<script defer src="../animations.js"></script>'); // detected via the template
+    expect(html).toContain('<script defer src="../animations.js?v='); // detected via the template
     const css = await client.get(`/sites/${slug}/styles.css`);
     expect(css.body).toContain('.badge'); // template classes reach the shared sheet
   });

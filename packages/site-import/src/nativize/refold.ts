@@ -128,11 +128,18 @@ function largestRun(children: readonly Element[]): { run: Element[]; types: Slot
 
 /**
  * Re-fold uniform card grids in `html` (already-nativized page source) into `{{#each}}` loops + datasets,
- * keeping ONLY render-equivalent folds. `usedSlugs` is shared across the whole site (unique slugs). `probe`
- * renders a fragment against the page's render context. Returns the (possibly) rewritten html + new
- * datasets/entries (empty when nothing folds — the caller then keeps the literal html unchanged).
+ * keeping ONLY render-equivalent folds. `usedSlugs` AND `usedEntryIds` are shared across the whole site so
+ * both stay unique site-wide — an entry id is the project-global storage key `(projectId,'entry',entityId)`,
+ * so two pages re-folding the same content must not produce colliding entry ids. `probe` renders a fragment
+ * against the page's render context. Returns the (possibly) rewritten html + new datasets/entries (empty
+ * when nothing folds — the caller then keeps the literal html unchanged).
  */
-export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: RenderProbe): Promise<RefoldResult> {
+export async function refoldLoops(
+  html: string,
+  usedSlugs: Set<string>,
+  usedEntryIds: Set<string>,
+  probe: RenderProbe,
+): Promise<RefoldResult> {
   const doc = parse(`<body>${html}</body>`);
   const body = getBody(doc);
   if (!body) return { html, datasets: [], entries: [] };
@@ -204,9 +211,10 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     const fields: Field[] = varIdx.map((i, k) => ({ name: varNames[k]!, type: types[i] === 'image' || types[i] === 'bg' ? 'image' : 'text', required: false, localized: false }));
     datasets.push({ id: slug, name, slug, fields });
     const titleField = fields.find((f) => f.type === 'text')?.name;
-    const usedEntryIds = new Set<string>();
     rows.forEach((values, n) => {
-      // Item keys = underscore identifiers, NOT slug-prefixed (used as {{item.<ds>.<id>}} paths + edit handles).
+      // Item keys = underscore identifiers, NOT slug-prefixed (used as {{item.<ds>.<id>}} paths + edit
+      // handles). Deduped against the SITE-WIDE set so the id is unique across every dataset (the entry
+      // storage key is project-global).
       const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
       let id = base;
       for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;

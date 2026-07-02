@@ -1,4 +1,4 @@
-import type { JsonValue, Page } from '@sitewright/schema';
+import { isLinkPage, type JsonValue, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
 import { byNavOrder } from './nav.js';
 import { localeOf } from './i18n.js';
@@ -68,7 +68,11 @@ export function parentPageView(pages: readonly Page[], page: Page, defaultLocale
   if (!page.parent) return undefined;
   const byId = pagesById(pages);
   const parent = byId.get(page.parent);
-  if (!parent) return undefined;
+  // A nav PLACEHOLDER (kind:'link', path:'') is grouping/menu chrome, not a real page — it has no
+  // route or content, so it's not a meaningful `page.parent` (its view would be a degenerate empty
+  // slug + rich nav label). Mirrors childrenOf: placeholders are absent from BOTH directions of the
+  // page↔page binding model. A page nested under a placeholder simply has no parent-page binding.
+  if (!parent || isLinkPage(parent)) return undefined;
   return {
     title: parent.title,
     slug: parent.path,
@@ -90,7 +94,11 @@ export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: st
   const byId = pagesById(pages);
   const pageLocale = localeOf(page, defaultLocale);
   return pages
-    .filter((c) => c.parent === page.id && !c.collection && localeOf(c, defaultLocale) === pageLocale)
+    // `page.children` is a CONTENT listing (title/description/image/data) — exclude nav PLACEHOLDERS
+    // (kind:'link', path:''). A placeholder is grouping/menu chrome, not a content child; leaving it in
+    // leaked a degenerate entry (empty slug + rich nav label). Nav DROPDOWNS gather children separately
+    // (buildNav), so they're unaffected. Collections ([param] pages) are excluded too — not real children.
+    .filter((c) => c.parent === page.id && !c.collection && !isLinkPage(c) && localeOf(c, defaultLocale) === pageLocale)
     .sort(byNavOrder)
     .slice(0, MAX_PAGE_CHILDREN)
     .map((c) => ({

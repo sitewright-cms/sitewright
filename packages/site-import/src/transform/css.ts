@@ -110,7 +110,7 @@ export function collectCssRefs(pages: { url: string; doc: Document }[], site: Ca
 }
 
 /** Rewrite absolute url()s to their hosted /media refs (keep an https hotlink / data: on a miss). */
-function rewriteCssUrls(cssText: string, assetMap: ReadonlyMap<string, string>): string {
+export function rewriteCssUrls(cssText: string, assetMap: ReadonlyMap<string, string>): string {
   return cssText.replace(URL_RE, (whole, _q: string, raw: string) => {
     const r = raw.trim();
     if (/^data:/i.test(r)) return whole;

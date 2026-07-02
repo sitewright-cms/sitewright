@@ -4,6 +4,8 @@ import {
   applyFoundation,
   cleanNavLabel,
   configurePageNav,
+  extractBodyBgImage,
+  extractContentWidth,
   extractColors,
   extractTypography,
   foundationCriticalCss,
@@ -109,6 +111,45 @@ describe('foundationCriticalCss', () => {
     expect(css).toContain('.bp-card');
     expect(css).toContain('background-color:#e8e8ea');
     expect(css.length).toBeLessThan(10_000); // CSS_MAX
+  });
+  it('uses the generic NOISE texture when no real body image is given', () => {
+    expect(foundationCriticalCss('#e8e8ea')).toContain('fractalNoise');
+  });
+  it('uses the REAL body background-image when provided (no generic noise)', () => {
+    const real = "url('/media/burmeister/abc/bg-brushed-aluminum-dark.png')";
+    const css = foundationCriticalCss('#cccccc', real);
+    expect(css).toContain(real);
+    expect(css).not.toContain('fractalNoise');
+  });
+});
+
+describe('extractContentWidth', () => {
+  it('reads a width-ish CSS var (the reliable signal)', () => {
+    expect(extractContentWidth(':root{--template-width:1400px}body{x:1}')).toBe('1400px');
+    expect(extractContentWidth('--content-width: 1320px;')).toBe('1320px');
+  });
+  it('ignores out-of-range + non-width vars, returns undefined with no signal', () => {
+    expect(extractContentWidth('--gap-width:24px;--primary-color:#fff')).toBeUndefined();
+    expect(extractContentWidth('.container{max-width:1140px}')).toBeUndefined(); // not a var → no false positive
+  });
+});
+
+describe('extractBodyBgImage', () => {
+  const map = new Map([['https://ex.com/_data/assets/bg-brushed.png', '/media/s/main/bg-brushed.png']]);
+  it('captures the source body background-image and rewrites its url() to /media', () => {
+    const css = "body{margin:0;background-color:#ccc;background-image:url('https://ex.com/_data/assets/bg-brushed.png')}";
+    expect(extractBodyBgImage(css, map)).toBe("url('/media/s/main/bg-brushed.png')");
+  });
+  it('returns empty when the source declares no body background-image', () => {
+    expect(extractBodyBgImage('body{margin:0;color:#111}', map)).toBe('');
+  });
+  it('drops an unresolved foreign hotlink (never ship a non-hosted url)', () => {
+    const css = "body{background-image:url('https://other.com/x.png')}";
+    expect(extractBodyBgImage(css, map)).toBe('');
+  });
+  it('keeps an inline data: texture as-is', () => {
+    const css = "html{background-image:url(\"data:image/svg+xml,%3Csvg/%3E\")}";
+    expect(extractBodyBgImage(css, map)).toContain('data:image/svg+xml');
   });
 });
 

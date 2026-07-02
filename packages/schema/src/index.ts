@@ -1,5 +1,6 @@
 export * from './primitives.js';
 export * from './agent.js';
+export * from './ai-config.js';
 export * from './component-catalog.js';
 export * from './authoring-reference.js';
 export * from './reserved-translations.js';
@@ -16,6 +17,7 @@ export * from './media.js';
 export * from './page.js';
 export * from './password.js';
 export * from './project.js';
+export * from './project-export.js';
 export * from './screenshot-viewports.js';
 export * from './snippet.js';
 export * from './stock.js';

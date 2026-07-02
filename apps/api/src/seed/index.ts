@@ -4,8 +4,8 @@
 /**
  * Content for the seeded demo project — "Northwind Web Studio", a complete, realistic corporate
  * site that exercises the whole platform: a themed Corporate Identity, the shared skeleton
- * (desktop + mobile navbar slots, rich footer with auto-menus + a Legal column, a cookie-consent
- * banner), first-party components (carousel, lightbox, tabs, modal, accordion, forms), data-aos
+ * (desktop + mobile navbar slots, rich footer with auto-menus + a Legal column, an auto-injected
+ * consent banner), first-party components (carousel, lightbox, tabs, modal, accordion, forms), data-aos
  * scroll reveals, eight CMS datasets covering every field type, client-editable `data-sw-*`
  * regions (→ page.data), real imagery, a working localized contact form, the MINI SHOP — and a
  * COMPLETE German translation built the way the platform intends: inherit-mode locale variants

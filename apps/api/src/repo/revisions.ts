@@ -6,8 +6,8 @@ import type { ProjectContext } from './context.js';
 
 /**
  * Content kinds that get revision history — the user-editable, site-affecting set. Credentials
- * (`deploy_target`, `project_smtp`) are never snapshotted (no secrets in history); media binaries
- * (`media`, `mediafolder`) live on disk and aren't versioned. Matches the MCP `GENERIC_KIND` enum.
+ * (`deploy_target`, `project_smtp`, `ai_config`) are never snapshotted (no secrets in history); media
+ * binaries (`media`, `mediafolder`) live on disk and aren't versioned. Matches the MCP `GENERIC_KIND` enum.
  */
 export const REVISIONED_KINDS: ReadonlySet<ContentKind> = new Set<ContentKind>([
   'page',

@@ -21,6 +21,9 @@ import type {
   StockSearchResult,
   Template,
   WebsiteSettings,
+  AiConfigView,
+  AiConfigInput,
+  AiProviderKind,
 } from '@sitewright/schema';
 import type {
   AuthenticationResponseJSON,
@@ -63,6 +66,8 @@ export type {
   StockProvidersStatus,
   StockSearchResult,
   WebsiteSettings,
+  AiConfigView,
+  AiConfigInput,
 };
 
 /** The project's settings singleton as read/written via the content API (the unified shape). */
@@ -74,6 +79,20 @@ export interface SettingsBundle {
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
+
+/**
+ * Downloads the whole project as a portable export zip. Points a transient anchor
+ * at the export route (which replies `Content-Disposition: attachment`), so the
+ * browser STREAMS the archive straight to disk — no in-browser buffering, matching
+ * the server's temp-file stream. Session auth rides the same-origin cookie.
+ */
+export function downloadProjectExport(projectId: string): void {
+  const a = document.createElement('a');
+  a.href = `${BASE}/projects/${encodeURIComponent(projectId)}/export.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 /**
  * Absolute URL of the sandboxed preview document for a token — loaded via the
@@ -255,6 +274,106 @@ async function streamSse<P, D>(
       }
     }
   }
+}
+
+/** A chat attachment (image or PDF) sent with a message so the agent can see it. `data` is base64. */
+export interface AgentAttachment {
+  kind: 'image' | 'document';
+  mimeType: string;
+  data: string;
+  name?: string;
+}
+
+/** The result of an AI provider connectivity check (verify credentials + model). */
+export interface AiTestResult {
+  ok: boolean;
+  /** The model the probe ran against (echoed so the UI confirms the selection). */
+  model: string;
+  /** Present on failure — the provider's error (auth, unknown model, unreachable endpoint, …). */
+  error?: string;
+}
+
+/** Provider-neutral status events from the on-page assistant's chat stream. */
+export interface AgentChatHandlers {
+  onStart?: (e: { conversationId: string; model: string }) => void;
+  onText?: (delta: string) => void;
+  onTool?: (e: { id: string; name: string; input: unknown }) => void;
+  onToolResult?: (e: { id: string; name: string; ok: boolean; summary: string }) => void;
+  onUsage?: (e: { inputTokens: number; outputTokens: number; projectMonthToDate: number }) => void;
+  onDone?: (message: string) => void;
+  onError?: (message: string) => void;
+}
+
+/**
+ * Consume the assistant's SSE chat stream. Unlike {@link streamSse} (progress/done/error), the agent
+ * emits richer named events — start / text / tool / tool_result / usage / done / error — dispatched to
+ * typed handlers here. Aborting `signal` (drawer closed / user stops) ends the read quietly.
+ */
+async function streamAgentChat(url: string, body: unknown, handlers: AgentChatHandlers, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(url, { method: 'POST', credentials: 'include', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    let message = res.statusText || 'request failed';
+    try {
+      const j = (await res.json()) as { error?: unknown };
+      if (typeof j.error === 'string') message = j.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    notifyIfUnauthorized(res.status);
+    handlers.onError?.(message);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return; // aborted → quiet end
+      throw err;
+    }
+    if (chunk.done) {
+      buf += decoder.decode(); // flush any trailing multi-byte sequence
+      break;
+    }
+    buf += decoder.decode(chunk.value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).replace(/^ /, '');
+      }
+      if (!data) continue;
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      switch (event) {
+        case 'start': handlers.onStart?.(parsed as { conversationId: string; model: string }); break;
+        case 'text': handlers.onText?.(String(parsed.delta ?? '')); break;
+        case 'tool': handlers.onTool?.(parsed as { id: string; name: string; input: unknown }); break;
+        case 'tool_result': handlers.onToolResult?.(parsed as { id: string; name: string; ok: boolean; summary: string }); break;
+        case 'usage': handlers.onUsage?.(parsed as { inputTokens: number; outputTokens: number; projectMonthToDate: number }); break;
+        case 'done': handlers.onDone?.(String(parsed.message ?? '')); break;
+        case 'error': handlers.onError?.(typeof parsed.message === 'string' ? parsed.message : 'agent error'); break;
+      }
+    }
+  }
+}
+
+/** The user's consent grant for the assistant on a project (from GET/PUT /agent/grant). */
+export interface AgentGrantView {
+  configured: boolean;
+  capabilities: ApiKeyCapability[];
+  autonomy: 'full' | 'ask';
 }
 
 /** A project the user can reach, with their role in it (the flat surface). */
@@ -462,6 +581,15 @@ export interface ImportReport {
   warnings: string[];
 }
 
+/** The `done` report of a project-zip import (a brand-new project was created). */
+export interface ProjectImportReport {
+  projectId: string;
+  slug: string;
+  name: string;
+  imported: number;
+  media: number;
+}
+
 /** The `done` report of a server-side mechanical nativize. */
 export interface NativizeReport {
   pagesNativized: number;
@@ -556,7 +684,7 @@ export const api = {
   passkeyLoginVerify: (handle: string, response: AuthenticationResponseJSON) =>
     request<{ userId: string } | { mfaRequired: true; ticket: string }>('POST', '/auth/passkey/verify', { handle, response }),
   version: () =>
-    request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
+    request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null; build: string | null }>(
       'GET',
       '/version',
     ),
@@ -632,6 +760,10 @@ export const api = {
     request<{ key: string; value: string }>('PUT', `/projects/${projectId}/website-data`, { key, value }),
   removeLocale: (projectId: string, locale: string) =>
     request<{ locale: string; removed: number }>('DELETE', `/projects/${projectId}/locales/${encodeURIComponent(locale)}`),
+  // Change the MAIN (default) language by re-labelling it to a NOT-yet-active locale code (the old
+  // default is replaced in the locales list). Relabel only — no content is translated/migrated.
+  setDefaultLocale: (projectId: string, locale: string) =>
+    request<{ defaultLocale: string; locales: string[] }>('PUT', `/projects/${projectId}/locales/default`, { locale }),
   // Make an existing default-language page available in all (or the given) languages.
   translatePage: (projectId: string, pageId: string, locales?: string[]) =>
     request<{ created: number; pages: Page[] }>(
@@ -845,6 +977,13 @@ export const api = {
   /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */
   pruneThumbnails: (projectId: string) =>
     request<{ removed: number }>('POST', `/projects/${projectId}/media/prune-thumbnails`, {}),
+  // --- media Recycle Bin (soft-delete → restore / purge) ---
+  listDeletedMedia: (projectId: string) =>
+    request<{ items: Array<MediaAsset & { deletedAt: number }> }>('GET', `/projects/${projectId}/media/deleted`),
+  restoreMedia: (projectId: string, id: string) =>
+    request<void>('POST', `/projects/${projectId}/media/${id}/restore`),
+  purgeMedia: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/media/${id}/purge`),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */
   patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
     request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),
@@ -982,6 +1121,32 @@ export const api = {
   },
 
   /**
+   * Import a whole-project export ZIP as a BRAND-NEW project (staff-only), streaming progress over SSE.
+   * `onDone` receives the report (new project id/slug/name + counts).
+   */
+  importProjectZipStream: (
+    file: File,
+    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ProjectImportReport) => void; onError?: (message: string) => void },
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const form = new FormData();
+    form.append('file', file);
+    return streamSse<ImportProgressEvent, { report: ProjectImportReport }>(
+      `${BASE}/projects/import/zip`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
+        onError: handlers.onError,
+      },
+      { signal, init: { body: form } },
+    );
+  },
+
+  /** Duplicate a project in-instance (staff-only); returns the new project. */
+  duplicateProject: (projectId: string): Promise<{ project: Project }> =>
+    request<{ project: Project }>('POST', `/projects/${projectId}/duplicate`),
+
+  /**
    * Mechanically nativize a project's imported (rawFidelity) pages server-side, streaming per-page
    * progress over SSE. Owner-only; `onDone` receives the nativize report. The progress frames share the
    * import's `ImportProgressEvent` shape (phase 'nativize').
@@ -1007,6 +1172,12 @@ export const api = {
     request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Verify the platform AI provider (connectivity + model). A blank apiKey tests the stored one. */
+  testInstanceAi: (body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
+    request<AiTestResult>('POST', '/admin/settings/ai/test', body),
+  /** Verify a stock-image provider key with a minimal search. A blank key tests the stored one. */
+  testStockKey: (body: { provider: 'unsplash' | 'pexels'; key?: string }) =>
+    request<{ ok: boolean; error?: string }>('POST', '/admin/settings/stock/test', body),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),
@@ -1033,6 +1204,39 @@ export const api = {
     request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
   deleteProjectSmtp: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/smtp`),
+
+  // --- per-project AI assistant config ("bring your own agent") ---
+  getAiConfig: (projectId: string) =>
+    request<{ aiConfig: AiConfigView | null }>('GET', `/projects/${projectId}/ai-config`),
+  putAiConfig: (projectId: string, body: AiConfigInput) =>
+    request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config`, body),
+  deleteAiConfig: (projectId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/ai-config`),
+  /** Verify this project's BYO AI provider (connectivity + model). A blank apiKey tests the stored one. */
+  testAiConfig: (projectId: string, body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
+    request<AiTestResult>('POST', `/projects/${projectId}/ai-config/test`, body),
+
+  // --- on-page AI assistant (chat + consent grant + availability) ---
+  /** Whether the assistant is available for this project (configured + the user can write). */
+  agentStatus: (projectId: string) =>
+    request<{ enabled: boolean }>('GET', `/projects/${projectId}/agent/status`),
+  /** The user's consent grant (capabilities + autonomy); `configured:false` → show the consent panel. */
+  getAgentGrant: (projectId: string) =>
+    request<AgentGrantView>('GET', `/projects/${projectId}/agent/grant`),
+  putAgentGrant: (projectId: string, body: { capabilities: ApiKeyCapability[]; autonomy: 'full' | 'ask' }) =>
+    request<AgentGrantView>('PUT', `/projects/${projectId}/agent/grant`, body),
+  /** Stream one chat turn; the server drives the agent + edits the DRAFT (the preview auto-reloads). */
+  streamAgentMessage: (
+    projectId: string,
+    body: {
+      conversationId?: string;
+      message: string;
+      attachments?: AgentAttachment[];
+      context?: { pageId?: string; path?: string; selection?: string };
+    },
+    handlers: AgentChatHandlers,
+    signal?: AbortSignal,
+  ) => streamAgentChat(`${BASE}/projects/${projectId}/agent/messages`, body, handlers, signal),
 
   // --- form submissions (inbox) ---
   listSubmissions: (projectId: string, formId?: string) =>

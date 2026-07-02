@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId } from '../id.js';
@@ -29,7 +30,9 @@ import {
   passwordSchema,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
+  stickyHeaderUsesRuntime,
   isLinkPage,
+  type StickyHeaderMode,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -48,8 +51,10 @@ import {
   COMPONENT_CATALOG,
   isScreenshotViewportName,
   DEFAULT_SCREENSHOT_VIEWPORTS,
+  PREVIEW_DEFAULT_VIEWPORTS,
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
+  AiConfigSchema,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -77,6 +82,9 @@ import {
   RIPPLE_JS,
   usesNavEffects,
   NAV_EFFECTS_JS,
+  STICKY_HEADER_JS,
+  usesScrollSpy,
+  SCROLLSPY_JS,
   usesButtonEffects,
   BUTTON_EFFECTS_JS,
   usesCart,
@@ -146,14 +154,30 @@ import {
   GLOBAL_SCOPE_ID,
 } from '../repo/global-library.js';
 import { MediaStorage } from '../media/storage.js';
+import { buildProjectExportZip, collectExportMedia, ExportSizeLimitError } from '../export/build-zip.js';
+import { buildExportManifest, exportBundleOverCap } from '../export/manifest.js';
+import {
+  readProjectZip,
+  extractProjectMedia,
+  DEFAULT_PROJECT_ZIP_LIMITS,
+} from '../import/unpack-project-zip.js';
+import { rewriteMediaSlug } from '../import/rewrite-slug.js';
+import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
 import { PublishError, type ReleaseManifest } from '../publish/build.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
+import type { AgentProvider } from '../ai/agent-provider.js';
+import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
+import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
+import { buildAgentProvider } from '../ai/build-provider.js';
+import { isActiveAgentToken } from '../ai/agent-token.js';
+import { testAiProvider } from '../ai/connectivity.js';
+import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore } from '../publish/store.js';
-import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
+import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { signPreview, verifyPreview } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
@@ -168,7 +192,7 @@ import { buttonPreviewCss } from './button-preview.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
-import { registerImportRoutes } from './import-routes.js';
+import { registerImportRoutes, streamImport } from './import-routes.js';
 import { registerNativizeRoutes } from './nativize-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
@@ -198,7 +222,7 @@ import {
   resolveOidcUser,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
-import { sweepExpiredAuthRows } from '../repo/maintenance.js';
+import { sweepExpiredAuthRows, reapDeletedMedia } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
 import { OidcRepository } from '../repo/oidc.js';
 import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
@@ -225,6 +249,7 @@ import {
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
+import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -261,6 +286,10 @@ const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
+const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
+const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
+const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
@@ -350,7 +379,7 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'ai_config']);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -528,6 +557,8 @@ interface PreviewShell {
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
+  /** Sticky/fixed top-header mode (`website.effects.stickyHeader`) — passed straight to renderDocument. */
+  stickyHeader?: StickyHeaderMode | 'none';
   /** Opt-in light/dark color schemes (Website settings) — passed through to renderDocument. */
   theme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
@@ -580,7 +611,7 @@ async function styledSourceDocument(
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
   // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
-  // Interactive components (modal / tabs / carousel / lightbox / cookie-consent / form) authored in
+  // Interactive components (modal / tabs / carousel / lightbox / banner / form) authored in
   // CODE-FIRST source carry their `data-sw-component="…"` marker into the rendered body/slots — scan
   // for them here (the block tree is an empty stub for code-first), mirroring the publish path.
   const componentTypes = componentTypesInSource(scanHtml);
@@ -595,6 +626,14 @@ async function styledSourceDocument(
   const navRuntime = usesNavEffects(scanHtml);
   // Button-effects runtime — ripple on every .btn (+ magnetic / spotlight); inline it live for preview parity.
   const btnRuntime = usesButtonEffects(scanHtml);
+  // STICKY top-header — the caller passes the validated mode via `shell.stickyHeader` (carried into
+  // renderDocument by the `...shell` spread below, so the fixed `#main-nav` + offset token render in
+  // the preview — WYSIWYG layout). Inline the scroll-state runtime for the JS-backed modes (hide/shrink).
+  const stickyHeaderRuntime = stickyHeaderUsesRuntime(shell.stickyHeader);
+  // SCROLLSPY — the marker `sw-scrollspy` is in scanHtml via either a per-element `data-sw-scrollspy`
+  // attribute (rendered body/slots) or the site-wide `sw-scrollspy` body class (shell.bodyClass). Run it
+  // live in the preview (harmless: it only toggles .active/aria-current, so it never fights the bridge).
+  const scrollSpyRuntime = usesScrollSpy(scanHtml);
   // A RAW-HTML page (the explicit page setting) renders free-form: renderDocument omits the platform base
   // CSS, the linked utility sheet, and the platform JS. The editor canvas INLINES a per-page utility sheet
   // (renderDocument can't skip a linked one here), so we ALSO skip that compile + every platform
@@ -621,6 +660,11 @@ async function styledSourceDocument(
     ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS).
       [PREVIEW_BRIDGE_JS]
     : [
+        // The editor preview scrolls on <body> (styled scrollbar), so bridge body-scroll → window
+        // FIRST, before any scroll-linked effect attaches its `window` scroll listener. Self-guarded,
+        // so it no-ops if the viewport ever scrolls natively. Fixes sticky-header (.sw-scrolled),
+        // parallax, scrollspy + back-to-top in this shell (the whole-site preview has its own bridge).
+        ...(parallaxed || stickyHeaderRuntime || scrollSpyRuntime ? [PREVIEW_SCROLL_BRIDGE_JS] : []),
         ...(componentJs ? [componentJs] : []),
         ...(animated ? [ANIMATION_JS] : []),
         ...(parallaxed ? [PARALLAX_JS] : []),
@@ -628,7 +672,11 @@ async function styledSourceDocument(
         ...(waves ? [RIPPLE_JS] : []),
         ...(navRuntime ? [NAV_EFFECTS_JS] : []),
         ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
-        ...(dialog ? [NAV_LINK_JS] : []),
+        ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
+        ...(scrollSpyRuntime ? [SCROLLSPY_JS] : []),
+        // NAV_LINK_JS smooth-scrolls #section links + opens <dialog> modals; ship it for a <dialog> OR for
+        // scrollspy (its nav is in-page section navigation, so the links must smooth-scroll in the preview too).
+        ...(dialog || scrollSpyRuntime ? [NAV_LINK_JS] : []),
         // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
         // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
         PREVIEW_BRIDGE_JS,
@@ -644,6 +692,7 @@ async function styledSourceDocument(
     headInlineScripts: themeToggle ? [THEME_TOGGLE_JS] : undefined,
     // SYSTEM i18n dict for the component runtimes (only when a component ships).
     systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
+    // `...shell` carries `stickyHeader` straight through to renderDocument (fixed `#main-nav` + offset).
     ...shell,
   });
 }
@@ -669,7 +718,10 @@ async function previewScreenshots(
   try {
     return await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,
-      viewports: viewports.length ? viewports : undefined,
+      // Default a plain preview to desktop + mobile (2), and halve the raster (scale 0.5) — a big cut in
+      // the vision-token cost of design iteration. The agent can still request more viewports explicitly.
+      viewports: viewports.length ? viewports : [...PREVIEW_DEFAULT_VIEWPORTS],
+      scale: 0.5,
     });
   } catch (err) {
     req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');
@@ -773,6 +825,8 @@ export interface AppOptions {
   forcePasswordChange?: boolean;
   /** Current running version (for the pull-based update check). */
   version?: string;
+  /** Overrides the project-export archive size cap (bytes). Defaults to {@link PROJECT_EXPORT_MAX_BYTES}. */
+  exportMaxBytes?: number;
   /** Provider of the latest released version tag (cached; null when unavailable). */
   latestVersion?: () => Promise<string | null>;
   /** URL shown in the update banner linking to the latest release. */
@@ -781,6 +835,8 @@ export interface AppOptions {
   buildRunner?: BuildRunner;
   /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
   aiProvider?: AiProvider;
+  /** Streaming, tool-using provider for the on-page AI assistant. Omit to disable the assistant. */
+  agentProvider?: AgentProvider;
   /** Form-submission mailer (Mode A). Defaults to the global-SMTP mailer; tests inject a fake. */
   mailer?: SubmissionMailer;
   /** Per-project SMTP mailer (Mode B / userSmtp). Defaults to ProjectSmtpMailer; tests inject a fake. */
@@ -803,7 +859,7 @@ export interface AppOptions {
    */
   sitesDomain?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
-  aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
+  aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number; projectMonthlyTokens?: number };
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -871,7 +927,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewStore = new PreviewStore();
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const aiProvider = opts.aiProvider;
+  const agentProvider = opts.agentProvider;
   const aiUsageRepo = new AiUsageRepository(db);
+  const agentGrantsRepo = new AgentGrantsRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
@@ -962,6 +1020,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     logger: opts.logger
       ? {
           redact: [
+            // Bearer tokens (incl. the short-lived agent token used for in-process /mcp injects) — never
+            // log them, even if a future plugin serializes request headers.
+            'req.headers.authorization',
             // Covers the auth login/register password AND the project-SMTP PUT
             // (SmtpInput.password is top-level) AND deploy-target create.
             'req.body.password',
@@ -980,6 +1041,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'req.body.hcaptcha.secret',
             'req.body.stock.unsplash',
             'req.body.stock.pexels',
+            // AI keys (plaintext on input before encryption): the platform key on /admin/settings and
+            // the per-project BYO key on /projects/:id/ai-config.
+            'req.body.ai.apiKey',
+            'req.body.apiKey',
             // Not a secret, but the base64 logo upload would otherwise bloat the log line.
             'req.body.platformLogo.data',
           ],
@@ -1095,6 +1160,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
     keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
+    // Exempt the server-side agent loop's own scoped token: one "build the page in stages" turn fires
+    // many rapid tool calls (each an in-process /mcp + content inject on the same bearer) and would
+    // otherwise self-throttle into spurious 429s the model reads as hard failures. Only server-minted,
+    // in-flight agent tokens are ever in this set (they never reach the browser), and this skips ONLY
+    // rate-limiting — auth still applies. The loop stays bounded by iterations + token metering.
+    allowList: (req) => isActiveAgentToken(bearerToken(req)),
   });
 
   // Resolve the session user ONCE per request and memoize it for the request's lifetime (keyed by the
@@ -1288,6 +1359,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
+  // Whole-instance ceiling on concurrent project-export builds (each writes up to
+  // PROJECT_EXPORT_MAX_BYTES of temp data + reads the media tree) — mirrors the image
+  // optimize slot guard. Incremented for the BUILD phase only; streaming the finished
+  // temp file to the client holds no slot.
+  let activeExports = 0;
+  // Whole-instance ceiling on concurrent project imports + duplicates (each unpacks an archive
+  // and writes a whole project's content + media).
+  let activeProjectImports = 0;
 
   // Brute-force protection for the LOGIN routes: a per-IP FAILED-attempt throttle (successful logins
   // never consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read
@@ -1736,6 +1815,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       throw err;
     }
+  });
+
+  // Verify the platform AI provider — connectivity + model. Tests the just-typed key if present, else
+  // the stored one. Admin-only; heavily rate-limited (it makes an outbound provider call).
+  app.post('/admin/settings/ai/test', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const input = AiTestBodySchema.parse(req.body);
+    const stored = await instanceSettingsRepo.getAiConfig();
+    const apiKey = input.apiKey ?? stored?.apiKey ?? undefined;
+    if (!apiKey) return reply.send({ ok: false, model: input.model ?? '', error: 'Enter an API key to test.' });
+    return reply.send(await testAiProvider({ provider: input.provider, apiKey, model: input.model, baseUrl: input.baseUrl }));
+  });
+
+  // Verify a stock-image provider key with a minimal search. Tests the just-typed key if present, else
+  // the stored one. Admin-only; heavily rate-limited.
+  const StockTestBody = z.object({ provider: z.enum(['unsplash', 'pexels']), key: z.string().min(1).max(512).optional() });
+  app.post('/admin/settings/stock/test', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const body = StockTestBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid provider' });
+    return reply.send(await stockService.testKey(body.data.provider, body.data.key));
   });
 
   // Introspection for a project API key: a bearer client (the CLI / MCP bridge)
@@ -2306,6 +2406,192 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  // Whole-project export as a self-contained zip: manifest.json + the complete
+  // bundle.json + every media binary under media/<assetId>/…. The archive is
+  // STREAMED to a temp file (never buffered whole — see build-zip.ts) then streamed
+  // to the client, so memory stays flat regardless of project/media size. Any
+  // project member (content:read) may export; secrets are never included.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/export.zip',
+    { config: rl(5) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      if (activeExports >= MAX_CONCURRENT_EXPORTS) {
+        return reply.code(429).send({ error: 'too many project exports in progress; retry shortly' });
+      }
+      const bundle = await contentRepo.assembleExportBundle(ctx, project);
+      // Fail loudly if any section is past its (import-side) cap — better than shipping a backup
+      // that can't be re-imported.
+      const over = exportBundleOverCap(bundle);
+      if (over) {
+        return reply.code(413).send({ error: `project is too large to export: ${over}` });
+      }
+      const maxBytes = opts.exportMaxBytes ?? PROJECT_EXPORT_MAX_BYTES;
+
+      activeExports += 1;
+      let zip: Awaited<ReturnType<typeof buildProjectExportZip>>;
+      try {
+        const media = mediaStorage
+          ? await collectExportMedia(
+              (assetId) => mediaStorage.assetFilePaths(project.slug, assetId),
+              bundle.media.map((asset) => asset.id),
+            )
+          : [];
+        const manifest = buildExportManifest(project, bundle, opts.version);
+        zip = await buildProjectExportZip({ manifest, bundle, media, maxBytes });
+      } catch (err) {
+        if (err instanceof ExportSizeLimitError) {
+          return reply.code(413).send({ error: 'project export exceeds the archive size limit' });
+        }
+        throw err;
+      } finally {
+        activeExports -= 1; // the disk/CPU-heavy build is done; streaming holds no slot
+      }
+
+      // If the client already vanished during the build, drop the temp dir now (the 'close'
+      // listener would otherwise never fire). Otherwise clean up when the socket closes.
+      if (reply.raw.destroyed) {
+        await zip.cleanup();
+        return reply;
+      }
+      reply.raw.on('close', () => {
+        void zip.cleanup();
+      });
+      return reply
+        .header('content-disposition', `attachment; filename="${project.slug}-export.zip"`)
+        .header('content-length', String(zip.bytes))
+        .type('application/zip')
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp archive path
+        .send(createReadStream(zip.path));
+    },
+  );
+
+  // Import a project export zip as a BRAND-NEW project (staff-only, same gate as creating one).
+  // Non-destructive: never touches an existing project. Entity ids are preserved inside the fresh
+  // project; only the slug is deduped and media URLs rewritten to match. SSE-streamed progress.
+  app.post('/projects/import/zip', { config: rl(10) }, async (req, reply) => {
+    const userId = await requirePlatformStaff(req); // 403 unless admin/developer; rejects bearer tokens
+    if (!mediaStorage) {
+      return reply.code(400).send({ error: 'media storage is not configured on this instance' });
+    }
+    if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+      return reply.code(429).send({ error: 'too many imports in progress; retry shortly' });
+    }
+    // Claim the slot SYNCHRONOUSLY (atomic with the check above — no await intervenes), so two
+    // uploads racing through the multi-second file read can't both slip past a stale count. The
+    // single outer finally releases it on every path (early 4xx or the SSE stream).
+    activeProjectImports += 1;
+    const storage = mediaStorage;
+    try {
+      let buffer: Buffer;
+      try {
+        const file = await req.file({ limits: { fileSize: PROJECT_IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
+        if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+        buffer = await file.toBuffer();
+        if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+      } catch (err) {
+        if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
+          return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+        }
+        return reply.code(400).send({ error: 'expected a multipart file upload' });
+      }
+
+      // Validate the archive BEFORE hijacking the reply for SSE, so a bad zip is a clean 400.
+      let parsed: Awaited<ReturnType<typeof readProjectZip>>;
+      try {
+        parsed = await readProjectZip(buffer, DEFAULT_PROJECT_ZIP_LIMITS);
+      } catch (err) {
+        if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
+        throw err;
+      }
+
+      // The import runs to completion server-side even if the client disconnects mid-stream (a
+      // partial project is worse than a finished one) — unlike the abortable website-import crawl.
+      await streamImport(
+        reply,
+        async (onProgress) => {
+          const { manifest, bundle } = parsed;
+          onProgress({ phase: 'validate', detail: 'project bundle validated' });
+          const newSlug = await projects.availableSlug(bundle.project.slug);
+          const rewritten = rewriteMediaSlug(bundle, manifest.mediaSlug, newSlug);
+          // Every media reference must now be THIS project's — reject a crafted bundle that points
+          // at another tenant's `/media/<otherSlug>/…` (the rewrite only touches the manifest slug).
+          for (const asset of rewritten.media) {
+            if (!asset.url.startsWith(`/media/${newSlug}/`)) {
+              throw new ConflictError('bundle references media outside this project');
+            }
+          }
+          const newName = (bundle.project.name || manifest.source.name || newSlug).slice(0, 200);
+          onProgress({ phase: 'allocate', detail: `creating project “${newName}”` });
+          const project = await projects.create({ name: newName, slug: newSlug }, userId);
+          try {
+            const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+            onProgress({ phase: 'content', detail: 'importing content' });
+            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
+            onProgress({ phase: 'media', detail: 'restoring media' });
+            const media = await extractProjectMedia(
+              parsed.zip,
+              storage,
+              newSlug,
+              DEFAULT_PROJECT_ZIP_LIMITS,
+              (done, total) => onProgress({ phase: 'media', detail: `media ${done}/${total}` }),
+            );
+            return { projectId: project.id, slug: newSlug, name: newName, imported, media };
+          } catch (err) {
+            // Roll back the half-built project so a failed import leaves nothing behind.
+            await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'import rollback failed'));
+            await storage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'import media rollback failed'));
+            throw err;
+          }
+        },
+        { op: 'project-import' },
+        req.log,
+        'import failed: could not restore the project',
+      );
+    } finally {
+      activeProjectImports -= 1;
+    }
+  });
+
+  // Duplicate a project in-instance (staff-only): assemble the source's export bundle, mint a new
+  // project, import the bundle, and copy the media tree. Reuses the export/import core end to end.
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/duplicate',
+    { config: rl(10) },
+    async (req, reply) => {
+      const userId = await requirePlatformStaff(req);
+      const role = await resolveProjectRole(db, userId, req.params.projectId);
+      if (!role) throw new ForbiddenError('you do not have access to this project');
+      if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+        return reply.code(429).send({ error: 'too many operations in progress; retry shortly' });
+      }
+      activeProjectImports += 1; // claim the slot synchronously (atomic with the check above)
+      try {
+        const source = await projects.get(req.params.projectId);
+        if (source.deletedAt) throw new NotFoundError('project not found');
+        const srcCtx = { userId, projectId: source.id, role, actor: 'user' as const };
+        const bundle = await contentRepo.assembleExportBundle(srcCtx, source);
+        const newSlug = await projects.availableSlug(source.slug);
+        const newName = `${source.name} (copy)`.slice(0, 200);
+        const project = await projects.create({ name: newName, slug: newSlug }, userId);
+        try {
+          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
+          if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
+          return reply.code(201).send({ project });
+        } catch (err) {
+          await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'duplicate rollback failed'));
+          if (mediaStorage) {
+            await mediaStorage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'duplicate media rollback failed'));
+          }
+          throw err;
+        }
+      } finally {
+        activeProjectImports -= 1;
+      }
+    },
+  );
+
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/import',
     { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
@@ -2437,6 +2723,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           header: buildNav(navPages, 'header'),
           footer: buildNav(navPages, 'footer'),
           mobile: buildNav(navPages, 'mobile'),
+          // Author-only slot the default chrome never reads — exposed for {{#each nav.custom}}.
+          custom: buildNav(navPages, 'custom'),
         });
         // The page's FULL route is computed from the parent chain; include the (possibly
         // unsaved/edited) previewed page in the index so its own slug/parent apply.
@@ -2468,7 +2756,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           translations: translationsOf(savedPages, page, defaultLocale),
           data: page.data,
           children: previewChildren,
+          // `page.template` — the template ref id ('' = own code); `page.code` — the EFFECTIVE source
+          // rendering this page (template-resolved). Source is gated to {{page.code}} uses (it's large).
+          template: page.template ?? '',
+          code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
         };
+        // `page.code` duplicates the (already body-limited) source into the IPC payload — bound it against
+        // the same 4 MiB ceiling as the other heavy preview fields, for a consistent defensive guard.
+        if (typeof previewPage.code === 'string' && previewPage.code.length > 4 * 1024 * 1024) {
+          return reply.code(413).send({ error: 'project data is too large to render' });
+        }
         // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`) — absent
         // at the tree root. Built only when the source references it (the parent carries its own
         // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
@@ -2481,8 +2778,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
-        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
-        // shared by the page render AND the slots (a footer/nav may reference another page too).
+        // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
+        // same-locale, shared by the page render AND the slots (a footer/nav may reference another page too).
         const previewPages = pagesContext(
           savedPages,
           page,
@@ -2579,6 +2876,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           preloader: fxCode.preloader,
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
           bodyClass: websiteEffectsClasses(website?.effects),
+          stickyHeader: website?.effects?.stickyHeader,
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
@@ -3099,18 +3397,40 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.delete<{ Params: { projectId: string; id: string } }>(
       '/projects/:projectId/media/:id',
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req, 'content:delete');
-        // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
-        // whereas a leaked DB row would block re-creating the same asset id.
-        await contentRepo.remove(ctx, 'media', req.params.id);
-        try {
-          await storage.remove(project.slug, req.params.id);
-        } catch (err) {
-          app.log.error({ err }, 'media binary removal failed after DB delete');
-        }
+        const { ctx } = await resolveProject(req, 'content:delete');
+        // SOFT-delete → the Recycle Bin: the row + binary are RETAINED so it can be restored; a 90-day
+        // reaper purges older entries. This is what makes an autonomous agent media delete recoverable.
+        await contentRepo.softDeleteMedia(ctx, req.params.id);
         return reply.code(204).send();
       },
     );
+
+    // --- Recycle Bin: list soft-deleted media, restore one, or purge it permanently -----------
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/deleted', { config: rl(60) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:read');
+      return reply.send({ items: await contentRepo.listDeletedMedia(ctx) });
+    });
+
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/restore', { config: rl(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      await contentRepo.restoreMedia(ctx, req.params.id);
+      return reply.code(204).send();
+    });
+
+    app.delete<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/purge', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:delete');
+      // PERMANENT (Recycle Bin only): drop the DB row + the binary. `purgeMedia` guards on
+      // `deletedAt IS NOT NULL`, so a LIVE asset can't be hard-deleted here — the bin + 90-day
+      // recovery window can never be skipped. A leaked binary (if fs removal fails) is harmless +
+      // GC-able; a leaked row would block re-creating the same asset id.
+      await contentRepo.purgeMedia(ctx, req.params.id);
+      try {
+        await storage.remove(project.slug, req.params.id);
+      } catch (err) {
+        app.log.error({ err }, 'media binary removal failed after purge');
+      }
+      return reply.code(204).send();
+    });
 
     // --- folder + asset OPERATIONS (rename/move/copy/delete) ---------------------
     // Folders are persisted as `mediafolder` records so an EMPTY folder survives a reload;
@@ -3226,23 +3546,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ ok: true });
     });
 
-    // Delete a folder RECURSIVELY: every folder record + asset (and its binaries) under it.
+    // Delete a folder RECURSIVELY. Its assets are SOFT-deleted (→ Recycle Bin, recoverable for 90
+    // days) — consistent with single-file delete; nothing is destroyed here. The folder RECORDS are
+    // removed (structural shells with no binary), so the folder disappears from the tree; a restored
+    // asset re-materializes its folder from its retained `folder` path (FileBrowser derives folders
+    // from asset paths too), so restore stays coherent even though the record is gone.
     app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:delete');
+      const { ctx } = await resolveProject(req, 'content:delete');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = FolderPathBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
       const folder = body.data.path;
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
       for (const a of assets) {
-        if (isUnderFolder(a.folder, folder)) {
-          await contentRepo.remove(ctx, 'media', a.id);
-          try {
-            await storage.remove(project.slug, a.id);
-          } catch (e) {
-            app.log.error({ err: e }, 'media binary removal failed during folder delete');
-          }
-        }
+        if (isUnderFolder(a.folder, folder)) await contentRepo.softDeleteMedia(ctx, a.id);
       }
       const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
       for (const f of folders) {
@@ -3261,7 +3578,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = PatchAssetBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid update' });
-      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      // `getLiveMedia` rejects a soft-deleted (binned) asset — you restore it, you don't rename it in place.
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const next = {
         ...asset,
         ...(body.data.folder !== undefined ? { folder: body.data.folder } : {}),
@@ -3277,7 +3595,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CopyAssetBody.safeParse(req.body ?? {});
       if (!body.success) return reply.code(400).send({ error: 'invalid folder' });
-      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      // `getLiveMedia` rejects a soft-deleted (binned) asset — copying one would resurrect it outside restore.
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const copy = await duplicateAsset(ctx, project.slug, asset, body.data.folder ?? asset.folder);
       return reply.code(201).send({ item: copy });
     });
@@ -3735,7 +4054,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.type(binary.contentType).send(binary.body);
         }
         const asset = await store.readAsset(slug, path);
-        if (asset !== null) return reply.type(asset.contentType).send(asset.body);
+        if (asset !== null) {
+          // Cache hard ONLY when the URL carries the per-publish `?v=` token (styles.css / consent.js / …,
+          // referenced that way from the page) — a republish then changes the URL. Unversioned root files
+          // (site.webmanifest / robots.txt / sitemap.xml / favicons, and bare direct hits) MUST revalidate
+          // so a republish is reflected — they share a fixed URL with changing content.
+          const versioned = Boolean((req.query as { v?: string } | undefined)?.v);
+          return reply
+            .header('cache-control', versioned ? 'public, max-age=31536000, immutable' : 'no-cache')
+            .type(asset.contentType)
+            .send(asset.body);
+        }
         const html = await store.readHtml(slug, path);
         // Unknown / unpublished path → a bare HTTP 404 (empty body), not a styled error page.
         if (html === null) return reply.code(404).send();
@@ -3819,7 +4148,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
         const siteCsp = siteCspHeaderFromHtml(html);
         if (siteCsp) reply.header('content-security-policy', siteCsp).header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
-        return reply.type('text/html').send(html);
+        // The PAGE always revalidates (it references the `?v=`-versioned assets above + changes per
+        // republish), so a redeploy/republish is picked up immediately while its assets stay hard-cached.
+        return reply.header('cache-control', 'no-cache').type('text/html').send(html);
       },
     );
   }
@@ -4147,6 +4478,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       assertHostAllowed: assertSmtpHostAllowed,
       rl,
     });
+    // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.
+    registerAiConfigRoutes(app, {
+      resolveProject,
+      contentRepo,
+      encryptionKey: opts.encryptionKey,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      rl,
+    });
   }
 
   // Google Fonts: download a family's weights server-side (the only Google contact) and self-host
@@ -4289,6 +4628,56 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   });
 
+  // The on-page AI assistant: a streaming, tool-using agent that edits the project's DRAFT
+  // content by driving the same MCP tools an external client would, scoped to capabilities
+  // the user grants. Session-only (the browser never holds a token); metered like /ai/generate.
+  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
+  // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
+  // env-configured fallback. Returns null when the assistant is not configured anywhere.
+  async function resolveAiProvider(ctx: ProjectContext): Promise<ResolvedAgent | null> {
+    if (opts.encryptionKey) {
+      const [row] = await contentRepo.list(ctx, 'ai_config');
+      const parsed = row ? AiConfigSchema.safeParse(row) : null;
+      if (parsed?.success && parsed.data.enabled && parsed.data.secret) {
+        const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
+        return {
+          provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
+          projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
+          maxOutputTokens: parsed.data.maxOutputTokens || undefined,
+          adminsUnlimited: false, // a project's own budget applies to everyone on it
+          platformFunded: false,
+        };
+      }
+    }
+    const inst = await instanceSettingsRepo.getAiConfig();
+    if (inst?.enabled && inst.apiKey) {
+      return {
+        provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
+        projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
+        maxOutputTokens: inst.maxOutputTokens || undefined,
+        adminsUnlimited: inst.adminsUnlimited,
+        platformFunded: true,
+      };
+    }
+    if (agentProvider) {
+      return { provider: agentProvider, projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined, adminsUnlimited: true, platformFunded: true };
+    }
+    return null;
+  }
+
+  registerAiAgentRoutes(app, {
+    db,
+    resolveAgent: resolveAiProvider,
+    agentGrants: agentGrantsRepo,
+    aiUsageRepo,
+    aiQuota,
+    resolveProject,
+    isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    isAdmin: isInstanceAdmin,
+    getAgentInstructions: () => instanceSettingsRepo.getEffectiveAgentInstructions(),
+    rl,
+  });
+
   app.get('/health', async () => ({ ok: true }));
 
   // The machine-readable authoring contracts of the first-party interactive components
@@ -4362,7 +4751,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     })),
   }));
 
-  // Pull-based update check for the in-app banner. Public + informational.
+  // The DEPLOYED editor SPA's build id — the content hash of its main bundle, read ONCE from the served
+  // index.html (it only changes on a redeploy = a new container). The editor compares this to its own
+  // running bundle hash to detect "a newer version is deployed; reload your stale tab". Cached after first read.
+  let editorBuildId: string | null | undefined;
+  const getEditorBuildId = async (): Promise<string | null> => {
+    if (editorBuildId !== undefined) return editorBuildId;
+    editorBuildId = null;
+    if (opts.editorDist) {
+      try {
+        const indexHtml = await readFile(join(opts.editorDist, 'index.html'), 'utf8');
+        const m = indexHtml.match(/assets\/index-([A-Za-z0-9_-]+)\.js/);
+        if (m) editorBuildId = m[1]!;
+      } catch {
+        /* editorDist missing / unreadable → leave null (no stale-tab check) */
+      }
+    }
+    return editorBuildId;
+  };
+
+  // Pull-based update check for the in-app banner. Public + informational. `build` = the running editor
+  // SPA's content hash (for stale-tab reload); `current`/`latest` = the self-hosted release-upgrade check.
   app.get('/version', async () => {
     const current = opts.version ?? '0.0.0';
     const latest = opts.latestVersion ? await opts.latestVersion() : null;
@@ -4371,6 +4780,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       latest,
       updateAvailable: latest ? isNewer(latest, current) : false,
       releaseUrl: opts.releaseUrl ?? null,
+      build: await getEditorBuildId(),
     };
   });
 
@@ -4397,13 +4807,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (path.endsWith('index.html')) {
           res.setHeader('content-security-policy', editorCsp);
           res.setHeader('x-frame-options', 'DENY');
+          // The SPA entry must always revalidate so a new deploy's content-hashed asset URLs are picked up.
+          res.setHeader('cache-control', 'no-cache');
+        } else if (/[/\\]assets[/\\]/.test(path)) {
+          // Vite content-hashes asset filenames (the build's `?v`), so cache them forever.
+          res.setHeader('cache-control', 'public, max-age=31536000, immutable');
         }
       },
     });
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {
-        return reply.header('content-security-policy', editorCsp).header('x-frame-options', 'DENY').sendFile('index.html');
+        return reply
+          .header('content-security-policy', editorCsp)
+          .header('x-frame-options', 'DENY')
+          .header('cache-control', 'no-cache') // SPA shell: revalidate so a new deploy is picked up on refresh
+          .sendFile('index.html');
       }
       return reply.code(404).send({ error: 'not found' });
     });
@@ -4464,6 +4883,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
       let themeCustomScripts: string | undefined;
       let themePreloader: string | undefined;
       let themeEmitContentTokens = false;
@@ -4481,6 +4901,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        themeStickyHeader = settings.website?.effects?.stickyHeader;
         const fx = websiteEffectsCustomCode(settings.website?.effects);
         themeCustomScripts = fx.bodyEnd || undefined;
         themePreloader = fx.preloader;
@@ -4549,6 +4970,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           bodyClass: themeBodyClass,
+          stickyHeader: themeStickyHeader,
           customScripts: themeCustomScripts,
           preloader: themePreloader,
           emitBrandContentTokens: themeEmitContentTokens,
@@ -4618,6 +5040,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
       let themeFxBodyEnd: string | undefined;
       let containerWidth: string | undefined;
       try {
@@ -4628,6 +5051,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent } : undefined;
         containerWidth = settings.website?.containerWidth;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        themeStickyHeader = settings.website?.effects?.stickyHeader;
         // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a
         // custom PRELOADER is deliberately omitted — a snippet hover doesn't want a loading overlay.
         themeFxBodyEnd = websiteEffectsCustomCode(settings.website?.effects).bodyEnd || undefined;
@@ -4650,6 +5074,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           bodyClass: themeBodyClass,
+          stickyHeader: themeStickyHeader,
           customScripts: themeFxBodyEnd,
           emitBrandContentTokens: !!themeFxBodyEnd,
           containerWidth,
@@ -4681,6 +5106,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const sweepTimer = setInterval(() => {
       void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
       void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
+      if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
     }, sweepMs);
     sweepTimer.unref();
     app.addHook('onClose', async () => clearInterval(sweepTimer));

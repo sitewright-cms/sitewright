@@ -6,9 +6,13 @@ import {
   BUTTON_EFFECT_LABELS,
   BUTTON_SHAPE_LABELS,
   PRELOADER_EFFECTS,
+  STICKY_HEADER_MODES,
+  STICKY_HEADER_LABELS,
+  siteUrlIssue,
   type JsonValue,
   type NavEffect,
   type PreloaderEffect,
+  type StickyHeaderMode,
 } from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
@@ -22,6 +26,7 @@ import { api, type EffectForks } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
 import { ConsentSettingsModal } from './ConsentSettingsModal';
+import { AiConfig } from '../AiConfig';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
@@ -68,12 +73,15 @@ export function WebsiteSection({
   patch,
   projectId,
   onLocalesChanged,
+  onReloadSettings,
 }: {
   form: SettingsForm;
   patch: Patch;
   projectId: string;
   /** Bubbles a language add/remove up so the pages list refreshes. */
   onLocalesChanged?: () => void;
+  /** Re-hydrate the whole settings form after a server-side change (e.g. main-language relabel). */
+  onReloadSettings?: () => Promise<void> | void;
 }) {
   const [dataOpen, setDataOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
@@ -119,6 +127,9 @@ export function WebsiteSection({
   const localeCodes = Array.from(
     new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
   );
+  // Inline siteUrl validation — same rule/message the server enforces on save. Empty is valid (it
+  // just skips the sitemap), so only a non-blank value is checked.
+  const siteUrlError = form.siteUrl.trim() ? siteUrlIssue(form.siteUrl.trim()) : null;
   return (
     <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon={<Globe className="h-4 w-4" />} wide>
@@ -128,6 +139,8 @@ export function WebsiteSection({
           onChange={(v) => patch({ siteUrl: v })}
           type="url"
           placeholder="https://acme.com"
+          error={siteUrlError}
+          hint="Absolute URL, e.g. https://acme.com — a trailing slash is optional; no path query or #fragment."
         />
         <div className="mt-3">
           <Field
@@ -255,6 +268,31 @@ export function WebsiteSection({
             </div>
           </label>
         </div>
+        <label className="mt-4 flex flex-col">
+          <span className={fieldLabel}>Sticky header</span>
+          <span className="mb-1 block text-[11px] text-slate-400">
+            Fix the top navigation to the viewport so it stays visible as the page scrolls. Add the{' '}
+            <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> class to your first section (or an inner
+            element, so a full-bleed hero bleeds under the header) to clear the fixed bar.
+          </span>
+          <select
+            aria-label="Sticky header mode"
+            className={`${glassInput} min-w-0`}
+            value={form.stickyHeader}
+            onChange={(e) =>
+              patch({
+                stickyHeader: e.target.value === 'none' ? 'none' : (e.target.value as StickyHeaderMode),
+              })
+            }
+          >
+            <option value="none">Off — static header</option>
+            {STICKY_HEADER_MODES.map((m) => (
+              <option key={m} value={m}>
+                {STICKY_HEADER_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Back-to-top button</span>
@@ -269,6 +307,28 @@ export function WebsiteSection({
             className={toggleInput}
             checked={form.backToTop}
             onChange={(e) => patch({ backToTop: e.target.checked })}
+          />
+        </label>
+        <label className="mt-4 flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>ScrollSpy (highlight section in view)</span>
+            <span className="block text-[11px] text-slate-400">
+              Highlights the main &amp; mobile nav link whose in-page section (a link to{' '}
+              <code className="rounded bg-slate-700/60 px-1">#about</code> → a{' '}
+              <code className="rounded bg-slate-700/60 px-1">&lt;section id=&quot;about&quot;&gt;</code>) is scrolled
+              into view. Best for one-page / landing layouts — on the page that holds the sections it takes over the
+              nav&apos;s active state; pages without in-page sections keep normal link highlighting. For a custom
+              on-page nav, add the <code className="rounded bg-slate-700/60 px-1">data-sw-scrollspy</code> attribute
+              instead.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Enable scrollspy"
+            className={toggleInput}
+            checked={form.scrollSpy}
+            onChange={(e) => patch({ scrollSpy: e.target.checked })}
           />
         </label>
       </GlassCard>
@@ -610,15 +670,15 @@ export function WebsiteSection({
       <GlassCard
         title="Consent / cookies"
         icon={<ShieldCheck className="h-4 w-4" />}
-        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. Place {{sw-consent}} once in the Bottom slot."
+        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled."
         wide
       >
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable consent manager</span>
             <span className="block text-[11px] text-slate-400">
-              A cookie banner that loads analytics / chatbots / embeds only after consent. When off,{' '}
-              <code>{'{{sw-consent}}'}</code> renders nothing.
+              A cookie banner that loads analytics / chatbots / embeds only after consent. Off by default — the
+              banner appears on every page once you turn it on.
             </span>
           </span>
           <input
@@ -647,8 +707,9 @@ export function WebsiteSection({
               </span>
             </button>
             <p className="mt-2 text-[11px] text-slate-400">
-              Add <code>{'{{sw-consent}}'}</code> to the Bottom slot (below) to show the banner;{' '}
-              <code>{'{{sw-embed "youtube" "…"}}'}</code> in a page gives click-to-load videos/maps.
+              The banner appears automatically on every page. Any third-party <code>&lt;iframe&gt;</code> you paste
+              (YouTube, Vimeo, Maps, Calendly…) is held click-to-load until consent. Add a “Cookie settings” re-open
+              link anywhere with <code>&lt;a href=&quot;#sw-consent&quot;&gt;</code>.
             </p>
           </div>
         )}
@@ -662,6 +723,7 @@ export function WebsiteSection({
           defaultLocale={form.defaultLocale}
           onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
           onLocalesChanged={onLocalesChanged}
+          onReloadSettings={onReloadSettings}
         />
       </GlassCard>
 
@@ -686,6 +748,7 @@ export function WebsiteSection({
             onChange={(translations) => patch({ translations })}
           />
         </GlassCard>
+        <AiConfig projectId={projectId} />
       </div>
     </motion.div>
   );

@@ -98,8 +98,12 @@ describe('media API', () => {
 
     const del = await app.inject({ method: 'DELETE', url: `${base}/media/${asset.id}`, cookies });
     expect(del.statusCode).toBe(204);
+    // Delete is now a SOFT-delete → the asset is hidden from the list (moved to the Recycle Bin). The
+    // binary is retained (restorable), so its URL keeps serving until it is restored, purged, or reaped.
+    const listAfter = await app.inject({ method: 'GET', url: `${base}/media`, cookies });
+    expect((listAfter.json() as { items: unknown[] }).items).toHaveLength(0);
     const after = await app.inject({ method: 'GET', url: asset.url });
-    expect(after.statusCode).toBe(404);
+    expect(after.statusCode).toBe(200);
   });
 
   it('rejects writing media via the generic content endpoint (must use /media)', async () => {

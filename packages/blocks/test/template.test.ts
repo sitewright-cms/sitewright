@@ -19,13 +19,14 @@ const ctx: TemplateContext = {
 describe('pages binding (cross-page access — whitelisted into the render context)', () => {
   // Built upstream by pagesContext in @sitewright/core; here we only verify renderTemplate WHITELISTS the
   // `pages` key (an un-whitelisted top-level key is silently dropped — template.ts line ~849).
-  const pages = { services: { title: 'Services', path: '/services', seo: { data: { header_title: 'SEO & Performance' } } } };
-  it('resolves a deep pages.<slug>.<slug>.data.<key> path', () => {
-    expect(renderTemplate('{{pages.services.seo.data.header_title}}', { pages })).toBe('SEO &amp; Performance');
-    expect(renderTemplate('{{pages.services.path}}', { pages })).toBe('/services');
+  // A node's own fields live under `_attributes`; child pages sit at the node's top level by slug.
+  const pages = { _attributes: { title: 'Home' }, services: { _attributes: { title: 'Services', path: '/services' }, seo: { _attributes: { data: { header_title: 'SEO & Performance' } } } } };
+  it('resolves a deep pages.<slug>.<slug>._attributes.data.<key> path', () => {
+    expect(renderTemplate('{{pages.services.seo._attributes.data.header_title}}', { pages })).toBe('SEO &amp; Performance');
+    expect(renderTemplate('{{pages.services._attributes.path}}', { pages })).toBe('/services');
   });
   it('an unknown pages path renders empty (no error)', () => {
-    expect(renderTemplate('[{{pages.bogus.x.data.y}}]', { pages })).toBe('[]');
+    expect(renderTemplate('[{{pages.bogus.x._attributes.data.y}}]', { pages })).toBe('[]');
   });
 });
 
@@ -135,81 +136,15 @@ describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
   });
 });
 
-describe('{{sw-consent}} / {{sw-consent-settings}} — consent manager helpers', () => {
+describe('{{sw-consent-settings}} — consent re-open button (the banner itself auto-injects)', () => {
   const on = { website: { consent: { enabled: true } } } as unknown as TemplateContext;
-  it('renders the consent mount + escaped config attribute with the default copy when enabled', () => {
-    const out = renderTemplate('{{sw-consent}}', on);
-    expect(out).toContain('data-sw-consent');
-    expect(out).toContain('data-sw-consent-config="');
-    expect(out).toContain('Accept all');
-    expect(out).toContain('Functional');
-    expect(out).toContain('Analytics');
-    expect(out).toContain('Marketing');
-  });
-  it('renders NOTHING when consent is disabled / unset (helpers are safe to leave in)', () => {
-    expect(renderTemplate('{{sw-consent}}', { website: {} } as unknown as TemplateContext)).toBe('');
-    expect(renderTemplate('{{sw-consent}}', {} as TemplateContext)).toBe('');
-    expect(renderTemplate('{{sw-consent-settings}}', { website: {} } as unknown as TemplateContext)).toBe('');
-  });
-  it('honors layout + denyButton + version + a category subset', () => {
-    const cfg = { website: { consent: { enabled: true, layout: 'box', denyButton: false, version: 3, categories: ['analytics'] } } } as unknown as TemplateContext;
-    const out = renderTemplate('{{sw-consent}}', cfg);
-    expect(out).toContain('data-layout="box"');
-    expect(out).toMatch(/&quot;v&quot;:3/); // escaped JSON in the attribute
-    expect(out).toContain('Analytics');
-    expect(out).not.toContain('Marketing'); // only the requested category is offered
-  });
-  it('localizes copy from the catalog (reserved consent_* keys)', () => {
-    const de = { website: { consent: { enabled: true }, t: { consent_accept_all: 'Alle akzeptieren' } } } as unknown as TemplateContext;
-    expect(renderTemplate('{{sw-consent}}', de)).toContain('Alle akzeptieren');
-  });
-  it('{{sw-consent-settings}} renders a re-open button with a localized label', () => {
+  it('renders a re-open button with a localized label', () => {
     expect(renderTemplate('{{sw-consent-settings}}', on)).toContain('data-sw-consent-open');
     expect(renderTemplate('{{sw-consent-settings}}', on)).toContain('Cookie settings');
     expect(renderTemplate('{{sw-consent-settings label="Manage cookies"}}', on)).toContain('Manage cookies');
   });
-  it('sanitizes the privacy link (javascript: dropped; internal path kept)', () => {
-    const bad = { website: { consent: { enabled: true, privacyHref: 'javascript:alert(1)' } } } as unknown as TemplateContext;
-    expect(renderTemplate('{{sw-consent}}', bad)).not.toContain('javascript:');
-    const good = { website: { consent: { enabled: true, privacyHref: '/privacy' } } } as unknown as TemplateContext;
-    expect(renderTemplate('{{sw-consent}}', good)).toContain('/privacy');
-  });
-  it('bakes the integration registry into the config as runtime descriptors', () => {
-    const cfg = {
-      website: { consent: { enabled: true, integrations: [{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }] } },
-    } as unknown as TemplateContext;
-    const out = renderTemplate('{{sw-consent}}', cfg);
-    expect(out).toContain('ga4'); // the runtime kind
-    expect(out).toContain('googletagmanager.com'); // the derived gtag loader host
-    expect(out).toContain('G-X'); // the measurement id
-  });
-});
-
-describe('{{sw-embed}} — click-to-load embed helper', () => {
-  it('renders a held YouTube embed (nocookie src, marketing category, thumbnail, noscript link)', () => {
-    const out = renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ"}}', {} as TemplateContext);
-    expect(out).toContain('data-sw-component="embed"');
-    expect(out).toContain('data-embed-providerkey="youtube"');
-    expect(out).toContain('data-embed-src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
-    expect(out).toContain('data-embed-category="marketing"');
-    expect(out).toContain('data-embed-poster="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"');
-    expect(out).toContain('<noscript>');
-    expect(out).toContain('youtube.com/watch?v=dQw4w9WgXcQ');
-  });
-  it('renders a Google Maps embed (functional category + 4/3 ratio + output=embed)', () => {
-    const out = renderTemplate('{{sw-embed "google-maps" "Eiffel Tower"}}', {} as TemplateContext);
-    expect(out).toContain('data-embed-providerkey="google-maps"');
-    expect(out).toContain('output=embed');
-    expect(out).toContain('data-embed-category="functional"');
-    expect(out).toContain('aspect-ratio:4 / 3');
-  });
-  it('honors category= and guards the ratio against CSS injection', () => {
-    expect(renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ" category="functional"}}', {} as TemplateContext)).toContain('data-embed-category="functional"');
-    expect(renderTemplate('{{sw-embed "youtube" "dQw4w9WgXcQ" ratio="1;background:url(evil)"}}', {} as TemplateContext)).toContain('aspect-ratio:16 / 9');
-  });
-  it('renders NOTHING for an unknown provider or a missing id', () => {
-    expect(renderTemplate('{{sw-embed "tiktok" "x"}}', {} as TemplateContext)).toBe('');
-    expect(renderTemplate('{{sw-embed "youtube" ""}}', {} as TemplateContext)).toBe('');
+  it('renders NOTHING when consent is disabled / unset', () => {
+    expect(renderTemplate('{{sw-consent-settings}}', { website: {} } as unknown as TemplateContext)).toBe('');
   });
 });
 
@@ -333,6 +268,20 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
   it('{{sw-truncate}} clips long text', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
+  });
+
+  it('{{sw-json}} pretty-prints any value (HTML-escaped) and is empty/safe for nothing or a cycle', () => {
+    // Object → indented JSON (2-space). Output is HTML-escaped like every mustache (the " become &quot;,
+    // which a browser renders back as " inside <pre>) — so it can never break out of text/attribute context.
+    expect(renderTemplate('{{sw-json page.data}}', { page: { data: { a: 1, b: 'x' } } })).toBe('{\n  &quot;a&quot;: 1,\n  &quot;b&quot;: &quot;x&quot;\n}');
+    // Scalars all serialize.
+    expect(renderTemplate('{{sw-json page.n}}', { page: { n: 42 } })).toBe('42');
+    expect(renderTemplate('{{sw-json page.b}}', { page: { b: true } })).toBe('true');
+    expect(renderTemplate('{{sw-json page.s}}', { page: { s: 'hi & <b>' } })).toBe('&quot;hi &amp; &lt;b&gt;&quot;'); // escaped
+    // Bare {{sw-json}} (no value) and a circular value → '' (never throws).
+    expect(renderTemplate('[{{sw-json}}]', {})).toBe('[]');
+    const cyc: Record<string, unknown> = {}; cyc.self = cyc;
+    expect(renderTemplate('[{{sw-json page.c}}]', { page: { c: cyc } })).toBe('[]');
   });
 
   it('{{#unless (sw-blank v)}} omits a wrapper only when the value has visible content', () => {

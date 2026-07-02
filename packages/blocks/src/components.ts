@@ -1,5 +1,5 @@
 // Platform-authored behavior + styling for INTERACTIVE component blocks (Carousel,
-// Lightbox, Modal, Tabs, CookieConsent, Form).
+// Lightbox, Modal, Tabs, Banner, Form).
 //
 // These are NOT tenant code — they are first-party, audited, static assets shipped
 // only when the matching block is used (the same "only-used-ships" discipline as
@@ -34,8 +34,7 @@ import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/d
 // ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
-import { NOTICE_CSS, NOTICE_JS } from './notice.js';
-import { EMBED_CSS, EMBED_JS } from './embed.js';
+import { BANNER_CSS, BANNER_JS } from './banner.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -186,7 +185,7 @@ const LIGHTBOX_CSS = [
   ':where([data-sw-component="lightbox"]) img{cursor:zoom-in}',
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
   // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
-  // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other
+  // site chrome — the vendor's z-index:100 sits UNDER the consent banner / dismissible banner and other
   // overlays; a fullscreen image modal must be top-most. font-family:inherit adopts the site's CI
   // body font instead of the vendor's hard-coded sans-serif.
   '.sw-lightbox{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:inherit}',
@@ -264,12 +263,17 @@ const MODAL_CSS = [
   // and a closed <dialog> is display:none until opened).
   `${M}:not(dialog){display:inline-block}`,
   // Appearance defaults at ZERO specificity (:where) so utility classes on the <dialog> win
-  // without !important — global bg/text vars, rounded corners, 1.5rem padding, a max width and a
+  // without !important — global bg/text vars, rounded corners, 1.5rem padding, a 32rem max width and a
   // soft shadow. Override any of them with e.g. bg-transparent / text-white / p-0 / max-w-2xl /
   // rounded-none / shadow-none on the dialog. overflow:visible lets the close button overhang the
   // top-right corner; a TALL dialog instead scrolls its content (the JS moves it into a
   // [data-sw-part="body"] scroll region) so the overhang and scrolling coexist.
-  `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
+  `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:32rem;overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
+  // GUARANTEED side gutter on small screens (normal specificity, NOT :where, so it beats an author
+  // max-w-* override): cap the box to the viewport LESS 4rem so it always keeps a 2rem margin to each
+  // edge instead of touching — pairs with the `max-height:calc(100vh - 4rem)` vertical cap below. Only
+  // applies ≤36rem (576px), where 100vw-4rem < the 32rem default, so wider screens keep author widths.
+  `@media (max-width:36rem){${mdlg()}{max-width:calc(100vw - 4rem)}}`,
   // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
   // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
   // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and
@@ -401,38 +405,6 @@ const MODAL_JS = `(function(){
     }
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
-  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
-})();`;
-
-// --- CookieConsent -----------------------------------------------------------
-// A dismissable banner, hidden until JS confirms consent isn't yet stored. PE-safe:
-// rendered with the `hidden` attribute, so with no JS there is no banner (and no
-// JS means nothing to consent to). localStorage access is guarded (sandboxed
-// preview / disabled storage).
-// Styling keys on `data-sw-component="cookie-consent"` (the marker every banner already
-// carries for the JS + asset scan) rather than a parallel `data-sw-block` — a banner has
-// exactly one authoring form, so the extra attribute was pure duplication.
-const COOKIE_CONSENT_CSS = [
-  '[data-sw-component="cookie-consent"][hidden]{display:none}',
-  '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
-  '[data-sw-component="cookie-consent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
-  // The accept button uses the vendored .btn (authored as `class="btn btn-primary btn-sm"`); no face CSS here.
-].join('');
-
-// State is carried by the \`hidden\` attribute (already in the server HTML and
-// toggled here) rather than a \`data-sw-enhanced\` marker — no separate flag needed.
-// The localStorage key defaults to \`sw-cookie-consent\`; an optional \`data-cookiename\`
-// on the root overrides it so independent banners (e.g. a second one on a campaign
-// microsite) track consent separately. Read per-root, so each banner uses its own key.
-const COOKIE_CONSENT_JS = `(function(){
-  function enhance(root){
-    var key=root.getAttribute('data-cookiename')||'sw-cookie-consent';
-    try{if(localStorage.getItem(key)==='1'){return;}}catch(e){}
-    root.removeAttribute('hidden');
-    var accept=root.querySelector('[data-sw-part="accept"]');
-    if(accept)accept.addEventListener('click',function(){try{localStorage.setItem(key,'1');}catch(e){}root.setAttribute('hidden','');});
-  }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="cookie-consent"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
@@ -709,9 +681,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
-  ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
-  ['Notice', { css: NOTICE_CSS, js: NOTICE_JS }],
-  ['Embed', { css: EMBED_CSS, js: EMBED_JS }],
+  ['Banner', { css: BANNER_CSS, js: BANNER_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
@@ -729,9 +699,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['carousel', 'Carousel'],
   ['lightbox', 'Lightbox'],
   ['modal', 'Modal'],
-  ['cookie-consent', 'CookieConsent'],
-  ['notice', 'Notice'],
-  ['embed', 'Embed'],
+  ['banner', 'Banner'],
   ['tabs', 'Tabs'],
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],
@@ -760,9 +728,6 @@ export function componentTypesInSource(html: string | null | undefined): string[
   // scan must catch the reference itself. Anchored to the two real spellings (helper call /
   // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
   if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
-  // A click-to-load embed by REFERENCE — `{{sw-embed "youtube" …}}` — only gains its
-  // `data-sw-component="embed"` marker at render, so the source scan must catch the helper call too.
-  if (/(?:\{\{\s*sw-embed\b|data-sw-component="embed")/.test(html)) seen.add('Embed');
   return [...seen];
 }
 

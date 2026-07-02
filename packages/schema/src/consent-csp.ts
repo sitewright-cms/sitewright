@@ -1,5 +1,5 @@
 // CONSENT MANAGER — third-party gating support: the curated CSP origin bundles per preset, the runtime
-// descriptors the {{sw-consent}} helper bakes into the config, and the per-site CSP builders consumed by
+// descriptors the auto-injected consent mount bakes into the config, and the per-site CSP builders consumed by
 // BOTH the serve-time response header (apps/api app.ts /sites/:slug/*) and the build-time <meta> (build.ts).
 //
 // SECURITY MODEL (the invariants a reviewer checks): CSP allowlists ORIGINS, never URLs. We add only
@@ -9,6 +9,12 @@
 // site with no integrations gets no widened CSP (it keeps the strict `default-src 'self'` default).
 
 import type { Consent, ConsentIntegration } from './website.js';
+import { CONSENT_CATEGORY_VALUES } from './website.js';
+
+type ConsentCategory = (typeof CONSENT_CATEGORY_VALUES)[number];
+
+/** The category an auto-gated author `<iframe>` falls into when it carries no explicit marker / site default. */
+export const DEFAULT_EMBED_CATEGORY: ConsentCategory = 'functional';
 
 /** The CSP directives a preset/integration can contribute to (bare hostnames; https:// is prepended later). */
 export interface CspOrigins {
@@ -25,7 +31,6 @@ const EMPTY: CspOrigins = { script: [], frame: [], connect: [], img: [], style: 
 /**
  * Curated, versioned origin bundles per preset. Maintained in-repo — the owner picks a preset and never
  * types a URL. Bare hostnames (a single leading `*.` wildcard allowed); the builders prepend `https://`.
- * (Embed presets youtube/google-maps are added in the click-to-load PR — their frame-src origins live here.)
  */
 export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>> = {
   ga4: {
@@ -46,21 +51,119 @@ export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>>
   },
 };
 
-/** Click-to-load EMBED providers (the iframe needs a `frame-src` origin; the parent CSP doesn't cascade INTO it). */
-export const EMBED_PROVIDERS = ['youtube', 'google-maps'] as const;
-export type EmbedProvider = (typeof EMBED_PROVIDERS)[number];
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTHOR-CONTENT GATING — any cross-origin author `<iframe>` (an embed: YouTube/Vimeo/Maps/Calendly/…) is
+// held click-to-load when the manager is enabled, and a `<script type="text/plain" data-sw-consent="cat">`
+// is activated on consent. The publisher derives the per-page CSP from the origins these reference: every
+// cross-origin iframe → `frame-src`, every gated script → `script-src`+`connect-src`. (Replaces the curated
+// embed-provider list — origin-agnostic, so any provider works without an in-repo allow-list entry.)
+//
+// The HTML this scans/rewrites is POST-render + POST-sanitize (well-formed, attribute values escaped), so a
+// `<iframe\b[^>]*>` match is safe — an escaped `&gt;` carries no raw `>`. Origins are re-validated as bare
+// hostnames before they enter a CSP directive (defence-in-depth, identical to the `custom` integration host).
+
+// Quote-AWARE tag matchers: an attribute value in quotes may itself contain a `>` (e.g. a Maps URL), so a
+// naive `[^>]*` would truncate the tag and let an iframe slip past the gate. Each alternative starts with a
+// distinct char (`"`, `'`, or other) so there is no backtracking ambiguity (no ReDoS).
+const IFRAME_TAG_RE = /<iframe\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
+const SCRIPT_OPEN_TAG_RE = /<script\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
+
+/** Read an attribute's value from a tag's inner-attribute string (double-quoted, single-quoted, OR unquoted). */
+function attrValue(attrs: string, name: string): string | undefined {
+  // eslint-disable-next-line security/detect-non-literal-regexp -- `name` is a fixed internal attribute literal (src / data-sw-consent[-src] — `[a-z-]` only, no regex metacharacters), never user input.
+  const m = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(attrs);
+  return m ? (m[1] ?? m[2] ?? m[3] ?? '') : undefined;
+}
+
+/** True when the tag carries a bare/boolean marker attribute (e.g. `data-sw-consent-skip`). */
+function hasFlag(attrs: string, name: string): boolean {
+  // eslint-disable-next-line security/detect-non-literal-regexp -- `name` is a fixed internal attribute literal (see attrValue), never user input.
+  return new RegExp(`(?:^|\\s)${name}(?=[\\s=>/]|$)`, 'i').test(attrs);
+}
 
 /**
- * Curated `frame-src` (+ thumbnail img) origins per embed provider. An <iframe> is its own browsing
- * context, so the provider's INTERNAL fan-out is invisible to the page CSP — each provider needs exactly
- * ONE-ish stable origin. Maintained in-repo; the publisher prepends `https://`.
+ * The external https host an author URL points at, or null for a same-origin/relative URL, a non-https
+ * scheme, or a host that isn't a clean bare hostname. Protocol-relative `//host/…` is treated as https.
  */
-export const EMBED_PRESET_ORIGINS: Readonly<Record<EmbedProvider, CspOrigins>> = {
-  // youtube-nocookie is the embedded player; www.youtube.com is needed because clicking the title/logo in
-  // the player navigates THE IFRAME to youtube.com/watch (a same-frame navigation the page CSP governs).
-  youtube: { script: [], frame: ['www.youtube-nocookie.com', 'www.youtube.com'], connect: [], img: ['i.ytimg.com'], style: [], font: [] },
-  'google-maps': { script: [], frame: ['www.google.com'], connect: [], img: [], style: [], font: [] },
-};
+function externalHttpsHost(src: string | null | undefined): string | null {
+  if (!src) return null;
+  let u: URL;
+  try {
+    u = new URL(src, 'https://__sw_local__/'); // relative URLs resolve to the dummy host → skipped below
+  } catch {
+    return null;
+  }
+  if (u.hostname === '__sw_local__' || u.protocol !== 'https:') return null;
+  return HOST_TOKEN_RE.test(u.host) ? u.host : null;
+}
+
+/** The explicit per-iframe override category from a `data-sw-consent="<category>"` marker (raw HTML only). */
+function markerCategory(attrs: string): ConsentCategory | null {
+  const v = attrValue(attrs, 'data-sw-consent');
+  return v && (CONSENT_CATEGORY_VALUES as readonly string[]).includes(v) ? (v as ConsentCategory) : null;
+}
+
+/**
+ * CSP origins an author HTML body contributes: each cross-origin `<iframe>` (gated or not) → `frame-src`;
+ * each gated `<script type="text/plain" data-sw-consent …>` with an https `src` → `script-src`+`connect-src`.
+ * Reads both un-gated `src` and the already-gated `data-sw-consent-src` so it is order-independent.
+ */
+export function authorContentCspOrigins(html: string | null | undefined): Pick<CspOrigins, 'frame' | 'script' | 'connect'> {
+  const frame = new Set<string>();
+  const script = new Set<string>();
+  const connect = new Set<string>();
+  if (typeof html === 'string' && html.length > 0) {
+    for (const m of html.matchAll(IFRAME_TAG_RE)) {
+      const attrs = m[1] ?? '';
+      const h = externalHttpsHost(attrValue(attrs, 'src') ?? attrValue(attrs, 'data-sw-consent-src'));
+      if (h) frame.add(h);
+    }
+    for (const m of html.matchAll(SCRIPT_OPEN_TAG_RE)) {
+      const attrs = m[1] ?? '';
+      if (!/type\s*=\s*("text\/plain"|'text\/plain')/i.test(attrs) || !hasFlag(attrs, 'data-sw-consent')) continue;
+      const h = externalHttpsHost(attrValue(attrs, 'src'));
+      if (h) {
+        script.add(h);
+        connect.add(h);
+      }
+    }
+  }
+  return { frame: [...frame], script: [...script], connect: [...connect] };
+}
+
+/**
+ * Neutralize cross-origin author `<iframe>`s so they don't load until consent: move `src` → a held
+ * `data-sw-consent-src`, and read the INPUT category override (`data-sw-consent="x"`, else `defaultCategory`)
+ * to stamp the OUTPUT as `data-sw-consent-cat` — the input `data-sw-consent` marker is REMOVED (see below).
+ * Same-origin/relative iframes, an explicit `data-sw-consent-skip` opt-out, and already-gated iframes pass
+ * through untouched. Caller invokes this ONLY when the consent manager is enabled (consent off → iframes load
+ * normally, their origin still allow-listed via {@link authorContentCspOrigins}). Idempotent.
+ */
+export function gateAuthorIframes(html: string, opts: { defaultCategory?: ConsentCategory } = {}): string {
+  if (typeof html !== 'string' || !/<iframe\b/i.test(html)) return html;
+  const def = opts.defaultCategory ?? DEFAULT_EMBED_CATEGORY;
+  return html.replace(IFRAME_TAG_RE, (full, attrs: string) => {
+    if (hasFlag(attrs, 'data-sw-consent-skip') || hasFlag(attrs, 'data-sw-consent-src')) return full; // opt-out / already gated
+    const src = attrValue(attrs, 'src');
+    if (!src || !externalHttpsHost(src)) return full; // same-origin / relative / non-https → leave as-is
+    const cat = markerCategory(attrs) ?? def;
+    // Strip BOTH `src` AND the author's `data-sw-consent` marker (valued `="<cat>"` OR the rare value-less
+    // boolean form). The category is preserved in `data-sw-consent-cat` below; leaving ANY `data-sw-consent`
+    // on the held iframe would violate the runtime invariant "data-sw-consent appears only on the mount" — the
+    // mount's own selectors (`[data-sw-consent][data-sw-enhanced]`, `querySelectorAll('[data-sw-consent]')`)
+    // would then match the iframe and style it as a fixed full-screen banner. The `-skip`/`-cat`/`-src`/`-note`
+    // variants (a `-` follows `data-sw-consent`, so neither pattern can match the prefix boundary) are untouched.
+    const stripped = attrs
+      .replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+      .replace(/\s+data-sw-consent\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+      .replace(/\s+data-sw-consent(?=[\s/>]|$)/i, '');
+    // `src` may be SINGLE-quoted or unquoted (raw `website.head`/import HTML isn't attribute-escaped), so it can
+    // carry a `"`. Re-embedding it in a DOUBLE-quoted attribute requires escaping `"` → `&quot;` (the only
+    // breakout char here) so it can't open a new attribute (e.g. onload=/style=). NOT escaping `&` — that would
+    // double-encode an already-escaped `&amp;` from rendered rich content and corrupt the URL.
+    return `<iframe${stripped} data-sw-consent-src="${src.replace(/"/g, '&quot;')}" data-sw-consent-cat="${cat}">`;
+  });
+}
 
 /** How the runtime loads one integration: a self-origin bootstrap (ga4/gtm) + an external `src`, or a plain script. */
 export interface ConsentIntegrationRuntime {
@@ -80,6 +183,8 @@ export interface ConsentIntegrationRuntime {
 
 /** A bare hostname with an optional port — no ';'/space/',' (those would break out of a CSP directive). */
 const HOST_TOKEN_RE = /^[a-z0-9.-]+(:\d+)?$/i;
+/** A bare hostname OR a single leading `*.` wildcard (the shape `origins`/`frameOrigins` allow) — no CSP separators. */
+const CSP_HOST_TOKEN_RE = /^(?:\*\.)?[a-z0-9.-]+$/i;
 
 const hostOf = (url: string): string | null => {
   try {
@@ -90,7 +195,7 @@ const hostOf = (url: string): string | null => {
   }
 };
 
-/** The runtime descriptor the {{sw-consent}} helper bakes into the config for one integration. */
+/** The runtime descriptor the consent mount bakes into the config for one integration. */
 export function integrationRuntimeInfo(i: ConsentIntegration): ConsentIntegrationRuntime | null {
   const preset = i.preset ?? 'custom';
   if (preset === 'ga4' && i.measurementId)
@@ -107,14 +212,16 @@ export function consentRuntimeIntegrations(consent: Consent | undefined): Consen
 }
 
 /**
- * Aggregate, deduped CSP origins. The REGISTRY integrations (script-src/connect-src) are gated on
- * `consent.enabled`; the EMBED providers (frame-src) are added independently — a {{sw-embed}} is
- * click-to-load and works even without the consent manager, but its iframe still needs a frame-src origin.
+ * Aggregate, deduped CSP origins. The REGISTRY integrations (script-src/connect-src, plus a script SDK's
+ * own `frameOrigins` for an injected widget iframe) are gated on `consent.enabled`; the `extraOrigins`
+ * (an author page's cross-origin iframes → frame-src and gated scripts → script/connect, from
+ * {@link authorContentCspOrigins}) are added independently — a held iframe still needs its frame-src origin
+ * whether or not the manager is enabled.
  */
-export function consentCspOrigins(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): CspOrigins {
+export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): CspOrigins {
   const acc: Record<keyof CspOrigins, Set<string>> = { script: new Set(), frame: new Set(), connect: new Set(), img: new Set(), style: new Set(), font: new Set() };
-  const mergeBundle = (b: CspOrigins): void => (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => b[k].forEach((h) => acc[k].add(h)));
-  for (const p of embedProviders) mergeBundle(EMBED_PRESET_ORIGINS[p]);
+  const mergeBundle = (b: Partial<CspOrigins>): void => (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => (b[k] ?? []).forEach((h) => acc[k].add(h)));
+  mergeBundle(extraOrigins);
   for (const i of consent?.enabled === true ? consent.integrations ?? [] : []) {
     const preset = i.preset ?? 'custom';
     mergeBundle(preset === 'ga4' || preset === 'gtm' ? CONSENT_PRESET_ORIGINS[preset] : EMPTY);
@@ -126,10 +233,15 @@ export function consentCspOrigins(consent: Consent | undefined, embedProviders: 
       if (h && HOST_TOKEN_RE.test(h)) acc.script.add(h);
     }
     // The advanced `origins` cover a script's own fan-out (CDN / websocket) → script-src + connect-src.
+    // Re-validate each as a bare/wildcard host before it enters the CSP (defence-in-depth over the schema's
+    // CSP_HOST_RE — a bad value from a direct DB write / restored backup can't break out of the directive).
     for (const o of i.origins ?? []) {
+      if (!CSP_HOST_TOKEN_RE.test(o)) continue;
       acc.script.add(o);
       acc.connect.add(o);
     }
+    // `frameOrigins` cover a script SDK that injects its OWN widget <iframe> (e.g. a chat bubble) → frame-src.
+    for (const o of i.frameOrigins ?? []) if (CSP_HOST_TOKEN_RE.test(o)) acc.frame.add(o);
   }
   return {
     script: [...acc.script],
@@ -149,8 +261,8 @@ const https = (hosts: string[]): string => hosts.map((h) => `https://${h}`).join
  * is nothing to widen (caller then leaves the strict `default-src 'self'` default in place). Adds ONLY the
  * specific https origins; never 'unsafe-inline'/'unsafe-eval'/'*'. Keeps frame-ancestors 'none'.
  */
-export function buildSiteCspHeader(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): string | undefined {
-  const o = consentCspOrigins(consent, embedProviders);
+export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): string | undefined {
+  const o = consentCspOrigins(consent, extraOrigins);
   if (!hasAny(o)) return undefined;
   const parts = [
     "default-src 'self'",
@@ -160,7 +272,7 @@ export function buildSiteCspHeader(consent: Consent | undefined, embedProviders:
     `font-src 'self'${o.font.length ? ' ' + https(o.font) : ''}`,
     `connect-src 'self'${o.connect.length ? ' ' + https(o.connect) : ''}`,
   ];
-  if (o.frame.length) parts.push(`frame-src 'self' ${https(o.frame)}`); // click-to-load embeds (YouTube/Maps)
+  if (o.frame.length) parts.push(`frame-src 'self' ${https(o.frame)}`); // author embeds (held click-to-load) + SDK widget iframes
   parts.push("object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'");
   return parts.join('; ');
 }
@@ -169,8 +281,8 @@ export function buildSiteCspHeader(consent: Consent | undefined, embedProviders:
  * The baked `<meta http-equiv>` CSP for the published HTML (static-export parity on strict external hosts).
  * Same allow-list as the header MINUS frame-ancestors (a meta CSP ignores it). `undefined` when nothing to widen.
  */
-export function buildConsentMetaCsp(consent: Consent | undefined, embedProviders: Iterable<EmbedProvider> = []): string | undefined {
-  const header = buildSiteCspHeader(consent, embedProviders);
+export function buildConsentMetaCsp(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): string | undefined {
+  const header = buildSiteCspHeader(consent, extraOrigins);
   if (!header) return undefined;
   return header
     .split('; ')

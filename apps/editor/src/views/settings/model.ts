@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -149,6 +149,10 @@ export interface SettingsForm {
   buttonShape: '' | ButtonDefaultShape;
   preloaderEffect: 'none' | PreloaderEffect;
   backToTop: boolean;
+  // sticky/fixed top-header mode ('none' = static header) → website.effects.stickyHeader
+  stickyHeader: 'none' | StickyHeaderMode;
+  // site-wide scrollspy: highlight the main/mobile nav link whose in-page section is in view → website.effects.scrollSpy
+  scrollSpy: boolean;
   // custom effect code (the "None / Custom Code" slots) → website.effects.*Code
   navCode: string;
   buttonCode: string;
@@ -312,6 +316,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     buttonShape: w?.effects?.buttonShape ?? '',
     preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
     backToTop: w?.effects?.backToTop !== false, // ON by default; only an explicit `false` disables it
+    stickyHeader: w?.effects?.stickyHeader ?? 'none',
+    scrollSpy: w?.effects?.scrollSpy === true, // OFF by default; only an explicit `true` enables it
     navCode: w?.effects?.navCode ?? '',
     buttonCode: w?.effects?.buttonCode ?? '',
     preloaderCode: w?.effects?.preloaderCode ?? '',
@@ -535,13 +541,19 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
   // back-to-top button: ON by default, so emit only the explicit OFF state (omitted = on).
   const bk = form.backToTop ? {} : { backToTop: false as const };
+  // sticky/fixed top-header: 'none' = static header (the default), so omit it.
+  const sticky = form.stickyHeader !== 'none' ? { stickyHeader: form.stickyHeader } : {};
+  // scrollspy: OFF by default, so emit only the explicit ON state (omitted = off).
+  const spy = form.scrollSpy ? { scrollSpy: true as const } : {};
   // Custom-code slots are PRESERVED even when a built-in effect is chosen (so toggling between a
   // preset and "None / Custom Code" doesn't lose the draft); render applies a code only when its
   // effect is 'none' (see websiteEffectsCustomCode). Omitted when empty.
   const navC = form.navCode.trim() ? { navCode: form.navCode } : {};
   const btnC = form.buttonCode.trim() ? { buttonCode: form.buttonCode } : {};
   const preC = form.preloaderCode.trim() ? { preloaderCode: form.preloaderCode } : {};
-  const mergedEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...bk, ...navC, ...btnC, ...preC };
+  // Annotated (not inferred): the conditional-spread chain otherwise widens into a union too complex
+  // for tsc to represent. All WebsiteEffects fields are optional, so the typed target is exact.
+  const mergedEffects: WebsiteEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...bk, ...sticky, ...spy, ...navC, ...btnC, ...preC };
   const effects = Object.keys(mergedEffects).length > 0 ? mergedEffects : undefined;
   // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
   // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the

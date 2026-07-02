@@ -7,35 +7,123 @@ import {
   buildSiteCspHeader,
   buildConsentMetaCsp,
   siteCspHeaderFromHtml,
+  authorContentCspOrigins,
+  gateAuthorIframes,
+  DEFAULT_EMBED_CATEGORY,
 } from '../src/consent-csp.js';
 
 const consent = (integrations: unknown[]): Consent => ({ enabled: true, integrations } as unknown as Consent);
 
-describe('embed CSP frame-src derivation', () => {
-  it('adds the provider frame-src (+ YouTube thumbnail img) independently of consent.enabled', () => {
-    const o = consentCspOrigins(undefined, ['youtube']);
-    expect(o.frame).toEqual(expect.arrayContaining(['www.youtube-nocookie.com', 'www.youtube.com']));
-    expect(o.img).toContain('i.ytimg.com');
+describe('authorContentCspOrigins — author iframe + gated-script origins', () => {
+  it('collects a cross-origin iframe src into frame-src', () => {
+    expect(authorContentCspOrigins('<iframe src="https://player.vimeo.com/video/1"></iframe>').frame).toContain('player.vimeo.com');
+  });
+  it('reads an already-gated iframe (data-sw-consent-src) too — order independent', () => {
+    expect(authorContentCspOrigins('<iframe data-sw-consent-src="https://www.youtube.com/embed/x" data-sw-consent-cat="marketing"></iframe>').frame).toContain('www.youtube.com');
+  });
+  it('ignores same-origin/relative iframes and non-https schemes', () => {
+    expect(authorContentCspOrigins('<iframe src="/local"></iframe><iframe src="http://insecure.example/x"></iframe>').frame).toEqual([]);
+  });
+  it('collects a GATED script host into script-src + connect-src', () => {
+    const o = authorContentCspOrigins('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example.com/a.js"></script>');
+    expect(o.script).toContain('cdn.example.com');
+    expect(o.connect).toContain('cdn.example.com');
+  });
+  it('does NOT collect an ungated script', () => {
+    expect(authorContentCspOrigins('<script src="https://cdn.example.com/a.js"></script>').script).toEqual([]);
+  });
+});
+
+describe('gateAuthorIframes — hold cross-origin author iframes', () => {
+  it('moves a cross-origin src to data-sw-consent-src + stamps the default category, preserving other attrs', () => {
+    const out = gateAuthorIframes('<iframe src="https://player.vimeo.com/video/1" width="640" title="v"></iframe>');
+    expect(out).toContain('data-sw-consent-src="https://player.vimeo.com/video/1"');
+    expect(out).toContain(`data-sw-consent-cat="${DEFAULT_EMBED_CATEGORY}"`);
+    expect(out).not.toMatch(/<iframe[^>]*\ssrc=/); // no live src remains
+    expect(out).toContain('width="640"');
+    expect(out).toContain('title="v"');
+  });
+  it('honors a per-iframe data-sw-consent="marketing" override and a custom default', () => {
+    expect(gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent="marketing"></iframe>')).toContain('data-sw-consent-cat="marketing"');
+    expect(gateAuthorIframes('<iframe src="https://x.example/v"></iframe>', { defaultCategory: 'analytics' })).toContain('data-sw-consent-cat="analytics"');
   });
 
-  it('builds a frame-src for an embed even with no registry integrations / consent off', () => {
-    const csp = buildSiteCspHeader(undefined, ['youtube'])!;
-    expect(csp).toContain("frame-src 'self' https://www.youtube-nocookie.com");
+  it('STRIPS the author data-sw-consent marker (category moves to -cat) so the held iframe is not matched by the mount selectors', () => {
+    // Catch any surviving `data-sw-consent` that is NOT one of the -src/-cat/-skip/-note variants (= the mount marker).
+    const hasBareMarker = (s: string): boolean => /\sdata-sw-consent(?![\w-])/.test(s);
+    const quoted = gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent="marketing" data-sw-consent-note="Video"></iframe>');
+    expect(quoted).toContain('data-sw-consent-cat="marketing"');
+    expect(hasBareMarker(quoted)).toBe(false); // the marker is gone (else it'd match the banner's [data-sw-consent] CSS/JS)
+    expect(quoted).toContain('data-sw-consent-note="Video"'); // the -note variant is preserved (the `-` guards it)
+    // single-quoted + the rare value-less boolean form are ALSO stripped.
+    expect(hasBareMarker(gateAuthorIframes(`<iframe src="https://x.example/v" data-sw-consent='analytics'></iframe>`))).toBe(false);
+    const boolForm = gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent></iframe>');
+    expect(hasBareMarker(boolForm)).toBe(false);
+    expect(boolForm).toContain(`data-sw-consent-cat="${DEFAULT_EMBED_CATEGORY}"`); // no value → default category
+  });
+  it('leaves data-sw-consent-skip, same-origin, and already-gated iframes untouched', () => {
+    const skip = '<iframe src="https://x.example/v" data-sw-consent-skip></iframe>';
+    expect(gateAuthorIframes(skip)).toBe(skip);
+    const local = '<iframe src="/embed/local"></iframe>';
+    expect(gateAuthorIframes(local)).toBe(local);
+    const once = gateAuthorIframes('<iframe src="https://x.example/v"></iframe>');
+    expect(gateAuthorIframes(once)).toBe(once); // idempotent
+  });
+
+  it('gates an UNQUOTED cross-origin src (paste-from-blog HTML)', () => {
+    const out = gateAuthorIframes('<iframe src=https://player.vimeo.com/video/1 width="640"></iframe>');
+    expect(out).toContain('data-sw-consent-src="https://player.vimeo.com/video/1"');
+    expect(out).not.toMatch(/<iframe[^>]*\ssrc=/);
+    expect(authorContentCspOrigins('<iframe src=https://player.vimeo.com/video/1></iframe>').frame).toContain('player.vimeo.com');
+  });
+
+  it('escapes a `"` from a single-quoted src so it cannot break out into a new attribute (no onload/style injection)', () => {
+    const out = gateAuthorIframes(`<iframe src='https://evil.example/x" onload="alert(1)'></iframe>`);
+    expect(out).not.toContain('" onload='); // the raw-quote breakout that would open an onload attribute is gone
+    expect(out).toContain('data-sw-consent-src="https://evil.example/x&quot; onload=&quot;alert(1)"'); // neutralized inside the value
+  });
+
+  it('does not truncate on a `>` inside a quoted src (quote-aware tag match)', () => {
+    const out = gateAuthorIframes('<iframe src="https://www.google.com/maps?q=a>b&output=embed"></iframe>');
+    expect(out).toContain('data-sw-consent-src="https://www.google.com/maps?q=a>b&output=embed"');
+    expect(out).toContain('data-sw-consent-cat=');
+  });
+});
+
+describe('consent CSP — author origins + integration frameOrigins', () => {
+  it('adds author iframe origins to frame-src independently of consent.enabled', () => {
+    const csp = buildSiteCspHeader(undefined, { frame: ['player.vimeo.com'] })!;
+    expect(csp).toContain("frame-src 'self' https://player.vimeo.com");
     expect(csp).toContain("frame-ancestors 'none'");
-    const meta = buildConsentMetaCsp(undefined, ['youtube'])!;
+    const meta = buildConsentMetaCsp(undefined, { frame: ['player.vimeo.com'] })!;
     expect(meta).toContain('frame-src');
     expect(meta).not.toContain('frame-ancestors'); // meta ignores it
   });
 
-  it('combines registry script-src AND embed frame-src in one CSP', () => {
-    const csp = buildSiteCspHeader(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]), ['google-maps'])!;
+  it('routes a custom integration frameOrigins into frame-src (SDK widget iframe)', () => {
+    const csp = buildSiteCspHeader(consent([{ id: 'chat', name: 'Chat', category: 'functional', preset: 'custom', src: 'https://w.example.com/c.js', frameOrigins: ['*.intercom.io'] }]))!;
+    expect(csp).toContain("script-src 'self' https://w.example.com");
+    expect(csp).toContain('frame-src');
+    expect(csp).toContain('https://*.intercom.io');
+  });
+
+  it('combines registry script-src AND author frame-src in one CSP', () => {
+    const csp = buildSiteCspHeader(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]), { frame: ['www.google.com'] })!;
     expect(csp).toContain("script-src 'self' https://www.googletagmanager.com");
     expect(csp).toContain("frame-src 'self' https://www.google.com");
   });
 
-  it('returns undefined when neither integrations nor embeds are present', () => {
-    expect(buildSiteCspHeader({ enabled: true } as Consent, [])).toBeUndefined();
-    expect(buildSiteCspHeader(undefined, [])).toBeUndefined();
+  it('returns undefined when neither integrations nor author origins are present', () => {
+    expect(buildSiteCspHeader({ enabled: true } as Consent, {})).toBeUndefined();
+    expect(buildSiteCspHeader(undefined, {})).toBeUndefined();
+  });
+
+  it('ConsentIntegrationSchema accepts frameOrigins as bare hostnames', () => {
+    expect(ConsentIntegrationSchema.safeParse({ id: 'chat', name: 'Chat', category: 'functional', preset: 'custom', src: 'https://w.example.com/c.js', frameOrigins: ['*.intercom.io', 'widget.example.com'] }).success).toBe(true);
+  });
+
+  it('WebsiteSettingsSchema accepts consent.defaultEmbedCategory', () => {
+    expect(WebsiteSettingsSchema.safeParse({ consent: { enabled: true, defaultEmbedCategory: 'marketing' } }).success).toBe(true);
   });
 });
 

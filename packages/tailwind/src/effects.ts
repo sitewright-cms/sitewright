@@ -31,17 +31,21 @@
 // `.menu` / any .btn descendant) OR PER-ELEMENT (on the `.menu` or the button itself). Each helper emits
 // BOTH selectors. Every `&` is written explicitly (a comma breaks the `&` association), so call sites
 // use `${...} { … }` with no extra leading `&`.
-//   nav link, optional `<suffix>` (':hover', '.active', '::after', …):
+//   nav link, optional `<suffix>` (':hover', '.active', '::after', …). Like the button axes below, the
+//   site-wide (descendant) form is GUARDED with `:not([class*="sw-nav-"])` so a `.menu` that carries its
+//   OWN scheme class (a custom menu like a scrollspy table of contents) is EXCLUDED from the body default
+//   and styled ONLY by its per-element scheme — the two never collide. The per-element form (`&.menu`)
+//   is unguarded: the class IS on that menu, so it always applies there.
 const navLink = (s = ''): string =>
-  `& .menu a${s}, &.menu a${s}`;
+  `& .menu:not([class*="sw-nav-"]) a${s}, &.menu a${s}`;
 const navActive = `${navLink('.active')}, ${navLink('[aria-current="page"]')}`;
 //   the "effect-on" states for a link / pseudo — hover preview + BOTH active markers:
 const on = (p = ''): string =>
   `${navLink(`:hover${p}`)}, ${navLink(`.active${p}`)}, ${navLink(`[aria-current="page"]${p}`)}`;
-//   the `.menu` CONTAINER itself — the positioning context for the
-//   JS-backed schemes' injected `.sw-nav-indicator` and the spotlight background:
+//   the `.menu` CONTAINER itself — the positioning context for the JS-backed schemes' injected
+//   `.sw-nav-indicator` and the spotlight background (same body-default `:not` guard as navLink):
 const navScope = (s = ''): string =>
-  `& .menu${s}, &.menu${s}`;
+  `& .menu:not([class*="sw-nav-"])${s}, &.menu${s}`;
 //   button AXIS helpers (effect / shape / accent). Each class doubles as a site DEFAULT (on <body>,
 //   scoped to descendant .btn that DON'T carry their own override for that axis) OR a per-button
 //   override (on the .btn itself). The `:not([class*="sw-btn-<axis>-"])` guard makes the body default

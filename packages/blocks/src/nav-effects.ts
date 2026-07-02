@@ -28,8 +28,15 @@ export const NAV_EFFECTS_JS = `(function(){
     var out=[];
     function add(el){ if(out.indexOf(el)<0) out.push(el); }
     Array.prototype.forEach.call(document.querySelectorAll('.'+cls),function(el){
+      // The class IS on the menu (per-element use) → always govern it.
       if(el.matches('.menu')) add(el);
-      Array.prototype.forEach.call(el.querySelectorAll('.menu'),add);
+      // Site-wide use (class on body / a wrapper): govern descendant menus EXCEPT one that carries its own
+      // scheme class — that menu is styled per-element by its OWN effect, so this one must not also drive it
+      // (mirrors the CSS body-default guard .menu:not class-sw-nav). A menu carrying THIS same cls is its
+      // own per-element use of the same scheme, so it stays governed.
+      Array.prototype.forEach.call(el.querySelectorAll('.menu'),function(m){
+        if((''+m.className).indexOf('sw-nav-')<0||m.classList.contains(cls)) add(m);
+      });
     });
     return out;
   }

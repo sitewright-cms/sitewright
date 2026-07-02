@@ -27,6 +27,9 @@ const CONFIG = {
   },
 };
 
+// In jsdom `document.currentScript` is always null, so the runtime's cached SITE_KEY falls back to
+// location.pathname — matching this KEY. The currentScript-vs-pathname persistence bug therefore can't be
+// reproduced here; the cross-reload key stability is verified live in a real browser (Playwright on :2003).
 const KEY = `sw-consent:${location.pathname || '/'}`;
 let lastDetail: Record<string, boolean> | null = null;
 
@@ -58,7 +61,7 @@ describe('Consent runtime behavior (jsdom)', () => {
 
   it('shows the banner on a first visit, with the necessary toggle locked on', () => {
     run();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
     expect(root().getAttribute('data-sw-enhanced')).toBe('true');
     expect(boxes()[0]!.disabled).toBe(true); // necessary is always-on
     expect(boxes()[0]!.checked).toBe(true);
@@ -67,7 +70,7 @@ describe('Consent runtime behavior (jsdom)', () => {
   it('Accept all → stores all categories, hides the banner, and broadcasts (necessary always true)', () => {
     run();
     btn('Accept all').click();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(stored()).toMatchObject({ v: 1, cats: { functional: true, analytics: true, marketing: true } });
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: true, marketing: true });
   });
@@ -92,31 +95,31 @@ describe('Consent runtime behavior (jsdom)', () => {
   it('a returning visitor (same version) sees no banner but the stored consent is re-broadcast on load', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: true, analytics: false, marketing: false } }));
     run();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: false, marketing: false });
   });
 
   it('bumping the consent version re-prompts a previously-consented visitor', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: true, analytics: true, marketing: true } }));
     run({ ...CONFIG, v: 2 });
-    expect(root().hasAttribute('hidden')).toBe(false); // stored v1 < config v2 → ask again
+    expect(root().hasAttribute('data-open')).toBe(true); // stored v1 < config v2 → ask again
   });
 
   it('re-opens preferences via window.swConsent.open() and a [data-sw-consent-open] trigger', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: false } }));
     run();
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     (window as unknown as { swConsent: { open: () => void } }).swConsent.open();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
     expect(root().getAttribute('data-prefs')).toBe('open');
     // and via the delegated click trigger
     btn('Accept all').click(); // hide again
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     const link = document.createElement('a');
     link.setAttribute('data-sw-consent-open', '');
     document.body.appendChild(link);
     link.click();
-    expect(root().hasAttribute('hidden')).toBe(false);
+    expect(root().hasAttribute('data-open')).toBe(true);
   });
 
   it('window.swConsent.get() reflects the live decision', () => {
@@ -141,9 +144,46 @@ describe('Consent runtime behavior (jsdom)', () => {
     run();
     const api = (window as unknown as { swConsent: { set: (c: Record<string, boolean>) => void } }).swConsent;
     api.set({ functional: true, analytics: false, marketing: true });
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(stored()).toMatchObject({ cats: { functional: true, analytics: false, marketing: true } });
     expect(lastDetail).toEqual({ necessary: true, functional: true, analytics: false, marketing: true });
+  });
+
+  it('renders the title as a NON-heading element (no h1-h6, for SEO)', () => {
+    run();
+    const title = root().querySelector('.sw-consent-title') as HTMLElement;
+    expect(/^H[1-6]$/.test(title.tagName)).toBe(false);
+  });
+
+  it('hides the Customize button once the preferences panel opens, and shows Save', () => {
+    run();
+    const customize = btn('Customize');
+    expect(customize.style.display).not.toBe('none');
+    customize.click();
+    expect(customize.style.display).toBe('none');
+    expect(btn('Save preferences').style.display).not.toBe('none');
+  });
+
+  it('Accept all / Reject all immediately sync the preference toggles', () => {
+    run();
+    const optional = (): HTMLInputElement[] => boxes().filter((b) => !b.disabled);
+    btn('Customize').click();
+    btn('Reject all').click();
+    expect(optional().every((b) => !b.checked)).toBe(true);
+    btn('Accept all').click();
+    expect(optional().every((b) => b.checked)).toBe(true);
+  });
+
+  it('re-opens via an <a href="#sw-consent"> anchor', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: false } }));
+    run();
+    expect(root().hasAttribute('data-open')).toBe(false);
+    const a = document.createElement('a');
+    a.setAttribute('href', '#sw-consent');
+    document.body.appendChild(a);
+    a.click();
+    expect(root().hasAttribute('data-open')).toBe(true);
+    expect(root().getAttribute('data-prefs')).toBe('open');
   });
 });
 
@@ -197,7 +237,7 @@ describe('Consent integration injection (jsdom)', () => {
   it('a returning visitor with stored consent re-injects on load', () => {
     localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: true, marketing: false } }));
     run(cfgInts);
-    expect(root().hasAttribute('hidden')).toBe(true);
+    expect(root().hasAttribute('data-open')).toBe(false);
     expect(injected('ga')).not.toBeNull();
   });
 
@@ -235,5 +275,137 @@ describe('Consent integration injection (jsdom)', () => {
     run({ ...CONFIG, ints: [{ id: 'sync', cat: 'functional', kind: 'script', src: 'https://w.example/s.js', async: false }] });
     btn('Accept all').click();
     expect((injected('sync') as HTMLScriptElement).async).toBe(false);
+  });
+});
+
+describe('Consent author-content gating (jsdom)', () => {
+  // Mount a consent banner + held author content together, then run the real runtime over it.
+  function runWith(bodyHtml: string, cfg: object = CONFIG): void {
+    document.body.innerHTML = `<div data-sw-consent></div>${bodyHtml}`;
+    document.querySelector('[data-sw-consent]')!.setAttribute('data-sw-consent-config', JSON.stringify(cfg));
+    (0, eval)(CONSENT_JS);
+  }
+  const heldIframe = (): HTMLIFrameElement => document.querySelector('iframe') as HTMLIFrameElement;
+  const gateBtn = (text: string): HTMLButtonElement =>
+    Array.from(document.querySelectorAll('.sw-gate-ph button')).find((b) => b.textContent === text) as HTMLButtonElement;
+  const HELD_MARKETING = '<iframe data-sw-consent-src="https://x.example/v" data-sw-consent-cat="marketing"></iframe>';
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  it('holds a cross-origin iframe behind an Allow once / Always allow placeholder until consent', () => {
+    runWith(HELD_MARKETING);
+    const fr = heldIframe();
+    expect(fr.getAttribute('src')).toBeNull(); // not loaded
+    // The iframe is wrapped + the placeholder OVERLAYS it (at the iframe's exact dimensions), with a skeleton.
+    expect(fr.parentElement?.classList.contains('sw-gate-wrap')).toBe(true);
+    const ph = document.querySelector('.sw-gate-ph') as HTMLElement;
+    expect(ph).not.toBeNull();
+    expect(ph.classList.contains('skeleton')).toBe(true);
+    expect(fr.parentElement?.contains(ph)).toBe(true); // overlay is a sibling of the iframe inside the wrapper
+    expect(document.querySelector('.sw-gate-url')?.textContent).toBe('https://x.example/v'); // URL eyebrow
+    expect(gateBtn('Allow once')).toBeTruthy();
+    expect(gateBtn('Always allow')).toBeTruthy();
+  });
+
+  it('UNWRAPS the iframe on load so it regains its authored (fluid) sizing', () => {
+    // jsdom's getBoundingClientRect returns 0, so the PIN path (wrap.style.width/height) is not hit here — the
+    // Playwright render matrix covers the pin. This test covers only the wrap creation + unwrap-on-load.
+    runWith(HELD_MARKETING);
+    const fr = heldIframe();
+    const wrap = fr.parentElement!;
+    expect(wrap.classList.contains('sw-gate-wrap')).toBe(true);
+    const originalParent = wrap.parentElement!; // where the iframe lived before wrapping
+    gateBtn('Allow once').click();
+    expect(fr.getAttribute('src')).toBe('https://x.example/v'); // loaded
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // the sizing wrapper is gone
+    expect(document.querySelector('.sw-gate-ph')).toBeNull(); // overlay removed
+    expect(fr.parentElement).toBe(originalParent); // iframe restored to its original spot (fluid sizing intact)
+  });
+
+  it('does NOT wrap an already-positioned (responsive) iframe — overlays in the author box instead', () => {
+    // The padding-top responsive pattern: the iframe is position:absolute inside the author's own box. A
+    // wrapper would collapse, so the placeholder is dropped in as a sibling that fills the same box.
+    runWith('<div style="position:relative"><iframe style="position:absolute" data-sw-consent-src="https://x.example/v" data-sw-consent-cat="marketing"></iframe></div>');
+    const fr = heldIframe();
+    expect(fr.parentElement?.classList.contains('sw-gate-wrap')).toBe(false); // NOT wrapped
+    expect(fr.parentElement?.querySelector('.sw-gate-ph')).not.toBeNull(); // overlay is a sibling in the author box
+    gateBtn('Allow once').click();
+    expect(fr.getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull(); // overlay removed on load
+  });
+
+  it('Allow once loads ONLY this iframe — no category grant, nothing persisted', () => {
+    runWith(HELD_MARKETING);
+    gateBtn('Allow once').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+    expect(stored()).toBeNull();
+    expect((window as unknown as { swConsent: { get: () => Record<string, boolean> } }).swConsent.get().marketing).toBe(false);
+  });
+
+  it('Always allow grants the category (persists) and loads the iframe', () => {
+    runWith(HELD_MARKETING);
+    gateBtn('Always allow').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(stored()).toMatchObject({ cats: { marketing: true } });
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // unwrapped on this load path too
+  });
+
+  it('loads a held iframe when its category is granted via the banner (consentchange)', () => {
+    runWith('<iframe data-sw-consent-src="https://x.example/v" data-sw-consent-cat="analytics"></iframe>');
+    expect(heldIframe().getAttribute('src')).toBeNull();
+    btn('Accept all').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-wrap')).toBeNull(); // unwrapped on the consentchange load path too
+  });
+
+  it('loads a held iframe immediately when its category was already consented (returning visitor)', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: false, marketing: true } }));
+    runWith(HELD_MARKETING);
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+  });
+
+  it('grantAll (preview) loads gated content immediately on init, no placeholder', () => {
+    runWith(HELD_MARKETING, { ...CONFIG, grantAll: true });
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v');
+    expect(document.querySelector('.sw-gate-ph')).toBeNull();
+  });
+
+  it('activates a gated <script type=text/plain data-sw-consent> only once its category is granted', () => {
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).not.toBeNull(); // inert
+    btn('Accept all').click(); // grants analytics
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).toBeNull(); // replaced
+    const active = Array.from(document.querySelectorAll('script')).find((s) => s.getAttribute('src') === 'https://cdn.example/a.js');
+    expect(active).toBeTruthy();
+    expect(active!.getAttribute('type')).not.toBe('text/plain');
+  });
+
+  it('does NOT activate a gated script whose category is rejected', () => {
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    btn('Reject all').click();
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).not.toBeNull(); // still inert
+  });
+
+  it('activates an already-consented gated script on load (returning visitor)', () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, cats: { functional: false, analytics: true, marketing: false } }));
+    runWith('<script type="text/plain" data-sw-consent="analytics" src="https://cdn.example/a.js"></script>');
+    expect(document.querySelector('script[type="text/plain"][data-sw-consent]')).toBeNull(); // activated on load
+    expect(Array.from(document.querySelectorAll('script')).some((s) => s.getAttribute('src') === 'https://cdn.example/a.js')).toBe(true);
+  });
+
+  it('shows ONLY "Allow once" (no "Always allow") when there is no consent banner to grant against', () => {
+    // A held iframe but NO [data-sw-consent] mount → "Always allow" would silently degrade, so it is hidden.
+    document.body.innerHTML = HELD_MARKETING;
+    (0, eval)(CONSENT_JS);
+    expect(document.querySelector('.sw-gate-ph')).not.toBeNull();
+    expect(gateBtn('Allow once')).toBeTruthy();
+    expect(Array.from(document.querySelectorAll('.sw-gate-ph button')).find((b) => b.textContent === 'Always allow')).toBeUndefined();
+    gateBtn('Allow once').click();
+    expect(heldIframe().getAttribute('src')).toBe('https://x.example/v'); // load-once still works
   });
 });

@@ -54,8 +54,9 @@ describe('buildSite', () => {
     // The skeleton wraps the page body in <main id="page-content"> (the author wrote a neutral <div>).
     expect(home).toContain('<body><main id="page-content"><div class="grid"><h1>Acme</h1></div></main>');
     expect(home).not.toContain('<section data-sw-block="Section"');
-    // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    // The source's literal Tailwind class is compiled into the shared, root-linked sheet, with a
+    // cache-bust `?v=` token = the publish timestamp's digits (so a republish busts the browser cache).
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=20260529000000000"');
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
@@ -65,7 +66,7 @@ describe('buildSite', () => {
       outDir,
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo.data.header_title}}</p><a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>' },
+          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo._attributes.data.header_title}}</p><a href="{{sw-url pages.services._attributes.path}}">{{pages.services._attributes.title}}</a>' },
           { id: 'services', path: 'services', parent: 'home', title: 'Services', data: { svc: 'ours' } },
           { id: 'service-seo', path: 'seo', parent: 'services', title: 'SEO', data: { header_title: 'SEO & Performance' } },
         ] as unknown as ProjectBundle['pages'],
@@ -75,6 +76,26 @@ describe('buildSite', () => {
     expect(home).toContain('X=SEO &amp; Performance'); // grand-child page's data, walked by slug
     expect(home).toContain('<a href="services">Services</a>'); // pages.services.path (sw-url page-relative) + .title
     // A page that doesn't reference `pages` ships no pages payload — covered by the referenced-only core tests.
+  });
+
+  it('exposes page.template (the template id) + page.code (the effective rendered source) at publish', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        templates: [{ id: 't1', name: 'T1', source: 'TPL[{{page.template}}][{{page.code}}]' }],
+        pages: [
+          // Code-first page: page.template is '' (own code); page.code is its OWN effective source (HTML-escaped).
+          { id: 'home', path: '', title: 'Home', source: 'OWN[{{page.template}}][{{page.code}}]' },
+          // Template-driven page: page.template is the template id; page.code is the RESOLVED template source.
+          { id: 'tp', path: 'tp', parent: 'home', title: 'TP', template: 't1' },
+        ] as unknown as ProjectBundle['pages'],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('OWN[][OWN[{{page.template}}][{{page.code}}]]'); // template '' + own source echoed
+    const tp = await readFile(join(outDir, 'tp', 'index.html'), 'utf8');
+    expect(tp).toContain('TPL[t1][TPL[{{page.template}}][{{page.code}}]]'); // template id + resolved source
   });
 
   it('resolves a composed Widget ({{> hero-slider}}) at publish AND feeds its classes to the sheet', async () => {
@@ -234,7 +255,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<button class="btn btn-primary">Sign up</button>');
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
     // The button is VENDORED (daisyUI's button component is excluded): its CSS + the brand primary
     // ship INLINE in the page head (baseStyles + brandToCss), not the compiled sheet.
     expect(home).toMatch(/\.btn\s*\{/); // the vendored .btn base
@@ -277,7 +298,7 @@ describe('buildSite', () => {
     expect(home).toContain('<a href="about">About</a>');
     // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
     expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
-    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
     // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet (the button is vendored
     // inline, but .navbar / .menu are real daisyUI components and still compile here).
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
@@ -330,6 +351,93 @@ describe('buildSite', () => {
     expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64-sm.webp" />');
     expect(about).toContain('content="../_assets/og/og-1200-lg.webp"');
     expect(about).not.toContain('/media/acme/');
+  });
+
+  it('emits ABSOLUTE og:image + og:url/canonical + og:site_name + og:locale when a site URL is configured', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const,
+          id: 'p',
+          name: 'Acme',
+          slug: 'acme',
+          identity: { name: 'Acme Inc', colors: { primary: '#0a7' }, image: '/media/acme/og/og-1200.jpg' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>Home</div>' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About</div>' },
+          { id: 'svc', path: 'services', parent: 'home', title: 'Services', source: '<div>Services</div>' },
+          { id: 'web', path: 'web', parent: 'svc', title: 'Web', source: '<div>Web</div>' },
+        ],
+      }),
+    });
+    // Home: og:image is absolutized to the SITE-ROOT _assets path (assets are shared, not per-dir).
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(home).toContain('property="og:url" content="https://acme.example/"');
+    expect(home).toContain('rel="canonical" href="https://acme.example/"');
+    expect(home).toContain('property="og:site_name" content="Acme Inc"');
+    expect(home).toContain('property="og:locale" content="en"');
+    expect(home).toContain('name="twitter:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(home).not.toContain('/media/acme/');
+    // Nested page (depth 1): the page-relative '../_assets/…' resolves to the SAME site-root asset —
+    // NOT a broken '/about/_assets/…'. This is the bug the absolutize-against-page-URL approach avoids.
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(about).toContain('property="og:url" content="https://acme.example/about/"');
+    expect(about).toContain('rel="canonical" href="https://acme.example/about/"');
+    expect(about).not.toContain('/about/_assets/');
+    // Depth 2 (services/web): '../../_assets/…' must still back all the way up to the site root.
+    const web = await readFile(join(outDir, 'services', 'web', 'index.html'), 'utf8');
+    expect(web).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(web).toContain('property="og:url" content="https://acme.example/services/web/"');
+    expect(web).not.toContain('/services/web/_assets/');
+  });
+
+  it('leaves an already-absolute og:image URL untouched (external CDN)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' }, image: 'https://cdn.example/og.jpg' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div>H</div>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The external URL wins over the base in new URL(rel, base) — it is NOT re-rooted onto acme.example.
+    expect(home).toContain('property="og:image" content="https://cdn.example/og.jpg"');
+    expect(home).toContain('name="twitter:image" content="https://cdn.example/og.jpg"');
+  });
+
+  it('an author-set page.canonical overrides the computed og:url', async () => {
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { siteUrl: 'https://acme.example' },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>H</div>', canonical: 'https://canonical.example/x' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('property="og:url" content="https://canonical.example/x"');
+    expect(home).toContain('rel="canonical" href="https://canonical.example/x"');
+    expect(home).not.toContain('og:url" content="https://acme.example/"');
   });
 
   it('generates the favicon / PWA icon set + manifest from the single CI icon (media-backed)', async () => {
@@ -638,6 +746,135 @@ describe('buildSite', () => {
     expect(home).not.toContain('back-to-top.js');
   });
 
+  it('sticky header (hide-on-scroll): fixes #main-nav, emits the offset token + ships the runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { mainNav: '<div class="navbar">Acme</div>', effects: { stickyHeader: 'hide-on-scroll' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section class="sw-top-padding"><h1>Hi</h1></section>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}'); // landmark pinned
+    expect(home).toContain('--sw-header-h:4.5rem'); // offset token, first-paint (breakpoint-aware)
+    expect(home).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}'); // the opt-in spacer
+    expect(home).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}'); // hide-on-scroll rule
+    expect(home).toContain('sw-header-hide-on-scroll'); // the <body> mode class (runtime reads it)
+    expect(home).toContain('sticky-header.js'); // runtime linked
+    expect(await readFile(join(outDir, 'sticky-header.js'), 'utf8')).toContain('sw-nav-hidden');
+  });
+
+  it('sticky header (pinned): fixed + offset CSS, but NO runtime (pure CSS); none = static', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { stickyHeader: 'pinned' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('#main-nav{position:fixed'); // fixed
+    expect(home).not.toContain('sticky-header.js'); // pinned = pure CSS, no runtime
+    expect(home).not.toContain('sw-nav-hidden'); // no scroll-state rules
+  });
+
+  it('static header (no stickyHeader): no fixed positioning, no offset token, no runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('--sw-header-h');
+    expect(home).not.toContain('#main-nav{position:fixed');
+    expect(home).not.toContain('sticky-header.js');
+    expect(home).not.toContain('scrollspy.js');
+  });
+
+  it('scrollspy (site-wide toggle): emits the sw-scrollspy body class + ships the runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { mainNav: '<ul class="menu"><li><a href="#a">A</a></li></ul>', effects: { scrollSpy: true } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section id="a"><h1>A</h1></section>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
+    expect(home).toContain('scrollspy.js'); // runtime linked
+    expect(home).toContain('nav-link.js'); // smooth-scroll runtime ships with scrollspy (in-page anchors)
+    expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain("getElementById('main-nav')");
+  });
+
+  it('scrollspy (per-element attribute): source scan ships the runtime without the site-wide flag', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home',
+            source: '<ul class="menu" data-sw-scrollspy><li><a href="#a">A</a></li></ul><section id="a"><h1>A</h1></section>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<body>'); // bare body — no site-wide sw-scrollspy class (opted in per element)
+    expect(home).toContain('data-sw-scrollspy'); // the author attribute survives to the published page
+    expect(home).toContain('scrollspy.js'); // source-scan gate caught the per-element attribute
+    expect(home).toContain('nav-link.js'); // and the smooth-scroll runtime ships alongside it
+  });
+
+  it('scrollspy (off): no flag, no attribute → no runtime', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('scrollspy.js');
+    expect(home).not.toContain('sw-scrollspy');
+    expect(home).not.toContain('nav-link.js'); // no scrollspy / dialog / link-placeholder → no smooth-scroll runtime
+  });
+
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
@@ -658,7 +895,7 @@ describe('buildSite', () => {
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
     const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
-    expect(head).toContain('<script src="theme.js"></script>');
+    expect(head).toContain('<script src="theme.js?v=');
     expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain("localStorage.setItem(KEY,next)");
   });
 
@@ -741,8 +978,8 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-component="modal"'); // the snippet's component expanded into the page
-    expect(home).toContain('<script defer src="components.js"></script>');
-    expect(home).toContain('<script defer src="nav-link.js"></script>');
+    expect(home).toContain('<script defer src="components.js?v=');
+    expect(home).toContain('<script defer src="nav-link.js?v=');
     expect(await readFile(join(outDir, 'components.js'), 'utf8')).toContain('[data-sw-component="modal"]');
     expect(await readFile(join(outDir, 'nav-link.js'), 'utf8')).toContain('scrollIntoView');
   });

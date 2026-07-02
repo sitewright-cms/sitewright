@@ -317,12 +317,12 @@ describe('media pipeline (HTTP layer)', () => {
     });
     expect(del.statusCode).toBe(204);
 
-    // Record removed from the listing.
+    // Soft-delete: hidden from the listing (moved to the Recycle Bin).
     const list = await app.inject({ method: 'GET', url: `${base}/media`, cookies: { sw_session: t } });
     expect((list.json() as { items: MediaAsset[] }).items).toHaveLength(0);
 
-    // Binaries removed from disk (public serve 404s).
+    // The binary is RETAINED (restorable) so the public URL keeps serving until purge/reap.
     const after = await app.inject({ method: 'GET', url: asset.url });
-    expect(after.statusCode).toBe(404);
+    expect(after.statusCode).toBe(200);
   });
 });

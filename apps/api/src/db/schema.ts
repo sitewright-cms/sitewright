@@ -326,6 +326,34 @@ export const apiKeys = sqliteTable(
 export type ApiKeySource = 'pat' | 'oauth';
 
 /**
+ * A user's first-connect CONSENT for the on-page AI assistant on one project: which capabilities they
+ * granted it and its autonomy. Written when the user approves the consent panel; read on every
+ * subsequent drawer open (so approval is one-time per user+project) and by the chat endpoint to clamp
+ * the minted scoped token. One row per (user, project).
+ */
+export const agentGrants = sqliteTable(
+  'agent_grants',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** JSON array of {@link ApiKeyCapability} the user granted the assistant (default = full). */
+    capabilities: text('capabilities', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
+    /** `full` = act without per-step confirmation; `ask` = pause for confirmation (reserved for the UI). */
+    autonomy: text('autonomy', { enum: ['full', 'ask'] })
+      .notNull()
+      .default('full'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('uniq_agent_grant_user_project').on(t.userId, t.projectId)],
+);
+
+/**
  * OAuth 2.1 dynamically-registered clients (RFC 7591) — e.g. claude.ai / ChatGPT
  * connecting as remote MCP clients. Public clients (PKCE, no secret); each carries
  * an exact-match allowlist of redirect URIs. The built-in `sitewright-cli` client
@@ -443,17 +471,24 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
     data: text('data', { mode: 'json' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * SOFT-DELETE marker (currently only `media`): NULL = live. When set, the asset is hidden from every
+     * list (File Manager, render, exports) but its row + on-disk binary are RETAINED so it can be
+     * RESTORED from the File Manager's Recycle Bin. A 90-day reaper permanently purges older entries.
+     */
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     uniqueIndex('uniq_content').on(t.projectId, t.kind, t.entityId),
     index('content_project_kind_idx').on(t.projectId, t.kind),
+    index('content_deleted_idx').on(t.projectId, t.kind, t.deletedAt),
   ],
 );
 
@@ -474,7 +509,7 @@ export const contentRevisions = sqliteTable(
     // Mirrors content.kind (same text enum, no SQL CHECK). Recording is gated to the user-editable
     // subset in code (REVISIONED_KINDS) — credentials + media binaries are never snapshotted.
     kind: text('kind', {
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
     }).notNull(),
     entityId: text('entity_id').notNull(),
     data: text('data', { mode: 'json' }).notNull(),
@@ -568,4 +603,5 @@ export type ContentKind =
   | 'mediafolder'
   | 'deploy_target'
   | 'form'
-  | 'project_smtp';
+  | 'project_smtp'
+  | 'ai_config';

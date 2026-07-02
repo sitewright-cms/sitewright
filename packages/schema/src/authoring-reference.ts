@@ -215,9 +215,9 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     id: 'n-page',
     syntax: 'page.*',
     name: 'page',
-    keywords: 'title path slug locale translations route data children',
+    keywords: 'title path slug locale translations route data children template code source html',
     description:
-      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.locale, page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
+      'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.description (its meta description), page.image (its OG/share image — wrap in {{sw-url page.image}}), page.locale, page.defaultLocale (the site’s default language — equals page.locale on an unprefixed default-locale page), page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), page.children (its child pages), page.template (the id of the template this page renders from, or "" when it has its own code), and page.code (the EFFECTIVE source HTML rendering this page, template-resolved — for a “view source”/docs block; pretty-print with {{sw-json}} or wrap in <pre>) — see their own entries.',
     example: '<title>{{page.title}}</title>\n<body id="{{page.slug}}">',
   },
   {
@@ -288,15 +288,16 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
   {
     namespace: 'pages',
     id: 'n-pages',
-    syntax: 'pages.<slug>.<slug>…',
+    syntax: 'pages.<slug>…._attributes.<field>',
     name: 'pages',
-    keywords: 'pages cross-page other page data shared global slug tree navigate sibling',
+    keywords: 'pages cross-page other page data shared global slug tree navigate sibling children subtree overview index attributes code template',
     description:
-      'DIRECT access to ANOTHER page’s data by slug PATH. Walk the page tree by slug from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo”. Each node exposes .title, .slug, .path (its full route — use {{sw-url pages.x.path}}), .locale and .data (that page’s page.data). Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty. NOTE: the 5 node fields (data, title, path, slug, locale) take precedence, so a child page whose slug is exactly one of those words can’t be reached this way (rename it).',
+      'DIRECT access to ANOTHER page by slug PATH. Descend the tree with BARE slugs from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo” (a hyphenated slug needs brackets, pages.[web-design]). A node’s OWN fields all live under ._attributes — never bare — so a child slug can NEVER collide with a field and ANY slug is allowed: ._attributes.title, .slug, .path (its full route — {{sw-url pages.x._attributes.path}}), .locale, .description, .image, .template (its template id), and the gated heavy ones ._attributes.data (that page’s page.data), ._attributes.children (its child pages — the SAME array shape as page.children, for an overview ON ANOTHER page), ._attributes.code (its OWN authored source — empty when the page renders from a template; cf. page.code, which is template-resolved). pages on its own is the HOME node (pages._attributes.title, pages._attributes.children). Because fields and slugs never share a key, a page slugged exactly “data” is fine — pages.data._attributes.title (that page) vs pages._attributes.data (home’s data) are unambiguous. Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty.',
     example:
-      '{{! reuse another page’s data + link to it }}\n' +
-      '<h2>{{pages.services.seo.data.header_title}}</h2>\n' +
-      '<a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>',
+      '{{! reuse another page’s data, link to it, and list its children }}\n' +
+      '<h2>{{pages.services.seo._attributes.data.header_title}}</h2>\n' +
+      '<a href="{{sw-url pages.services._attributes.path}}">{{pages.services._attributes.title}}</a>\n' +
+      '{{#each pages.services._attributes.children}}<a href="{{sw-url path}}">{{title}}</a>{{/each}}',
   },
   {
     namespace: 'dataset',
@@ -330,11 +331,11 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     id: 'n-nav',
     syntax: 'nav.<slot>',
     name: 'nav',
-    keywords: 'menu navigation header footer mobile',
+    keywords: 'menu navigation header footer mobile custom',
     description:
-      'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
+      'Auto-built menus from the page tree, one per nav slot: nav.header, nav.footer, nav.mobile, and nav.custom — an AUTHOR-ONLY slot the default chrome never renders (put a page in the “Custom” nav slot in its settings, then loop {{#each nav.custom}} yourself for a bespoke menu/list anywhere). Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
     example:
-      '{{#each nav.header}}\n' +
+      '{{#each nav.custom}}\n' +
       '  <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>\n' +
       '{{/each}}',
   },
@@ -448,17 +449,16 @@ export const SW_HELPERS: readonly SwHelper[] = [
   { name: 'sw-add-to-cart', syntax: '{{sw-add-to-cart sku= name= price= [image=] [label=] [class=]}}', summary: 'MINI SHOP: an add-to-cart button; the browser cart hands the order to a channel configured in website.shop. Prices are non-authoritative.' },
   { name: 'sw-blank', syntax: '{{#unless (sw-blank value)}}…{{/unless}}', summary: 'Boolean: does `value` have NO visible content? True for missing/whitespace text and for the empty richtext markup (<p></p>, <p><br></p>, &nbsp;) a cleared editor leaves behind; embedded media (img/svg/iframe/…) counts as content. Use to omit a wrapper around an empty optional field.' },
   { name: 'sw-cart', syntax: '{{sw-cart [class=]}}', summary: 'MINI SHOP: the cart button/widget (item count + collapsible order form); labels come from the reserved cart_* translation keys.' },
-  { name: 'sw-consent', syntax: '{{sw-consent}}', summary: 'CONSENT MANAGER: the cookie-consent banner + per-category preferences (Necessary/Functional/Analytics/Marketing). Needs website.consent.enabled. Place ONCE in the bottom slot; copy comes from the reserved consent_* keys.' },
-  { name: 'sw-consent-settings', syntax: '{{sw-consent-settings [label=] [class=]}}', summary: 'A button that RE-OPENS the consent preferences (e.g. a footer “Cookie settings” link). Needs website.consent.enabled; label localizes via the reserved consent_settings key.' },
+  { name: 'sw-consent-settings', syntax: '{{sw-consent-settings [label=] [class=]}}', summary: 'A button that RE-OPENS the consent preferences (e.g. a footer “Cookie settings” link; a plain <a href="#sw-consent"> works too). The banner itself auto-appears when website.consent.enabled — no placeholder needed. Label localizes via the reserved consent_settings key.' },
   { name: 'sw-control', syntax: '{{sw-control "path" as="type" [options/min/max/…]}}', summary: 'Content-editor-only inline CONTROL chip (text/number/color/date/select/…) bound to page.data.* or website.data.*. Renders the plain value on the published site.' },
   { name: 'sw-date', syntax: '{{sw-date value [format]}}', summary: 'Formats a date as UTC YYYY-MM-DD, or the full ISO string with "iso". Empty for an unparseable value.' },
-  { name: 'sw-embed', syntax: '{{sw-embed "youtube"|"google-maps" "id-or-url" [category=] [title=] [ratio=]}}', summary: 'A CLICK-TO-LOAD media embed (YouTube/Maps): the iframe is HELD until the visitor consents to its category or clicks Load — privacy-first, and the per-page CSP frame-src is derived automatically.' },
   { name: 'sw-flag', syntax: '{{sw-flag "code" ["classes"]}}', summary: 'Inlines a FULL-COLOR country-flag SVG by ISO 3166-1 alpha-2 code; "code-circle" for the round variant. Flags are a poor proxy for languages — map locale→country first.' },
   { name: 'sw-folder', syntax: '{{#sw-folder "name"}}…{{/sw-folder}}', summary: 'Block helper that loops the images of a media FOLDER (galleries); the block context is each image (url/alt/width/height).' },
   { name: 'sw-form', syntax: '{{sw-form "id"}}', summary: 'Embeds a configured web FORM by id (locale-suffix aware). Never hand-wire the endpoint; submissions land in the inbox.' },
   { name: 'sw-html', syntax: '{{sw-html value}}', summary: 'Outputs SANITIZED rich HTML from a value (safe-HTML allowlist incl. https-sandboxed iframes; script/on*/form stripped). For trusted rich-text fields.' },
   { name: 'sw-icon', syntax: '{{sw-icon "name" ["classes"]}}', summary: 'Inlines an SVG icon — a BARE name is a Lucide line glyph; "brand:slug" is a themed brand/social logo (e.g. "brand:whatsapp"). "x" ≠ "brand:x".' },
   { name: 'sw-image', syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif]}}', summary: 'Responsive image for a PROJECT image (a delivery /media url, or a {{#sw-folder}}/dataset item url): emits an <img> with a WebP srcset, intrinsic width/height (no CLS), a blur-up LQIP, and loading=lazy. format=avif emits a <picture> with an AVIF tier. The server serves each size on demand; publish materializes only the referenced files.' },
+  { name: 'sw-json', syntax: '{{sw-json value}}', summary: 'Pretty-prints any value as indented JSON — for INSPECTING/DEBUGGING data (e.g. <pre>{{sw-json page.data}}</pre>). HTML-escaped like every binding, so NOT valid inside a <script type="application/ld+json"> block; use it to read, not to emit machine-parsed JSON. Empty for a missing/non-serializable value; length-capped.' },
   { name: 'sw-label', syntax: '{{sw-label}}', summary: 'Renders the current nav item\'s (possibly rich, {{sw-icon}}-bearing) label inside {{#each nav.*}}.' },
   { name: 'sw-pick-entry', syntax: '{{#sw-pick-entry "dataset" id}}…{{/sw-pick-entry}}  ·  (sw-pick-entry "dataset" id)', summary: 'Selects ONE dataset entry by id as the block context (or as a subexpression) — for referencing a specific entry outside a loop.' },
   { name: 'sw-theme-toggle', syntax: '{{sw-theme-toggle [class=]}}', summary: 'A light/dark THEME toggle button (no-flash, View-Transitions). Needs website.enableThemes.' },

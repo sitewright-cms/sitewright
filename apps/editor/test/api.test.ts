@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, eventsUrl, setUnauthorizedHandler } from '../src/api';
+import { api, ApiError, downloadProjectExport, eventsUrl, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -580,6 +580,23 @@ describe('api client', () => {
     expect(init.method).toBe('DELETE');
   });
 
+  it('drives the media Recycle Bin: list deleted, restore, purge', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'm1', deletedAt: 123 }] }));
+    expect((await api.listDeletedMedia('p')).items[0]!.id).toBe('m1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/media/deleted');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.restoreMedia('p', 'm1');
+    const [rUrl, rInit] = fetchMock.mock.calls[1]!;
+    expect(rUrl).toBe('/projects/p/media/m1/restore');
+    expect(rInit.method).toBe('POST');
+
+    await api.purgeMedia('p', 'm1');
+    const [pUrl, pInit] = fetchMock.mock.calls[2]!;
+    expect(pUrl).toBe('/projects/p/media/m1/purge');
+    expect(pInit.method).toBe('DELETE');
+  });
+
   it('manages saved deploy targets', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listDeployTargets('p');
@@ -884,6 +901,110 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
+  it('reads, writes, and deletes the per-project AI config', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { aiConfig: null }));
+    expect((await api.getAiConfig('p')).aiConfig).toBeNull();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/ai-config');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { aiConfig: { id: 'ai-config', enabled: true, provider: 'openai', model: 'gpt-4o-mini', hasKey: true } }));
+    await api.putAiConfig('p', { enabled: true, provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/ai-config');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ provider: 'openai', apiKey: 'sk' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteAiConfig('p');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
+  it('reads/sets the agent consent grant and reads agent status', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { configured: false, capabilities: ['content:read', 'content:write'], autonomy: 'full' }));
+    const g = await api.getAgentGrant('p');
+    expect(g.configured).toBe(false);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/agent/grant');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { configured: true, capabilities: ['content:read'], autonomy: 'ask' }));
+    await api.putAgentGrant('p', { capabilities: ['content:read'], autonomy: 'ask' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/agent/grant');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toEqual({ capabilities: ['content:read'], autonomy: 'ask' });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { enabled: true }));
+    expect((await api.agentStatus('p')).enabled).toBe(true);
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/agent/status');
+  });
+
+  it('streamAgentMessage POSTs to /agent/messages and dispatches all named SSE events', async () => {
+    const enc = new TextEncoder();
+    const frames = [
+      'event: start\ndata: {"conversationId":"c1","model":"m"}\n\n',
+      'event: text\ndata: {"delta":"Hel"}\n\n',
+      'event: text\ndata: {"delta":"lo"}\n\n',
+      'event: tool\ndata: {"id":"t1","name":"put_page","input":{}}\n\n',
+      'event: tool_result\ndata: {"id":"t1","name":"put_page","ok":true,"summary":"done"}\n\n',
+      'event: usage\ndata: {"inputTokens":5,"outputTokens":2,"projectMonthToDate":7}\n\n',
+      'event: done\ndata: {"message":"Hello"}\n\n',
+    ];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+
+    const events: string[] = [];
+    let convId = '';
+    let text = '';
+    let done = '';
+    await api.streamAgentMessage(
+      'p',
+      { message: 'hi', context: { path: '/' } },
+      {
+        onStart: (e) => {
+          convId = e.conversationId;
+          events.push('start');
+        },
+        onText: (d) => (text += d),
+        onTool: (t) => events.push(`tool:${t.name}`),
+        onToolResult: (r) => events.push(`tool_result:${r.ok}`),
+        onUsage: (u) => events.push(`usage:${u.projectMonthToDate}`),
+        onDone: (m) => {
+          done = m;
+          events.push('done');
+        },
+      },
+    );
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p/agent/messages');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toMatchObject({ message: 'hi', context: { path: '/' } });
+    expect(convId).toBe('c1');
+    expect(text).toBe('Hello');
+    expect(done).toBe('Hello');
+    expect(events).toEqual(['start', 'tool:put_page', 'tool_result:true', 'usage:7', 'done']);
+  });
+
+  it('streamAgentMessage surfaces a preflight error and an error frame via onError', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 429, statusText: 'Too Many', json: async () => ({ error: 'AI project quota exhausted for this month' }) } as Response);
+    let err = '';
+    await api.streamAgentMessage('p', { message: 'hi' }, { onError: (m) => (err = m) });
+    expect(err).toMatch(/quota exhausted/);
+
+    const enc = new TextEncoder();
+    const frames = ['event: error\ndata: {"code":"provider","message":"boom"}\n\n'];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+    let err2 = '';
+    await api.streamAgentMessage('p', { message: 'hi' }, { onError: (m) => (err2 = m) });
+    expect(err2).toBe('boom');
+  });
+
   it('lists and deletes submissions, passing the formId filter', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listSubmissions('p');
@@ -1019,5 +1140,57 @@ describe('unauthorized (401) handling', () => {
       ['POST', '/projects/p1/media/folders/copy'],
       ['DELETE', '/projects/p1/media/folders'],
     ]);
+  });
+
+  it('posts the credential connectivity tests (AI instance/project + stock)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, model: 'claude-haiku-4-5' }));
+    const ai = await api.testInstanceAi({ provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' });
+    expect(ai).toEqual({ ok: true, model: 'claude-haiku-4-5' });
+    await api.testAiConfig('p1', { provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' });
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: false, error: 'invalid key' }));
+    const stock = await api.testStockKey({ provider: 'unsplash', key: 'uk' });
+    expect(stock).toEqual({ ok: false, error: 'invalid key' });
+    expect(fetchMock.mock.calls.map((c) => [c[1].method, c[0]])).toEqual([
+      ['POST', '/admin/settings/ai/test'],
+      ['POST', '/projects/p1/ai-config/test'],
+      ['POST', '/admin/settings/stock/test'],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: 'sk-x' });
+  });
+});
+
+describe('project transfer api', () => {
+  it('duplicateProject POSTs to the duplicate route', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p2', name: 'X (copy)', slug: 'x-2', role: 'owner' } }));
+    const { project } = await api.duplicateProject('p1');
+    expect(project.slug).toBe('x-2');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/duplicate');
+    expect(init.method).toBe('POST');
+  });
+
+  it('importProjectZipStream uploads a FormData file and surfaces a preflight error', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'invalid project bundle' }));
+    const onError = vi.fn();
+    const file = new File([new Uint8Array([1, 2, 3])], 'p.zip', { type: 'application/zip' });
+    await api.importProjectZipStream(file, { onError });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/import/zip');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(onError).toHaveBeenCalledWith('invalid project bundle');
+  });
+
+  it('downloadProjectExport points a transient anchor at the export route', async () => {
+    const clicks: string[] = [];
+    const realCreate = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag) as HTMLAnchorElement;
+      if (tag === 'a') el.click = () => clicks.push(el.href);
+      return el;
+    });
+    downloadProjectExport('p1');
+    spy.mockRestore();
+    expect(clicks.some((href) => href.endsWith('/projects/p1/export.zip'))).toBe(true);
   });
 });

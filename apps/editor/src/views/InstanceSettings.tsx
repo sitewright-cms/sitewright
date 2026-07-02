@@ -13,9 +13,11 @@ import {
   MAX_LOGO_BASE64_LEN,
   MCP_TOOL_CATALOG,
   type PlatformLogo,
+  type AiProviderKind,
 } from '@sitewright/schema';
-import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
-import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
+import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
+import { modelPlaceholder } from './AiConfig';
+import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
@@ -95,6 +97,54 @@ export function InstanceSettings() {
   const [hasUnsplash, setHasUnsplash] = useState(false);
   const [hasPexels, setHasPexels] = useState(false);
 
+  // Platform-wide AI assistant config (the key is write-only; a presence flag comes back).
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AiProviderKind>('anthropic');
+  const [aiModel, setAiModel] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiKey, setAiKey] = useState('');
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiProjectLimit, setAiProjectLimit] = useState('');
+  const [aiMaxTokens, setAiMaxTokens] = useState('');
+  const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
+  const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
+
+  async function testAi() {
+    setAiTesting(true);
+    setAiTest(null);
+    try {
+      setAiTest(
+        await api.testInstanceAi({
+          provider: aiProvider,
+          ...(aiModel.trim() ? { model: aiModel.trim() } : {}),
+          ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
+          ...(aiKey ? { apiKey: aiKey } : {}),
+        }),
+      );
+    } catch (e) {
+      setAiTest({ ok: false, model: aiModel.trim(), error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setAiTesting(false);
+    }
+  }
+
+  async function testStock(provider: 'unsplash' | 'pexels', key: string) {
+    const set = provider === 'unsplash' ? setUnsplashTest : setPexelsTest;
+    setStockTesting(provider);
+    set(null);
+    try {
+      set(await api.testStockKey({ provider, ...(key ? { key } : {}) }));
+    } catch (e) {
+      set({ ok: false, error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setStockTesting(null);
+    }
+  }
+
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
 
   // Max failed login/2FA attempts per IP per minute before throttling (brute-force protection).
@@ -157,6 +207,15 @@ export function InstanceSettings() {
     setHasPexels(s.stock?.hasPexels ?? false);
     setUnsplashKey('');
     setPexelsKey('');
+    setAiEnabled(s.ai?.enabled ?? false);
+    setAiProvider(s.ai?.provider ?? 'anthropic');
+    setAiModel(s.ai?.model ?? '');
+    setAiBaseUrl(s.ai?.baseUrl ?? '');
+    setAiHasKey(s.ai?.hasApiKey ?? false);
+    setAiKey('');
+    setAiProjectLimit(s.ai?.defaultProjectMonthlyTokens != null ? String(s.ai.defaultProjectMonthlyTokens) : '');
+    setAiMaxTokens(s.ai?.maxOutputTokens != null ? String(s.ai.maxOutputTokens) : '');
+    setAiAdminsUnlimited(s.ai?.adminsUnlimited ?? true);
     setOidcProviders(
       (s.oidcProviders ?? []).map((p) => ({
         _key: nextOidcProviderKey(),
@@ -229,6 +288,15 @@ export function InstanceSettings() {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    // Validate the AI output-token cap inline (mirrors the per-project form) so an out-of-range
+    // value shows a clear message instead of a generic server 400.
+    if (aiEnabled && aiMaxTokens.trim() !== '') {
+      const n = Number(aiMaxTokens);
+      if (!Number.isInteger(n) || n < 1024 || n > 32000) {
+        setError('Max output tokens must be a whole number between 1024 and 32000.');
+        return;
+      }
+    }
     const input: InstanceSettingsInput = { formModes: modes };
     input.smtp = smtpEnabled
       ? {
@@ -247,6 +315,18 @@ export function InstanceSettings() {
     input.stock = stockEnabled
       ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
       : null; // disabling clears both keys
+    input.ai = aiEnabled
+      ? {
+          enabled: true,
+          provider: aiProvider,
+          adminsUnlimited: aiAdminsUnlimited,
+          ...(aiModel.trim() ? { model: aiModel.trim() } : {}),
+          ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
+          ...(aiKey ? { apiKey: aiKey } : {}), // blank = keep current
+          ...(aiProjectLimit.trim() !== '' ? { defaultProjectMonthlyTokens: Number(aiProjectLimit) } : {}),
+          ...(aiMaxTokens.trim() !== '' ? { maxOutputTokens: Number(aiMaxTokens) } : {}),
+        }
+      : null; // disabling clears the platform assistant (and its key)
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
     // must leave the stored override alone. When edited: store an override unless it's empty or equals
     // the default (then send null → revert), so we never persist the whole default as an override.
@@ -619,6 +699,12 @@ export function InstanceSettings() {
                 placeholder={hasUnsplash ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setUnsplashKey(e.target.value)}
               />
+              <span className="mt-1 flex items-center gap-2">
+                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('unsplash', unsplashKey)} disabled={stockTesting === 'unsplash' || (!unsplashKey && !hasUnsplash)}>
+                  {stockTesting === 'unsplash' ? 'Testing…' : 'Test'}
+                </button>
+                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={unsplashTest.error}>✗ {unsplashTest.error}</span>)}
+              </span>
             </label>
             <label className="flex flex-col text-xs text-slate-500">
               Pexels API key
@@ -630,7 +716,93 @@ export function InstanceSettings() {
                 placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPexelsKey(e.target.value)}
               />
+              <span className="mt-1 flex items-center gap-2">
+                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('pexels', pexelsKey)} disabled={stockTesting === 'pexels' || (!pexelsKey && !hasPexels)}>
+                  {stockTesting === 'pexels' ? 'Testing…' : 'Test'}
+                </button>
+                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={pexelsTest.error}>✗ {pexelsTest.error}</span>)}
+              </span>
             </label>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          AI Assistant
+          <SectionHelp tip="The on-page AI assistant edits sites on request. Set a provider + API key to enable it platform-wide; projects can override with their own key (Website settings → AI Assistant). The key is encrypted at rest and never leaves the server." />
+        </legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Enable the AI assistant platform-wide"
+            checked={aiEnabled}
+            onChange={(e) => setAiEnabled(e.target.checked)}
+          />
+          Enable the AI assistant platform-wide
+        </label>
+        {aiEnabled && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="flex flex-col text-xs text-slate-500">
+              Provider
+              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as AiProviderKind)}>
+                <option value="anthropic">Anthropic</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI-compatible (custom endpoint)</option>
+              </select>
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Model
+              <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={modelPlaceholder(aiProvider)} />
+            </label>
+            {aiProvider === 'openrouter' && (
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+                Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
+              </p>
+            )}
+            {aiProvider === 'openai' && (
+              <label className="col-span-2 flex flex-col text-xs text-slate-500">
+                Base URL <span className="text-slate-400">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
+                <input className={field} aria-label="AI base URL" type="url" value={aiBaseUrl} onChange={(e) => setAiBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+              </label>
+            )}
+            <label className="flex flex-col text-xs text-slate-500">
+              API key
+              <input className={field} aria-label="AI API key" type="password" value={aiKey} placeholder={aiHasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setAiKey(e.target.value)} />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Default per-project monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
+              <input className={field} aria-label="Default per-project monthly token cap" type="number" min={0} value={aiProjectLimit} onChange={(e) => setAiProjectLimit(e.target.value)} />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Max output tokens / reply <span className="text-slate-400">(blank = default 8192)</span>
+              <input
+                className={field}
+                aria-label="Max output tokens per reply"
+                type="number"
+                min={1024}
+                max={32000}
+                value={aiMaxTokens}
+                onChange={(e) => setAiMaxTokens(e.target.value)}
+                placeholder="8192"
+              />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" className={toggleInput} aria-label="Admins bypass token caps" checked={aiAdminsUnlimited} onChange={(e) => setAiAdminsUnlimited(e.target.checked)} />
+              Platform admins bypass token caps
+            </label>
+            <div className="col-span-2 flex flex-wrap items-center gap-3">
+              <button type="button" className={ghostButton} onClick={() => void testAi()} disabled={aiTesting}>
+                {aiTesting ? 'Testing…' : 'Test connection'}
+              </button>
+              {aiTest &&
+                (aiTest.ok ? (
+                  <span className="text-sm text-green-600">✓ Connected{aiTest.model ? ` (${aiTest.model})` : ''}</span>
+                ) : (
+                  <span className="text-sm text-red-600" title={aiTest.error}>✗ {aiTest.error}</span>
+                ))}
+            </div>
           </div>
         )}
       </fieldset>

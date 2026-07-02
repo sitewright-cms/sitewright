@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import {
   GLOBAL_TEMPLATES,
   GLOBAL_TEMPLATE_PREFIX,
@@ -13,12 +14,31 @@ import {
 } from '@sitewright/core';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
+import { SectionHelp } from './ui/SectionHelp';
+import { SearchableSelect, type SelectOption } from './ui/SearchableSelect';
+import { plainText } from './plain-text';
 import { AssetField } from './files/AssetField';
-import { glassInput, toggleInput } from '../theme';
+import { localeFlag, localeLabel } from './i18n/locale-catalog';
+import { glassInput, toggleInput, gradientSurface } from '../theme';
+
+/** A labeled settings group inside the Page Settings modal: an uppercase heading + an optional (?)
+ *  help tooltip (replacing the inline description paragraphs), then the fields. */
+function Section({ title, tip, children }: { title: string; tip?: string; children: ReactNode }) {
+  return (
+    <section>
+      <div className="mb-2.5 flex items-center gap-1.5">
+        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</h3>
+        {tip && <SectionHelp tip={tip} />}
+      </div>
+      <div className="flex flex-col gap-4">{children}</div>
+    </section>
+  );
+}
 
 /** Human labels for the nav slots: header = the Main Navigation (desktop + mobile drawer), mobile = the
- *  drawer's own curated menu (else it mirrors Main navigation), footer = the footer. */
-const NAV_SLOT_LABELS: Record<NavSlot, string> = { header: 'Main navigation', mobile: 'Mobile menu', footer: 'Footer' };
+ *  drawer's own curated menu (else it mirrors Main navigation), footer = the footer, custom = an
+ *  author-only slot the default chrome ignores (loop it yourself with {{#each nav.custom}}). */
+const NAV_SLOT_LABELS: Record<NavSlot, string> = { header: 'Main navigation', mobile: 'Mobile menu', footer: 'Footer', custom: 'Custom' };
 
 /** The editable page-settings fields, flattened for form state. */
 export interface PageSettingsValues {
@@ -40,6 +60,8 @@ export interface PageSettingsValues {
   description: string;
   /** Open Graph / share image (`page.image`). */
   image: string;
+  /** Exclude from search indexing + the sitemap (`page.noindex`). */
+  noindex: boolean;
   /**
    * For a TRANSLATED page only: how it gets its code — `inherit` (follows the main
    * language, no own code), `fork` (its own editable source), or `template`. Undefined on a
@@ -71,6 +93,7 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     locale: page.locale ?? '',
     description: page.description ?? '',
     image: page.image ?? '',
+    noindex: page.noindex ?? false,
     linkTarget: page.link?.target ?? '',
     linkNewTab: page.link?.newTab ?? false,
     rawHtml: page.rawHtml ?? false,
@@ -123,8 +146,8 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
   } else if (v.codeMode === 'template') {
     source = undefined;
   }
-  // The flat SEO fields this modal manages: empty → dropped (undefined). The fields it does NOT
-  // manage (canonical/noindex) pass through untouched via the page spread.
+  // The flat SEO fields this modal manages: empty/false → dropped (undefined). The fields it does
+  // NOT manage (canonical) pass through untouched via the page spread.
   return {
     ...page, // preserves translationGroup (set by "Add translation", not edited here)
     title: v.title,
@@ -137,6 +160,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     locale: v.locale || undefined,
     description: v.description || undefined,
     image: v.image || undefined,
+    noindex: v.noindex || undefined,
     rawHtml: v.rawHtml || undefined,
   };
 }
@@ -167,43 +191,74 @@ interface PageSettingsModalProps {
   pages: readonly Page[];
   /** Project templates (built-in globals are added automatically). */
   templates: readonly Template[];
-  /** The project's configured locales (Website Settings) — feeds the Language selector. */
+  /** The project's configured locales (Website Settings) — drives multilingual detection, the
+   *  create-mode "Available in" scope control, and parent/locale subtree filtering. */
   locales?: readonly string[];
   saving?: boolean;
   onClose: () => void;
   /** Receives the edited values; the CALLER persists (list) or applies to its draft (editor). */
   onSubmit: (values: PageSettingsValues) => void;
+  /**
+   * 'create' turns this into the NEW-PAGE form: the home/link/translated branches are forced
+   * off (a fresh page is a normal page), the slug is editable, the parent defaults to the home
+   * of the chosen language, and — when multilingual — the Language selector is replaced by the
+   * `scope` control. The caller's `onSubmit` performs id derivation + persistence + fan-out and
+   * reports any failure back via `error` (the modal stays open). Defaults to 'edit'.
+   */
+  mode?: 'create' | 'edit';
+  /** The language the pages list is showing — the target of a "this language only" create. */
+  currentLocale?: string;
+  /** create-mode: 'all' languages (owner + inherit variants) or 'current' (a locale-only page). */
+  scope?: 'all' | 'current';
+  onScopeChange?: (scope: 'all' | 'current') => void;
+  /** create-mode: a submit error from the caller (slug taken / reserved / failed) — shown inline. */
+  error?: string | null;
 }
 
 /**
  * Page settings in their OWN modal — it stacks above the page editor modal when
- * opened from there (Esc/save act on the top modal only). Covers the full set:
- * title, path, status, meta description, OG image, parent page, show-children-
- * in-dropdown, template reference, and nav placement.
+ * opened from there (Esc/save act on the top modal only). Covers the full set,
+ * grouped into sections: Basics (title/slug/parent), SEO & Social, Navigation, and
+ * a collapsible Advanced (template / raw-HTML / a translated page's code source).
+ * Status lives in the header (a segmented switch like the editor's Code/Content one).
  */
-export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
+export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit, mode = 'edit', currentLocale, scope = 'all', onScopeChange, error }: PageSettingsModalProps) {
   const defaultLocale = locales[0] ?? 'en';
+  const multilingual = locales.length > 1;
+  const isCreate = mode === 'create';
+  // A "this language only" create targets the currently-viewed non-default language; everything
+  // else (incl. an all-languages create) is authored in the default language.
+  const createLocale = isCreate && multilingual && scope === 'current' && currentLocale && currentLocale !== defaultLocale ? currentLocale : defaultLocale;
   // A TRANSLATED page is a non-default-locale page whose translation group has a main-language
   // owner — it can inherit that owner's code. The code-source control is shown only for these.
-  const owner = codeOwnerOf(page, pages, defaultLocale);
-  const isTranslated = !!owner && owner.id !== page.id;
+  // A fresh page (create mode) is never home/link/translated — it is a normal, top-of-tree page.
+  const owner = isCreate ? undefined : codeOwnerOf(page, pages, defaultLocale);
+  const isTranslated = !isCreate && !!owner && owner.id !== page.id;
   // Seed the code mode from the page's current state so the radio reflects reality and an
   // untouched save preserves it.
   const [v, setV] = useState<PageSettingsValues>(() =>
     isTranslated ? { ...initial, codeMode: pageCodeMode(page) } : initial,
   );
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
+  // The Advanced section (Template / Raw-HTML / a translated page's code source) is collapsed by
+  // default in EDIT to keep the form short — but opens up front in create, or whenever the page
+  // already uses one of those power settings (so an active choice is never hidden).
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(
+    () => isCreate || isTranslated || !!initial.template || initial.rawHtml,
+  );
   // A navigation placeholder (kind:'link') has no page/code/route — the form drops slug, meta,
   // image, and the code/template controls, and shows a single link Target + new-tab toggle instead.
-  const isLink = isLinkPage(page);
-  const isRootHome = page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
-  const pageLocale = localeOf(page, defaultLocale);
+  const isLink = !isCreate && isLinkPage(page);
+  const isRootHome = !isCreate && page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
+  // The language this page lives in for tree/parent purposes — the chosen create language in
+  // create mode, else the page's own locale.
+  const pageLocale = isCreate ? createLocale : localeOf(page, defaultLocale);
   // A LOCALE HOME is the root of a non-default language's subtree (a variant of the root home):
   // its parent (the site root) and slug (the language code) are fixed — not re-assignable.
   const rootHome = pages.find((p) => p.path === '' && !isLinkPage(p));
   const homeGroup = rootHome?.translationGroup ?? rootHome?.id;
   const isLocaleHome =
-    !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;
+    !isCreate && !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;
   // "Home-like": the root home OR a locale home — slug + parent are fixed.
   const isHomeLike = isRootHome || isLocaleHome;
   /** The main language's effective source (resolved through its template if any) — copied in on fork. */
@@ -248,70 +303,109 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   // Index for the live "full URL" preview as the slug/parent are edited.
   const previewById = pagesById(pages);
   const childCount = pages.filter((p) => p.parent === page.id).length;
-  // Sibling locale variants (same translation group), for context.
-  const siblings = page.translationGroup ? pages.filter((p) => p.translationGroup === page.translationGroup && p.id !== page.id) : [];
+  // Template options for the (searchable) template selectors — built-in globals first, then the
+  // project's own templates. Shown by NAME (the naming convention); the empty option differs per
+  // selector ("None (own code)" vs the "Select a template…" placeholder), so it's added at the callsite.
+  const templateEntries: SelectOption[] = [
+    ...GLOBAL_TEMPLATES.map((t) => ({ value: t.id, label: t.name })),
+    ...templates.map((t) => ({ value: t.id, label: t.name })),
+  ];
+
+  // Status (Published/Draft) lives in the header — a segmented pill matching the page editor's
+  // Code/Content switch (active segment lifts to the brand gradient).
+  const statusSwitch = (
+    <div
+      role="group"
+      aria-label="Status"
+      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+    >
+      {(['published', 'draft'] as const).map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={v.status === s}
+          onClick={() => patch({ status: s })}
+          className={`waves-effect rounded-lg px-2.5 py-1 capitalize transition ${
+            v.status === s ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <Modal
-      title={`${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
+      title={isCreate ? 'New page' : `${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
       size="lg"
       onClose={onClose}
-      // Coerce the parent: home stays parentless; a non-home page submits its chosen
-      // parent or falls back to home (there is no "None" for non-home pages).
-      onSave={() => onSubmit({ ...v, parent: effectiveParent })}
+      // Coerce the parent: home stays parentless; a non-home page submits its chosen parent or
+      // falls back to home. In create mode also stamp the chosen language (default = absence) so
+      // the caller persists a locale-only page under the right subtree.
+      onSave={() =>
+        onSubmit({
+          ...v,
+          parent: effectiveParent,
+          ...(isCreate ? { locale: createLocale === defaultLocale ? '' : createLocale } : {}),
+        })
+      }
       saving={saving}
-      saveLabel="Save settings"
+      saveLabel={isCreate ? 'Create page' : 'Save settings'}
+      headerExtra={statusSwitch}
     >
-      <div className="flex flex-col gap-4 p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col text-xs font-bold text-slate-700">
-            {isLink ? 'Name (menu label)' : 'Title'}
-            <input
-              aria-label={isLink ? 'Placeholder name' : 'Page title'}
-              className={`mt-1.5 font-normal ${glassInput}`}
-              value={v.title}
-              onChange={(e) => patch({ title: e.target.value })}
-            />
-            {isLink && (
-              <span className="mt-1 font-normal text-[11px] text-slate-400">
-                Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
+      <div className="flex flex-col gap-6 p-5">
+        {/* ── BASICS ─────────────────────────────────────────────────────────── */}
+        <Section title="Basics" tip="What the page is called and where it sits in the site tree.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col text-xs font-bold text-slate-700">
+              <span className="flex items-center gap-1.5">
+                {isLink ? 'Name (menu label)' : 'Title'}
+                {isLink && <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}}.'} />}
               </span>
-            )}
-          </label>
-          {!isLink && (
-          <label className="flex flex-col text-xs font-bold text-slate-700">
-            Page Slug
-            <input
-              aria-label="Page path"
-              className={`mt-1.5 font-mono font-normal ${glassInput}`}
-              value={v.path}
-              disabled={isHomeLike}
-              placeholder="about"
-              title={
-                isRootHome
-                  ? 'The home page is the site root'
-                  : isLocaleHome
-                    ? 'The language home — its slug is the language code'
-                    : 'One segment, no slashes — the URL is built from the parent chain'
-              }
-              // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
-              onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
-            />
-            <span className="mt-1 font-normal text-[11px] text-slate-400">
-              {isRootHome ? (
-                'The home page is the site root (/).'
-              ) : (
-                <>
-                  URL: <code>{pagePath({ ...page, path: v.path, parent: effectiveParent || undefined }, previewById)}</code> — built from the parent chain + this slug.
-                </>
-              )}
-            </span>
-          </label>
-          )}
-          {isLink && (
-            <div className="flex flex-col">
+              <input
+                aria-label={isLink ? 'Placeholder name' : 'Page title'}
+                className={`mt-1.5 font-normal ${glassInput}`}
+                value={v.title}
+                onChange={(e) => patch({ title: e.target.value })}
+              />
+            </label>
+            {!isLink && (
               <label className="flex flex-col text-xs font-bold text-slate-700">
-                Link target
+                Page Slug
+                <input
+                  aria-label="Page path"
+                  className={`mt-1.5 font-mono font-normal ${glassInput}`}
+                  value={v.path}
+                  disabled={isHomeLike}
+                  placeholder="about"
+                  title={
+                    isRootHome
+                      ? 'The home page is the site root'
+                      : isLocaleHome
+                        ? 'The language home — its slug is the language code'
+                        : 'One segment, no slashes — the URL is built from the parent chain'
+                  }
+                  // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
+                  onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
+                />
+                <span className="mt-1 font-normal text-[11px] text-slate-400">
+                  {isRootHome ? (
+                    'The home page is the site root (/).'
+                  ) : (
+                    <>
+                      URL: <code>{pagePath({ ...page, path: v.path, parent: effectiveParent || undefined }, previewById)}</code>
+                    </>
+                  )}
+                </span>
+              </label>
+            )}
+            {isLink && (
+              <label className="flex flex-col text-xs font-bold text-slate-700">
+                <span className="flex items-center gap-1.5">
+                  Link target
+                  <SectionHelp tip={'Internal /path (rebased), external https:// / mailto: / tel:, a same-page #section, or a #dialog-id (opens that modal). Leave empty for a dropdown-only parent.'} />
+                </span>
                 <input
                   aria-label="Link target"
                   list="sw-page-targets"
@@ -324,203 +418,141 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 <datalist id="sw-page-targets">
                   {pages
                     .filter((p) => !isLinkPage(p) && !p.collection)
-                    .map((p) => {
-                      const route = pagePath(p, previewById);
-                      return <option key={p.id} value={route}>{p.title}</option>;
-                    })}
+                    .map((p) => (
+                      <option key={p.id} value={pagePath(p, previewById)}>{p.title}</option>
+                    ))}
                 </datalist>
-                <span className="mt-1 font-normal text-[11px] text-slate-400">
-                  Internal <code>/path</code> (rebased), external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
-                </span>
               </label>
-              {/* A sibling of the label (NOT nested) so the checkbox click toggles the checkbox. */}
-              <label className="mt-2 flex items-center gap-2 text-sm font-normal text-slate-600">
-                <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
-                Open in a new tab
-              </label>
-            </div>
-          )}
-        </div>
-
-        {!isLink && (
-        <>
-        <label className="flex flex-col text-xs font-bold text-slate-700">
-          Meta Description
-          <textarea
-            aria-label="Meta description"
-            className={`mt-1.5 resize-y font-normal ${glassInput}`}
-            rows={2}
-            maxLength={1000}
-            placeholder="Shown in search results — one or two crisp sentences."
-            value={v.description}
-            onChange={(e) => patch({ description: e.target.value })}
-          />
-        </label>
-
-        <AssetField
-          label="Image (Open Graph)"
-          value={v.image}
-          onChange={(val) => patch({ image: val })}
-          projectId={projectId}
-          placeholder="https://… or /media/… (used in link previews)"
-        />
-        </>
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col text-xs font-bold text-slate-700">
-            Parent Page
-            <select
-              aria-label="Parent page"
-              className={`mt-1.5 font-normal ${glassInput}`}
-              value={effectiveParent}
-              // The root home and each LOCALE home are fixed roots — their parent can't be reassigned.
-              disabled={isHomeLike}
-              title={isHomeLike ? 'A home page is the root of its language and cannot be re-parented' : undefined}
-              onChange={(e) => patch({ parent: e.target.value })}
-            >
-              {/* Root home → None; a locale home → fixed under the site root; every other page
-                  picks a parent IN ITS OWN LANGUAGE (defaults to that language's home). */}
-              {isRootHome ? (
-                <option value="">None (home is the root)</option>
-              ) : isLocaleHome ? (
-                <option value={effectiveParent}>{rootHome?.title ?? 'Home'} (site root)</option>
-              ) : (
-                parentChoices.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({pagePath(p, previewById)})
-                  </option>
-                ))
-              )}
-            </select>
-            {isRootHome ? (
-              <span className="mt-1 font-normal text-[11px] text-slate-400">The home page is the tree root.</span>
-            ) : isLocaleHome ? (
-              <span className="mt-1 font-normal text-[11px] text-slate-400">The language home nests under the site root (fixed).</span>
-            ) : (
-              <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under a parent in the same language.</span>
             )}
-          </label>
-          {isLink ? null : isTranslated ? (
-            // A translated page: choose how it gets its CODE — inherit the main language's
-            // layout, fork its own, or use a template. (The text is always translated via page.data.)
-            <fieldset className="flex flex-col text-xs font-bold text-slate-700">
-              Code source
-              <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/40 p-2.5 font-normal">
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="code-mode"
-                    aria-label="Inherit code from the main language"
-                    className="mt-0.5"
-                    checked={v.codeMode === 'inherit'}
-                    onChange={() => patch({ codeMode: 'inherit' })}
-                  />
-                  <span>
-                    Inherit from {owner ? `“${owner.title}”` : 'the main language'}
-                    <span className="block text-[11px] text-slate-400">Follows the main language’s layout — edit there to change every language.</span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="code-mode"
-                    aria-label="Fork the code for this language"
-                    className="mt-0.5"
-                    checked={v.codeMode === 'fork'}
-                    onChange={() => patch({ codeMode: 'fork', forkSource: page.source ?? ownerSource() })}
-                  />
-                  <span>
-                    Fork — this language gets its own code
-                    <span className="block text-[11px] text-slate-400">Copies the current layout in; edit it freely in the page editor.</span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="code-mode"
-                    aria-label="Use a template"
-                    className="mt-0.5"
-                    checked={v.codeMode === 'template'}
-                    onChange={() => patch({ codeMode: 'template' })}
-                  />
-                  <span className="w-full">
-                    Use a template
-                    {v.codeMode === 'template' && (
-                      <select
-                        aria-label="Page template"
-                        className={`mt-1.5 font-normal ${glassInput}`}
-                        value={v.template}
-                        onChange={(e) => patch({ template: e.target.value })}
-                      >
-                        <option value="">Select a template…</option>
-                        {GLOBAL_TEMPLATES.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                        {templates.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
-                    )}
-                  </span>
-                </label>
-              </div>
-            </fieldset>
-          ) : (
-            <label className="flex flex-col text-xs font-bold text-slate-700">
-              Template
-              <select
-                aria-label="Page template"
-                className={`mt-1.5 font-normal ${glassInput}`}
-                value={v.template}
-                onChange={(e) => patch({ template: e.target.value })}
-              >
-                <option value="">None (own code)</option>
-                {GLOBAL_TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <span className="mt-1 font-normal text-[11px] text-slate-400">
-                A templated page renders the template’s code — its editor is locked (fork to customize).
-              </span>
+          </div>
+
+          {isLink && (
+            <label className="flex items-center gap-2 text-sm font-normal text-slate-600">
+              <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
+              Open in a new tab
             </label>
           )}
-        </div>
 
-        {locales.length > 1 && (
-          <label className="flex flex-col text-xs font-bold text-slate-700">
-            Language
-            <select
-              aria-label="Page language"
-              className={`mt-1.5 font-normal ${glassInput}`}
-              value={v.locale}
-              onChange={(e) => patch({ locale: e.target.value })}
-            >
-              {/* The default locale is stored as ABSENCE (value ""); the explicit options
-                  are the non-default locales only — no duplicate entry for the default. */}
-              <option value="">Default ({locales[0]})</option>
-              {locales.slice(1).map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1 font-normal text-[11px] text-slate-400">
-              Sets &lt;html lang&gt;; data bindings resolve to the matching <code>&lt;dataset&gt;-{v.locale || locales[0]}</code> variant.
-              {siblings.length > 0 && <> Linked translations: {siblings.map((s) => s.locale ?? locales[0]).join(', ')}.</>}
-            </span>
-          </label>
+          {/* A 2-col grid with ONE child keeps Parent at HALF width, aligned under the Title
+              column of the title/slug grid above (not a full-width dropdown across the modal). */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col text-xs font-bold text-slate-700">
+              <span className="flex items-center gap-1.5">
+                Parent Page
+                <SectionHelp
+                  tip={
+                    isRootHome
+                      ? 'The home page is the tree root.'
+                      : isLocaleHome
+                        ? 'The language home nests under the site root (fixed).'
+                        : 'Sub-pages nest under a parent in the same language.'
+                  }
+                />
+              </span>
+              {/* Root home → None; a locale home → fixed under the site root; every other page picks
+                  a parent IN ITS OWN LANGUAGE. Options show the page's PATH (titles get too long) and
+                  are searchable by path OR title (keywords). Home-like pages are fixed → disabled. */}
+              <div className="mt-1.5">
+                <SearchableSelect
+                  ariaLabel="Parent page"
+                  value={effectiveParent}
+                  disabled={isHomeLike}
+                  onChange={(val) => patch({ parent: val })}
+                  searchPlaceholder="Search by path or title…"
+                  options={
+                    isRootHome
+                      ? [{ value: '', label: 'None (home is the root)' }]
+                      : isLocaleHome
+                        ? [{ value: effectiveParent, label: `${rootHome?.title ?? 'Home'} (site root)` }]
+                        : parentChoices.map((p) => {
+                            // A nav PLACEHOLDER (kind:'link') is routing-transparent — its pagePath
+                            // collapses to its parent's (e.g. "/"), which duplicates the home entry and
+                            // is meaningless. Label it by its (plain-text, de-marked-up) NAME instead;
+                            // real pages show their PATH. Both are searchable by name/path (keywords).
+                            const link = isLinkPage(p);
+                            const name = link ? plainText(p.title) || p.id : p.title;
+                            return {
+                              value: p.id,
+                              label: link ? `${name} (menu)` : pagePath(p, previewById),
+                              keywords: name,
+                            };
+                          })
+                  }
+                  className="w-full"
+                />
+              </div>
+            </label>
+          </div>
+
+          {isCreate && multilingual && (
+            <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/40 p-3">
+              <legend className="px-1 text-xs font-bold uppercase tracking-wide text-slate-500">Available in</legend>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available in all languages" checked={scope === 'all'} onChange={() => onScopeChange?.('all')} />
+                <span>
+                  <span className="font-medium">All languages</span>
+                  <span className="block text-[11px] text-slate-500">One main-language page; every other language follows its layout.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available only in the current language" checked={scope === 'current'} onChange={() => onScopeChange?.('current')} />
+                <span>
+                  <span className="font-medium">Only {localeFlag(currentLocale ?? defaultLocale)} {localeLabel(currentLocale ?? defaultLocale)}</span>
+                  <span className="block text-[11px] text-slate-500">A page that exists only in this language.</span>
+                </span>
+              </label>
+            </fieldset>
+          )}
+        </Section>
+
+        {/* Create-mode submit errors (slug taken / reserved / failed) surface high, right under Basics. */}
+        {error && <p className="text-sm font-medium text-red-600" role="alert">{error}</p>}
+
+        {/* ── SEO & SOCIAL (concrete pages only) ─────────────────────────────── */}
+        {!isLink && (
+          <Section title="SEO & Social" tip="How this page appears in search results and in link previews (Open Graph).">
+            <label className="flex flex-col text-xs font-bold text-slate-700">
+              Meta Description
+              <textarea
+                aria-label="Meta description"
+                className={`mt-1.5 resize-y font-normal ${glassInput}`}
+                rows={2}
+                maxLength={1000}
+                placeholder="Shown in search results — one or two crisp sentences."
+                value={v.description}
+                onChange={(e) => patch({ description: e.target.value })}
+              />
+            </label>
+
+            <AssetField
+              label="Image (Open Graph)"
+              value={v.image}
+              onChange={(val) => patch({ image: val })}
+              projectId={projectId}
+              placeholder="https://… or /media/… (used in link previews)"
+            />
+
+            {/* The (?) SectionHelp is a `type="button"` SIBLING of the checkbox inside the label —
+                clicking it opens the tooltip and does NOT toggle the checkbox (per the HTML spec, a
+                click on an interactive descendant doesn't activate the label's control). */}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Hide from search engines (noindex)"
+                checked={v.noindex}
+                onChange={(e) => patch({ noindex: e.target.checked })}
+              />
+              <span className="flex items-center gap-1.5 font-bold text-slate-700">
+                Hide from search engines
+                <SectionHelp tip="Adds a noindex robots tag and drops this page from the sitemap, so search engines won't list it. The page stays published and reachable by direct link." />
+              </span>
+            </label>
+          </Section>
         )}
 
-        <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
-          <p className="mb-2 text-xs font-bold text-slate-700">Navigation</p>
+        {/* ── NAVIGATION ─────────────────────────────────────────────────────── */}
+        <Section title="Navigation" tip="Which menus this page appears in, and how it's labeled there.">
           <div className="flex flex-wrap items-center gap-4">
             {NAV_SLOTS.map((slot) => (
               <label key={slot} className="flex items-center gap-1.5 text-sm">
@@ -539,13 +571,18 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </label>
             ))}
           </div>
+          {v.navSlots.includes('custom') && (
+            <p className="text-[11px] text-slate-400">
+              “Custom” isn’t shown by the default menus — loop it in your page or snippet code with <code>{'{{#each nav.custom}}'}</code>.
+            </p>
+          )}
           {isLink && v.navSlots.length === 0 && (
-            <p className="mt-2 text-[11px] font-medium text-amber-600">
+            <p className="text-[11px] font-medium text-amber-600">
               This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
             </p>
           )}
           {v.navSlots.length > 0 && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <label className="flex flex-col text-[11px] text-slate-500">
                 Menu label
                 <input
@@ -582,51 +619,126 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             </div>
           )}
           {v.navDropdown && (
-            <p className="mt-2 text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400">
               {childCount > 0
                 ? `${childCount} child page${childCount === 1 ? '' : 's'} will nest under this item.`
                 : 'Pages whose Parent Page is this page will nest under this nav item.'}
             </p>
           )}
-        </div>
+        </Section>
 
-        <div>
-          <p className="mb-1.5 text-xs font-bold text-slate-700">Status</p>
-          <div className="inline-flex rounded-xl border border-white/60 bg-white/40 p-0.5">
-            {(['published', 'draft'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={v.status === s}
-                onClick={() => patch({ status: s })}
-                className={`rounded-lg px-3 py-1 text-sm capitalize transition ${
-                  v.status === s ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white/60'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* ── ADVANCED (collapsible; concrete pages only) ────────────────────── */}
+        {!isLink && (
+          <section>
+            <button
+              type="button"
+              aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen((o) => !o)}
+              className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 transition hover:text-slate-700"
+            >
+              <ChevronRight className={`h-3.5 w-3.5 transition ${advancedOpen ? 'rotate-90' : ''}`} />
+              Advanced
+              {!advancedOpen && <span className="font-normal normal-case tracking-normal text-slate-400">Template · Raw HTML</span>}
+            </button>
+            {advancedOpen && (
+              <div className="mt-3 flex flex-col gap-4">
+                {isTranslated ? (
+                  // A translated page: choose how it gets its CODE — inherit the main language's
+                  // layout, fork its own, or use a template. (The text is always translated via page.data.)
+                  <fieldset className="flex flex-col text-xs font-bold text-slate-700">
+                    Code source
+                    <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/40 p-2.5 font-normal">
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="code-mode"
+                          aria-label="Inherit code from the main language"
+                          className="mt-0.5"
+                          checked={v.codeMode === 'inherit'}
+                          onChange={() => patch({ codeMode: 'inherit' })}
+                        />
+                        <span>
+                          Inherit from {owner ? `“${owner.title}”` : 'the main language'}
+                          <span className="block text-[11px] text-slate-400">Follows the main language’s layout — edit there to change every language.</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="code-mode"
+                          aria-label="Fork the code for this language"
+                          className="mt-0.5"
+                          checked={v.codeMode === 'fork'}
+                          onChange={() => patch({ codeMode: 'fork', forkSource: page.source ?? ownerSource() })}
+                        />
+                        <span>
+                          Fork — this language gets its own code
+                          <span className="block text-[11px] text-slate-400">Copies the current layout in; edit it freely in the page editor.</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="code-mode"
+                          aria-label="Use a template"
+                          className="mt-0.5"
+                          checked={v.codeMode === 'template'}
+                          onChange={() => patch({ codeMode: 'template' })}
+                        />
+                        <span className="w-full">
+                          Use a template
+                          {v.codeMode === 'template' && (
+                            <div className="mt-1.5">
+                              <SearchableSelect
+                                ariaLabel="Page template"
+                                value={v.template}
+                                options={templateEntries}
+                                placeholder="Select a template…"
+                                searchPlaceholder="Search templates…"
+                                onChange={(val) => patch({ template: val })}
+                                className="w-full"
+                              />
+                            </div>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                  </fieldset>
+                ) : (
+                  <label className="flex flex-col text-xs font-bold text-slate-700">
+                    <span className="flex items-center gap-1.5">
+                      Template
+                      <SectionHelp tip="A templated page renders the template’s code — its editor is locked (fork to customize)." />
+                    </span>
+                    <div className="mt-1.5">
+                      <SearchableSelect
+                        ariaLabel="Page template"
+                        value={v.template}
+                        options={[{ value: '', label: 'None (own code)' }, ...templateEntries]}
+                        searchPlaceholder="Search templates…"
+                        onChange={(val) => patch({ template: val })}
+                        className="w-full"
+                      />
+                    </div>
+                  </label>
+                )}
 
-        {page.kind !== 'link' && (
-          <div>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className={toggleInput}
-                aria-label="Raw HTML page"
-                checked={v.rawHtml}
-                onChange={(e) => patch({ rawHtml: e.target.checked })}
-              />
-              <span>
-                <span className="font-bold text-slate-700">Raw HTML</span>
-                <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
-                  Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts).
-                </span>
-              </span>
-            </label>
-          </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className={toggleInput}
+                    aria-label="Raw HTML page"
+                    checked={v.rawHtml}
+                    onChange={(e) => patch({ rawHtml: e.target.checked })}
+                  />
+                  <span className="flex items-center gap-1.5 font-bold text-slate-700">
+                    Raw HTML
+                    <SectionHelp tip="Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts)." />
+                  </span>
+                </label>
+              </div>
+            )}
+          </section>
         )}
       </div>
     </Modal>

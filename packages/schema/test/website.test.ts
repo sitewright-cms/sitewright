@@ -16,10 +16,16 @@ import {
   BUTTON_DEFAULT_SHAPES,
   BUTTON_ACCENTS,
   PRELOADER_EFFECTS,
+  STICKY_HEADER_MODES,
+  STICKY_HEADER_LABELS,
+  JS_STICKY_HEADER_MODES,
+  stickyHeaderUsesRuntime,
+  scrollSpyUsesRuntime,
   MAX_TRANSLATION_ENTRIES,
   containerWidthVar,
   DEFAULT_CONTAINER_WIDTH,
   CONTAINER_WIDTH_PRESETS,
+  siteUrlIssue,
 } from '../src/website.js';
 
 describe('website.consent (ConsentSchema)', () => {
@@ -35,6 +41,33 @@ describe('website.consent (ConsentSchema)', () => {
     expect(() => WebsiteSettingsSchema.parse({ consent: { categories: ['tracking'] } })).toThrow();
     expect(() => WebsiteSettingsSchema.parse({ consent: { layout: 'popup' } })).toThrow();
     expect(() => WebsiteSettingsSchema.parse({ consent: { version: 0 } })).toThrow();
+  });
+});
+
+describe('siteUrlIssue', () => {
+  it('accepts absolute http(s) URLs, with a subpath and with/without a trailing slash', () => {
+    expect(siteUrlIssue('https://acme.com')).toBeNull();
+    expect(siteUrlIssue('https://acme.com/')).toBeNull(); // trailing slash optional (normalized at build)
+    expect(siteUrlIssue('http://acme.com')).toBeNull();
+    expect(siteUrlIssue('https://acme.com/blog')).toBeNull(); // subpath hosting is allowed
+  });
+
+  it('rejects each malformed form with a clear, format-oriented message', () => {
+    expect(siteUrlIssue('acme.com')).toMatch(/starts with https:\/\//i); // no scheme
+    expect(siteUrlIssue('ftp://acme.com')).toMatch(/starts with https:\/\//i);
+    expect(siteUrlIssue('https://acme.com?utm=x')).toMatch(/query/i);
+    expect(siteUrlIssue('https://acme.com#top')).toMatch(/fragment/i);
+    expect(siteUrlIssue('https://acme .com')).toMatch(/spaces/i);
+    expect(siteUrlIssue('https://acme.com/"x')).toMatch(/special characters/i);
+    expect(siteUrlIssue('https://' + 'a'.repeat(2100))).toMatch(/too long/i);
+  });
+
+  it('is the same rule the schema enforces (reject surfaces the message; accept round-trips)', () => {
+    const res = WebsiteSettingsSchema.safeParse({ siteUrl: 'acme.com' });
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.issues[0]!.message).toMatch(/starts with https:\/\//i);
+    expect(WebsiteSettingsSchema.parse({ siteUrl: 'https://acme.com/' }).siteUrl).toBe('https://acme.com/');
+    expect(WebsiteSettingsSchema.parse({}).siteUrl).toBeUndefined(); // still optional
   });
 });
 
@@ -353,6 +386,47 @@ describe('WebsiteSettingsSchema', () => {
       // every JS-backed scheme is a real scheme; every scheme has a non-empty picker label.
       for (const n of JS_NAV_EFFECTS) expect(NAV_EFFECTS).toContain(n);
       for (const n of NAV_EFFECTS) expect(NAV_EFFECT_LABELS[n]).toBeTruthy();
+    });
+
+    it('sticky header: schema accepts each mode + "none"; rejects unknown; classes + runtime gate', () => {
+      // every mode round-trips through the schema, plus the explicit 'none'
+      for (const stickyHeader of STICKY_HEADER_MODES)
+        expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader } }).effects?.stickyHeader).toBe(stickyHeader);
+      expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'none' } }).effects?.stickyHeader).toBe('none');
+      expect(() => WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'floaty' } })).toThrow();
+      // the mode rides on the <body> effect class; 'none'/absent emits nothing
+      expect(websiteEffectsClasses({ stickyHeader: 'pinned' })).toBe('sw-header-pinned');
+      expect(websiteEffectsClasses({ stickyHeader: 'hide-on-scroll' })).toBe('sw-header-hide-on-scroll');
+      expect(websiteEffectsClasses({ stickyHeader: 'none' })).toBe('');
+      // composes with the other effect classes, header last
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink' })).toBe('sw-nav-box-solid sw-header-shrink');
+      // only the scroll-driven modes need the runtime; 'pinned' is pure CSS
+      for (const m of JS_STICKY_HEADER_MODES) expect(stickyHeaderUsesRuntime(m)).toBe(true);
+      expect(stickyHeaderUsesRuntime('pinned')).toBe(false);
+      expect(stickyHeaderUsesRuntime('none')).toBe(false);
+      expect(stickyHeaderUsesRuntime(undefined)).toBe(false);
+      // every mode has a non-empty picker label
+      for (const m of STICKY_HEADER_MODES) expect(STICKY_HEADER_LABELS[m]).toBeTruthy();
+      for (const m of JS_STICKY_HEADER_MODES) expect(STICKY_HEADER_MODES).toContain(m);
+    });
+
+    it('scrollSpy is an optional site-wide boolean → the sw-scrollspy body class + the runtime gate', () => {
+      // round-trips through the schema (boolean, optional)
+      expect(WebsiteSettingsSchema.parse({ effects: { scrollSpy: true } }).effects?.scrollSpy).toBe(true);
+      expect(WebsiteSettingsSchema.parse({ effects: {} }).effects?.scrollSpy).toBeUndefined();
+      expect(() => WebsiteSettingsSchema.parse({ effects: { scrollSpy: 'yes' } })).toThrow();
+      // emits the body class only when on; false/absent stays byte-identical
+      expect(websiteEffectsClasses({ scrollSpy: true })).toBe('sw-scrollspy');
+      expect(websiteEffectsClasses({ scrollSpy: false })).toBe('');
+      expect(websiteEffectsClasses({})).toBe('');
+      // composes with the other effect classes, scrollspy last
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink', scrollSpy: true })).toBe(
+        'sw-nav-box-solid sw-header-shrink sw-scrollspy',
+      );
+      // the runtime gate is just the flag (a per-element data-sw-scrollspy is scanned separately)
+      expect(scrollSpyUsesRuntime(true)).toBe(true);
+      expect(scrollSpyUsesRuntime(false)).toBe(false);
+      expect(scrollSpyUsesRuntime(undefined)).toBe(false);
     });
 
     it('accepts per-effect custom code and websiteEffectsCustomCode applies it only when the effect is "none"', () => {

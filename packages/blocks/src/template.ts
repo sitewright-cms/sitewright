@@ -15,8 +15,7 @@
 // The remaining hard limits (CPU/time/memory/output) are enforced by the isolated render
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
-import { safeUrl, cssUrlEscape } from './url.js';
-import { buildEmbed, EMBED_PROVIDER_META } from './embed.js';
+import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
@@ -27,7 +26,7 @@ import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage,
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
-import { RESERVED_TRANSLATION_DEFAULTS, consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
+import { RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -68,10 +67,11 @@ export interface TemplateContext {
   website?: Record<string, unknown>;
   page?: Record<string, unknown>;
   /**
-   * Cross-page DIRECT access by slug path — `{{ pages.services.seo.data.<key> }}` reads ANOTHER page's
-   * `page.data`. Rooted at the current page's locale HOME and walked by slug; each node also exposes
-   * title/slug/path/locale. Built REFERENCED-ONLY + same-locale by `pagesContext` in @sitewright/core
-   * (no payload unless the source names `pages`). A top-level author binding (see BINDING_NAMESPACES).
+   * Cross-page DIRECT access by slug path — `{{ pages.services.seo._attributes.data.<key> }}` reads
+   * ANOTHER page's fields. Rooted at the current page's locale HOME and walked by bare slug; a node's OWN
+   * fields (title/slug/path/locale/image/description/data/children/template/code) live under `_attributes`
+   * so any slug is legal and never collides. Built REFERENCED-ONLY + same-locale by `pagesContext` in
+   * @sitewright/core (no payload unless the source names `pages`). A top-level author binding.
    */
   pages?: Record<string, unknown>;
   /**
@@ -511,6 +511,26 @@ function createInstance(): typeof Handlebars {
   // these cover the common comparison need so authors don't reach for one that doesn't exist.
   hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
   hb.registerHelper('ne', (a: unknown, b: unknown) => a !== b);
+  // {{sw-json value}} → the value pretty-printed as JSON (2-space indent) — object/array/string/number/bool.
+  // For INSPECTING/DEBUGGING data (e.g. <pre>{{sw-json page.data}}</pre>) — the output is HTML-escaped, so it
+  // is NOT valid for a <script type="application/ld+json"> block (the quotes become &quot;); use it to read,
+  // not to emit machine-parsed JSON. Prefixed like every other CONTENT helper so it can never shadow a
+  // dataset field literally named `json` (that field stays readable as {{json}}).
+  // The return is a plain string → HTML-ESCAPED, so it's safe in any text/attribute position. `{{sw-json}}`
+  // with no value (or an unstringifiable/circular value) → ''; output is length-capped so a large object
+  // can't blow up the response. Compose with {{#each}} etc. as usual.
+  hb.registerHelper('sw-json', function swJson(this: unknown, ...args: unknown[]) {
+    // Handlebars always appends the options object, so a bare `{{sw-json}}` has length 1 (no value).
+    const value = args.length > 1 ? args[0] : undefined;
+    if (value === undefined) return '';
+    try {
+      const out = JSON.stringify(value, null, 2);
+      if (typeof out !== 'string') return ''; // e.g. a function/symbol → JSON.stringify returns undefined
+      return out.length > 100_000 ? `${out.slice(0, 100_000)}\n…(truncated)` : out;
+    } catch {
+      return ''; // circular / non-serializable
+    }
+  });
   // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
   // page locale, from the project translation catalog (website.translations). The render projection
   // pre-resolves the catalog per page-locale into `website.t` (a flat key→string map, defaultLocale
@@ -698,53 +718,8 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
-  // {{sw-consent}} → the CONSENT MANAGER banner mount (cookie-consent). Gated by the master switch
-  // (website.consent.enabled): OFF → renders nothing, so consent.js is never shipped. Place it ONCE in the
-  // website `bottom` slot. ALL copy auto-localizes per page-locale from the reserved consent_* catalog keys
-  // (catalog → built-in English default). Settings (website.consent) holds only STRUCTURE (enabled,
-  // version, layout, denyButton, categories, privacyHref); the config rides on an escaped JSON attribute.
-  hb.registerHelper('sw-consent', function swConsentBanner(this: unknown, ...args: unknown[]) {
-    const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const root = (options.data?.root ?? {}) as { website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> } };
-    const consent = (root.website?.consent ?? {}) as Record<string, unknown>;
-    if (consent.enabled !== true) return new Handlebars.SafeString('');
-    // eslint-disable-next-line security/detect-object-injection -- key is a literal reserved consent_* key; RESERVED_TRANSLATION_DEFAULTS is a frozen const registry (missing → undefined → '')
-    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
-    const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
-    const wantRaw = Array.isArray(consent.categories) ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string') : null;
-    const want = wantRaw && wantRaw.length ? wantRaw : [...CAT_KEYS];
-    const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
-    const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
-    const cfg: Record<string, unknown> = {
-      v: version,
-      layout: consent.layout === 'box' ? 'box' : 'bar',
-      deny: consent.denyButton !== false,
-      cats,
-      t: {
-        title: tr('consent_title'),
-        intro: tr('consent_intro'),
-        acceptAll: tr('consent_accept_all'),
-        rejectAll: tr('consent_reject_all'),
-        customize: tr('consent_customize'),
-        save: tr('consent_save'),
-        prefsTitle: tr('consent_prefs_title'),
-        necessary: tr('consent_necessary'),
-        necessaryDesc: tr('consent_necessary_desc'),
-        privacyLabel: tr('consent_privacy'),
-      },
-    };
-    // Managed integrations the runtime injects on consent (each {id,cat,kind,src,mid,async}); only the
-    // valid ones are baked. The per-site CSP origin allow-list is derived from the SAME registry at publish.
-    const ints = consentRuntimeIntegrations(consent as unknown as Consent);
-    if (ints.length) cfg.ints = ints;
-    const privacy = typeof consent.privacyHref === 'string' ? safeUrl(consent.privacyHref) : '';
-    if (privacy && privacy !== '#') cfg.privacy = privacy;
-    // Unicode-escape <>& so the config JSON survives the resolveDirectives parse→serialize round-trip
-    // (runs on any page with data-sw-*) intact + byte-stable, then attr-escape for the attribute value.
-    const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
-    const layoutAttr = cfg.layout === 'box' ? ' data-layout="box"' : '';
-    return new Handlebars.SafeString(`<div data-sw-consent${layoutAttr} data-sw-consent-config="${escapeAttr(json)}"></div>`);
-  });
+  // (The CONSENT MANAGER banner mount is AUTO-INJECTED by the publish pipeline whenever
+  // website.consent.enabled — there is no `{{sw-consent}}` helper. See consentMountMarkup + renderDocument.)
   // {{sw-consent-settings [label="…"] [class="…"]}} → a button that RE-OPENS the consent preferences
   // (e.g. a footer "Cookie settings" link for GDPR withdrawal). Gated on website.consent.enabled. Carries
   // data-sw-consent-open, which the consent.js runtime delegates. The label localizes (consent_settings).
@@ -758,38 +733,6 @@ function createInstance(): typeof Handlebars {
     const cls = str(h.class);
     const classAttr = escapeAttr(cls || 'sw-consent-link');
     return new Handlebars.SafeString(`<button type="button" data-sw-consent-open class="${classAttr}">${escapeHtml(label)}</button>`);
-  });
-  // {{sw-embed "youtube"|"google-maps" "<id-or-url>" [category=] [title=] [ratio=] [poster=] [load=] [note=]}}
-  // → a CLICK-TO-LOAD media embed. The real iframe is HELD until the visitor consents to its category (auto-
-  // loads via sw:consentchange) or clicks "Load". Privacy-first: nothing third-party loads on page view. The
-  // per-page CSP `frame-src` is derived from the provider used. A <noscript> link views the content directly.
-  hb.registerHelper('sw-embed', function swEmbed(this: unknown, ...args: unknown[]) {
-    const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const h = (options.hash ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
-    const provider = str(args[0]);
-    if (provider !== 'youtube' && provider !== 'google-maps') return new Handlebars.SafeString('');
-    const built = buildEmbed(provider, str(args[1]));
-    if (!built) return new Handlebars.SafeString('');
-    const src = safeUrl(built.src);
-    if (!src || src === '#') return new Handlebars.SafeString('');
-    const meta = EMBED_PROVIDER_META[provider];
-    const cat = (['functional', 'analytics', 'marketing'] as const).includes(str(h.category) as never) ? str(h.category) : meta.category;
-    const ratioRaw = str(h.ratio);
-    const ratio = /^[0-9]+\s*\/\s*[0-9]+$/.test(ratioRaw) ? ratioRaw : meta.ratio; // guard against CSS injection via ratio
-    const title = str(h.title) || `${meta.name} embed`;
-    // The poster lands in a CSS `url("…")` at runtime → cssUrlEscape (on top of safeUrl) so it can't break out.
-    const rawPoster = h.poster !== undefined ? safeUrl(str(h.poster)) : built.poster;
-    const poster = rawPoster && rawPoster !== '#' ? cssUrlEscape(rawPoster) : '';
-    const watch = safeUrl(built.watch);
-    let attrs =
-      `data-sw-component="embed" data-embed-providerkey="${escapeAttr(provider)}" data-embed-provider="${escapeAttr(meta.name)}"` +
-      ` data-embed-category="${escapeAttr(cat)}" data-embed-src="${escapeAttr(src)}" data-embed-title="${escapeAttr(title)}"`;
-    if (poster) attrs += ` data-embed-poster="${escapeAttr(poster)}"`;
-    if (h.load) attrs += ` data-embed-load="${escapeAttr(str(h.load))}"`;
-    if (h.note) attrs += ` data-embed-note="${escapeAttr(str(h.note))}"`;
-    const noscript = watch && watch !== '#' ? `<noscript><a href="${escapeAttr(watch)}" rel="noopener noreferrer">${escapeHtml(`View on ${meta.name}`)}</a></noscript>` : '';
-    return new Handlebars.SafeString(`<div ${attrs} style="aspect-ratio:${escapeAttr(ratio)}">${noscript}</div>`);
   });
   // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN themes
   // feature (Settings → Website → enable themes). It carries both a sun + a moon icon;
@@ -986,14 +929,21 @@ function createInstance(): typeof Handlebars {
 }
 
 /**
+ * EVERY Handlebars helper name the engine registers (built-ins we keep + our additions), sorted. Used by
+ * the namespace-hygiene test to guarantee no NEW bare (non-`sw-`) content helper ever ships undocumented —
+ * every emitter must be `sw-`-prefixed (so it can't shadow a data field and so it's pinned into SW_HELPERS).
+ */
+export function registeredHelperNames(): string[] {
+  return Object.keys(createInstance().helpers).sort();
+}
+
+/**
  * The custom `sw-*` Handlebars helper names the engine registers — the canonical, single-source list
  * the Template reference (apps/editor/src/views/library/reference.ts) must document. A test pins the
  * docs to this set so a new/renamed/removed helper can't silently leave the reference stale.
  */
 export function registeredSwHelpers(): string[] {
-  return Object.keys(createInstance().helpers)
-    .filter((name) => name.startsWith('sw-'))
-    .sort();
+  return registeredHelperNames().filter((name) => name.startsWith('sw-'));
 }
 
 /** The minimal shape of a dataset entry the loop helper recognises (mirrors @sitewright/schema's Entry). */

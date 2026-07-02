@@ -10,10 +10,16 @@ export interface SeoMeta {
   description?: string;
   /** Open Graph type (defaults to `website`). */
   ogType?: string;
-  /** OG/share image (`page.image`, else the company image). */
+  /** OG/share image (`page.image`, else the company image) — an absolute URL when a site URL is configured. */
   image?: string;
-  /** Canonical / og:url — should be an absolute URL when available. */
+  /** Canonical / og:url — an absolute URL (author canonical, else the page's own absolute URL). */
   url?: string;
+  /** `og:site_name` — the brand / site display name. */
+  siteName?: string;
+  /** `og:locale` in Open Graph's `language_TERRITORY` form (best-effort from the page locale). */
+  locale?: string;
+  /** `og:locale:alternate` entries — this page's other locale variants (same `language_TERRITORY` form). */
+  localeAlternates?: ReadonlyArray<string>;
   /** `theme-color` meta (company primary color). */
   themeColor?: string;
   /** A single generic favicon URL (used only when the full `icons` set isn't generated). */
@@ -78,7 +84,16 @@ export function metaTags(seo: SeoMeta): string {
     meta('property', 'og:url', seo.url);
     tags.push(`<link rel="canonical" href="${escapeAttr(seo.url)}" />`);
   }
+  if (seo.siteName) meta('property', 'og:site_name', seo.siteName);
+  if (seo.locale) meta('property', 'og:locale', seo.locale);
+  for (const alt of seo.localeAlternates ?? []) meta('property', 'og:locale:alternate', alt);
+  // Twitter/X reads og:* as a fallback, but emit the twitter:* trio explicitly so non-X consumers
+  // (Slack/Discord/etc.) that prefer them get the same title/description/image. No twitter:site —
+  // we don't store a handle and won't fabricate one.
   meta('name', 'twitter:card', seo.image ? 'summary_large_image' : 'summary');
+  meta('name', 'twitter:title', seo.title);
+  if (seo.description) meta('name', 'twitter:description', seo.description);
+  if (seo.image) meta('name', 'twitter:image', seo.image);
   if (seo.themeColor) meta('name', 'theme-color', seo.themeColor);
   // Favicon / PWA icons: prefer the generated set (favicon.ico + 32px PNG + apple-touch + manifest);
   // otherwise a single generic <link rel="icon"> (external/non-media icon, or no icon generated).

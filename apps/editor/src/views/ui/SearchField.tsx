@@ -13,6 +13,8 @@ export function SearchField({
   autoFocus,
   disabled,
   className,
+  controls,
+  activeDescendant,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -21,6 +23,11 @@ export function SearchField({
   autoFocus?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Combobox use: the id of the listbox this field filters (`aria-controls`). */
+  controls?: string;
+  /** Combobox use: the id of the visually-active option (`aria-activedescendant`) — so a screen
+   *  reader announces the keyboard-highlighted row while focus stays in this input. */
+  activeDescendant?: string;
 }) {
   return (
     <div className={className ? `relative ${className}` : 'relative'}>
@@ -28,6 +35,8 @@ export function SearchField({
       <input
         type="search"
         aria-label={ariaLabel ?? placeholder}
+        aria-controls={controls}
+        aria-activedescendant={activeDescendant}
         autoFocus={autoFocus}
         disabled={disabled}
         value={value}

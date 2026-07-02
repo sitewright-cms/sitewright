@@ -1,5 +1,6 @@
+import type { Dirent } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 // Id segments are generated/validated identifiers; servable files are produced by
 // the image pipeline. Both charsets exclude `/`, `.` (except the extension) and
@@ -177,5 +178,93 @@ export class MediaStorage {
       }
     }
     return removed;
+  }
+
+  /**
+   * Enumerates every file under an asset's directory as `{rel, abs}` pairs — `rel`
+   * uses forward slashes (for zip entry names), transient `.upload` inputs are
+   * skipped, and a missing directory yields `[]`. Lets a project export STREAM an
+   * asset's binaries into the archive without buffering them.
+   */
+  async assetFilePaths(
+    projectSlug: string,
+    assetId: string,
+  ): Promise<{ rel: string; abs: string }[]> {
+    const dir = this.assetDir(projectSlug, assetId); // segments charset-validated
+    const out: { rel: string; abs: string }[] = [];
+    const walk = async (current: string): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated dir
+        entries = await readdir(current, { withFileTypes: true });
+      } catch (err) {
+        // A MISSING top-level dir just means the asset has no binaries yet → skip. Any other
+        // error (EACCES, EIO, …), or a failure descending into a subdir we already listed, is
+        // real corruption/loss — propagate it so the export fails loudly rather than shipping a
+        // manifest that claims media the zip doesn't contain.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (current === dir && (code === 'ENOENT' || code === 'ENOTDIR')) return;
+        throw err;
+      }
+      for (const entry of entries) {
+        const abs = join(current, entry.name);
+        if (entry.isDirectory()) {
+          await walk(abs);
+        } else if (entry.isFile() && !entry.name.endsWith('.upload')) {
+          out.push({ rel: relative(dir, abs).split(sep).join('/'), abs });
+        }
+      }
+    };
+    await walk(dir);
+    return out;
+  }
+
+  /**
+   * Writes ONE file of an asset during a project-zip import. The relative path (from the zip,
+   * ATTACKER-CONTROLLED) is defended against zip-slip: every segment must be a safe token (no
+   * empty / `.` / `..` / charset escapes), and the resolved path is confined under the asset dir.
+   * Handles the one legitimate nesting level (`file/<name>`) as well as top-level variants.
+   */
+  async importAssetFile(
+    projectSlug: string,
+    assetId: string,
+    rel: string,
+    data: Buffer,
+  ): Promise<void> {
+    const dir = resolve(this.assetDir(projectSlug, assetId)); // slug + assetId charset-validated
+    const parts = rel.split('/');
+    if (parts.length === 0 || parts.length > 3) throw new Error('invalid media entry path');
+    for (const part of parts) {
+      // Reject empty / dot-segments AND any dotfile (`.htaccess`, `.env`) — a media dir might one
+      // day be served by a webserver where a dropped .htaccess could override config.
+      if (part === '' || part.startsWith('.') || !/^[A-Za-z0-9_.-]+$/.test(part)) {
+        throw new Error('invalid media entry segment');
+      }
+    }
+    const full = resolve(dir, ...parts);
+    if (full !== join(dir, ...parts) || !full.startsWith(dir + sep)) {
+      throw new Error('media entry escapes its directory');
+    }
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined + validated path
+    await mkdir(dirname(full), { recursive: true, mode: 0o750 });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined + validated path
+    await writeFile(full, data);
+  }
+
+  /**
+   * Copies an ENTIRE project's media tree to another project slug (used when a project is
+   * duplicated in-instance). A missing source yields an empty target dir; the target is expected
+   * to be a fresh project's (non-existent) dir.
+   */
+  async copyProjectMedia(fromSlug: string, toSlug: string): Promise<void> {
+    if (!SEGMENT.test(fromSlug) || !SEGMENT.test(toSlug)) {
+      throw new Error('invalid media project slug');
+    }
+    const from = join(this.root, fromSlug);
+    const to = join(this.root, toSlug);
+    await cp(from, to, { recursive: true }).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return; // source project has no media → nothing to copy
+      throw err;
+    });
   }
 }

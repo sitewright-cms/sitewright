@@ -18,7 +18,7 @@ describe('reference cookbook — catalog shape', () => {
     for (const want of [
       'slider-fullscreen', 'slider-cards', 'slider-multi', 'slider-logowall', 'slider-dataset',
       'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
-      'form-embed', 'form-custom', 'datetimepicker-field', 'cookie-consent', 'shop-product', 'parallax-hero', 'shader-hero',
+      'form-embed', 'form-custom', 'datetimepicker-field', 'banner-bar', 'banner-card', 'banner-modal', 'shop-product', 'parallax-hero', 'shader-hero',
       'dataset-grid', 'folder-gallery', 'i18n', 'page-vars',
       'nav-header', 'nav-footer', 'navbar', 'logo-marquee', 'rotating-tiles',
     ]) {
@@ -254,11 +254,11 @@ describe('reference cookbook — forms / inputs / shop / effects recipes render'
     expect(html).toContain('name="stay"');
   });
 
-  it('cookie-consent: a hidden consent banner with an accept part', () => {
-    const html = renderTemplate(src('cookie-consent'), {});
-    expect(html).toContain('data-sw-component="cookie-consent"');
-    expect(html).toMatch(/\bhidden\b/); // ships hidden (the runtime reveals it only until accepted)
-    expect(html).toContain('data-sw-part="accept"');
+  it('banner-bar: a hidden dismissible announcement banner with a dismiss part', () => {
+    const html = renderTemplate(src('banner-bar'), {});
+    expect(html).toContain('data-sw-component="banner"');
+    expect(html).toMatch(/\bhidden\b/); // ships hidden (the runtime reveals it, then remembers the dismissal)
+    expect(html).toContain('data-sw-part="dismiss"');
   });
 
   it('shop-product: the cart helpers are gated — empty when the shop is off, present when enabled', () => {

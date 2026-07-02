@@ -16,6 +16,12 @@ describe('nav-effects runtime', () => {
     expect(NAV_EFFECTS_JS).not.toContain('[role="navigation"]');
   });
 
+  it('site-wide use skips a descendant .menu carrying its own scheme class (mirrors the CSS :not guard)', () => {
+    // a body-default JS scheme must not also drive a custom menu that has its own sw-nav-* effect
+    expect(NAV_EFFECTS_JS).toContain("indexOf('sw-nav-')<0");
+    expect(NAV_EFFECTS_JS).toContain('classList.contains(cls)');
+  });
+
   it('wires all three JS-backed schemes (sliding line, sliding pill, spotlight)', () => {
     expect(NAV_EFFECTS_JS).toContain('sw-nav-line-sliding-bottom');
     expect(NAV_EFFECTS_JS).toContain('sw-nav-sliding-pill');

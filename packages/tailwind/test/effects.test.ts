@@ -92,7 +92,7 @@ describe('nav/button effect utilities', () => {
       { minify: true },
     );
     expect(nav).toContain('.sw-nav-box-solid.menu a'); // per-element (class on the <ul class="menu">)
-    expect(nav).toContain('.sw-nav-box-solid .menu a'); // + the site-wide descendant form
+    expect(nav).toContain('.sw-nav-box-solid .menu:not([class*=sw-nav-]) a'); // + the GUARDED site-wide descendant form
     const btn = await compileUtilityCss(['<button class="btn sw-btn-fx-lift">x</button>'], theme, { minify: true });
     expect(btn).toContain('.sw-btn-fx-lift.btn'); // per-button compound
     expect(btn).toContain('.sw-btn-fx-lift .btn'); // + the site-wide descendant form
@@ -104,7 +104,27 @@ describe('nav/button effect utilities', () => {
       theme,
       { minify: true },
     );
-    expect(css).toContain('.sw-nav-box-solid .menu a[aria-current=page]');
+    expect(css).toContain('.sw-nav-box-solid .menu:not([class*=sw-nav-]) a[aria-current=page]');
     expect(css).not.toMatch(/\.sw-nav-box-solid\s+\.sw-nav-box-solid/); // the old dead doubled selector
+  });
+
+  it('a per-element scheme on a .menu OVERRIDES the site-wide one for that menu (no collision)', async () => {
+    // A site-wide box-solid (on <body>) + a custom menu carrying its own line-bottom: the site-wide
+    // descendant rule is guarded so it does NOT reach the custom menu — only line-bottom styles it.
+    const css = await compileUtilityCss(
+      ['<body class="sw-nav-box-solid"><ul class="menu sw-nav-line-bottom"><li><a class="active">x</a></li></ul></body>'],
+      theme,
+      { minify: true },
+    );
+    // both schemes compile (both classes are present in the scanned markup)
+    expect(css).toContain('.sw-nav-box-solid');
+    expect(css).toContain('.sw-nav-line-bottom');
+    // the site-wide box-solid descendant form is GUARDED (won't match a .menu with its own sw-nav-* class)
+    expect(css).toContain('.sw-nav-box-solid .menu:not([class*=sw-nav-]) a');
+    // line-bottom applies per-element to the custom menu (class on the <ul class="menu">)
+    expect(css).toContain('.sw-nav-line-bottom.menu a');
+    // the UNGUARDED descendant form that used to leak box-solid into the custom menu is gone
+    // (only `.sw-nav-box-solid .menu:not(...) a` and the per-element `.sw-nav-box-solid.menu a` remain)
+    expect(css).not.toMatch(/\.sw-nav-box-solid \.menu a/);
   });
 });

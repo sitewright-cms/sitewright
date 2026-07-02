@@ -214,10 +214,10 @@ export function AgentDrawer({
     onStatusChange?.(status);
   }, [status, onStatusChange]);
 
-  // Closing the drawer aborts any in-flight turn (the drawer stays mounted, so nothing else would).
-  useEffect(() => {
-    if (!open) abortRef.current?.abort();
-  }, [open]);
+  // Closing the drawer does NOT cancel an in-flight turn: the drawer stays mounted (just slid
+  // off-screen), so the stream keeps running, the transcript keeps updating, and the status keeps
+  // flowing to the shell's AI button (which pulses while closed). Aborting is an explicit action
+  // (the Stop button, or New chat) — reopen the drawer to reach Stop.
 
   function patchAssistant(fn: (a: Extract<ChatMsg, { role: 'assistant' }>) => Extract<ChatMsg, { role: 'assistant' }>) {
     setMessages((ms) => {
@@ -315,7 +315,7 @@ export function AgentDrawer({
       abortRef.current = null;
       setStatus('idle');
       // Finalize the streaming bubble — an aborted turn returns without a done/error frame, so this
-      // clears the "…" placeholder / streaming flag on Stop or drawer-close.
+      // clears the "…" placeholder / streaming flag when the user hits Stop.
       patchAssistant((a) => ({ ...a, streaming: false }));
       // Stream ended with NO terminal frame and the user didn't stop it → the connection dropped
       // mid-turn. Tell them (the server aborts its side on disconnect; the work can be resumed).

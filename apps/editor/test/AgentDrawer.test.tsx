@@ -145,7 +145,7 @@ describe('AgentDrawer', () => {
     expect(await screen.findByText(/1,540 tokens/)).toBeInTheDocument();
   });
 
-  it('aborts the in-flight stream when the drawer closes', async () => {
+  it('keeps the in-flight stream running when the drawer closes (only explicit Stop aborts)', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
     let capturedSignal: AbortSignal | undefined;
     streamAgentMessage.mockImplementation((_id: string, _body: unknown, _h: AgentChatHandlers, signal?: AbortSignal) => {
@@ -157,7 +157,12 @@ describe('AgentDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(capturedSignal).toBeDefined());
     expect(capturedSignal!.aborted).toBe(false);
+    // Closing the drawer must NOT cancel the turn — the agent keeps working in the background.
     rerender(<AgentDrawer projectId="p" open={false} onClose={() => {}} getPath={() => '/'} />);
+    expect(capturedSignal!.aborted).toBe(false);
+    // Aborting is explicit — reopen and hit Stop (New chat also aborts).
+    rerender(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(capturedSignal!.aborted).toBe(true);
   });
 

@@ -131,7 +131,8 @@ SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
 description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. \`path\` is the page's OWN
+{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. PUT A NEW PAGE IN THE MAIN MENU by
+default: set nav.slots to include "header" and ALWAYS give a short nav.title (its menu label). \`path\` is the page's OWN
 SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
 is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
 page-tree ROOT: its slug is the EMPTY string "" (→ "/"), and every OTHER page sets "parent"

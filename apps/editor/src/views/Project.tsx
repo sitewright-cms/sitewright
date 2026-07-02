@@ -58,7 +58,9 @@ const CODE_PAGE_STARTER = `<section class="mx-auto max-w-3xl px-6 py-16">
 
 // A blank draft for the "New page" form (the create-mode PageSettingsModal). Its identity — id,
 // final slug, parent, order, language — is assigned from the submitted values in `create()`.
-const NEW_PAGE_DRAFT = { id: '__new__', path: '', title: '' } as Page;
+// New pages default INTO the main navigation (header slot) so they're reachable straight away;
+// the author can untick it in the modal.
+const NEW_PAGE_DRAFT = { id: '__new__', path: '', title: '', nav: { slots: ['header'] } } as Page;
 
 // --- pages-list row icons (lucide-style outlines) -----------------------------
 const rowIcon = (paths: ReactNode) => (

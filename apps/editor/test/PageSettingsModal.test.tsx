@@ -56,6 +56,14 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     expect(next.image).toBeUndefined();
   });
 
+  it('persists a trimmed menu label, and a new-page draft carries the default header slot', () => {
+    const plain: Page = { id: 'p', path: 'p', title: 'P' };
+    const next = applyPageSettings(plain, { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navTitle: '  Services  ' });
+    expect(next.nav).toEqual({ slots: ['header'], title: 'Services', order: 0 });
+    // New pages default INTO the main navigation.
+    expect(pageSettingsFromPage({ id: '__new__', path: '', title: '', nav: { slots: ['header'] } } as Page).navSlots).toEqual(['header']);
+  });
+
   it('round-trips locale and preserves the translation group it does not edit', () => {
     const de: Page = {
       id: 'about-de',
@@ -253,6 +261,35 @@ describe('PageSettingsModal — create mode (the New-page form)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: 'About us', path: 'about', parent: 'home' }));
   });
 
+  it('defaults a new page into the main nav and mirrors the title into the (required) menu label', () => {
+    const navDraft = { id: '__new__', path: '', title: '', nav: { slots: ['header'] } } as Page;
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal mode="create" page={navDraft} projectId="p" initial={pageSettingsFromPage(navDraft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    // Main navigation is ticked by default; the menu label is always visible + required.
+    expect(screen.getByLabelText('Nav: Main navigation')).toBeChecked();
+    const label = screen.getByLabelText('Nav menu label') as HTMLInputElement;
+    expect(label.required).toBe(true);
+    // The label mirrors the title until edited directly.
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'About us' } });
+    expect(label.value).toBe('About us');
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'about' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create page' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ navSlots: ['header'], navTitle: 'About us' }));
+  });
+
+  it('stops mirroring the title once the author edits the menu label directly', () => {
+    const navDraft = { id: '__new__', path: '', title: '', nav: { slots: ['header'] } } as Page;
+    render(
+      <PageSettingsModal mode="create" page={navDraft} projectId="p" initial={pageSettingsFromPage(navDraft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={() => {}} />,
+    );
+    const label = screen.getByLabelText('Nav menu label') as HTMLInputElement;
+    fireEvent.change(label, { target: { value: 'Home' } });
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
+    expect(label.value).toBe('Home'); // no longer follows the title
+  });
+
   it('renders a caller error inline and keeps the form open', () => {
     render(
       <PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} error={'A page "about" already exists.'} onClose={() => {}} onSubmit={() => {}} />,
@@ -351,6 +388,29 @@ describe('PageSettingsModal — UX: status in header, collapsible Advanced, hint
     const draft = { id: '__new__', path: '', title: '' } as Page;
     render(<PageSettingsModal mode="create" page={draft} projectId="p" initial={pageSettingsFromPage(draft)} pages={[home]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
     expect(screen.getByLabelText('Page template')).toBeInTheDocument();
+  });
+
+  it('shows the menu label even with no nav slots, and keeps Order under Advanced', () => {
+    // `plain` has no nav slots — the menu label field is STILL shown (always visible), while the
+    // Order field has moved out of Navigation into the collapsed Advanced section.
+    render(<PageSettingsModal page={plain} projectId="p" initial={pageSettingsFromPage(plain)} pages={[home, plain]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    expect(screen.getByLabelText('Nav menu label')).toBeInTheDocument();
+    // A page in no menu: the label is shown but flagged as inert until the page joins a menu.
+    expect(screen.getByText(/Only used when the page is in a menu/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nav order')).toBeNull(); // not in Navigation, and Advanced is collapsed
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    expect(screen.getByLabelText('Nav order')).toBeInTheDocument(); // now revealed under Advanced
+  });
+
+  it('guarantees a menu label by falling back to the page title when a menu page is saved blank', () => {
+    // An edit page already in the header but with NO explicit label → save fills it from the title.
+    const svc: Page = { id: 'svc', path: 'svc', title: 'Services', status: 'published', nav: { slots: ['header'] } };
+    const onSubmit = vi.fn();
+    render(<PageSettingsModal page={svc} projectId="p" initial={pageSettingsFromPage(svc)} pages={[home, svc]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />);
+    const label = screen.getByLabelText('Nav menu label') as HTMLInputElement;
+    expect(label.value).toBe(''); // no explicit label stored — the title shows as placeholder
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ navTitle: 'Services' }));
   });
 
   it('opens Advanced when the page already uses a power setting (rawHtml)', () => {

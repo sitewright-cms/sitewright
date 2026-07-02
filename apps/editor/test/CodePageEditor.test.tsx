@@ -112,8 +112,10 @@ describe('CodePageEditor', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'draft' }));
     fireEvent.click(screen.getByLabelText('Nav: Main navigation'));
-    fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
     fireEvent.click(screen.getByLabelText('Show in dropdown'));
+    // Nav order now lives under Advanced (an occasional tweak) — expand it to reach the field.
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' })); // applies to the DRAFT
     expect(screen.getAllByRole('dialog')).toHaveLength(1); // settings closed, editor stays
 
@@ -121,7 +123,8 @@ describe('CodePageEditor', () => {
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.status).toBe('draft');
-    expect(saved.nav).toEqual({ slots: ['header'], order: 3, dropdown: true });
+    // The menu label is guaranteed when a page joins a menu — it falls back to the page title ("Home").
+    expect(saved.nav).toEqual({ slots: ['header'], title: 'Home', order: 3, dropdown: true });
     expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
   });
 

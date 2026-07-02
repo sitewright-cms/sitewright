@@ -817,10 +817,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
-        // PRELOADER overlay (first body child). The logo resolves page-relative via `rel` so logo-*
-        // effects work at any page depth; non-logo effects ignore it (fall back to the built-in mark).
+        // PRELOADER overlay (first body child). The logo resolves to a MATERIALIZED `lg` thumbnail
+        // (`relImage` records the ref so it lands in the export — `copyMedia` skips images now that
+        // they're generated on demand; a bare `rel()` would ship a dangling 404). Page-relative, so
+        // logo-* effects work at any page depth; non-logo effects ignore it (built-in mark fallback).
         const preloaderMarkup = usesPreloaderRuntime
-          ? preloaderHtml(website?.effects?.preloaderEffect, { logo: rel(identity.logo) })
+          ? preloaderHtml(website?.effects?.preloaderEffect, { logo: relImage(identity.logo, 'lg') })
           : undefined;
         const backToTopMarkup = usesBackToTopRuntime ? backToTopHtml(true) : undefined;
         // Custom effect code (the "None / Custom Code" slots): nav/button code injects at body-end

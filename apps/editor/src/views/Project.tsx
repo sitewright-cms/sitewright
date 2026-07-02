@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
+import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
@@ -251,6 +252,15 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     // create modal always offers project templates (not just the built-in globals) on first open.
     void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
   }, [project.id]);
+
+  // LIVE-REFRESH: an agent (or another tab) that creates/edits/deletes a page — or changes the site
+  // settings (e.g. locales) — updates the page list + locale set here, no full SPA reload needed.
+  useProjectEvents(project.id, (c) => {
+    if (c.kind === 'page' || c.kind === 'template') void load();
+    if (c.kind === 'page') void refreshLocales();
+    if (c.kind === 'template') void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
+    if (c.kind === 'settings') void refreshLocales();
+  });
 
   // Keep the selected language valid: when the configured locales load/change (or one is
   // removed), snap back to the default if the current selection is no longer available.

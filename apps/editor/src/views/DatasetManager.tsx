@@ -3,6 +3,7 @@ import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
+import { useProjectEvents } from '../lib/use-project-events';
 import { datasetSlugify, defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
@@ -146,6 +147,11 @@ export function DatasetManager({ project }: { project: Project }) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load data');
     }
   }
+
+  useProjectEvents(project.id, (c) => {
+    // Refresh the datasets + entries when an agent (or another tab) changes them.
+    if (c.kind === 'dataset' || c.kind === 'entry') void load();
+  });
 
   useEffect(() => {
     let active = true;

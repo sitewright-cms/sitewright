@@ -189,6 +189,8 @@ export async function streamImport(
   run: (onProgress: (e: unknown) => void) => Promise<unknown>,
   logCtx: Record<string, unknown>,
   log: FastifyBaseLogger,
+  /** Generic client-facing failure message for the SSE `error` frame (never leaks internals). */
+  clientErrorMessage = 'import failed: could not crawl or convert the site',
 ): Promise<void> {
   reply.hijack();
   const raw = reply.raw;
@@ -200,10 +202,10 @@ export async function streamImport(
     const report = await run((e) => send('progress', e));
     send('done', { report });
   } catch (err) {
-    log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'website import failed');
+    log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming import failed');
     // Generic message only — never leak internals. (Client-fixable upload errors are surfaced as a clean
     // JSON 400 BEFORE the stream is hijacked, so they never reach here.)
-    send('error', { message: 'import failed: could not crawl or convert the site' });
+    send('error', { message: clientErrorMessage });
   } finally {
     raw.end();
   }

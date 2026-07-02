@@ -2447,66 +2447,80 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
       return reply.code(429).send({ error: 'too many imports in progress; retry shortly' });
     }
-
-    let buffer: Buffer;
-    try {
-      const file = await req.file({ limits: { fileSize: PROJECT_IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
-      if (!file) return reply.code(400).send({ error: 'no file uploaded' });
-      buffer = await file.toBuffer();
-      if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
-    } catch (err) {
-      if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
-        return reply.code(413).send({ error: 'file exceeds the upload size limit' });
-      }
-      return reply.code(400).send({ error: 'expected a multipart file upload' });
-    }
-
-    // Validate the archive BEFORE hijacking the reply for SSE, so a bad zip is a clean 400.
-    let parsed: Awaited<ReturnType<typeof readProjectZip>>;
-    try {
-      parsed = await readProjectZip(buffer, DEFAULT_PROJECT_ZIP_LIMITS);
-    } catch (err) {
-      if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
-      throw err;
-    }
-
-    const storage = mediaStorage;
+    // Claim the slot SYNCHRONOUSLY (atomic with the check above — no await intervenes), so two
+    // uploads racing through the multi-second file read can't both slip past a stale count. The
+    // single outer finally releases it on every path (early 4xx or the SSE stream).
     activeProjectImports += 1;
-    await streamImport(
-      reply,
-      async (onProgress) => {
-        const { manifest, bundle } = parsed;
-        onProgress({ phase: 'validate', detail: 'project bundle validated' });
-        const newSlug = await projects.availableSlug(bundle.project.slug);
-        const newName = (bundle.project.name || manifest.source.name || newSlug).slice(0, 200);
-        onProgress({ phase: 'allocate', detail: `creating project “${newName}”` });
-        const project = await projects.create({ name: newName, slug: newSlug }, userId);
-        try {
-          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
-          const rewritten = rewriteMediaSlug(bundle, manifest.mediaSlug, newSlug);
-          onProgress({ phase: 'content', detail: 'importing content' });
-          const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
-          onProgress({ phase: 'media', detail: 'restoring media' });
-          const media = await extractProjectMedia(
-            parsed.zip,
-            storage,
-            newSlug,
-            DEFAULT_PROJECT_ZIP_LIMITS,
-            (done, total) => onProgress({ phase: 'media', detail: `media ${done}/${total}` }),
-          );
-          return { projectId: project.id, slug: newSlug, name: newName, imported, media };
-        } catch (err) {
-          // Roll back the half-built project so a failed import leaves nothing behind.
-          await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'import rollback failed'));
-          await storage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'import media rollback failed'));
-          throw err;
+    const storage = mediaStorage;
+    try {
+      let buffer: Buffer;
+      try {
+        const file = await req.file({ limits: { fileSize: PROJECT_IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
+        if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+        buffer = await file.toBuffer();
+        if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+      } catch (err) {
+        if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
+          return reply.code(413).send({ error: 'file exceeds the upload size limit' });
         }
-      },
-      { op: 'project-import' },
-      req.log,
-    ).finally(() => {
+        return reply.code(400).send({ error: 'expected a multipart file upload' });
+      }
+
+      // Validate the archive BEFORE hijacking the reply for SSE, so a bad zip is a clean 400.
+      let parsed: Awaited<ReturnType<typeof readProjectZip>>;
+      try {
+        parsed = await readProjectZip(buffer, DEFAULT_PROJECT_ZIP_LIMITS);
+      } catch (err) {
+        if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
+        throw err;
+      }
+
+      // The import runs to completion server-side even if the client disconnects mid-stream (a
+      // partial project is worse than a finished one) — unlike the abortable website-import crawl.
+      await streamImport(
+        reply,
+        async (onProgress) => {
+          const { manifest, bundle } = parsed;
+          onProgress({ phase: 'validate', detail: 'project bundle validated' });
+          const newSlug = await projects.availableSlug(bundle.project.slug);
+          const rewritten = rewriteMediaSlug(bundle, manifest.mediaSlug, newSlug);
+          // Every media reference must now be THIS project's — reject a crafted bundle that points
+          // at another tenant's `/media/<otherSlug>/…` (the rewrite only touches the manifest slug).
+          for (const asset of rewritten.media) {
+            if (!asset.url.startsWith(`/media/${newSlug}/`)) {
+              throw new ConflictError('bundle references media outside this project');
+            }
+          }
+          const newName = (bundle.project.name || manifest.source.name || newSlug).slice(0, 200);
+          onProgress({ phase: 'allocate', detail: `creating project “${newName}”` });
+          const project = await projects.create({ name: newName, slug: newSlug }, userId);
+          try {
+            const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+            onProgress({ phase: 'content', detail: 'importing content' });
+            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
+            onProgress({ phase: 'media', detail: 'restoring media' });
+            const media = await extractProjectMedia(
+              parsed.zip,
+              storage,
+              newSlug,
+              DEFAULT_PROJECT_ZIP_LIMITS,
+              (done, total) => onProgress({ phase: 'media', detail: `media ${done}/${total}` }),
+            );
+            return { projectId: project.id, slug: newSlug, name: newName, imported, media };
+          } catch (err) {
+            // Roll back the half-built project so a failed import leaves nothing behind.
+            await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'import rollback failed'));
+            await storage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'import media rollback failed'));
+            throw err;
+          }
+        },
+        { op: 'project-import' },
+        req.log,
+        'import failed: could not restore the project',
+      );
+    } finally {
       activeProjectImports -= 1;
-    });
+    }
   });
 
   // Duplicate a project in-instance (staff-only): assemble the source's export bundle, mint a new
@@ -2521,11 +2535,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
         return reply.code(429).send({ error: 'too many operations in progress; retry shortly' });
       }
-      const source = await projects.get(req.params.projectId);
-      if (source.deletedAt) throw new NotFoundError('project not found');
-
-      activeProjectImports += 1;
+      activeProjectImports += 1; // claim the slot synchronously (atomic with the check above)
       try {
+        const source = await projects.get(req.params.projectId);
+        if (source.deletedAt) throw new NotFoundError('project not found');
         const srcCtx = { userId, projectId: source.id, role, actor: 'user' as const };
         const bundle = await contentRepo.assembleExportBundle(srcCtx, source);
         const newSlug = await projects.availableSlug(source.slug);

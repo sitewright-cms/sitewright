@@ -204,7 +204,9 @@ export class MediaStorage {
     const parts = rel.split('/');
     if (parts.length === 0 || parts.length > 3) throw new Error('invalid media entry path');
     for (const part of parts) {
-      if (part === '' || part === '.' || part === '..' || !/^[A-Za-z0-9_.-]+$/.test(part)) {
+      // Reject empty / dot-segments AND any dotfile (`.htaccess`, `.env`) — a media dir might one
+      // day be served by a webserver where a dropped .htaccess could override config.
+      if (part === '' || part.startsWith('.') || !/^[A-Za-z0-9_.-]+$/.test(part)) {
         throw new Error('invalid media entry segment');
       }
     }

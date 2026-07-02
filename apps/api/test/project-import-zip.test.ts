@@ -8,8 +8,8 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 
-/** Build a minimal project-export zip (manifest + bundle, no media) for the negative-path tests. */
-async function projectZip(bundle: unknown, slug = 'bad'): Promise<Buffer> {
+/** Build a project-export zip (manifest + bundle + optional extra media entries) for negative paths. */
+async function projectZip(bundle: unknown, slug = 'bad', media: Record<string, string> = {}): Promise<Buffer> {
   const manifest = {
     kind: 'sitewright-project-export',
     exportFormat: 1,
@@ -21,7 +21,18 @@ async function projectZip(bundle: unknown, slug = 'bad'): Promise<Buffer> {
   const zip = new JSZip();
   zip.file('manifest.json', JSON.stringify(manifest));
   zip.file('bundle.json', JSON.stringify(bundle));
+  for (const [name, content] of Object.entries(media)) zip.file(name, content);
   return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+const MINIMAL_BUNDLE = {
+  formatVersion: 2,
+  project: { id: 'p', name: 'Ok', slug: 'ok', identity: { name: 'Ok', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
+};
+
+async function projectsOf(app: FastifyInstance, t: string): Promise<string[]> {
+  const list = await app.inject({ method: 'GET', url: '/projects', cookies: { sw_session: t } });
+  return (list.json() as { projects: Array<{ slug: string }> }).projects.map((p) => p.slug);
 }
 
 const PNG_1X1 = Buffer.from(
@@ -179,6 +190,54 @@ describe('POST /projects/import/zip', () => {
     const list = await app.inject({ method: 'GET', url: '/projects', cookies: { sw_session: t } });
     const slugs = (list.json() as { projects: Array<{ slug: string }> }).projects.map((p) => p.slug);
     expect(slugs).not.toContain('bad');
+  });
+
+  it('rolls back when media extraction fails (bad asset id in the archive)', async () => {
+    const t = await staff('dev7@test.local');
+    // Bundle imports fine, but a media entry has an invalid asset-id segment → importAssetFile throws.
+    const bad = await projectZip(MINIMAL_BUNDLE, 'okmedia', { 'media/bad.id/x.webp': 'data' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects/import/zip',
+      cookies: { sw_session: t },
+      ...multipart('m.zip', 'application/zip', bad),
+    });
+    expect(res.payload).toContain('event: error');
+    expect(await projectsOf(app, t)).not.toContain('okmedia');
+  });
+
+  it('rejects a bundle whose media points at another project (cross-tenant)', async () => {
+    const t = await staff('dev8@test.local');
+    const bundle = {
+      formatVersion: 2,
+      project: { id: 'p', name: 'X', slug: 'evil', identity: { name: 'X', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
+      media: [{ kind: 'file', id: 'a1', filename: 'd.pdf', folder: '', bytes: 1, contentType: 'application/pdf', storedName: 'd.pdf', url: '/media/victim/a1/file/d.pdf' }],
+    };
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects/import/zip',
+      cookies: { sw_session: t },
+      ...multipart('evil.zip', 'application/zip', await projectZip(bundle, 'evil')),
+    });
+    expect(res.payload).toContain('event: error');
+    expect(await projectsOf(app, t)).not.toContain('evil');
+  });
+
+  it('caps concurrent imports (some requests get 429)', async () => {
+    const t = await staff('dev9@test.local');
+    const { zip } = await seedAndExport(t, 'conc');
+    // Fire 3 imports at once; MAX_CONCURRENT_PROJECT_IMPORTS is 2 → at least one 429.
+    const results = await Promise.all(
+      [0, 1, 2].map(() =>
+        app.inject({
+          method: 'POST',
+          url: '/projects/import/zip',
+          cookies: { sw_session: t },
+          ...multipart('conc.zip', 'application/zip', zip),
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.statusCode === 429).length).toBeGreaterThanOrEqual(1);
   });
 
   it('returns 400 when media storage is not configured', async () => {

@@ -35,7 +35,9 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
   useEffect(() => () => abortRef.current?.abort(), []);
 
   function pushLine(text: string): void {
-    setLines((prev) => [...prev, { id: lineSeq.current++, text }].slice(-8));
+    const id = lineSeq.current;
+    lineSeq.current += 1; // advance OUTSIDE the updater (no side effects in a state updater)
+    setLines((prev) => [...prev, { id, text }].slice(-8));
   }
 
   function start(): void {

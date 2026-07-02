@@ -29,12 +29,13 @@ describe('MediaStorage.importAssetFile (zip-slip defense)', () => {
     expect(await readFile(join(root, 'site', 'asset1', 'file', 'doc.pdf'), 'utf8')).toBe('b');
   });
 
-  it('rejects traversal / absolute / backslash / bad segments', async () => {
-    for (const rel of ['../evil', 'a/../../evil', '/etc/passwd', 'a\\b', '.', 'a/./b', 'a b/c', 'x/y/z/w']) {
+  it('rejects traversal / absolute / backslash / dotfiles / bad segments', async () => {
+    for (const rel of ['../evil', 'a/../../evil', '/etc/passwd', 'a\\b', '.', 'a/./b', 'a b/c', 'x/y/z/w', '.htaccess', '.env', 'file/.env']) {
       await expect(storage.importAssetFile('site', 'asset1', rel, Buffer.from('x'))).rejects.toThrow();
     }
-    // Nothing escaped the project's media dir.
+    // Nothing escaped the project's media dir; no dotfile landed inside it either.
     expect(existsSync(join(root, 'evil'))).toBe(false);
+    expect(existsSync(join(root, 'site', 'asset1', '.htaccess'))).toBe(false);
   });
 
   it('rejects an invalid asset id / slug before touching disk', async () => {

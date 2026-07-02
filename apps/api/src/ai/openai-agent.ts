@@ -106,8 +106,13 @@ export class OpenAiAgentProvider implements AgentProvider {
       // trailing usage chunk), which previously re-emitted every accumulated tool call → the agent ran
       // each action twice (double tokens + duplicate edits). Emit exactly once, after the stream ends.
       if (choice.finish_reason) {
-        stop =
-          choice.finish_reason === 'length' ? 'max_tokens' : choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn';
+        if (choice.finish_reason === 'length') {
+          stop = 'max_tokens';
+        } else if (stop !== 'max_tokens') {
+          // A truncation is STICKY — never let a later (re-ordered) finish_reason downgrade it, or the
+          // guard below would emit a partial, malformed tool call.
+          stop = choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn';
+        }
       }
     }
 

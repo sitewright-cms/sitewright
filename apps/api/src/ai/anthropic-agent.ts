@@ -188,7 +188,26 @@ function toAnthropicMessages(messages: AgentMessage[]): Array<Record<string, unk
     }
   }
   flush();
+  markHistoryForCache(out);
   return out;
+}
+
+/**
+ * Add an incremental cache breakpoint on the LAST message so the whole prior transcript is cached and
+ * reused next turn — including any UPLOADED ATTACHMENT (it sits in the first user message and would
+ * otherwise be reprocessed on every turn). Anthropic matches the longest cached prefix, so the
+ * breakpoint moving forward each turn extends the cache. 3rd ephemeral breakpoint (with system + the
+ * last tool) — within Anthropic's 4-breakpoint limit.
+ */
+function markHistoryForCache(out: Array<Record<string, unknown>>): void {
+  const last = out[out.length - 1];
+  if (!last) return;
+  if (typeof last.content === 'string') {
+    last.content = [{ type: 'text', text: last.content, cache_control: CACHE_CONTROL }];
+  } else if (Array.isArray(last.content) && last.content.length > 0) {
+    const blocks = last.content as Array<Record<string, unknown>>;
+    blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: CACHE_CONTROL };
+  }
 }
 
 function mapStop(reason: string): AgentStopReason {

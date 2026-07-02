@@ -13,8 +13,10 @@ import {
   MAX_LOGO_BASE64_LEN,
   MCP_TOOL_CATALOG,
   type PlatformLogo,
+  type AiProviderKind,
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
+import { modelPlaceholder } from './AiConfig';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
 import { applyBranding } from '../lib/use-branding';
@@ -95,7 +97,7 @@ export function InstanceSettings() {
 
   // Platform-wide AI assistant config (the key is write-only; a presence flag comes back).
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiProvider, setAiProvider] = useState<'anthropic' | 'openai'>('anthropic');
+  const [aiProvider, setAiProvider] = useState<AiProviderKind>('anthropic');
   const [aiModel, setAiModel] = useState('');
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiKey, setAiKey] = useState('');
@@ -724,15 +726,21 @@ export function InstanceSettings() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <label className="flex flex-col text-xs text-slate-500">
               Provider
-              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as 'anthropic' | 'openai')}>
+              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI-compatible</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI-compatible (custom endpoint)</option>
               </select>
             </label>
             <label className="flex flex-col text-xs text-slate-500">
               Model
-              <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-haiku-4-5'} />
+              <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={modelPlaceholder(aiProvider)} />
             </label>
+            {aiProvider === 'openrouter' && (
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+                Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
+              </p>
+            )}
             {aiProvider === 'openai' && (
               <label className="col-span-2 flex flex-col text-xs text-slate-500">
                 Base URL <span className="text-slate-400">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>

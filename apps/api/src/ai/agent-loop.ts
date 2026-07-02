@@ -11,7 +11,16 @@ export type LoopEvent =
   | { type: 'done'; message: string }
   | { type: 'error'; code: LoopErrorCode; message: string };
 
-export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | 'max_tokens' | 'aborted';
+export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | 'max_tokens' | 'aborted' | 'stuck';
+
+/**
+ * How many CONSECUTIVE turns where EVERY tool call failed we tolerate before giving up. A capable
+ * model reads the error it's handed and recovers next turn; a weak one loops forever on the same
+ * mistake (omitting a required argument, or hammering into a rate-limit) and silently burns the whole
+ * token budget. Any single successful tool call resets the counter, so a productive session that hits
+ * the odd error is never affected — only a genuinely stuck loop trips this.
+ */
+const MAX_CONSECUTIVE_FAILED_TURNS = 4;
 
 export interface LoopOptions {
   provider: AgentProvider;
@@ -44,6 +53,7 @@ export interface LoopResult {
 export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent, LoopResult> {
   const messages = [...opts.messages];
   const maxIterations = opts.maxIterations ?? 25;
+  let consecutiveFailedTurns = 0;
 
   for (let iter = 0; iter < maxIterations; iter++) {
     if (opts.signal?.aborted) return { state: 'error', messages };
@@ -118,6 +128,7 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
       return { state: 'done', messages };
     }
 
+    let turnFailures = 0;
     for (const call of toolCalls) {
       if (opts.signal?.aborted) return { state: 'error', messages: historyBeforeTurn };
       yield { type: 'tool', id: call.id, name: call.name, input: call.input };
@@ -130,13 +141,35 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
         // preserved: the newest comparison always survives + the agent re-renders when it wants to look.
         if (result.content.some((p) => p.type === 'image')) dropStaleScreenshots(messages);
         messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result.content, isError: result.isError });
+        if (result.isError) turnFailures++;
         yield { type: 'tool_result', id: call.id, name: call.name, ok: !result.isError, summary: summarize(result.content) };
       } catch (err) {
         // Feed the failure back to the model as an error result so it can recover next turn.
         const message = errMsg(err);
         messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: [{ type: 'text', text: message }], isError: true });
+        turnFailures++;
         yield { type: 'tool_result', id: call.id, name: call.name, ok: false, summary: message };
       }
+    }
+
+    // Flail guard: a turn where EVERY tool call failed means no progress. Track consecutive such turns
+    // and bail once a weak model is clearly looping on the same error (bad arguments, repeated 429s) —
+    // otherwise it silently grinds through every iteration burning the whole token budget. Any success
+    // resets the streak, so this never touches a productive session that hits an occasional error.
+    if (turnFailures === toolCalls.length) {
+      if (++consecutiveFailedTurns >= MAX_CONSECUTIVE_FAILED_TURNS) {
+        yield {
+          type: 'error',
+          code: 'stuck',
+          message:
+            'The assistant made several tool calls in a row that all failed and isn’t recovering. ' +
+            'This usually means the selected model isn’t strong enough at tool use — try a more capable ' +
+            'model, or restate the request more simply.',
+        };
+        return { state: 'error', messages };
+      }
+    } else {
+      consecutiveFailedTurns = 0;
     }
   }
 

@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type { AiProviderKind } from '@sitewright/schema';
 import { api, type AiConfigInput, type AiTestResult } from '../api';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
+
+/** A representative model id for each provider (OpenRouter uses `vendor/model`). */
+export function modelPlaceholder(p: AiProviderKind): string {
+  return p === 'anthropic' ? 'claude-haiku-4-5' : p === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'gpt-4o-mini';
+}
 
 /**
  * Per-project "bring your own agent" AI config — when enabled + keyed it OVERRIDES the platform-wide
@@ -11,7 +17,7 @@ import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '
 export function AiConfig({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
-  const [provider, setProvider] = useState<'anthropic' | 'openai'>('anthropic');
+  const [provider, setProvider] = useState<AiProviderKind>('anthropic');
   const [model, setModel] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -120,15 +126,21 @@ export function AiConfig({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col text-xs text-slate-500">
               Provider
-              <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as 'anthropic' | 'openai')}>
+              <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI-compatible</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI-compatible (custom endpoint)</option>
               </select>
             </label>
             <label className="flex flex-col text-xs text-slate-500">
               Model
-              <input className={field} aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === 'openai' ? 'gpt-4o-mini' : 'claude-haiku-4-5'} />
+              <input className={field} aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={modelPlaceholder(provider)} />
             </label>
+            {provider === 'openrouter' && (
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+                Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
+              </p>
+            )}
             {provider === 'openai' && (
               <label className="col-span-2 flex flex-col text-xs text-slate-500">
                 Base URL <span className="text-slate-400">(public host only)</span>

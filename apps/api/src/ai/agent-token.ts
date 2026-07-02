@@ -12,6 +12,27 @@ export interface MintedAgentToken {
 }
 
 /**
+ * In-process registry of the `swk_` tokens for agent loops running RIGHT NOW. Populated only by
+ * {@link mintAgentToken} (server-internal — these strings never leave the process) and drained by
+ * {@link clearAgentTokenActive} when a loop ends. Consulted by the rate-limiter's allowList so the
+ * agent's own tool calls bypass the per-token request cap: a single "build the page in stages" turn
+ * fires many rapid writes and would otherwise self-throttle into spurious 429s. This exempts ONLY
+ * rate-limiting, never auth — an expired/stale entry still fails the normal bearer check. The agent
+ * stays bounded by its iteration limit, per-turn token metering, and the flail guard.
+ */
+const activeAgentTokens = new Set<string>();
+
+/** True if `token` is a currently-live agent-loop token (⇒ exempt from network rate-limiting). */
+export function isActiveAgentToken(token: string | null | undefined): boolean {
+  return token != null && activeAgentTokens.has(token);
+}
+
+/** Drop a token from the active-agent registry (called when its loop ends or fails to start). */
+export function clearAgentTokenActive(token: string): void {
+  activeAgentTokens.delete(token);
+}
+
+/**
  * Mint a short-lived, project-scoped `swk_` token for a server-side agent loop.
  * Mirrors {@link OAuthRepository.issueTokens}: inserts an `apiKeys` row with
  * `source:'oauth'` (validated the same way as any bearer, but hidden from the PAT
@@ -43,6 +64,7 @@ export async function mintAgentToken(
     source: 'oauth',
     createdAt: now,
   });
+  activeAgentTokens.add(gen.token);
   return { token: gen.token, keyId };
 }
 

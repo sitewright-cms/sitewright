@@ -10,6 +10,7 @@ import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { AnthropicAgentProvider } from '../src/ai/anthropic-agent.js';
 import { OpenAiAgentProvider, isOpenRouterUrl } from '../src/ai/openai-agent.js';
+import { buildAgentProvider } from '../src/ai/build-provider.js';
 import { runAgentLoop } from '../src/ai/agent-loop.js';
 import { parseSseStream, type SseEvent } from '../src/ai/sse-parse.js';
 import type { AgentMessage, AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
@@ -405,6 +406,19 @@ describe('adapter translation + error branches', () => {
     expect(body.messages![0]!.content).toEqual([{ type: 'text', text: 'just text', cache_control: { type: 'ephemeral' } }]);
   });
 
+  it('buildAgentProvider: provider "openrouter" pins the OpenAI adapter to openrouter.ai (+attribution)', async () => {
+    let url = '';
+    let headers: Record<string, string> = {};
+    const provider = buildAgentProvider({ provider: 'openrouter', apiKey: 'k', model: 'anthropic/claude-3.5-sonnet' }, async (u, init) => {
+      url = String(u);
+      headers = init!.headers as Record<string, string>;
+      return sseResponse('data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    await collect(provider.runTurn({ system: 's', tools: [], messages: [{ role: 'user', content: 'hi' }] }));
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions'); // fixed endpoint, ignores any baseUrl
+    expect(headers['X-Title']).toBe('Sitewright'); // OpenRouter behaviours light up automatically
+  });
+
   it('isOpenRouterUrl detects OpenRouter hosts (and rejects lookalikes)', () => {
     expect(isOpenRouterUrl('https://openrouter.ai/api/v1')).toBe(true);
     expect(isOpenRouterUrl('https://gateway.openrouter.ai/api/v1')).toBe(true);
@@ -588,6 +602,56 @@ describe('agent loop — error + termination branches', () => {
     const { events, result } = await run(provider, bridgeOk, 2);
     expect(result.state).toBe('error');
     expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'max_iterations' }));
+  });
+
+  it('bails with a "stuck" error when every tool call keeps failing (weak model looping)', async () => {
+    // The MiniMax-style failure: the model calls a tool every turn but always with bad/missing args,
+    // so every call fails. Without the flail guard it grinds through all 25 iterations burning tokens.
+    const provider: AgentProvider = {
+      model: 'm',
+      async *runTurn() {
+        yield { type: 'tool_call', id: 't', name: 'put_content', input: {} };
+        yield { type: 'stop', reason: 'tool_use' };
+      },
+    };
+    const alwaysFails = {
+      listTools: async () => [],
+      callTool: async () => ({ content: [{ type: 'text' as const, text: 'Invalid arguments: kind is required' }], isError: true }),
+    };
+    const { events, result } = await run(provider, alwaysFails);
+    expect(result.state).toBe('error');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'stuck' }));
+    // It gives up after EXACTLY 4 failed turns (one tool call each), long before the 25-iteration ceiling.
+    expect(events.filter((e) => e.type === 'tool_result').length).toBe(4);
+  });
+
+  it('does NOT trip the stuck guard when a success breaks the failure streak', async () => {
+    let turn = 0;
+    const provider: AgentProvider = {
+      model: 'm',
+      async *runTurn() {
+        turn++;
+        if (turn > 6) {
+          yield { type: 'text_delta', text: 'all done' };
+          yield { type: 'stop', reason: 'end_turn' };
+          return;
+        }
+        yield { type: 'tool_call', id: `t${turn}`, name: 'put_content', input: {} };
+        yield { type: 'stop', reason: 'tool_use' };
+      },
+    };
+    // Alternate fail / success so the consecutive-failure streak never reaches the limit.
+    let n = 0;
+    const alternating = {
+      listTools: async () => [],
+      callTool: async () => {
+        n++;
+        return { content: [{ type: 'text' as const, text: 'x' }], isError: n % 2 === 1 };
+      },
+    };
+    const { events, result } = await run(provider, alternating);
+    expect(events).not.toContainEqual(expect.objectContaining({ code: 'stuck' }));
+    expect(result.state).toBe('done');
   });
 });
 

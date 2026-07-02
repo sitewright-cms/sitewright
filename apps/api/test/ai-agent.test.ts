@@ -653,6 +653,35 @@ describe('agent loop — error + termination branches', () => {
     expect(events).not.toContainEqual(expect.objectContaining({ code: 'stuck' }));
     expect(result.state).toBe('done');
   });
+
+  it('bails when failing WRITES are interleaved with successful READS (the real weak-model defeat)', async () => {
+    // The pattern that slipped past the consecutive-only guard: every turn does a successful read AND a
+    // failing write, so no turn is "all failed" (streak stays 0) yet the model never accomplishes
+    // anything. The TOTAL-failure cap catches it regardless.
+    let turn = 0;
+    const provider: AgentProvider = {
+      model: 'm',
+      async *runTurn() {
+        turn++;
+        yield { type: 'tool_call', id: `r${turn}`, name: 'get_content', input: {} };
+        yield { type: 'tool_call', id: `w${turn}`, name: 'put_content', input: {} };
+        yield { type: 'stop', reason: 'tool_use' };
+      },
+    };
+    const readsOkWritesFail = {
+      listTools: async () => [],
+      callTool: async (name: string) =>
+        name === 'put_content'
+          ? { content: [{ type: 'text' as const, text: 'Invalid arguments: kind required' }], isError: true }
+          : { content: [{ type: 'text' as const, text: 'ok' }], isError: false },
+    };
+    const { events, result } = await run(provider, readsOkWritesFail);
+    expect(result.state).toBe('error');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'stuck' }));
+    // One failing write per turn ⇒ bails on the 6th (MAX_TOTAL_TOOL_FAILURES), never via the consecutive
+    // guard (a read succeeds every turn), proving interleaved reads can't keep it alive forever.
+    expect(events.filter((e) => e.type === 'tool_result' && (e as { ok?: boolean }).ok === false).length).toBe(6);
+  });
 });
 
 describe('sse-parse edge cases', () => {

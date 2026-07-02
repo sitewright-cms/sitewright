@@ -125,7 +125,10 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const reader = fakeClient();
     const r = await connect(reader, readScope);
     expect((await r.callTool({ name: 'list_revisions', arguments: { kind: 'page', id: 'home' } })).isError).toBeFalsy();
-    expect(callsOf(reader).listRevisions).toHaveBeenCalledWith('page', 'home');
+    expect(callsOf(reader).listRevisions).toHaveBeenCalledWith('page', 'home', undefined);
+    // An ENTRY forwards its owning dataset (its id is only unique per-dataset).
+    await r.callTool({ name: 'list_revisions', arguments: { kind: 'entry', id: 'row_1', dataset: 'team' } });
+    expect(callsOf(reader).listRevisions).toHaveBeenCalledWith('entry', 'row_1', 'team');
     const denied = await r.callTool({ name: 'restore_revision', arguments: { kind: 'page', id: 'home', revisionId: 'rev1' } });
     expect(denied.isError).toBe(true);
     expect(text(denied)).toMatch(/content:write/);
@@ -134,7 +137,10 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const writer = fakeClient();
     const w = await connect(writer, writeScope);
     expect((await w.callTool({ name: 'restore_revision', arguments: { kind: 'page', id: 'home', revisionId: 'rev1' } })).isError).toBeFalsy();
-    expect(callsOf(writer).restoreRevision).toHaveBeenCalledWith('page', 'home', 'rev1');
+    expect(callsOf(writer).restoreRevision).toHaveBeenCalledWith('page', 'home', 'rev1', undefined);
+    // An ENTRY forwards its owning dataset to restore the RIGHT one (its id repeats across datasets).
+    await w.callTool({ name: 'restore_revision', arguments: { kind: 'entry', id: 'row_1', revisionId: 'rev1', dataset: 'team' } });
+    expect(callsOf(writer).restoreRevision).toHaveBeenCalledWith('entry', 'row_1', 'rev1', 'team');
   });
 });
 
@@ -650,10 +656,14 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(calls(client).listContent).toHaveBeenCalledWith('dataset');
   });
 
-  it('get_content forwards kind + id', async () => {
+  it('get_content forwards kind + id (+ dataset for an entry)', async () => {
     const client = fakeClient();
-    await (await connect(client, readScope)).callTool({ name: 'get_content', arguments: { kind: 'dataset', id: 'x' } });
-    expect(calls(client).getContent).toHaveBeenCalledWith('dataset', 'x');
+    const mcp = await connect(client, readScope);
+    await mcp.callTool({ name: 'get_content', arguments: { kind: 'dataset', id: 'x' } });
+    expect(calls(client).getContent).toHaveBeenCalledWith('dataset', 'x', undefined);
+    // An ENTRY forwards its owning dataset — its id is only unique within that dataset.
+    await mcp.callTool({ name: 'get_content', arguments: { kind: 'entry', id: 'row_1', dataset: 'team' } });
+    expect(calls(client).getContent).toHaveBeenCalledWith('entry', 'row_1', 'team');
   });
 
   it('preview_page requests a screenshot; with none it falls back to the HTML source', async () => {
@@ -732,11 +742,15 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(text(res)).toContain('home');
   });
 
-  it('delete_content forwards kind + id and reports the deletion', async () => {
+  it('delete_content forwards kind + id (+ dataset for an entry) and reports the deletion', async () => {
     const client = fakeClient();
-    const res = await (await connect(client, deleteScope)).callTool({ name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } });
-    expect(calls(client).deleteContent).toHaveBeenCalledWith('dataset', 'x');
+    const mcp = await connect(client, deleteScope);
+    const res = await mcp.callTool({ name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } });
+    expect(calls(client).deleteContent).toHaveBeenCalledWith('dataset', 'x', undefined);
     expect(text(res)).toContain('dataset/x');
+    // An ENTRY forwards its owning dataset.
+    await mcp.callTool({ name: 'delete_content', arguments: { kind: 'entry', id: 'row_1', dataset: 'team' } });
+    expect(calls(client).deleteContent).toHaveBeenCalledWith('entry', 'row_1', 'team');
   });
 
   it('a content:write token (no content:delete) is refused delete tools — and no client call', async () => {

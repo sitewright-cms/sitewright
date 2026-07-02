@@ -9,7 +9,7 @@ const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEn
   putDataset: vi.fn<(pid: string, d: Dataset) => Promise<unknown>>(),
   putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>(),
   deleteDataset: vi.fn<(pid: string, id: string) => Promise<unknown>>(),
-  deleteEntry: vi.fn<(pid: string, id: string) => Promise<unknown>>(),
+  deleteEntry: vi.fn<(pid: string, id: string, dataset: string) => Promise<unknown>>(),
   renameDataset: vi.fn<(pid: string, id: string, slug: string, cascade: boolean) => Promise<unknown>>(),
 }));
 vi.mock('../src/api', () => ({
@@ -19,7 +19,7 @@ vi.mock('../src/api', () => ({
     putDataset: (pid: string, d: Dataset) => putDataset(pid, d),
     putEntry: (pid: string, e: Entry) => putEntry(pid, e),
     deleteDataset: (pid: string, id: string) => deleteDataset(pid, id),
-    deleteEntry: (pid: string, id: string) => deleteEntry(pid, id),
+    deleteEntry: (pid: string, id: string, dataset: string) => deleteEntry(pid, id, dataset),
     renameDataset: (pid: string, id: string, slug: string, cascade: boolean) => renameDataset(pid, id, slug, cascade),
   },
 }));

@@ -475,6 +475,13 @@ export const content = sqliteTable(
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
+    /**
+     * Uniqueness SCOPE for the (kind, entityId) key. `''` for every singleton/project-global kind; for
+     * `entry` it is the OWNING DATASET SLUG — so an entry id only has to be unique WITHIN its dataset,
+     * and two datasets can each hold e.g. `intro` / `row_1`. Ids stay CLEAN (the dataset is never
+     * encoded into the id): GET/DELETE of an entry pass the dataset, and PUT derives it from the body.
+     */
+    scope: text('scope').notNull().default(''),
     data: text('data', { mode: 'json' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -486,7 +493,7 @@ export const content = sqliteTable(
     deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
-    uniqueIndex('uniq_content').on(t.projectId, t.kind, t.entityId),
+    uniqueIndex('uniq_content').on(t.projectId, t.kind, t.scope, t.entityId),
     index('content_project_kind_idx').on(t.projectId, t.kind),
     index('content_deleted_idx').on(t.projectId, t.kind, t.deletedAt),
   ],
@@ -512,6 +519,9 @@ export const contentRevisions = sqliteTable(
       enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
     }).notNull(),
     entityId: text('entity_id').notNull(),
+    /** Uniqueness scope mirroring `content.scope` (dataset slug for `entry`, else `''`) so an entry's
+     *  history is keyed per-dataset — matching the live row it snapshots. */
+    scope: text('scope').notNull().default(''),
     data: text('data', { mode: 'json' }).notNull(),
     op: text('op', { enum: ['put', 'delete', 'restore'] }).notNull(),
     /** Who authored this revision (the session user, or the API-key creator for an agent write). */
@@ -522,7 +532,7 @@ export const contentRevisions = sqliteTable(
     revisionAt: integer('revision_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
-    index('content_rev_entity_idx').on(t.projectId, t.kind, t.entityId, t.revisionAt),
+    index('content_rev_entity_idx').on(t.projectId, t.kind, t.scope, t.entityId, t.revisionAt),
     // The project-wide activity feed (History view) orders all of a project's revisions by time.
     index('content_rev_project_time_idx').on(t.projectId, t.revisionAt),
   ],

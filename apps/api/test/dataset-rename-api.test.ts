@@ -21,7 +21,8 @@ async function setup() {
   const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'dev@acme.test', password: 'Pw-secret-1' } }));
   const pid = ((await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'P', slug: 'p' } })).json() as { project: { id: string } }).project.id;
   const put = (kind: string, id: string, body: object) => app.inject({ method: 'PUT', url: `/projects/${pid}/content/${kind}/${id}`, cookies: { sw_session: t }, payload: body });
-  const get = (kind: string, id: string) => app.inject({ method: 'GET', url: `/projects/${pid}/content/${kind}/${id}`, cookies: { sw_session: t } });
+  const get = (kind: string, id: string, dataset?: string) =>
+    app.inject({ method: 'GET', url: `/projects/${pid}/content/${kind}/${id}${dataset ? `?dataset=${dataset}` : ''}`, cookies: { sw_session: t } });
   return { t, pid, put, get };
 }
 
@@ -40,9 +41,10 @@ describe('POST /projects/:id/datasets/:id/rename', () => {
     expect(res.json()).toMatchObject({ oldSlug: 'items', newSlug: 'features', cascaded: true, entriesUpdated: 2, pagesUpdated: 1, referencesUpdated: 1 });
 
     expect((await get('dataset', 'ds1')).json().item.slug).toBe('features');
-    expect((await get('entry', 'e1')).json().item.dataset).toBe('features');
-    expect((await get('entry', 'e2')).json().item.dataset).toBe('features');
-    expect((await get('entry', 'e3')).json().item.dataset).toBe('other'); // untouched
+    // The cascade re-scoped e1/e2 to the NEW dataset slug (they move with the rename); e3 stays in 'other'.
+    expect((await get('entry', 'e1', 'features')).json().item.dataset).toBe('features');
+    expect((await get('entry', 'e2', 'features')).json().item.dataset).toBe('features');
+    expect((await get('entry', 'e3', 'other')).json().item.dataset).toBe('other'); // untouched
     const homeSrc = (await get('page', 'home')).json().item.source as string;
     expect(homeSrc).toContain('dataset.features');
     expect(homeSrc).toContain('dataset="features"');
@@ -58,7 +60,8 @@ describe('POST /projects/:id/datasets/:id/rename', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ newSlug: 'features', cascaded: false, entriesUpdated: 0 });
     expect((await get('dataset', 'ds1')).json().item.slug).toBe('features');
-    expect((await get('entry', 'e1')).json().item.dataset).toBe('items'); // intentionally NOT cascaded
+    // cascade:false leaves the entry under its ORIGINAL dataset scope ('items') — unmoved.
+    expect((await get('entry', 'e1', 'items')).json().item.dataset).toBe('items'); // intentionally NOT cascaded
   });
 
   it('rejects renaming to a slug another dataset already uses (409)', async () => {

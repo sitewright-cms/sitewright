@@ -325,7 +325,10 @@ export function DatasetManager({ project }: { project: Project }) {
   }
 
   async function removeEntry(id: string) {
-    const label = selected ? entryLabel(selected, entries.find((e) => e.id === id) ?? ({ id } as Entry)) : id;
+    if (!selected) return;
+    // Look the entry up WITHIN the selected dataset — an id is only unique per-dataset, so a bare
+    // `entries.find(e.id === id)` could match a same-id entry in another dataset.
+    const label = entryLabel(selected, entries.find((e) => e.id === id && e.dataset === selected.slug) ?? ({ id } as Entry));
     const ok = await confirm({
       title: 'Delete entry',
       message: `Delete the entry "${label}"? This cannot be undone.`,
@@ -333,7 +336,7 @@ export function DatasetManager({ project }: { project: Project }) {
     });
     if (!ok) return;
     try {
-      await api.deleteEntry(project.id, id);
+      await api.deleteEntry(project.id, id, selected.slug);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to delete entry');

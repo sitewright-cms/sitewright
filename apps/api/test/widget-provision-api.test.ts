@@ -30,8 +30,12 @@ async function setup(email: string) {
 
 const putPage = (app: FastifyInstance, t: string, pid: string, source: string) =>
   app.inject({ method: 'PUT', url: `/projects/${pid}/content/page/home`, cookies: { sw_session: t }, payload: { id: 'home', path: '', title: 'Home', source } });
-const getJson = (app: FastifyInstance, t: string, pid: string, kind: string, id: string) =>
-  app.inject({ method: 'GET', url: `/projects/${pid}/content/${kind}/${id}`, cookies: { sw_session: t } });
+const getJson = (app: FastifyInstance, t: string, pid: string, kind: string, id: string, dataset?: string) =>
+  app.inject({
+    method: 'GET',
+    url: `/projects/${pid}/content/${kind}/${id}${dataset ? `?dataset=${dataset}` : ''}`,
+    cookies: { sw_session: t },
+  });
 
 describe('Widget provisioning on page save', () => {
   it('saving a page that composes {{> hero-slider}} provisions the hero dataset + seed entry', async () => {
@@ -43,7 +47,7 @@ describe('Widget provisioning on page save', () => {
     const fields = (ds.json() as { item: { fields: Array<{ name: string; type: string }> } }).item.fields;
     expect(fields.find((f) => f.name === 'slides')?.type).toBe('list');
 
-    const entry = await getJson(app, t, projectId, 'entry', 'config');
+    const entry = await getJson(app, t, projectId, 'entry', 'config', 'hero');
     expect(entry.statusCode).toBe(200);
     expect(Array.isArray((entry.json() as { item: { values: { slides: unknown } } }).item.values.slides)).toBe(true);
   });
@@ -66,7 +70,7 @@ describe('Widget provisioning on page save', () => {
     });
     // Re-save the page → provisioning must NOT clobber the edit.
     expect((await putPage(app, t, projectId, '<section>{{> hero-slider}}</section>')).statusCode).toBe(200);
-    const entry = (await getJson(app, t, projectId, 'entry', 'config')).json() as { item: { values: { autoplay: boolean; slides: Array<{ caption: string }> } } };
+    const entry = (await getJson(app, t, projectId, 'entry', 'config', 'hero')).json() as { item: { values: { autoplay: boolean; slides: Array<{ caption: string }> } } };
     expect(entry.item.values.autoplay).toBe(false);
     expect(entry.item.values.slides[0]?.caption).toBe('Edited');
   });

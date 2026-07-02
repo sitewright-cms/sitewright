@@ -803,7 +803,11 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    its entries + loops. rename_dataset ALSO takes a "name" — set a human display name so the dataset doesn't
    stay the import's generic "List"/"List 2" in the editor. ITEM KEYS (entry ids) follow the same rule: they
    are underscore identifiers (used as {{item.<dataset>.<id>}} paths + data-sw-entry edit handles), NEVER
-   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). LOOP FIELDS STAY BARE — do NOT put
+   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). An entry id only has to be unique
+   WITHIN its dataset — two datasets can each hold a clean "intro"/"row_1", so DON'T disambiguate across
+   datasets. Because ids repeat across datasets, get_content / delete_content / list_revisions on an ENTRY
+   take a "dataset" arg (its owning slug) alongside the id; put_content needs none (the entry body carries
+   "dataset"). LOOP FIELDS STAY BARE — do NOT put
    data-sw-* directives inside a {{#each dataset.X}} ({{title}}, src="{{sw-url image}}", NOT
    <span data-sw-text>). A dataset is edited in the DATASET EDITOR (the data rail), and the editor auto-marks
    each rendered row with data-sw-entry so a CLICK on the row in the preview opens that item's editor — you

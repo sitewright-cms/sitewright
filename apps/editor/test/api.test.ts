@@ -535,7 +535,9 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/content/entry/e1');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteEntry('p', 'e1');
+    await api.deleteEntry('p', 'e1', 'posts');
+    // An entry id is only unique per-dataset, so delete carries the owning dataset as `?dataset=`.
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/content/entry/e1?dataset=posts');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
@@ -1102,7 +1104,7 @@ describe('unauthorized (401) handling', () => {
     await api.listDatasets('p1');
     await api.getDataset('p1', 'team');
     await api.listEntries('p1');
-    await api.getEntry('p1', 'e1');
+    await api.getEntry('p1', 'e1', 'team');
     await api.stockProviders('p1');
     await api.listMediaFolders('p1');
     await api.buttonPreviewCss();
@@ -1114,7 +1116,7 @@ describe('unauthorized (401) handling', () => {
       '/projects/p1/content/dataset',
       '/projects/p1/content/dataset/team',
       '/projects/p1/content/entry',
-      '/projects/p1/content/entry/e1',
+      '/projects/p1/content/entry/e1?dataset=team',
       '/projects/p1/stock/providers',
       '/projects/p1/media/folders',
       '/authoring/button-preview-css',

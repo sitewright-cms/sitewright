@@ -158,13 +158,14 @@ export class ContentRepository {
     ctx: ProjectContext,
     kind: ContentKind,
     entityId: string,
+    scope: string,
     data: unknown,
     op: RevisionOp,
     note?: string,
   ): Promise<void> {
     if (!this.revisions) return;
     try {
-      await this.revisions.record(ctx, kind, entityId, data, op, note);
+      await this.revisions.record(ctx, kind, entityId, scope, data, op, note);
     } catch {
       /* best-effort: never fail a save because history couldn't be written */
     }
@@ -203,8 +204,12 @@ export class ContentRepository {
     return row?.updatedAt ?? null;
   }
 
-  async get(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<unknown> {
-    const row = await this.row(this.db, ctx, kind, entityId);
+  /**
+   * Fetch one entity's data. `scope` narrows the (kind, entityId) key: pass the OWNING DATASET SLUG for
+   * an `entry` (its id is only unique within its dataset); leave it `''` for every project-global kind.
+   */
+  async get(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<unknown> {
+    const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
     return row.data;
   }
@@ -227,24 +232,30 @@ export class ContentRepository {
     // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
     // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
     const key = this.entityKey(kind, entityId, parsed);
+    // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
+    const scope = this.scopeForData(kind, parsed);
     await this.writeRow(this.db, ctx, kind, key, parsed);
     // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
-    await this.recordRevision(ctx, kind, key, parsed, revisionMeta?.op ?? 'put', revisionMeta?.note);
+    await this.recordRevision(ctx, kind, key, scope, parsed, revisionMeta?.op ?? 'put', revisionMeta?.note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor });
     return parsed;
   }
 
-  async remove(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<void> {
+  /**
+   * Delete one entity. `scope` narrows the (kind, entityId) key — pass the OWNING DATASET SLUG for an
+   * `entry` (so the right dataset's row is removed), `''` for project-global kinds.
+   */
+  async remove(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<void> {
     if (kind === 'settings') {
       throw new ForbiddenError('the settings singleton cannot be deleted');
     }
-    const row = await this.row(this.db, ctx, kind, entityId);
+    const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
     // Tombstone BEFORE the delete, and NOT best-effort (unlike `put` history): a lost put-revision is
     // harmless because the entity still exists, but a lost delete-tombstone would make the entity
     // unrecoverable. So if history can't be written we abort the delete rather than destroy data.
     // (No-op for non-revisioned kinds — record() filters them.)
-    await this.revisions?.record(ctx, kind, entityId, row.data, 'delete');
+    await this.revisions?.record(ctx, kind, entityId, scope, row.data, 'delete');
     await this.db
       .delete(content)
       .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
@@ -588,7 +599,10 @@ export class ContentRepository {
     await this.db.transaction(async (tx) => {
       const exec = tx as unknown as Executor;
       await this.writeRow(exec, ctx, 'dataset', datasetId, renamed);
-      for (const e of entriesToUpdate) await this.writeRow(exec, ctx, 'entry', e.id, e);
+      // Entries are dataset-SCOPED: a rename moves each entry's row from the old slug's scope to the new
+      // one (in place) — a plain writeRow would compute the new scope, miss the old-scope row, and insert
+      // a duplicate. rescopeEntry re-keys the single existing row.
+      for (const e of entriesToUpdate) await this.rescopeEntry(exec, ctx, e.id, oldSlug, e);
       for (const { p, source } of pagesToUpdate) await this.writeRow(exec, ctx, 'page', p.id, { ...p, source });
       for (const { t, source } of templatesToUpdate) await this.writeRow(exec, ctx, 'template', t.id, { ...t, source });
       for (const d of refDatasets) await this.writeRow(exec, ctx, 'dataset', d.id, d);
@@ -623,6 +637,15 @@ export class ContentRepository {
     return entityId;
   }
 
+  /**
+   * The uniqueness SCOPE of a row derived from its data: an `entry` is scoped to its owning DATASET
+   * SLUG (so its id only has to be unique within that dataset); every other kind is project-global
+   * (`''`). Read-side callers (get/remove/row) that lack the data pass the scope explicitly.
+   */
+  private scopeForData(kind: ContentKind, data: unknown): string {
+    return kind === 'entry' ? String((data as { dataset?: string }).dataset ?? '') : '';
+  }
+
   private async writeRow(
     exec: Executor,
     ctx: ProjectContext,
@@ -631,7 +654,8 @@ export class ContentRepository {
     data: unknown,
   ): Promise<void> {
     const now = new Date();
-    const existing = await this.row(exec, ctx, kind, entityId);
+    const scope = this.scopeForData(kind, data);
+    const existing = await this.row(exec, ctx, kind, entityId, scope);
     if (existing) {
       await exec
         .update(content)
@@ -643,6 +667,7 @@ export class ContentRepository {
         projectId: ctx.projectId,
         kind,
         entityId,
+        scope,
         data,
         createdAt: now,
         updatedAt: now,
@@ -650,7 +675,25 @@ export class ContentRepository {
     }
   }
 
-  private async row(exec: Executor, ctx: ProjectContext, kind: ContentKind, entityId: string) {
+  /**
+   * Move an `entry` row from `oldScope` (its previous dataset slug) to the scope derived from `data`
+   * (its new dataset slug) — used by the dataset-rename cascade. Re-keys the ONE existing row in place
+   * (data + scope) so the entry moves rather than duplicating; inserts fresh if no old-scope row exists.
+   * (Entry revision history stays under the old scope — rename is rare and history is best-effort.)
+   */
+  private async rescopeEntry(exec: Executor, ctx: ProjectContext, entityId: string, oldScope: string, data: unknown): Promise<void> {
+    const existing = await this.row(exec, ctx, 'entry', entityId, oldScope);
+    if (!existing) {
+      await this.writeRow(exec, ctx, 'entry', entityId, data);
+      return;
+    }
+    await exec
+      .update(content)
+      .set({ data, scope: this.scopeForData('entry', data), updatedAt: new Date() })
+      .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
+  }
+
+  private async row(exec: Executor, ctx: ProjectContext, kind: ContentKind, entityId: string, scope = '') {
     const [row] = await exec
       .select()
       .from(content)
@@ -658,6 +701,7 @@ export class ContentRepository {
         and(
           eq(content.projectId, ctx.projectId),
           eq(content.kind, kind),
+          eq(content.scope, scope),
           eq(content.entityId, entityId),
         ),
       );

@@ -358,28 +358,32 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'get_content',
-    { description: 'Get one content entity by kind + id.', inputSchema: { kind: GENERIC_KIND, id: z.string() } },
-    gate(null, ({ kind, id }) => client.getContent(kind, id)),
+    {
+      description:
+        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
+    },
+    gate(null, ({ kind, id, dataset }) => client.getContent(kind, id, dataset)),
   );
 
   server.registerTool(
     'list_revisions',
     {
       description:
-        "List a content entity's revision history, newest first (id, op, who, when, note). Pair with restore_revision to roll back a bad edit.",
-      inputSchema: { kind: GENERIC_KIND, id: z.string() },
+        "List a content entity's revision history, newest first (id, op, who, when, note). Pair with restore_revision to roll back a bad edit. For an ENTRY also pass `dataset` (its owning dataset slug).",
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
-    gate('content:read', ({ kind, id }) => client.listRevisions(kind, id)),
+    gate('content:read', ({ kind, id, dataset }) => client.listRevisions(kind, id, dataset)),
   );
 
   server.registerTool(
     'restore_revision',
     {
       description:
-        'Restore a content entity to an earlier revision (its id from list_revisions). Non-destructive: the current version stays in history, and a deleted entity is recreated.',
-      inputSchema: { kind: GENERIC_KIND, id: z.string(), revisionId: z.string() },
+        'Restore a content entity to an earlier revision (its id from list_revisions). Non-destructive: the current version stays in history, and a deleted entity is recreated. For an ENTRY also pass `dataset` (its owning slug) — the same one used with list_revisions.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), revisionId: z.string(), dataset: z.string().optional() },
     },
-    gate('content:write', ({ kind, id, revisionId }) => client.restoreRevision(kind, id, revisionId)),
+    gate('content:write', ({ kind, id, revisionId, dataset }) => client.restoreRevision(kind, id, revisionId, dataset)),
   );
 
   server.registerTool(
@@ -575,10 +579,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   server.registerTool(
     'delete_content',
     {
-      description: 'Delete a content entity by kind + id. Needs the content:delete capability.',
-      inputSchema: { kind: GENERIC_KIND, id: z.string() },
+      description:
+        'Delete a content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug). Needs the content:delete capability.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
-    gate('content:delete', ({ kind, id }) => client.deleteContent(kind, id).then(() => ({ deleted: `${kind}/${id}` }))),
+    gate('content:delete', ({ kind, id, dataset }) => client.deleteContent(kind, id, dataset).then(() => ({ deleted: `${kind}/${id}` }))),
   );
 
   server.registerTool(

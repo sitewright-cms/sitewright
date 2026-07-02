@@ -221,8 +221,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   opts.onProgress?.({ phase: 'transform', total: parsed.length });
   const pageById = new Map(routeRes.pages.map((p) => [p.id, p] as const));
   const usedSlugs = new Set<string>();
-  // Entry ids are project-global storage keys (see inferDatasets) — dedupe across the WHOLE import, not
-  // per page, so two pages repeating the same content don't infer colliding entry ids (bundle-invalid).
+  // Entry ids are DATASET-SCOPED storage keys — this set holds `slug id` keys (see inferDatasets) so ids
+  // are deduped per-dataset across the whole import; the same clean `row_1` may recur in another dataset.
   const usedEntryIds = new Set<string>();
   const datasets: Dataset[] = [];
   const entries: Entry[] = [];

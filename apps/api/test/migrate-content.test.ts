@@ -27,9 +27,11 @@ async function makeProject(): Promise<string> {
 }
 
 // Raw-insert content that the validated repo would now REJECT (hyphenated dataset slugs), simulating
-// data written before DatasetSlugSchema was tightened to underscore identifiers.
+// data written before DatasetSlugSchema was tightened to underscore identifiers. Entries are stored under
+// their owning dataset's SCOPE (mirroring ContentRepository) so the rename cascade can re-key them.
 async function rawPut(pid: string, kind: ContentKind, entityId: string, data: unknown): Promise<void> {
-  await db.insert(content).values({ id: `raw-${kind}-${entityId}`, projectId: pid, kind, entityId, data, createdAt: new Date(), updatedAt: new Date() });
+  const scope = kind === 'entry' ? String((data as { dataset?: string }).dataset ?? '') : '';
+  await db.insert(content).values({ id: `raw-${kind}-${entityId}`, projectId: pid, kind, entityId, scope, data, createdAt: new Date(), updatedAt: new Date() });
 }
 async function rowData(pid: string, kind: ContentKind, entityId: string): Promise<Record<string, unknown>> {
   const [r] = await db

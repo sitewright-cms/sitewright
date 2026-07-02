@@ -28,6 +28,9 @@ export interface RevisionMeta {
   id: string;
   kind: ContentKind;
   entityId: string;
+  /** Uniqueness scope of the snapshotted entity — the owning dataset slug for an `entry`, else `''`.
+   *  Lets a project-wide feed row restore the RIGHT entity when an id repeats across datasets. */
+  scope: string;
   op: RevisionOp;
   userId: string;
   actor: RevisionActor;
@@ -69,6 +72,7 @@ const META_COLUMNS = {
   id: contentRevisions.id,
   kind: contentRevisions.kind,
   entityId: contentRevisions.entityId,
+  scope: contentRevisions.scope,
   op: contentRevisions.op,
   userId: contentRevisions.userId,
   actor: contentRevisions.actor,
@@ -112,6 +116,7 @@ export class RevisionsRepository {
     ctx: ProjectContext,
     kind: ContentKind,
     entityId: string,
+    scope: string,
     data: unknown,
     op: RevisionOp,
     note?: string,
@@ -129,7 +134,7 @@ export class RevisionsRepository {
       const [latest] = await this.db
         .select()
         .from(contentRevisions)
-        .where(this.entityWhere(ctx.projectId, kind, entityId))
+        .where(this.entityWhere(ctx.projectId, kind, entityId, scope))
         .orderBy(desc(contentRevisions.revisionAt))
         .limit(1);
       if (
@@ -154,6 +159,7 @@ export class RevisionsRepository {
       projectId: ctx.projectId,
       kind,
       entityId,
+      scope,
       data,
       op,
       userId: ctx.userId,
@@ -161,15 +167,18 @@ export class RevisionsRepository {
       note: note ?? null,
       revisionAt: now,
     });
-    await this.prune(ctx.projectId, kind, entityId);
+    await this.prune(ctx.projectId, kind, entityId, scope);
   }
 
-  /** Newest-first metadata for one entity's history (no `data` blobs). */
-  async list(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<RevisionMeta[]> {
+  /**
+   * Newest-first metadata for one entity's history (no `data` blobs). `scope` narrows the key — pass the
+   * OWNING DATASET SLUG for an `entry` (its history is per-dataset), `''` for project-global kinds.
+   */
+  async list(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<RevisionMeta[]> {
     const rows = await this.db
       .select(META_COLUMNS)
       .from(contentRevisions)
-      .where(this.entityWhere(ctx.projectId, kind, entityId))
+      .where(this.entityWhere(ctx.projectId, kind, entityId, scope))
       .orderBy(desc(contentRevisions.revisionAt));
     return rows as RevisionMeta[];
   }
@@ -215,20 +224,21 @@ export class RevisionsRepository {
     await this.db.delete(contentRevisions).where(lt(contentRevisions.revisionAt, cutoff));
   }
 
-  private entityWhere(projectId: string, kind: ContentKind, entityId: string) {
+  private entityWhere(projectId: string, kind: ContentKind, entityId: string, scope = '') {
     return and(
       eq(contentRevisions.projectId, projectId),
       eq(contentRevisions.kind, kind),
+      eq(contentRevisions.scope, scope),
       eq(contentRevisions.entityId, entityId),
     );
   }
 
-  /** Keep only the newest `maxPerEntity` rows for an entity. */
-  private async prune(projectId: string, kind: ContentKind, entityId: string): Promise<void> {
+  /** Keep only the newest `maxPerEntity` rows for an entity (within its scope). */
+  private async prune(projectId: string, kind: ContentKind, entityId: string, scope = ''): Promise<void> {
     const rows = await this.db
       .select({ id: contentRevisions.id })
       .from(contentRevisions)
-      .where(this.entityWhere(projectId, kind, entityId))
+      .where(this.entityWhere(projectId, kind, entityId, scope))
       .orderBy(desc(contentRevisions.revisionAt));
     const stale = rows.slice(this.maxPerEntity).map((r) => r.id);
     if (stale.length > 0) {

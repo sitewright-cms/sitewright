@@ -43,4 +43,28 @@ describe('MediaStorage.assetFilePaths', () => {
   it('rejects an invalid slug/asset segment before touching disk', async () => {
     await expect(storage.assetFilePaths('../evil', 'asset1')).rejects.toThrow();
   });
+
+  it('omits top-level skipNames (thumbnail cache) but keeps the original + nested files', async () => {
+    const dir = join(root, 'site', 'img1');
+    await mkdir(join(dir, 'file'), { recursive: true });
+    await writeFile(join(dir, 'photo.png'), 'orig'); // retained original → keep
+    await writeFile(join(dir, 'photo-sm.webp'), 't1'); // top-level derived thumbnail → skip
+    await writeFile(join(dir, 'photo-xl.avif'), 't2'); // top-level derived thumbnail → skip
+    await writeFile(join(dir, 'file', 'photo.png'), 'raw'); // nested → keep
+    // A NESTED file whose basename collides with a skip name must still be kept (depth-0-only skip).
+    await writeFile(join(dir, 'file', 'photo-sm.webp'), 'nested');
+
+    const skip = new Set(['photo-sm.webp', 'photo-xl.avif']);
+    const rels = (await storage.assetFilePaths('site', 'img1', skip)).map((f) => f.rel).sort();
+    expect(rels).toEqual(['file/photo-sm.webp', 'file/photo.png', 'photo.png']);
+  });
+
+  it('without skipNames enumerates everything (unchanged back-compat)', async () => {
+    const dir = join(root, 'site', 'img2');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'photo.png'), 'orig');
+    await writeFile(join(dir, 'photo-sm.webp'), 't1');
+    const rels = (await storage.assetFilePaths('site', 'img2')).map((f) => f.rel).sort();
+    expect(rels).toEqual(['photo-sm.webp', 'photo.png']);
+  });
 });

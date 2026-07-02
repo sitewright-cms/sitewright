@@ -19,10 +19,10 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   it('is a SMALL core (feature how-tos moved to on-demand guides)', () => {
     // The served instructions are the core + a generated topic index — kept well under the old ~24k
     // monolith so it isn't a heavy up-front prompt. (Ceiling covers the general behaviour directives —
-    // build-in-stages, editable, datasets, components, icons, preview-sparingly, snappy-chat, and the
-    // explicit write-tool argument shapes that keep weaker models from omitting required args — core
-    // rules that shape EVERY session, not feature how-tos.)
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(17_000);
+    // build-in-stages, editable, datasets, components, icons, preview-sparingly, snappy-chat, the
+    // explicit write-tool argument shapes that keep weaker models from omitting required args, and the
+    // chrome-slot vs page distinction — core rules that shape EVERY session, not feature how-tos.)
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(17_500);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {
@@ -40,6 +40,17 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     for (const probe of ['HERO', 'ALTERNATING FEATURE ROWS', 'STATS BAND', 'CLOSING CTA', 'type scale', '6-9']) {
       expect(body).toContain(probe);
     }
+  });
+
+  it('teaches CHROME SLOT authoring (website.mainNav/footer) so header/footer are not built as pages', () => {
+    // The exact failure a weaker model hit: it made pages/templates named header/footer instead of
+    // filling the site-wide slots. The core AND the nav guide must name the real mechanism.
+    for (const probe of ['website.mainNav', 'website.footer']) {
+      expect(DEFAULT_AGENT_INSTRUCTIONS).toContain(probe);
+      expect(AGENT_GUIDES.nav.body).toContain(probe);
+    }
+    // and it must be framed as settings (not a page/template)
+    expect(AGENT_GUIDES.nav.body).toMatch(/CHROME SLOTS/);
   });
 
   it('every guide has a title, summary, and non-trivial body', () => {

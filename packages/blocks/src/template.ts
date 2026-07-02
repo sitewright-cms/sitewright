@@ -156,10 +156,10 @@ const COMPILE_CACHE_LIMIT = 200;
  * says why it's reserved, and suggests the neutral replacement.
  */
 const SKELETON_LANDMARKS = new Map<string, string>([
-  ['nav', 'the skeleton owns the navigation landmark <nav id="main-nav"> (authored via the Main Navigation slot) — use a <div> or <ul> for nav groups inside your content'],
+  ['nav', 'the skeleton owns the navigation landmark <nav id="main-nav">. For the SITE-WIDE header shown on every page, put your <div>/<ul> markup in the website.mainNav setting (put_content("settings",…)); for a nav group inside ONE page, use a <div>/<ul> here'],
   ['main', 'the skeleton already wraps every page body in <main id="page-content"> — use a <div> or <section> for your content'],
-  ['footer', 'the skeleton owns the footer landmark <footer id="footer"> (authored via the Footer slot) — use a <div> for footer-style content'],
-  ['aside', 'the skeleton owns the sidebar landmarks <aside id="sidebar-left"> / <aside id="sidebar-right"> (authored via the Sidebar slots) — use a <div> for an aside inside your content'],
+  ['footer', 'the skeleton owns the footer landmark <footer id="footer">. For the SITE-WIDE footer shown on every page, put your <div> markup in the website.footer setting (put_content("settings",…)) — NOT a page or template; for footer-style content inside ONE page, use a <div> here'],
+  ['aside', 'the skeleton owns the sidebar landmarks <aside id="sidebar-left"> / <aside id="sidebar-right">. For a SITE-WIDE sidebar, put your <div> markup in the website.sidebarLeft / website.sidebarRight setting; for an aside inside ONE page, use a <div> here'],
 ]);
 
 /**

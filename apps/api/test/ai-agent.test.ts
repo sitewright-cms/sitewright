@@ -9,7 +9,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { AnthropicAgentProvider } from '../src/ai/anthropic-agent.js';
-import { OpenAiAgentProvider } from '../src/ai/openai-agent.js';
+import { OpenAiAgentProvider, isOpenRouterUrl } from '../src/ai/openai-agent.js';
 import { runAgentLoop } from '../src/ai/agent-loop.js';
 import { parseSseStream, type SseEvent } from '../src/ai/sse-parse.js';
 import type { AgentMessage, AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
@@ -403,6 +403,44 @@ describe('adapter translation + error branches', () => {
     });
     await collect(provider.runTurn({ system: 's', tools: [], messages: [{ role: 'user', content: 'just text' }] }));
     expect(body.messages![0]!.content).toEqual([{ type: 'text', text: 'just text', cache_control: { type: 'ephemeral' } }]);
+  });
+
+  it('isOpenRouterUrl detects OpenRouter hosts (and rejects lookalikes)', () => {
+    expect(isOpenRouterUrl('https://openrouter.ai/api/v1')).toBe(true);
+    expect(isOpenRouterUrl('https://gateway.openrouter.ai/api/v1')).toBe(true);
+    expect(isOpenRouterUrl('https://api.openai.com/v1')).toBe(false);
+    expect(isOpenRouterUrl('https://myopenrouter.ai/v1')).toBe(false); // lookalike domain
+    expect(isOpenRouterUrl('not a url')).toBe(false);
+  });
+
+  it('OpenRouter: adds attribution headers + ephemeral cache breakpoints (system + last user message)', async () => {
+    let body: { messages?: Array<Record<string, unknown>> } = {};
+    let headers: Record<string, string> = {};
+    const provider = new OpenAiAgentProvider('k', 'anthropic/claude-3.5-sonnet', 'https://openrouter.ai/api/v1', async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      headers = init!.headers as Record<string, string>;
+      return sseResponse('data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    await collect(provider.runTurn({ system: 'sys', tools: [], messages: [{ role: 'user', content: 'hello' }] }));
+    expect(headers['X-Title']).toBe('Sitewright');
+    expect(headers['HTTP-Referer']).toBeTruthy();
+    expect(body.messages![0]).toEqual({ role: 'system', content: [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }] });
+    expect(body.messages![1]!.content).toEqual([{ type: 'text', text: 'hello', cache_control: { type: 'ephemeral' } }]);
+  });
+
+  it('plain OpenAI (non-OpenRouter): NO attribution headers + NO cache_control (real OpenAI rejects it)', async () => {
+    let body: { messages?: Array<Record<string, unknown>> } = {};
+    let headers: Record<string, string> = {};
+    const provider = new OpenAiAgentProvider('k', 'gpt-4o-mini', 'https://api.openai.com/v1', async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      headers = init!.headers as Record<string, string>;
+      return sseResponse('data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    await collect(provider.runTurn({ system: 'sys', tools: [], messages: [{ role: 'user', content: 'hello' }] }));
+    expect(headers['HTTP-Referer']).toBeUndefined();
+    expect(body.messages![0]).toEqual({ role: 'system', content: 'sys' });
+    expect(body.messages![1]).toEqual({ role: 'user', content: 'hello' });
+    expect(JSON.stringify(body)).not.toContain('cache_control');
   });
 
   it('OpenAI: system-first + assistant tool_calls + tool role image-note; maps stop; throws on non-ok', async () => {

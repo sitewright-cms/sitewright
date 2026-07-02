@@ -26,6 +26,9 @@ const DEFAULT_MODEL = 'gpt-4o-mini';
  */
 export class OpenAiAgentProvider implements AgentProvider {
   readonly model: string;
+  /** OpenRouter-only extras (attribution headers + Anthropic-style cache breakpoints) are gated on this,
+   *  because `cache_control` in message content is rejected by real OpenAI + most other compat servers. */
+  private readonly isOpenRouter: boolean;
 
   constructor(
     private readonly apiKey: string,
@@ -34,23 +37,34 @@ export class OpenAiAgentProvider implements AgentProvider {
     private readonly fetchImpl: FetchLike = fetch,
   ) {
     this.model = model;
+    this.isOpenRouter = isOpenRouterUrl(baseURL);
   }
 
   async *runTurn(req: AgentTurnRequest): AsyncIterable<AgentStreamEvent> {
     const url = `${this.baseURL.replace(/\/$/, '')}/chat/completions`;
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      authorization: `Bearer ${this.apiKey}`,
+    };
+    if (this.isOpenRouter) {
+      // OpenRouter's OPTIONAL app-attribution headers (used for its model rankings). Only sent to
+      // OpenRouter; other providers would just ignore them, but we scope it to avoid leaking a referer.
+      headers['HTTP-Referer'] = 'https://github.com/sitewright-cms/sitewright';
+      headers['X-Title'] = 'Sitewright';
+    }
     const res = await this.fetchImpl(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${this.apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: req.model ?? this.model,
         stream: true,
         stream_options: { include_usage: true },
         max_tokens: req.maxTokens ?? 8192,
         tools: req.tools.map(toOpenAiTool),
-        messages: toOpenAiMessages(req.system, req.messages),
+        // On OpenRouter, add Anthropic-style ephemeral cache breakpoints (system + the last user
+        // message) so Anthropic/Gemini models cache their large static prefix — same win as our native
+        // Anthropic path. (Tool definitions can't carry cache_control in the OpenAI wire format.)
+        messages: toOpenAiMessages(req.system, req.messages, this.isOpenRouter),
       }),
       signal: req.signal,
     });
@@ -110,9 +124,39 @@ function toOpenAiTool(def: AgentToolDef): Record<string, unknown> {
   return { type: 'function', function: { name: def.name, description: def.description, parameters: def.parameters } };
 }
 
+/** Is this base URL OpenRouter? (host is openrouter.ai or a subdomain). Unparseable → false. */
+export function isOpenRouterUrl(baseURL: string): boolean {
+  try {
+    return /(^|\.)openrouter\.ai$/i.test(new URL(baseURL).host);
+  } catch {
+    return false;
+  }
+}
+
+/** The ephemeral cache marker OpenRouter forwards to Anthropic/Gemini (5-min TTL, like the native path). */
+const OR_CACHE = { type: 'ephemeral' as const };
+
+/**
+ * Add an incremental cache breakpoint to the LAST message's last content part (mirrors the native
+ * Anthropic history caching). Only touches system/user messages — a string content is promoted to the
+ * parts form so `cache_control` has somewhere to live; a tool/assistant last message is left alone.
+ */
+function markOpenAiLastForCache(out: Array<Record<string, unknown>>): void {
+  const last = out[out.length - 1];
+  if (!last || (last.role !== 'user' && last.role !== 'system')) return;
+  if (typeof last.content === 'string' && last.content) {
+    last.content = [{ type: 'text', text: last.content, cache_control: OR_CACHE }];
+  } else if (Array.isArray(last.content) && last.content.length > 0) {
+    const parts = last.content as Array<Record<string, unknown>>;
+    parts[parts.length - 1] = { ...parts[parts.length - 1], cache_control: OR_CACHE };
+  }
+}
+
 /** Neutral → OpenAI chat messages (system first; tool results as `tool` role). */
-function toOpenAiMessages(system: string, messages: AgentMessage[]): Array<Record<string, unknown>> {
-  const out: Array<Record<string, unknown>> = [{ role: 'system', content: system }];
+function toOpenAiMessages(system: string, messages: AgentMessage[], cacheable = false): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [
+    cacheable ? { role: 'system', content: [{ type: 'text', text: system, cache_control: OR_CACHE }] } : { role: 'system', content: system },
+  ];
   for (const m of messages) {
     if (m.role === 'user') {
       if (m.attachments?.length) {
@@ -145,6 +189,7 @@ function toOpenAiMessages(system: string, messages: AgentMessage[]): Array<Recor
       out.push({ role: 'tool', tool_call_id: m.toolCallId, content });
     }
   }
+  if (cacheable) markOpenAiLastForCache(out);
   return out;
 }
 

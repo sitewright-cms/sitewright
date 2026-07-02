@@ -7,7 +7,6 @@ import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest }
 import { z } from 'zod';
 import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
-import { buildSrcset } from '@sitewright/image-pipeline';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
@@ -94,7 +93,8 @@ export interface ImportRouteDeps {
     slug: string,
     buffer: Buffer,
     meta: { filename: string; mimetype: string; folder?: string },
-  ) => Promise<{ url: string; variants?: ReadonlyArray<{ format: 'avif' | 'webp'; width: number; height: number; path: string }> }>;
+    storeOpts?: { cap?: number },
+  ) => Promise<{ url: string }>;
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
@@ -272,12 +272,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
         try {
           const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', true);
-          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg', folder });
-          // Serve the efficient WebP variants the pipeline already produced via a responsive srcset
-          // (the <img src> stays the fallback for legacy browsers). Base = the asset dir of saved.url.
-          const base = saved.url.slice(0, saved.url.lastIndexOf('/'));
-          const srcset = saved.variants ? buildSrcset(saved.variants, 'webp', base) : undefined;
-          return { ref: saved.url, ...(srcset ? { srcset } : {}) };
+          // Importer HARD RULE: cap an oversized cloned image at 2400px, converting to WebP only when
+          // the cap actually bites (see storeOriginal). `saved.url` is the id-bearing DELIVERY route,
+          // which serves a compressed `xl` thumbnail by default — no eager variant srcset needed.
+          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg', folder }, { cap: 2400 });
+          return { ref: saved.url };
         } catch {
           return null;
         }
@@ -323,7 +322,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     });
     const bundle = result.bundles[0];
     if (!bundle) throw new Error('the import produced no content');
-    if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');
+    const invalid = result.diagnostics.filter((d) => d.code === 'bundle-invalid');
+    if (invalid.length) {
+      // Surface the SPECIFIC validateProject issues (a generic "invalid bundle" hides the real cause).
+      throw new Error(`the import produced an invalid bundle: ${invalid.map((d) => d.message).join('; ')}`);
+    }
     assertNoScripts(bundle);
     onProgress({ phase: 'assemble', detail: 'saving content' });
     await contentRepo.importBundle(ctx, project, toImportInput(bundle));

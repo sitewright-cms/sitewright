@@ -128,6 +128,25 @@ export function slugifyId(s: string): string {
     .slice(0, 50);
 }
 
+/**
+ * Re-key duplicate entry ids so they are unique across the WHOLE bundle (mutates in place, returns the
+ * same array). Per-page dataset extraction dedupes entry ids only WITHIN a dataset, but the content
+ * store keys every entry by `entityId` per project (validateProject enforces it) — so a dataset folded
+ * on multiple pages (a repeated nav/services grid) yields colliding ids like `consultancy` / `row_1`.
+ * The folded loop markup iterates via `{{#each}}` and never references an entry id, so re-keying the
+ * stored id (first occurrence keeps the bare id; later ones get an `_2`, `_3`, … suffix) is safe.
+ */
+export function uniquifyEntryIds<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    let id = entry.id;
+    for (let k = 2; seen.has(id); k += 1) id = `${entry.id}_${k}`;
+    seen.add(id);
+    entry.id = id;
+  }
+  return entries;
+}
+
 function slotValue(slot: Slot, ctx: TransformCtx): string {
   if (slot.type === 'text') return textContent([slot.el]).trim();
   if (slot.type === 'bg') {

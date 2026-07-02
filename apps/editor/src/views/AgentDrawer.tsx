@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, X, Send, Wrench, CircleCheck, CircleX, Paperclip, FileText } from 'lucide-react';
+import { Sparkles, X, Send, Wrench, CircleCheck, CircleX, Paperclip, FileText, SquarePen } from 'lucide-react';
 import { api, type AgentAttachment, type AgentGrantView, type ApiKeyCapability } from '../api';
 import { glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { OVERLAY_STACK } from './ui/overlay';
@@ -43,6 +43,50 @@ type ChatMsg =
 
 type Status = 'idle' | 'thinking' | 'working';
 
+/** Persisted chat state (per project) so the transcript survives a page reload. */
+interface PersistedChat {
+  conversationId?: string;
+  messages: ChatMsg[];
+  sessionTokens: number;
+}
+const CHAT_STORE_PREFIX = 'sw-agent-chat:';
+const chatKey = (projectId: string): string => `${CHAT_STORE_PREFIX}${projectId}`;
+
+/** Best-effort read of a persisted chat; any streaming flag is cleared (a reload ends any live turn). */
+function loadChat(projectId: string): PersistedChat | null {
+  try {
+    const raw = localStorage.getItem(chatKey(projectId));
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PersistedChat;
+    const messages = (p.messages ?? []).map((m) => (m.role === 'assistant' ? { ...m, streaming: false } : m));
+    return { conversationId: p.conversationId, messages, sessionTokens: p.sessionTokens ?? 0 };
+  } catch {
+    return null;
+  }
+}
+/** Persist the chat; strips attachment data-URL previews (localStorage quota) — the labelled chip stays. */
+function saveChat(projectId: string, messages: ChatMsg[], conversationId: string | undefined, sessionTokens: number): void {
+  try {
+    const slim = messages.map((m) =>
+      m.role === 'user' && m.attachments
+        ? { ...m, attachments: m.attachments.map((a) => ({ kind: a.kind, name: a.name })) }
+        : m.role === 'assistant'
+          ? { ...m, streaming: false }
+          : m,
+    );
+    localStorage.setItem(chatKey(projectId), JSON.stringify({ conversationId, messages: slim, sessionTokens }));
+  } catch {
+    /* quota exceeded / storage unavailable — persistence is best-effort */
+  }
+}
+function clearChat(projectId: string): void {
+  try {
+    localStorage.removeItem(chatKey(projectId));
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * The on-page AI assistant chat drawer — a right-side overlay on the preview. On first open it shows the
  * consent panel (the user picks the agent's capabilities); after that, a streaming chat. The server
@@ -80,6 +124,34 @@ export function AgentDrawer({
   const newSegmentRef = useRef(false);
   // Whether a terminal frame (done/error) arrived — a stream that ends without one dropped mid-turn.
   const gotTerminalRef = useRef(false);
+  // Guards the persist effect so it can't overwrite stored history with the empty initial state
+  // before the one-time rehydrate has run.
+  const hydratedRef = useRef(false);
+
+  // --- session persistence: the transcript + conversationId survive a page reload (per project) ---
+  useEffect(() => {
+    const p = loadChat(projectId);
+    if (p && p.messages.length) {
+      setMessages(p.messages);
+      conversationId.current = p.conversationId;
+      setSessionTokens(p.sessionTokens);
+    }
+    hydratedRef.current = true;
+  }, [projectId]);
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    if (messages.length === 0) clearChat(projectId); // an empty chat drops the stored key entirely
+    else saveChat(projectId, messages, conversationId.current, sessionTokens);
+  }, [messages, sessionTokens, projectId]);
+
+  function newChat() {
+    abortRef.current?.abort();
+    setMessages([]);
+    setSessionTokens(0);
+    setError(null);
+    conversationId.current = undefined;
+    clearChat(projectId);
+  }
 
   // Add dropped/picked/pasted files as attachments (dedup by name+size, cap the count + reject others).
   async function addFiles(files: FileList | File[]) {
@@ -280,6 +352,11 @@ export function AgentDrawer({
             <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-400" title="Total tokens used this session">
               {sessionTokens.toLocaleString()} tok
             </span>
+          )}
+          {messages.length > 0 && (
+            <button type="button" aria-label="New chat" title="New chat" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={newChat}>
+              <SquarePen className="h-4 w-4" />
+            </button>
           )}
           <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={onClose}>
             <X className="h-4 w-4" />

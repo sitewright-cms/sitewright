@@ -19,9 +19,34 @@ beforeEach(() => {
   getAgentGrant.mockReset();
   putAgentGrant.mockReset();
   streamAgentMessage.mockReset();
+  localStorage.clear(); // the drawer persists the transcript per project — isolate tests
 });
 
 describe('AgentDrawer', () => {
+  it('persists the transcript across a reload and clears it on New chat', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
+    streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {
+      handlers.onStart?.({ conversationId: 'c1', model: 'm' });
+      handlers.onText?.('Done.');
+      handlers.onDone?.('Done.');
+    });
+    const first = render(<AgentDrawer projectId="persist-proj" open onClose={() => {}} getPath={() => '/'} />);
+    fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'change the headline' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Done.')).toBeInTheDocument();
+    first.unmount();
+
+    // "Reload": a fresh mount rehydrates the transcript from localStorage.
+    render(<AgentDrawer projectId="persist-proj" open onClose={() => {}} getPath={() => '/'} />);
+    expect(await screen.findByText('change the headline')).toBeInTheDocument();
+    expect(screen.getByText('Done.')).toBeInTheDocument();
+
+    // New chat clears it (and localStorage), so a further reload shows nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(screen.queryByText('change the headline')).not.toBeInTheDocument();
+    expect(localStorage.getItem('sw-agent-chat:persist-proj')).toBeNull();
+  });
+
   it('opens a NEW bubble when the agent talks again after a tool, and totals session tokens', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read', 'content:write'], autonomy: 'full' });
     streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {

@@ -19,6 +19,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     deleteContent: vi.fn(async () => undefined),
+    addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
+    removeLocale: vi.fn(async (locale: string) => ({ locale, removed: 3 })),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
     compareToSource: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
@@ -635,6 +637,9 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     // The variant follows the default-locale page's code; it does NOT copy the source.
     expect(i18n).toMatch(/follows the DEFAULT-LOCALE page/i);
     expect(i18n).not.toMatch(/copy the `?source`?\)/i);
+    // It teaches the atomic add_language tool and warns AGAINST hand-editing settings.locales.
+    expect(i18n).toMatch(/add_language\(\{\s*locale/);
+    expect(i18n).toMatch(/NEVER add a language by hand-editing\s+settings\.locales/i);
     await mcp.close();
   });
 
@@ -797,6 +802,35 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     // An ENTRY forwards its owning dataset.
     await mcp.callTool({ name: 'delete_content', arguments: { kind: 'entry', id: 'row_1', dataset: 'team' } });
     expect(calls(client).deleteContent).toHaveBeenCalledWith('entry', 'row_1', 'team');
+  });
+
+  it('add_language forwards the locale (atomic scaffold) with a write token', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({ name: 'add_language', arguments: { locale: 'de' } });
+    expect(calls(client).addLocale).toHaveBeenCalledWith('de');
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain('"created": 3');
+    // A read-only token can't add a language, and no client call is made.
+    const ro = fakeClient();
+    const rej = await (await connect(ro, readScope)).callTool({ name: 'add_language', arguments: { locale: 'de' } });
+    expect(rej.isError).toBe(true);
+    expect(text(rej)).toMatch(/content:write/);
+    expect(calls(ro).addLocale).not.toHaveBeenCalled();
+  });
+
+  it('remove_language forwards the locale and needs content:delete (a write token is refused)', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, deleteScope)).callTool({ name: 'remove_language', arguments: { locale: 'de' } });
+    expect(calls(client).removeLocale).toHaveBeenCalledWith('de');
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain('"removed": 3');
+    // content:write alone is not enough — it cascade-deletes a whole subtree.
+    const w = fakeClient();
+    const rej = await (await connect(w, writeScope)).callTool({ name: 'remove_language', arguments: { locale: 'de' } });
+    expect(rej.isError).toBe(true);
+    expect(text(rej)).toMatch(/content:delete/);
+    expect(calls(w).removeLocale).not.toHaveBeenCalled();
   });
 
   it('a content:write token (no content:delete) is refused delete tools — and no client call', async () => {

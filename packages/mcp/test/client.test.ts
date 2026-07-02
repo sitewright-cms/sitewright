@@ -70,6 +70,33 @@ describe('SitewrightClient', () => {
     await expect(client.deleteContent('page', 'home')).resolves.toBeUndefined();
   });
 
+  it('addLocale POSTs the locale to /locales and returns the scaffold result', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 201, body: JSON.stringify({ locale: 'de', created: 4, pages: [] }) },
+    );
+    const res = await client.addLocale('de');
+    expect(res).toEqual({ locale: 'de', created: 4, pages: [] });
+    const post = calls[1]!;
+    expect(post.input).toBe('https://cms.test/projects/p1/locales');
+    expect(post.init?.method).toBe('POST');
+    expect(JSON.parse(post.init!.body!)).toEqual({ locale: 'de' });
+  });
+
+  it('removeLocale DELETEs /locales/:locale', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 200, body: JSON.stringify({ locale: 'de', removed: 4 }) },
+    );
+    const res = await client.removeLocale('de');
+    expect(res).toEqual({ locale: 'de', removed: 4 });
+    const del = calls[1]!;
+    expect(del.input).toBe('https://cms.test/projects/p1/locales/de');
+    expect(del.init?.method).toBe('DELETE');
+  });
+
   it('maps a non-2xx response to SitewrightApiError with the server message', async () => {
     const { client } = await introspected((input) =>
       input.endsWith('/api-key/self')

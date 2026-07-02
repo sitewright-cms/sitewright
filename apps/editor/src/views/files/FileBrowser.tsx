@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react';
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { api } from '../../api';
+import { useProjectEvents } from '../../lib/use-project-events';
 import { StockPicker } from '../media/StockPicker';
 import { RecycleBinModal } from './RecycleBinModal';
 import { FileTypeIcon, FolderIcon } from '../media/file-icons';
@@ -139,6 +140,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       active = false;
     };
   }, [projectId]);
+
+  // LIVE-REFRESH: when the agent (or another tab) adds/edits/deletes media or a folder, refetch so the
+  // File Manager reflects it without a full SPA reload.
+  useProjectEvents(projectId, (c) => {
+    if (c.kind === 'media' || c.kind === 'mediafolder') void load();
+  });
 
   const crumbs = folder === '' ? [] : folder.split('/');
   const pathOf = (seg: string) => (folder === '' ? seg : `${folder}/${seg}`);

@@ -155,6 +155,22 @@ describe('GET /projects/:id/export.zip', () => {
     expect(res.statusCode).toBe(413);
   });
 
+  it('exports even when media storage is disabled (no mediaRoot)', async () => {
+    await app.close();
+    app = await createApp({ db, version: 'test-1' }); // no mediaRoot → mediaStorage undefined
+    await app.ready();
+    const { t, projectId } = await setup('nomedia@test.local', 'nomedia');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/export.zip`,
+      cookies: { sw_session: t },
+    });
+    expect(res.statusCode).toBe(200);
+    const zip = await JSZip.loadAsync(res.rawPayload);
+    expect(zip.file('bundle.json')).not.toBeNull();
+    expect(Object.keys(zip.files).some((n) => n.startsWith('media/'))).toBe(false);
+  });
+
   it('denies a non-member (404 — project not visible)', async () => {
     const { projectId } = await setup('owner@test.local', 'site3');
     await registerAccount(db, 'stranger@test.local', 'Pw-secret-1', { platformRole: 'developer' });

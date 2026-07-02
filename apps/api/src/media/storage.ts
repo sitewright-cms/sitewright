@@ -187,21 +187,4 @@ export class MediaStorage {
     await walk(dir);
     return out;
   }
-
-  /**
-   * Copies an ENTIRE project's media tree to another project slug (used when a
-   * project is duplicated in-instance). Idempotent target overwrite is the
-   * caller's concern; a missing source yields an empty target dir.
-   */
-  async copyProjectMedia(fromSlug: string, toSlug: string): Promise<void> {
-    if (!SEGMENT.test(fromSlug) || !SEGMENT.test(toSlug)) {
-      throw new Error('invalid media project slug');
-    }
-    const from = join(this.root, fromSlug);
-    const to = join(this.root, toSlug);
-    await cp(from, to, { recursive: true }).catch((err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') return; // source project has no media → nothing to copy
-      throw err;
-    });
-  }
 }

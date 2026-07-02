@@ -37,6 +37,16 @@ describe('ProjectRepository — instance-wide slug uniqueness', () => {
   });
 });
 
+describe('ProjectRepository.availableSlug', () => {
+  it('returns the base slug when free, else the first numbered variant', async () => {
+    expect(await repo.availableSlug('fresh')).toBe('fresh');
+    await repo.create({ name: 'A', slug: 'taken' });
+    expect(await repo.availableSlug('taken')).toBe('taken-2');
+    await repo.create({ name: 'B', slug: 'taken-2' });
+    expect(await repo.availableSlug('taken')).toBe('taken-3');
+  });
+});
+
 describe('ProjectRepository — remove cascades dependents', () => {
   it('deletes the project and its content, memberships, and invites', async () => {
     const project = await repo.create({ name: 'Site', slug: 'site' });

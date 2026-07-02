@@ -186,4 +186,30 @@ describe('ContentRepository', () => {
     expect(out.datasets).toHaveLength(1);
     expect(out.entries).toHaveLength(1);
   });
+
+  it('imports the WHOLE bundle (snippets, translations, forms, media, folders)', async () => {
+    const bundle = {
+      project: {
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
+        settings: { defaultLocale: 'en', locales: ['en'] },
+      },
+      pages: [page],
+      snippets: [{ id: 'hero', name: 'hero', source: '<div>hi</div>' }],
+      translations: [{ id: 'home__de', pageId: 'home', locale: 'de', title: 'Start' }],
+      forms: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email' }], recipient: 'o@acme.test' }],
+      media: [{
+        kind: 'file', id: 'doc1', filename: 'd.pdf', folder: '', bytes: 3,
+        contentType: 'application/pdf', storedName: 'd.pdf', url: '/media/site-a/doc1/file/d.pdf',
+      }],
+      mediaFolders: [{ id: 'f1', path: 'docs' }],
+    };
+    await content.importBundle(pctxA, projA, bundle);
+    // Every whole-project section landed as its own content kind.
+    const full = await content.assembleExportBundle(pctxA, projA);
+    expect(full.snippets.map((s) => s.name)).toEqual(['hero']);
+    expect(full.translations.map((t) => t.id)).toEqual(['home__de']);
+    expect(full.forms.map((f) => f.id)).toEqual(['contact']);
+    expect(full.media.map((m) => m.id)).toEqual(['doc1']);
+    expect(full.mediaFolders.map((f) => f.path)).toEqual(['docs']);
+  });
 });

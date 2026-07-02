@@ -101,6 +101,24 @@ export class ProjectRepository {
   }
 
   /**
+   * The first free slug at or after `base` — appends `-2`, `-3`, … until one is unused (a
+   * soft-deleted project still holds its slug, so those are skipped too). Lets project
+   * IMPORT/DUPLICATE avoid a collision without failing. `base` must already be a valid slug;
+   * the numbered suffixes keep it valid.
+   */
+  async availableSlug(base: string): Promise<string> {
+    for (let n = 1; n < 10_000; n += 1) {
+      const candidate = n === 1 ? base : `${base}-${n}`;
+      const [existing] = await this.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.slug, candidate));
+      if (!existing) return candidate;
+    }
+    throw new ConflictError('could not find an available slug');
+  }
+
+  /**
    * REAP — permanently deletes a project + ALL of its dependent rows in one transaction (no
    * DB-level ON DELETE CASCADE). Drops content + its revision history, form submissions (visitor
    * PII), API keys + OAuth grants (revokes all tokens), the AI-usage ledger, project memberships,

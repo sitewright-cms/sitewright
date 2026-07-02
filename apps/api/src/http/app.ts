@@ -145,6 +145,13 @@ import {
 import { MediaStorage } from '../media/storage.js';
 import { buildProjectExportZip, collectExportMedia, ExportSizeLimitError } from '../export/build-zip.js';
 import { buildExportManifest, exportBundleOverCap } from '../export/manifest.js';
+import {
+  readProjectZip,
+  extractProjectMedia,
+  DEFAULT_PROJECT_ZIP_LIMITS,
+} from '../import/unpack-project-zip.js';
+import { rewriteMediaSlug } from '../import/rewrite-slug.js';
+import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
 import { PublishError, type ReleaseManifest } from '../publish/build.js';
@@ -173,7 +180,7 @@ import { buttonPreviewCss } from './button-preview.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
-import { registerImportRoutes } from './import-routes.js';
+import { registerImportRoutes, streamImport } from './import-routes.js';
 import { registerNativizeRoutes } from './nativize-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
@@ -269,6 +276,8 @@ const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
+const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
+const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
@@ -1325,6 +1334,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // optimize slot guard. Incremented for the BUILD phase only; streaming the finished
   // temp file to the client holds no slot.
   let activeExports = 0;
+  // Whole-instance ceiling on concurrent project imports + duplicates (each unpacks an archive
+  // and writes a whole project's content + media).
+  let activeProjectImports = 0;
 
   // Brute-force protection for the LOGIN routes: a per-IP FAILED-attempt throttle (successful logins
   // never consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read
@@ -2421,6 +2433,119 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         .type('application/zip')
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp archive path
         .send(createReadStream(zip.path));
+    },
+  );
+
+  // Import a project export zip as a BRAND-NEW project (staff-only, same gate as creating one).
+  // Non-destructive: never touches an existing project. Entity ids are preserved inside the fresh
+  // project; only the slug is deduped and media URLs rewritten to match. SSE-streamed progress.
+  app.post('/projects/import/zip', { config: rl(10) }, async (req, reply) => {
+    const userId = await requirePlatformStaff(req); // 403 unless admin/developer; rejects bearer tokens
+    if (!mediaStorage) {
+      return reply.code(400).send({ error: 'media storage is not configured on this instance' });
+    }
+    if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+      return reply.code(429).send({ error: 'too many imports in progress; retry shortly' });
+    }
+
+    let buffer: Buffer;
+    try {
+      const file = await req.file({ limits: { fileSize: PROJECT_IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
+      if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+      buffer = await file.toBuffer();
+      if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+    } catch (err) {
+      if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
+        return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+      }
+      return reply.code(400).send({ error: 'expected a multipart file upload' });
+    }
+
+    // Validate the archive BEFORE hijacking the reply for SSE, so a bad zip is a clean 400.
+    let parsed: Awaited<ReturnType<typeof readProjectZip>>;
+    try {
+      parsed = await readProjectZip(buffer, DEFAULT_PROJECT_ZIP_LIMITS);
+    } catch (err) {
+      if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+
+    const storage = mediaStorage;
+    activeProjectImports += 1;
+    await streamImport(
+      reply,
+      async (onProgress) => {
+        const { manifest, bundle } = parsed;
+        onProgress({ phase: 'validate', detail: 'project bundle validated' });
+        const newSlug = await projects.availableSlug(bundle.project.slug);
+        const newName = (bundle.project.name || manifest.source.name || newSlug).slice(0, 200);
+        onProgress({ phase: 'allocate', detail: `creating project “${newName}”` });
+        const project = await projects.create({ name: newName, slug: newSlug }, userId);
+        try {
+          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+          const rewritten = rewriteMediaSlug(bundle, manifest.mediaSlug, newSlug);
+          onProgress({ phase: 'content', detail: 'importing content' });
+          const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
+          onProgress({ phase: 'media', detail: 'restoring media' });
+          const media = await extractProjectMedia(
+            parsed.zip,
+            storage,
+            newSlug,
+            DEFAULT_PROJECT_ZIP_LIMITS,
+            (done, total) => onProgress({ phase: 'media', detail: `media ${done}/${total}` }),
+          );
+          return { projectId: project.id, slug: newSlug, name: newName, imported, media };
+        } catch (err) {
+          // Roll back the half-built project so a failed import leaves nothing behind.
+          await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'import rollback failed'));
+          await storage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'import media rollback failed'));
+          throw err;
+        }
+      },
+      { op: 'project-import' },
+      req.log,
+    ).finally(() => {
+      activeProjectImports -= 1;
+    });
+  });
+
+  // Duplicate a project in-instance (staff-only): assemble the source's export bundle, mint a new
+  // project, import the bundle, and copy the media tree. Reuses the export/import core end to end.
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/duplicate',
+    { config: rl(10) },
+    async (req, reply) => {
+      const userId = await requirePlatformStaff(req);
+      const role = await resolveProjectRole(db, userId, req.params.projectId);
+      if (!role) throw new ForbiddenError('you do not have access to this project');
+      if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+        return reply.code(429).send({ error: 'too many operations in progress; retry shortly' });
+      }
+      const source = await projects.get(req.params.projectId);
+      if (source.deletedAt) throw new NotFoundError('project not found');
+
+      activeProjectImports += 1;
+      try {
+        const srcCtx = { userId, projectId: source.id, role, actor: 'user' as const };
+        const bundle = await contentRepo.assembleExportBundle(srcCtx, source);
+        const newSlug = await projects.availableSlug(source.slug);
+        const newName = `${source.name} (copy)`.slice(0, 200);
+        const project = await projects.create({ name: newName, slug: newSlug }, userId);
+        try {
+          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
+          if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
+          return reply.code(201).send({ project });
+        } catch (err) {
+          await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'duplicate rollback failed'));
+          if (mediaStorage) {
+            await mediaStorage.removeProject(newSlug).catch((e) => req.log.warn({ err: e }, 'duplicate media rollback failed'));
+          }
+          throw err;
+        }
+      } finally {
+        activeProjectImports -= 1;
+      }
     },
   );
 

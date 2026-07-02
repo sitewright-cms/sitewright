@@ -184,7 +184,7 @@ function buildReport(site: CapturedSite, result: ImportResult, extra: { truncate
 }
 
 /** SSE wrapper: hijacks the reply and streams `progress` frames, then `done {report}` / `error`. */
-async function streamImport(
+export async function streamImport(
   reply: FastifyReply,
   run: (onProgress: (e: unknown) => void) => Promise<unknown>,
   logCtx: Record<string, unknown>,

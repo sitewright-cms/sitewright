@@ -83,12 +83,14 @@ export const ImageAssetSchema = z.object({
   animated: z.boolean().default(false),
   /** Stored ORIGINAL file name on disk (sanitized base + extension) — the retained source of truth. */
   original: StoredFileNameSchema,
-  /** Root-relative DELIVERY URL — id-bearing, defaults to the `xl` thumbnail (what a binding stores). */
+  /** Root-relative DELIVERY URL — id-bearing, ends in the stored original's (image) name; a bare fetch
+   *  defaults to the `xl` thumbnail. The extension is a raster image type (storeOriginal normalizes the
+   *  stored name to the detected format), never an arbitrary/executable one. */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg|jpeg|png|gif|tiff)$/),
 });
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 

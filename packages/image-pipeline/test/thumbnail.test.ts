@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import sharp from 'sharp';
 import { generateThumbnail } from '../src/thumbnail.js';
 
-let landscape = Buffer.alloc(0); // 1600x900 opaque
-let small = Buffer.alloc(0); // 800x600 opaque
-let alpha = Buffer.alloc(0); // 600x400 with transparency
+let landscape: Buffer = Buffer.alloc(0); // 1600x900 opaque
+let small: Buffer = Buffer.alloc(0); // 800x600 opaque
+let alpha: Buffer = Buffer.alloc(0); // 600x400 with transparency
 
 beforeAll(async () => {
   landscape = await sharp({ create: { width: 1600, height: 900, channels: 3, background: { r: 20, g: 120, b: 200 } } })

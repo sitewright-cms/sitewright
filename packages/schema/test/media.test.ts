@@ -21,9 +21,10 @@ const imageBase = {
   format: 'png',
   width: 800,
   height: 600,
-  variants: [{ format: 'avif' as const, width: 800, height: 600, path: 'hero-800.avif' }],
-  fallback: 'hero-800.jpg',
-  url: '/media/proj1/a1b2c3d4/hero-800.jpg',
+  hasAlpha: false,
+  animated: false,
+  original: 'hero.png',
+  url: '/media/proj1/a1b2c3d4/hero.png',
 };
 
 const fileBase = {
@@ -41,7 +42,7 @@ describe('MediaAssetSchema (image | file discriminated union)', () => {
     const a = MediaAssetSchema.parse(imageBase);
     expect(a.kind).toBe('image');
     expect(a.folder).toBe('');
-    if (a.kind === 'image') expect(a.variants.length).toBe(1);
+    if (a.kind === 'image') expect(a.original).toBe('hero.png');
   });
 
   it('parses a file asset with a folder', () => {

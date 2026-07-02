@@ -165,7 +165,8 @@ call. (Imported-page fidelity work is the exception: keep iterating with compare
 build matches the original.)
 MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
 must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
-hard-code final copy as plain inline text. USE DATASETS for REPEATING content (service cards, team,
+hard-code final copy as plain inline text (bound text is also what makes a page TRANSLATABLE by
+inheritance — see get_guide("i18n")). USE DATASETS for REPEATING content (service cards, team,
 FAQs, testimonials, logos, pricing tiers): FIRST put_content({kind:"dataset", id, data:{name, slug,
 fields:[{name,type}]}}), THEN one put_content({kind:"entry", id, dataset:<slug>, data:{values:{…}}})
 per row, and render with {{#each dataset.<slug>}} — never hand-copy the same block N times (that isn't
@@ -514,12 +515,19 @@ put_page/put_content. How the variants are wired (for understanding + manual twe
 - the subtree nests under the locale HOME ({ path:"<locale>", parent:"home" } → /<locale>), and
   each locale's nav lists only its own pages.
 
-SHARE STRUCTURE by INHERITANCE: leave a translated variant's \`source\` AND \`template\` UNSET —
-it then automatically follows the DEFAULT-LOCALE page's code (edit that one page's layout and
-every language updates, no copying). Each variant supplies only its own translated \`data\`
-(data-sw-text values) and \`title\`/\`description\`/\`image\`. For a one-off layout difference, give that variant its
-own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
-the main page.
+TRANSLATE = DATA ONLY, NEVER CODE: to translate a page, set its per-locale \`data\` (+
+\`title\`/\`description\`/\`image\`) and LEAVE its \`source\` AND \`template\` UNSET — the variant then
+INHERITS the default-locale page's code (edit that one page's layout and every language updates, no
+copying). Do NOT put_page a variant with its OWN \`source\` to "write the German version" — a
+translated page almost never has its own code; giving it a \`source\` (a fork) detaches it from the
+main page so future layout edits stop reaching it. Fork (own \`source\`) or set a \`template\` ONLY for a
+deliberate per-language LAYOUT difference (rare) — NOT to hold translated text.
+
+PREREQUISITE — the main page must be BOUND: inheritance can only translate text that carries a
+data-sw-text directive (or {{sw-translate}} for a shared string). Any HARDCODED inline copy on the
+main page shows through every variant UNtranslated and can't be fixed without forking. So author the
+main page fully editable FIRST (every string a data-sw-text / {{sw-translate}} — see MAKE ALL CONTENT
+EDITABLE), THEN translating each language is just supplying its \`data\`.
 
 TRANSLATION CATALOG (key-first STRINGS): for short UI strings that aren't page body content —
 nav labels, button text, a tagline reused across pages — use the shared catalog rather than

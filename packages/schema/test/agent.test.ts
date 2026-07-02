@@ -19,9 +19,10 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   it('is a SMALL core (feature how-tos moved to on-demand guides)', () => {
     // The served instructions are the core + a generated topic index — kept well under the old ~24k
     // monolith so it isn't a heavy up-front prompt. (Ceiling covers the general behaviour directives —
-    // build-in-stages, editable, datasets, components, icons, preview-sparingly, snappy-chat — core
+    // build-in-stages, editable, datasets, components, icons, preview-sparingly, snappy-chat, and the
+    // explicit write-tool argument shapes that keep weaker models from omitting required args — core
     // rules that shape EVERY session, not feature how-tos.)
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(15_800);
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(17_000);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

@@ -30,6 +30,12 @@ what you did in a line or two ("Added a 3-column footer with your offices."), no
 breakdown; give a detailed outline ONLY when it's genuinely important or the user asks. Your tool
 calls already show the work — don't narrate every step.
 
+SITE-WIDE HEADER / FOOTER / SIDEBARS (chrome shown on EVERY page) are NOT pages and NOT templates — they
+are string "slots" on the WEBSITE SETTINGS: website.mainNav (header), website.footer, website.sidebarLeft,
+website.sidebarRight, website.bottom. Fill one by editing settings (read-modify-write the whole entity),
+using <div>/<ul> markup (never <footer>/<nav> — the skeleton owns those landmarks). Never make a "header"
+or "footer" PAGE. Details + nav recipes: get_guide("nav").
+
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
 renders an empty body. Before you lay out a page, call \`get_guide("design")\` for the section
@@ -676,12 +682,24 @@ prefer text language names, or pass an explicit country code per locale.
     title: "Navigation — menus, dropdowns, mobile drawer",
     summary: "slot menus (header/mobile/footer) + child-page dropdowns + a pure-CSS mobile drawer + active item + auto language/theme",
     body: `
+CHROME SLOTS = the SITE-WIDE header / footer / sidebars, shown on EVERY page. They are STRING fields on
+the WEBSITE SETTINGS — NOT pages, NOT templates, NOT snippets on their own: website.mainNav (the header /
+top bar), website.footer, website.sidebarLeft, website.sidebarRight, website.bottom. To fill one, EDIT
+SETTINGS: get_content("settings","settings") first, then put_content("settings","settings", { …keep every
+other field…, website: { …keep the rest…, footer: "<div>…</div>", mainNav: "<div>…</div>" } }) — put_content
+REPLACES the whole entity, so you must send the FULL settings back, not just the slot. The value is INNER
+markup only; the skeleton wraps it in the landmark (<footer id="footer">, <nav id="main-nav">, <aside …>),
+so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot value can just include a recipe partial, e.g.
+website.footer = "{{> nav-footer}}". Do NOT create pages named "header"/"footer" and do NOT use a template
+for chrome — neither fills a slot. (A slot may also hold a {{> partial}} whose snippet you author separately.)
+
 DON'T REINVENT THIS — copy the recipes: {{> nav-header}} (the full default: data-driven desktop bar +
 a pure-CSS mobile drawer + language dropdown + theme toggle), {{> nav-footer}}, or {{> navbar}} (simple).
 Read one with get_content("snippet","nav-header"). New projects already ship {{> nav-header}} in their
-Main Navigation slot. The notes below explain how it works so you can adapt it.
+Main Navigation slot (website.mainNav). The notes below explain how it works so you can adapt it.
 
-NAV SLOTS (page settings): each page's nav.slots places it in a menu — "header" (the Main Navigation),
+NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
+in a menu — "header" (the Main Navigation),
 "mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
 title); nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus
 are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each

@@ -741,6 +741,9 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
       expect(findSkeletonLandmark('<footer class="x">…</footer>')).toMatchObject({ tag: 'footer' });
       expect(findSkeletonLandmark('<div><nav>…</nav></div>')).toMatchObject({ tag: 'nav' });
       expect(findSkeletonLandmark('<aside>…</aside>')?.hint).toMatch(/sidebar/);
+      // the hint must name the real slot mechanism (website.footer/mainNav in settings), not just "use a div"
+      expect(findSkeletonLandmark('<footer>…</footer>')?.hint).toMatch(/website\.footer/);
+      expect(findSkeletonLandmark('<nav>…</nav>')?.hint).toMatch(/website\.mainNav/);
     });
     it('ignores a landmark name inside a comment or script/style body', () => {
       expect(findSkeletonLandmark('<!-- <footer> -->')).toBeNull();

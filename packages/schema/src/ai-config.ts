@@ -2,10 +2,19 @@ import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
 import { targetsPrivateHost } from './primitives.js';
 
-/** The provider kind for the AI assistant — native Anthropic Messages, or any OpenAI-compatible
- *  `/chat/completions` endpoint (OpenAI, OpenRouter, Groq, Gemini-compat, a local server, …). */
-export const AiProviderKindSchema = z.enum(['anthropic', 'openai']);
+/**
+ * The provider kind for the AI assistant:
+ *  - `anthropic` — native Anthropic Messages API.
+ *  - `openrouter` — OpenRouter (fixed `https://openrouter.ai/api/v1`); a first-class shortcut for the
+ *    OpenAI-compatible adapter that also enables OpenRouter's attribution headers + prompt caching.
+ *  - `openai` — ANY other OpenAI-compatible `/chat/completions` endpoint via a custom baseUrl
+ *    (OpenAI, Groq, Together, Mistral, Gemini-compat, a local server, …).
+ */
+export const AiProviderKindSchema = z.enum(['anthropic', 'openai', 'openrouter']);
 export type AiProviderKind = z.infer<typeof AiProviderKindSchema>;
+
+/** OpenRouter's fixed OpenAI-compatible endpoint (used when `provider === 'openrouter'`). */
+export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 /**
  * An OpenAI-compatible base URL, guarded against private/loopback hosts (SSRF): the server POSTs the

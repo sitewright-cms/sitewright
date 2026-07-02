@@ -10,6 +10,7 @@ import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { AnthropicAgentProvider } from '../src/ai/anthropic-agent.js';
 import { OpenAiAgentProvider, isOpenRouterUrl } from '../src/ai/openai-agent.js';
+import { buildAgentProvider } from '../src/ai/build-provider.js';
 import { runAgentLoop } from '../src/ai/agent-loop.js';
 import { parseSseStream, type SseEvent } from '../src/ai/sse-parse.js';
 import type { AgentMessage, AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
@@ -403,6 +404,19 @@ describe('adapter translation + error branches', () => {
     });
     await collect(provider.runTurn({ system: 's', tools: [], messages: [{ role: 'user', content: 'just text' }] }));
     expect(body.messages![0]!.content).toEqual([{ type: 'text', text: 'just text', cache_control: { type: 'ephemeral' } }]);
+  });
+
+  it('buildAgentProvider: provider "openrouter" pins the OpenAI adapter to openrouter.ai (+attribution)', async () => {
+    let url = '';
+    let headers: Record<string, string> = {};
+    const provider = buildAgentProvider({ provider: 'openrouter', apiKey: 'k', model: 'anthropic/claude-3.5-sonnet' }, async (u, init) => {
+      url = String(u);
+      headers = init!.headers as Record<string, string>;
+      return sseResponse('data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    await collect(provider.runTurn({ system: 's', tools: [], messages: [{ role: 'user', content: 'hi' }] }));
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions'); // fixed endpoint, ignores any baseUrl
+    expect(headers['X-Title']).toBe('Sitewright'); // OpenRouter behaviours light up automatically
   });
 
   it('isOpenRouterUrl detects OpenRouter hosts (and rejects lookalikes)', () => {

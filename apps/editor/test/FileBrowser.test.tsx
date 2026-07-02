@@ -213,7 +213,7 @@ describe('FileBrowser (Assets)', () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'hero.png' }));
     const dialog = await screen.findByRole('dialog', { name: 'hero.png' });
-    expect(within(dialog).getByRole('img')).toHaveAttribute('src', '/media/p/img1/hero-100.jpg');
+    expect(within(dialog).getByRole('img')).toHaveAttribute('src', '/media/p/img1/hero.png');
   });
 
   it('opens the stock-image search in a modal scoped to the current folder', async () => {

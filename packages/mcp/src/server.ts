@@ -2,6 +2,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   PageSchema,
+  TemplateSchema,
+  SnippetSchema,
+  PageTranslationSchema,
+  DatasetSchema,
+  EntrySchema,
+  FormSchema,
   DEFAULT_AGENT_INSTRUCTIONS,
   COMPONENT_CATALOG,
   AGENT_GUIDES,
@@ -32,6 +38,71 @@ const GENERIC_KIND = z.enum([
   'dataset',
   'entry',
   'form',
+]);
+
+// --- put_content "teach on error" -------------------------------------------------------------
+// `put_content` deliberately takes an untyped `data` (one tool for eight kinds), so a weaker model
+// gets no schema hint and guesses the payload shape wrong. When a write fails validation we append a
+// COMPACT, derived top-level shape for that kind, so the model can self-correct instead of flailing.
+
+/** Unwrap optional / nullable / default / effects / branded / readonly wrappers to the underlying type
+ *  (public zod v3 API). Any wrapper we don't recognise falls through and is labelled `any` — a degraded
+ *  but safe hint, never a crash. */
+function unwrapZod(s: z.ZodTypeAny): z.ZodTypeAny {
+  if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) return unwrapZod(s.unwrap());
+  if (s instanceof z.ZodDefault) return unwrapZod(s.removeDefault());
+  if (s instanceof z.ZodEffects) return unwrapZod(s.innerType());
+  if (s instanceof z.ZodReadonly) return unwrapZod(s.unwrap());
+  if (s instanceof z.ZodBranded) return unwrapZod(s.unwrap());
+  return s;
+}
+
+/** A short type label for one field. `depth` permits ONE level of nesting so array-of-objects and
+ *  object fields expose their keys — e.g. a dataset's `fields: array<{ name, label, type }>`, which is
+ *  exactly the item shape a weak model gets wrong — while the cap stops a big schema from exploding. */
+function zodTypeLabel(s: z.ZodTypeAny, depth = 1): string {
+  const b = unwrapZod(s);
+  if (b instanceof z.ZodString) return 'string';
+  if (b instanceof z.ZodNumber) return 'number';
+  if (b instanceof z.ZodBoolean) return 'boolean';
+  if (b instanceof z.ZodEnum) return `enum(${(b.options as string[]).join('|')})`;
+  if (b instanceof z.ZodLiteral) return JSON.stringify(b.value);
+  if (b instanceof z.ZodArray) return `array<${zodTypeLabel(b.element, depth)}>`;
+  if (b instanceof z.ZodRecord) return 'object';
+  if (b instanceof z.ZodUnion) return 'union';
+  if (b instanceof z.ZodObject) return depth > 0 ? describeObject(b, depth - 1) : 'object';
+  return 'any';
+}
+
+/** Render a ZodObject's fields as `{ key: type, key?: type, … }`, recursing `depth` more levels. */
+function describeObject(obj: z.ZodObject<z.ZodRawShape>, depth: number): string {
+  const entries = Object.entries(obj.shape as Record<string, z.ZodTypeAny>);
+  return `{ ${entries.map(([k, v]) => `${k}${v.isOptional() ? '?' : ''}: ${zodTypeLabel(v, depth)}`).join(', ')} }`;
+}
+
+/** The put_content teach-on-error hint: a schema's top-level fields + ONE nested level. '' if the
+ *  schema isn't an object (impossible for the writable kinds today; guarded so a regression is visible). */
+function describeShape(schema: z.ZodTypeAny): string {
+  const base = unwrapZod(schema);
+  return base instanceof z.ZodObject ? describeObject(base, 1) : '';
+}
+
+/** The expected `data` shape per writable kind, surfaced on a failed put_content so weak models recover.
+ *  Derived from the SAME schemas the server validates against, so it can't drift. `settings` is a
+ *  composite validated server-side (identity + website + settings); it is also a full-REPLACE write, so
+ *  its hint warns to read-modify-write rather than overwrite blindly. */
+const KIND_SHAPES = new Map<string, string>([
+  ['page', describeShape(PageSchema)],
+  ['template', describeShape(TemplateSchema)],
+  ['snippet', describeShape(SnippetSchema)],
+  ['translation', describeShape(PageTranslationSchema)],
+  ['dataset', describeShape(DatasetSchema)],
+  ['entry', describeShape(EntrySchema)],
+  ['form', describeShape(FormSchema)],
+  [
+    'settings',
+    'the site settings object (identity, website, seo, shop, effects, translations, …). put_content REPLACES the whole object, so READ it first with get_content("settings","settings"), modify, and write the WHOLE thing back.',
+  ],
 ]);
 
 type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
@@ -219,10 +290,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   server.registerTool(
     'get_guide',
     {
-      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). topic = one of: ${GUIDE_TOPICS.join(', ')}.`,
-      inputSchema: { topic: z.string().max(40) },
+      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). Call with NO topic to get the index. topic = one of: ${GUIDE_TOPICS.join(', ')}.`,
+      inputSchema: { topic: z.string().max(40).optional() },
     },
-    ({ topic }: { topic: string }) => {
+    ({ topic }: { topic?: string }) => {
+      // No topic (or a blank one) → hand back the index instead of erroring, so a model that forgot the
+      // argument recovers in one step rather than looping on a validation error.
+      if (!topic || !topic.trim()) {
+        return ok({
+          topics: GUIDE_TOPICS,
+          guides: GUIDE_TOPICS.map((t) => ({
+            topic: t,
+            title: AGENT_GUIDES[t as GuideTopic].title,
+            summary: AGENT_GUIDES[t as GuideTopic].summary,
+          })),
+          note: 'Call get_guide again with one of these `topic` values for the full how-to.',
+        });
+      }
       const key = topic.trim().toLowerCase();
       if (!(GUIDE_TOPICS as readonly string[]).includes(key)) {
         return toolError(`Unknown guide "${topic}" — topics: ${GUIDE_TOPICS.join(', ')}.`);
@@ -469,10 +553,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   server.registerTool(
     'put_content',
     {
-      description: 'Create or replace a content entity of the given kind. `data` must match that kind’s schema.',
+      description:
+        'Create or replace a content entity of the given kind. Args: { kind, id, data }. For PAGES prefer put_page (fully typed). `data` must EXACTLY match that kind’s schema — on a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide.',
       inputSchema: { kind: GENERIC_KIND, id: z.string(), data: z.unknown() },
     },
-    gate('content:write', ({ kind, id, data }) => client.putContent(kind, id, data)),
+    gate('content:write', async ({ kind, id, data }) => {
+      try {
+        return await client.putContent(kind, id, data);
+      } catch (err) {
+        // Teach on failure: append the expected top-level shape for this kind so a model that guessed
+        // the payload wrong can self-correct next turn instead of looping on the same validation error.
+        const hint = KIND_SHAPES.get(kind);
+        if (hint !== undefined && hint !== '' && err instanceof SitewrightApiError && err.status === 400) {
+          throw new SitewrightApiError(err.status, `${err.message}\nExpected \`data\` shape for kind "${kind}": ${hint}`);
+        }
+        throw err;
+      }
+    }),
   );
 
   server.registerTool(

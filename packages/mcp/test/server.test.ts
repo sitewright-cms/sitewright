@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 import type { BridgeAuth } from '../src/auth.js';
-import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS } from '@sitewright/schema';
+import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS } from '@sitewright/schema';
 
 const page = { id: 'home', path: '', title: 'Home' };
 
@@ -152,6 +152,12 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     const bad = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'nope' } });
     expect(bad.isError).toBe(true);
     expect(text(bad)).toContain('topics:');
+    // NO topic → the index (success), so a model that omits the arg recovers instead of hard-failing
+    const index = await mcp.callTool({ name: 'get_guide', arguments: {} });
+    expect(index.isError).toBeFalsy();
+    const parsed = JSON.parse(text(index)) as { topics: string[]; guides: Array<{ topic: string; title: string }> };
+    expect(parsed.topics).toEqual([...GUIDE_TOPICS]);
+    expect(parsed.guides.length).toBe(GUIDE_TOPICS.length);
   });
 
   it('get_reference returns the authoring vocabulary (no auth); a section filters it', async () => {
@@ -482,6 +488,35 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const res = await mcp.callTool({ name: 'put_content', arguments: { kind: 'form', id: 'contact', data: formData } });
     expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData);
     expect(res.isError).toBeFalsy();
+  });
+
+  it('a failed put_content appends the expected `data` shape for the kind (teach on error)', async () => {
+    // Simulate the server rejecting a mis-shaped write (what a weak model produces): the tool result
+    // should carry BOTH the original validation message AND the kind's expected top-level shape so the
+    // model can self-correct instead of looping on the same guess.
+    const client = fakeClient({
+      putContent: vi.fn(async () => {
+        throw new SitewrightApiError(400, 'invalid request — fields: Expected array, received object');
+      }),
+    });
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'faqs', data: { fields: {} } } });
+    expect(res.isError).toBe(true);
+    const msg = text(res);
+    expect(msg).toContain('Expected `data` shape for kind "dataset"');
+    // the derived shape must expose that dataset.fields is an ARRAY (the exact thing the model got wrong)
+    expect(msg).toMatch(/fields\??:\s*array/);
+    // …and ONE level deeper so the model learns a field ITEM needs `name` (not the guessed `key`)
+    expect(msg).toMatch(/array<\{[^}]*\bname\b/);
+    // a non-400 error is passed through untouched (no hint appended)
+    const client2 = fakeClient({
+      putContent: vi.fn(async () => {
+        throw new SitewrightApiError(403, 'forbidden');
+      }),
+    });
+    const mcp2 = await connect(client2, writeScope);
+    const res2 = await mcp2.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'faqs', data: {} } });
+    expect(text(res2)).not.toContain('Expected `data` shape');
   });
 });
 

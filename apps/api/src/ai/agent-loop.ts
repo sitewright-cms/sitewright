@@ -14,13 +14,21 @@ export type LoopEvent =
 export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | 'max_tokens' | 'aborted' | 'stuck';
 
 /**
- * How many CONSECUTIVE turns where EVERY tool call failed we tolerate before giving up. A capable
- * model reads the error it's handed and recovers next turn; a weak one loops forever on the same
- * mistake (omitting a required argument, or hammering into a rate-limit) and silently burns the whole
- * token budget. Any single successful tool call resets the counter, so a productive session that hits
- * the odd error is never affected — only a genuinely stuck loop trips this.
+ * Two independent flail bounds. A capable model reads the error it's handed and recovers next turn; a
+ * weak one loops forever on the same mistake (omitting a required argument, hammering a rate-limit)
+ * and silently burns the whole token budget — worse, every failed attempt is appended to the
+ * transcript and RESENT next turn, so an unbounded flail balloons cost super-linearly.
+ *
+ * - CONSECUTIVE: turns where EVERY call failed, back to back. Trips fast on a PURE flail; any single
+ *   successful call resets it.
+ * - TOTAL: failed tool calls across the WHOLE message, and it NEVER resets. This is the one that
+ *   matters — a weak model interleaves successful READS (list/get) with failing WRITES, which keeps
+ *   resetting the consecutive counter while it never actually accomplishes anything. A healthy session
+ *   almost never accumulates this many failures (a capable model fails ~0 times), so the ceiling is
+ *   safe; if it does trip a productive run the user just sends "continue".
  */
 const MAX_CONSECUTIVE_FAILED_TURNS = 4;
+const MAX_TOTAL_TOOL_FAILURES = 6;
 
 export interface LoopOptions {
   provider: AgentProvider;
@@ -54,6 +62,7 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
   const messages = [...opts.messages];
   const maxIterations = opts.maxIterations ?? 25;
   let consecutiveFailedTurns = 0;
+  let totalToolFailures = 0;
 
   for (let iter = 0; iter < maxIterations; iter++) {
     if (opts.signal?.aborted) return { state: 'error', messages };
@@ -152,24 +161,25 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
       }
     }
 
-    // Flail guard: a turn where EVERY tool call failed means no progress. Track consecutive such turns
-    // and bail once a weak model is clearly looping on the same error (bad arguments, repeated 429s) —
-    // otherwise it silently grinds through every iteration burning the whole token budget. Any success
-    // resets the streak, so this never touches a productive session that hits an occasional error.
-    if (turnFailures === toolCalls.length) {
-      if (++consecutiveFailedTurns >= MAX_CONSECUTIVE_FAILED_TURNS) {
-        yield {
-          type: 'error',
-          code: 'stuck',
-          message:
-            'The assistant made several tool calls in a row that all failed and isn’t recovering. ' +
-            'This usually means the selected model isn’t strong enough at tool use — try a more capable ' +
-            'model, or restate the request more simply.',
-        };
-        return { state: 'error', messages };
-      }
-    } else {
-      consecutiveFailedTurns = 0;
+    // Flail guards (see the constants above). CONSECUTIVE trips on a pure back-to-back flail and resets
+    // on any success; TOTAL accumulates every failure across the message and never resets — so a model
+    // that interleaves successful reads with failing writes (which keeps the consecutive counter at 0
+    // yet never accomplishes anything) is still caught. Either bound → give up with an actionable error
+    // rather than grinding through every iteration and ballooning the resent transcript.
+    totalToolFailures += turnFailures;
+    if (turnFailures === toolCalls.length) consecutiveFailedTurns++;
+    else consecutiveFailedTurns = 0;
+
+    if (consecutiveFailedTurns >= MAX_CONSECUTIVE_FAILED_TURNS || totalToolFailures >= MAX_TOTAL_TOOL_FAILURES) {
+      yield {
+        type: 'error',
+        code: 'stuck',
+        message:
+          'The assistant kept making tool calls that failed and isn’t recovering. This usually means the ' +
+          'selected model isn’t strong enough at tool use — try a more capable model, or restate the ' +
+          'request more simply.',
+      };
+      return { state: 'error', messages };
     }
   }
 

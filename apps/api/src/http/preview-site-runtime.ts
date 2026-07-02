@@ -60,3 +60,28 @@ export const PREVIEW_SITE_RUNTIME_JS = `(function () {
     init();
   }
 })();`;
+
+/**
+ * Standalone scroll-bridge for the EDITOR preview shell (`styledSourceDocument`). That shell also
+ * scrolls on `<body>` (html{overflow:hidden} body{overflow:auto} — for a styled, visible scrollbar in
+ * the sandboxed frame), so `window` scroll events never fire and scroll-linked effects go dead:
+ * sticky-header (`.sw-scrolled`), parallax, scrollspy, back-to-top. This mirrors the bridge inside
+ * {@link PREVIEW_SITE_RUNTIME_JS} but WITHOUT the parent-location reporting (the editor↔preview bridge
+ * already does that). Self-guards on `overflowY==='auto'`, so it no-ops when the viewport scrolls.
+ */
+export const PREVIEW_SCROLL_BRIDGE_JS = `(function(){
+  function bridge(){
+    var b=document.body;
+    try{ if(getComputedStyle(b).overflowY!=='auto')return; }catch(e){return;}
+    try{
+      Object.defineProperty(window,'scrollY',{configurable:true,get:function(){return b.scrollTop;}});
+      Object.defineProperty(window,'pageYOffset',{configurable:true,get:function(){return b.scrollTop;}});
+      Object.defineProperty(window,'scrollX',{configurable:true,get:function(){return b.scrollLeft;}});
+      Object.defineProperty(window,'pageXOffset',{configurable:true,get:function(){return b.scrollLeft;}});
+    }catch(e){}
+    window.scrollTo=function(a,y){ if(a&&typeof a==='object'){b.scrollTop=a.top||0;b.scrollLeft=a.left||0;} else {b.scrollLeft=+a||0;b.scrollTop=+y||0;} };
+    window.scrollBy=function(a,y){ if(a&&typeof a==='object'){b.scrollTop+=a.top||0;b.scrollLeft+=a.left||0;} else {b.scrollLeft+=+a||0;b.scrollTop+=+y||0;} };
+    b.addEventListener('scroll',function(){window.dispatchEvent(new Event('scroll'));},{passive:true});
+  }
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',bridge);}else{bridge();}
+})();`;

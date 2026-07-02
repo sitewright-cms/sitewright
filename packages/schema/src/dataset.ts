@@ -51,7 +51,9 @@ export type Field = {
   /** Child fields — REQUIRED (non-empty) for `list`/`object`, forbidden otherwise. */
   fields?: Field[];
 };
-type FieldInput = {
+/** The raw (pre-parse) shape of a dataset field — exported so composite schemas
+ * that embed {@link DatasetSchema} can name it in their emitted declarations. */
+export type FieldInput = {
   name: string;
   type: FieldType;
   required?: boolean;

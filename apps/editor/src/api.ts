@@ -80,6 +80,20 @@ export interface SettingsBundle {
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 /**
+ * Downloads the whole project as a portable export zip. Points a transient anchor
+ * at the export route (which replies `Content-Disposition: attachment`), so the
+ * browser STREAMS the archive straight to disk — no in-browser buffering, matching
+ * the server's temp-file stream. Session auth rides the same-origin cookie.
+ */
+export function downloadProjectExport(projectId: string): void {
+  const a = document.createElement('a');
+  a.href = `${BASE}/projects/${encodeURIComponent(projectId)}/export.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
  * Absolute URL of the sandboxed preview document for a token — loaded via the
  * preview iframe's `src` (not `srcDoc`), so the document is served under its own
  * `Content-Security-Policy: sandbox` rather than inheriting the editor's CSP.

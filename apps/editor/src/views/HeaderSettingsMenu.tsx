@@ -19,6 +19,8 @@ interface HeaderSettingsMenuProps {
   /** A platform/system admin (gates System Settings). */
   isInstanceAdmin: boolean;
   onPublishDeploy: () => void;
+  /** Any member: download the whole project as a portable zip (absent → item hidden). */
+  onExportProject?: () => void;
   /** Owner/agency-only: import an external website into the current project (absent → item hidden). */
   onImportWebsite?: () => void;
   onSystemSettings: () => void;
@@ -40,6 +42,7 @@ export function HeaderSettingsMenu({
   isClient,
   isInstanceAdmin,
   onPublishDeploy,
+  onExportProject,
   onImportWebsite,
   onSystemSettings,
   onClients,
@@ -79,6 +82,7 @@ export function HeaderSettingsMenu({
   const items: { label: string; onClick: () => void; dividerBefore?: boolean; danger?: boolean }[] = (
     [
       { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
+      { label: 'Export project (.zip)', onClick: onExportProject ?? (() => {}), show: inProject && !!onExportProject },
       { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
       { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
       { label: 'Clients', onClick: onClients, show: owner },

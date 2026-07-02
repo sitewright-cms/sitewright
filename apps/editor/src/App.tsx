@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, setUnauthorizedHandler, type Project } from './api';
+import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
 import { Login } from './views/Login';
@@ -328,6 +328,7 @@ function MainApp({
           isClient={isClient}
           isInstanceAdmin={isInstanceAdmin}
           onPublishDeploy={() => setPublishModalTab('publish')}
+          onExportProject={inProject ? () => downloadProjectExport(inProject.id) : undefined}
           onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}

@@ -131,7 +131,12 @@ single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES th
 max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
 (chrome + 2-3 sections), then get_page it and put_page with the next sections appended, and REPEAT
 until the page is complete. Do NOT stop to ask "shall I continue" between sections — keep calling
-tools until the page is DONE or you are genuinely blocked; only then end your turn. Preview as you go.
+tools until the page is DONE or you are genuinely blocked; only then end your turn.
+PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
+preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
+— after building a meaningful chunk of a new page, and once before publishing — not after every tool
+call. (Imported-page fidelity work is the exception: keep iterating with compare_to_source until the
+build matches the original.)
 MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
 must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
 hard-code final copy as plain inline text. USE DATASETS for REPEATING content (service cards, team,

@@ -50,6 +50,7 @@ import {
   COMPONENT_CATALOG,
   isScreenshotViewportName,
   DEFAULT_SCREENSHOT_VIEWPORTS,
+  PREVIEW_DEFAULT_VIEWPORTS,
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
   AiConfigSchema,
@@ -679,7 +680,10 @@ async function previewScreenshots(
   try {
     return await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,
-      viewports: viewports.length ? viewports : undefined,
+      // Default a plain preview to desktop + mobile (2), and halve the raster (scale 0.5) — a big cut in
+      // the vision-token cost of design iteration. The agent can still request more viewports explicitly.
+      viewports: viewports.length ? viewports : [...PREVIEW_DEFAULT_VIEWPORTS],
+      scale: 0.5,
     });
   } catch (err) {
     req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');

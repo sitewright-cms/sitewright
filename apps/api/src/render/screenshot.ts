@@ -218,9 +218,13 @@ export async function withRenderSlot<T>(fn: () => Promise<T>): Promise<T> {
  */
 export async function captureScreenshots(
   html: string,
-  opts: { originHostPort: string; viewports?: ViewportName[]; timeoutMs?: number },
+  opts: { originHostPort: string; viewports?: ViewportName[]; timeoutMs?: number; scale?: number },
 ): Promise<Partial<Record<ViewportName, Shot>>> {
   const wanted = opts.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS;
+  // `scale` = the raster deviceScaleFactor. The page still LAYS OUT at each viewport's CSS width (so the
+  // desktop/mobile layout is unchanged), but the emitted image is scaled — preview_page passes < 1 to
+  // roughly halve the pixel count (≈ half the vision tokens). compare_to_source doesn't use this path.
+  const scale = opts.scale && opts.scale > 0 ? opts.scale : 1;
   const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const doc = injectBaseHref(html, opts.originHostPort);
   const browser = await getBrowser();
@@ -237,7 +241,7 @@ export async function captureScreenshots(
     try {
       context = await browser.newContext({
         viewport: { width: vp.width, height: vp.height },
-        deviceScaleFactor: 1,
+        deviceScaleFactor: scale,
         isMobile: vp.isMobile,
         // Honour reduced-motion so reveal animations settle to their final state for the shot.
         reducedMotion: 'reduce',

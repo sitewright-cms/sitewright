@@ -302,7 +302,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to Full HD + tablet + mobile; pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
       inputSchema: {
         page: PageSchema,
         includeHtml: z.boolean().optional(),

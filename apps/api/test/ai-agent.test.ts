@@ -12,7 +12,7 @@ import { AnthropicAgentProvider } from '../src/ai/anthropic-agent.js';
 import { OpenAiAgentProvider } from '../src/ai/openai-agent.js';
 import { runAgentLoop } from '../src/ai/agent-loop.js';
 import { parseSseStream, type SseEvent } from '../src/ai/sse-parse.js';
-import type { AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
+import type { AgentMessage, AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
 
 function sseResponse(body: string): Response {
   const stream = new ReadableStream<Uint8Array>({
@@ -130,6 +130,37 @@ describe('agent loop', () => {
     expect(events).toContainEqual({ type: 'tool', id: 't1', name: 'echo', input: { x: 1 } });
     expect(events).toContainEqual(expect.objectContaining({ type: 'tool_result', ok: true }));
     expect(events.at(-1)).toEqual({ type: 'done', message: 'all done' });
+  });
+
+  it('prunes STALE screenshots from the transcript, keeping only the latest render', async () => {
+    // The model previews twice (two turns), then finishes; each preview returns an image tool_result.
+    let turn = 0;
+    const previewProvider: AgentProvider = {
+      model: 'm',
+      async *runTurn(): AsyncIterable<AgentStreamEvent> {
+        turn += 1;
+        if (turn <= 2) {
+          yield { type: 'tool_call', id: `t${turn}`, name: 'preview_page', input: {} };
+          yield { type: 'stop', reason: 'tool_use' };
+        } else {
+          yield { type: 'text_delta', text: 'looks good' };
+          yield { type: 'stop', reason: 'end_turn' };
+        }
+      },
+    };
+    const bridge = {
+      listTools: async () => [],
+      callTool: async () => ({ content: [{ type: 'image' as const, data: 'IMGDATA', mimeType: 'image/jpeg' }], isError: false }),
+    };
+    const gen = runAgentLoop({ provider: previewProvider, bridge: bridge as never, system: 's', tools: [], messages: [{ role: 'user', content: 'build' }] });
+    let n = await gen.next();
+    while (!n.done) n = await gen.next();
+    const toolMsgs = n.value.messages.filter((m): m is Extract<AgentMessage, { role: 'tool' }> => m.role === 'tool');
+    expect(toolMsgs).toHaveLength(2);
+    // The EARLIER render's image is replaced with a text note; the LATEST render keeps its image.
+    expect(toolMsgs[0]!.content.some((p) => p.type === 'image')).toBe(false);
+    expect(toolMsgs[0]!.content.map((p) => (p.type === 'text' ? p.text : '')).join('')).toMatch(/omitted from history/);
+    expect(toolMsgs[1]!.content.some((p) => p.type === 'image')).toBe(true);
   });
 
   it('surfaces a max_tokens truncation as an actionable error, not a silent done', async () => {

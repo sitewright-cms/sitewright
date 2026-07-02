@@ -123,6 +123,12 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
       yield { type: 'tool', id: call.id, name: call.name, input: call.input };
       try {
         const result = await opts.bridge.callTool(call.name, call.input);
+        // Before recording a FRESH screenshot result, drop images from all EARLIER tool results — a
+        // stale render (preview_page / compare_to_source) never needs resending once the model has seen
+        // it + acted, yet the whole transcript is resent every turn. Keeps only the LATEST render's
+        // images, so a design-iteration loop doesn't accumulate megabytes of screenshots. Fidelity is
+        // preserved: the newest comparison always survives + the agent re-renders when it wants to look.
+        if (result.content.some((p) => p.type === 'image')) dropStaleScreenshots(messages);
         messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result.content, isError: result.isError });
         yield { type: 'tool_result', id: call.id, name: call.name, ok: !result.isError, summary: summarize(result.content) };
       } catch (err) {
@@ -136,6 +142,18 @@ export async function* runAgentLoop(opts: LoopOptions): AsyncGenerator<LoopEvent
 
   yield { type: 'error', code: 'max_iterations', message: 'Reached the step limit for one message — send “continue” to keep going.' };
   return { state: 'error', messages };
+}
+
+/** Placeholder swapped in for a pruned screenshot (the tool_use still needs a matching result). */
+const STALE_SHOT_NOTE = '[earlier screenshot omitted from history — call preview_page / compare_to_source again to see the current render]';
+
+/** Strip image blocks from every EARLIER tool result (keeping their text), so only the newest render's
+ *  screenshots ride along in the resent transcript. Mutates the loop-local messages array in place. */
+function dropStaleScreenshots(messages: AgentMessage[]): void {
+  for (const m of messages) {
+    if (m.role !== 'tool' || !m.content.some((p) => p.type === 'image')) continue;
+    m.content = m.content.map((p): ToolResultPart => (p.type === 'image' ? { type: 'text', text: STALE_SHOT_NOTE } : p));
+  }
 }
 
 function summarize(content: ToolResultPart[]): string {

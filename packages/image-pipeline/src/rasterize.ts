@@ -8,10 +8,10 @@ const MAX_DIMENSION = 4000;
  *
  * ⚠️ SECURITY: this is ONLY for build/seed-time art authored inside this repository. NEVER pass
  * user-supplied or otherwise untrusted SVG: librsvg resolves remote references embedded in SVG
- * (`<image href="http…">`, external entities), which is an SSRF vector. `optimizeImage`
+ * (`<image href="http…">`, external entities), which is an SSRF vector. `storeOriginal`
  * deliberately REJECTS SVG input for exactly this reason — this function is the separate,
  * trusted-only path the demo seed uses to generate local placeholder imagery, which is then run
- * through `optimizeImage` like any other raster source.
+ * through `storeOriginal` like any other raster source.
  *
  * The input must be a literal SVG with no external references.
  */

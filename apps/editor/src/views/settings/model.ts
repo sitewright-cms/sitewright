@@ -158,6 +158,10 @@ export interface SettingsForm {
   defaultTheme: 'auto' | 'light' | 'dark';
   // site-wide content width (website.containerWidth); '' = platform default (1200px)
   containerWidth: string;
+  // image delivery format for {{sw-image}} (website.imageDelivery); '' = inherit the instance default
+  imageDelivery: '' | 'webp' | 'avif';
+  // cap uploaded image originals to this width (website.imageUploadCap); '' = uncapped
+  imageUploadCap: string;
   redirects: KeyedRedirect[];
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -315,6 +319,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     consent: w?.consent,
     defaultTheme: w?.defaultTheme ?? 'auto',
     containerWidth: w?.containerWidth ?? '',
+    imageDelivery: w?.imageDelivery ?? '',
+    imageUploadCap: w?.imageUploadCap != null ? String(w.imageUploadCap) : '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -554,7 +560,22 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   ]);
   const translations = rowsToTranslations(form.translations, localeSet);
   const hasTranslations = Object.keys(translations).length > 0;
-  if (w || redirects.length || shop || form.consent || effects || themes || hasTranslations || form.containerWidth.trim()) {
+  // A non-numeric entry (`Number('abc')` → NaN) must clear the field, not send NaN (which trips the
+  // server's z.number() with an opaque 400 and no inline form error).
+  const capNum = form.imageUploadCap.trim() ? Number(form.imageUploadCap) : NaN;
+  const imageUploadCap = Number.isFinite(capNum) ? capNum : undefined;
+  if (
+    w ||
+    redirects.length ||
+    shop ||
+    form.consent ||
+    effects ||
+    themes ||
+    hasTranslations ||
+    form.containerWidth.trim() ||
+    form.imageDelivery ||
+    imageUploadCap !== undefined
+  ) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
@@ -565,6 +586,10 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(hasTranslations ? { translations } : {}),
       // '' clears it (→ platform default); a value pins the site-wide content width.
       containerWidth: form.containerWidth.trim() || undefined,
+      // '' → inherit the instance default; 'webp'|'avif' pins the {{sw-image}} delivery format.
+      imageDelivery: form.imageDelivery || undefined,
+      // undefined → uncapped originals; a number caps uploads to that width.
+      imageUploadCap,
     };
   }
 

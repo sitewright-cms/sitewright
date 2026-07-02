@@ -316,6 +316,8 @@ export class InstanceSettingsRepository {
     mergeNullable(input.brandPrimary, current.brandPrimary, (v) => { next.brandPrimary = v; });
     mergeNullable(input.brandSecondary, current.brandSecondary, (v) => { next.brandSecondary = v; });
     mergeNullable(input.platformLogo, current.platformLogo, (v) => { next.platformLogo = v; });
+    // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined keeps.
+    mergeNullable(input.defaultImageFormat, current.defaultImageFormat, (v) => { next.defaultImageFormat = v; });
 
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);

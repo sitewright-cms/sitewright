@@ -318,15 +318,17 @@ describe('buildSite', () => {
         ],
       }),
     });
-    // Depth 0: bundled under _assets/<id>/ (the slug segment dropped), page-relative.
+    // Head IMAGE urls now resolve to a MATERIALIZED thumbnail (og:image → `lg` WebP; the fallback
+    // favicon → `sm` WebP), bundled under _assets/<id>/ (slug segment dropped), page-relative.
+    // Depth 0:
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain('<link rel="icon" href="_assets/ic/ic-64.jpg" />');
-    expect(home).toContain('content="_assets/og/og-1200.jpg"');
+    expect(home).toContain('<link rel="icon" href="_assets/ic/ic-64-sm.webp" />');
+    expect(home).toContain('content="_assets/og/og-1200-lg.webp"');
     expect(home).not.toContain('/media/acme/');
     // Depth 1: rebased onto '../' — never a bare /media path or a malformed dotted path.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64.jpg" />');
-    expect(about).toContain('content="../_assets/og/og-1200.jpg"');
+    expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64-sm.webp" />');
+    expect(about).toContain('content="../_assets/og/og-1200-lg.webp"');
     expect(about).not.toContain('/media/acme/');
   });
 
@@ -341,21 +343,22 @@ describe('buildSite', () => {
       folder: 'Brand',
       id: 'ic',
       filename: 'icon.png',
-      format: 'image/png',
+      format: 'png',
       bytes: iconPng.length,
       width: 512,
       height: 512,
-      variants: [{ format: 'webp' as const, width: 512, height: 512, path: 'ic-512.webp' }],
-      fallback: 'ic-512.jpg',
-      url: '/media/acme/ic/ic-512.jpg',
+      hasAlpha: false,
+      animated: false,
+      original: 'icon.png',
+      url: '/media/acme/ic/icon.png',
     };
     await buildSite({
       publishedAt: '2026-05-30T00:00:00.000Z',
       outDir,
       media: [iconAsset],
       readMedia: async (id, file) => {
-        // Assert the generator selects the largest (WebP) variant as the source, not the fallback.
-        if (id === 'ic' && file === 'ic-512.webp') return iconPng;
+        // The favicon/PWA set is generated from the retained ORIGINAL (sharp downscales it).
+        if (id === 'ic' && file === 'icon.png') return iconPng;
         throw Object.assign(new Error('missing'), { code: 'ENOENT' });
       },
       bundle: bundle({
@@ -364,7 +367,7 @@ describe('buildSite', () => {
           id: 'p',
           name: 'Acme',
           slug: 'acme',
-          identity: { name: 'Acme', shortName: 'Acme', colors: { primary: '#0a7' }, icon: '/media/acme/ic/ic-512.jpg' },
+          identity: { name: 'Acme', shortName: 'Acme', colors: { primary: '#0a7' }, icon: '/media/acme/ic/icon.png' },
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
         pages: [
@@ -1080,43 +1083,42 @@ describe('buildSite', () => {
     ).rejects.toThrow(/maximum output size/);
   });
 
-  it('tolerates a missing media variant without failing the build', async () => {
+  it('tolerates a missing ORIGINAL without failing the build (referenced thumbnail skipped)', async () => {
     const asset = {
       kind: 'image' as const,
       folder: '',
       id: 'a2',
       filename: 'x.png',
-      format: 'image/png',
+      format: 'png',
       bytes: 10,
       width: 100,
       height: 100,
-      variants: [{ format: 'webp' as const, width: 100, height: 100, path: 'a2-100.webp' }],
-      fallback: 'a2-100.jpg',
-      url: '/media/p/a2/a2-100.jpg',
+      hasAlpha: false,
+      animated: false,
+      original: 'x.png',
+      url: '/media/p/a2/x.png',
     };
     const manifest = await buildSite({
       publishedAt: '2026-05-30T00:00:00.000Z',
       outDir,
       media: [asset],
-      readMedia: async (_assetId, file) => {
-        if (file === 'a2-100.webp') throw Object.assign(new Error('missing'), { code: 'ENOENT' });
-        return Buffer.from('img');
+      readMedia: async () => {
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
       },
       bundle: bundle({
-        pages: [{ id: 'home', path: '', title: 'Home' }],
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<img src="/media/acme/a2/x.png?size=lg" alt="x" />' }],
       }),
     });
     expect(manifest.routes).toBe(1);
-    // The present file was copied; the missing one was skipped.
-    await expect(readFile(join(outDir, '_assets', 'a2', 'a2-100.jpg'), 'utf8')).resolves.toBe('img');
-    await expect(readFile(join(outDir, '_assets', 'a2', 'a2-100.webp'), 'utf8')).rejects.toBeTruthy();
+    // The missing original → the referenced thumbnail is skipped, not a build failure.
+    await expect(readFile(join(outDir, '_assets', 'a2', 'x-lg.webp'), 'utf8')).rejects.toBeTruthy();
   });
 
   it('fails the build on a non-missing media read error (no partial artifact)', async () => {
     const asset = {
       kind: 'image' as const, folder: '',
-      id: 'a4', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
-      variants: [], fallback: 'a4-10.jpg', url: '/media/p/a4/a4-10.jpg',
+      id: 'a4', filename: 'x.png', format: 'png', bytes: 1, width: 10, height: 10,
+      hasAlpha: false, animated: false, original: 'x.png', url: '/media/p/a4/x.png',
     };
     await expect(
       buildSite({
@@ -1126,7 +1128,7 @@ describe('buildSite', () => {
         readMedia: async () => {
           throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
         },
-        bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }),
+        bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', source: '<img src="/media/acme/a4/x.png?size=lg" alt="x" />' }] }),
       }),
     ).rejects.toThrow('disk full');
     // The previous (absent) build dir was not replaced with a partial one.
@@ -1136,8 +1138,8 @@ describe('buildSite', () => {
   it('ignores media when no reader is provided (no copy)', async () => {
     const asset = {
       kind: 'image' as const, folder: '',
-      id: 'a3', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
-      variants: [], fallback: 'a3-10.jpg', url: '/media/p/a3/a3-10.jpg',
+      id: 'a3', filename: 'x.png', format: 'png', bytes: 1, width: 10, height: 10,
+      hasAlpha: false, animated: false, original: 'x.png', url: '/media/p/a3/x.png',
     };
     await buildSite({
       publishedAt: '2026-05-30T00:00:00.000Z',
@@ -1145,7 +1147,7 @@ describe('buildSite', () => {
       media: [asset], // no readMedia
       bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }),
     });
-    await expect(readFile(join(outDir, 'media', 'a3', 'a3-10.jpg'), 'utf8')).rejects.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', 'a3', 'x.png'), 'utf8')).rejects.toBeTruthy();
   });
 
   it('bundles a kind:font asset via copyMedia + emits @font-face at the media path (never Google)', async () => {

@@ -68,6 +68,8 @@ export function InstanceSettings() {
   // The default locale new projects start in (their defaultLocale + sole initial locale).
   const [newProjectLocale, setNewProjectLocale] = useState(DEFAULT_NEW_PROJECT_LOCALE);
   const initialLocaleRef = useRef(DEFAULT_NEW_PROJECT_LOCALE);
+  // Site-wide default image delivery format for {{sw-image}} (projects can override).
+  const [defaultImageFormat, setDefaultImageFormat] = useState<'webp' | 'avif'>('webp');
   const [localePickerOpen, setLocalePickerOpen] = useState(false);
 
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
@@ -184,6 +186,7 @@ export function InstanceSettings() {
     const locale = s.defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
     setNewProjectLocale(locale);
     initialLocaleRef.current = locale;
+    setDefaultImageFormat(s.defaultImageFormat ?? 'webp');
     // Trim on hydrate so the "changed?" guard compares like-for-like (the save sends the trimmed value);
     // otherwise a stored name with stray whitespace would look dirty on an untouched save.
     const name = (s.platformName ?? DEFAULT_PLATFORM_NAME).trim();
@@ -277,6 +280,8 @@ export function InstanceSettings() {
     if (newProjectLocale !== initialLocaleRef.current) {
       input.defaultLocale = newProjectLocale === DEFAULT_NEW_PROJECT_LOCALE ? null : newProjectLocale;
     }
+    // Default image delivery format: 'webp' (the built-in default) sends null; 'avif' sets it.
+    input.defaultImageFormat = defaultImageFormat === 'webp' ? null : 'avif';
     // OIDC providers (replace-semantics; the server preserves each secret by id when omitted). Drop
     // fully-blank "Add" rows; a secret is sent only when freshly typed.
     input.oidcProviders = oidcProviders
@@ -464,6 +469,21 @@ export function InstanceSettings() {
             <span className="font-mono text-xs uppercase text-slate-400">{newProjectLocale}</span>
             <span className="ml-auto text-xs text-indigo-600">Change</span>
           </button>
+        </label>
+        <label className="mt-3 flex flex-col text-xs text-slate-500">
+          Default image delivery format ({'{{sw-image}}'})
+          <select
+            aria-label="Default image delivery format"
+            className={`mt-1 ${glassInput}`}
+            value={defaultImageFormat}
+            onChange={(e) => setDefaultImageFormat(e.target.value as 'webp' | 'avif')}
+          >
+            <option value="webp">WebP</option>
+            <option value="avif">AVIF + WebP</option>
+          </select>
+          <span className="mt-1 text-[11px] text-slate-400">
+            AVIF is smaller on supporting browsers, at ~2× the generated files. Projects can override this in Website settings.
+          </span>
         </label>
       </fieldset>
 

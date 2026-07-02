@@ -76,7 +76,7 @@ describe('WorkerBuildRunner', () => {
     };
     const runner = new WorkerBuildRunner({ image: 'sitewright-api', spawnImpl: fakeSpawn({ result }, capture) });
 
-    const asset = { kind: 'image' as const, folder: '', id: 'a1', filename: 'h.png', format: 'image/png', bytes: 1, width: 10, height: 10, variants: [], fallback: 'a1.jpg', url: '/media/p/a1/a1.jpg' };
+    const asset = { kind: 'image' as const, folder: '', id: 'a1', filename: 'h.png', format: 'png', bytes: 1, width: 10, height: 10, hasAlpha: false, animated: false, original: 'a1.jpg', url: '/media/p/a1/a1.jpg' };
     const manifest = await runner.run({
       outDir,
       bundle,
@@ -114,10 +114,10 @@ describe('WorkerBuildRunner', () => {
     await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [] })).rejects.toThrow(/malformed/);
   });
 
-  it('tolerates a missing variant and skips media inlining when no reader is given', async () => {
+  it('inlines the retained original and skips media inlining when no reader is given', async () => {
     const capture: { args?: string[]; stdin?: string } = {};
     const result: WorkerResult = { manifest: { publishedAt: 't', routes: 0, bytes: 0 }, files: {} };
-    const asset = { kind: 'image' as const, folder: '', id: 'a1', filename: 'h.png', format: 'image/png', bytes: 1, width: 10, height: 10, variants: [{ format: 'webp' as const, width: 10, height: 10, path: 'a1.webp' }], fallback: 'a1.jpg', url: '/media/p/a1/a1.jpg' };
+    const asset = { kind: 'image' as const, folder: '', id: 'a1', filename: 'h.png', format: 'png', bytes: 1, width: 10, height: 10, hasAlpha: false, animated: false, original: 'a1.jpg', url: '/media/p/a1/a1.jpg' };
 
     // No readMedia → files object is empty (break path).
     const noReader = new WorkerBuildRunner({ image: 'x', spawnImpl: fakeSpawn({ result }, capture) });

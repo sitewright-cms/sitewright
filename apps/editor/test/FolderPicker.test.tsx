@@ -22,12 +22,13 @@ const teamPhoto: MediaAsset = {
   filename: 'jane.png',
   folder: 'gallery/team',
   bytes: 2048,
-  format: 'image/png',
+  format: 'png',
   width: 100,
   height: 100,
-  variants: [],
-  fallback: 'jane-100.jpg',
-  url: '/media/p/img1/jane-100.jpg',
+  hasAlpha: false,
+  animated: false,
+  original: 'jane.png',
+  url: '/media/p/img1/jane.png',
 };
 const docsFolder: MediaFolderRecord = { id: 'fd1', path: 'docs' };
 

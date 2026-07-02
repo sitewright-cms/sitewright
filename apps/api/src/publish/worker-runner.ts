@@ -105,10 +105,11 @@ export class WorkerBuildRunner implements BuildRunner {
     const out: Array<{ asset: MediaAsset; files: Record<string, string> }> = [];
     for (const asset of media) {
       const entries = new Map<string, string>();
-      // Every kind's stored files: image variants+fallback, a font's faces, or a raw file's blob.
+      // Each kind's stored files: an image's retained ORIGINAL (the worker generates thumbnails from
+      // it), a font's faces, or a raw file's blob.
       const names =
         asset.kind === 'image'
-          ? [asset.fallback, ...asset.variants.map((v) => v.path)]
+          ? [asset.original]
           : asset.kind === 'font'
             ? asset.files.map((f) => f.file)
             : [asset.storedName];

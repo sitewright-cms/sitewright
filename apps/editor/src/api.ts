@@ -842,6 +842,9 @@ export const api = {
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
+  /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */
+  pruneThumbnails: (projectId: string) =>
+    request<{ removed: number }>('POST', `/projects/${projectId}/media/prune-thumbnails`, {}),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */
   patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
     request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),

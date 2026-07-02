@@ -41,12 +41,13 @@ const image: MediaAsset = {
   filename: 'hero.png',
   folder: '',
   bytes: 2048,
-  format: 'image/png',
+  format: 'png',
   width: 100,
   height: 100,
-  variants: [],
-  fallback: 'hero-100.jpg',
-  url: '/media/p/img1/hero-100.jpg',
+  hasAlpha: false,
+  animated: false,
+  original: 'hero.png',
+  url: '/media/p/img1/hero.png',
 };
 const file: MediaAsset = {
   kind: 'file',

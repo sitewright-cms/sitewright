@@ -82,7 +82,7 @@ describe('projectFolderItem', () => {
 });
 
 describe('mediaForRender', () => {
-  it('slims a MediaAsset → RenderMedia (drops placeholder/variants/bytes)', () => {
+  it('slims a MediaAsset → RenderMedia (keeps id + LQIP placeholder for {{sw-image}}; drops bytes/format)', () => {
     const asset = {
       kind: 'image',
       id: 'i1',
@@ -94,12 +94,11 @@ describe('mediaForRender', () => {
       width: 10,
       height: 8,
       placeholder: 'data:image/x',
-      variants: [],
-      fallback: 'a-10.jpg',
-      url: '/media/p/i1/a-10.jpg',
+      original: 'a.jpg',
+      url: '/media/p/i1/a.jpg',
     } as unknown as MediaAsset;
     expect(mediaForRender([asset])).toEqual([
-      { folder: 'photos', kind: 'image', filename: 'a.jpg', url: '/media/p/i1/a-10.jpg', alt: 'A', width: 10, height: 8 },
+      { id: 'i1', folder: 'photos', kind: 'image', filename: 'a.jpg', url: '/media/p/i1/a.jpg', alt: 'A', width: 10, height: 8, placeholder: 'data:image/x' },
     ]);
   });
 });

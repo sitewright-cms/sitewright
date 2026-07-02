@@ -752,6 +752,19 @@ const WebsiteSettingsObject = z.object({
     .string()
     .regex(/^(none|\d{2,4}px)$/, 'containerWidth must be a px length (e.g. "1200px") or "none"')
     .optional(),
+  /**
+   * Delivery format for {{sw-image}}: `avif` emits a `<picture>` with an AVIF `<source>` above the WebP
+   * one (smaller bytes on supporting browsers, at ~2× the materialized files); unset/`webp` emits a
+   * single WebP `<img>`. Thumbnails are generated on demand regardless; this only governs which SOURCE
+   * tiers the responsive markup references. Unset → the instance default (admin `defaultImageFormat`).
+   */
+  imageDelivery: z.enum(['webp', 'avif']).optional(),
+  /**
+   * Cap uploaded image ORIGINALS to this width (downscaled + re-encoded to WebP when the cap bites, like
+   * the importer). Unset → uncapped: the retained original keeps full resolution. Either way, delivery
+   * thumbnails top out at `xl` (2400px), so this only bounds the on-disk retained-original footprint.
+   */
+  imageUploadCap: z.number().int().min(200).max(10000).optional(),
 });
 
 /** Resolve {@link WebsiteSettings.containerWidth} to the `--sw-container` value (`none` = full-bleed). */

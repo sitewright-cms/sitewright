@@ -78,11 +78,10 @@ describe('media API', () => {
       ...multipart('red.png', 'image/png', PNG_1X1),
     });
     expect(up.statusCode).toBe(201);
-    const asset = (up.json() as { item: { id: string; url: string; variants: unknown[] } }).item;
-    expect(asset.variants.length).toBeGreaterThan(0);
-    // The public URL is keyed by the project's SLUG (not its UUID) + the asset id.
-    // Fallback format is alpha-aware: opaque → jpg, transparent → webp (this fixture has alpha).
-    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.(jpg|webp)$/);
+    const asset = (up.json() as { item: { id: string; url: string; original: string } }).item;
+    expect(typeof asset.original).toBe('string'); // the retained original (no eager variants)
+    // The public URL is keyed by the project's SLUG (not its UUID) + the asset id + the original name.
+    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
     expect(asset.url.startsWith(`/media/${slug}/${asset.id}/`)).toBe(true);
     // …and the on-disk mount mirrors that URL exactly: `<mediaRoot>/<slug>/<assetId>/` (NOT the UUID).
     expect(existsSync(join(mediaRoot, slug, asset.id))).toBe(true);
@@ -112,13 +111,14 @@ describe('media API', () => {
       payload: {
         id: 'forged',
         filename: 'x.png',
-        format: 'image/png',
+        format: 'png',
         bytes: 1,
         width: 1,
         height: 1,
-        variants: [],
-        fallback: 'x-1.jpg',
-        url: '/media/other-project/forged/x-1.jpg',
+        hasAlpha: false,
+        animated: false,
+        original: 'x.png',
+        url: '/media/other-project/forged/x.png',
       },
     });
     expect(res.statusCode).toBe(403);

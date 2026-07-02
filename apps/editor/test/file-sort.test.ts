@@ -3,7 +3,7 @@ import type { MediaAsset } from '@sitewright/schema';
 import { sortAssets, sortFolders, folderBytes, matchesName, type FolderEntry } from '../src/views/files/sort';
 
 const img = (over: Partial<MediaAsset>): MediaAsset =>
-  ({ kind: 'image', id: 'i', filename: 'a.png', folder: '', bytes: 10, format: 'image/png', width: 1, height: 1, variants: [], fallback: 'a.jpg', url: '/m/a.jpg', ...over }) as MediaAsset;
+  ({ kind: 'image', id: 'i', filename: 'a.png', folder: '', bytes: 10, format: 'png', width: 1, height: 1, hasAlpha: false, animated: false, original: 'a.png', url: '/m/a.png', ...over }) as MediaAsset;
 const doc = (over: Partial<MediaAsset>): MediaAsset =>
   ({ kind: 'file', id: 'f', filename: 'a.pdf', folder: '', bytes: 10, contentType: 'application/pdf', storedName: 'a.pdf', url: '/m/a.pdf', ...over }) as MediaAsset;
 

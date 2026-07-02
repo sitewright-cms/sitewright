@@ -25,6 +25,7 @@ import { resolveDirectives } from './directives.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
+import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
 import { RESERVED_TRANSLATION_DEFAULTS, consentRuntimeIntegrations, type Consent } from '@sitewright/schema';
 
@@ -94,6 +95,8 @@ export interface TemplateContext {
   nav?: Record<string, unknown>;
   /** Project media (slim projection) for `{{#sw-folder "path"}}` — image galleries / file lists. */
   media?: readonly RenderMedia[];
+  /** Site-wide image delivery: true → `{{sw-image}}` emits a `<picture>` with an AVIF tier (else WebP). */
+  imageAvif?: boolean;
   /**
    * PREVIEW render flag for the `data-sw-*` directive pass: keep the marker attributes so the editor
    * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
@@ -950,6 +953,35 @@ function createInstance(): typeof Handlebars {
     return new Handlebars.SafeString(`<span ${attrs}>⚙ ${escapeHtml(label)}: ${escapeHtml(current || '—')}</span>`);
   });
 
+  // {{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif]}}
+  // Responsive image for a PROJECT image (a delivery `/media/<slug>/<id>/<name>` url, or a
+  // {{#sw-folder}}/dataset item's `url`): emits an <img> with a WebP srcset + intrinsic width/height
+  // (no CLS) + a blur-up LQIP + loading=lazy. `format=avif` (or the project's AVIF delivery setting)
+  // emits a <picture> with an AVIF source above the WebP one. An external/unknown url degrades to a
+  // plain lazy <img>. The server serves each ?size on demand; publish materializes referenced files.
+  hb.registerHelper('sw-image', function swImage(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const hash = (options.hash ?? {}) as Record<string, unknown>;
+    const first = args[0];
+    const url =
+      typeof first === 'string'
+        ? first
+        : first && typeof first === 'object' && typeof (first as { url?: unknown }).url === 'string'
+          ? (first as { url: string }).url
+          : '';
+    if (!url) return new Handlebars.SafeString('');
+    const root = (options.data?.root ?? {}) as { media?: readonly RenderMedia[]; imageAvif?: boolean };
+    const media = Array.isArray(root.media) ? root.media : [];
+    const html = buildSwImage(url, media, {
+      ...(typeof hash.alt === 'string' ? { alt: hash.alt } : {}),
+      ...(typeof hash.class === 'string' ? { className: hash.class } : {}),
+      ...(typeof hash.sizes === 'string' ? { sizes: hash.sizes } : {}),
+      loading: hash.loading === 'eager' ? 'eager' : 'lazy',
+      format: hash.format === 'avif' || root.imageAvif === true ? 'avif' : 'webp',
+    });
+    return new Handlebars.SafeString(html);
+  });
+
   return hb;
 }
 
@@ -1033,7 +1065,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
   // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
-  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms };
   let html: string;
   try {
     html = template(data, {

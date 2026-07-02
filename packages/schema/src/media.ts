@@ -61,27 +61,34 @@ const baseShape = {
 } as const;
 
 /**
- * An uploaded, optimized **image** asset. The binary variants live on disk under the project's
- * media root; this record is the tenant-scoped metadata that the editor and renderer reference.
+ * An uploaded **image** asset. The retained ORIGINAL lives on disk under the project's media root
+ * (source of truth); responsive thumbnails are derived from it ON DEMAND (named sizes → WebP/AVIF)
+ * and cached — never eagerly fanned out. This record is the tenant-scoped metadata the editor and
+ * renderer reference. `url` is the id-bearing DELIVERY route (no `size=` ⇒ `xl` thumbnail), so any
+ * binding that stores it is compressed by default; `?size=original` opts back to the raw original.
  */
 export const ImageAssetSchema = z.object({
   kind: z.literal('image'),
   ...baseShape,
-  /** Detected source format (sharp), e.g. `png`, `jpeg`. */
+  /** Format of the STORED original (sharp): `png`|`jpeg`|`webp`|`gif`|`avif`|`tiff`. */
   format: z.string().min(1).max(20),
+  /** Intrinsic dimensions of the stored original (for `width`/`height` attrs → no CLS). */
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   /** Tiny blurred inline LQIP data URI. */
   placeholder: z.string().max(20_000).optional(),
-  variants: z.array(MediaVariantSchema).max(50),
-  /** Fallback JPEG file name (for the plain `<img>` src). */
-  fallback: VariantFileNameSchema,
-  /** Root-relative URL of the fallback image (what an Image block's `src` stores). */
+  /** Source carries an alpha channel (governs the `{{sw-image}}` fallback-format choice). */
+  hasAlpha: z.boolean().default(false),
+  /** Source is multi-frame (animated GIF/WebP → animated WebP thumbnails). */
+  animated: z.boolean().default(false),
+  /** Stored ORIGINAL file name on disk (sanitized base + extension) — the retained source of truth. */
+  original: StoredFileNameSchema,
+  /** Root-relative DELIVERY URL — id-bearing, defaults to the `xl` thumbnail (what a binding stores). */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg)$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/),
 });
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 

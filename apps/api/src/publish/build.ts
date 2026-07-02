@@ -1,6 +1,8 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
+import type { SizeToken } from '@sitewright/image-pipeline';
+import { materializeImageThumbs, rewriteMediaThumbUrls, resolveThumbForHead, type ThumbRefs } from './media-thumbs.js';
 import {
   allRoutes,
   buildNav,
@@ -265,10 +267,12 @@ async function minifyPageHtml(html: string): Promise<string> {
 }
 
 /**
- * Copies every media asset's files into `<base>/_assets/<assetId>/` (path-safe). Image
- * variants/fallback land directly under the asset dir; a RAW (non-image) blob goes under a
- * `file/` segment — mirroring the editor URL (`/media/<projectId>/<assetId>/file/<name>`), so
- * the publish-time media rewrite maps both kinds to the right bundled path.
+ * Copies every NON-image media asset's files into `<base>/_assets/<assetId>/` (path-safe). A font's
+ * face files + an inline stylesheet/script land flat in the asset dir (their URL has no `/file/`);
+ * a RAW (non-image) blob goes under a `file/` segment — mirroring the editor URL
+ * (`/media/<projectId>/<assetId>/file/<name>`). IMAGES are intentionally NOT copied here: their
+ * responsive thumbnails are generated from the retained original by `materializeImageThumbs` once
+ * the referenced sizes are known (after the page loop), so the export ships only referenced sizes.
  */
 async function copyMedia(
   base: string,
@@ -276,15 +280,9 @@ async function copyMedia(
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
 ): Promise<void> {
   for (const asset of media) {
-    // Image assets carry optimized variants + a fallback; a font carries its face files; a raw file
-    // is a single stored blob. Images + fonts land flat in the asset dir (their URL has no `/file/`);
-    // a raw blob is nested under `file/` so its bundled path matches its served URL.
-    const files =
-      asset.kind === 'image'
-        ? [asset.fallback, ...asset.variants.map((v) => v.path)]
-        : asset.kind === 'font'
-          ? asset.files.map((f) => f.file)
-          : [asset.storedName];
+    // Images are materialized separately (on-demand thumbnails); skip them here.
+    if (asset.kind === 'image') continue;
+    const files = asset.kind === 'font' ? asset.files.map((f) => f.file) : [asset.storedName];
     const dir = join(base, ASSET_DIR, asset.id);
     const writeDir = asset.kind === 'file' ? join(dir, 'file') : dir;
     // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
@@ -551,6 +549,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // noindex pages are excluded.
     const siteUrl = website?.siteUrl;
     const sitemapUrls: Array<{ loc: string; lastmod?: string }> = [];
+    // Referenced-thumbnail accumulator — filled as each page's media URLs are rewritten, then
+    // materialized (from originals) into `_assets/` after the loop. Only referenced sizes ship.
+    const thumbRefs: ThumbRefs = new Map();
 
     // Bundle media into the artifact so the export is self-contained + portable.
     // copyMedia handles every kind — images, raw files, AND `kind:'font'` (a font's faces are
@@ -621,8 +622,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             : src.startsWith(mediaPrefix)
               ? `${siteRoot}${ASSET_DIR}/${src.slice(mediaPrefix.length)}`
               : resolveInternalUrl(src, siteRoot);
+        // Head/SEO IMAGE urls (og:image, org logo/image, fallback favicon) resolve to a MATERIALIZED
+        // thumbnail at a fixed size (recorded for build-time generation) — never the uncapped original.
+        // A non-media url falls back to the generic `rel` rebase.
+        const relImage = (src: string | undefined, size: SizeToken): string | undefined =>
+          !src ? undefined : (resolveThumbForHead(src, mediaPrefix, `${siteRoot}${ASSET_DIR}/`, size, 'webp', thumbRefs) ?? rel(src));
         const organization = baseOrg
-          ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
+          ? { ...baseOrg, logo: relImage(baseOrg.logo, 'lg'), image: relImage(baseOrg.image, 'lg') }
           : undefined;
         // hreflang alternates from the page's translation group (its locale variants),
         // as absolute URLs (Google requires absolute hreflang hrefs); x-default points
@@ -703,6 +709,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)
           // are rebased to the bundled `_assets/…` by the media rewrite below — portable in the export.
           media: mediaForRender(media),
+          // Site-wide AVIF delivery: {{sw-image}} emits a <picture> with an AVIF tier when the project
+          // opts in (website.imageDelivery === 'avif'); otherwise a single WebP <img>.
+          imageAvif: website?.imageDelivery === 'avif',
           // Form embedding ({{sw-form}} / data-sw-form): the precomputed public definitions, the
           // instance hCaptcha sitekey, and this page's root path (for the page-relative
           // contact.php endpoint). Slots render with this same ctx — chrome forms work too.
@@ -802,7 +811,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
             // og:image falls back to the company image; the favicon/PWA icons derive from `icon`.
-            image: rel(page.image ?? identity.image),
+            image: relImage(page.image ?? identity.image, 'lg'),
             url: page.canonical,
             noindex: page.noindex,
             themeColor: identity.colors.primary,
@@ -817,7 +826,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                     manifest: `${siteRoot}${iconSet.manifest}`,
                   },
                 }
-              : { favicon: rel(identity.icon) }),
+              : { favicon: relImage(identity.icon, 'sm') }),
             alternates,
           },
           organization,
@@ -861,7 +870,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // slug-scoped literal, so a stray match in body text/an operator `<script>` string would
         // only be a reference to THIS project's own media — i.e. one we want rebased anyway.
         // (`mediaPrefix` is defined above, shared with the SEO/head `rel()` rebase.)
-        const mediaRebased = html.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
+        // FIRST rewrite image DELIVERY urls (`…/<name>?size=&format=` ⇒ static `<name>-<size>.<fmt>`),
+        // recording the referenced (asset,size,format) set for build-time generation. THEN the flat
+        // prefix rebase (`/media/<slug>/` ⇒ `_assets/`) below fires on the now-static file names.
+        const thumbRewritten = rewriteMediaThumbUrls(html, bundle.project.slug, thumbRefs);
+        const mediaRebased = thumbRewritten.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
@@ -875,6 +888,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           throw new PublishError('published site exceeds the maximum output size');
         }
       }
+    }
+
+    // Materialize exactly the thumbnails (+ any referenced originals) the rendered output points at,
+    // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
+    // AND MINIMAL (only referenced sizes of referenced assets), independent of any preview traffic.
+    if (opts.readMedia && thumbRefs.size > 0) {
+      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia);
     }
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),

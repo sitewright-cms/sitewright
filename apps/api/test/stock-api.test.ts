@@ -149,16 +149,17 @@ describe('stock API — injected fake service', () => {
       payload: { provider: 'openverse', id: 'hit1', alt: 'a cat' },
     });
     expect(res.statusCode).toBe(201);
-    const asset = (res.json() as { item: { id: string; url: string; alt?: string; attribution?: { author: string }; variants: unknown[] } }).item;
+    const asset = (res.json() as { item: { id: string; url: string; alt?: string; attribution?: { author: string }; original: string } }).item;
     expect(asset.alt).toBe('a cat');
     expect(asset.attribution?.author).toBe('Ann');
-    expect(asset.variants.length).toBeGreaterThan(0);
-    // The imported image is self-hosted (served locally, not hotlinked).
-    // Fallback format is alpha-aware: opaque → jpg, transparent → webp.
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.(jpg|webp)$/);
+    expect(typeof asset.original).toBe('string'); // the retained original (no eager variants)
+    // The imported image is self-hosted (served locally, not hotlinked). The delivery URL ends in the
+    // stored original name (imports are capped at 2400px → .webp when the cap bites, else the source ext).
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
     const served = await app.inject({ method: 'GET', url: asset.url });
     expect(served.statusCode).toBe(200);
-    expect(['image/jpeg', 'image/webp']).toContain(served.headers['content-type']);
+    // The bare delivery URL serves the compressed `xl` thumbnail (WebP) by default.
+    expect(served.headers['content-type']).toBe('image/webp');
 
     // And it shows up in the media list.
     const list = await app.inject({ method: 'GET', url: `${base}/media`, cookies: { sw_session: t } });

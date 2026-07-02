@@ -69,11 +69,17 @@ export function AgentDrawer({
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [sessionTokens, setSessionTokens] = useState(0);
   const conversationId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // The agent interleaves prose + tool calls; when it resumes talking AFTER acting, start a fresh
+  // assistant bubble (so multi-step work reads as separate replies, not one concatenated blob).
+  const newSegmentRef = useRef(false);
+  // Whether a terminal frame (done/error) arrived — a stream that ends without one dropped mid-turn.
+  const gotTerminalRef = useRef(false);
 
   // Add dropped/picked/pasted files as attachments (dedup by name+size, cap the count + reject others).
   async function addFiles(files: FileList | File[]) {
@@ -176,6 +182,8 @@ export function AgentDrawer({
     const shownAttach = sent.map((a) => ({ kind: a.kind, previewUrl: a.previewUrl, name: a.name }));
     setMessages((m) => [...m, { role: 'user', text, attachments: shownAttach.length ? shownAttach : undefined }, { role: 'assistant', text: '', tools: [], streaming: true }]);
     setStatus('thinking');
+    newSegmentRef.current = false;
+    gotTerminalRef.current = false;
     const ac = new AbortController();
     abortRef.current = ac;
     try {
@@ -189,10 +197,22 @@ export function AgentDrawer({
         },
         {
           onStart: (e) => (conversationId.current = e.conversationId),
-          onText: (delta) => patchAssistant((a) => ({ ...a, text: a.text + delta })),
+          onText: (delta) => {
+            if (newSegmentRef.current) {
+              // First prose after a tool call → seal the current bubble and open a new one.
+              newSegmentRef.current = false;
+              setMessages((m) => {
+                const sealed = m.map((msg, i) => (i === m.length - 1 && msg.role === 'assistant' ? { ...msg, streaming: false } : msg));
+                return [...sealed, { role: 'assistant', text: delta, tools: [], streaming: true }];
+              });
+            } else {
+              patchAssistant((a) => ({ ...a, text: a.text + delta }));
+            }
+          },
           onTool: (t) => {
             setStatus('working');
             patchAssistant((a) => ({ ...a, tools: [...a.tools, { id: t.id, name: t.name }] }));
+            newSegmentRef.current = true; // the next prose is a new reply segment
           },
           onToolResult: (r) => {
             setStatus('thinking');
@@ -200,10 +220,18 @@ export function AgentDrawer({
             // which the bubble shows so a failed edit isn't just a silent ✗.
             patchAssistant((a) => ({ ...a, tools: a.tools.map((tool) => (tool.id === r.id ? { ...tool, ok: r.ok, summary: r.summary } : tool)) }));
           },
-          // Accumulate this response's token usage across all its turns → shown under the bubble.
-          onUsage: (u) => patchAssistant((a) => ({ ...a, tokens: (a.tokens ?? 0) + u.inputTokens + u.outputTokens })),
-          onDone: (msg) => patchAssistant((a) => ({ ...a, text: a.text || msg, streaming: false })),
+          // Per-segment tokens under the bubble + a running SESSION total in the header.
+          onUsage: (u) => {
+            const n = u.inputTokens + u.outputTokens;
+            setSessionTokens((t) => t + n);
+            patchAssistant((a) => ({ ...a, tokens: (a.tokens ?? 0) + n }));
+          },
+          onDone: (msg) => {
+            gotTerminalRef.current = true;
+            patchAssistant((a) => ({ ...a, text: a.text || msg, streaming: false }));
+          },
           onError: (msg) => {
+            gotTerminalRef.current = true;
             setError(msg);
             patchAssistant((a) => ({ ...a, streaming: false }));
           },
@@ -216,6 +244,11 @@ export function AgentDrawer({
       // Finalize the streaming bubble — an aborted turn returns without a done/error frame, so this
       // clears the "…" placeholder / streaming flag on Stop or drawer-close.
       patchAssistant((a) => ({ ...a, streaming: false }));
+      // Stream ended with NO terminal frame and the user didn't stop it → the connection dropped
+      // mid-turn. Tell them (the server aborts its side on disconnect; the work can be resumed).
+      if (!gotTerminalRef.current && !ac.signal.aborted) {
+        setError('The connection ended before the agent finished — send “continue” to resume.');
+      }
     }
   }
 
@@ -243,6 +276,11 @@ export function AgentDrawer({
             <div className="text-sm font-bold text-slate-800">AI Assistant</div>
             <StatusPill status={status} label={statusLabel} />
           </div>
+          {sessionTokens > 0 && (
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-400" title="Total tokens used this session">
+              {sessionTokens.toLocaleString()} tok
+            </span>
+          )}
           <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>

@@ -126,11 +126,22 @@ Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`so
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
 pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
-BUILD BIG PAGES IN STAGES: each reply has an OUTPUT-TOKEN LIMIT and a full 6-9 section page can
-exceed it — a reply cut off mid-write LOSES the edit (you'll get a max-output-tokens error). So don't
-emit one giant put_page; put_page an initial version (chrome + 2-3 sections), then in follow-up
-replies get_page it and put_page the next sections appended, previewing as you go. Small complete
-writes beat one oversized write that truncates.
+BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
+single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
+max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
+(chrome + 2-3 sections), then get_page it and put_page with the next sections appended, and REPEAT
+until the page is complete. Do NOT stop to ask "shall I continue" between sections — keep calling
+tools until the page is DONE or you are genuinely blocked; only then end your turn. Preview as you go.
+MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
+must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
+hard-code final copy as plain inline text. USE DATASETS for REPEATING content (service cards, team,
+FAQs, testimonials, logos, pricing tiers): put_content a dataset + its entries and render them with
+{{#each dataset.<slug>}} — never hand-copy the same block N times (that isn't editable and bloats the
+page). get_guide covers datasets + the editable-binding model.
+USE THE PLATFORM'S INTERACTIVE COMPONENTS wherever they make a layout richer — carousels/sliders,
+lightbox galleries, tabs, accordions, banners, animated shader/gradient backgrounds, date pickers —
+rather than a flat wall of static sections; prefer a first-party component over hand-rolling. Call
+get_components (contracts + skeletons) before laying out a page.
 DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
 often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
@@ -203,6 +214,11 @@ CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not
     title: "Components & forms",
     summary: "interactive widgets (carousel, tabs, lightbox, modal, banner, datetimepicker, shader-bg) + Forms",
     body: `
+USE THE PLATFORM COMPONENTS to make layouts richer + more attractive wherever they fit — reach for a
+hero/testimonials CAROUSEL, a LIGHTBOX gallery, TABS or a native accordion, an animated SHADER /
+gradient background, a BANNER, a date/time picker — instead of a flat wall of static sections. Prefer
+a first-party component over hand-rolling the same effect; call get_components to see what's available
+before laying out a page.
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
 data-sw-component="carousel|tabs|lightbox|modal|banner|datetimepicker" — author semantic HTML with
 data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades

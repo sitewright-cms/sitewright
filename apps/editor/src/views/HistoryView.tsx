@@ -84,7 +84,7 @@ export function HistoryView({ project }: { project: Project }) {
     if (!ok) return;
     setRestoringId(r.id);
     try {
-      await api.restoreRevision(project.id, r.kind, r.entityId, r.id);
+      await api.restoreRevision(project.id, r.kind, r.entityId, r.id, r.dataset);
       toast.show('Revision restored', 'success');
       await load();
     } catch (err) {

@@ -70,13 +70,23 @@ describe('validateProject', () => {
     expect(codes(bundle)).toContain('unknown_dataset');
   });
 
-  it('flags duplicate entry ids', () => {
+  it('flags duplicate entry ids WITHIN a dataset', () => {
     const bundle = validBundle();
     bundle.entries = [
       { id: 'dup', dataset: 'products', status: 'published', values: {} },
       { id: 'dup', dataset: 'products', status: 'published', values: {} },
     ];
     expect(codes(bundle)).toContain('duplicate_entry_id');
+  });
+
+  it('ALLOWS the same entry id in DIFFERENT datasets (ids are dataset-scoped)', () => {
+    const bundle = validBundle();
+    bundle.datasets = [products, { id: 'd2', name: 'Blog', slug: 'blog', fields: [] }];
+    bundle.entries = [
+      { id: 'intro', dataset: 'products', status: 'published', values: {} },
+      { id: 'intro', dataset: 'blog', status: 'published', values: {} },
+    ];
+    expect(codes(bundle)).not.toContain('duplicate_entry_id');
   });
 
   it('flags duplicate page ids, page paths, and dataset slugs', () => {

@@ -12,6 +12,9 @@ interface RevisionHistoryModalProps {
   /** Revisioned content kind: 'page' | 'dataset' | 'entry' | 'settings' | … */
   kind: string;
   entityId: string;
+  /** For kind 'entry': its owning dataset slug — an entry's history is keyed per-dataset (its id is only
+   *  unique within its dataset). Ignored for every other, project-global kind. */
+  dataset?: string;
   /** A human label shown next to the title (page title, dataset/entry name). */
   label?: string;
   onClose: () => void;
@@ -24,7 +27,7 @@ interface RevisionHistoryModalProps {
  * the chosen snapshot (the current version stays in history) and recreates a deleted entity. Used across
  * the page editor, dataset/entry editors, and settings; the parent's `onRestored` reloads its content.
  */
-export function RevisionHistoryModal({ projectId, kind, entityId, label, onClose, onRestored }: RevisionHistoryModalProps) {
+export function RevisionHistoryModal({ projectId, kind, entityId, dataset, label, onClose, onRestored }: RevisionHistoryModalProps) {
   const { confirm, dialog } = useDialogs();
   const toast = useToast();
   const [items, setItems] = useState<RevisionMeta[] | null>(null);
@@ -32,12 +35,12 @@ export function RevisionHistoryModal({ projectId, kind, entityId, label, onClose
 
   const load = useCallback(async () => {
     try {
-      const res = await api.listRevisions(projectId, kind, entityId);
+      const res = await api.listRevisions(projectId, kind, entityId, dataset);
       setItems(res.items);
     } catch {
       setItems([]);
     }
-  }, [projectId, kind, entityId]);
+  }, [projectId, kind, entityId, dataset]);
 
   useEffect(() => {
     void load();
@@ -67,7 +70,7 @@ export function RevisionHistoryModal({ projectId, kind, entityId, label, onClose
     if (!ok) return;
     setRestoringId(r.id);
     try {
-      await api.restoreRevision(projectId, kind, entityId, r.id);
+      await api.restoreRevision(projectId, kind, entityId, r.id, dataset);
       toast.show('Revision restored', 'success');
       onRestored();
       await load();

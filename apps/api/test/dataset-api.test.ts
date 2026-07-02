@@ -101,10 +101,51 @@ describe('dataset + entry content API', () => {
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
     await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
-    const del = await app.inject({ method: 'DELETE', url: `${base}/content/entry/post_1`, cookies });
+    // An entry id is only unique within its dataset, so read/delete carry the owning dataset as ?dataset=.
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/entry/post_1?dataset=posts`, cookies });
     expect(del.statusCode).toBe(204);
-    const get = await app.inject({ method: 'GET', url: `${base}/content/entry/post_1`, cookies });
+    const get = await app.inject({ method: 'GET', url: `${base}/content/entry/post_1?dataset=posts`, cookies });
     expect(get.statusCode).toBe(404);
+  });
+
+  it('scopes entry ids to their dataset — two datasets can hold the SAME id', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const field = [{ name: 'title', type: 'text' }];
+    await app.inject({ method: 'PUT', url: `${base}/content/dataset/posts`, cookies, payload: { id: 'posts', name: 'Posts', slug: 'posts', fields: field } });
+    await app.inject({ method: 'PUT', url: `${base}/content/dataset/news`, cookies, payload: { id: 'news', name: 'News', slug: 'news', fields: field } });
+    // Same entry id 'intro' in BOTH datasets — the second is NOT a conflict (different scope).
+    const a = await app.inject({ method: 'PUT', url: `${base}/content/entry/intro`, cookies, payload: { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'Posts intro' } } });
+    const b = await app.inject({ method: 'PUT', url: `${base}/content/entry/intro`, cookies, payload: { id: 'intro', dataset: 'news', status: 'published', values: { title: 'News intro' } } });
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+
+    // Both rows coexist.
+    const list = (await app.inject({ method: 'GET', url: `${base}/content/entry`, cookies })).json() as { items: Array<{ id: string }> };
+    expect(list.items.filter((e) => e.id === 'intro')).toHaveLength(2);
+
+    // GET by (dataset, id) resolves the RIGHT one.
+    const posts = (await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=posts`, cookies })).json() as { item: { values: { title: string } } };
+    const news = (await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=news`, cookies })).json() as { item: { values: { title: string } } };
+    expect(posts.item.values.title).toBe('Posts intro');
+    expect(news.item.values.title).toBe('News intro');
+
+    // Deleting posts/intro leaves news/intro intact.
+    expect((await app.inject({ method: 'DELETE', url: `${base}/content/entry/intro?dataset=posts`, cookies })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=posts`, cookies })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=news`, cookies })).statusCode).toBe(200);
+  });
+
+  it('requires the ?dataset= query to address an entry by id (400)', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await app.inject({ method: 'PUT', url: `${base}/content/dataset/posts`, cookies, payload: dataset });
+    await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
+    // The id alone is ambiguous across datasets → GET/DELETE without ?dataset= is a 400.
+    expect((await app.inject({ method: 'GET', url: `${base}/content/entry/post_1`, cookies })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/content/entry/post_1`, cookies })).statusCode).toBe(400);
   });
 
   it('isolates datasets across tenants', async () => {

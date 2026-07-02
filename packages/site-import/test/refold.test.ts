@@ -53,9 +53,10 @@ describe('refoldLoops', () => {
     expect(res.datasets[0]!.slug).toBe('ourteam2'); // deduped
   });
 
-  it('keeps entry ids unique against the shared used-id set (no project-global collision)', async () => {
-    // Two pages re-folding the same content must not mint colliding entry ids — the entry storage key is
-    // project-global. The shared used-id set suffixes the repeats.
+  it('gives each dataset its OWN clean entry ids — cross-dataset repeats are fine (per-dataset scope)', async () => {
+    // Two pages re-folding the same content infer TWO datasets (distinct slugs). Entry ids are scoped to
+    // their dataset `(projectId,'entry',dataset,id)`, so the same clean id may appear in both — no
+    // cross-dataset suffixing. The shared set holds `slug id` keys, which never collide across slugs.
     const sharedIds = new Set<string>();
     const cards = [0, 1, 2, 3].map((i) => `<a class="card" href="/p${i}"><h3>Member ${i}</h3><p>B${i}</p></a>`).join('');
     const a = await refoldLoops(`<h2>Team A</h2><section class="g1">${cards}</section>`, new Set<string>(), sharedIds, probe);
@@ -63,8 +64,9 @@ describe('refoldLoops', () => {
     const aIds = a.entries.map((e) => e.id);
     const bIds = b.entries.map((e) => e.id);
     expect(aIds).toHaveLength(4);
-    expect(bIds).toEqual(aIds.map((id) => `${id}_2`)); // suffixed against the shared set
-    const all = [...aIds, ...bIds];
-    expect(new Set(all).size).toBe(all.length); // globally unique
+    expect(a.datasets[0]!.slug).not.toBe(b.datasets[0]!.slug); // distinct datasets
+    expect(bIds).toEqual(aIds); // same clean ids in a different dataset → NO suffix
+    expect(new Set(aIds).size).toBe(aIds.length); // still unique WITHIN each dataset
+    expect(new Set(bIds).size).toBe(bIds.length);
   });
 });

@@ -8,6 +8,7 @@ import type { Database } from '../db/client.js';
 import { projectMembers, users, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 import type { ContentRepository } from '../repo/content.js';
 import { REVISIONED_KINDS, type RevisionsRepository } from '../repo/revisions.js';
+import { entryScope } from './content-scope.js';
 import type { ProjectContext } from '../repo/context.js';
 
 type RevisionReq = FastifyRequest<{ Params: { projectId: string; kind: string; entityId: string; revisionId?: string } }>;
@@ -80,6 +81,9 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
         id: r.id,
         kind: r.kind,
         entityId: r.entityId,
+        // The entity's dataset scope ('' for non-entries) so a feed row can restore the RIGHT entry when
+        // an id repeats across datasets (the restore route needs it as ?dataset=).
+        dataset: r.scope,
         label: r.label,
         op: r.op,
         actor: r.actor,
@@ -95,14 +99,18 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
 
   // List one entity's revision history (newest first) — metadata only, no snapshot blobs. Resolves each
   // author to an email + an `isYou` flag for display; agent writes show no email (actor: 'agent').
-  app.get<{ Params: { projectId: string; kind: string; entityId: string } }>(
+  app.get<{ Params: { projectId: string; kind: string; entityId: string }; Querystring: { dataset?: string } }>(
     base,
     { config: rl(120) },
     async (req, reply) => {
       const kind = revisionedKind(req.params.kind);
       if (!kind) return reply.code(404).send({ error: 'no revision history for this kind' });
       const { ctx } = await resolveProject(req, 'content:read');
-      const revisions = await revisionsRepo.list(ctx, kind, req.params.entityId);
+      // An `entry`'s history is dataset-scoped (its id is only unique within its dataset) — the owning
+      // dataset arrives as a validated `?dataset=` (required, or 400); every other kind is scope `''`.
+      const scope = entryScope(kind, req.query.dataset, reply);
+      if (scope === undefined) return reply;
+      const revisions = await revisionsRepo.list(ctx, kind, req.params.entityId, scope);
       const emailById = await memberEmails(db, ctx.projectId, revisions.filter((r) => r.actor === 'user').map((r) => r.userId));
       return reply.send({
         items: revisions.map((r) => ({
@@ -135,7 +143,7 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
 
   // Restore a revision: re-write the entity's content from the snapshot. Non-destructive — the current
   // state stays in history and this creates a fresh `restore` revision. Recreates a deleted entity.
-  app.post<{ Params: { projectId: string; kind: string; entityId: string; revisionId: string } }>(
+  app.post<{ Params: { projectId: string; kind: string; entityId: string; revisionId: string }; Querystring: { dataset?: string } }>(
     `${base}/:revisionId/restore`,
     { config: rl(60) },
     async (req, reply) => {
@@ -143,8 +151,13 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
       if (!kind) return reply.code(404).send({ error: 'no revision history for this kind' });
       const { ctx } = await resolveProject(req, 'content:write');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      // An entry id repeats across datasets, so restore carries the owning `?dataset=` (required, or 400)
+      // and the revision must belong to THAT dataset — otherwise a feed-sourced revision id could restore
+      // a same-id entry in a different dataset than the URL addresses.
+      const scope = entryScope(kind, req.query.dataset, reply);
+      if (scope === undefined) return reply;
       const rev = await revisionsRepo.get(ctx, req.params.revisionId);
-      if (!rev || rev.kind !== kind || rev.entityId !== req.params.entityId) {
+      if (!rev || rev.kind !== kind || rev.entityId !== req.params.entityId || rev.scope !== scope) {
         return reply.code(404).send({ error: 'revision not found' });
       }
       const note = `Restored from ${new Date(rev.revisionAt).toISOString()}`;

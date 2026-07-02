@@ -125,25 +125,33 @@ describe('inferDatasets', () => {
 });
 
 describe('uniquifyEntryIds', () => {
-  it('re-keys entry ids that collide across datasets (bundle-wide uniqueness)', () => {
-    // Two datasets (e.g. a nav folded on multiple pages) whose rows produce the same title-derived ids.
+  it('re-keys only WITHIN-dataset collisions; cross-dataset repeats stay clean (per-dataset uniqueness)', () => {
+    // Entry ids are dataset-scoped storage keys, so the same clean id in DIFFERENT datasets is fine; only
+    // a repeat in the SAME dataset (e.g. a grid folded twice onto one merged dataset) is suffixed.
     const entries = [
       { id: 'consultancy', dataset: 'nav' },
       { id: 'investments', dataset: 'nav' },
       { id: 'row_1', dataset: 'nav' },
-      { id: 'consultancy', dataset: 'nav_2' }, // collides with nav's
-      { id: 'row_1', dataset: 'other' }, // collides with nav's row_1
+      { id: 'consultancy', dataset: 'nav_2' }, // DIFFERENT dataset → stays clean
+      { id: 'row_1', dataset: 'other' }, // DIFFERENT dataset → stays clean
+      { id: 'row_1', dataset: 'nav' }, // SAME dataset as the earlier row_1 → suffixed
       { id: 'gallery', dataset: 'nav_2' },
     ];
     uniquifyEntryIds(entries);
-    expect(entries.map((e) => e.id)).toEqual(['consultancy', 'investments', 'row_1', 'consultancy_2', 'row_1_2', 'gallery']);
-    // every id is now unique
-    expect(new Set(entries.map((e) => e.id)).size).toBe(entries.length);
+    expect(entries.map((e) => e.id)).toEqual(['consultancy', 'investments', 'row_1', 'consultancy', 'row_1', 'row_1_2', 'gallery']);
+    // Unique WITHIN each dataset (not across the whole bundle).
+    const perDataset = new Map<string, Set<string>>();
+    for (const e of entries) {
+      const set = perDataset.get(e.dataset) ?? new Set<string>();
+      expect(set.has(e.id)).toBe(false);
+      set.add(e.id);
+      perDataset.set(e.dataset, set);
+    }
   });
 
-  it('is a no-op when ids are already unique', () => {
-    const entries = [{ id: 'a', dataset: 'd' }, { id: 'b', dataset: 'd' }];
+  it('is a no-op when ids are already unique within their dataset', () => {
+    const entries = [{ id: 'a', dataset: 'd' }, { id: 'b', dataset: 'd' }, { id: 'a', dataset: 'e' }];
     uniquifyEntryIds(entries);
-    expect(entries.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b', 'a']);
   });
 });

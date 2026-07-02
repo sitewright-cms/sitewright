@@ -412,6 +412,9 @@ export interface RevisionMeta {
 export interface ProjectRevisionRow extends RevisionMeta {
   kind: string;
   entityId: string;
+  /** The entity's dataset scope ('' for non-entries) — passed to restoreRevision so a repeated entry id
+   *  is restored in the RIGHT dataset. */
+  dataset: string;
   /** A short title for the entity (from the snapshot: title → name → id). */
   label: string;
 }
@@ -835,17 +838,22 @@ export const api = {
     ),
 
   // --- content revision history (any revisioned kind: page/template/snippet/translation/dataset/entry/form/settings) ---
-  listRevisions: (projectId: string, kind: string, id: string) =>
-    request<{ items: RevisionMeta[] }>('GET', `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions`),
+  listRevisions: (projectId: string, kind: string, id: string, dataset?: string) =>
+    request<{ items: RevisionMeta[] }>(
+      'GET',
+      `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
+    ),
   getRevision: (projectId: string, kind: string, id: string, revId: string) =>
     request<{ revision: RevisionMeta & { data: unknown } }>(
       'GET',
       `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}`,
     ),
-  restoreRevision: (projectId: string, kind: string, id: string, revId: string) =>
+  // For kind 'entry', `dataset` (its owning slug) is REQUIRED — an entry id repeats across datasets, so
+  // restore must address the right one. Other kinds are project-global and ignore it.
+  restoreRevision: (projectId: string, kind: string, id: string, revId: string, dataset?: string) =>
     request<{ item: unknown }>(
       'POST',
-      `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore`,
+      `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
     ),
   /** The project-wide activity feed (History view). Optional kind/op filters + a `before` ISO cursor. */
   listProjectRevisions: (projectId: string, opts: { kind?: string; op?: string; limit?: number; before?: string } = {}) => {
@@ -946,12 +954,14 @@ export const api = {
   // --- entries ---
   listEntries: (projectId: string) =>
     request<{ items: Entry[] }>('GET', `/projects/${projectId}/content/entry`),
-  getEntry: (projectId: string, id: string) =>
-    request<{ item: Entry }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}`),
+  // An entry id is only unique WITHIN its dataset, so read/delete carry the owning dataset slug as
+  // `?dataset=`; put derives it from the entry body (entry.dataset).
+  getEntry: (projectId: string, id: string, dataset: string) =>
+    request<{ item: Entry }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}?dataset=${encodeURIComponent(dataset)}`),
   putEntry: (projectId: string, entry: Entry) =>
     request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${encodeURIComponent(entry.id)}`, entry),
-  deleteEntry: (projectId: string, id: string) =>
-    request<void>('DELETE', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}`),
+  deleteEntry: (projectId: string, id: string, dataset: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}?dataset=${encodeURIComponent(dataset)}`),
 
   // --- media ---
   listMedia: (projectId: string, kind?: 'image' | 'file' | 'font') =>

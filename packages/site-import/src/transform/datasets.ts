@@ -129,19 +129,19 @@ export function slugifyId(s: string): string {
 }
 
 /**
- * Re-key duplicate entry ids so they are unique across the WHOLE bundle (mutates in place, returns the
- * same array). Per-page dataset extraction dedupes entry ids only WITHIN a dataset, but the content
- * store keys every entry by `entityId` per project (validateProject enforces it) — so a dataset folded
- * on multiple pages (a repeated nav/services grid) yields colliding ids like `consultancy` / `row_1`.
- * The folded loop markup iterates via `{{#each}}` and never references an entry id, so re-keying the
- * stored id (first occurrence keeps the bare id; later ones get an `_2`, `_3`, … suffix) is safe.
+ * Re-key duplicate entry ids so they are unique WITHIN THEIR DATASET (mutates in place, returns the same
+ * array). Entry ids are dataset-scoped storage keys `(projectId,'entry',dataset,entityId)`, so a clean id
+ * only collides when it repeats in the SAME dataset — e.g. a grid folded on multiple pages into ONE
+ * dataset. The folded loop markup iterates via `{{#each}}` and never references an entry id, so re-keying
+ * the stored id (first occurrence keeps the bare id; later same-dataset ones get an `_2`, `_3`, … suffix)
+ * is safe. Ids in DIFFERENT datasets are left untouched — two datasets may each hold a clean `row_1`.
  */
-export function uniquifyEntryIds<T extends { id: string }>(entries: T[]): T[] {
+export function uniquifyEntryIds<T extends { id: string; dataset: string }>(entries: T[]): T[] {
   const seen = new Set<string>();
   for (const entry of entries) {
     let id = entry.id;
-    for (let k = 2; seen.has(id); k += 1) id = `${entry.id}_${k}`;
-    seen.add(id);
+    for (let k = 2; seen.has(`${entry.dataset} ${id}`); k += 1) id = `${entry.id}_${k}`;
+    seen.add(`${entry.dataset} ${id}`);
     entry.id = id;
   }
   return entries;
@@ -275,11 +275,10 @@ export function uniformChildren(children: Element[]): { types: SlotType[] } | nu
 /**
  * Infer datasets from a page document (mutates: qualifying containers → a sentinel marker).
  *
- * `usedEntryIds` is threaded across EVERY page of the import (like `usedSlugs`) because an entry id is
- * the content row's storage key — entries are stored under `(projectId, kind:'entry', entityId)`, so the
- * id must be unique across ALL datasets in the project, not just within its own. Two pages that repeat the
- * same content (e.g. a service grid shown on both `/` and `/services/`) would otherwise infer two datasets
- * whose entries collide on the same bare id and fail the bundle's referential-integrity check.
+ * `usedEntryIds` is threaded across every page (like `usedSlugs`) but holds DATASET-SCOPED keys (`slug id`):
+ * entries are stored under `(projectId, kind:'entry', dataset, entityId)`, so an id only has to be unique
+ * WITHIN its dataset. Two pages that repeat the same content infer two datasets with distinct slugs, and
+ * each keeps its own clean ids (`row_1`) — a suffix is added only when an id repeats in the SAME dataset.
  */
 export function inferDatasets(
   doc: Document,
@@ -332,12 +331,13 @@ export function inferDatasets(
     rows.forEach((values, n) => {
       // Entry ids are ITEM KEYS — used as `{{item.<dataset>.<id>.<field>}}` Handlebars PATHS and as
       // data-sw-entry edit handles — so they must be underscore identifiers (no hyphens) and NOT prefixed
-      // with the dataset slug. Derive from the title; fall back to a neutral row key. Deduped against the
-      // BUNDLE-WIDE set so the id is unique across every dataset (the entry storage key is project-global).
+      // with the dataset slug. Derive from the title; fall back to a neutral row key. Entry ids are
+      // DATASET-SCOPED storage keys, so uniqueness is PER-DATASET: the dedup key is scoped by the owning
+      // slug (`slug id`) — two datasets can both hold a clean `row_1` without a `_2` suffix.
       const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
       let id = base;
-      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;
-      usedEntryIds.add(id);
+      for (let k = 2; usedEntryIds.has(`${slug} ${id}`); k += 1) id = `${base}_${k}`;
+      usedEntryIds.add(`${slug} ${id}`);
       entries.push({ id, dataset: slug, status: 'published', order: n, values });
     });
     const marker = `${markerPrefix}${markers.size}@@`;

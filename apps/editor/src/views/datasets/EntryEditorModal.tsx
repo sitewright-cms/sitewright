@@ -574,7 +574,7 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       await api.putEntry(projectId, { ...entry, id: computedId, status, values });
       // An EXISTING entry whose key changed is recreated under the new id; drop the old row.
       // (PUT-then-DELETE: a failure leaves the new copy rather than losing the entry.)
-      if (existsServer && idChanged) await api.deleteEntry(projectId, base.id);
+      if (existsServer && idChanged) await api.deleteEntry(projectId, base.id, dataset.slug);
       setBase({ id: computedId, status, values });
       setExistsServer(true);
       setKeyInput('');
@@ -695,11 +695,12 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
         projectId={projectId}
         kind="entry"
         entityId={entry.id}
+        dataset={dataset.slug}
         label={entryLabel(dataset, { ...entry, id: base.id, values })}
         onClose={() => setHistoryOpen(false)}
         onRestored={async () => {
           // Rehydrate the form in place from the restored entry (keeps the editor open + non-dirty).
-          const res = await api.getEntry(projectId, entry.id);
+          const res = await api.getEntry(projectId, entry.id, dataset.slug);
           const e = res.item;
           setValues(e.values);
           setStatus(e.status);

@@ -73,6 +73,33 @@ describe('revision routes', () => {
     expect((await proj.getContent('page', 'gone')).json().item.title).toBe('Bye');
   });
 
+  it('scopes entry revision history + restore to the owning dataset', async () => {
+    const proj = client.project(pid);
+    const field = [{ name: 'title', type: 'text' }];
+    await proj.putContent('dataset', 'posts', { id: 'posts', name: 'Posts', slug: 'posts', fields: field });
+    await proj.putContent('dataset', 'news', { id: 'news', name: 'News', slug: 'news', fields: field });
+    // The id 'intro' lives in BOTH datasets, edited independently.
+    await proj.putContent('entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P1' } });
+    await proj.putContent('entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P2' } });
+    await proj.putContent('entry', 'intro', { id: 'intro', dataset: 'news', status: 'published', values: { title: 'N1' } });
+
+    // History is per-dataset and the list REQUIRES ?dataset= (400 without it).
+    expect((await client.get(revBase('entry', 'intro'))).statusCode).toBe(400);
+    const postsHist = (await client.get(`${revBase('entry', 'intro')}?dataset=posts`)).json().items;
+    const newsHist = (await client.get(`${revBase('entry', 'intro')}?dataset=news`)).json().items;
+    expect(postsHist.length).toBe(2);
+    expect(newsHist.length).toBe(1);
+
+    const vP1 = postsHist[postsHist.length - 1].id; // posts/intro's first revision (title 'P1')
+    // A posts revision id can't restore via ?dataset=news (cross-dataset) → 404; missing dataset → 400.
+    expect((await client.post(`${revBase('entry', 'intro')}/${vP1}/restore?dataset=news`)).statusCode).toBe(404);
+    expect((await client.post(`${revBase('entry', 'intro')}/${vP1}/restore`)).statusCode).toBe(400);
+    // The right dataset restores posts/intro to 'P1'; news/intro is untouched.
+    expect((await client.post(`${revBase('entry', 'intro')}/${vP1}/restore?dataset=posts`)).statusCode).toBe(200);
+    expect((await client.get(`/projects/${pid}/content/entry/intro?dataset=posts`)).json().item.values.title).toBe('P1');
+    expect((await client.get(`/projects/${pid}/content/entry/intro?dataset=news`)).json().item.values.title).toBe('N1');
+  });
+
   it('404s for a kind without revision history (e.g. media)', async () => {
     expect((await client.get(revBase('media', 'x'))).statusCode).toBe(404);
   });

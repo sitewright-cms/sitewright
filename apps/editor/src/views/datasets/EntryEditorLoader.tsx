@@ -24,8 +24,9 @@ export function EntryEditorLoader({ projectId, dataset, id, onSaved, onClose }: 
     // `dataset` is the SLUG carried by data-sw-dataset, which is NOT the dataset's entity id once the
     // dataset has been renamed (rename_dataset changes the slug but keeps the id) — so resolve it by SLUG
     // from the dataset list, not by id (getDataset(slug) 404s for a renamed dataset). Fall back to an id
-    // match for safety. The entry is fetched by its (globally-unique) id.
-    void Promise.all([api.listDatasets(projectId), api.getEntry(projectId, id)])
+    // match for safety. The entry is fetched by (dataset slug + id) — its id is only unique per-dataset;
+    // a stale marker slug (pre-rename) 404s here and just closes, same as the dataset-resolve miss below.
+    void Promise.all([api.listDatasets(projectId), api.getEntry(projectId, id, dataset)])
       .then(([ds, e]) => {
         if (!alive) return;
         const d = ds.items.find((x) => x.slug === dataset) ?? ds.items.find((x) => x.id === dataset);

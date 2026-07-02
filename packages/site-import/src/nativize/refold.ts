@@ -128,9 +128,10 @@ function largestRun(children: readonly Element[]): { run: Element[]; types: Slot
 
 /**
  * Re-fold uniform card grids in `html` (already-nativized page source) into `{{#each}}` loops + datasets,
- * keeping ONLY render-equivalent folds. `usedSlugs` AND `usedEntryIds` are shared across the whole site so
- * both stay unique site-wide — an entry id is the project-global storage key `(projectId,'entry',entityId)`,
- * so two pages re-folding the same content must not produce colliding entry ids. `probe` renders a fragment
+ * keeping ONLY render-equivalent folds. `usedSlugs` is shared across the whole site so dataset slugs stay
+ * unique site-wide; `usedEntryIds` holds DATASET-SCOPED keys (`slug id`) — an entry id is the storage key
+ * `(projectId,'entry',dataset,entityId)`, unique only WITHIN its dataset, so ids in different datasets are
+ * independent (each fold gets a fresh slug ⇒ its clean `row_1` never collides). `probe` renders a fragment
  * against the page's render context. Returns the (possibly) rewritten html + new datasets/entries (empty
  * when nothing folds — the caller then keeps the literal html unchanged).
  */
@@ -213,12 +214,13 @@ export async function refoldLoops(
     const titleField = fields.find((f) => f.type === 'text')?.name;
     rows.forEach((values, n) => {
       // Item keys = underscore identifiers, NOT slug-prefixed (used as {{item.<ds>.<id>}} paths + edit
-      // handles). Deduped against the SITE-WIDE set so the id is unique across every dataset (the entry
-      // storage key is project-global).
+      // handles). Entry ids are DATASET-SCOPED storage keys, so uniqueness is enforced PER-DATASET: the
+      // dedup key is scoped by the owning slug (`slug id`) — the same clean `row_1` may appear in two
+      // datasets without a `_2` suffix.
       const base = (titleField ? slugifyId(values[titleField] ?? '').replace(/-/g, '_') : '') || `row_${n + 1}`;
       let id = base;
-      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${base}_${k}`;
-      usedEntryIds.add(id);
+      for (let k = 2; usedEntryIds.has(`${slug} ${id}`); k += 1) id = `${base}_${k}`;
+      usedEntryIds.add(`${slug} ${id}`);
       entries.push({ id, dataset: slug, status: 'published', order: n, values });
     });
     replacements.push({ from: runHtml, to: loop });

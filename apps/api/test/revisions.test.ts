@@ -31,6 +31,18 @@ describe('RevisionsRepository', () => {
     expect(titleOf((await revs.get(ctx, list[0]!.id))?.data)).toBe('B'); // newest first
   });
 
+  it('keeps entry revision history PER-DATASET (same id in two datasets → separate histories)', async () => {
+    const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
+    // The same entry id 'intro' lives in two datasets — each edited independently.
+    await content.put(ctx, 'entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P1' } });
+    await content.put(ctx, 'entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P2' } });
+    await content.put(ctx, 'entry', 'intro', { id: 'intro', dataset: 'news', status: 'published', values: { title: 'N1' } });
+    // History is keyed by (dataset, id): posts/intro has 2 revisions, news/intro 1; a scopeless list finds neither.
+    expect(await revs.list(ctx, 'entry', 'intro', 'posts')).toHaveLength(2);
+    expect(await revs.list(ctx, 'entry', 'intro', 'news')).toHaveLength(1);
+    expect(await revs.list(ctx, 'entry', 'intro')).toHaveLength(0);
+  });
+
   it('coalesces same-author edits within the window into one revision (keeps the latest)', async () => {
     const { revs, content, ctx } = await setup({ coalesceWindowMs: 60_000 });
     await content.put(ctx, 'page', 'home', page('A'));
@@ -82,7 +94,7 @@ describe('RevisionsRepository', () => {
 
   it('does not version excluded kinds (media)', async () => {
     const { revs, ctx } = await setup({ coalesceWindowMs: 0 });
-    await revs.record(ctx, 'media', 'asset1', { id: 'asset1' }, 'put');
+    await revs.record(ctx, 'media', 'asset1', '', { id: 'asset1' }, 'put');
     expect(await revs.list(ctx, 'media', 'asset1')).toHaveLength(0);
   });
 

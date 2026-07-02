@@ -17,6 +17,12 @@ export interface Scope {
   agentInstructions?: string;
 }
 
+/** `?dataset=<slug>` suffix for entry-scoped routes (an entry id is only unique within its dataset); ''
+ *  when no dataset is supplied (every non-entry kind is project-global and ignores it). */
+function datasetQuery(dataset: string | undefined): string {
+  return dataset ? `?dataset=${encodeURIComponent(dataset)}` : '';
+}
+
 /** A non-2xx API response, carrying the status so tools can map it to MCP errors. */
 export class SitewrightApiError extends Error {
   constructor(
@@ -191,10 +197,10 @@ export class SitewrightClient {
     return res.items;
   }
 
-  async getContent(kind: string, entityId: string): Promise<unknown> {
+  async getContent(kind: string, entityId: string, dataset?: string): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'GET',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${datasetQuery(dataset)}`),
     );
     return res.item;
   }
@@ -208,26 +214,26 @@ export class SitewrightClient {
     return res.item;
   }
 
-  async deleteContent(kind: string, entityId: string): Promise<void> {
+  async deleteContent(kind: string, entityId: string, dataset?: string): Promise<void> {
     await this.request<void>(
       'DELETE',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${datasetQuery(dataset)}`),
     );
   }
 
-  async listRevisions(kind: string, entityId: string): Promise<unknown[]> {
+  async listRevisions(kind: string, entityId: string, dataset?: string): Promise<unknown[]> {
     const res = await this.request<{ items: unknown[] }>(
       'GET',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions${datasetQuery(dataset)}`),
     );
     return res.items;
   }
 
-  async restoreRevision(kind: string, entityId: string, revisionId: string): Promise<unknown> {
+  async restoreRevision(kind: string, entityId: string, revisionId: string, dataset?: string): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'POST',
       this.projectPath(
-        `/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+        `/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions/${encodeURIComponent(revisionId)}/restore${datasetQuery(dataset)}`,
       ),
     );
     return res.item;

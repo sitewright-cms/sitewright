@@ -256,6 +256,7 @@ import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes } from './oauth-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerRevisionRoutes } from './revisions-routes.js';
+import { entryScope } from './content-scope.js';
 import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
@@ -387,6 +388,7 @@ function parseGenericKind(kind: string): ContentKind {
   }
   return parsed;
 }
+
 
 /**
  * Save-time WIDGET provisioning. When a page is saved, ensure the dataset(s) any composed Widget
@@ -2200,12 +2202,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.get<{ Params: ContentParams }>(
+  app.get<{ Params: ContentParams; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
-      const item = await contentRepo.get(ctx, parseGenericKind(req.params.kind), req.params.entityId);
+      const kind = parseGenericKind(req.params.kind);
+      // An `entry` is keyed within its DATASET (its id is only unique per-dataset) — the owning dataset
+      // arrives as `?dataset=`; it is required so the right dataset's entry is returned unambiguously.
+      const scope = entryScope(kind, req.query.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent
+      const item = await contentRepo.get(ctx, kind, req.params.entityId, scope);
       return reply.send({ item });
     },
   );
@@ -2224,12 +2231,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.delete<{ Params: ContentParams }>(
+  app.delete<{ Params: ContentParams; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:delete');
-      await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
+      const kind = parseGenericKind(req.params.kind);
+      const scope = entryScope(kind, req.query.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent (entry requires ?dataset=)
+      await contentRepo.remove(ctx, kind, req.params.entityId, scope);
       return reply.code(204).send();
     },
   );

@@ -343,7 +343,7 @@ export async function nativizeProject(
     const orphanSlugs = new Set(orphanDatasets.map((d) => d.slug));
     if (orphanSlugs.size > 0) {
       const allEntries = (await deps.contentRepo.list(ctx, 'entry')) as Entry[];
-      for (const e of allEntries) if (orphanSlugs.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id);
+      for (const e of allEntries) if (orphanSlugs.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id, e.dataset);
       for (const d of orphanDatasets) await deps.contentRepo.remove(ctx, 'dataset', d.id);
     }
   }
@@ -449,7 +449,7 @@ export async function nativizeProject(
           await deps.contentRepo.put(ctx, 'page', m.id, { ...page, template: tplId, data: { ...(page.data ?? {}), ...m.data }, source: '' }, { op: 'put', note: 'nativize-template' });
           m.consumedSlugs.forEach((s) => consumed.add(s));
         }
-        for (const e of finalEntries) if (consumed.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id);
+        for (const e of finalEntries) if (consumed.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id, e.dataset);
         for (const d of allDatasets) if (consumed.has(d.slug)) await deps.contentRepo.remove(ctx, 'dataset', d.id);
       }
       if (groups.length) deps.log.info({ templates: groups.length, pages: groups.reduce((n, g) => n + g.members.length, 0) }, 'nativize: extracted cross-page templates');

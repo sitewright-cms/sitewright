@@ -112,12 +112,6 @@ async function setup(email: string) {
   return { t, projectId, base: `/projects/${projectId}` };
 }
 
-interface MediaVariant {
-  format: 'avif' | 'webp';
-  width: number;
-  height: number;
-  path: string;
-}
 interface MediaAsset {
   id: string;
   filename: string;

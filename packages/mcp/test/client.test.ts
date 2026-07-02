@@ -83,6 +83,22 @@ describe('SitewrightClient', () => {
     await expect(client.putContent('page', 'home', {})).rejects.toBeInstanceOf(SitewrightApiError);
   });
 
+  it('folds a zod validation `details` into the error so the caller sees WHICH field is wrong', async () => {
+    const { client } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : {
+            status: 400,
+            body: JSON.stringify({ error: 'invalid request', details: { formErrors: [], fieldErrors: { id: ['Required'], title: ['Required'] } } }),
+          },
+    );
+    // Instead of a bare "invalid request", the message names the missing fields.
+    await expect(client.putContent('page', 'home', {})).rejects.toMatchObject({
+      status: 400,
+      message: /invalid request — .*id: Required.*title: Required/,
+    });
+  });
+
   it('refreshes once on a 401 and retries with the new token', async () => {
     let call = 0;
     const seen: Array<string | undefined> = [];

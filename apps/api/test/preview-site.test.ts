@@ -80,7 +80,7 @@ describe('buildSite preview options', () => {
     expect(preview).toContain('bridgeScroll'); // the window→body scroll bridge ships with the preview runtime
   });
 
-  it('omits the preloader overlay from a preview build (the published build keeps it)', async () => {
+  it('includes the preloader overlay in BOTH the published and the preview build', async () => {
     const onePage = [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }] as unknown as ProjectBundle['pages'];
     const withPreloader = (): ProjectBundle => {
       const b = bundle(onePage);
@@ -89,9 +89,10 @@ describe('buildSite preview options', () => {
     // Published build → the loading overlay is present.
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: withPreloader() });
     expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('data-sw-preloader');
-    // Preview build (previewRuntime set) → no overlay (it would cover the page under the sandbox).
+    // Preview build (previewRuntime set) → the overlay is NOW shown too (WYSIWYG); it clears on the
+    // iframe's own window.load + an 8s failsafe, so it can never stay stuck covering the page.
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: '/*x*/', bundle: withPreloader() });
-    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('data-sw-preloader');
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('data-sw-preloader');
   });
 });
 

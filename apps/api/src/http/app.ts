@@ -154,7 +154,7 @@ import { buildAgentProvider } from '../ai/build-provider.js';
 import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore } from '../publish/store.js';
-import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
+import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { signPreview, verifyPreview } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
@@ -621,6 +621,11 @@ async function styledSourceDocument(
     ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS).
       [PREVIEW_BRIDGE_JS]
     : [
+        // The editor preview scrolls on <body> (styled scrollbar), so bridge body-scroll → window
+        // FIRST, before any scroll-linked effect attaches its `window` scroll listener. Self-guarded,
+        // so it no-ops if the viewport ever scrolls natively. Fixes sticky-header (.sw-scrolled),
+        // parallax, scrollspy + back-to-top in this shell (the whole-site preview has its own bridge).
+        ...(parallaxed || stickyHeaderRuntime || scrollSpyRuntime ? [PREVIEW_SCROLL_BRIDGE_JS] : []),
         ...(componentJs ? [componentJs] : []),
         ...(animated ? [ANIMATION_JS] : []),
         ...(parallaxed ? [PARALLAX_JS] : []),

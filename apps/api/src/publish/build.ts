@@ -345,10 +345,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  // The live-preview draft build (set when a previewRuntime is injected). Preview is a CONTENT
-  // surface served under a sandboxed, opaque origin: the site's loading overlay adds no preview
-  // value AND its clear-on-load handshake is unreliable cross-origin (it would cover the page), so
-  // the preloader is omitted entirely from preview builds. The published site is unaffected.
+  // The live-preview draft build (set when a previewRuntime is injected). The preview is a faithful
+  // WYSIWYG surface, so it now shows the configured loading overlay too (authors asked to SEE it) —
+  // its clear runs on the iframe's own `window.load` (same-context, reliable) and has an 8s failsafe
+  // in PRELOADER_JS, so it can never stay stuck covering the page. The published site is unaffected.
   const previewMode = opts.previewRuntime !== undefined;
   // Per-publish cache-bust token (the publish timestamp's digits) appended as `?v=` to the fixed-name
   // runtime assets (styles.css / consent.js / components.js / …). A republish writes fresh assets AND a new
@@ -537,7 +537,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
-    const usesPreloaderRuntime = !previewMode && (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
     // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
     // The platform injects the button markup (renderDocument), so this is gated on the setting only.
     const usesBackToTopRuntime = website?.effects?.backToTop !== false;

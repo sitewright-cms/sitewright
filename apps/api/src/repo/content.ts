@@ -23,9 +23,14 @@ import {
   type Dataset,
   type WebsiteSettings,
   type Entry,
+  type Form,
   type MediaAsset,
+  type MediaFolderRecord,
   type Page,
+  type PageTranslation,
+  type ProjectExportBundle,
   type ProjectSettings,
+  type Snippet,
   type Template,
 } from '@sitewright/schema';
 import { validateProject, type ProjectBundle } from '@sitewright/core';
@@ -325,6 +330,32 @@ export class ContentRepository {
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
     };
+  }
+
+  /**
+   * Assembles the **complete**, portable bundle for a project export zip — the
+   * legacy {@link exportBundle} sections plus the ones a whole-project archive
+   * must round-trip: snippets, per-locale translations, forms, and media
+   * **metadata** (binaries are collected separately from disk by the zip route).
+   * Secrets (deploy targets, project SMTP) are never listed here.
+   */
+  async assembleExportBundle(
+    ctx: ProjectContext,
+    project: ProjectIdentity,
+  ): Promise<ProjectExportBundle> {
+    // The five extra sections are independent, project-scoped list queries → fetch them in
+    // parallel (alongside the base bundle) rather than serially. NOTE: `form` rows are exported
+    // whole, so `form.recipient`/`subject`/`mode` travel too — already readable by any member via
+    // the content API (form is not a DEDICATED_KIND) and required to restore a working form.
+    const [base, snippets, translations, forms, media, mediaFolders] = await Promise.all([
+      this.exportBundle(ctx, project),
+      this.list(ctx, 'snippet') as Promise<Snippet[]>,
+      this.list(ctx, 'translation') as Promise<PageTranslation[]>,
+      this.list(ctx, 'form') as Promise<Form[]>,
+      this.list(ctx, 'media') as Promise<MediaAsset[]>,
+      this.list(ctx, 'mediafolder') as Promise<MediaFolderRecord[]>,
+    ]);
+    return { ...base, snippets, translations, forms, media, mediaFolders };
   }
 
   /**

@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -141,6 +142,8 @@ import {
   GLOBAL_SCOPE_ID,
 } from '../repo/global-library.js';
 import { MediaStorage } from '../media/storage.js';
+import { buildProjectExportZip, collectExportMedia, ExportSizeLimitError } from '../export/build-zip.js';
+import { buildExportManifest, exportBundleOverCap } from '../export/manifest.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
 import { PublishError, type ReleaseManifest } from '../publish/build.js';
@@ -263,6 +266,8 @@ const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
+const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
@@ -783,6 +788,8 @@ export interface AppOptions {
   forcePasswordChange?: boolean;
   /** Current running version (for the pull-based update check). */
   version?: string;
+  /** Overrides the project-export archive size cap (bytes). Defaults to {@link PROJECT_EXPORT_MAX_BYTES}. */
+  exportMaxBytes?: number;
   /** Provider of the latest released version tag (cached; null when unavailable). */
   latestVersion?: () => Promise<string | null>;
   /** URL shown in the update banner linking to the latest release. */
@@ -1309,6 +1316,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
+  // Whole-instance ceiling on concurrent project-export builds (each writes up to
+  // PROJECT_EXPORT_MAX_BYTES of temp data + reads the media tree) — mirrors the image
+  // optimize slot guard. Incremented for the BUILD phase only; streaming the finished
+  // temp file to the client holds no slot.
+  let activeExports = 0;
 
   // Brute-force protection for the LOGIN routes: a per-IP FAILED-attempt throttle (successful logins
   // never consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read
@@ -2345,6 +2357,66 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
       return reply.send(await contentRepo.exportBundle(ctx, project));
+    },
+  );
+
+  // Whole-project export as a self-contained zip: manifest.json + the complete
+  // bundle.json + every media binary under media/<assetId>/…. The archive is
+  // STREAMED to a temp file (never buffered whole — see build-zip.ts) then streamed
+  // to the client, so memory stays flat regardless of project/media size. Any
+  // project member (content:read) may export; secrets are never included.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/export.zip',
+    { config: rl(5) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      if (activeExports >= MAX_CONCURRENT_EXPORTS) {
+        return reply.code(429).send({ error: 'too many project exports in progress; retry shortly' });
+      }
+      const bundle = await contentRepo.assembleExportBundle(ctx, project);
+      // Fail loudly if any section is past its (import-side) cap — better than shipping a backup
+      // that can't be re-imported.
+      const over = exportBundleOverCap(bundle);
+      if (over) {
+        return reply.code(413).send({ error: `project is too large to export: ${over}` });
+      }
+      const maxBytes = opts.exportMaxBytes ?? PROJECT_EXPORT_MAX_BYTES;
+
+      activeExports += 1;
+      let zip: Awaited<ReturnType<typeof buildProjectExportZip>>;
+      try {
+        const media = mediaStorage
+          ? await collectExportMedia(
+              (assetId) => mediaStorage.assetFilePaths(project.slug, assetId),
+              bundle.media.map((asset) => asset.id),
+            )
+          : [];
+        const manifest = buildExportManifest(project, bundle, opts.version);
+        zip = await buildProjectExportZip({ manifest, bundle, media, maxBytes });
+      } catch (err) {
+        if (err instanceof ExportSizeLimitError) {
+          return reply.code(413).send({ error: 'project export exceeds the archive size limit' });
+        }
+        throw err;
+      } finally {
+        activeExports -= 1; // the disk/CPU-heavy build is done; streaming holds no slot
+      }
+
+      // If the client already vanished during the build, drop the temp dir now (the 'close'
+      // listener would otherwise never fire). Otherwise clean up when the socket closes.
+      if (reply.raw.destroyed) {
+        await zip.cleanup();
+        return reply;
+      }
+      reply.raw.on('close', () => {
+        void zip.cleanup();
+      });
+      return reply
+        .header('content-disposition', `attachment; filename="${project.slug}-export.zip"`)
+        .header('content-length', String(zip.bytes))
+        .type('application/zip')
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp archive path
+        .send(createReadStream(zip.path));
     },
   );
 

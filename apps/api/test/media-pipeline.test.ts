@@ -112,12 +112,6 @@ async function setup(email: string) {
   return { t, projectId, base: `/projects/${projectId}` };
 }
 
-interface MediaVariant {
-  format: 'avif' | 'webp';
-  width: number;
-  height: number;
-  path: string;
-}
 interface MediaAsset {
   id: string;
   filename: string;
@@ -126,8 +120,9 @@ interface MediaAsset {
   width: number;
   height: number;
   placeholder?: string;
-  variants: MediaVariant[];
-  fallback: string;
+  hasAlpha: boolean;
+  animated: boolean;
+  original: string;
   url: string;
 }
 
@@ -141,9 +136,10 @@ async function upload(base: string, t: string, name: string, mime: string, conte
 }
 
 describe('media pipeline (HTTP layer)', () => {
-  // (1) A valid raster image produces avif + webp variants at widths <= source,
-  // a jpeg fallback, an LQIP data URI, and correct source width/height metadata.
-  it('optimizes a 1000x500 PNG into responsive avif/webp variants + jpeg fallback + LQIP', async () => {
+  // (1) An upload stores the RETAINED ORIGINAL (source of truth) + LQIP + dimension metadata, with NO
+  // eager variants. The media route then serves on-demand responsive thumbnails: `?size` (default xl)
+  // → WebP/AVIF, `?size=original` → the raw original inline.
+  it('stores the retained original + LQIP and serves on-demand responsive thumbnails', async () => {
     const { t, base } = await setup('a@acme.test');
     const png = makePng(1000, 500, [200, 30, 30]);
 
@@ -154,51 +150,54 @@ describe('media pipeline (HTTP layer)', () => {
     // Source dimension metadata is preserved (drives width/height attrs → no CLS).
     expect(asset.width).toBe(1000);
     expect(asset.height).toBe(500);
-    expect(asset.format).toBe('image/png');
+    expect(asset.format).toBe('png'); // stored original's own format
+    expect(asset.hasAlpha).toBe(false);
+    expect(asset.animated).toBe(false);
     expect(asset.bytes).toBe(png.length);
+
+    // The retained original is stored (verbatim); NO eager variant fan-out.
+    expect(asset).not.toHaveProperty('variants');
+    expect(asset).not.toHaveProperty('fallback');
+    expect(asset.original).toBe('banner.png');
 
     // LQIP placeholder is an inline webp data URI.
     expect(asset.placeholder).toMatch(/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/);
 
-    // Default widths are [400, 800, 1200]; source is 1000 wide so only 400 & 800
-    // survive the "never upscale" filter (1200 > 1000 is dropped).
-    const widths = [...new Set(asset.variants.map((v) => v.width))].sort((x, y) => x - y);
-    expect(widths).toEqual([400, 800]);
-    expect(asset.variants.every((v) => v.width <= asset.width)).toBe(true);
-
-    // Each surviving width exists in BOTH avif and webp.
-    const formats = [...new Set(asset.variants.map((v) => v.format))].sort();
-    expect(formats).toEqual(['avif', 'webp']);
-    for (const w of widths) {
-      const fmts = asset.variants.filter((v) => v.width === w).map((v) => v.format).sort();
-      expect(fmts).toEqual(['avif', 'webp']);
-    }
-
-    // The on-disk basename is the (UUID) assetId, not the original filename — the
-    // pipeline derives variant/fallback names from `<assetId>.upload`. The largest
-    // surviving width (800) names the jpeg fallback, which is the public url tail.
-    expect(asset.fallback).toBe(`${asset.id}-800.jpg`);
+    // The delivery URL is the id-bearing route ending in the ORIGINAL name (bare ⇒ xl thumbnail).
     const projId = asset.url.split('/')[2];
-    expect(asset.url).toBe(`/media/${projId}/${asset.id}/${asset.id}-800.jpg`);
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+-800\.jpg$/);
+    expect(asset.url).toBe(`/media/${projId}/${asset.id}/banner.png`);
 
-    // The avif/webp variant filenames are also assetId-prefixed at their width.
-    for (const v of asset.variants) {
-      expect(v.path).toBe(`${asset.id}-${v.width}.${v.format}`);
-    }
+    // Bare delivery URL ⇒ compressed `xl` WebP (default), generated on demand.
+    const xl = await app.inject({ method: 'GET', url: asset.url });
+    expect(xl.statusCode).toBe(200);
+    expect(xl.headers['content-type']).toBe('image/webp');
+    expect(xl.rawPayload.length).toBeGreaterThan(0);
 
-    // The avif/webp variants are publicly fetchable with correct content types.
-    for (const v of asset.variants) {
-      const served = await app.inject({ method: 'GET', url: `/media/${projId}/${asset.id}/${v.path}` });
-      expect(served.statusCode).toBe(200);
-      expect(served.headers['content-type']).toBe(v.format === 'avif' ? 'image/avif' : 'image/webp');
-      expect(served.rawPayload.length).toBeGreaterThan(0);
-    }
+    // `?size=sm` ⇒ another WebP (500 ≤ source 1000, so never upscaled).
+    const sm = await app.inject({ method: 'GET', url: `${asset.url}?size=sm` });
+    expect(sm.statusCode).toBe(200);
+    expect(sm.headers['content-type']).toBe('image/webp');
+
+    // `?format=avif` opts into AVIF.
+    const avif = await app.inject({ method: 'GET', url: `${asset.url}?size=lg&format=avif` });
+    expect(avif.statusCode).toBe(200);
+    expect(avif.headers['content-type']).toBe('image/avif');
+
+    // `?size=original` serves the raw original PNG inline (verbatim bytes).
+    const orig = await app.inject({ method: 'GET', url: `${asset.url}?size=original` });
+    expect(orig.statusCode).toBe(200);
+    expect(orig.headers['content-type']).toBe('image/png');
+    expect(orig.rawPayload.length).toBe(png.length);
+
+    // An unknown size token falls back to the default (xl) instead of erroring.
+    const bad = await app.inject({ method: 'GET', url: `${asset.url}?size=whatever` });
+    expect(bad.statusCode).toBe(200);
+    expect(bad.headers['content-type']).toBe('image/webp');
   });
 
-  // (1b) When the source is narrower than every default width, the single source
-  // width is used (no upscale, no empty variant set).
-  it('falls back to the source width when it is below all default widths (no upscale)', async () => {
+  // (1b) A tiny source is never upscaled: an `xl` (2400) request of a 120px image still serves a valid
+  // (clamped) WebP.
+  it('serves a clamped thumbnail for a source narrower than the requested size (no upscale)', async () => {
     const { t, base } = await setup('a@acme.test');
     const png = makePng(120, 90, [10, 120, 200]);
 
@@ -208,9 +207,10 @@ describe('media pipeline (HTTP layer)', () => {
 
     expect(asset.width).toBe(120);
     expect(asset.height).toBe(90);
-    const widths = [...new Set(asset.variants.map((v) => v.width))];
-    expect(widths).toEqual([120]);
-    expect(asset.fallback).toBe(`${asset.id}-120.jpg`);
+    expect(asset.original).toBe('thumb.png');
+    const xl = await app.inject({ method: 'GET', url: asset.url });
+    expect(xl.statusCode).toBe(200);
+    expect(xl.headers['content-type']).toBe('image/webp');
   });
 
   // (2) SVG is intentionally excluded for SSRF reasons; a text file with an image
@@ -318,5 +318,43 @@ describe('media pipeline (HTTP layer)', () => {
     // The binary is RETAINED (restorable) so the public URL keeps serving until purge/reap.
     const after = await app.inject({ method: 'GET', url: asset.url });
     expect(after.statusCode).toBe(200);
+  });
+
+  // (6) A per-project upload cap (website.imageUploadCap) downscales + re-encodes new originals to WebP.
+  it('applies the project upload cap to a new upload (settings-driven)', async () => {
+    const { t, base } = await setup('cap@acme.test');
+    const cookies = { sw_session: t };
+    const cur = (await app.inject({ method: 'GET', url: `${base}/content/settings/settings`, cookies })).json() as {
+      item: { website?: Record<string, unknown> };
+    };
+    const item = cur.item;
+    item.website = { ...(item.website ?? {}), imageUploadCap: 600 };
+    const put = await app.inject({ method: 'PUT', url: `${base}/content/settings/settings`, cookies, payload: item });
+    expect(put.statusCode).toBe(200);
+
+    const up = await upload(base, t, 'big.png', 'image/png', makePng(1600, 900, [1, 2, 3]));
+    expect(up.statusCode).toBe(201);
+    const asset = (up.json() as { item: MediaAsset }).item;
+    expect(asset.width).toBe(600); // capped from 1600, never upscaled
+    expect(asset.format).toBe('webp'); // cap bit → re-encoded to webp
+    expect(asset.original.endsWith('.webp')).toBe(true);
+  });
+
+  // (7) Prune clears the on-demand thumbnail cache (regenerable) but keeps every retained original.
+  it('clears the thumbnail cache via prune-thumbnails, keeping the original', async () => {
+    const { t, base } = await setup('prune@acme.test');
+    const cookies = { sw_session: t };
+    const up = await upload(base, t, 'p.png', 'image/png', makePng(1000, 500, [9, 9, 9]));
+    const asset = (up.json() as { item: MediaAsset }).item;
+    // Generate a couple of cached thumbnails via the on-demand serve route.
+    await app.inject({ method: 'GET', url: asset.url });
+    await app.inject({ method: 'GET', url: `${asset.url}?size=sm` });
+
+    const res = await app.inject({ method: 'POST', url: `${base}/media/prune-thumbnails`, cookies });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { removed: number }).removed).toBeGreaterThanOrEqual(2);
+    // The original still serves after prune (thumbnails regenerate on demand).
+    const orig = await app.inject({ method: 'GET', url: `${asset.url}?size=original` });
+    expect(orig.statusCode).toBe(200);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { inferDatasets } from '../src/transform/datasets.js';
+import { inferDatasets, uniquifyEntryIds } from '../src/transform/datasets.js';
 import { getBody, serialize, parse } from '../src/dom.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
 import type { TransformCtx } from '../src/transform/page.js';
@@ -121,5 +121,29 @@ describe('inferDatasets', () => {
     expect(bIds).toEqual(aIds.map((id) => `${id}_2`)); // suffixed, not colliding
     const allIds = [...aIds, ...bIds];
     expect(new Set(allIds).size).toBe(allIds.length); // globally unique
+  });
+});
+
+describe('uniquifyEntryIds', () => {
+  it('re-keys entry ids that collide across datasets (bundle-wide uniqueness)', () => {
+    // Two datasets (e.g. a nav folded on multiple pages) whose rows produce the same title-derived ids.
+    const entries = [
+      { id: 'consultancy', dataset: 'nav' },
+      { id: 'investments', dataset: 'nav' },
+      { id: 'row_1', dataset: 'nav' },
+      { id: 'consultancy', dataset: 'nav_2' }, // collides with nav's
+      { id: 'row_1', dataset: 'other' }, // collides with nav's row_1
+      { id: 'gallery', dataset: 'nav_2' },
+    ];
+    uniquifyEntryIds(entries);
+    expect(entries.map((e) => e.id)).toEqual(['consultancy', 'investments', 'row_1', 'consultancy_2', 'row_1_2', 'gallery']);
+    // every id is now unique
+    expect(new Set(entries.map((e) => e.id)).size).toBe(entries.length);
+  });
+
+  it('is a no-op when ids are already unique', () => {
+    const entries = [{ id: 'a', dataset: 'd' }, { id: 'b', dataset: 'd' }];
+    uniquifyEntryIds(entries);
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b']);
   });
 });

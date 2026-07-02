@@ -974,6 +974,9 @@ export const api = {
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
+  /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */
+  pruneThumbnails: (projectId: string) =>
+    request<{ removed: number }>('POST', `/projects/${projectId}/media/prune-thumbnails`, {}),
   // --- media Recycle Bin (soft-delete → restore / purge) ---
   listDeletedMedia: (projectId: string) =>
     request<{ items: Array<MediaAsset & { deletedAt: number }> }>('GET', `/projects/${projectId}/media/deleted`),

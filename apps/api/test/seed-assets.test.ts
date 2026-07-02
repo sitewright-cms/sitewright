@@ -9,15 +9,15 @@ import { MediaAssetSchema, MediaFolderRecordSchema } from '@sitewright/schema';
 // passed to the mock), so their branches are covered; only the pixel crunching is stubbed.
 vi.mock('@sitewright/image-pipeline', () => ({
   renderTrustedSvgToPng: vi.fn(async () => Buffer.from('PNGBYTES')),
-  optimizeImage: vi.fn(async () => ({
+  storeOriginal: vi.fn(async (_in: string, _out: string, opts: { storedName: string }) => ({
     width: 900,
     height: 650,
-    placeholder: 'data:image/png;base64,AA==',
-    variants: [
-      { format: 'avif' as const, width: 800, height: 578, path: 'ex-800.avif' },
-      { format: 'webp' as const, width: 800, height: 578, path: 'ex-800.webp' },
-    ],
-    fallback: 'ex-800.jpg',
+    format: 'png',
+    hasAlpha: false,
+    animated: false,
+    placeholder: 'data:image/webp;base64,AA==',
+    storedName: opts.storedName,
+    bytes: 8,
   })),
 }));
 
@@ -51,7 +51,7 @@ describe('seedExampleAssets', () => {
     const urls = await seedExampleAssets(ctx, slug, repo, new MediaStorage(root));
 
     expect(Object.keys(urls)).toHaveLength(28);
-    expect(urls['proj-harbor']).toMatch(/^\/media\/example\/ex-proj-harbor\/[\w-]+\.jpg$/);
+    expect(urls['proj-harbor']).toMatch(/^\/media\/example\/ex-proj-harbor\/[\w-]+\.png$/);
     expect(urls['brand-logo']).toBeDefined(); // CI marks (logo/icon/OG)
     expect(urls['brand-icon']).toBeDefined();
     expect(urls['brand-og']).toBeDefined();
@@ -69,10 +69,10 @@ describe('seedExampleAssets', () => {
       .sort();
     expect(folders).toEqual(['Blog', 'Brand', 'Products', 'Projects', 'Studio', 'Team']);
 
-    const harbor = puts.find((p) => p.id === 'ex-proj-harbor')!.val as { kind: string; variants: unknown[]; folder: string };
+    const harbor = puts.find((p) => p.id === 'ex-proj-harbor')!.val as { kind: string; original: string; folder: string };
     expect(harbor.kind).toBe('image');
     expect(harbor.folder).toBe('Projects');
-    expect(harbor.variants.length).toBeGreaterThan(0);
+    expect(harbor.original.length).toBeGreaterThan(0);
   });
 
   it('is best-effort: a failing asset is skipped + cleaned up; the rest still seed', async () => {

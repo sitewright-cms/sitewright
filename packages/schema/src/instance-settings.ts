@@ -203,6 +203,9 @@ export const InstanceSettingsStoredSchema = z.object({
   brandPrimary: CssColorSchema.optional(),
   brandSecondary: CssColorSchema.optional(),
   platformLogo: PlatformLogoSchema.optional(),
+  /** Site-wide default image DELIVERY format for {{sw-image}} ('webp' → single <img>; 'avif' → a
+   *  <picture> with an AVIF tier). A project's website.imageDelivery overrides it. Unset → 'webp'. */
+  defaultImageFormat: z.enum(['webp', 'avif']).optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -316,6 +319,8 @@ export const InstanceSettingsInputSchema = z.object({
   brandPrimary: CssColorSchema.nullable().optional(),
   brandSecondary: CssColorSchema.nullable().optional(),
   platformLogo: PlatformLogoSchema.nullable().optional(),
+  // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined leaves it.
+  defaultImageFormat: z.enum(['webp', 'avif']).nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -396,6 +401,8 @@ export interface InstanceSettingsPublic {
   brandPrimary?: string;
   brandSecondary?: string;
   hasLogo?: boolean;
+  /** Site-wide default image delivery format ('webp' | 'avif'), or absent when using 'webp'. */
+  defaultImageFormat?: 'webp' | 'avif';
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -441,5 +448,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.brandPrimary !== undefined) result.brandPrimary = stored.brandPrimary;
   if (stored.brandSecondary !== undefined) result.brandSecondary = stored.brandSecondary;
   if (stored.platformLogo !== undefined) result.hasLogo = true;
+  if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   return result;
 }

@@ -21,20 +21,16 @@ export interface IconSet {
   readonly manifest: string;
 }
 
-/** Best-quality source bytes for the icon asset: the largest variant (alpha-capable WebP preferred), else the fallback. */
+/** Source bytes for the icon asset: the retained ORIGINAL (sharp downscales it to each icon size). */
 async function readIconSource(
   asset: MediaAsset,
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
 ): Promise<Buffer | undefined> {
   if (asset.kind !== 'image') return undefined;
-  const variants = [...(asset.variants ?? [])].sort((a, b) => b.width - a.width);
-  const pick = variants.find((v) => v.format === 'webp') ?? variants[0];
-  const file = pick ? pick.path : asset.fallback;
-  if (!file) return undefined;
   try {
-    return await readMedia(asset.id, file);
+    return await readMedia(asset.id, asset.original);
   } catch {
-    return undefined; // missing bytes (e.g. a skipped variant) → caller falls back
+    return undefined; // missing bytes → caller falls back
   }
 }
 

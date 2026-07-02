@@ -28,7 +28,7 @@ const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'navEffect', 'buttonEffect', 'buttonAccent', 'buttonShape', 'preloaderEffect',
   'backToTop', 'stickyHeader', 'scrollSpy',
   'navCode', 'buttonCode', 'preloaderCode',
-  'enableThemes', 'defaultTheme', 'containerWidth',
+  'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
   'consent',
   'defaultLocale', 'locales', 'translations',

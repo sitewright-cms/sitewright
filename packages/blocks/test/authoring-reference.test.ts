@@ -83,6 +83,9 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
   type InfraContextKey =
     | 'partials'
     | 'media'
+    // A site-wide render FLAG consumed by {{sw-image}} (avif <picture> vs webp <img>), not an
+    // author-readable binding namespace.
+    | 'imageAvif'
     | 'preview'
     | 'markEntries'
     | 'forms'

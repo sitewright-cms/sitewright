@@ -3,8 +3,10 @@
 // LQIP/variants/bytes) so the per-render IPC payload stays light; the helper itself lives in template.ts.
 import type { MediaAsset } from '@sitewright/schema';
 
-/** The lean media projection placed on the render context — the only fields {{#sw-folder}} needs. */
+/** The lean media projection placed on the render context — the fields {{#sw-folder}} + {{sw-image}} need. */
 export interface RenderMedia {
+  /** Asset id (lets {{sw-image}} resolve a delivery URL back to its intrinsic dims + LQIP). */
+  id?: string;
   /** Virtual folder path the asset is filed under ('' = root). */
   folder: string;
   kind: 'image' | 'file' | 'font';
@@ -14,6 +16,8 @@ export interface RenderMedia {
   alt?: string;
   width?: number;
   height?: number;
+  /** Inline LQIP data URI (images only) — {{sw-image}} paints it as a blur-up placeholder. */
+  placeholder?: string;
 }
 
 export type FolderKind = 'image' | 'file' | 'all';
@@ -25,11 +29,12 @@ export function mediaForRender(media: readonly MediaAsset[]): RenderMedia[] {
   return media
     .filter((a): a is Exclude<MediaAsset, { kind: 'stylesheet' | 'script' }> => a.kind !== 'stylesheet' && a.kind !== 'script')
     .map((a) => {
-      const out: RenderMedia = { folder: a.folder, kind: a.kind, filename: a.filename, url: a.url };
+      const out: RenderMedia = { id: a.id, folder: a.folder, kind: a.kind, filename: a.filename, url: a.url };
       if (a.kind === 'image') {
         if (typeof a.alt === 'string') out.alt = a.alt;
         out.width = a.width;
         out.height = a.height;
+        if (typeof a.placeholder === 'string') out.placeholder = a.placeholder;
       }
       return out;
     });

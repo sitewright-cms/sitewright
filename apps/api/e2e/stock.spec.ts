@@ -124,12 +124,16 @@ for (const provider of ['unsplash', 'pexels'] as const) {
     expect(asset.alt).toBe('an e2e mountain');
     expect(asset.attribution.provider).toBe(provider);
     expect(asset.attribution.author.length).toBeGreaterThan(0);
-    expect(asset.variants.length).toBeGreaterThan(0);
-    // Self-hosted: the URL is under this instance's /media, NOT a provider CDN.
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.jpg$/);
+    // The retained original is stored (source of truth); no eager variants any more.
+    expect(typeof asset.original).toBe('string');
+    expect(asset.original.length).toBeGreaterThan(0);
+    // Self-hosted: the URL is under this instance's /media, NOT a provider CDN. It is the id-bearing
+    // DELIVERY route ending in the stored original name (a stock photo >2400px is capped → .webp).
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.(jpe?g|png|webp|avif|gif)$/);
     const served = await ctx.get(asset.url);
     expect(served.status()).toBe(200);
-    expect(served.headers()['content-type']).toBe('image/jpeg');
+    // The bare delivery URL serves the compressed `xl` thumbnail (WebP) by default.
+    expect(served.headers()['content-type']).toBe('image/webp');
 
     await ctx.dispose();
   });

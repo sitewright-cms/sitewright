@@ -1,8 +1,8 @@
-import { optimizeImage, renderTrustedSvgToPng } from '@sitewright/image-pipeline';
+import { storeOriginal, renderTrustedSvgToPng } from '@sitewright/image-pipeline';
 import type { ImageAsset } from '@sitewright/schema';
 import type { ContentRepository } from './repo/content.js';
 import type { ProjectContext } from './repo/context.js';
-import type { MediaStorage } from './media/storage.js';
+import { MediaStorage } from './media/storage.js';
 
 // ---------------------------------------------------------------------------
 // Local demo imagery for the Example Project. All art is FIRST-PARTY, generated
@@ -811,7 +811,8 @@ export async function seedExampleAssets(
       const png = await renderTrustedSvgToPng(spec.svg, spec.w, spec.h);
       const { assetDir, inputPath } = await storage.stageUpload(projectSlug, spec.id, png);
       try {
-        const optimized = await optimizeImage(inputPath, assetDir);
+        const storedName = MediaStorage.safeStoredName(`${spec.key}.png`);
+        const stored = await storeOriginal(inputPath, assetDir, { storedName });
         const asset: ImageAsset = {
           kind: 'image',
           id: spec.id,
@@ -819,13 +820,14 @@ export async function seedExampleAssets(
           folder: spec.folder,
           alt: spec.alt,
           bytes: png.length,
-          format: 'image/png',
-          width: optimized.width,
-          height: optimized.height,
-          placeholder: optimized.placeholder,
-          variants: optimized.variants.map((v) => ({ format: v.format, width: v.width, height: v.height, path: v.path })),
-          fallback: optimized.fallback,
-          url: `/media/${projectSlug}/${spec.id}/${optimized.fallback}`,
+          format: stored.format,
+          width: stored.width,
+          height: stored.height,
+          placeholder: stored.placeholder,
+          hasAlpha: stored.hasAlpha,
+          animated: stored.animated,
+          original: stored.storedName,
+          url: `/media/${projectSlug}/${spec.id}/${stored.storedName}`,
         };
         await contentRepo.put(ctx, 'media', spec.id, asset);
         urls[spec.key] = asset.url;

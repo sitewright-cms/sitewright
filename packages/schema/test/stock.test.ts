@@ -54,9 +54,10 @@ describe('MediaAsset attribution', () => {
     bytes: 1234,
     width: 800,
     height: 600,
-    variants: [],
-    fallback: 'cat-800.jpg',
-    url: '/media/p1/m1/cat-800.jpg',
+    hasAlpha: false,
+    animated: false,
+    original: 'cat.jpg',
+    url: '/media/p1/m1/cat.jpg',
   };
   it('accepts optional attribution and rejects a non-url source', () => {
     const ok = MediaAssetSchema.parse({ ...base, attribution: { provider: 'unsplash', author: 'Jane', sourceUrl: 'https://unsplash.com/photos/abc', license: 'Unsplash License' } });

@@ -104,7 +104,18 @@ import {
   NAV_LINK_JS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
-import { optimizeImage } from '@sitewright/image-pipeline';
+import {
+  storeOriginal,
+  generateThumbnail,
+  isThumbnailable,
+  isSizeToken,
+  isThumbFormat,
+  thumbFileName,
+  THUMB_SIZES,
+  DEFAULT_SIZE,
+  type SizeToken,
+  type ThumbFormat,
+} from '@sitewright/image-pipeline';
 import {
   buildNav,
   extractClassNames,
@@ -303,6 +314,11 @@ const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
   ['webp', 'image/webp'],
   ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['png', 'image/png'],
+  ['gif', 'image/gif'],
+  ['tiff', 'image/tiff'],
+  ['tif', 'image/tiff'],
 ]);
 
 /**
@@ -324,12 +340,19 @@ const FONT_CONTENT_TYPES = new Map<string, string>([
 // container. A slot is handed directly to the next waiter on release (never
 // over-admitting beyond MAX_CONCURRENT_OPTIMIZE).
 const MAX_CONCURRENT_OPTIMIZE = 3;
+// Bound the WAITER backlog too, not just concurrency: the public on-demand thumbnail endpoint could
+// otherwise pile up an unbounded queue of pending encodes (each of which allocates the source image
+// buffer once its slot is granted). Past this depth, reject with a retryable 503 instead of queueing.
+const MAX_OPTIMIZE_QUEUE = 24;
 let activeOptimizations = 0;
 const optimizeWaiters: Array<() => void> = [];
 async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
   if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
     activeOptimizations += 1;
   } else {
+    if (optimizeWaiters.length >= MAX_OPTIMIZE_QUEUE) {
+      throw Object.assign(new Error('image processing queue is full'), { statusCode: 503 });
+    }
     await new Promise<void>((resolve) => optimizeWaiters.push(resolve));
   }
   try {
@@ -2977,25 +3000,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       projectSlug: string,
       buffer: Buffer,
       meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
+      storeOpts?: { cap?: number },
     ): Promise<ImageAsset> {
       const assetId = randomUUID();
       const { assetDir, inputPath } = await storage.stageUpload(projectSlug, assetId, buffer);
       try {
-        const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
+        // Store the retained ORIGINAL. Cap precedence: an explicit caller cap (the importer's 2400)
+        // wins; otherwise the project's configured upload cap (website.imageUploadCap); otherwise
+        // uncapped. When a cap bites, storeOriginal downscales + re-encodes to WebP. Responsive
+        // thumbnails are generated on demand from this original — no eager variant fan-out.
+        let cap = storeOpts?.cap;
+        if (cap === undefined) {
+          const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as
+            | Settings
+            | undefined;
+          cap = settings?.website?.imageUploadCap;
+        }
+        const storedName = MediaStorage.safeStoredName(meta.filename || 'image');
+        const stored = await withOptimizeSlot(() =>
+          storeOriginal(inputPath, assetDir, { storedName, ...(cap ? { cap } : {}) }),
+        );
         await storage.clearUpload(inputPath);
         const asset = ImageAssetSchema.parse({
           kind: 'image',
           id: assetId,
           filename: meta.filename,
           folder: meta.folder ?? '',
-          format: meta.mimetype,
+          format: stored.format,
           bytes: buffer.length,
-          width: optimized.width,
-          height: optimized.height,
-          placeholder: optimized.placeholder,
-          variants: optimized.variants.map((v) => ({ format: v.format, width: v.width, height: v.height, path: v.path })),
-          fallback: optimized.fallback,
-          url: `/media/${projectSlug}/${assetId}/${optimized.fallback}`,
+          width: stored.width,
+          height: stored.height,
+          placeholder: stored.placeholder,
+          hasAlpha: stored.hasAlpha,
+          animated: stored.animated,
+          original: stored.storedName,
+          url: `/media/${projectSlug}/${assetId}/${stored.storedName}`,
           ...(meta.alt ? { alt: meta.alt } : {}),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
@@ -3247,6 +3286,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     });
 
+    // Clear this project's DERIVED thumbnail cache: removes every on-demand-generated sm/md/lg/xl
+    // WebP/AVIF file, keeping every retained ORIGINAL. Thumbnails regenerate on the next request, so
+    // this is a safe, idempotent way to reclaim disk (e.g. after bulk deletes or a format change).
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/prune-thumbnails', async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const media = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      let removed = 0;
+      for (const a of media) {
+        // Require a known original before pruning — never run the "delete everything except keepOriginal"
+        // sweep with an undefined keep (which would delete the original too).
+        if (a.kind === 'image' && a.original) removed += await storage.pruneAssetThumbnails(project.slug, a.id, a.original);
+      }
+      return reply.send({ removed });
+    });
+
     // Stock-image search + import (Openverse/Unsplash/Pexels). Imports land as normal
     // media assets (downloaded + optimized + self-hosted) so the export stays portable.
     registerStockRoutes(app, {
@@ -3406,7 +3461,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       await storage.copyAsset(projectSlug, asset.id, newAssetId);
       const url =
         asset.kind === 'image'
-          ? `/media/${projectSlug}/${newAssetId}/${asset.fallback}`
+          ? `/media/${projectSlug}/${newAssetId}/${asset.original}`
           : asset.kind === 'font'
             ? `/media/${projectSlug}/${newAssetId}/${asset.files[0]!.file}`
             : `/media/${projectSlug}/${newAssetId}/file/${asset.storedName}`;
@@ -3546,15 +3601,56 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.code(201).send({ item: copy });
     });
 
-    // Public serving of optimized IMAGE binaries (published sites are public). The storage layer
-    // validates every segment and confines the path to the asset directory, so traversal is
-    // impossible; `read` only accepts the image-servable charset (avif/webp/jpg). `nosniff` keeps
-    // the browser from re-interpreting the bytes as anything other than the declared image type.
-    app.get<{ Params: { projectSlug: string; assetId: string; file: string } }>(
+    // On-demand thumbnail cache: the FIRST request for a named-size variant generates a WebP/AVIF from
+    // the retained original, persists it in the asset dir, and serves it; later requests hit the cached
+    // file. Concurrent misses for the same variant are COALESCED so a burst encodes exactly once. The
+    // bounded named-size set (sm/md/lg/xl) is the anti-abuse boundary for this generate-on-request path;
+    // thumbnails are immutable (a new upload = a new asset id).
+    const inflightThumbs = new Map<string, Promise<Buffer>>();
+    const ensureThumb = async (
+      slug: string,
+      id: string,
+      originalName: string,
+      size: SizeToken,
+      format: ThumbFormat,
+    ): Promise<Buffer> => {
+      const thumbName = thumbFileName(originalName, size, format);
+      try {
+        return await storage.readStored(slug, id, thumbName); // cache hit
+      } catch {
+        /* miss → generate (coalesced) below */
+      }
+      const key = `${slug}/${id}/${thumbName}`;
+      let pending = inflightThumbs.get(key);
+      if (!pending) {
+        pending = (async () => {
+          // Allocate the (up to 50 MB) original buffer ONLY once an optimize slot is granted — reading
+          // it while WAITING would let a request backlog pin unbounded memory. readStored validates
+          // `originalName`; a missing/invalid original throws → the route 404s.
+          const buffer = await withOptimizeSlot(async () => {
+            const original = await storage.readStored(slug, id, originalName);
+            return (await generateThumbnail(original, { width: THUMB_SIZES[size], format })).buffer;
+          });
+          await storage.storeFile(slug, id, thumbName, buffer);
+          return buffer;
+        })().finally(() => inflightThumbs.delete(key));
+        inflightThumbs.set(key, pending);
+      }
+      return pending;
+    };
+
+    // Public serving of IMAGE assets (published sites are public). The storage layer validates every
+    // segment and confines the path to the asset dir, so traversal is impossible. `?size` (default xl)
+    // selects an on-demand responsive thumbnail; `?size=original` serves the raw original inline;
+    // `?format=avif` opts into AVIF. `nosniff` keeps the browser from re-interpreting the bytes.
+    app.get<{
+      Params: { projectSlug: string; assetId: string; file: string };
+      Querystring: { size?: string; format?: string };
+    }>(
       '/media/:projectSlug/:assetId/:file',
       async (req, reply) => {
         const { projectSlug, assetId, file } = req.params;
-        const ext = file.split('.').pop() ?? '';
+        const ext = (file.split('.').pop() ?? '').toLowerCase();
         // A `kind:'font'` face is served INLINE (font/* + nosniff + CORS) so a sandboxed (opaque-
         // origin) preview iframe can load it via `@font-face`; fonts are public, immutable binaries.
         if (FONT_FACE_FILE.test(file)) {
@@ -3608,18 +3704,44 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .type('text/javascript; charset=utf-8')
             .send(bytes);
         }
-        let bytes: Buffer;
-        try {
-          bytes = await storage.read(projectSlug, assetId, file);
-        } catch {
-          return reply.code(404).send({ error: 'not found' });
+        // IMAGE delivery. `file` is the stored ORIGINAL name (any raster ext). `?size` (default xl)
+        // selects a responsive thumbnail generated on demand + cached; `?size=original` serves the raw
+        // original inline; `?format=avif` opts into AVIF (WebP is the default).
+        if (isThumbnailable(file)) {
+          const q = req.query;
+          if (q.size === 'original') {
+            let original: Buffer;
+            try {
+              original = await storage.readStored(projectSlug, assetId, file);
+            } catch {
+              return reply.code(404).send({ error: 'not found' });
+            }
+            return reply
+              .header('cache-control', 'public, max-age=31536000, immutable')
+              .header('x-content-type-options', 'nosniff')
+              .type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream')
+              .send(original);
+          }
+          const size: SizeToken = q.size && isSizeToken(q.size) ? q.size : DEFAULT_SIZE;
+          const format: ThumbFormat = q.format && isThumbFormat(q.format) ? q.format : 'webp';
+          let bytes: Buffer;
+          try {
+            bytes = await ensureThumb(projectSlug, assetId, file, size, format);
+          } catch (err) {
+            // A full optimize queue is a transient overload → retryable 503 (Retry-After); anything else
+            // (missing/invalid original) is a genuine 404.
+            if ((err as { statusCode?: number }).statusCode === 503) {
+              return reply.code(503).header('retry-after', '2').send({ error: 'server busy' });
+            }
+            return reply.code(404).send({ error: 'not found' });
+          }
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .type(format === 'avif' ? 'image/avif' : 'image/webp')
+            .send(bytes);
         }
-        const type = MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream';
-        return reply
-          .header('cache-control', 'public, max-age=31536000, immutable')
-          .header('x-content-type-options', 'nosniff')
-          .type(type)
-          .send(bytes);
+        return reply.code(404).send({ error: 'not found' });
       },
     );
 
@@ -3680,7 +3802,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
-    const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
+    const instance = await instanceSettingsRepo.getStored();
+    const hcaptchaSiteKey = instance.hcaptcha?.siteKey;
+    // Inherit the instance-wide default image delivery format when this project hasn't chosen one, so the
+    // admin's `defaultImageFormat` actually governs {{sw-image}} (build.ts reads website.imageDelivery).
+    // Covers BOTH publish and the live-preview build (they share this assembly) and the isolated worker
+    // (the resolved value rides on the bundle).
+    if (instance.defaultImageFormat && !bundle.project.website?.imageDelivery) {
+      bundle.project.website = { ...(bundle.project.website ?? {}), imageDelivery: instance.defaultImageFormat };
+    }
     // Reusable `{{> compose}}` partials: built-in globals + the project's own (project wins).
     const snippets = {
       ...(await globalSnippetPartials(contentRepo)),

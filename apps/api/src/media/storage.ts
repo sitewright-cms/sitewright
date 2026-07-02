@@ -150,6 +150,37 @@ export class MediaStorage {
   }
 
   /**
+   * Deletes every DERIVED, on-demand thumbnail in an asset's dir — i.e. every file EXCEPT the retained
+   * `keepOriginal` (the DB-known source of truth). Returns the count removed. Driven by the DB (the
+   * caller passes the original name) so it can never mistake an original for a thumbnail; the removed
+   * files are regenerated on the next request. Best-effort per file; a missing asset dir returns 0.
+   */
+  async pruneAssetThumbnails(projectSlug: string, assetId: string, keepOriginal: string): Promise<number> {
+    // Refuse to sweep when there is no original to keep — otherwise the `name === keepOriginal` guard
+    // below never matches and we would delete the retained original along with the thumbnails.
+    if (!keepOriginal) return 0;
+    const dir = this.assetDir(projectSlug, assetId); // segments charset-validated
+    let entries: string[];
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated dir
+      entries = await readdir(dir);
+    } catch {
+      return 0; // no dir yet → nothing to prune
+    }
+    let removed = 0;
+    for (const name of entries) {
+      if (name === keepOriginal) continue; // never delete the retained original
+      try {
+        await rm(this.resolveStoredPath(projectSlug, assetId, name), { force: true });
+        removed += 1;
+      } catch {
+        /* best-effort: skip an entry we can't resolve/remove (e.g. an unexpected subdir) */
+      }
+    }
+    return removed;
+  }
+
+  /**
    * Enumerates every file under an asset's directory as `{rel, abs}` pairs — `rel`
    * uses forward slashes (for zip entry names), transient `.upload` inputs are
    * skipped, and a missing directory yields `[]`. Lets a project export STREAM an

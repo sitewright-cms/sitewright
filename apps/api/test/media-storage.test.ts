@@ -61,6 +61,24 @@ describe('MediaStorage', () => {
     expect(storage.resolveStoredPath('p', 'a', 'doc.pdf')).toContain(join('p', 'a', 'doc.pdf'));
   });
 
+  it('prunes derived thumbnails but keeps the retained original', async () => {
+    await storage.storeFile('p', 'a', 'photo.png', Buffer.from('ORIGINAL'));
+    for (const t of ['photo-sm.webp', 'photo-md.webp', 'photo-xl.webp', 'photo-lg.avif']) {
+      await storage.storeFile('p', 'a', t, Buffer.from('thumb'));
+    }
+    const removed = await storage.pruneAssetThumbnails('p', 'a', 'photo.png');
+    expect(removed).toBe(4);
+    // The original survives; every derived thumbnail is gone.
+    expect((await storage.readStored('p', 'a', 'photo.png')).toString()).toBe('ORIGINAL');
+    await expect(storage.readStored('p', 'a', 'photo-xl.webp')).rejects.toBeTruthy();
+    // Idempotent: a second prune removes nothing; a missing asset dir returns 0.
+    expect(await storage.pruneAssetThumbnails('p', 'a', 'photo.png')).toBe(0);
+    expect(await storage.pruneAssetThumbnails('p', 'missing', 'x.png')).toBe(0);
+    // Safety: an empty/undefined keepOriginal NEVER sweeps (else it would delete the original too).
+    expect(await storage.pruneAssetThumbnails('p', 'a', '')).toBe(0);
+    expect((await storage.readStored('p', 'a', 'photo.png')).toString()).toBe('ORIGINAL');
+  });
+
   it('sanitizes arbitrary upload names into a path-safe stored name', () => {
     expect(MediaStorage.safeStoredName('My Report (final).PDF')).toBe('My-Report-final.pdf');
     // Internal dots collapse (stored names carry exactly one dot, before the extension).

@@ -25,7 +25,7 @@ import { collectFontFaces } from './transform/fonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
-import { inferDatasets } from './transform/datasets.js';
+import { inferDatasets, uniquifyEntryIds } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedAsset, CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
@@ -340,6 +340,11 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     bundlePages = fnd.pages;
     diagnostics.push(...fnd.diagnostics);
   }
+  // Entry ids must be unique across the WHOLE bundle (the content store keys entries by `entityId` per
+  // project). Per-page dataset extraction only dedupes within a dataset, so a dataset folded on multiple
+  // pages collides — re-key the duplicates globally before validation.
+  uniquifyEntryIds(entries);
+
   const bundle: ImportBundle = {
     project: { identity: bundleIdentity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: bundlePages,

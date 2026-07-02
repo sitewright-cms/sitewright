@@ -18,7 +18,7 @@ import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
@@ -91,6 +91,8 @@ export function WebsiteSection({
   const [forks, setForks] = useState<EffectForks | null>(null);
   const [editing, setEditing] = useState<null | 'nav' | 'button' | 'preloader'>(null);
   const [btnModalOpen, setBtnModalOpen] = useState(false);
+  const [pruning, setPruning] = useState(false);
+  const [pruneMsg, setPruneMsg] = useState('');
   useEffect(() => {
     let on = true;
     api.listEffectForks().then((f) => on && setForks(f)).catch(() => {});
@@ -448,6 +450,71 @@ export function WebsiteSection({
         <span className="mt-2 block text-[11px] text-slate-400">
           Sets the content container width used by every section, so the whole site aligns to one width.
         </span>
+      </GlassCard>
+
+      <GlassCard
+        title="Images"
+        icon={<ImageIcon className="h-4 w-4" />}
+        tooltip="How {{sw-image}} delivers responsive images (WebP, or an added AVIF tier), the upload cap for retained originals, and a button to clear the on-demand thumbnail cache (regenerated on the next view)."
+        wide
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col">
+            <span className={fieldLabel}>Delivery format</span>
+            <select
+              aria-label="Image delivery format"
+              className={glassInput}
+              value={form.imageDelivery}
+              onChange={(e) => patch({ imageDelivery: e.target.value as '' | 'webp' | 'avif' })}
+            >
+              <option value="">Default (WebP)</option>
+              <option value="webp">WebP only</option>
+              <option value="avif">AVIF + WebP</option>
+            </select>
+            <span className="mt-1 block text-[11px] text-slate-400">
+              AVIF is smaller on supporting browsers, at ~2× the generated files. <code>{'{{sw-image}}'}</code> then emits a{' '}
+              <code>&lt;picture&gt;</code> with an AVIF source.
+            </span>
+          </label>
+          <label className="flex flex-col">
+            <span className={fieldLabel}>Upload size cap (px width)</span>
+            <input
+              type="number"
+              min={200}
+              max={10000}
+              aria-label="Upload size cap in pixels"
+              className={glassInput}
+              placeholder="Uncapped"
+              value={form.imageUploadCap}
+              onChange={(e) => patch({ imageUploadCap: e.target.value })}
+            />
+            <span className="mt-1 block text-[11px] text-slate-400">
+              Caps the retained ORIGINAL (→ WebP when it bites). Blank keeps full resolution; delivery tops out at 2400px either way.
+            </span>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            type="button"
+            className={ghostButton}
+            disabled={pruning}
+            onClick={async () => {
+              setPruning(true);
+              setPruneMsg('');
+              try {
+                const { removed } = await api.pruneThumbnails(projectId);
+                setPruneMsg(`Cleared ${removed} cached thumbnail${removed === 1 ? '' : 's'}.`);
+              } catch {
+                setPruneMsg('Could not clear the cache.');
+              } finally {
+                setPruning(false);
+              }
+            }}
+          >
+            <Trash2 className="mr-1.5 inline h-3.5 w-3.5" /> {pruning ? 'Clearing…' : 'Clear thumbnail cache'}
+          </button>
+          {pruneMsg && <span className="text-xs text-slate-400">{pruneMsg}</span>}
+        </div>
       </GlassCard>
 
       <GlassCard title="Critical CSS" icon={<Paintbrush className="h-4 w-4" />} wide>

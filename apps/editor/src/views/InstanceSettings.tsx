@@ -13,6 +13,7 @@ import {
   MAX_LOGO_BASE64_LEN,
   MCP_TOOL_CATALOG,
   type PlatformLogo,
+  type AiProviderKind,
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
 import { modelPlaceholder } from './AiConfig';
@@ -96,7 +97,7 @@ export function InstanceSettings() {
 
   // Platform-wide AI assistant config (the key is write-only; a presence flag comes back).
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiProvider, setAiProvider] = useState<'anthropic' | 'openai' | 'openrouter'>('anthropic');
+  const [aiProvider, setAiProvider] = useState<AiProviderKind>('anthropic');
   const [aiModel, setAiModel] = useState('');
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiKey, setAiKey] = useState('');
@@ -725,7 +726,7 @@ export function InstanceSettings() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <label className="flex flex-col text-xs text-slate-500">
               Provider
-              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as 'anthropic' | 'openai' | 'openrouter')}>
+              <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
                 <option value="openrouter">OpenRouter</option>
                 <option value="openai">OpenAI-compatible (custom endpoint)</option>

@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type { AiProviderKind } from '@sitewright/schema';
 import { api, type AiConfigInput, type AiTestResult } from '../api';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 
-type AiProvider = 'anthropic' | 'openai' | 'openrouter';
 /** A representative model id for each provider (OpenRouter uses `vendor/model`). */
-export function modelPlaceholder(p: AiProvider): string {
+export function modelPlaceholder(p: AiProviderKind): string {
   return p === 'anthropic' ? 'claude-haiku-4-5' : p === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'gpt-4o-mini';
 }
 
@@ -17,7 +17,7 @@ export function modelPlaceholder(p: AiProvider): string {
 export function AiConfig({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
-  const [provider, setProvider] = useState<AiProvider>('anthropic');
+  const [provider, setProvider] = useState<AiProviderKind>('anthropic');
   const [model, setModel] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -126,7 +126,7 @@ export function AiConfig({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col text-xs text-slate-500">
               Provider
-              <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as 'anthropic' | 'openai' | 'openrouter')}>
+              <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
                 <option value="openrouter">OpenRouter</option>
                 <option value="openai">OpenAI-compatible (custom endpoint)</option>

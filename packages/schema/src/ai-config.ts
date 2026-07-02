@@ -36,6 +36,26 @@ export const AiBaseUrlSchema = z
  */
 export const MaxOutputTokensSchema = z.number().int().min(1024).max(32000);
 
+/**
+ * Reject a `baseUrl` when the provider is `openrouter` (its endpoint is fixed to {@link
+ * OPENROUTER_BASE_URL}, so a stored baseUrl would be silently ignored). Shared by both the per-project
+ * and instance AI input schemas so the write boundary rejects the no-op combination with a clear
+ * message instead of persisting dead config. Applied to INPUT schemas only — stored/read schemas stay
+ * lenient so an older row never fails to parse.
+ */
+export function rejectOpenrouterBaseUrl(
+  v: { provider?: string; baseUrl?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (v.provider === 'openrouter' && v.baseUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['baseUrl'],
+      message: 'baseUrl is ignored for the OpenRouter provider (its endpoint is fixed) — remove it, or choose the OpenAI-compatible provider.',
+    });
+  }
+}
+
 /** The fixed entity id of a project's AI-config singleton (content kind `ai_config`). */
 export const AI_CONFIG_ID = 'ai-config';
 
@@ -64,15 +84,17 @@ export type AiConfig = z.infer<typeof AiConfigSchema>;
  * The PUT body: a plaintext `apiKey` (OPTIONAL — omit to keep the stored one), the rest as on the
  * stored shape. Mirrors the deploy-target / SMTP secret-preserve idiom.
  */
-export const AiConfigInputSchema = z.object({
-  enabled: z.boolean().default(false),
-  provider: AiProviderKindSchema.default('anthropic'),
-  model: z.string().min(1).max(120).optional(),
-  baseUrl: AiBaseUrlSchema.optional(),
-  apiKey: z.string().min(1).max(1024).optional(),
-  monthlyTokenLimit: z.number().int().min(0).optional(),
-  maxOutputTokens: MaxOutputTokensSchema.optional(),
-});
+export const AiConfigInputSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    provider: AiProviderKindSchema.default('anthropic'),
+    model: z.string().min(1).max(120).optional(),
+    baseUrl: AiBaseUrlSchema.optional(),
+    apiKey: z.string().min(1).max(1024).optional(),
+    monthlyTokenLimit: z.number().int().min(0).optional(),
+    maxOutputTokens: MaxOutputTokensSchema.optional(),
+  })
+  .superRefine(rejectOpenrouterBaseUrl);
 export type AiConfigInput = z.infer<typeof AiConfigInputSchema>;
 
 /** The masked read view — the key collapses to a presence flag; the secret is never returned. */

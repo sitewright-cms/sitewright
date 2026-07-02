@@ -23,6 +23,7 @@ import type {
   WebsiteSettings,
   AiConfigView,
   AiConfigInput,
+  AiProviderKind,
 } from '@sitewright/schema';
 import type {
   AuthenticationResponseJSON,
@@ -1169,7 +1170,7 @@ export const api = {
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
   /** Verify the platform AI provider (connectivity + model). A blank apiKey tests the stored one. */
-  testInstanceAi: (body: { provider: 'anthropic' | 'openai' | 'openrouter'; model?: string; baseUrl?: string; apiKey?: string }) =>
+  testInstanceAi: (body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
     request<AiTestResult>('POST', '/admin/settings/ai/test', body),
   /** Verify a stock-image provider key with a minimal search. A blank key tests the stored one. */
   testStockKey: (body: { provider: 'unsplash' | 'pexels'; key?: string }) =>
@@ -1209,7 +1210,7 @@ export const api = {
   deleteAiConfig: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/ai-config`),
   /** Verify this project's BYO AI provider (connectivity + model). A blank apiKey tests the stored one. */
-  testAiConfig: (projectId: string, body: { provider: 'anthropic' | 'openai' | 'openrouter'; model?: string; baseUrl?: string; apiKey?: string }) =>
+  testAiConfig: (projectId: string, body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
     request<AiTestResult>('POST', `/projects/${projectId}/ai-config/test`, body),
 
   // --- on-page AI assistant (chat + consent grant + availability) ---

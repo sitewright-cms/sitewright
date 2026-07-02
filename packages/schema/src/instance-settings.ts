@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
-import { AiProviderKindSchema, AiBaseUrlSchema, MaxOutputTokensSchema, type AiProviderKind } from './ai-config.js';
+import { AiProviderKindSchema, AiBaseUrlSchema, MaxOutputTokensSchema, rejectOpenrouterBaseUrl, type AiProviderKind } from './ai-config.js';
 import { AgentInstructionsSchema } from './agent.js';
 import { LocaleSchema } from './project.js';
 import { CssColorSchema } from './primitives.js';
@@ -245,16 +245,18 @@ export const StockKeysInputSchema = z.object({
 export type StockKeysInput = z.infer<typeof StockKeysInputSchema>;
 
 /** Platform AI config on input (plaintext apiKey, OPTIONAL — omit to keep the stored one). */
-export const AiInputSchema = z.object({
-  enabled: z.boolean().default(false),
-  provider: AiProviderKindSchema.default('anthropic'),
-  model: z.string().min(1).max(120).optional(),
-  baseUrl: AiBaseUrlSchema.optional(),
-  apiKey: z.string().min(1).max(1024).optional(),
-  defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
-  maxOutputTokens: MaxOutputTokensSchema.optional(),
-  adminsUnlimited: z.boolean().default(true),
-});
+export const AiInputSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    provider: AiProviderKindSchema.default('anthropic'),
+    model: z.string().min(1).max(120).optional(),
+    baseUrl: AiBaseUrlSchema.optional(),
+    apiKey: z.string().min(1).max(1024).optional(),
+    defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
+    maxOutputTokens: MaxOutputTokensSchema.optional(),
+    adminsUnlimited: z.boolean().default(true),
+  })
+  .superRefine(rejectOpenrouterBaseUrl);
 export type AiInput = z.infer<typeof AiInputSchema>;
 
 /**

@@ -621,8 +621,8 @@ describe('agent loop — error + termination branches', () => {
     const { events, result } = await run(provider, alwaysFails);
     expect(result.state).toBe('error');
     expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'stuck' }));
-    // It gives up after ~4 failed turns, long before the 25-iteration ceiling.
-    expect(events.filter((e) => e.type === 'tool_result').length).toBeLessThanOrEqual(4);
+    // It gives up after EXACTLY 4 failed turns (one tool call each), long before the 25-iteration ceiling.
+    expect(events.filter((e) => e.type === 'tool_result').length).toBe(4);
   });
 
   it('does NOT trip the stuck guard when a success breaks the failure streak', async () => {

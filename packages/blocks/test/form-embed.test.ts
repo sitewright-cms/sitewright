@@ -119,6 +119,9 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
     expect(out).toContain('data-sw-component="form"');
     expect(out).toContain('name="_hpt"');
     expect(out).not.toContain('data-sw-form');
+    // The honeypot carries its OWN inline hiding style so it stays invisible even on a hand-authored
+    // <form data-sw-form> that never gets data-sw-block="Form" (FORM_CSS's scoped rule wouldn't apply).
+    expect(out).toMatch(/data-sw-part="hp"[^>]*style="position:absolute;left:-9999px/);
   });
   it('keeps the data-sw-form marker in preview', () => {
     const out = resolveFormEmbeds(authored, { forms: formsOf(pub()), preview: true });

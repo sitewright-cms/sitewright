@@ -118,14 +118,16 @@ export function fieldNames(types: SlotType[]): string[] {
   });
 }
 
-/** A hyphenated, human-ish slug for an ENTRY id (hyphens are fine in ids — unlike the hyphenless dataset
- *  slug used in `{{#each dataset.<slug>}}`). Empty when the source text has no usable characters. */
+/** A human-ish slug for an ENTRY id (callers convert the `-` separators to `_`, since an entry id is a
+ *  `{{item.<dataset>.<id>}}` Handlebars PATH — see EntryIdSchema). Empty when the source has no usable
+ *  characters. The length cap is applied BEFORE trimming so a cut that lands on a word boundary can't
+ *  leave a TRAILING separator — that trailing `-`→`_` used to fail EntryIdSchema and abort the whole import. */
 export function slugifyId(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50);
+    .slice(0, 50)
+    .replace(/^-+|-+$/g, '');
 }
 
 /**
@@ -138,9 +140,18 @@ export function slugifyId(s: string): string {
  */
 export function uniquifyEntryIds<T extends { id: string; dataset: string }>(entries: T[]): T[] {
   const seen = new Set<string>();
+  const rowCount = new Map<string, number>(); // per-dataset row position for a neutral fallback id
   for (const entry of entries) {
-    let id = entry.id;
-    for (let k = 2; seen.has(`${entry.dataset} ${id}`); k += 1) id = `${entry.id}_${k}`;
+    const n = (rowCount.get(entry.dataset) ?? 0) + 1;
+    rowCount.set(entry.dataset, n);
+    // Defensive coercion to the EntryIdSchema shape (lowercase, single `_` separators, no leading/trailing
+    // `_`). This is the LAST pass over every bundle entry before write — so a single malformed inferred id
+    // (e.g. a long title whose slug was cut on a word boundary) can NEVER fail bundle validation and
+    // silently abort the ENTIRE import. A clean id passes through unchanged; a coerced-empty id falls back
+    // to its PER-DATASET row position (`row_<n>`), not the global index.
+    const base = entry.id.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `row_${n}`;
+    let id = base;
+    for (let k = 2; seen.has(`${entry.dataset} ${id}`); k += 1) id = `${base}_${k}`;
     seen.add(`${entry.dataset} ${id}`);
     entry.id = id;
   }

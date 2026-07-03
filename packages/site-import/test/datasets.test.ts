@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { inferDatasets, uniquifyEntryIds } from '../src/transform/datasets.js';
+import { inferDatasets, slugifyId, uniquifyEntryIds } from '../src/transform/datasets.js';
 import { getBody, serialize, parse } from '../src/dom.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
 import type { TransformCtx } from '../src/transform/page.js';
@@ -153,5 +153,37 @@ describe('uniquifyEntryIds', () => {
     const entries = [{ id: 'a', dataset: 'd' }, { id: 'b', dataset: 'd' }, { id: 'a', dataset: 'e' }];
     uniquifyEntryIds(entries);
     expect(entries.map((e) => e.id)).toEqual(['a', 'b', 'a']);
+  });
+
+  it('COERCES a malformed id to the EntryIdSchema shape (so a bad id never aborts the import)', () => {
+    const ENTRY_ID = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
+    const entries = [
+      { id: 'trailing_', dataset: 'd' }, // trailing separator (the real prod bug: slug cut on a boundary)
+      { id: 'has-hyphen', dataset: 'd' }, // a stray hyphen
+      { id: '__weird__id__', dataset: 'd' }, // leading/trailing/doubled separators
+      { id: '', dataset: 'd' }, // empty → positional fallback
+    ];
+    uniquifyEntryIds(entries);
+    expect(entries.map((e) => e.id)).toEqual(['trailing', 'has_hyphen', 'weird_id', 'row_4']);
+    for (const e of entries) expect(e.id).toMatch(ENTRY_ID);
+  });
+});
+
+describe('slugifyId', () => {
+  it('yields a valid entry id even when the length cap cuts on a word boundary', () => {
+    const ENTRY_ID = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
+    // The cap (50) landing right after a separator must NOT leave a trailing one — callers convert `-`→`_`,
+    // and a trailing `_` fails EntryIdSchema and used to abort the ENTIRE import.
+    for (const title of ['a'.repeat(49) + ' word', 'word '.repeat(12) + 'tail', 'Bachelor of Commerce in Accounting & Finance (Honours)']) {
+      const id = slugifyId(title).replace(/-/g, '_');
+      expect(id).toMatch(ENTRY_ID);
+      expect(id.length).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('returns empty for text with no usable characters (caller supplies a row_<n> fallback)', () => {
+    expect(slugifyId('')).toBe('');
+    expect(slugifyId('!@#$%  ')).toBe('');
+    expect(slugifyId('   ')).toBe('');
   });
 });

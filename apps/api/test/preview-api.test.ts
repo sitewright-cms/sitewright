@@ -432,18 +432,33 @@ describe('preview API — code-first source page', () => {
     expect((plain.json() as { html: string }).html).not.toContain("dispatchEvent(new Event('scroll'))");
   });
 
-  it('skips a broken/unsafe slot in preview without failing the page (publish still hard-validates)', async () => {
+  it('rejects a STATICALLY-unsafe slot at save, and preview still skips a RENDER-failing slot', async () => {
     const { t, projectId } = await setup('broken@acme.test', poolApp);
     const base = `/projects/${projectId}`;
+    // A <script> in a chrome slot is caught by the static validator NOW at SAVE (400, slot named) — it no
+    // longer saves silently and blanks/409s only at publish (which made compare_to_source serve a stale build).
+    const rejected = await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: {} },
+        website: { mainNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
+        settings: {},
+      },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect((rejected.json() as { error: string }).error).toMatch(/Main Navigation/);
+
+    // The lenient PREVIEW skip still matters for a slot that PASSES the static save gate but throws at
+    // RENDER (e.g. a missing helper) — it's omitted so the page + good slots still render.
     await poolApp.inject({
       method: 'PUT',
       url: `${base}/content/settings/settings`,
       cookies: { sw_session: t },
       payload: {
         identity: { name: 'Acme', colors: {} },
-        // mainNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine (neutral
-        // content; the platform wraps it in <footer id="footer">).
-        website: { mainNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
+        website: { mainNav: '<div>{{oops x}}</div>', footer: '<div class="footer">ok</div>' },
         settings: {},
       },
     });
@@ -456,7 +471,7 @@ describe('preview API — code-first source page', () => {
     expect(res.statusCode).toBe(200); // the page preview still renders
     const html = (res.json() as { html: string }).html;
     expect(html).toContain('<h1>Body</h1>'); // body intact
-    expect(html).not.toContain('<script>x()'); // the broken slot was skipped, not injected
+    expect(html).not.toContain('{{oops'); // the render-failing slot was skipped, not injected
     expect(html).toContain('<footer id="footer"><div class="footer">ok</div></footer>'); // the good slot still renders, wrapped in the platform landmark
   });
 

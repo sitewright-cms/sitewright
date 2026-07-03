@@ -266,6 +266,9 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('© {{sw-date "now" "YYYY"}} ACME', ctx)).toBe(`© ${year} ACME`);
     // An empty/unset field stays blank — it is NOT treated as "now".
     expect(renderTemplate('{{sw-date page.nope "YYYY"}}', ctx)).toBe('');
+    // A NULL field (common for an unfilled optional date column) stays blank — must NOT coerce to the epoch.
+    expect(renderTemplate('{{sw-date page.nullDate}}', { page: { nullDate: null } })).toBe('');
+    expect(renderTemplate('{{sw-date page.nullDate "YYYY"}}', { page: { nullDate: null } })).toBe('');
   });
 
   it('{{sw-url}} sanitizes the scheme', () => {

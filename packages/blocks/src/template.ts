@@ -381,7 +381,15 @@ function createInstance(): typeof Handlebars {
     // become today, so `{{sw-date page.nope}}` still renders nothing.
     const isOptions = (v: unknown): boolean => typeof v === 'object' && v !== null && !(v instanceof Date) && 'hash' in v;
     const wantsNow = value === 'now' || isOptions(value);
-    const d = wantsNow ? new Date() : value instanceof Date ? value : new Date(value as string | number);
+    // Narrow before new Date(): new Date(null) coerces null→0→the 1970 epoch, so a null/boolean/other
+    // field must fall through to Invalid Date → '' (a null date field renders blank, not "1970-01-01").
+    const d = wantsNow
+      ? new Date()
+      : value instanceof Date
+        ? value
+        : typeof value === 'string' || typeof value === 'number'
+          ? new Date(value)
+          : new Date(NaN);
     if (Number.isNaN(d.getTime())) return '';
     const fmt = typeof format === 'string' ? format : '';
     if (fmt === 'iso') return d.toISOString();

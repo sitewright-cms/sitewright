@@ -62,11 +62,17 @@ export function sameOrigin(absUrl: string, siteBaseUrl: string): boolean {
   }
 }
 
-/** The site-relative route path (`/`, `/about`, `/services/web-design`) of an internal URL, else null. */
+/** The site-relative route path (`/`, `/about`, `/services/web-design`) of an internal URL, else null.
+ *  Rebased against the site base's PATH, so a site hosted UNDER a subpath (…/sites/droombos/) yields clean
+ *  clone routes (/accommodation) rather than nesting the host prefix (/sites/droombos/accommodation). */
 export function routePath(absUrl: string, siteBaseUrl: string): string | null {
   const norm = normalizePageUrl(absUrl);
   if (!norm || !sameOrigin(absUrl, siteBaseUrl)) return null;
-  const path = new URL(norm).pathname;
+  let path = new URL(norm).pathname;
+  const basePath = new URL(siteBaseUrl).pathname.replace(/\/+$/, ''); // '' for a root site, '/sites/droombos' for a subpath
+  if (basePath && (path === basePath || path.startsWith(`${basePath}/`))) {
+    path = path.slice(basePath.length) || '/';
+  }
   return path === '' ? '/' : path;
 }
 

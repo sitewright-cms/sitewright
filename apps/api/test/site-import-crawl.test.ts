@@ -73,6 +73,28 @@ describe('crawlSite', () => {
     expect(f.mock.calls.flat()).not.toContain('https://other.com/x');
   });
 
+  it('scopes a SUBPATH-hosted seed to its base path + directory-normalizes a slashless seed', async () => {
+    const sub: Record<string, string> = {
+      'https://ex.com/sites/droombos/': '<a href="./accommodation/">acc</a><a href="./contact/">c</a><a href="/sites/other/">out</a>',
+      'https://ex.com/sites/droombos/accommodation/': 'acc',
+      'https://ex.com/sites/droombos/contact/': 'contact',
+      'https://ex.com/sites/other/': 'a DIFFERENT site on the same host — must NOT be crawled',
+    };
+    const f = async (url: string): Promise<FetchedResource | null> =>
+      url in sub ? { url, status: 200, contentType: 'text/html', bytes: enc(sub[url]!) } : null;
+    // Seed WITHOUT the trailing slash — the crawler must directory-normalize it so `./accommodation/`
+    // resolves UNDER /sites/droombos/, not up at /sites/accommodation/.
+    const res = await crawlSite('https://ex.com/sites/droombos', baseOpts, { fetchResource: f, isAllowed: async () => true });
+    expect(res.site.baseUrl).toBe('https://ex.com/sites/droombos/'); // directory-normalized base
+    const urls = res.site.pages.map((p) => p.sourceUrl).sort();
+    expect(urls).toEqual([
+      'https://ex.com/sites/droombos/',
+      'https://ex.com/sites/droombos/accommodation/',
+      'https://ex.com/sites/droombos/contact/',
+    ]);
+    expect(urls).not.toContain('https://ex.com/sites/other/'); // sibling outside the subpath scope
+  });
+
   it('skips and warns on SSRF-blocked URLs', async () => {
     const res = await crawlSite('https://ex.com/', baseOpts, {
       fetchResource: fetcher(),

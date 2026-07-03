@@ -996,6 +996,27 @@ against this list BEFORE you publish it:
   slide-sizing CSS never applies and every slide collapses to zero height (silently, no error). Prefer the
   \`{{> hero-slider}}\` widget, which is already marked up correctly.
 
+FINE POLISH — match the original EXACTLY, by MEASUREMENT (the last-mile "looks close but a bit off" misses;
+sample the original's real values, don't approximate to the nearest token):
+- MATCH THE ACTUAL ELEMENT COLOUR — do NOT brand-ify. A submit/CTA button, a banner, a card header bar, a
+  section band that is GREY (or black, or any NON-brand colour) in the original STAYS that colour — do NOT
+  swap it to \`btn-primary\`/the brand red just because it's a button. A near-black bar (#000) is not the
+  same as a token navy — use the source's measured hex (\`bg-[#hex]\`) when it isn't a theme colour.
+- PRESERVE PER-ENTRY / INLINE ACCENTS. A single coloured word or suffix — a red "(MD / Chairman)" beside
+  ONE name, a two-tone banner where one word ("Hiring!") is a different colour — is authored with a
+  \`<span style="color:…">\` (or a per-row dataset FIELD carrying the colour), NOT flattened to one colour
+  for the whole line or every row.
+- KEEP REQUIRED-FIELD MARKERS + HOVER-REVEAL. If the original marks required inputs with a red dot/asterisk,
+  keep it. If a card reveals its button ON HOVER (rest state shows only the caption), replicate the
+  hover-reveal (\`opacity-0 group-hover:opacity-100\`) — do NOT show a persistent (often clipped) button at rest.
+- MATCH THE HEADER'S REAL HEIGHT + TYPE SCALE. Measure the original nav bar's height and the logo/menu font
+  size and match them — an under-scaled header (e.g. a 78px bar where the original is 102px) reads as "off"
+  on every page. Same for section BAND padding: match the original's vertical rhythm, don't compress it.
+- A LAZY EMBED (map / video \`<iframe>\`) GETS A LOADING PLACEHOLDER. The original shows a loading animation
+  in the embed box while the iframe loads — reproduce it with a DaisyUI \`loading loading-dots loading-xl\`
+  (or \`loading-spinner\`/\`loading-bars\`) or a \`.skeleton\` block sized to the embed's box, behind the iframe.
+  (Animated "dots" in an empty band are almost always THIS — a lazy embed's loading state — NOT a carousel.)
+
 VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
 compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.
 Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs + their

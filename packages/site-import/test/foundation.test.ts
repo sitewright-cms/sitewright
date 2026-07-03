@@ -129,6 +129,38 @@ describe('extractTypography', () => {
     const out = extractTypography(css, fonts);
     expect(out.heading).toMatchObject({ source: 'asset', assetId: 'br' }); // hostable woff, not a system slot
   });
+
+  it('resolves an ALIAS family to a hosted woff that deduped under a DIFFERENT alias name (shared src url)', () => {
+    // droombos: primary-font (heading) + text-font (body) BOTH @font-face → the SAME gotham.woff. The content-
+    // hash media dedup hosts it ONCE, under "primary-font". A name-only match dropped the body ("text-font");
+    // resolving via the shared @font-face src url now maps it to the same hosted asset.
+    const css = `
+      :root{--primary-font:"primary-font";--text-font:"text-font";}
+      @font-face{font-family:"primary-font";src:url('/gotham.woff')}
+      @font-face{font-family:"text-font";src:url('/gotham.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}
+    `;
+    const fonts: HostedFont[] = [{ family: 'primary-font', assetId: 'g', weight: 700, style: 'normal' }]; // deduped → ONE asset
+    const out = extractTypography(css, fonts);
+    expect(out.heading).toMatchObject({ source: 'asset', assetId: 'g' });
+    expect(out.body).toMatchObject({ source: 'asset', assetId: 'g' }); // ← was dropped before the url-alias match
+  });
+
+  it('does NOT cross-resolve two families that have DIFFERENT src urls (no false alias collapse)', () => {
+    const css = `
+      :root{--primary-font:"primary-font";--text-font:"text-font";}
+      @font-face{font-family:"primary-font";src:url('/heading.woff')}
+      @font-face{font-family:"text-font";src:url('/body.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}
+    `;
+    const fonts: HostedFont[] = [
+      { family: 'primary-font', assetId: 'h', weight: 700, style: 'normal' },
+      { family: 'text-font', assetId: 'b', weight: 400, style: 'normal' },
+    ];
+    const out = extractTypography(css, fonts);
+    expect(out.heading).toMatchObject({ assetId: 'h' });
+    expect(out.body).toMatchObject({ assetId: 'b' }); // distinct urls → each resolves to its OWN asset
+  });
 });
 
 describe('foundationCriticalCss', () => {
@@ -198,6 +230,18 @@ describe('nativeFooter', () => {
     expect(f).toContain('mailto:hi@acme.com');
     expect(f).toContain('tel:+1555000');
     expect(f).not.toMatch(/<footer[\s>]/);
+  });
+
+  it('embeds the captured map as a data-driven {{company.mapUrl}} iframe when identity.mapUrl is set', () => {
+    const f = nativeFooter({ name: 'Acme', mapUrl: 'https://www.google.com/maps/embed?pb=1' });
+    expect(f).toContain('<iframe src="{{company.mapUrl}}"'); // data-driven, editable in CI settings
+    expect(f).toContain('loading="lazy"');
+    expect(f).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-forms"'); // can't nav top
+    expect(f).toMatch(/class="[^"]*\bskeleton\b/); // loading placeholder while it loads
+  });
+
+  it('omits the map iframe when the source had no map', () => {
+    expect(nativeFooter({ name: 'Acme' })).not.toContain('iframe');
   });
 });
 

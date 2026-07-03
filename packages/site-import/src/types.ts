@@ -121,6 +121,7 @@ export type DiagnosticCode =
   | 'invalid-source-fallback'
   | 'foundation-applied'
   | 'sidebar-discarded'
+  | 'footer-map-embedded'
   | 'bundle-invalid';
 
 export interface ImportDiagnostic {

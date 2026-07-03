@@ -8,6 +8,7 @@ import {
   extractBodyBgImage,
   extractContentWidth,
   extractColors,
+  extractHeaderDecor,
   extractTypography,
   foundationCriticalCss,
   isIconFont,
@@ -221,6 +222,48 @@ describe('nativeMainNav', () => {
     expect(nav).toContain('(sw-active path)');
     expect(nav).not.toMatch(/<nav[\s>]/); // the platform owns the <nav id="main-nav"> landmark
     expect(nav).toContain('/media/s/main/logo.webp');
+  });
+
+  it('re-pins captured left/right decorations to the bar edges (desktop, aria-hidden), and validates', () => {
+    const nav = nativeMainNav({ name: 'Acme' }, { left: '/media/s/hl/header-left.png', right: '/media/s/hr/header-right.png' });
+    const leftImg = nav.match(/<img src="\/media\/s\/hl\/header-left\.png"[^>]*>/)?.[0] ?? '';
+    expect(leftImg).toContain('aria-hidden');
+    expect(leftImg).toMatch(/\babsolute\b/);
+    expect(leftImg).toMatch(/\bleft-0\b/);
+    expect(nav.match(/<img src="\/media\/s\/hr\/header-right\.png"[^>]*>/)?.[0] ?? '').toMatch(/\bright-0\b/);
+    expect(nav).toContain('navbar relative'); // positioning context for the absolute decorations
+    expect(() => validateTemplate(nav)).not.toThrow();
+  });
+
+  it('renders NO decoration wrapper when the source had none (byte-clean default)', () => {
+    const nav = nativeMainNav({ name: 'Acme' });
+    expect(nav).not.toContain('aria-hidden');
+    expect(nav).toContain('navbar min-h-0'); // no ` relative` inserted
+  });
+});
+
+describe('extractHeaderDecor', () => {
+  const assetMap = new Map<string, string>([
+    ['https://x.test/header-left.png', '/media/s/hl/header-left.png'],
+    ['https://x.test/header-right.png', '/media/s/hr/header-right.png'],
+  ]);
+
+  it('captures a #nav::before/::after left+right decoration pair, resolved to hosted refs', () => {
+    const css = `
+      #top-nav:before{position:absolute;left:0;width:200px;background-image:url(https://x.test/header-left.png);background-position:center left;content:" "}
+      #top-nav:after{position:absolute;right:0;width:200px;background-image:url(https://x.test/header-right.png);background-position:center right;content:" "}
+    `;
+    expect(extractHeaderDecor(css, assetMap)).toEqual({ left: '/media/s/hl/header-left.png', right: '/media/s/hr/header-right.png' });
+  });
+
+  it('ignores pseudo-element backgrounds on NON-header selectors', () => {
+    const css = `.hero-band:before{background-image:url(https://x.test/header-left.png)}`;
+    expect(extractHeaderDecor(css, assetMap)).toEqual({});
+  });
+
+  it('drops a decoration whose url is not a hosted asset (never a foreign hotlink)', () => {
+    const css = `.site-header:before{left:0;background-image:url(https://cdn.other/deco.png)}`;
+    expect(extractHeaderDecor(css, new Map())).toEqual({});
   });
 });
 

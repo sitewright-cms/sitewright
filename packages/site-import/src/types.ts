@@ -122,6 +122,7 @@ export type DiagnosticCode =
   | 'foundation-applied'
   | 'sidebar-discarded'
   | 'footer-map-embedded'
+  | 'header-decor-captured'
   | 'bundle-invalid';
 
 export interface ImportDiagnostic {

@@ -5,6 +5,7 @@ import { CorporateIdentitySchema, detectSocial, type CorporateIdentity } from '@
 import { allByName, type Document, type Element } from '../dom.js';
 import { textContent, findAll } from 'domutils';
 import { assetKey, resolveUrl } from '../url-util.js';
+import { isAllowedEmbed } from '../embeds.js';
 
 export interface IdentityCtx {
   baseUrl: string;
@@ -196,7 +197,10 @@ function scanContacts(doc: Document): { phone?: string; email?: string; social: 
   for (const f of allByName(doc.children, 'iframe')) {
     const src = (f.attribs.src || f.attribs['data-src'] || f.attribs['data-lazy-src'] || f.attribs['data-original'] || '').trim();
     if (!/^https:\/\//i.test(src)) continue;
-    if (!mapUrl && MAP_EMBED_RE.test(src)) mapUrl = src.slice(0, 2000);
+    // MAP_EMBED_RE's `/maps/embed` path alternative is host-AGNOSTIC, so also require the ALLOW-LISTED embed
+    // host check (as the page-body iframe path does) — else an imported site could seed `company.mapUrl` with
+    // an arbitrary attacker origin that the native footer would then auto-embed as an iframe.
+    if (!mapUrl && MAP_EMBED_RE.test(src) && isAllowedEmbed(src)) mapUrl = src.slice(0, 2000);
     const plugin = src.match(/(?:facebook|twitter|x)\.com\/plugins\/[^?]*\?[^"']*\bhref=([^&"']+)/i);
     if (plugin) { try { addSocial(decodeURIComponent(plugin[1]!)); } catch { /* malformed href param */ } }
   }

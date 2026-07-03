@@ -92,6 +92,16 @@ describe('extractIdentity', () => {
     expect(id.social?.[0]).toMatchObject({ name: 'Facebook', link: 'https://www.facebook.com/acmeco/' });
   });
 
+  it('does NOT capture a /maps/embed path on a NON-allowlisted host as the map URL (security)', () => {
+    // MAP_EMBED_RE's path-only alternative would otherwise let an imported site seed an attacker origin that
+    // the native footer auto-embeds. isAllowedEmbed must gate it (only real map providers pass).
+    const html = `<html><head><title>Acme</title></head><body><footer>
+      <iframe src="https://attacker.example/maps/embed?pb=evil"></iframe>
+    </footer></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.mapUrl).toBeUndefined();
+  });
+
   it('extracts a free-text address from a location-icon footer block (no JSON-LD/microdata)', () => {
     const html = `<html><body><footer>
       <div class="d-flex"><i class="fa fa-home"></i><span>Corner of A &amp; B Streets, Suiderhof</span></div>

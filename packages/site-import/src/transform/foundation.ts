@@ -170,9 +170,30 @@ function localSystemFaces(cssText: string): Map<string, string> {
 }
 
 /**
+ * @font-face family → its FIRST hostable src `url()`. A site often aliases ONE woff under several family
+ * names (`@font-face{font-family:"primary-font";src:url(gotham.woff)}` AND `…"text-font"…src:url(gotham.woff)}`)
+ * and uses `--primary-font` for headings, `--text-font` for body. The content-hash media dedup hosts that woff
+ * ONCE (under whichever family it first saw), so a name-only match drops every OTHER alias (e.g. body). This
+ * map lets {@link extractTypography} resolve any alias to the hosted asset that shares its src url. (Requires
+ * the hosted font's own family to appear in an @font-face block of THIS cssText — always true for imports,
+ * where the hosted woffs come from these very @font-face rules; else the role degrades to unresolved.)
+ */
+function fontFaceFamilyUrls(cssText: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of cssText.matchAll(/@font-face\s*\{([^}]*)\}/gi)) {
+    const block = m[1] ?? '';
+    const fam = block.match(/font-family\s*:\s*["']?([^;"'}]+)/i)?.[1]?.trim();
+    const url = block.match(/\burl\s*\(\s*["']?([^)"']+)/i)?.[1]?.trim();
+    if (fam && url && !out.has(norm(fam))) out.set(norm(fam), url); // first @font-face wins (CSS cascade)
+  }
+  return out;
+}
+
+/**
  * Resolve heading + body font slots from the foreign CSS, matched to the self-hosted woffs.
- * Matches by family name; a role declared via a LOCAL()-only @font-face resolves to a SYSTEM slot; only when
- * a role has NO family signal at all does it fall back to "the other font" (the common heading+body pair).
+ * Matches by family name (or by a shared @font-face src url, so ALIAS families that dedup to one hosted woff
+ * still resolve); a role declared via a LOCAL()-only @font-face resolves to a SYSTEM slot; only when a role
+ * has NO family signal at all does it fall back to "the other font" (the common heading+body pair).
  */
 export function extractTypography(cssText: string, fonts: readonly HostedFont[]): { heading?: FontSlot; body?: FontSlot } {
   // Drop icon/glyph fonts — they're never a text face (and must not be picked by the fallback below).
@@ -187,7 +208,16 @@ export function extractTypography(cssText: string, fonts: readonly HostedFont[])
     if (local === undefined) return undefined;
     return { source: 'system', family: FAMILY_OK.test(local) ? local : 'serif', weight };
   };
-  const match = (fam: string | undefined): HostedFont | undefined => (fam ? distinct.find((f) => norm(f.family) === norm(fam)) : undefined);
+  // Match by family NAME first; else by a SHARED @font-face src url (alias families that deduped to one woff).
+  const familyUrl = fontFaceFamilyUrls(cssText);
+  const hostedUrl = (f: HostedFont): string | undefined => familyUrl.get(norm(f.family));
+  const match = (fam: string | undefined): HostedFont | undefined => {
+    if (!fam) return undefined;
+    const direct = distinct.find((f) => norm(f.family) === norm(fam));
+    if (direct) return direct;
+    const url = familyUrl.get(norm(fam));
+    return url ? distinct.find((f) => hostedUrl(f) === url) : undefined;
+  };
   let head = match(headFam);
   let body = match(bodyFam);
   // A role whose declared font is a local system alias (e.g. heading = local Times New Roman) is RESOLVED —
@@ -282,14 +312,28 @@ export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>
   );
 }
 
-/** A clean native footer from identity (company + contact + copyright). Agents may enrich it later. */
-export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' | 'telephone'>): string {
+/** A clean native footer from identity (company + contact + optional map + copyright). Agents may enrich it later. */
+export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' | 'telephone' | 'mapUrl'>): string {
   const year = '{{year}}';
   const contacts: string[] = [];
   if (identity.telephone) contacts.push(`<a href="tel:${esc(identity.telephone.replace(/\s+/g, ''))}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "phone" "h-4 w-4 text-primary"}}${esc(identity.telephone)}</a>`);
   if (identity.email) contacts.push(`<a href="mailto:${esc(identity.email)}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "mail" "h-4 w-4 text-primary"}}${esc(identity.email)}</a>`);
+  // The original's footer Google-Maps embed (captured into identity.mapUrl, allow-listed host only). Data-driven
+  // via {{company.mapUrl}} so a client edits it in CI settings; a skeleton placeholder while it loads. Only when
+  // the source actually had one — else the footer stays map-free. The iframe is SANDBOXED (the map still works
+  // with allow-scripts/-same-origin/-popups/-forms) so the embedded page can't navigate the top-level context.
+  // When the consent manager is ENABLED, gateAuthorIframes turns this into a click-to-load embed like any other
+  // cross-origin iframe (a Maps embed does set Google cookies); with consent off it loads inline.
+  // applyFoundation validates mapUrl (AbsoluteUrlSchema → https-only) before calling; re-check the scheme here
+  // as defence-in-depth so a DIRECT caller can't emit a non-http(s) iframe src (Handlebars escaping alone
+  // wouldn't stop a `javascript:`/`data:` value, which has no HTML-special chars).
+  const hasMap = !!identity.mapUrl && /^https?:\/\//i.test(identity.mapUrl);
+  const map = hasMap
+    ? `<iframe src="{{company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton h-64 w-full border-0"></iframe>`
+    : '';
   return (
     `<div class="bg-neutral text-neutral-content">` +
+    map +
     `<div class="mx-auto flex max-w-screen-xl flex-col items-center gap-4 px-6 py-10 text-center">` +
     `<span class="text-lg font-bold">${esc(identity.name)}</span>` +
     (contacts.length ? `<div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">${contacts.join('')}</div>` : '') +
@@ -401,6 +445,9 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
 
   if (hadSidebar) {
     diagnostics.push({ code: 'sidebar-discarded', message: 'foreign sidebar/off-canvas removed — rebuild it natively if the design needs it (author rule R28)' });
+  }
+  if (identity.mapUrl) {
+    diagnostics.push({ code: 'footer-map-embedded', message: 'the source\'s Google-Maps embed was reproduced in the native footer via {{company.mapUrl}} — move/restyle it if the design places it elsewhere' });
   }
 
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';

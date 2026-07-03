@@ -480,6 +480,19 @@ function validateSourceOnSave(kind: string, body: unknown): void {
       if (found) {
         throw new TemplateError(`the "${label}" chrome slot can't contain a <${found.tag}> element — ${found.hint}.`);
       }
+      // Full template-safety check on the slot — the SAME gate the publisher/renderer runs (unsafe
+      // interpolation, a bare {{x}} in a URL attribute, {{{raw}}}, <script>, …). Run it at SAVE so a
+      // broken chrome slot fails LOUDLY here with the offending slot named, instead of saving fine,
+      // rendering the slot BLANK, and only 409ing at publish (which also made compare_to_source silently
+      // fall back to the last good build). No content that publish accepts is newly rejected.
+      try {
+        validateTemplate(val);
+      } catch (err) {
+        if (err instanceof TemplateError) {
+          throw new TemplateError(`the "${label}" chrome slot has an invalid template — ${err.message}`);
+        }
+        throw err;
+      }
     }
   }
 }
@@ -4323,10 +4336,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       { config: rl(10) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
-        const page = (await contentRepo.get(ctx, 'page', req.params.pageId).catch(() => null)) as ComparePageInput | null;
+        // One list serves both needs: the target page AND the full page map to walk its parent chain.
+        // The build URL needs the page's FULL nested route (`services/building-engineering`), not its own
+        // leaf `path` segment — otherwise a child page's preview URL 404s and compare returns a blank BUILD.
+        const allPages = (await contentRepo.list(ctx, 'page').catch(() => [])) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        const page = targetPage as ComparePageInput | null;
+        // `pathToSlug('/')` → undefined for the HOME page (it has no slug) — that IS the correct signal:
+        // compareTargets falls back to '' → the root preview URL. undefined here means home, not an error.
+        const fullRoute = targetPage ? pathToSlug(pagePath(targetPage, byId)) : undefined;
         const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
         const target = compareTargets({
           page,
+          route: fullRoute,
           projectId: project.id,
           sig: signPreview(project.id, currentCookieSecret),
           originHostPort: `127.0.0.1:${port}`,

@@ -174,10 +174,16 @@ function hasNamedInput(el: Element, name: string): boolean {
   return findAll((e) => e.tagName === 'input' && e.attribs.name === name, el.children).length > 0;
 }
 
-/** The bot-bait honeypot block (visually hidden by FORM_CSS; the endpoint drops filled posts). */
+/**
+ * The bot-bait honeypot block (the endpoint drops filled posts). Carries its OWN inline hiding style so
+ * it stays invisible even on a HAND-AUTHORED `<form data-sw-form>` — that form gets the honeypot injected
+ * but NOT the `data-sw-block="Form"` marker the FORM_CSS `[data-sw-part="hp"]` rule keys on (and FORM_CSS
+ * may not ship at all for a non-component form), so a scoped rule alone would leave "Leave this field
+ * empty" visible on the page. Platform-generated markup, so the inline style is safe.
+ */
 function honeypotBlock(): string {
   return (
-    `<div data-sw-part="hp" aria-hidden="true">` +
+    `<div data-sw-part="hp" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">` +
     `<label>Leave this field empty<input type="text" name="${escapeAttr(HONEYPOT_FIELD)}" tabindex="-1" autocomplete="off" /></label></div>`
   );
 }

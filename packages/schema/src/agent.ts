@@ -949,6 +949,53 @@ SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on impo
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
 embed with {{sw-form}}).
 
+COMMON FIDELITY MISSES — these keep happening even when the port "looks close". Self-audit EVERY page
+against this list BEFORE you publish it:
+- EVERYTHING REPEATED IS A DATASET. A card grid, a team list, job vacancies, AND a second group next to a
+  first (e.g. "Associate Directors" beside "Directors") ALL become datasets + {{#each}} — so a client adds/
+  removes items without touching page code. Do NOT hard-code the second group, or a "short" list, inline.
+- SLIDERS COME FROM DATA, never hard-coded slides. A hero slideshow = the \`{{> hero-slider}}\` widget + a
+  \`hero\` dataset (its \`slides\` list); a logo/partner strip = \`{{> logo-marquee}}\` + a media-folder loop.
+  Pasting N literal slide blocks into the source is wrong — not editable, and it bloats the page.
+- FONTS LIVE IN CI SETTINGS (identity.typography.heading/body), NOT in criticalCss. The importer already
+  self-hosts the brand fonts and wires identity.typography — do NOT re-declare \`@font-face\` /
+  \`font-family:…!important\` in criticalCss. The duplicate fights the platform typography and drifts the
+  heading WEIGHT/SIZE (a very common "fonts look off" miss). Use criticalCss only for a genuine per-element
+  override the CI settings can't express (e.g. a script font on ONE brand title).
+- USE CI VARIABLES EVERYWHERE — chrome included. The company name, slogan, phone, email, address, and social
+  links in the header/footer and page bodies are \`{{company.name}}\` / \`{{company.slogan}}\` / \`{{company.*}}\`,
+  NEVER a hard-coded "Acme Ltd" literal. For a copyright YEAR use \`{{sw-date "now" "YYYY"}}\` (always the
+  current year), not a baked "© 2026".
+- DATA VALUES ARE PLAIN TEXT. A field value (a dataset entry field / page.data) is HTML-ESCAPED when rendered,
+  so store the LITERAL character — "Steel & Co", NEVER the entity "Steel &amp; Co" (that double-escapes to a
+  visible "&amp;"). When you copy text OUT of an imported page's HTML \`source\`, DECODE entities first
+  (\`&\` not \`&amp;\`, \`"\` not \`&quot;\`).
+- MARK ALL PROSE EDITABLE. Every heading and paragraph a client might reword gets data-sw-text (data-sw-html
+  for rich copy) — not just dataset fields. A page of bare, unmarked <p>/<h2> is not done.
+- MATCH TEXT-TRANSFORM. If the original's buttons / labels / table actions are UPPERCASE, render them
+  uppercase (author the caps or add \`uppercase\`) — don't emit Title Case.
+- FORMS: match the original's field LAYOUT (inline label-left/input-right vs labels stacked above), keep its
+  required indicators, and do NOT invent placeholder text the original lacks. Match the submit button's look
+  (colour + any icon).
+- EMBEDDED MAPS / IFRAMES render inline WITHOUT consent. A plain Google-Maps (or similar) <iframe> the
+  original shows inline just works on the published site — do NOT wrap it in the consent gate (that hides it
+  behind a click AND adds a cookie banner the original never had). Reserve consent for real 3rd-party
+  TRACKERS. A source map is often LAZY (blank in a static capture) — reproduce it from the source MARKUP,
+  not from what a screenshot shows.
+- STICKY / SHRINK HEADER without overlap: when the original's header is fixed/shrinking, set
+  website.effects.stickyHeader AND give each page's FIRST section \`.sw-top-padding\` (plus a \`--sw-header-h\`
+  matching the real header height) so content isn't hidden under the fixed bar. Don't just leave it off
+  because it overlapped.
+- NAV / BUTTON EFFECTS: if the original's nav links have a hover underline/animation, or its buttons animate
+  on hover, pick the matching website.effects nav/button scheme (get_guide("effects")) — don't ship flat
+  links/buttons when the original moves.
+- READABLE SOURCE: author page/template/snippet source as PRETTY-PRINTED, indented, multi-line HTML — one
+  block element per line group, children indented — NOT one minified line. A human edits this source.
+- CAROUSEL MARKERS: a hand-authored carousel needs BOTH \`data-sw-component="carousel"\` AND
+  \`data-sw-block="Carousel"\` on the root (copy the EXACT get_components skeleton) — with only -component the
+  slide-sizing CSS never applies and every slide collapses to zero height (silently, no error). Prefer the
+  \`{{> hero-slider}}\` widget, which is already marked up correctly.
+
 VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
 compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.
 Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs + their

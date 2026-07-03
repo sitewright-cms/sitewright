@@ -265,6 +265,23 @@ describe('extractHeaderDecor', () => {
     const css = `.site-header:before{left:0;background-image:url(https://cdn.other/deco.png)}`;
     expect(extractHeaderDecor(css, new Map())).toEqual({});
   });
+
+  it('matches a BARE tag selector (header::before) and a single-sided decoration', () => {
+    const css = `header::before{background-image:url(https://x.test/header-left.png);background-position:left}`;
+    expect(extractHeaderDecor(css, assetMap)).toEqual({ left: '/media/s/hl/header-left.png' });
+  });
+
+  it('classifies by FILENAME segment when there is no background-position', () => {
+    const css = `#nav:before{background-image:url(https://x.test/header-left.png)}#nav:after{background-image:url(https://x.test/header-right.png)}`;
+    expect(extractHeaderDecor(css, assetMap)).toEqual({ left: '/media/s/hl/header-left.png', right: '/media/s/hr/header-right.png' });
+  });
+
+  it('does NOT false-match "right"/"left" as a substring of an unrelated filename word', () => {
+    // brightwood-header.png must NOT be classified 'right'; with no position + no delimited segment it falls
+    // back to ::before=left.
+    const css = `.navbar:before{background-image:url(https://x.test/brightwood-header.png)}`;
+    expect(extractHeaderDecor(css, new Map([['https://x.test/brightwood-header.png', '/media/s/bw/brightwood-header.png']]))).toEqual({ left: '/media/s/bw/brightwood-header.png' });
+  });
 });
 
 describe('nativeFooter', () => {

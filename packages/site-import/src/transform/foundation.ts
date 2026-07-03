@@ -291,19 +291,25 @@ export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string): strin
  */
 export function extractHeaderDecor(cssText: string, assetMap: ReadonlyMap<string, string>): { left?: string; right?: string } {
   const out: { left?: string; right?: string } = {};
-  for (const m of cssText.matchAll(/([#.][\w-]+)\s*::?(before|after)\s*\{([^}]*)\}/gi)) {
+  // `[#.]?[\w-]+` matches an id/class/BARE-TAG selector (`#top-nav`, `.masthead`, `header`) — a single token
+  // (O(n), no ReDoS); the keyword guard below scopes it to header/nav elements. A compound/list selector is
+  // matched by its last simple selector, which the guard then filters.
+  for (const m of cssText.matchAll(/([#.]?[\w-]+)\s*::?(before|after)\s*\{([^}]*)\}/gi)) {
     const sel = m[1] ?? '';
     const pseudo = (m[2] ?? '').toLowerCase();
     const block = m[3] ?? '';
-    if (!/(?:nav|header|masthead|topbar)/i.test(sel)) continue; // a header/nav-like element only
+    if (!/nav|header|masthead|topbar/i.test(sel)) continue; // header/nav-like element only
     const rawUrl = block.match(/background(?:-image)?\s*:[^;}]*url\(\s*['"]?([^)'"]+)/i)?.[1];
     if (!rawUrl) continue;
     const ref = rewriteCssUrls(`url(${rawUrl})`, assetMap).match(/url\(\s*['"]?(\/media\/[^)'"\s]+)/i)?.[1];
     if (!ref) continue; // ship ONLY a hosted asset
     const pos = block.match(/background-position\s*:\s*([^;}]+)/i)?.[1] ?? '';
+    const url = rawUrl.toLowerCase();
+    // Classify by background-position keyword, else a DELIMITED left/right SEGMENT in the filename (so
+    // `brightwood`/`upleft-x` don't false-match), else `::before`=left / `::after`=right.
     const side: 'left' | 'right' =
-      /right/i.test(pos) || /right/i.test(rawUrl) ? 'right'
-        : /left/i.test(pos) || /left/i.test(rawUrl) ? 'left'
+      /\bright\b/.test(pos.toLowerCase()) || /(?:^|[-_./])right(?:[-_.]|$)/.test(url) ? 'right'
+        : /\bleft\b/.test(pos.toLowerCase()) || /(?:^|[-_./])left(?:[-_.]|$)/.test(url) ? 'left'
           : pseudo === 'after' ? 'right' : 'left';
     if (!out[side]) out[side] = ref; // first rule wins (CSS cascade)
   }

@@ -993,6 +993,16 @@ against this list BEFORE you publish it:
   the active item ({ Home }) → \`brackets-curly\` (square [ ] → \`brackets\`). Do NOT hand-code the effect with
   \`::before\`/\`::after\` \`content:"{"\`/underline pseudo-elements in criticalCss — that duplicates a built-in
   scheme, misses its hover transitions, and won't respond to the no-code effects picker.
+- BUTTONS = DaisyUI PRIMITIVES + SW BUTTON AXES, never hand-rolled CSS. Every button is a \`.btn\` + a FACE
+  variant that owns the resting look (\`btn-primary\`/… solid, \`btn-outline\` hollow, \`btn-ghost\` transparent,
+  \`btn-soft\`, or bare \`.btn\`). To match the original's button HOVER / motion, SNAP the site-wide
+  \`website.effects.buttonEffect\` (+ \`buttonAccent\` / \`buttonShape\`) to the closest built-in scheme
+  (get_guide("effects") lists them across the motion / reveal / face kinds) — a FACE + a motion/reveal effect
+  COMPOSE freely, while a \`face\` effect (two-tone / gradient-move / frost / ghost-gradient) IS the look. For a
+  ONE-OFF button that differs from the site default, add the axis class(es) on THAT button — \`sw-btn-fx-<name>\`,
+  \`sw-btn-accent-<primary|secondary|accent|neutral>\`, \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|
+  circle>\`. Do NOT write custom hover transitions / gradients / box-shadows / border-radius for buttons in
+  criticalCss — snap the axes instead (they're contrast-safe, animate correctly, and stay editable in the picker).
 - READABLE SOURCE: author page/template/snippet source as PRETTY-PRINTED, indented, multi-line HTML — one
   block element per line group, children indented — NOT one minified line. A human edits this source.
 - CAROUSEL MARKERS: a hand-authored carousel needs BOTH \`data-sw-component="carousel"\` AND

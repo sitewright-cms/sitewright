@@ -632,14 +632,18 @@ describe('createSitewrightMcpServer — agent guidance', () => {
   it('the i18n guide teaches the multilingual INHERITANCE model (variants leave source/template unset)', async () => {
     const mcp = await connect(fakeClient(), writeScope);
     const i18n = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'i18n' } }));
-    expect(i18n).toMatch(/INHERITANCE/);
+    expect(i18n).toMatch(/inherit/i);
     expect(i18n).toMatch(/translationGroup/);
-    // The variant follows the default-locale page's code; it does NOT copy the source.
-    expect(i18n).toMatch(/follows the DEFAULT-LOCALE page/i);
+    // The variant INHERITS the default-locale page's code; it does NOT copy the source.
+    expect(i18n).toMatch(/INHERITS the default-locale page/i);
     expect(i18n).not.toMatch(/copy the `?source`?\)/i);
     // It teaches the atomic add_language tool and warns AGAINST hand-editing settings.locales.
     expect(i18n).toMatch(/add_language\(\{\s*locale/);
     expect(i18n).toMatch(/NEVER add a language by hand-editing\s+settings\.locales/i);
+    // STRENGTHENED: translate = data only (never a forked source), and the main page must be BOUND.
+    expect(i18n).toMatch(/TRANSLATE = DATA ONLY, NEVER CODE/);
+    expect(i18n).toMatch(/Do NOT put_page a variant with its OWN\s+`?source`?/i);
+    expect(i18n).toMatch(/inheritance can only translate text that carries a\s+data-sw-text/i);
     await mcp.close();
   });
 

@@ -271,27 +271,33 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         const hash = `${asset.kind ?? 'image'}:${createHash('sha256').update(buffer).digest('hex')}`;
         const cached = byHash.get(hash);
         if (cached) return cached;
+        // Capture everything the task needs from THIS asset up-front (like buf/mt/fn) — the memoized task
+        // that actually runs is the FIRST caller's, so reading these off `asset` inside it would otherwise
+        // pin them to whichever URL won the race.
         const buf = buffer;
         const mt = mimetype;
         const fn = filename;
+        const kind = asset.kind;
+        const fontMeta = asset.font;
+        const remoteRef = asset.remoteUrl || asset.sourceRef || '';
         const task: Promise<{ ref: string; srcset?: string } | null> = (async () => {
           // @font-face web fonts → the self-hosted-font pipeline (magic-byte validated, served inline).
-          if (asset.kind === 'font') {
-            if (!deps.hostFontAsset || !asset.font) return null;
-            const saved = await deps.hostFontAsset(ctx, slug, buf, asset.font).catch(() => null);
+          if (kind === 'font') {
+            if (!deps.hostFontAsset || !fontMeta) return null;
+            const saved = await deps.hostFontAsset(ctx, slug, buf, fontMeta).catch(() => null);
             return saved ? { ref: saved.url } : null;
           }
           // Documents (PDF/doc/…) → the file-asset path: stored as-is, served download-only (no sharp).
-          if (asset.kind === 'other') {
+          if (kind === 'other') {
             if (!deps.hostFileAsset) return null;
-            const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', false);
+            const folder = importMediaFolder(remoteRef, false);
             const saved = await deps.hostFileAsset(ctx, slug, buf, { filename: fn, mimetype: mt || 'application/octet-stream', folder }).catch(() => null);
             return saved ? { ref: saved.url } : null;
           }
           if (mt === 'image/svg+xml' || mt === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
           if (mt && !mt.startsWith('image/')) return null; // only host images
           try {
-            const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', true);
+            const folder = importMediaFolder(remoteRef, true);
             // Importer HARD RULE: cap an oversized cloned image at 2400px, converting to WebP only when the
             // cap actually bites (see storeOriginal). `saved.url` is the id-bearing DELIVERY route, which
             // serves a compressed `xl` thumbnail by default — no eager variant srcset needed.

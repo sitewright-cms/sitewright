@@ -164,7 +164,7 @@ function localSystemFaces(cssText: string): Map<string, string> {
     if (/\burl\s*\(/i.test(block)) continue; // has a hostable url() → not local-only
     const fam = block.match(/font-family\s*:\s*["']?([^;"'}]+)/i)?.[1]?.trim();
     const local = block.match(/\blocal\s*\(\s*["']?([^)"']+)/i)?.[1]?.trim();
-    if (fam && local) out.set(norm(fam), local);
+    if (fam && local && !out.has(norm(fam))) out.set(norm(fam), local); // first @font-face wins (CSS cascade)
   }
   return out;
 }

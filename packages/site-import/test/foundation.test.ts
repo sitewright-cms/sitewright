@@ -122,6 +122,13 @@ describe('extractTypography', () => {
     expect(out.heading).toEqual({ source: 'system', family: 'Times New Roman', weight: 700 });
     expect(out.body).toMatchObject({ source: 'asset', assetId: 't' });
   });
+
+  it('does NOT treat a local()+url() @font-face as system — the hosted woff is matched', () => {
+    const css = `:root{--primary-font:"brand";} @font-face{font-family:"brand";src:local("Arial"),url('/brand.woff')} .primary-font{font-family:var(--primary-font)}`;
+    const fonts: HostedFont[] = [{ family: 'brand', assetId: 'br', weight: 700, style: 'normal' }];
+    const out = extractTypography(css, fonts);
+    expect(out.heading).toMatchObject({ source: 'asset', assetId: 'br' }); // hostable woff, not a system slot
+  });
 });
 
 describe('foundationCriticalCss', () => {

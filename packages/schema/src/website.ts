@@ -423,18 +423,52 @@ export function navEffectUsesRuntime(effect: string | null | undefined): boolean
  * `@utility sw-btn-fx-<name>` blocks in @sitewright/tailwind effects.ts, and the JS runtime markers.
  */
 export const BUTTON_EFFECTS = [
-  // solid — baseline fill + a signature flourish
+  // motion — pure hover / motion / glint; NEVER paints the resting face, so it layers on ANY face
   'lift', 'glow', 'pulse', 'ring', 'magnetic', 'arrow', 'bounce', 'jelly',
-  'icon-spin', 'long-shadow', 'frost', 'width-expand',
-  // glint — a light effect on top of the baseline
+  'icon-spin', 'long-shadow', 'width-expand',
   'sheen', 'spotlight', 'shine', 'sparkle',
-  // hollow — transparent face, the accent does the work
-  'fill-center', 'fill-slide', 'border-draw', 'outline-fill', 'fill-up', 'fill-down',
-  'skew-sweep', 'bubble', 'text-link',
-  // gradient — two-colour (face → accent)
-  'gradient-move', 'two-tone', 'ghost-gradient',
+  // reveal — an accent animation reveals on hover; rests as the AUTHOR'S face (shines on a hollow
+  // btn-outline / btn-ghost, but composes over a solid variant too — the effect never forces a face)
+  'fill-center', 'fill-slide', 'fill-up', 'fill-down', 'skew-sweep', 'bubble',
+  'border-draw', 'outline-fill', 'text-link',
+  // face — the effect DEFINES the resting face by design (the chosen variant is a colour input)
+  'frost', 'gradient-move', 'two-tone', 'ghost-gradient',
 ] as const;
 export type ButtonEffect = (typeof BUTTON_EFFECTS)[number];
+
+/**
+ * The two ORTHOGONAL axes of a button:
+ *   FACE   — the resting look, chosen by the author as a daisyUI variant class (`btn-primary`,
+ *            `btn-secondary`, `btn-ghost` = transparent, `btn-outline` = hollow, `btn-soft`, …) or a
+ *            bare `.btn`. Owns the resting background / text / border.
+ *   EFFECT — the `sw-btn-fx-<name>` hover / motion treatment. A `ButtonEffectKind` says how it relates
+ *            to the face:
+ *     - `motion` — pure hover / motion / glint. Composes on ANY face; never touches the resting look.
+ *     - `reveal` — an accent overlay animates in on hover. Rests as the author's face (does NOT force
+ *                  one); designed to shine on a hollow `btn-outline` / `btn-ghost`, composes over solid.
+ *     - `face`   — the effect DEFINES the resting face (a gradient / two-tone / frosted / clipped-text
+ *                  button). Picking it IS the look; the variant supplies a colour, it isn't overridden.
+ * A `motion` / `reveal` effect + any FACE variant compose freely — that is the whole point of the split.
+ */
+export type ButtonEffectKind = 'motion' | 'reveal' | 'face';
+
+/** Per-effect kind — source of truth for the editor pickers, the docs, and the CSS drift-guard test. */
+export const BUTTON_EFFECT_KIND: Record<ButtonEffect, ButtonEffectKind> = {
+  lift: 'motion', glow: 'motion', pulse: 'motion', ring: 'motion', magnetic: 'motion',
+  arrow: 'motion', bounce: 'motion', jelly: 'motion', 'icon-spin': 'motion',
+  'long-shadow': 'motion', 'width-expand': 'motion', sheen: 'motion', spotlight: 'motion',
+  shine: 'motion', sparkle: 'motion',
+  'fill-center': 'reveal', 'fill-slide': 'reveal', 'fill-up': 'reveal', 'fill-down': 'reveal',
+  'skew-sweep': 'reveal', bubble: 'reveal', 'border-draw': 'reveal', 'outline-fill': 'reveal',
+  'text-link': 'reveal',
+  frost: 'face', 'gradient-move': 'face', 'two-tone': 'face', 'ghost-gradient': 'face',
+};
+
+/** Human hint for the pickers: which FACE an effect is designed to pair with. */
+export function buttonEffectFacePairing(effect: ButtonEffect): 'any' | 'hollow' | 'defines' {
+  const kind = BUTTON_EFFECT_KIND[effect];
+  return kind === 'face' ? 'defines' : kind === 'reveal' ? 'hollow' : 'any';
+}
 
 /** Display labels for the button-effect picker ("Family: Detail" style where useful). */
 export const BUTTON_EFFECT_LABELS: Record<ButtonEffect, string> = {

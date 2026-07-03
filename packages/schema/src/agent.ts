@@ -411,18 +411,14 @@ the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-p
 (they don't collide) — so a custom menu (e.g. a scrollspy table of contents) can run its OWN effect while
 the rest of the site keeps the site-wide one.
 
-BUTTONS: every \`.btn\` already has a BASELINE — a ripple on click, a small hover lift + shadow, and its
-background fills to the hover ACCENT (default secondary). Layer three independent axes as classes (each
-works on a single .btn OR site-wide via website.effects):
- • EFFECT — \`sw-btn-fx-<name>\`: \`lift\`,\`glow\`,\`pulse\`,\`ring\`,\`magnetic\`,\`arrow\`,\`bounce\`,\`jelly\`,
-   \`icon-spin\`,\`long-shadow\`,\`frost\`,\`width-expand\`,\`sheen\`,\`spotlight\`,\`shine\`,\`sparkle\`,
-   \`fill-center\`,\`fill-slide\`,\`border-draw\`,\`outline-fill\`,\`fill-up\`,\`fill-down\`,\`skew-sweep\`,\`bubble\`,
-   \`text-link\`,\`gradient-move\`,\`two-tone\`,\`ghost-gradient\` (or website.effects.buttonEffect for the site default).
- • ACCENT — \`sw-btn-accent-<primary|secondary|accent|neutral>\` overrides the hover/fill colour (or website.effects.buttonAccent).
- • SHAPE — \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle = icon-only) (or website.effects.buttonShape).
-FACE = the daisyUI variant (\`btn-primary\`/\`btn-ghost\`=transparent/\`btn-outline\`/\`btn-soft\`). A class on
-a button OVERRIDES the site default for that axis. \`magnetic\`/\`spotlight\` (+ the ripple) load a tiny
-runtime automatically. Prefer these over hand-rolled hover CSS.
+BUTTONS — two ORTHOGONAL axes; author both freely. FACE = the daisyUI variant that owns the RESTING look
+(\`btn-primary\`…solid, \`btn-outline\` hollow, \`btn-ghost\`=transparent, \`btn-soft\`, or bare \`.btn\`). EFFECT
+= a \`sw-btn-fx-<name>\` hover layer (baseline on every .btn: ripple + hover lift/shadow + fill to ACCENT).
+Effects compose with ANY face — three kinds:
+ • motion — motion only, any face: \`lift\`,\`glow\`,\`pulse\`,\`ring\`,\`magnetic\`,\`arrow\`,\`bounce\`,\`jelly\`,\`icon-spin\`,\`long-shadow\`,\`width-expand\`,\`sheen\`,\`spotlight\`,\`shine\`,\`sparkle\`.
+ • reveal — accent reveals on hover, RESTS as your face (pair \`btn-outline\`/\`btn-ghost\` for the hollow→fill look; works on solid too): \`fill-center\`,\`fill-slide\`,\`fill-up\`,\`fill-down\`,\`skew-sweep\`,\`bubble\`,\`border-draw\`,\`outline-fill\`,\`text-link\`.
+ • face — the effect DEFINES the look, picking it IS the face: \`two-tone\`,\`gradient-move\`,\`frost\`,\`ghost-gradient\`.
+Also ACCENT \`sw-btn-accent-<primary|secondary|accent|neutral>\`, SHAPE \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle=icon-only). Any axis = a class on the button OR website.effects.{buttonEffect,buttonAccent,buttonShape}. \`magnetic\`/\`spotlight\` (+ripple) load a tiny runtime. Prefer these over hand-rolled hover CSS.
 
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
 so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away

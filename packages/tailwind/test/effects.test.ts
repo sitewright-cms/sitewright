@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { compileUtilityCss } from '../src/compile.js';
 import { EFFECT_UTILITIES } from '../src/effects.js';
-import { NAV_EFFECTS, BUTTON_EFFECTS, BUTTON_SHAPES, BUTTON_ACCENTS } from '@sitewright/schema';
+import { NAV_EFFECTS, BUTTON_EFFECTS, BUTTON_SHAPES, BUTTON_ACCENTS, BUTTON_EFFECT_KIND } from '@sitewright/schema';
 
 const theme = { colors: { primary: '#4f46e5', 'base-100': '#ffffff', 'base-content': '#1a1a23' } };
 const compile = (html: string) => compileUtilityCss([html], theme, { minify: false });
@@ -69,6 +69,51 @@ describe('nav/button effect utilities', () => {
     );
     expect(css).toContain('.sw-btn-fx-fill-slide .btn:not([class*=sw-btn-fx-])'); // guarded descendant (site default)
     expect(css).toContain('.sw-btn-fx-fill-slide.btn'); // + the per-button compound form
+  });
+
+  // The FACE-vs-EFFECT contract: a `motion` / `reveal` effect must NOT paint the RESTING face
+  // (background / colour / border) — that belongs to the daisyUI variant the author picks, so the two
+  // axes compose. Only a `face` effect may. This guards the whole re-architecture from silent drift.
+  it('no motion/reveal effect paints the resting face (only `face` effects may)', () => {
+    const RESTING_RULE = /& \.btn:not\(\[class\*="sw-btn-fx-"\]\), &\.btn \{([^}]*)\}/g;
+    const FORBIDDEN = new Set(['background', 'background-color', 'color', 'box-shadow']);
+    for (const effect of BUTTON_EFFECTS) {
+      if (BUTTON_EFFECT_KIND[effect] === 'face') continue; // gradient/two-tone/frost/ghost-gradient own the face
+      const start = EFFECT_UTILITIES.indexOf(`@utility sw-btn-fx-${effect} {`);
+      expect(start, `missing @utility for ${effect}`).toBeGreaterThanOrEqual(0);
+      const next = EFFECT_UTILITIES.indexOf('@utility ', start + 1);
+      const block = EFFECT_UTILITIES.slice(start, next === -1 ? undefined : next);
+      // a motion/reveal effect must NOT use the face-changing helper btnFace() (which paints a solid
+      // face on the non-transparent variants) — only `face` effects may. Its selector carries the
+      // `:not(.btn-ghost)` guard that btnFx() lacks, so match on that.
+      expect(
+        block.includes(':not([class*="sw-btn-fx-"]):not(.btn-ghost)'),
+        `${effect}: uses btnFace() — only face-kind effects may paint the face`,
+      ).toBe(false);
+      // and no UNSUFFIXED btnFx() rest rule (`&.btn { … }`, incl. the transition media query) may set a
+      // face property either.
+      for (const m of block.matchAll(RESTING_RULE)) {
+        const props = m[1]!
+          .split(';')
+          .map((d) => d.split(':')[0]!.trim().toLowerCase())
+          .filter(Boolean);
+        for (const p of props) {
+          expect(FORBIDDEN.has(p), `${effect}: resting rule sets "${p}" — that forces a face`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('a reveal effect composes over a SOLID face — no forced hollow outline, holds the face through hover', async () => {
+    // Previously fill-center hard-set `background:transparent; box-shadow: inset 0 0 0 2px` so btn-primary
+    // was ignored. Now the rest rule only re-points the hover fill at the face, so the variant wins.
+    const css = await compileUtilityCss(
+      ['<button class="btn btn-primary sw-btn-fx-fill-center">x</button>'],
+      theme,
+      { minify: true },
+    );
+    expect(css).toMatch(/--sw-btn-hover-bg:\s*var\(--sw-btn-face/); // holds the resting face on hover
+    expect(css).not.toContain('inset 0 0 0 2px'); // no forced outline ring at rest
   });
 
   it('emits the shape + accent utilities (radius var / clip-path / accent role)', async () => {

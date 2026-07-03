@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BUTTON_EFFECTS,
   BUTTON_EFFECT_LABELS,
+  BUTTON_EFFECT_KIND,
+  buttonEffectFacePairing,
   BUTTON_ACCENTS,
   BUTTON_DEFAULT_SHAPES,
   BUTTON_SHAPE_LABELS,
   DEFAULT_BRAND_COLORS,
   type ButtonEffect,
+  type ButtonEffectKind,
   type ButtonAccent,
   type ButtonDefaultShape,
 } from '@sitewright/schema';
@@ -17,6 +20,25 @@ import { glassInput, fieldLabel } from '../../theme';
 import type { SettingsForm } from './model';
 
 const EFFECTS_SORTED = [...BUTTON_EFFECTS].sort((a, b) => BUTTON_EFFECT_LABELS[a].localeCompare(BUTTON_EFFECT_LABELS[b]));
+
+// FACE (the daisyUI variant) and EFFECT are orthogonal axes — group the picker by kind (BUTTON_EFFECT_KIND)
+// so the composability is obvious. The preview below already shows the effect on three faces.
+const KIND_LABEL: Record<ButtonEffectKind, string> = {
+  motion: 'Motion — layers on any face',
+  reveal: 'Reveal — best on Outline / Ghost',
+  face: 'Face — the effect defines the look',
+};
+const KIND_ORDER: readonly ButtonEffectKind[] = ['motion', 'reveal', 'face'];
+const EFFECTS_BY_KIND = KIND_ORDER.map((kind) => ({
+  kind,
+  label: KIND_LABEL[kind],
+  effects: EFFECTS_SORTED.filter((e) => BUTTON_EFFECT_KIND[e] === kind),
+}));
+const FACE_HINT: Record<'any' | 'hollow' | 'defines', string> = {
+  any: 'Motion effect — it layers on top, so every button keeps whatever face (btn-primary, btn-ghost, …) you give it.',
+  hollow: 'Reveal effect — the accent animates in on hover; the button rests as its face. Shines on btn-outline / btn-ghost, composes over solid faces too.',
+  defines: 'Face effect — it repaints the button’s look; the daisyUI variant supplies the base colour.',
+};
 
 // The platform's contentColorFor crossover (WCAG relative luminance, 0.179 → near-black / white).
 function contentFor(hex: string): string {
@@ -119,10 +141,14 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
             onChange={(e) => setEffect(e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect))}
           >
             <option value="none">None (baseline only)</option>
-            {EFFECTS_SORTED.map((b) => (
-              <option key={b} value={b}>
-                {BUTTON_EFFECT_LABELS[b]}
-              </option>
+            {EFFECTS_BY_KIND.map((g) => (
+              <optgroup key={g.kind} label={g.label}>
+                {g.effects.map((b) => (
+                  <option key={b} value={b}>
+                    {BUTTON_EFFECT_LABELS[b]}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
@@ -166,10 +192,16 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
           <div className="flex h-[200px] items-center justify-center text-sm text-white/40">Loading preview…</div>
         )}
       </div>
+      {effect !== 'none' && (
+        <p className="mt-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
+          <span className="font-semibold text-white/90">Face + Effect are independent.</span>{' '}
+          {FACE_HINT[buttonEffectFacePairing(effect)]}
+        </p>
+      )}
       <p className="mt-2 text-xs text-white/50">
-        Hover the sample buttons. These are the SITE DEFAULTS — every <code>.btn</code> inherits them; add a
-        per-button class (e.g. <code>sw-btn-fx-lift</code>) to override one button. For a fully custom effect,
-        pick “None” and use the Edit-code option.
+        Hover the sample buttons (solid, ghost and outline faces). These are the SITE DEFAULTS — every{' '}
+        <code>.btn</code> inherits them; add a per-button class (e.g. <code>sw-btn-fx-lift</code>) to override
+        one button. For a fully custom effect, pick “None” and use the Edit-code option.
       </p>
       </div>
     </Modal>

@@ -16,9 +16,11 @@
 // correctly in the built-in dark theme. The fill schemes (box-solid / box-fill-* / dot-to-pill) pair
 // the brand surface with its WCAG-derived `--sw-color-primary-content` foreground; the line / bracket /
 // outline / pill-outline schemes keep the inherited (base-content) text and use the brand only for
-// decoration — readable for ANY brand color. Button effects change motion/shadow only, never the
-// button's own colors, so they can't break a button's contrast; brand-aware glows read the button's
-// face colour via the vendored `--sw-btn-face` / the accent via `--sw-btn-fx`.
+// decoration — readable for ANY brand color. Button effects are orthogonal to the FACE (the daisyUI
+// variant that owns the resting look): `motion` effects change motion/shadow only; `reveal` effects
+// add an accent overlay and flip the label to the accent foreground ON HOVER (the resting face is the
+// author's); `face` effects deliberately paint the face. Brand-aware colours read the button's face via
+// the vendored `--sw-btn-face` / the accent via `--sw-btn-fx`, so contrast stays correct on any brand.
 //
 // RUNTIME: three nav schemes are JS-backed — `line-sliding-bottom` / `sliding-pill` use a shared
 // `.sw-nav-indicator` the runtime injects + positions via the `--sw-ind-*` rect vars; `spotlight-sliding`
@@ -254,10 +256,18 @@ export const EFFECT_UTILITIES = `
    CSS keeps them iff that scheme ships and prunes them otherwise → they still tree-shake). */
 @keyframes sw-nav-blob { 0%, 100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; } 50% { border-radius: 58% 42% 38% 62% / 56% 51% 49% 44%; } }
 
-/* ── button EFFECTS (sw-btn-fx-<name>) — signature flourishes on the always-on .btn baseline (ripple +
-   hover lift/shadow + fill-to-accent, in blocks/base-css.ts). Each class works as a site DEFAULT on
-   <body> or a per-button override on the .btn; the :not() guard keeps them mutually exclusive. ─────── */
-/* solid family — lean on the baseline fill, add a flourish */
+/* ── button EFFECTS (sw-btn-fx-<name>) — the HOVER/MOTION axis, orthogonal to the FACE (the daisyUI
+   variant btn-primary / btn-ghost / btn-outline / … that owns the RESTING look). Effects layer on the
+   always-on .btn baseline (ripple + hover lift/shadow + fill-to-accent, in blocks/base-css.ts). Each
+   class works as a site DEFAULT on <body> or a per-button override on the .btn; the :not() guard keeps
+   them mutually exclusive. Three kinds (BUTTON_EFFECT_KIND in @sitewright/schema):
+     • motion — pure hover/motion/glint; never touches the resting face → composes on ANY face.
+     • reveal — an accent overlay animates in on hover; rests as the author's face (below).
+     • face   — DEFINES the resting face (gradient / two-tone / frost / clipped-text); the variant is a
+                colour input. frost/gradient-move/two-tone use btnFace() to skip the transparent
+                ghost/outline/link variants; ghost-gradient uses btnFx() (gradient text on any face).
+   Only the face kind is allowed to paint a resting background/colour — a test enforces this. ─────── */
+/* motion family — lean on the baseline fill, add a flourish; face-agnostic */
 @utility sw-btn-fx-lift {
   @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: transform .2s cubic-bezier(.16,1,.3,1), box-shadow .2s ease; } }
   ${btnFx(':hover')} { transform: translateY(-3px); box-shadow: 0 16px 32px -10px color-mix(in oklab, ${FX} 65%, transparent); }
@@ -308,15 +318,11 @@ export const EFFECT_UTILITIES = `
   ${btnFx(':hover')} { transform: translate(-2px,-2px); box-shadow: 4px 4px 0 color-mix(in oklab, ${FX} 55%, #000), 8px 8px 0 color-mix(in oklab, ${FX} 32%, #000); }
   ${btnFx(':active')} { transform: translate(0,0); box-shadow: 1px 1px 0 color-mix(in oklab, ${FX} 55%, #000); }
 }
-@utility sw-btn-fx-frost {
-  ${btnFace()} { background: color-mix(in oklab, ${FACE} 22%, transparent); color: ${FACE}; backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 35%, transparent); --sw-btn-hover-bg: color-mix(in oklab, ${FACE} 32%, transparent); --sw-btn-hover-fg: ${FACE}; }
-  ${btnFace(':hover')} { box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 55%, transparent), 0 10px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
-}
 @utility sw-btn-fx-width-expand {
   @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: padding .28s cubic-bezier(.16,1,.3,1), letter-spacing .28s ease, box-shadow .25s ease; } }
   ${btnFx(':hover')} { transform: none; padding-inline: 2.25rem; letter-spacing: .04em; box-shadow: 0 12px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
 }
-/* glint family — a white light effect over the baseline */
+/* motion family (glint) — a white light effect over the baseline; face-agnostic */
 @utility sw-btn-fx-sheen {
   ${btnFx('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .4) 50%, transparent 65%); translate: -130% 0; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: translate .65s cubic-bezier(.16,1,.3,1); } ${btnFx(':hover::after')} { translate: 130% 0; } }
@@ -342,51 +348,57 @@ export const EFFECT_UTILITIES = `
     @keyframes sw-btn-sparkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
   }
 }
-/* hollow family — transparent face, the accent does the work (opt out of the baseline instant fill) */
+/* reveal family — an accent animation reveals on HOVER. Unlike the old "hollow" family these NEVER paint
+   the resting FACE: the button rests as the author's daisyUI variant (btn-primary solid, btn-outline
+   hollow, btn-ghost / bare .btn transparent) and the effect only animates. They hold the resting face
+   THROUGH the hover (--sw-btn-hover-bg: var(--sw-btn-face, transparent)) so the baseline instant-fill
+   doesn't fight the ::before AND a solid button never blanks to transparent mid-wipe; the ::before paints
+   the accent over it (isolated stacking context -> above the face, below the label). Best on a hollow face
+   (outline / ghost) — but composes over ANY face. The label flips to the accent foreground on hover. */
 @utility sw-btn-fx-fill-center {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; border-radius: 50%; transform: scale(0); }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .4s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scale(2.2); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-fill-slide {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleX(0); transform-origin: left; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scaleX(1); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-fill-up {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleY(0); transform-origin: bottom; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scaleY(1); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-fill-down {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleY(0); transform-origin: top; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scaleY(1); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-skew-sweep {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; top: 0; bottom: 0; left: -10%; width: 120%; z-index: -1; background: ${FX}; transform: scaleX(0) skewX(-18deg); transform-origin: left; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .4s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scaleX(1) skewX(-18deg); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-bubble {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx('::before')} { content: ""; position: absolute; left: 12px; bottom: 8px; width: 8px; height: 8px; z-index: -1; background: ${FX}; border-radius: 50%; transform: scale(0); }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .5s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::before')} { transform: scale(28); }
   ${btnFx(':hover')} { color: ${FXC}; }
 }
 @utility sw-btn-fx-border-draw {
-  ${btnFx()} { background: transparent; color: ${FX}; --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: ${FX}; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); }
   ${btnFx(':hover')} { box-shadow: none; }
   ${btnFx('::before')}, ${btnFx('::after')} { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
   ${btnFx('::before')} { border-top: 2px solid ${FX}; border-right: 2px solid ${FX}; clip-path: inset(0 0 100% 100%); }
@@ -394,18 +406,25 @@ export const EFFECT_UTILITIES = `
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: clip-path .3s ease .05s; } ${btnFx('::after')} { transition: clip-path .3s ease; } }
   ${btnFx(':hover::before')}, ${btnFx(':hover::after')} { clip-path: inset(0 0 0 0); }
 }
+/* outline-fill — rests as the author's face (pair with btn-outline for the classic hollow look) and
+   fills to the accent on hover via the baseline hover-bg, adding an inset ring on hover. */
 @utility sw-btn-fx-outline-fill {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; }
   ${btnFx(':hover')} { color: ${FXC}; box-shadow: inset 0 0 0 2px ${FX}, 0 10px 24px -10px color-mix(in oklab, ${FX} 60%, transparent); }
 }
 @utility sw-btn-fx-text-link {
-  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: none; padding-inline: .25rem; --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: ${FX}; }
+  ${btnFx()} { --sw-btn-hover-bg: var(--sw-btn-face, transparent); padding-inline: .25rem; }
   ${btnFx(':hover')} { transform: none; box-shadow: none; }
   ${btnFx('::after')} { content: ""; position: absolute; left: .25rem; right: .25rem; bottom: .15rem; height: 2px; background: ${FX}; transform: scaleX(0); transform-origin: left; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: transform .3s cubic-bezier(.16,1,.3,1); } }
   ${btnFx(':hover::after')} { transform: scaleX(1); }
 }
-/* gradient family — two-colour, face → accent */
+/* face family — the effect DEFINES the resting look, so it paints the face. frost / gradient-move /
+   two-tone use btnFace() (they skip the intentionally-transparent ghost/outline/link variants);
+   ghost-gradient uses btnFx() to clip a gradient into the label on ANY face. */
+@utility sw-btn-fx-frost {
+  ${btnFace()} { background: color-mix(in oklab, ${FACE} 22%, transparent); color: ${FACE}; backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 35%, transparent); --sw-btn-hover-bg: color-mix(in oklab, ${FACE} 32%, transparent); --sw-btn-hover-fg: ${FACE}; }
+  ${btnFace(':hover')} { box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 55%, transparent), 0 10px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
+}
 @utility sw-btn-fx-gradient-move {
   ${btnFace()} { background: linear-gradient(120deg, ${FACE}, ${FX}, ${FACE}); background-size: 200% 100%; color: ${FACEC}; --sw-btn-hover-fg: ${FACEC}; }
   @media (prefers-reduced-motion: no-preference) { ${btnFace()} { transition: background-position .5s ease; } }

@@ -542,16 +542,17 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'fx-btn',
-        syntax: 'sw-btn-fx-<effect> · sw-btn-accent-<role> · sw-btn-shape-<shape>',
+        syntax: 'FACE (btn-primary / btn-outline / btn-ghost) + sw-btn-fx-<effect> · sw-btn-accent-<role> · sw-btn-shape-<shape>',
         name: 'Button effects (sw-btn-*)',
         keywords:
-          'button btn effect hover ripple fill lift glow shape accent pill sharp cut skewed pulse ring motion animation appearance state',
+          'button btn effect hover ripple fill lift glow shape accent pill sharp cut skewed pulse ring motion animation appearance state face outline ghost solid reveal gradient two-tone hollow',
         description:
-          'Every .btn has a baseline: a ripple on click, a hover lift + shadow, and a background fill to the hover ACCENT (default secondary). Layer three independent axes — EFFECT sw-btn-fx-<name> (lift, glow, fill-slide, two-tone, …28), ACCENT sw-btn-accent-<primary|secondary|accent|neutral>, SHAPE sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>. The FACE is the daisyUI variant (btn-primary / btn-ghost / btn-outline / btn-soft). Set site-wide defaults in Website settings, or add a class to a single button to override that axis. Motion respects prefers-reduced-motion.',
+          'Two ORTHOGONAL axes. FACE = the daisyUI variant that owns the RESTING look — btn-primary/secondary/… (solid), btn-outline (hollow), btn-ghost (transparent), btn-soft, or a bare .btn; pick it freely. EFFECT = a sw-btn-fx-<name> hover treatment layered on top (every .btn also has a baseline: ripple on click + a small hover lift/shadow + a fill to the ACCENT). Effects come in three kinds: MOTION (lift, glow, pulse, ring, sheen, sparkle, …) motion only, layers on ANY face; REVEAL (fill-center, fill-slide, fill-up, fill-down, skew-sweep, bubble, border-draw, outline-fill, text-link) an accent animates in on hover — the button RESTS as your face, so pair with btn-outline / btn-ghost for the classic hollow→fill (composes over a solid face too); FACE-kind (two-tone, gradient-move, frost, ghost-gradient) the effect DEFINES the look, so picking it IS the face choice. Two more axes: ACCENT sw-btn-accent-<primary|secondary|accent|neutral> (the hover/fill colour) and SHAPE sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle> (square/circle = icon-only). Set site-wide defaults in Website settings → Button effects, or add a class to a single button to override one axis. Motion respects prefers-reduced-motion.',
         example:
-          '<button class="btn btn-primary sw-btn-fx-fill-slide sw-btn-shape-pill">Get started</button>\n' +
-          '<a class="btn btn-ghost sw-btn-fx-outline-fill sw-btn-accent-primary" href="/contact">Contact</a>',
-        note: 'Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only. The ripple + magnetic/spotlight load a tiny runtime automatically.',
+          '{{! FACE (btn-*) and the sw-btn-fx-* EFFECT are independent — mix freely: }}\n' +
+          '<button class="btn btn-primary sw-btn-fx-lift sw-btn-shape-pill">Get started</button>\n' +
+          '<a class="btn btn-outline btn-primary sw-btn-fx-fill-slide" href="/contact">Contact</a>',
+        note: 'FACE and EFFECT are independent — a solid btn-primary, a hollow btn-outline and a transparent btn-ghost can all wear the same effect. Reveal effects shine on a hollow face; face-kind effects (two-tone / gradient-move / frost / ghost-gradient) paint their own. Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only; ripple + magnetic/spotlight load a tiny runtime automatically.',
       },
       {
         id: 'fx-sticky-header',

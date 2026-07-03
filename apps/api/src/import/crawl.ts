@@ -4,7 +4,7 @@
 // images stay as remote refs for the engine's MediaPort to fetch + optimize. A page that looks
 // client-rendered (SPA shell) is re-rendered via the injected `render` (headless browser) so its
 // runtime-built content + links are captured.
-import { looksClientRendered, normalizePageUrl, sameOrigin, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
+import { looksClientRendered, normalizePageUrl, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
 
 /** A fetched resource the crawler received (already SSRF-checked + size-bounded by the fetcher). */
 export interface FetchedResource {
@@ -101,20 +101,36 @@ export function extractStylesheets(html: string): string[] {
 }
 
 export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: CrawlDeps): Promise<CrawlResult> {
-  const base = `${new URL(seedUrl).origin}/`;
-  const label = new URL(seedUrl).hostname;
+  // Directory-normalize the seed so a site hosted UNDER a path (…/sites/droombos/) works: a directory-style
+  // URL (no file extension in its last segment) gets a trailing slash, so relative links (`./accommodation/`)
+  // resolve UNDER it. The seed's own path becomes the crawl SCOPE + the route-rebasing base, so a subpath
+  // site yields clean clone routes (/accommodation) and doesn't crawl the parent host's other pages.
+  const seedU = new URL(seedUrl);
+  const lastSeg = seedU.pathname.split('/').filter(Boolean).pop() || '';
+  if (!seedU.pathname.endsWith('/') && !/\.[a-z0-9]{1,8}$/i.test(lastSeg)) seedU.pathname += '/';
+  const seedDir = `${seedU.origin}${seedU.pathname}`; // origin + directory path (drop any query/hash), e.g. https://host/sites/droombos/
+  const basePath = seedU.pathname; // '/' for a root site, '/sites/droombos/' for a subpath site
+  const underBase = (abs: string): boolean => {
+    try {
+      const u = new URL(abs);
+      return u.origin === seedU.origin && u.pathname.startsWith(basePath);
+    } catch {
+      return false;
+    }
+  };
+  const label = seedU.hostname;
   const pages: CapturedPage[] = [];
   const assets = new Map<string, CapturedAsset>();
   const warnings: string[] = [];
   let bytesTotal = 0;
   let truncated = false;
 
-  const seedNorm = normalizePageUrl(seedUrl) ?? seedUrl;
+  const seedNorm = normalizePageUrl(seedDir) ?? seedDir;
   const seen = new Set<string>([seedNorm]);
-  // Dedupe by the NORMALIZED url, but fetch the ORIGINAL url — a server that keeps a trailing slash or
-  // `index.html` would 30x the stripped form, which the `redirect: 'error'` fetcher rejects.
+  // Dedupe by the NORMALIZED url, but fetch the ORIGINAL (directory) url — a server that keeps a trailing
+  // slash or `index.html` would 30x the stripped form, which the `redirect: 'error'` fetcher rejects.
   type Item = { url: string; fetchUrl: string; depth: number };
-  let current: Item[] = [{ url: seedNorm, fetchUrl: seedUrl, depth: 0 }];
+  let current: Item[] = [{ url: seedNorm, fetchUrl: seedDir, depth: 0 }];
 
   // BFS one depth LEVEL at a time. Within a level, page fetches (the dominant, network-bound cost) run
   // CONCURRENTLY; results are then applied IN ORDER so the output (page order, dedup, byte budget,
@@ -164,7 +180,7 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
         for (const href of extractLinks(f.html)) {
           const abs = resolveAbs(href, f.res.url);
           if (!abs || !/^https:\/\//i.test(abs)) continue;
-          if (opts.sameOriginOnly && !sameOrigin(abs, base)) continue;
+          if (opts.sameOriginOnly && !underBase(abs)) continue;
           const norm = normalizePageUrl(abs);
           if (!norm || seen.has(norm)) continue;
           seen.add(norm);
@@ -192,7 +208,7 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
   if (current.length > 0 && pages.length >= opts.maxPages) truncated = true;
 
   return {
-    site: { baseUrl: base, pages, assets, origin: { kind: 'crawl', label } },
+    site: { baseUrl: seedDir, pages, assets, origin: { kind: 'crawl', label } },
     truncated,
     warnings,
   };

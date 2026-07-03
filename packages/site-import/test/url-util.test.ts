@@ -30,6 +30,15 @@ describe('sameOrigin / routePath', () => {
     expect(routePath('https://ex.com/', 'https://ex.com/')).toBe('/');
     expect(routePath('https://other.com/a', 'https://ex.com/')).toBeNull();
   });
+  it('REBASES routes against a subpath-hosted base (…/sites/droombos/)', () => {
+    const base = 'https://host.tld/sites/droombos/';
+    expect(routePath('https://host.tld/sites/droombos/', base)).toBe('/'); // the seed → root
+    expect(routePath('https://host.tld/sites/droombos/accommodation/', base)).toBe('/accommodation');
+    expect(routePath('https://host.tld/sites/droombos/blog/a-post', base)).toBe('/blog/a-post');
+    // a sibling OUTSIDE the base path is NOT internal → null (so rewriteHref won't fake an internal route)
+    expect(routePath('https://host.tld/sites/other/', base)).toBeNull();
+    expect(routePath('https://host.tld/sites/droombosX/', base)).toBeNull(); // prefix-share, not under base
+  });
 });
 
 describe('rewriteHref', () => {

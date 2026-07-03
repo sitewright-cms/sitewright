@@ -108,7 +108,7 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
   const seedU = new URL(seedUrl);
   const lastSeg = seedU.pathname.split('/').filter(Boolean).pop() || '';
   if (!seedU.pathname.endsWith('/') && !/\.[a-z0-9]{1,8}$/i.test(lastSeg)) seedU.pathname += '/';
-  const seedDir = seedU.href; // origin + directory path, e.g. https://host/sites/droombos/
+  const seedDir = `${seedU.origin}${seedU.pathname}`; // origin + directory path (drop any query/hash), e.g. https://host/sites/droombos/
   const basePath = seedU.pathname; // '/' for a root site, '/sites/droombos/' for a subpath site
   const underBase = (abs: string): boolean => {
     try {

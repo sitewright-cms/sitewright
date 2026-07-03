@@ -35,8 +35,9 @@ describe('sameOrigin / routePath', () => {
     expect(routePath('https://host.tld/sites/droombos/', base)).toBe('/'); // the seed → root
     expect(routePath('https://host.tld/sites/droombos/accommodation/', base)).toBe('/accommodation');
     expect(routePath('https://host.tld/sites/droombos/blog/a-post', base)).toBe('/blog/a-post');
-    // a sibling OUTSIDE the base path keeps its full path (not under the subpath)
-    expect(routePath('https://host.tld/sites/other/', base)).toBe('/sites/other');
+    // a sibling OUTSIDE the base path is NOT internal → null (so rewriteHref won't fake an internal route)
+    expect(routePath('https://host.tld/sites/other/', base)).toBeNull();
+    expect(routePath('https://host.tld/sites/droombosX/', base)).toBeNull(); // prefix-share, not under base
   });
 });
 

@@ -70,8 +70,12 @@ export function routePath(absUrl: string, siteBaseUrl: string): string | null {
   if (!norm || !sameOrigin(absUrl, siteBaseUrl)) return null;
   let path = new URL(norm).pathname;
   const basePath = new URL(siteBaseUrl).pathname.replace(/\/+$/, ''); // '' for a root site, '/sites/droombos' for a subpath
-  if (basePath && (path === basePath || path.startsWith(`${basePath}/`))) {
-    path = path.slice(basePath.length) || '/';
+  if (basePath) {
+    if (path === basePath || path.startsWith(`${basePath}/`)) {
+      path = path.slice(basePath.length) || '/';
+    } else {
+      return null; // same origin, but OUTSIDE our subpath scope → treat as external (don't fake an internal route)
+    }
   }
   return path === '' ? '/' : path;
 }

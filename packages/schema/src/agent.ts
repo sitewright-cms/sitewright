@@ -954,6 +954,10 @@ against this list BEFORE you publish it:
 - EVERYTHING REPEATED IS A DATASET. A card grid, a team list, job vacancies, AND a second group next to a
   first (e.g. "Associate Directors" beside "Directors") ALL become datasets + {{#each}} — so a client adds/
   removes items without touching page code. Do NOT hard-code the second group, or a "short" list, inline.
+  ENTRIES MUST BE PUBLISHED: an entry you create via put_content now defaults to status:"published", but if
+  you ever set status:"draft" the row is INVISIBLE on the published site (it still shows in the drafts-included
+  preview — so a section that looks full in preview renders EMPTY once published). After building a dataset,
+  confirm its entries are published before you rely on the loop.
 - SLIDERS COME FROM DATA, never hard-coded slides. A hero slideshow = the \`{{> hero-slider}}\` widget + a
   \`hero\` dataset (its \`slides\` list); a logo/partner strip = \`{{> logo-marquee}}\` + a media-folder loop.
   Pasting N literal slide blocks into the source is wrong — not editable, and it bloats the page.
@@ -987,8 +991,12 @@ against this list BEFORE you publish it:
   matching the real header height) so content isn't hidden under the fixed bar. Don't just leave it off
   because it overlapped.
 - NAV / BUTTON EFFECTS: if the original's nav links have a hover underline/animation, or its buttons animate
-  on hover, pick the matching website.effects nav/button scheme (get_guide("effects")) — don't ship flat
-  links/buttons when the original moves.
+  on hover, SNAP the closest website.effects nav/button scheme (get_guide("effects")) — don't ship flat
+  links/buttons when the original moves. There are 19 nav schemes; the family names tell you which to pick —
+  an underline → \`line-bottom\`/\`line-sliding-bottom\`, a box/pill → \`box-*\`/\`*-pill\`, and CURLY BRACES around
+  the active item ({ Home }) → \`brackets-curly\` (square [ ] → \`brackets\`). Do NOT hand-code the effect with
+  \`::before\`/\`::after\` \`content:"{"\`/underline pseudo-elements in criticalCss — that duplicates a built-in
+  scheme, misses its hover transitions, and won't respond to the no-code effects picker.
 - READABLE SOURCE: author page/template/snippet source as PRETTY-PRINTED, indented, multi-line HTML — one
   block element per line group, children indented — NOT one minified line. A human edits this source.
 - CAROUSEL MARKERS: a hand-authored carousel needs BOTH \`data-sw-component="carousel"\` AND
@@ -1036,6 +1044,11 @@ sample the original's real values, don't approximate to the nearest token):
 - ENTRANCE / MOTION animations: the import strips the foreign JS (AOS etc.), so fade/slide-in-on-scroll and
   entrance animations are LOST. Re-add them with the platform animation directives (get_guide("effects") /
   data-sw-animation) where the original animates — e.g. the nav's fade-in-down, section reveals.
+- TOOLTIPS for icon affordances: where the original reveals a label/hint on HOVER (an amenity/feature icon
+  that shows its name, an icon-only social/action button), use the DaisyUI tooltip — wrap the element in
+  \`<span class="tooltip" data-tip="Wi-Fi">…icon…</span>\` (add \`tooltip-top\`/\`-bottom\`/\`-left\`/\`-right\` for
+  side). It's pure CSS in the rendered site (no JS). Don't drop the hover label, and don't fake it with a
+  \`title=\` attribute (that loses the styled bubble the original has).
 - CLEAN THE MEDIA LIBRARY — REQUIRED, not optional (guide step 8). Reorganize the \`imported/\` tree into a
   human-readable library and PRUNE duplicates + unused files. In a multi-agent split, run this as a FINAL
   dedicated pass after every page is authored (don't skip it to avoid races).

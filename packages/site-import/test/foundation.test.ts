@@ -102,6 +102,33 @@ describe('extractTypography', () => {
   it('never adopts an icon font as the only face', () => {
     expect(extractTypography(CSS, [{ family: 'FontAwesome', assetId: 'fa', weight: 400, style: 'normal' }])).toEqual({});
   });
+
+  it('resolves a LOCAL()-only @font-face role to a SYSTEM slot, not the hosted DISPLAY woff', () => {
+    // globalinsti: --primary-font (all headings) is `src:local("Times New Roman")` — a system serif with no
+    // woff to host; only the techno secondary-font + the body text-font are hostable. The heading must be the
+    // system serif, NOT the techno display woff the old "other font" fallback wrongly adopted.
+    const css = `
+      :root{--primary-font:"primary-font";--secondary-font:"secondary-font";--text-font:"text-font";}
+      @font-face{font-family:"primary-font";src:local("Times New Roman")}
+      @font-face{font-family:"secondary-font";src:url('/nec.woff')}
+      @font-face{font-family:"text-font";src:url('/open-sans.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}
+    `;
+    const fonts: HostedFont[] = [
+      { family: 'secondary-font', assetId: 's', weight: 400, style: 'normal' }, // techno display woff
+      { family: 'text-font', assetId: 't', weight: 400, style: 'normal' }, // body woff
+    ];
+    const out = extractTypography(css, fonts);
+    expect(out.heading).toEqual({ source: 'system', family: 'Times New Roman', weight: 700 });
+    expect(out.body).toMatchObject({ source: 'asset', assetId: 't' });
+  });
+
+  it('does NOT treat a local()+url() @font-face as system — the hosted woff is matched', () => {
+    const css = `:root{--primary-font:"brand";} @font-face{font-family:"brand";src:local("Arial"),url('/brand.woff')} .primary-font{font-family:var(--primary-font)}`;
+    const fonts: HostedFont[] = [{ family: 'brand', assetId: 'br', weight: 700, style: 'normal' }];
+    const out = extractTypography(css, fonts);
+    expect(out.heading).toMatchObject({ source: 'asset', assetId: 'br' }); // hostable woff, not a system slot
+  });
 });
 
 describe('foundationCriticalCss', () => {

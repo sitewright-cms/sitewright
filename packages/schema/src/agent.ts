@@ -1012,10 +1012,33 @@ sample the original's real values, don't approximate to the nearest token):
 - MATCH THE HEADER'S REAL HEIGHT + TYPE SCALE. Measure the original nav bar's height and the logo/menu font
   size and match them — an under-scaled header (e.g. a 78px bar where the original is 102px) reads as "off"
   on every page. Same for section BAND padding: match the original's vertical rhythm, don't compress it.
-- A LAZY EMBED (map / video \`<iframe>\`) GETS A LOADING PLACEHOLDER. The original shows a loading animation
-  in the embed box while the iframe loads — reproduce it with a DaisyUI \`loading loading-dots loading-xl\`
-  (or \`loading-spinner\`/\`loading-bars\`) or a \`.skeleton\` block sized to the embed's box, behind the iframe.
-  (Animated "dots" in an empty band are almost always THIS — a lazy embed's loading state — NOT a carousel.)
+- LOADING STATES for ANY slow element (hero, large image, slider, gallery, map/video \`<iframe>\`): give it a
+  DaisyUI placeholder sized to its box while it loads — a \`.skeleton\` block, or a \`loading loading-dots\`
+  (or \`loading-spinner\`/\`loading-bars\`) \`loading-lg\` spinner — so there's no empty flash and it matches the
+  original's loading affordance. (Animated "dots" in an empty band are almost always THIS — a lazy embed's
+  loading state — NOT a carousel.)
+- GALLERY = THUMBNAILS in the grid, FULL image in the lightbox. A lightbox photo grid renders each tile from
+  the THUMBNAIL variant (\`{{sw-image url size="md"}}\`, or a \`?size=md\` delivery URL) and links the FULL-SIZE
+  original for the lightbox view — never load full-res images into the grid. Match the original's grid STYLE
+  (a uniform fixed grid vs a masonry/justified layout — reproduce whichever it uses).
+- SHRINK HEADER keeps the LOGO (never lets it disappear). A shrink-on-scroll header SCALES the logo down, it
+  doesn't collapse it: set \`website.effects.stickyHeader:"shrink"\`, and for a tall logo add criticalCss so
+  \`html.sw-scrolled #main-nav\` shrinks the bar AND the logo (e.g. \`html.sw-scrolled #main-nav .logo{height:2.5rem}\`)
+  + a \`transition\` — otherwise a big logo vanishes on scroll.
+- FIXED SOCIAL RAIL with hover-reveal → \`website.sidebarLeft\`/\`sidebarRight\`. If the original has a fixed
+  edge rail of social icons that slides/reveals on hover, reproduce it (a fixed column + \`translate-x\` at
+  rest → \`hover:translate-x-0\`), on the SAME breakpoints as the original (keep it on DESKTOP if it's there).
+- MATCH ICON STYLE — solid vs outline. \`{{sw-icon}}\` is Lucide (OUTLINE stroke); the original's icons are
+  often SOLID (FontAwesome). For a SOCIAL icon use the BRAND glyph (\`{{sw-icon "brand:facebook"}}\`,
+  \`brand:x-twitter\` / the classic bird, \`brand:whatsapp\`, …) inside the original's solid circle badge if it
+  has one; for a filled UI glyph pick the closest filled treatment — don't ship thin outline icons where the
+  original is solid+filled.
+- ENTRANCE / MOTION animations: the import strips the foreign JS (AOS etc.), so fade/slide-in-on-scroll and
+  entrance animations are LOST. Re-add them with the platform animation directives (get_guide("effects") /
+  data-sw-animation) where the original animates — e.g. the nav's fade-in-down, section reveals.
+- CLEAN THE MEDIA LIBRARY — REQUIRED, not optional (guide step 8). Reorganize the \`imported/\` tree into a
+  human-readable library and PRUNE duplicates + unused files. In a multi-agent split, run this as a FINAL
+  dedicated pass after every page is authored (don't skip it to avoid races).
 
 VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
 compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.

@@ -111,13 +111,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'h-date',
         syntax: '{{sw-date value [format]}}',
         name: 'sw-date',
-        keywords: 'time format iso date',
-        description: 'Formats a date as UTC YYYY-MM-DD, or the full ISO string with "iso". Empty for an unparseable value.',
+        keywords: 'time format iso date year now current copyright',
+        description: 'Formats a date as UTC YYYY-MM-DD, or "iso" (full ISO) / "YYYY" (year only). A value of "now" — or a bare {{sw-date}} — uses the CURRENT date, so {{sw-date "now" "YYYY"}} always renders the current year (e.g. a © line). Empty for an unparseable value.',
         args: [
-          { name: 'value', desc: 'A date string, number, or Date.' },
-          { name: 'format', desc: 'Optional — "iso" for the full ISO timestamp.' },
+          { name: 'value', desc: 'A date string, number, or Date — or "now" for the current date.' },
+          { name: 'format', desc: 'Optional — "iso" for the full ISO timestamp, "YYYY" for the year only.' },
         ],
-        example: '{{sw-date published}}\n{{sw-date published "iso"}}',
+        example: '{{sw-date published}}\n{{sw-date published "iso"}}\n© {{sw-date "now" "YYYY"}}',
       },
       {
         id: 'h-icon',

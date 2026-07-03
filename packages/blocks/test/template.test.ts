@@ -256,6 +256,18 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-date page.nope}}', ctx)).toBe('');
   });
 
+  it('{{sw-date}} "YYYY" format + NOW sentinel', () => {
+    const year = String(new Date().getUTCFullYear());
+    // "YYYY" → year only, for any parseable value.
+    expect(renderTemplate('{{sw-date page.published "YYYY"}}', ctx)).toBe('2026');
+    // "now" (or a bare {{sw-date}}) → the CURRENT date — the copyright-year use case.
+    expect(renderTemplate('{{sw-date "now" "YYYY"}}', ctx)).toBe(year);
+    expect(renderTemplate('{{sw-date}}', ctx)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(renderTemplate('© {{sw-date "now" "YYYY"}} ACME', ctx)).toBe(`© ${year} ACME`);
+    // An empty/unset field stays blank — it is NOT treated as "now".
+    expect(renderTemplate('{{sw-date page.nope "YYYY"}}', ctx)).toBe('');
+  });
+
   it('{{sw-url}} sanitizes the scheme', () => {
     expect(renderTemplate('<a href="{{sw-url page.link}}">x</a>', { page: { link: 'javascript:alert(1)' } })).toBe(
       '<a href="#">x</a>',

@@ -372,11 +372,20 @@ function createInstance(): typeof Handlebars {
   hb.unregisterHelper('log');
   // {{sw-url page.link}} → scheme-sanitized URL (blocks javascript:/data:/protocol-relative).
   hb.registerHelper('sw-url', (value: unknown) => safeUrl(typeof value === 'string' ? value : ''));
-  // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; "" if unparseable.
+  // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; {{sw-date x "YYYY"}} → year.
+  // A NOW value — the literal "now" or a bare {{sw-date}} (no first arg) — renders the CURRENT date, so
+  // {{sw-date "now" "YYYY"}} always emits the current year (e.g. a © line). "" if the value is unparseable.
   hb.registerHelper('sw-date', (value: unknown, format?: unknown) => {
-    const d = value instanceof Date ? value : new Date(typeof value === 'string' || typeof value === 'number' ? value : NaN);
+    // A bare {{sw-date}} hands the Handlebars options object as the FIRST arg; treat that (or the explicit
+    // "now" sentinel) as "current date". A missing/unparseable field value stays blank (→ '') — it must NOT
+    // become today, so `{{sw-date page.nope}}` still renders nothing.
+    const isOptions = (v: unknown): boolean => typeof v === 'object' && v !== null && !(v instanceof Date) && 'hash' in v;
+    const wantsNow = value === 'now' || isOptions(value);
+    const d = wantsNow ? new Date() : value instanceof Date ? value : new Date(value as string | number);
     if (Number.isNaN(d.getTime())) return '';
-    if (format === 'iso') return d.toISOString();
+    const fmt = typeof format === 'string' ? format : '';
+    if (fmt === 'iso') return d.toISOString();
+    if (fmt === 'YYYY') return String(d.getUTCFullYear());
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
   // {{sw-icon "arrow-right" "h-5 w-5"}} → inline a built-in icon as an <svg>. A bare name is a

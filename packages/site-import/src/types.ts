@@ -123,6 +123,7 @@ export type DiagnosticCode =
   | 'sidebar-discarded'
   | 'footer-map-embedded'
   | 'header-decor-captured'
+  | 'widget-consent-registered'
   | 'bundle-invalid';
 
 export interface ImportDiagnostic {

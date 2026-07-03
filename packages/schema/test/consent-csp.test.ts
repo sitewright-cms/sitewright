@@ -118,6 +118,28 @@ describe('consent CSP — author origins + integration frameOrigins', () => {
     expect(buildSiteCspHeader(undefined, {})).toBeUndefined();
   });
 
+  it('appends extraScriptSrc (preview runtime hash) ONLY to script-src, keeping publish parity otherwise', () => {
+    const hash = "'sha256-DD5Sdxwuoqmw0fFyY5jbAInFyoIfiX0GX6GxtgKP0qU='";
+    const meta = buildConsentMetaCsp(undefined, { frame: ['www.google.com'] }, [hash])!;
+    const scriptSrc = meta.split('; ').find((d) => d.startsWith('script-src'))!;
+    expect(scriptSrc).toBe(`script-src 'self' ${hash}`); // hash lands on script-src
+    expect(meta.split('; ').find((d) => d.startsWith('frame-src'))).toContain('https://www.google.com'); // frame-src untouched
+    // Without the extra arg (the publish path), the meta is byte-identical — no hash leaks into published HTML.
+    expect(buildConsentMetaCsp(undefined, { frame: ['www.google.com'] })).toBe(meta.replace(` ${hash}`, ''));
+  });
+
+  it('rejects an extraScriptSrc item that is not a single CSP token (directive-injection guard)', () => {
+    expect(() => buildConsentMetaCsp(undefined, { frame: ['www.google.com'] }, ["'sha256-x'; default-src *"])).toThrow(/single CSP token/);
+    // A clean hash literal passes.
+    expect(() => buildConsentMetaCsp(undefined, { frame: ['www.google.com'] }, ["'sha256-abc123+/='"])).not.toThrow();
+  });
+
+  it('extraScriptSrc is inert when there is nothing to widen (no meta CSP at all)', () => {
+    // A site with no embeds bakes NO meta CSP, so the preview runtime already runs unrestricted — the hash
+    // must not conjure a CSP into existence.
+    expect(buildConsentMetaCsp(undefined, {}, ["'sha256-x'"])).toBeUndefined();
+  });
+
   it('ConsentIntegrationSchema accepts frameOrigins as bare hostnames', () => {
     expect(ConsentIntegrationSchema.safeParse({ id: 'chat', name: 'Chat', category: 'functional', preset: 'custom', src: 'https://w.example.com/c.js', frameOrigins: ['*.intercom.io', 'widget.example.com'] }).success).toBe(true);
   });

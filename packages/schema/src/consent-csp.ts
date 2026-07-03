@@ -280,13 +280,32 @@ export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: P
 /**
  * The baked `<meta http-equiv>` CSP for the published HTML (static-export parity on strict external hosts).
  * Same allow-list as the header MINUS frame-ancestors (a meta CSP ignores it). `undefined` when nothing to widen.
+ *
+ * `extraScriptSrc` appends extra `script-src` source expressions (e.g. `'sha256-…'` hashes) to the directive.
+ * Its ONLY caller is the DRAFT whole-site preview build, which injects an inline first-party runtime (the
+ * editor↔iframe bridge). That page is served sandboxed (`Content-Security-Policy: sandbox allow-scripts`), and
+ * the browser enforces the INTERSECTION of that header with this meta — so a bare `script-src 'self'` here
+ * silently blocks the inline runtime (it has no `'unsafe-inline'`). Passing the runtime's own hash keeps the
+ * strict publish-parity CSP intact while letting the one audited platform script run. Published builds never
+ * pass it (they have no inline script), so the baked publish CSP is byte-identical to before.
  */
-export function buildConsentMetaCsp(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): string | undefined {
+export function buildConsentMetaCsp(
+  consent: Consent | undefined,
+  extraOrigins: Partial<CspOrigins> = {},
+  extraScriptSrc: readonly string[] = [],
+): string | undefined {
   const header = buildSiteCspHeader(consent, extraOrigins);
   if (!header) return undefined;
+  // Defence-in-depth: every source expression must be one CSP token — a `; ` (or space) inside an item
+  // would splice a NEW directive on reassembly. Today's only caller passes a `'sha256-<base64>'` literal
+  // (alphabet `[A-Za-z0-9+/=]`), so this never fires; it guards a future misuse of this exported helper.
+  if (extraScriptSrc.some((s) => /[;\s]/.test(s.replace(/^'|'$/g, '')))) {
+    throw new Error(`buildConsentMetaCsp: extraScriptSrc item is not a single CSP token: ${JSON.stringify(extraScriptSrc)}`);
+  }
   return header
     .split('; ')
     .filter((d) => !d.startsWith('frame-ancestors'))
+    .map((d) => (extraScriptSrc.length && d.split(' ')[0] === 'script-src') ? `${d} ${extraScriptSrc.join(' ')}` : d)
     .join('; ');
 }
 

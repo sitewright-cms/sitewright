@@ -4,7 +4,7 @@
 // slots, and the first-party component scripts. The only raw HTML is the tenant's own head/footer;
 // output is served only inside a sandboxed preview iframe or written to the exported artifact.
 import type { BrandTokens, MediaAsset, Page } from '@sitewright/schema';
-import { escapeAttr, escapeHtml } from './escape.js';
+import { escapeAttr, escapeHtml, neutralizeInlineScript } from './escape.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
@@ -323,7 +323,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (rawFidelity ? '' : (headScripts ?? []).map((src) => `<script src="${escapeAttr(src)}"></script>\n`).join('')) +
     (rawFidelity
       ? ''
-      : (headInlineScripts ?? []).map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>\n`).join('')) +
+      : (headInlineScripts ?? []).map((js) => `<script>${neutralizeInlineScript(js)}</script>\n`).join('')) +
     `<title>${escapeHtml(title)}</title>\n` +
     `${meta}\n` +
     (jsonLd ? `${jsonLd}\n` : '') +
@@ -374,7 +374,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       .join('') +
     (inlineScripts ?? [])
       // Neutralize any `</script` so trusted bundled JS can't close the tag early.
-      .map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>`)
+      .map((js) => `<script>${neutralizeInlineScript(js)}</script>`)
       .join('') +
     `</body>\n` +
     `</html>`

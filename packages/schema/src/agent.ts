@@ -1029,10 +1029,15 @@ sample the original's real values, don't approximate to the nearest token):
   the THUMBNAIL variant (\`{{sw-image url size="md"}}\`, or a \`?size=md\` delivery URL) and links the FULL-SIZE
   original for the lightbox view — never load full-res images into the grid. Match the original's grid STYLE
   (a uniform fixed grid vs a masonry/justified layout — reproduce whichever it uses).
-- SHRINK HEADER keeps the LOGO (never lets it disappear). A shrink-on-scroll header SCALES the logo down, it
-  doesn't collapse it: set \`website.effects.stickyHeader:"shrink"\`, and for a tall logo add criticalCss so
-  \`html.sw-scrolled #main-nav\` shrinks the bar AND the logo (e.g. \`html.sw-scrolled #main-nav .logo{height:2.5rem}\`)
-  + a \`transition\` — otherwise a big logo vanishes on scroll.
+- SHRINK/COLLAPSE HEADER — reproduce the original's ACTUAL scroll behaviour (OBSERVE it FIRST; don't assume).
+  SCROLL THE LIVE ORIGINAL to learn what it does — a headless page: goto → window.scrollTo(0,700) →
+  measure/screenshot the header. Then match it via \`website.effects.stickyHeader:"shrink"\` + criticalCss keyed
+  on \`html.sw-scrolled #main-nav\` (with a \`transition\`). Two common patterns: (a) SCALE the logo down but keep
+  it visible (\`html.sw-scrolled #main-nav .logo{height:2.5rem}\`); or (b) FADE + COLLAPSE the whole logo section
+  to nothing (\`html.sw-scrolled … .logo-sec{max-height:0;opacity:0}\`), leaving just a thin horizontal menu bar —
+  many sites do THIS, not (a) (a tall logo above a horizontal menu that collapses to just the menu on scroll is
+  a very common design). Pick whichever the original does. VERIFY in the SW preview: it now runs scroll-linked
+  effects (the runtime bridges body-scroll → window), so the shrink fires there as you scroll — check it.
 - FIXED SOCIAL RAIL with hover-reveal → \`website.sidebarLeft\`/\`sidebarRight\`. If the original has a fixed
   edge rail of social icons that slides/reveals on hover, reproduce it (a fixed column + \`translate-x\` at
   rest → \`hover:translate-x-0\`), on the SAME breakpoints as the original (keep it on DESKTOP if it's there).

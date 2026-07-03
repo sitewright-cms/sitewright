@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateTemplate } from '@sitewright/blocks';
 import type { Page } from '@sitewright/schema';
 import {
   applyFoundation,
@@ -232,16 +233,21 @@ describe('nativeFooter', () => {
     expect(f).not.toMatch(/<footer[\s>]/);
   });
 
-  it('embeds the captured map as a data-driven {{company.mapUrl}} iframe when identity.mapUrl is set', () => {
+  it('embeds the captured map via the {{sw-url company.mapUrl}} HELPER and PASSES validateTemplate', () => {
     const f = nativeFooter({ name: 'Acme', mapUrl: 'https://www.google.com/maps/embed?pb=1' });
-    expect(f).toContain('<iframe src="{{company.mapUrl}}"'); // data-driven, editable in CI settings
+    // MUST be the sw-url helper, not a bare `{{company.mapUrl}}` — validateTemplate rejects a bare value in a URL
+    // attribute, which would render on import but BLOCK every later settings save (validateSourceOnSave re-checks it).
+    expect(f).toContain('<iframe src="{{sw-url company.mapUrl}}"'); // data-driven, editable in CI settings
     expect(f).toContain('loading="lazy"');
     expect(f).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-forms"'); // can't nav top
     expect(f).toMatch(/class="[^"]*\bskeleton\b/); // loading placeholder while it loads
+    expect(() => validateTemplate(f)).not.toThrow(); // the generated footer must survive a settings save
   });
 
-  it('omits the map iframe when the source had no map', () => {
-    expect(nativeFooter({ name: 'Acme' })).not.toContain('iframe');
+  it('omits the map iframe when the source had no map (still a valid template)', () => {
+    const f = nativeFooter({ name: 'Acme' });
+    expect(f).not.toContain('iframe');
+    expect(() => validateTemplate(f)).not.toThrow();
   });
 });
 

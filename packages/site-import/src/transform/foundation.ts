@@ -319,17 +319,19 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
   if (identity.telephone) contacts.push(`<a href="tel:${esc(identity.telephone.replace(/\s+/g, ''))}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "phone" "h-4 w-4 text-primary"}}${esc(identity.telephone)}</a>`);
   if (identity.email) contacts.push(`<a href="mailto:${esc(identity.email)}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "mail" "h-4 w-4 text-primary"}}${esc(identity.email)}</a>`);
   // The original's footer Google-Maps embed (captured into identity.mapUrl, allow-listed host only). Data-driven
-  // via {{company.mapUrl}} so a client edits it in CI settings; a skeleton placeholder while it loads. Only when
-  // the source actually had one — else the footer stays map-free. The iframe is SANDBOXED (the map still works
-  // with allow-scripts/-same-origin/-popups/-forms) so the embedded page can't navigate the top-level context.
-  // When the consent manager is ENABLED, gateAuthorIframes turns this into a click-to-load embed like any other
-  // cross-origin iframe (a Maps embed does set Google cookies); with consent off it loads inline.
-  // applyFoundation validates mapUrl (AbsoluteUrlSchema → https-only) before calling; re-check the scheme here
-  // as defence-in-depth so a DIRECT caller can't emit a non-http(s) iframe src (Handlebars escaping alone
-  // wouldn't stop a `javascript:`/`data:` value, which has no HTML-special chars).
+  // via the {{sw-url company.mapUrl}} HELPER — NOT a bare `{{company.mapUrl}}`, which validateTemplate rejects as
+  // "a bare value in a URL attribute" (it renders on the no-validation import path but then BLOCKS every later
+  // settings save, whose validateSourceOnSave re-validates the chrome slots). sw-url passes validation and returns
+  // an absolute external https URL unchanged. A skeleton placeholder shows while it loads. Only when the source had
+  // a map — else the footer stays map-free. The iframe is SANDBOXED (the map still works with allow-scripts/
+  // -same-origin/-popups/-forms) so the embedded page can't navigate the top-level context. When the consent
+  // manager is ENABLED, gateAuthorIframes turns this into a click-to-load embed like any other cross-origin iframe
+  // (a Maps embed does set Google cookies); with consent off it loads inline. applyFoundation validates mapUrl
+  // (AbsoluteUrlSchema → https-only) before calling; re-check the scheme here as defence-in-depth so a DIRECT caller
+  // can't emit a non-http(s) iframe src.
   const hasMap = !!identity.mapUrl && /^https?:\/\//i.test(identity.mapUrl);
   const map = hasMap
-    ? `<iframe src="{{company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton h-64 w-full border-0"></iframe>`
+    ? `<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton h-64 w-full border-0"></iframe>`
     : '';
   return (
     `<div class="bg-neutral text-neutral-content">` +

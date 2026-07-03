@@ -226,4 +226,22 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
     // neutral content is fine (the platform wraps it in the landmark)
     expect((await put(t, projectId, 'settings', 'settings', { ...base, website: { footer: '<div class="footer">ok</div>' } })).statusCode).toBe(200);
   });
+
+  it('LOUDLY rejects an UNSAFE chrome-slot template at save (not only at publish), naming the slot', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+    // A bare interpolation in a URL attribute (must be {{sw-url company.logo}}) used to SAVE fine and only
+    // 409 at publish — now it fails at save, so compare_to_source can't silently serve a stale build.
+    const bad = await put(t, projectId, 'settings', 'settings', {
+      ...base,
+      website: { mainNav: '<div class="navbar"><a href="/"><img src="{{company.logo}}"></a></div>' },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/Main Navigation.*invalid template/i);
+    // A valid, data-driven slot still saves.
+    expect((await put(t, projectId, 'settings', 'settings', {
+      ...base,
+      website: { mainNav: '<div class="navbar"><a href="{{sw-url \'/\'}}"><img src="{{sw-url company.logo}}"></a></div>' },
+    })).statusCode).toBe(200);
+  });
 });

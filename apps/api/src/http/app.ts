@@ -480,6 +480,19 @@ function validateSourceOnSave(kind: string, body: unknown): void {
       if (found) {
         throw new TemplateError(`the "${label}" chrome slot can't contain a <${found.tag}> element — ${found.hint}.`);
       }
+      // Full template-safety check on the slot — the SAME gate the publisher/renderer runs (unsafe
+      // interpolation, a bare {{x}} in a URL attribute, {{{raw}}}, <script>, …). Run it at SAVE so a
+      // broken chrome slot fails LOUDLY here with the offending slot named, instead of saving fine,
+      // rendering the slot BLANK, and only 409ing at publish (which also made compare_to_source silently
+      // fall back to the last good build). No content that publish accepts is newly rejected.
+      try {
+        validateTemplate(val);
+      } catch (err) {
+        if (err instanceof TemplateError) {
+          throw new TemplateError(`the "${label}" chrome slot has an invalid template — ${err.message}`);
+        }
+        throw err;
+      }
     }
   }
 }

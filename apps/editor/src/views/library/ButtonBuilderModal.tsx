@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BUTTON_EFFECTS,
   BUTTON_EFFECT_LABELS,
+  BUTTON_EFFECT_KIND,
+  buttonEffectFacePairing,
   BUTTON_ACCENTS,
   BUTTON_SHAPES,
   BUTTON_SHAPE_LABELS,
   type ButtonEffect,
+  type ButtonEffectKind,
   type ButtonAccent,
   type ButtonShape,
 } from '@sitewright/schema';
@@ -23,6 +26,27 @@ const LAB_ICON =
 
 const EFFECTS_SORTED = [...BUTTON_EFFECTS].sort((a, b) => BUTTON_EFFECT_LABELS[a].localeCompare(BUTTON_EFFECT_LABELS[b]));
 
+// The FACE and EFFECT axes are orthogonal (see BUTTON_EFFECT_KIND). Group the effect picker by kind so
+// the composability contract is obvious, and steer reveal effects toward a hollow face.
+const KIND_LABEL: Record<ButtonEffectKind, string> = {
+  motion: 'Motion — layers on any face',
+  reveal: 'Reveal — best on Outline / Ghost',
+  face: 'Face — the effect defines the look',
+};
+const KIND_ORDER: readonly ButtonEffectKind[] = ['motion', 'reveal', 'face'];
+const EFFECTS_BY_KIND = KIND_ORDER.map((kind) => ({
+  kind,
+  label: KIND_LABEL[kind],
+  effects: EFFECTS_SORTED.filter((e) => BUTTON_EFFECT_KIND[e] === kind),
+}));
+// The face value the Builder nudges a reveal effect toward (a hollow outline).
+const OUTLINE_FACE = 'btn-outline btn-primary';
+const FACE_HINT: Record<'any' | 'hollow' | 'defines', string> = {
+  any: 'This effect layers on top — it works with any face you pick.',
+  hollow: 'This effect reveals the accent on hover; it shines on an Outline or Ghost face (but composes over a solid one too).',
+  defines: 'This effect defines the button’s look — the Face just supplies its colour.',
+};
+
 // daisyUI face variants (the FACE axis is a daisyUI class, not a schema enum).
 const FACES: ReadonlyArray<readonly [string, string]> = [
   ['btn-primary', 'Primary'],
@@ -30,7 +54,7 @@ const FACES: ReadonlyArray<readonly [string, string]> = [
   ['btn-accent', 'Accent'],
   ['btn-neutral', 'Neutral'],
   ['btn-ghost', 'Ghost (transparent)'],
-  ['btn-outline btn-primary', 'Outline'],
+  [OUTLINE_FACE, 'Outline'],
   ['btn-soft btn-primary', 'Soft'],
 ];
 
@@ -95,7 +119,15 @@ interface ButtonBuilderModalProps {
 export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
   const [mode, setMode] = useState<'builder' | 'lab'>('builder');
   const [face, setFace] = useState('btn-primary');
+  const [faceTouched, setFaceTouched] = useState(false);
   const [effect, setEffect] = useState<'none' | ButtonEffect>('none');
+
+  // When the author picks a reveal effect and hasn't chosen a face yet, nudge the face to Outline (its
+  // best pairing) — but never override a face they set themselves.
+  const chooseEffect = (next: 'none' | ButtonEffect) => {
+    setEffect(next);
+    if (next !== 'none' && !faceTouched && buttonEffectFacePairing(next) === 'hollow') setFace(OUTLINE_FACE);
+  };
   const [accent, setAccent] = useState<'secondary' | ButtonAccent>('secondary');
   const [shape, setShape] = useState<'rounded' | ButtonShape>('rounded');
   const [label, setLabel] = useState('Get started');
@@ -144,20 +176,22 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
       `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;padding:0 16px">${cells}</div>`;
     const cell = (btn: string, name: string) =>
       `<figure style="margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;border:1px solid color-mix(in oklab,var(--sw-color-base-content) 12%,transparent);border-radius:12px">${btn}<figcaption style="font-size:11px;font-family:ui-monospace,monospace;opacity:.6">${name}</figcaption></figure>`;
-    const effects = EFFECTS_SORTED.map((e) => cell(`<button class="btn btn-primary sw-btn-fx-${e}">${LAB_ICON}Get started</button>`, e)).join('');
+    // Reveal effects showcase on an OUTLINE face (their hollow→fill is the point); motion / face on solid
+    // primary. This makes the FACE-vs-EFFECT composition visible right in the gallery.
+    const faceForKind = (kind: ButtonEffectKind) => (kind === 'reveal' ? 'btn btn-outline btn-primary' : 'btn btn-primary');
+    const effectSections = EFFECTS_BY_KIND.map((g) =>
+      sec(
+        `${g.label} (${g.effects.length})`,
+        g.effects.map((e) => cell(`<button class="${faceForKind(g.kind)} sw-btn-fx-${e}">${LAB_ICON}Get started</button>`, e)).join(''),
+      ),
+    ).join('');
     const shapes = BUTTON_SHAPES.map((s) =>
       cell(`<button class="btn btn-primary sw-btn-fx-lift sw-btn-shape-${s}">${s === 'square' || s === 'circle' ? '★' : 'Shape'}</button>`, s),
     ).join('');
     const accents = BUTTON_ACCENTS.map((a) =>
-      cell(`<button class="btn btn-primary sw-btn-fx-fill-slide sw-btn-accent-${a}">Accent</button>`, a),
+      cell(`<button class="btn btn-outline btn-primary sw-btn-fx-fill-slide sw-btn-accent-${a}">Accent</button>`, a),
     ).join('');
-    return (
-      `<div style="padding-bottom:24px">` +
-      sec(`Effects (${BUTTON_EFFECTS.length})`, effects) +
-      sec('Shapes', shapes) +
-      sec('Hover accents', accents) +
-      `</div>`
-    );
+    return `<div style="padding-bottom:24px">` + effectSections + sec('Shapes', shapes) + sec('Hover accents', accents) + `</div>`;
   }, []);
 
   // Same segmented control as the page editor's Code Editor / Content Editor switch.
@@ -192,7 +226,15 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
             </label>
             <label className="flex flex-col">
               <span className={fieldLabel}>Face</span>
-              <select aria-label="Button face" className={glassInput} value={face} onChange={(e) => setFace(e.target.value)}>
+              <select
+                aria-label="Button face"
+                className={glassInput}
+                value={face}
+                onChange={(e) => {
+                  setFaceTouched(true);
+                  setFace(e.target.value);
+                }}
+              >
                 {FACES.map(([v, l]) => (
                   <option key={v} value={v}>
                     {l}
@@ -202,12 +244,16 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
             </label>
             <label className="flex flex-col">
               <span className={fieldLabel}>Effect</span>
-              <select aria-label="Button effect" className={glassInput} value={effect} onChange={(e) => setEffect(e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect))}>
+              <select aria-label="Button effect" className={glassInput} value={effect} onChange={(e) => chooseEffect(e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect))}>
                 <option value="none">None (baseline)</option>
-                {EFFECTS_SORTED.map((b) => (
-                  <option key={b} value={b}>
-                    {BUTTON_EFFECT_LABELS[b]}
-                  </option>
+                {EFFECTS_BY_KIND.map((g) => (
+                  <optgroup key={g.kind} label={g.label}>
+                    {g.effects.map((b) => (
+                      <option key={b} value={b}>
+                        {BUTTON_EFFECT_LABELS[b]}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -249,6 +295,12 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
               {copiedId === 'btn-builder' ? 'Copied ✓' : 'Copy HTML'}
             </button>
           </div>
+          {effect !== 'none' && (
+            <p className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
+              <span className="font-semibold text-white/90">Face + Effect are independent.</span>{' '}
+              {FACE_HINT[buttonEffectFacePairing(effect)]}
+            </p>
+          )}
           <p className="text-xs text-white/50">
             Hover the preview to see the effect. Paste the HTML into a page; the button inherits your site’s
             CI colours. (Secondary accent + rounded shape are the baseline defaults, so they’re omitted from the class list.)

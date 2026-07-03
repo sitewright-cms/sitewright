@@ -9,6 +9,8 @@ import {
   JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
   BUTTON_EFFECT_LABELS,
+  BUTTON_EFFECT_KIND,
+  buttonEffectFacePairing,
   JS_BUTTON_EFFECTS,
   buttonEffectUsesRuntime,
   BUTTON_SHAPES,
@@ -376,6 +378,24 @@ describe('WebsiteSettingsSchema', () => {
       for (const e of JS_BUTTON_EFFECTS) expect(BUTTON_EFFECTS).toContain(e);
       for (const e of BUTTON_EFFECTS) expect(BUTTON_EFFECT_LABELS[e]).toBeTruthy();
       for (const s of BUTTON_SHAPES) expect(BUTTON_SHAPE_LABELS[s]).toBeTruthy();
+    });
+
+    it('every effect has a valid kind (motion/reveal/face) + a face-pairing hint', () => {
+      const KINDS = new Set(['motion', 'reveal', 'face']);
+      for (const e of BUTTON_EFFECTS) {
+        expect(KINDS.has(BUTTON_EFFECT_KIND[e]), `${e} has kind ${BUTTON_EFFECT_KIND[e]}`).toBe(true);
+      }
+      // the pairing hint follows the kind: face→defines, reveal→hollow, motion→any
+      expect(buttonEffectFacePairing('lift')).toBe('any');
+      expect(buttonEffectFacePairing('fill-center')).toBe('hollow');
+      expect(buttonEffectFacePairing('two-tone')).toBe('defines');
+      // the JS-backed effects are plain motion (they never define a face)
+      for (const e of JS_BUTTON_EFFECTS) expect(BUTTON_EFFECT_KIND[e]).toBe('motion');
+      // at least one of each kind exists (the taxonomy isn't degenerate)
+      const kinds = BUTTON_EFFECTS.map((e) => BUTTON_EFFECT_KIND[e]);
+      expect(kinds).toContain('motion');
+      expect(kinds).toContain('reveal');
+      expect(kinds).toContain('face');
     });
 
     it('navEffectUsesRuntime flags only the JS-backed schemes; every scheme has a label', () => {

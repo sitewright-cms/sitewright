@@ -282,6 +282,46 @@ export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string): strin
   ].join('\n');
 }
 
+/**
+ * The header/nav's decorative FLANKING images. A site often pins two illustrations to the header's left+right
+ * edges via `#nav::before`/`::after { background-image:url(...) }` (droombos: `#top-nav:before` → header-left.png,
+ * `#top-nav:after` → header-right.png). The generic native navbar drops them; capture the pair (resolved to
+ * hosted `/media` refs — never a foreign hotlink) so {@link nativeMainNav} can re-pin them. `{}` when the source
+ * has no such decorations. Classifies each by background-position, else filename, else `::before`=left/`::after`=right.
+ */
+export function extractHeaderDecor(cssText: string, assetMap: ReadonlyMap<string, string>): { left?: string; right?: string } {
+  const out: { left?: string; right?: string } = {};
+  // A ref is trusted ONLY if it's an actual assetMap VALUE — a raw `/media/…` shape in the CSS isn't enough
+  // (a crafted `url(/media/../api/users)` that assetKey can't resolve would pass rewriteCssUrls unchanged and
+  // then string-match `/media/`, letting a traversal path into the `<img src>`). Membership makes that impossible.
+  const hostedRefs = new Set(assetMap.values());
+  // `[#.]?[\w-]+` matches an id/class/BARE-TAG selector (`#top-nav`, `.masthead`, `header`) — a single token
+  // (O(n), no ReDoS); the keyword guard below scopes it to header/nav elements. A compound/list selector is
+  // matched by its last simple selector, which the guard then filters. Cap the input + early-out (only 2 slots).
+  const css = cssText.length > 524_288 ? cssText.slice(0, 524_288) : cssText;
+  for (const m of css.matchAll(/([#.]?[\w-]+)\s*::?(before|after)\s*\{([^}]*)\}/gi)) {
+    if (out.left && out.right) break; // both edges filled — nothing more to find
+    const sel = m[1] ?? '';
+    const pseudo = (m[2] ?? '').toLowerCase();
+    const block = m[3] ?? '';
+    if (!/nav|header|masthead|topbar/i.test(sel)) continue; // header/nav-like element only
+    const rawUrl = block.match(/background(?:-image)?\s*:[^;}]*url\(\s*['"]?([^)'"]+)/i)?.[1];
+    if (!rawUrl) continue;
+    const ref = rewriteCssUrls(`url(${rawUrl})`, assetMap).match(/url\(\s*['"]?(\/media\/[^)'"\s]+)/i)?.[1];
+    if (!ref || !hostedRefs.has(ref)) continue; // ship ONLY a genuinely-hosted asset (assetMap membership)
+    const pos = block.match(/background-position\s*:\s*([^;}]+)/i)?.[1] ?? '';
+    const url = rawUrl.toLowerCase();
+    // Classify by background-position keyword, else a DELIMITED left/right SEGMENT in the filename (so
+    // `brightwood`/`upleft-x` don't false-match), else `::before`=left / `::after`=right.
+    const side: 'left' | 'right' =
+      /\bright\b/.test(pos.toLowerCase()) || /(?:^|[-_./])right(?:[-_.]|$)/.test(url) ? 'right'
+        : /\bleft\b/.test(pos.toLowerCase()) || /(?:^|[-_./])left(?:[-_.]|$)/.test(url) ? 'left'
+          : pseudo === 'after' ? 'right' : 'left';
+    if (!out[side]) out[side] = ref; // first rule wins (CSS cascade)
+  }
+  return out;
+}
+
 // ─────────────────────────────── native chrome ───────────────────────────────
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -291,9 +331,16 @@ const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'
  * — desktop bar (hover dropdowns) + a mobile drawer. Goes in the single `website.mainNav` slot (the
  * platform wraps it in `<nav id="main-nav">`, so no `<nav>` here). Models the global `navbar` recipe.
  */
-export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>): string {
+export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>, decor: { left?: string; right?: string } = {}): string {
   const logo = identity.logo ? `<img src="${esc(identity.logo)}" alt="${esc(identity.name)} logo" class="h-12 w-auto"/>` : '';
   const brand = logo || `<span class="text-lg font-bold text-primary">${esc(identity.name)}</span>`;
+  // Captured header decorations pinned to the bar's left/right edges (desktop only, behind the nav content,
+  // non-interactive + aria-hidden). Present only when the source had them; else the bar renders decor-free.
+  const decorImg = (ref: string | undefined, side: 'left' | 'right'): string =>
+    ref ? `<img src="${esc(ref)}" alt="" aria-hidden="true" class="pointer-events-none absolute ${side}-0 top-0 z-0 hidden h-full w-auto max-w-[160px] object-contain lg:block"/>` : '';
+  const decoration = decorImg(decor.left, 'left') + decorImg(decor.right, 'right');
+  const relative = decoration ? ' relative' : '';
+  const z = decoration ? 'relative z-10 ' : '';
   const desktopItem =
     `{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover">` +
     `<a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>` +
@@ -303,10 +350,11 @@ export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>
     `{{#each nav.header}}{{#if children}}<li class="menu-title text-primary">{{sw-label}}</li>{{#each children}}<li><a href="{{sw-url path}}">{{sw-label}}</a></li>{{/each}}` +
     `{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a></li>{{/if}}{{/each}}`;
   return (
-    `<div class="navbar min-h-0 bg-base-100 px-3 py-1.5 shadow-md sm:px-5">` +
-    `<div class="flex-1"><a href="{{sw-url '/'}}" class="flex items-center gap-2 no-underline">${brand}</a></div>` +
-    `<div class="hidden flex-none lg:block"><ul class="menu menu-horizontal items-center gap-0.5 px-1 text-[15px] font-medium">${desktopItem}</ul></div>` +
-    `<div class="flex-none lg:hidden"><div class="dropdown dropdown-end"><div tabindex="0" role="button" class="btn btn-ghost btn-sm">{{sw-icon "menu" "h-5 w-5"}}</div>` +
+    `<div class="navbar${relative} min-h-0 bg-base-100 px-3 py-1.5 shadow-md sm:px-5">` +
+    decoration +
+    `<div class="${z}flex-1"><a href="{{sw-url '/'}}" class="flex items-center gap-2 no-underline">${brand}</a></div>` +
+    `<div class="${z}hidden flex-none lg:block"><ul class="menu menu-horizontal items-center gap-0.5 px-1 text-[15px] font-medium">${desktopItem}</ul></div>` +
+    `<div class="${z}flex-none lg:hidden"><div class="dropdown dropdown-end"><div tabindex="0" role="button" class="btn btn-ghost btn-sm">{{sw-icon "menu" "h-5 w-5"}}</div>` +
     `<ul tabindex="0" class="menu dropdown-content z-30 mt-2 w-64 gap-0.5 rounded-box bg-base-100 p-2 text-[15px] shadow-lg">${mobileItem}</ul></div></div>` +
     `</div>`
   );
@@ -439,7 +487,8 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   websiteIn.criticalCss = foundationCriticalCss(colors['base-200'], bodyImage);
   const contentWidth = extractContentWidth(input.cssText);
   if (contentWidth) websiteIn.containerWidth = contentWidth; // match the source's content width (default is 1200)
-  websiteIn.mainNav = nativeMainNav(identity); // single consolidated nav slot
+  const headerDecor = input.assetMap ? extractHeaderDecor(input.cssText, input.assetMap) : {};
+  websiteIn.mainNav = nativeMainNav(identity, headerDecor); // single consolidated nav slot (+ captured edge decorations)
   websiteIn.footer = nativeFooter(identity);
   const website = WebsiteSettingsSchema.parse(websiteIn);
 
@@ -450,6 +499,9 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   }
   if (identity.mapUrl) {
     diagnostics.push({ code: 'footer-map-embedded', message: 'the source\'s Google-Maps embed was reproduced in the native footer via {{company.mapUrl}} — move/restyle it if the design places it elsewhere' });
+  }
+  if (headerDecor.left || headerDecor.right) {
+    diagnostics.push({ code: 'header-decor-captured', message: 'the header\'s left/right decorative images (#nav::before/::after backgrounds) were re-pinned to the native navbar edges (desktop) — restyle/reposition if the design needs it' });
   }
 
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';

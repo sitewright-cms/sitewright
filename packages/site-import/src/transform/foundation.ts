@@ -152,33 +152,62 @@ function slotFor(font: HostedFont, weight: FontSlot['weight']): FontSlot {
 }
 
 /**
+ * @font-face families that are LOCAL()-only (a system-font ALIAS, e.g. `--primary-font` →
+ * `@font-face{font-family:"primary-font";src:local("Times New Roman")}`) → the local family. These have no
+ * woff to self-host, so they never appear in `fonts` — but the role IS resolved (to a system font), which
+ * must stop the "other font" fallback from adopting a hosted DISPLAY woff for it.
+ */
+function localSystemFaces(cssText: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of cssText.matchAll(/@font-face\s*\{([^}]*)\}/gi)) {
+    const block = m[1] ?? '';
+    if (/\burl\s*\(/i.test(block)) continue; // has a hostable url() → not local-only
+    const fam = block.match(/font-family\s*:\s*["']?([^;"'}]+)/i)?.[1]?.trim();
+    const local = block.match(/\blocal\s*\(\s*["']?([^)"']+)/i)?.[1]?.trim();
+    if (fam && local) out.set(norm(fam), local);
+  }
+  return out;
+}
+
+/**
  * Resolve heading + body font slots from the foreign CSS, matched to the self-hosted woffs.
- * Matches by family name; falls back to "the other font" when exactly one side matches and ≥2 fonts
- * exist (the common heading+body pairing), or the single font for body when only one is hosted.
+ * Matches by family name; a role declared via a LOCAL()-only @font-face resolves to a SYSTEM slot; only when
+ * a role has NO family signal at all does it fall back to "the other font" (the common heading+body pair).
  */
 export function extractTypography(cssText: string, fonts: readonly HostedFont[]): { heading?: FontSlot; body?: FontSlot } {
   // Drop icon/glyph fonts — they're never a text face (and must not be picked by the fallback below).
   const distinct = [...new Map(fonts.filter((f) => !ICON_FONT.test(f.family)).map((f) => [f.assetId, f])).values()];
-  if (distinct.length === 0) return {};
   const vars = readCssVars(cssText);
   // Prefer the semantic `--*-font` var; fall back to scanning the body/heading selectors.
   const bodyFam = familyFromVars(vars, 'body') ?? familyForSelectors(cssText, ['body', 'html'], vars);
   const headFam = familyFromVars(vars, 'heading') ?? familyForSelectors(cssText, ['h1', 'h2', 'h3', 'heading', 'title', 'bm-header'], vars);
+  const localFaces = localSystemFaces(cssText);
+  const localSlot = (fam: string | undefined, weight: FontSlot['weight']): FontSlot | undefined => {
+    const local = fam ? localFaces.get(norm(fam)) : undefined;
+    if (local === undefined) return undefined;
+    return { source: 'system', family: FAMILY_OK.test(local) ? local : 'serif', weight };
+  };
   const match = (fam: string | undefined): HostedFont | undefined => (fam ? distinct.find((f) => norm(f.family) === norm(fam)) : undefined);
   let head = match(headFam);
   let body = match(bodyFam);
-  if (head && !body && distinct.length >= 2) {
+  // A role whose declared font is a local system alias (e.g. heading = local Times New Roman) is RESOLVED —
+  // its slot is the system font, and it must NOT trigger the display-woff fallback below.
+  const headSys = head ? undefined : localSlot(headFam, 700);
+  const bodySys = body ? undefined : localSlot(bodyFam, 400);
+  if (head && !body && !bodySys && distinct.length >= 2) {
     const h = head;
     body = distinct.find((f) => f.assetId !== h.assetId);
   }
-  if (body && !head && distinct.length >= 2) {
+  if (body && !head && !headSys && distinct.length >= 2) {
     const b = body;
     head = distinct.find((f) => f.assetId !== b.assetId);
   }
-  if (!head && !body && distinct.length === 1) body = distinct[0];
+  if (!head && !body && !headSys && !bodySys && distinct.length === 1) body = distinct[0];
   const out: { heading?: FontSlot; body?: FontSlot } = {};
   if (head) out.heading = slotFor(head, 700);
+  else if (headSys) out.heading = headSys;
   if (body) out.body = slotFor(body, 400);
+  else if (bodySys) out.body = bodySys;
   return out;
 }
 

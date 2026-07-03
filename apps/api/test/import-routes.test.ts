@@ -232,6 +232,27 @@ describe('POST /projects/:id/import/website/stream', () => {
     expect(importBundle).toHaveBeenCalledTimes(1);
   });
 
+  it('content-hash DEDUPES identical bytes hosted under different URLs (one media record)', async () => {
+    // The same physical file referenced via two distinct URLs (depth-relative paths / thumbnail aliases) —
+    // hosted concurrently — must self-host ONCE, not per URL (else the media library is Nx bloated).
+    const crawl = async (): Promise<CrawlResult> => ({
+      site: {
+        baseUrl: 'https://ex.com/',
+        pages: [{ sourceUrl: 'https://ex.com/', html: '<html><body><main><img src="/a/logo.png"><img src="/b/logo.png"></main></body></html>' }],
+        assets: new Map([
+          ['https://ex.com/a/logo.png', { sourceRef: 'https://ex.com/a/logo.png', kind: 'image', bytes: new Uint8Array([9, 9, 9, 9]), contentType: 'image/png' }],
+          ['https://ex.com/b/logo.png', { sourceRef: 'https://ex.com/b/logo.png', kind: 'image', bytes: new Uint8Array([9, 9, 9, 9]), contentType: 'image/png' }],
+        ]),
+        origin: { kind: 'crawl', label: 'ex.com' },
+      },
+      truncated: false,
+      warnings: [],
+    });
+    const { app, createMediaAsset } = track(makeApp({ crawl }));
+    await app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
+    expect(createMediaAsset).toHaveBeenCalledTimes(1); // both URLs → one hosted asset (content hash)
+  });
+
   it('fetches + self-hosts a remote image, and skips an SVG', async () => {
     // Inject a stub pinnedFetch (the route's outbound) — png hosted, svg returned as image/svg+xml.
     const pinnedFetch: PinnedStub = async (u) => ({ status: 200, contentType: u.endsWith('.svg') ? 'image/svg+xml' : 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) });

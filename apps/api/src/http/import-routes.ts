@@ -4,6 +4,7 @@
 // per-project lock + global cap, and a hard assertion that no <script> reached any slot before the
 // bundle is written. The AI rewrite stage (separate) turns the faithful scaffold into native idioms.
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
@@ -236,6 +237,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
   /** MediaPort: host an asset's bytes, or fetch a remote image (pinned-fetch guarded) then self-host it. */
   function makeMediaPort(ctx: ProjectContext, slug: string, fetcher: (url: string) => Promise<FetchedResource | null>): MediaPort {
+    // Content-hash dedup for THIS import: the same physical file is routinely referenced via several URLs
+    // (depth-relative `./../_data/…` paths that resolve differently per page, thumbnail aliases, etc.) which
+    // arrive as distinct asset keys — host the bytes ONCE and reuse the hosted ref for every duplicate, so
+    // the media library isn't Nx bloated (measured: a site hosting 98 files as 294 records = every file 3x).
+    const byHash = new Map<string, Promise<{ ref: string; srcset?: string } | null>>();
     return {
       hostAsset: async (asset) => {
         let buffer: Buffer | null = null;
@@ -257,31 +263,46 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
           }
         }
         if (!buffer) return null;
-        // @font-face web fonts → the self-hosted-font pipeline (magic-byte validated, served inline).
-        if (asset.kind === 'font') {
-          if (!deps.hostFontAsset || !asset.font) return null;
-          const saved = await deps.hostFontAsset(ctx, slug, buffer, asset.font).catch(() => null);
-          return saved ? { ref: saved.url } : null;
-        }
-        // Documents (PDF/doc/…) → the file-asset path: stored as-is, served download-only (no sharp).
-        if (asset.kind === 'other') {
-          if (!deps.hostFileAsset) return null;
-          const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', false);
-          const saved = await deps.hostFileAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'application/octet-stream', folder }).catch(() => null);
-          return saved ? { ref: saved.url } : null;
-        }
-        if (mimetype === 'image/svg+xml' || mimetype === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
-        if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
-        try {
-          const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', true);
-          // Importer HARD RULE: cap an oversized cloned image at 2400px, converting to WebP only when
-          // the cap actually bites (see storeOriginal). `saved.url` is the id-bearing DELIVERY route,
-          // which serves a compressed `xl` thumbnail by default — no eager variant srcset needed.
-          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg', folder }, { cap: 2400 });
-          return { ref: saved.url };
-        } catch {
-          return null;
-        }
+        // Content-hash dedup: the same physical file is routinely referenced via several URLs (depth-relative
+        // `./../_data/…` paths that resolve differently per page, thumbnail aliases) → distinct asset keys,
+        // hosted CONCURRENTLY. Memoize the host TASK (a promise, stored BEFORE its awaits so it's race-free
+        // under the concurrent host pool) so identical bytes are self-hosted ONCE — not Nx (measured: a site
+        // hosting 98 files as 294 records = every file 3x).
+        const hash = `${asset.kind ?? 'image'}:${createHash('sha256').update(buffer).digest('hex')}`;
+        const cached = byHash.get(hash);
+        if (cached) return cached;
+        const buf = buffer;
+        const mt = mimetype;
+        const fn = filename;
+        const task: Promise<{ ref: string; srcset?: string } | null> = (async () => {
+          // @font-face web fonts → the self-hosted-font pipeline (magic-byte validated, served inline).
+          if (asset.kind === 'font') {
+            if (!deps.hostFontAsset || !asset.font) return null;
+            const saved = await deps.hostFontAsset(ctx, slug, buf, asset.font).catch(() => null);
+            return saved ? { ref: saved.url } : null;
+          }
+          // Documents (PDF/doc/…) → the file-asset path: stored as-is, served download-only (no sharp).
+          if (asset.kind === 'other') {
+            if (!deps.hostFileAsset) return null;
+            const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', false);
+            const saved = await deps.hostFileAsset(ctx, slug, buf, { filename: fn, mimetype: mt || 'application/octet-stream', folder }).catch(() => null);
+            return saved ? { ref: saved.url } : null;
+          }
+          if (mt === 'image/svg+xml' || mt === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
+          if (mt && !mt.startsWith('image/')) return null; // only host images
+          try {
+            const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', true);
+            // Importer HARD RULE: cap an oversized cloned image at 2400px, converting to WebP only when the
+            // cap actually bites (see storeOriginal). `saved.url` is the id-bearing DELIVERY route, which
+            // serves a compressed `xl` thumbnail by default — no eager variant srcset needed.
+            const saved = await createMediaAsset(ctx, slug, buf, { filename: fn, mimetype: mt || 'image/jpeg', folder }, { cap: 2400 });
+            return { ref: saved.url };
+          } catch {
+            return null;
+          }
+        })();
+        byHash.set(hash, task);
+        return task;
       },
       ...(deps.hostStylesheet ? { hostStylesheet: (css: string) => deps.hostStylesheet!(ctx, slug, css) } : {}),
       ...(deps.hostScript

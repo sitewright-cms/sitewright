@@ -21,6 +21,7 @@ import { applyLocales, detectLocaleSet } from './transform/locales.js';
 import { collectDocumentRefs, collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectAndHostScripts } from './transform/scripts.js';
+import { collectWidgetIntegrations } from './widgets.js';
 import { collectFontFaces } from './transform/fonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
@@ -193,6 +194,10 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // website.scripts slot — done BEFORE the transform strips <script> from page sources/chrome. Empty
   // string when the media port has no `hostScript` (the safe, scripts-dropped default) or in foundation mode.
   const scriptLinks = opts.foundation ? '' : await collectAndHostScripts(parsed, opts.media);
+  // Known 3rd-party WIDGET scripts (weather/chat/reviews) → functional consent integrations. Detected NOW,
+  // before the transform strips <script> — applied to the website below (both modes: a widget is a foreign
+  // integration the clone should reproduce, independent of the scripts-dropped/foundation behaviour).
+  const widgetIntegrations = collectWidgetIntegrations(parsed.map((x) => x.doc));
 
   const identity: CorporateIdentity = home
     ? extractIdentity(home.doc, { baseUrl: home.url, assetMap, fallbackName: hostFallbackName(workSite.baseUrl) })
@@ -339,6 +344,20 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     website = fnd.website;
     bundlePages = fnd.pages;
     diagnostics.push(...fnd.diagnostics);
+  }
+  // Register detected 3rd-party widget scripts as functional consent integrations + turn the consent manager
+  // ON (the ONLY way a strict `script-src 'self'` site can load foreign JS; it's gated behind the banner, the
+  // privacy-correct behaviour). Merges onto whatever consent the chrome/foundation already set.
+  if (widgetIntegrations.length && website) {
+    const prev = website.consent ?? {};
+    const existing = prev.integrations ?? [];
+    const existingIds = new Set(existing.map((i) => i.id));
+    const slots = Math.max(0, 20 - existing.length); // don't let widgets evict integrations the chrome already set
+    const added = widgetIntegrations.filter((i) => !existingIds.has(i.id)).slice(0, slots); // skip already-registered providers
+    if (added.length) {
+      website = WebsiteSettingsSchema.parse({ ...website, consent: { ...prev, enabled: true, integrations: [...existing, ...added] } });
+      diagnostics.push({ code: 'widget-consent-registered', message: `registered 3rd-party widget script(s) as functional consent integrations (gated behind the cookie banner): ${added.map((i) => i.name).join(', ')}` });
+    }
   }
   // Entry ids must be unique across the WHOLE bundle (the content store keys entries by `entityId` per
   // project). Per-page dataset extraction only dedupes within a dataset, so a dataset folded on multiple

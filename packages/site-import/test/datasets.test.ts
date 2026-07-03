@@ -180,4 +180,10 @@ describe('slugifyId', () => {
       expect(id.length).toBeLessThanOrEqual(50);
     }
   });
+
+  it('returns empty for text with no usable characters (caller supplies a row_<n> fallback)', () => {
+    expect(slugifyId('')).toBe('');
+    expect(slugifyId('!@#$%  ')).toBe('');
+    expect(slugifyId('   ')).toBe('');
+  });
 });

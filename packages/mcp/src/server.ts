@@ -125,7 +125,7 @@ const ID_LESS_PUT_KINDS = new Set<string>(['settings']);
  * Anything that isn't a JSON object (or a string that isn't parseable JSON) is returned untouched, so
  * the normal validation error — with its teach-on-error shape hint — still surfaces.
  */
-function normalizePutData(kind: string, id: string, dataset: string | undefined, data: unknown): unknown {
+export function normalizePutData(kind: string, id: string, dataset: string | undefined, data: unknown): unknown {
   let obj: unknown = data;
   if (typeof obj === 'string') {
     const trimmed = obj.trim();
@@ -140,6 +140,12 @@ function normalizePutData(kind: string, id: string, dataset: string | undefined,
   const patch: Record<string, unknown> = {};
   if (!ID_LESS_PUT_KINDS.has(kind) && (obj.id === undefined || obj.id === '') && id) patch.id = id;
   if (kind === 'entry' && (obj.dataset === undefined || obj.dataset === '') && dataset) patch.dataset = dataset;
+  // A dataset ENTRY's status defaults to 'draft' (EntrySchema) — but a draft entry is INVISIBLE in the
+  // PUBLISHED build (it only shows in the drafts-included preview), so an agent that omits status silently
+  // authors an empty {{#each}} loop that renders fine in preview then vanishes once the site is published.
+  // Agents write content meant to go live: default an OMITTED entry status to 'published'. An explicit
+  // 'draft' is untouched (the field is present), so intentional staging still works.
+  if (kind === 'entry' && obj.status === undefined) patch.status = 'published';
   return Object.keys(patch).length > 0 ? { ...obj, ...patch } : obj;
 }
 

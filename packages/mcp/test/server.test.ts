@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSitewrightMcpServer } from '../src/server.js';
+import { createSitewrightMcpServer, normalizePutData } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 import type { BridgeAuth } from '../src/auth.js';
 import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS } from '@sitewright/schema';
@@ -612,6 +612,37 @@ describe('createSitewrightMcpServer — tool wiring', () => {
     const res = await mcp.callTool({ name: 'put_page', arguments: { page: { id: 'x' } } });
     expect(res.isError).toBe(true);
     expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).not.toHaveBeenCalled();
+  });
+});
+
+describe('normalizePutData — forgiving put_content normalization', () => {
+  it('defaults an OMITTED entry status to published (a draft entry is invisible on the published site)', () => {
+    const out = normalizePutData('entry', 'row1', 'venues', { title: 'Barn' }) as Record<string, unknown>;
+    expect(out.status).toBe('published');
+    expect(out.id).toBe('row1'); // still back-fills id + dataset
+    expect(out.dataset).toBe('venues');
+  });
+
+  it('respects an EXPLICIT entry status (intentional draft staging still works)', () => {
+    const out = normalizePutData('entry', 'row1', 'venues', { title: 'WIP', status: 'draft' }) as Record<string, unknown>;
+    expect(out.status).toBe('draft');
+  });
+
+  it('does NOT default status when the field is explicitly null/empty (the API rejects it, not the helper)', () => {
+    // Locks in the `=== undefined` contract: a refactor to `!obj.status` would wrongly coerce these.
+    expect((normalizePutData('entry', 'r', 'd', { status: null }) as Record<string, unknown>).status).toBeNull();
+    expect((normalizePutData('entry', 'r', 'd', { status: '' }) as Record<string, unknown>).status).toBe('');
+  });
+
+  it('does NOT inject a status for non-entry kinds (pages keep their own draft/published workflow)', () => {
+    const out = normalizePutData('page', 'home', undefined, { path: '', title: 'Home' }) as Record<string, unknown>;
+    expect(out.status).toBeUndefined();
+  });
+
+  it('parses a stringified entry object then defaults its status', () => {
+    const out = normalizePutData('entry', 'row1', 'venues', JSON.stringify({ title: 'Barn' })) as Record<string, unknown>;
+    expect(out.status).toBe('published');
+    expect(out.title).toBe('Barn');
   });
 });
 

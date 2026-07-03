@@ -276,6 +276,13 @@ describe('extractHeaderDecor', () => {
     expect(extractHeaderDecor(css, assetMap)).toEqual({ left: '/media/s/hl/header-left.png', right: '/media/s/hr/header-right.png' });
   });
 
+  it('rejects a crafted /media/ traversal path that is NOT an actual hosted asset (SSRF/traversal guard)', () => {
+    const css = `#nav:before{left:0;background-image:url(/media/../api/users)}`;
+    // rewriteCssUrls can't resolve the relative path, so it string-matches /media/ — but it is not an assetMap
+    // VALUE, so membership rejects it.
+    expect(extractHeaderDecor(css, assetMap)).toEqual({});
+  });
+
   it('does NOT false-match "right"/"left" as a substring of an unrelated filename word', () => {
     // brightwood-header.png must NOT be classified 'right'; with no position + no delimited segment it falls
     // back to ::before=left.

@@ -291,10 +291,16 @@ export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string): strin
  */
 export function extractHeaderDecor(cssText: string, assetMap: ReadonlyMap<string, string>): { left?: string; right?: string } {
   const out: { left?: string; right?: string } = {};
+  // A ref is trusted ONLY if it's an actual assetMap VALUE — a raw `/media/…` shape in the CSS isn't enough
+  // (a crafted `url(/media/../api/users)` that assetKey can't resolve would pass rewriteCssUrls unchanged and
+  // then string-match `/media/`, letting a traversal path into the `<img src>`). Membership makes that impossible.
+  const hostedRefs = new Set(assetMap.values());
   // `[#.]?[\w-]+` matches an id/class/BARE-TAG selector (`#top-nav`, `.masthead`, `header`) — a single token
   // (O(n), no ReDoS); the keyword guard below scopes it to header/nav elements. A compound/list selector is
-  // matched by its last simple selector, which the guard then filters.
-  for (const m of cssText.matchAll(/([#.]?[\w-]+)\s*::?(before|after)\s*\{([^}]*)\}/gi)) {
+  // matched by its last simple selector, which the guard then filters. Cap the input + early-out (only 2 slots).
+  const css = cssText.length > 524_288 ? cssText.slice(0, 524_288) : cssText;
+  for (const m of css.matchAll(/([#.]?[\w-]+)\s*::?(before|after)\s*\{([^}]*)\}/gi)) {
+    if (out.left && out.right) break; // both edges filled — nothing more to find
     const sel = m[1] ?? '';
     const pseudo = (m[2] ?? '').toLowerCase();
     const block = m[3] ?? '';
@@ -302,7 +308,7 @@ export function extractHeaderDecor(cssText: string, assetMap: ReadonlyMap<string
     const rawUrl = block.match(/background(?:-image)?\s*:[^;}]*url\(\s*['"]?([^)'"]+)/i)?.[1];
     if (!rawUrl) continue;
     const ref = rewriteCssUrls(`url(${rawUrl})`, assetMap).match(/url\(\s*['"]?(\/media\/[^)'"\s]+)/i)?.[1];
-    if (!ref) continue; // ship ONLY a hosted asset
+    if (!ref || !hostedRefs.has(ref)) continue; // ship ONLY a genuinely-hosted asset (assetMap membership)
     const pos = block.match(/background-position\s*:\s*([^;}]+)/i)?.[1] ?? '';
     const url = rawUrl.toLowerCase();
     // Classify by background-position keyword, else a DELIMITED left/right SEGMENT in the filename (so

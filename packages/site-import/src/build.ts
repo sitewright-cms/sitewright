@@ -349,10 +349,15 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // ON (the ONLY way a strict `script-src 'self'` site can load foreign JS; it's gated behind the banner, the
   // privacy-correct behaviour). Merges onto whatever consent the chrome/foundation already set.
   if (widgetIntegrations.length && website) {
-    const prev = (website as { consent?: { integrations?: unknown[] } }).consent ?? {};
-    const merged = { ...prev, enabled: true, integrations: [...(prev.integrations ?? []), ...widgetIntegrations].slice(0, 20) };
-    website = WebsiteSettingsSchema.parse({ ...website, consent: merged });
-    diagnostics.push({ code: 'widget-consent-registered', message: `registered 3rd-party widget script(s) as functional consent integrations (gated behind the cookie banner): ${widgetIntegrations.map((i) => i.name).join(', ')}` });
+    const prev = website.consent ?? {};
+    const existing = prev.integrations ?? [];
+    const existingIds = new Set(existing.map((i) => i.id));
+    const slots = Math.max(0, 20 - existing.length); // don't let widgets evict integrations the chrome already set
+    const added = widgetIntegrations.filter((i) => !existingIds.has(i.id)).slice(0, slots); // skip already-registered providers
+    if (added.length) {
+      website = WebsiteSettingsSchema.parse({ ...website, consent: { ...prev, enabled: true, integrations: [...existing, ...added] } });
+      diagnostics.push({ code: 'widget-consent-registered', message: `registered 3rd-party widget script(s) as functional consent integrations (gated behind the cookie banner): ${added.map((i) => i.name).join(', ')}` });
+    }
   }
   // Entry ids must be unique across the WHOLE bundle (the content store keys entries by `entityId` per
   // project). Per-page dataset extraction only dedupes within a dataset, so a dataset folded on multiple

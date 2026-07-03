@@ -4324,9 +4324,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
         const page = (await contentRepo.get(ctx, 'page', req.params.pageId).catch(() => null)) as ComparePageInput | null;
+        // The build URL needs the page's FULL nested route (`services/building-engineering`), not its own
+        // leaf `path` segment — otherwise a child page's preview URL 404s and compare returns a blank BUILD.
+        // Resolve it from the parent chain exactly like the publisher (`pagePath` + `pathToSlug`).
+        let fullRoute: string | undefined;
+        if (page) {
+          const allPages = (await contentRepo.list(ctx, 'page').catch(() => [])) as Page[];
+          const targetPage = allPages.find((p) => p.id === req.params.pageId);
+          if (targetPage) fullRoute = pathToSlug(pagePath(targetPage, pagesById(allPages)));
+        }
         const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
         const target = compareTargets({
           page,
+          route: fullRoute,
           projectId: project.id,
           sig: signPreview(project.id, currentCookieSecret),
           originHostPort: `127.0.0.1:${port}`,

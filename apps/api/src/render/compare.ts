@@ -37,13 +37,20 @@ export function compareTargets(opts: {
   projectId: string;
   sig: string;
   originHostPort: string;
+  /**
+   * The page's FULL nested route slug (e.g. `services/building-engineering`), pre-resolved from the
+   * parent chain by the caller. `page.path` is ONLY the page's own leaf segment, so a child page's build
+   * URL built from it (`/…/building-engineering/`) 404s → a blank BUILD capture. Falls back to `page.path`
+   * for a top-level page / callers that don't resolve the route.
+   */
+  route?: string;
   /** Raw `viewports` query string (comma-separated); unknown names are dropped. */
   viewports?: string;
 }): CompareTargets {
   if (!opts.page) return { error: 'not-found' };
   const sourceUrl = opts.page.data?.swImport?.sourceUrl;
   if (!sourceUrl) return { error: 'no-source' };
-  const route = (opts.page.path ?? '').replace(/^\/+/, '');
+  const route = (opts.route ?? opts.page.path ?? '').replace(/^\/+/, '');
   const buildUrl = `http://${opts.originHostPort}/preview-site/${opts.projectId}/${opts.sig}/${route}${route && !route.endsWith('/') ? '/' : ''}`;
   const vps = (opts.viewports ?? '').split(',').map((v) => v.trim()).filter((v): v is ViewportName => isScreenshotViewportName(v));
   return { sourceUrl, route, buildUrl, ...(vps.length ? { viewports: vps } : {}) };
@@ -96,6 +103,13 @@ async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (t
       })
       .catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
+    // Lazy cross-origin embeds (Google Maps, video) fetch tiles/players AFTER networkidle and never
+    // re-settle it, so a fullPage shot catches them mid-load (a grey box). Give a page that has any
+    // iframe a short extra beat to paint before capture. Skipped entirely for iframe-free pages.
+    const hasEmbed = await page
+      .evaluate(() => (globalThis as unknown as { document: { querySelector(s: string): unknown } }).document.querySelector('iframe') != null)
+      .catch(() => false);
+    if (hasEmbed) await page.waitForTimeout(1800).catch(() => {});
     const fullHeight = await page
       .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
       .catch(() => vp.height);

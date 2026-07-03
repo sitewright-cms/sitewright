@@ -70,6 +70,24 @@ describe('GET /projects/:id/compare/:pageId', () => {
     expect(body.source).toHaveProperty('fullhd');
   });
 
+  it('resolves a CHILD page to its FULL nested route (not the leaf path segment)', async () => {
+    const { t, pid } = await setup();
+    // A child page's `path` is only its own leaf slug; the build URL must use the full parent-chain route
+    // (`services/building-engineering`) or the preview 404s → a blank BUILD capture (the real bug this fixes).
+    await putPage(pid, t, { id: 'services', path: 'services', title: 'Services', source: '<h1>Services</h1>' });
+    await putPage(pid, t, {
+      id: 'services__building-engineering',
+      path: 'building-engineering',
+      parent: 'services',
+      title: 'Building Engineering',
+      source: '<h1>BE</h1>',
+      data: { swImport: { sourceUrl: 'https://example.com/services/building-engineering/', rewritten: false } },
+    });
+    const r = await app.inject({ method: 'GET', url: `/projects/${pid}/compare/services__building-engineering?viewports=fullhd`, cookies: { sw_session: t } });
+    expect(r.statusCode).toBe(200);
+    expect((r.json() as { route: string }).route).toBe('services/building-engineering');
+  });
+
   it('serves the SOURCE from the import-time cache when present (no live re-render)', async () => {
     const { t, pid } = await setup();
     await putPage(pid, t, { id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>', data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } } });

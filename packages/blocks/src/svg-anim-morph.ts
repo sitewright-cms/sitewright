@@ -28,7 +28,7 @@ export const SVG_ANIM_MORPH_JS = `(function(){
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   ${SW_TIMING_CORE}
   var NS='http://www.w3.org/2000/svg',N=64;
-  var PATHRE=/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/;
+  var PATHRE=/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/;
   // Sample a d-string into N+1 evenly-spaced points via a detached <path>. Null when it isn't a real path.
   function sample(d){
     if(!d||!PATHRE.test(d))return null;
@@ -50,7 +50,10 @@ export const SVG_ANIM_MORPH_JS = `(function(){
   function run(el){
     if(el.__swMorphing)return;
     var to=el.getAttribute('data-sw-svg-to');if(!to||!PATHRE.test(to))return;
-    var A=sample(el.getAttribute('d')),B=sample(to);
+    // Cache the ORIGINAL start d once, so replay (data-sw-once="false") always tweens start→target
+    // (after a morph completes, d IS the target — sampling it would give a target→target no-op).
+    if(el.__swMorphFrom==null)el.__swMorphFrom=el.getAttribute('d')||'';
+    var A=sample(el.__swMorphFrom),B=sample(to);
     if(!A||!B){el.setAttribute('d',to);return;} // un-samplable → jump to target (still correct, just no tween)
     var dur=swMs(el,'data-sw-duration',400),delay=swMs(el,'data-sw-delay',0),ease=easeOf(el);
     if(dur<=0){el.setAttribute('d',to);return;}
@@ -73,7 +76,12 @@ export const SVG_ANIM_MORPH_JS = `(function(){
   if(view.length===0)return;
   if(!('IntersectionObserver' in window)){view.forEach(run);return;}
   var io=new IntersectionObserver(function(entries){
-    entries.forEach(function(en){if(en.isIntersecting){run(en.target);if(once(en.target))io.unobserve(en.target);}});
+    entries.forEach(function(en){
+      var el=en.target;
+      if(en.isIntersecting){run(el);if(once(el))io.unobserve(el);}
+      // Replay (once="false"): restore the start shape on viewport-leave so the next entry re-morphs.
+      else if(!once(el)&&!el.__swMorphing&&el.__swMorphFrom!=null)el.setAttribute('d',el.__swMorphFrom);
+    });
   },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
   view.forEach(function(el){io.observe(el);});
 })();`;

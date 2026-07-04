@@ -61,7 +61,8 @@ const EFFECT_TRANSFORMS: ReadonlyArray<readonly [string, string]> = [
 /**
  * The animation stylesheet. Hidden state is `[data-sw-animation].sw-animation-init` (runtime-added,
  * so no-JS renders visible); `.sw-animation-active` (last rule, same specificity) reveals. The default
- * transition-duration is SW_DURATION_DEFAULT (400ms); `data-sw-duration` overrides it inline.
+ * transition-duration is SW_DURATION_DEFAULT (400ms — intentionally lowered from the historical 600ms
+ * to align with the shared timing default; `data-sw-duration` overrides it inline).
  * `pointer-events` is suspended while hidden so invisible content can't be clicked.
  */
 export const ANIMATION_CSS = [

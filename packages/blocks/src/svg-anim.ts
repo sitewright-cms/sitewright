@@ -69,7 +69,7 @@ export const SVG_ANIM_EFFECTS: readonly string[] = [
 
 /** A permissive-but-safe SVG path-data grammar (commands + numbers + separators). Used to validate
  *  author-supplied `data-sw-svg-path` / `data-sw-svg-to` so only a real path string reaches CSS/`d`. */
-export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
+export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+\-]{1,4000}$/;
 
 // --- CSS --------------------------------------------------------------------
 // Structural only — the MOTION is JS-applied via WAAPI, so it never sits in the sheet. `transform-box:
@@ -160,13 +160,13 @@ const SVG_ANIM_CORE = `
       // draw + data-sw-svg-fill: once the stroke is drawn, fade the fill in.
       if(m.effect==='draw'&&m.fill){
         m.el.style.fillOpacity='0';
-        try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:Math.max(200,m.dur*0.4),fill:'both'});fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';};}
+        try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:Math.max(200,m.dur*0.4),fill:'both'});m.fillAnim=fa;fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';};}
         catch(e){m.el.style.fillOpacity='';}
       }
     };
   }
   // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class.
-  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}svgClear(m.el);m.el.classList.add('sw-svg-init');}
+  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);m.el.classList.add('sw-svg-init');}
 `;
 
 export const SVG_ANIM_JS = `(function(){
@@ -185,7 +185,7 @@ export const SVG_ANIM_JS = `(function(){
     var effect=effectOf(el);
     var m={el:el,effect:effect,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0)+extraDelay,playing:false};
     if(effect==='draw'){m.len=svgLen(el);m.dir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
-    if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
+    if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
@@ -197,7 +197,7 @@ export const SVG_ANIM_JS = `(function(){
   function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
   var units=[];
   Array.prototype.forEach.call(scenes,function(s){
-    var step=swMs(s,'data-sw-svg-stagger',0);
+    var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
     var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
     var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
     Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k))members.push(member(k,step*i));});
@@ -206,7 +206,7 @@ export const SVG_ANIM_JS = `(function(){
   Array.prototype.forEach.call(els,function(el){
     if(isClaimed(el)||isMorph(el))return;
     var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
-    units.push({root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')==='load'?'load':trig,members:[member(el,0)]});
+    units.push({root:el,trigger:trig,members:[member(el,0)]});
   });
   if(units.length===0)return;
   // Arm: hide every member (PE-first init class) before anything triggers.
@@ -299,7 +299,7 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
     var dur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(dur>DMAX)dur=DMAX;
     var m={el:el,effect:ok,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0),playing:false};
     if(ok==='draw'){m.len=svgLen(el);m.dir=el.getAttribute('data-sw-svg-draw-dir')==='reverse'?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
-    if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
+    if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
@@ -310,12 +310,12 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
   function run(){var maxD=0;Array.prototype.forEach.call(els,function(el){var m=build(el);if(m.delay+m.dur>maxD)maxD=m.delay+m.dur;svgClear(el);svgPlay(m);});return maxD;}
   function loop(){var d=run();timer=setTimeout(loop,d+1100);}
   loop();
-  window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sw-svg'||!(d.entries instanceof Array))return;
+  window.addEventListener('message',function(ev){if(ev.source!==parent)return;var d=ev.data;if(!d||d.type!=='sw-svg'||!(d.entries instanceof Array))return;
     Array.prototype.forEach.call(els,function(el){
       var a=el.attributes,i;for(i=a.length-1;i>=0;i--){var n=a[i].name;if(n.indexOf('data-sw-svg')===0||n==='data-sw-duration'||n==='data-sw-delay'||n==='data-sw-easing')el.removeAttribute(n);}
       for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];
         // Path attributes carry SVG path-data (longer, its own grammar); everything else is a short enum/number.
-        var okVal=(k==='data-sw-svg-path'||k==='data-sw-svg-to')?/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(v):/^[a-z0-9 .,%_-]{0,40}$/i.test(v);
+        var okVal=(k==='data-sw-svg-path'||k==='data-sw-svg-to')?/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(v):/^[a-z0-9 .,%_-]{0,40}$/i.test(v);
         if(/^data-sw-(svg[a-z-]*|duration|delay|easing)$/.test(k)&&okVal)el.setAttribute(k,v);}
     });
     if(timer){clearTimeout(timer);}loop();

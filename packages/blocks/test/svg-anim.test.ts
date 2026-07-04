@@ -62,10 +62,16 @@ describe('SVG animation runtime', () => {
     expect(SVG_ANIM_JS).toContain('io.observe(u.root)');
   });
 
-  it('orchestrates scenes with a stagger step and honours data-sw-once for replay', () => {
+  it('orchestrates scenes with a clamped stagger step and honours data-sw-once for replay', () => {
     expect(SVG_ANIM_JS).toContain("swMs(s,'data-sw-svg-stagger',0)");
+    expect(SVG_ANIM_JS).toContain(`if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max}`); // stagger clamped to the advertised limit
     expect(SVG_ANIM_JS).toContain("getAttribute('data-sw-once')!=='false'");
     expect(SVG_ANIM_JS).toContain('resetUnit'); // replay path re-hides members
+  });
+
+  it('a standalone (non-scene) element uses its OWN data-sw-svg-trigger (no dead scene-attr check)', () => {
+    expect(SVG_ANIM_JS).toContain('trigger:trig,members:[member(el,0)]');
+    expect(SVG_ANIM_JS).not.toContain("root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')");
   });
 
   it('validates data-sw-svg-origin against an allowlist pattern (no style injection)', () => {

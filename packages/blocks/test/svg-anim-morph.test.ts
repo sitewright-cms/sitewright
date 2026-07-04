@@ -30,6 +30,14 @@ describe('SVG morph runtime', () => {
     expect(SVG_ANIM_MORPH_JS).toContain("getAttribute('data-sw-once')!=='false'");
   });
 
+  it('replays correctly (data-sw-once="false"): caches the ORIGINAL start d + restores it on viewport-leave', () => {
+    // After a morph completes d IS the target; without caching, replay would sample target→target (no-op).
+    expect(SVG_ANIM_MORPH_JS).toContain('__swMorphFrom');
+    expect(SVG_ANIM_MORPH_JS).toContain('sample(el.__swMorphFrom)');
+    // On viewport-leave (only when once="false" and not mid-morph) the start shape is restored.
+    expect(SVG_ANIM_MORPH_JS).toMatch(/else if\(!once\(el\)&&!el\.__swMorphing&&el\.__swMorphFrom!=null\)el\.setAttribute\('d',el\.__swMorphFrom\)/);
+  });
+
   it('cannot break out of a <script> block', () => {
     expect(SVG_ANIM_MORPH_JS.toLowerCase()).not.toContain('</script');
   });

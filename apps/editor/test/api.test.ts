@@ -1195,4 +1195,14 @@ describe('project transfer api', () => {
     spy.mockRestore();
     expect(clicks.some((href) => href.endsWith('/projects/p1/export.zip'))).toBe(true);
   });
+
+  it('builds the SVG studio preview URL and overwrites an SVG media asset in place', async () => {
+    expect(api.svgStudioPreviewUrl()).toBe('/authoring/svg-studio-preview');
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'm1' } }));
+    await api.overwriteSvgMedia('p1', 'm1', '<svg/>');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/media/m1/svg');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ svg: '<svg/>' });
+  });
 });

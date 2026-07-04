@@ -23,7 +23,9 @@ const SVG_STUDIO_PREVIEW_JS = `(function(){
   function post(m){try{if(parent)parent.postMessage(m,'*');}catch(e){}}
   // Minimal client strip (the editor sanitizes on import too; belt-and-suspenders for the sandbox).
   function strip(el){var bad=el.querySelectorAll&&el.querySelectorAll('script,foreignObject');if(bad)Array.prototype.forEach.call(bad,function(n){if(n.parentNode)n.parentNode.removeChild(n);});
-    function c(n){if(!n.attributes)return;for(var i=n.attributes.length-1;i>=0;i--){if(/^on/i.test(n.attributes[i].name))n.removeAttribute(n.attributes[i].name);}}
+    function c(n){if(!n.attributes)return;for(var i=n.attributes.length-1;i>=0;i--){var a=n.attributes[i].name;
+      if(/^on/i.test(a)){n.removeAttribute(a);continue;}
+      if(/(?:^|:)href$/i.test(a)&&/^\\s*(?:javascript|vbscript|data):/i.test(n.attributes[i].value||''))n.setAttribute(a,'#');}}
     c(el);if(el.querySelectorAll)Array.prototype.forEach.call(el.querySelectorAll('*'),c);}
   function render(svg){
     lastSvg=svg||'';hideHi();

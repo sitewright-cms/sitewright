@@ -3674,7 +3674,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Overwrite an existing SVG asset's CONTENT in place (the Studio's "save to the same file"). Re-sanitizes
     // like the upload path and keeps the asset id + stored filename, so every existing reference (<img src>,
     // {{sw-image}}, inline embeds) stays valid.
-    const OverwriteSvgBody = z.object({ svg: z.string().min(1).max(5_000_000) });
+    // Cap matches sanitizeSvg's MAX_SVG_BYTES (4 MiB) so an over-limit body is rejected before buffering.
+    const OverwriteSvgBody = z.object({ svg: z.string().min(1).max(4 * 1024 * 1024) });
     app.put<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/svg', { config: rl(30) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });

@@ -133,7 +133,8 @@ const SVG_ANIM_CORE = `
     m.el.style.strokeDasharray=len+'px';
     var cs=window.getComputedStyle(m.el);
     var noFill=(!cs.fill||cs.fill==='none'||cs.fill==='transparent'||cs.fill.indexOf('rgba(0, 0, 0, 0)')>-1);
-    if(m.fill||!noFill){
+    // draw-then-fill only for an ENTERING filled shape; an exit (out) keeps the fill visible while it erases.
+    if((m.fill||!noFill)&&m.io!=='out'){
       m.drawFill=true;m.el.style.fillOpacity='0';
       var hasStroke=(cs.stroke&&cs.stroke!=='none'&&cs.stroke.indexOf('rgba(0, 0, 0, 0)')<0);
       var col=m.el.getAttribute('data-sw-svg-draw-color');
@@ -173,9 +174,10 @@ const SVG_ANIM_CORE = `
   }
   function svgPlay(m){
     if(m.playing)return;m.playing=true;
-    if(m.origin)m.el.style.transformOrigin=m.origin;
     m.el.classList.remove('sw-svg-init');
     var frames;try{frames=svgFrames(m);}catch(e){svgClear(m.el);return;}
+    // AFTER svgFrames so an author's data-sw-svg-origin overrides an effect's baked-in origin (scale-*).
+    if(m.origin)m.el.style.transformOrigin=m.origin;
     if(m.io==='out')frames=[frames[1],frames[0]]; // exit: play natural → hidden
     var opts={duration:m.dur,delay:m.delay,fill:'both'};
     try{opts.easing=swEase(m.el);}catch(e){}
@@ -192,7 +194,11 @@ const SVG_ANIM_CORE = `
   }
   // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class (IN only —
   // an OUT element starts visible, so it is not init-hidden).
-  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);if(m.io!=='out')m.el.classList.add('sw-svg-init');}
+  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);
+    // Cancelling a fill-reveal mid-flight never fires its onfinish, so clear the TEMP outline stroke here
+    // (else a filled draw+once=false shape keeps an outline it never had). Never clears an authored stroke.
+    if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}
+    if(m.io!=='out')m.el.classList.add('sw-svg-init');}
 `;
 
 export const SVG_ANIM_JS = `(function(){
@@ -266,7 +272,9 @@ export const SVG_ANIM_JS = `(function(){
   // replace the <img> with the inline <svg>, animate it, and notify the morph runtime.
   function stripUnsafe(el){
     var bad=el.querySelectorAll('script,foreignObject');Array.prototype.forEach.call(bad,function(n){if(n.parentNode)n.parentNode.removeChild(n);});
-    function clean(n){if(!n.attributes)return;for(var i=n.attributes.length-1;i>=0;i--){var a=n.attributes[i].name;if(/^on/i.test(a))n.removeAttribute(a);}}
+    function clean(n){if(!n.attributes)return;for(var i=n.attributes.length-1;i>=0;i--){var a=n.attributes[i].name;
+      if(/^on/i.test(a)){n.removeAttribute(a);continue;}
+      if(/(?:^|:)href$/i.test(a)&&/^\\s*(?:javascript|vbscript|data):/i.test(n.attributes[i].value||''))n.setAttribute(a,'#');}}
     clean(el);Array.prototype.forEach.call(el.querySelectorAll('*'),clean);
   }
   function inlineImgs(){

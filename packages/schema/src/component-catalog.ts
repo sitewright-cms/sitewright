@@ -330,16 +330,16 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
       { name: 'data-delay', on: 'root', description: 'Optional. Milliseconds to wait before showing, or "scroll" to reveal after the first scroll. Works on every placement.' },
       { name: 'data-remind-days', on: 'root', description: 'Optional. Days the "remind" button snoozes for (default 1).' },
-      { name: 'data-aos', on: 'root', description: 'Optional. A scroll-reveal effect (fade-up | zoom-in | flip-left | …) used for the ENTRANCE instead of the built-in fade+rise; data-aos-delay/-duration/-easing tune it. The dismiss reverses whichever entrance was used. On an inline (in-flow) banner prefer a plain "fade" — a transform effect animates the banner over its reserved box.' },
+      { name: 'data-sw-animation', on: 'root', description: 'Optional. A scroll-reveal effect (fade-up | zoom-in | flip-left | …) used for the ENTRANCE instead of the built-in fade+rise; data-sw-delay/-duration/-easing tune it. The dismiss reverses whichever entrance was used. On an inline (in-flow) banner prefer a plain "fade" — a transform effect animates the banner over its reserved box.' },
     ],
     examples: [
       {
-        label: 'Top announcement bar with a data-aos entrance + reveal delay',
-        code: `<div data-sw-component="banner" data-sw-banner-id="sale" data-position="top" data-frequency="session" data-aos="fade-up" data-aos-duration="600" data-delay="800" hidden>
+        label: 'Top announcement bar with a data-sw-animation entrance + reveal delay',
+        code: `<div data-sw-component="banner" data-sw-banner-id="sale" data-position="top" data-frequency="session" data-sw-animation="fade-up" data-sw-duration="600" data-delay="800" hidden>
   <p>Free shipping this week — <a class="link" href="{{sw-url "shop"}}">shop now</a>.</p>
   <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x" "h-5 w-5"}}</button>
 </div>`,
-        note: 'data-position="top"|"bottom" = full-width bar; data-delay reveals it after 800ms; data-aos="fade-up" drives the entrance (the dismiss reverses it). data-frequency="session" → returns next browser session.',
+        note: 'data-position="top"|"bottom" = full-width bar; data-delay reveals it after 800ms; data-sw-animation="fade-up" drives the entrance (the dismiss reverses it). data-frequency="session" → returns next browser session.',
       },
       {
         label: 'Centered welcome card, snooze + permanent dismiss',
@@ -371,7 +371,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
 </div>`,
     noJs: 'No banner at all — and with no JS there is nothing to dismiss.',
     notes:
-      'Place each banner ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific banner. Use a UNIQUE data-sw-banner-id per banner (omitting it falls back to "default" — two banners then share one dismissal). For a cookie/consent banner, enable the Consent Manager (website.consent) — it auto-injects, no component needed. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Entrance: a fade+rise by default, or add a data-aos effect for fade-up/zoom/flip/etc. — both reverse on dismiss. For a rich background, wrap an absolute media layer + an overlay scrim inside it (or nest a data-sw-component="shader-bg"), give the root overflow-hidden, and set a light text colour. Recipes to copy: banner-bar, banner-card, banner-modal.',
+      'Place each banner ONCE — either site-wide in a chrome slot (e.g. the website `bottom` slot) or in a single page body for a page-specific banner. Use a UNIQUE data-sw-banner-id per banner (omitting it falls back to "default" — two banners then share one dismissal). For a cookie/consent banner, enable the Consent Manager (website.consent) — it auto-injects, no component needed. Accessibility: author role="status" (polite) or role="alert" (assertive) on the root so screen readers announce it on reveal; data-position="center" is a non-modal centered card (it does NOT block the page, so no focus trap). Entrance: a fade+rise by default, or add a data-sw-animation effect for fade-up/zoom/flip/etc. — both reverse on dismiss. For a rich background, wrap an absolute media layer + an overlay scrim inside it (or nest a data-sw-component="shader-bg"), give the root overflow-hidden, and set a light text colour. Recipes to copy: banner-bar, banner-card, banner-modal.',
   },
   {
     type: 'Form',

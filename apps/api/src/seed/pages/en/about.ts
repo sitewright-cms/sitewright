@@ -24,7 +24,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     <p class="mt-6 text-lg leading-relaxed text-base-content/70" data-sw-translate="about.intro">Northwind is a boutique studio of designers and engineers who’d rather do a few projects brilliantly than many adequately. No juniors learning on your dime, no layers of account managers — just the people doing the work.</p>
     <p class="mt-4 leading-relaxed text-base-content/70" data-sw-translate="about.ab_p2">We believe a great website is the hardest-working member of your team: fast, clear, and quietly persuasive. That belief shapes every decision we make.</p>
   </div>
-  <div class="relative" data-aos="zoom-in">
+  <div class="relative" data-sw-animation="zoom-in">
     <div class="absolute -inset-6 rotate-2 rounded-[2rem] bg-gradient-to-br from-primary/15 to-secondary/15" aria-hidden="true"></div>
     <div class="nw-zoom relative overflow-hidden rounded-3xl shadow-2xl shadow-neutral/20">
       <img src="${assets.studio}" alt="{{sw-translate "about.ab_img_alt"}}" class="h-full w-full object-cover" loading="lazy" />
@@ -34,18 +34,18 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
 
 <section class="bg-base-200/60">
   <div class="mx-auto max-w-6xl px-6 py-24">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="about.val_title">What we value</h2>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-animation="fade-up" data-sw-translate="about.val_title">What we value</h2>
     <div class="mt-12 grid gap-6 md:grid-cols-3">
-      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('gem', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v1_t">Craft over churn</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v1_b">We sweat the details most teams skip — because details are what people feel.</p></div>
-      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up" data-aos-delay="100"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('zap', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v2_t">Speed is a feature</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v2_b">Every site we ship is static, optimized, and built to load instantly.</p></div>
-      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up" data-aos-delay="200"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('heart-handshake', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v3_t">Plain dealing</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v3_b">Fixed scopes, clear timelines, and honest advice — even when it costs us the upsell.</p></div>
+      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-sw-animation="fade-up"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('gem', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v1_t">Craft over churn</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v1_b">We sweat the details most teams skip — because details are what people feel.</p></div>
+      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-sw-animation="fade-up" data-sw-delay="100"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('zap', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v2_t">Speed is a feature</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v2_b">Every site we ship is static, optimized, and built to load instantly.</p></div>
+      <div class="nw-card rounded-3xl bg-base-100 p-8 shadow-sm hover:shadow-xl hover:shadow-primary/5" data-sw-animation="fade-up" data-sw-delay="200"><span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('heart-handshake', 'h-5 w-5')}</span><h3 class="mt-5 text-lg font-bold tracking-tight" data-sw-translate="about.v3_t">Plain dealing</h3><p class="mt-2 leading-relaxed text-base-content/60" data-sw-translate="about.v3_b">Fixed scopes, clear timelines, and honest advice — even when it costs us the upsell.</p></div>
     </div>
   </div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-24">
-  <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="about.team_title">The people you’ll work with</h2>
-  <div class="mt-12 grid gap-7 sm:grid-cols-2 lg:grid-cols-4" data-aos="fade-up" data-aos-delay="100">
+  <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-animation="fade-up" data-sw-translate="about.team_title">The people you’ll work with</h2>
+  <div class="mt-12 grid gap-7 sm:grid-cols-2 lg:grid-cols-4" data-sw-animation="fade-up" data-sw-delay="100">
     {{#each dataset.team}}
     <div class="nw-card group overflow-hidden rounded-3xl border border-base-200 bg-base-100 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
       <figure class="aspect-square overflow-hidden nw-zoom"><img src="{{sw-url photo}}" alt="{{name}}" class="h-full w-full object-cover" loading="lazy" /></figure>
@@ -60,7 +60,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-28">
-  <div class="flex flex-wrap items-end justify-between gap-3" data-aos="fade-up">
+  <div class="flex flex-wrap items-end justify-between gap-3" data-sw-animation="fade-up">
     <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="about.gal_title">Inside the studio</h2>
     {{sw-control target="page.data.gallery_folder" as="folder" label="Gallery folder"}}
   </div>
@@ -96,7 +96,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
 
   <div class="mt-14 space-y-7">
     {{#each dataset.roles}}
-    <article class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up">
+    <article class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" data-sw-animation="fade-up">
       <div class="flex flex-wrap items-center gap-2">
         <span class="rounded-full bg-primary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-primary">{{dept}}</span>
         {{#if remote}}<span class="rounded-full bg-secondary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-secondary">{{sw-translate "careers.badge_remote"}}</span>{{/if}}

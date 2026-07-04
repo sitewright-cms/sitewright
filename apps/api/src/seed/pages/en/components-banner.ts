@@ -4,7 +4,7 @@ import { icon } from '../../helpers.js';
 // ---------------------------------------------------------------- BANNER showcase (child of Components)
 // The Banner component is a free-content, dismissible announcement (promos / "see our latest product") —
 // NOT the cookie/consent banner (that's the auto-injected Consent Manager). This page is the COMPLETE tour:
-// layouts, all placements, frequencies + action buttons, the reveal delay, data-aos entrance effects, and
+// layouts, all placements, frequencies + action buttons, the reveal delay, data-sw-animation entrance effects, and
 // rich backgrounds (image / gradient / live shader). The teaching copy localizes; the inline demo banners +
 // `<pre><code>` markup stay literal (illustrative). The few LIVE demos are data-position="inline" (in the
 // flow, never overlaying) + data-frequency="always" + a plain "dismiss" (so they return on reload).
@@ -14,7 +14,7 @@ export function pageComponentsBanner(assets: Record<string, string>): Page {
     path: 'banner',
     title: 'Banner',
     description:
-      'A free-content dismissible announcement — promos, alerts, "see our latest product". The runtime reveals it and remembers the dismissal in localStorage per its frequency. Layouts, placements, frequencies, entrance effects (data-aos), and rich backgrounds. Not the consent banner.',
+      'A free-content dismissible announcement — promos, alerts, "see our latest product". The runtime reveals it and remembers the dismissal in localStorage per its frequency. Layouts, placements, frequencies, entrance effects (data-sw-animation), and rich backgrounds. Not the consent banner.',
     parent: 'components',
     order: 5,
     data: {
@@ -32,7 +32,7 @@ export function pageComponentsBanner(assets: Record<string, string>): Page {
         'A plain dismiss respects data-frequency; dismiss-forever always hides for good; remind snoozes for data-remind-days. Give each banner a UNIQUE data-sw-banner-id so dismissals are tracked independently.',
       sec_entrance_t: 'Entrance & motion',
       sec_entrance_d:
-        'By default a banner fades + rises in (and fades out on dismiss). Add a data-aos effect — fade-up, zoom-in, flip-left, … with data-aos-delay/-duration/-easing — and it uses that for the entrance instead; the dismiss reverses whichever ran. data-delay reveals it after N ms or the first scroll.',
+        'By default a banner fades + rises in (and fades out on dismiss). Add a data-sw-animation effect — fade-up, zoom-in, flip-left, … with data-sw-delay/-duration/-easing — and it uses that for the entrance instead; the dismiss reverses whichever ran. data-delay reveals it after N ms or the first scroll.',
       sec_bg_t: 'Rich backgrounds',
       sec_bg_d:
         'Layer an absolute media element + a scrim under the content for a full-bleed photo, a CSS gradient, or a live WebGL shader (a nested data-sw-component="shader-bg"). The three below are live — dismiss one and reload.',
@@ -94,15 +94,15 @@ export function pageComponentsBanner(assets: Record<string, string>): Page {
 
 <section class="mx-auto max-w-6xl px-6 pb-16">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_banner.sec_entrance_t">Entrance &amp; motion</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_banner.sec_entrance_d">Fade+rise by default, or any data-aos effect for the entrance — the dismiss reverses it.</p>
-  {{!-- LIVE inline demo: a data-aos="fade-up" entrance. Plain "dismiss" + always → it returns on reload. --}}
-  <div data-sw-component="banner" data-sw-banner-id="comp-entrance" data-position="inline" data-frequency="always" data-aos="fade-up" data-aos-duration="600" class="mt-6 max-w-xl" hidden>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_banner.sec_entrance_d">Fade+rise by default, or any data-sw-animation effect for the entrance — the dismiss reverses it.</p>
+  {{!-- LIVE inline demo: a data-sw-animation="fade-up" entrance. Plain "dismiss" + always → it returns on reload. --}}
+  <div data-sw-component="banner" data-sw-banner-id="comp-entrance" data-position="inline" data-frequency="always" data-sw-animation="fade-up" data-sw-duration="600" class="mt-6 max-w-xl" hidden>
     <span class="text-lg">&#11088;</span>
-    <p class="grow text-sm">This one animates in with <span class="font-mono">data-aos="fade-up"</span> — dismiss + reload to replay.</p>
+    <p class="grow text-sm">This one animates in with <span class="font-mono">data-sw-animation="fade-up"</span> — dismiss + reload to replay.</p>
     <button type="button" class="btn btn-sm btn-ghost btn-circle" data-sw-part="dismiss" aria-label="Dismiss">${icon('x', 'h-4 w-4')}</button>
   </div>
   <pre class="mt-6 max-w-full overflow-x-auto rounded-2xl bg-base-200 p-4 text-xs leading-relaxed"><code>&lt;div data-sw-component="banner" data-sw-banner-id="promo" data-position="top"
-     data-aos="fade-up" data-aos-duration="600" data-delay="800" hidden&gt; … &lt;/div&gt;</code></pre>
+     data-sw-animation="fade-up" data-sw-duration="600" data-delay="800" hidden&gt; … &lt;/div&gt;</code></pre>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-20">

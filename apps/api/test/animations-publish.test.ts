@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
-// Integration: scroll-reveal animations (the AOS `data-aos` vocabulary). When any
+// Integration: scroll-reveal animations (the `data-sw-animation` vocabulary). When any
 // authored surface — a code-first source, a raw Html embed, a skeleton slot, or a
-// snippet — uses `data-aos`, the publisher ships the first-party runtime: ONE
+// snippet — uses `data-sw-animation`, the publisher ships the first-party runtime: ONE
 // `animations.js` at the site root (linked per page at the right relative depth)
 // plus the inline animation stylesheet. Sites that don't use it get byte-identical
 // output (no extra file, no extra request) — the components.js discipline.
@@ -40,7 +40,7 @@ describe('scroll-reveal animations → publish + preview', () => {
       path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
-      source: '<section><h1 data-aos="fade-up">Hi</h1><p data-aos="fade-up" data-aos-delay="200">There</p></section>',
+      source: '<section><h1 data-sw-animation="fade-up">Hi</h1><p data-sw-animation="fade-up" data-sw-delay="200">There</p></section>',
     };
     const about = {
       id: 'about',
@@ -56,9 +56,9 @@ describe('scroll-reveal animations → publish + preview', () => {
     // The authored attributes survive into the export; the runtime is linked + inlined.
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
-    expect(index.body).toContain('data-aos="fade-up"');
+    expect(index.body).toContain('data-sw-animation="fade-up"');
     expect(index.body).toContain('<script defer src="animations.js?v=');
-    expect(index.body).toContain('[data-aos].aos-init'); // inline animation stylesheet
+    expect(index.body).toContain('[data-sw-animation].sw-animation-init'); // inline animation stylesheet
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
 
     // Site-wide asset: a nested page on the same site links it rebased to its depth.
@@ -70,16 +70,16 @@ describe('scroll-reveal animations → publish + preview', () => {
     const js = await client.get(`/sites/${slug}/animations.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('IntersectionObserver');
-    expect(js.body).toContain('aos-animate');
+    expect(js.body).toContain('sw-animation-active');
   });
 
-  it('ships the runtime when only a skeleton slot uses data-aos', async () => {
+  it('ships the runtime when only a skeleton slot uses data-sw-animation', async () => {
     const proj = client.project(projectId);
     expect(
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { footer: '<div data-aos="fade">© {{ company.name }}</div>' },
+          website: { footer: '<div data-sw-animation="fade">© {{ company.name }}</div>' },
           settings: {},
         })
       ).statusCode,
@@ -96,7 +96,7 @@ describe('scroll-reveal animations → publish + preview', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     // The footer slot's neutral <div> is wrapped by the skeleton's own <footer id="footer"> landmark.
-    expect(index.body).toContain('<footer id="footer"><div data-aos="fade">© Acme</div></footer>');
+    expect(index.body).toContain('<footer id="footer"><div data-sw-animation="fade">© Acme</div></footer>');
     expect(index.body).toContain('<script defer src="animations.js?v=');
   });
 
@@ -114,7 +114,7 @@ describe('scroll-reveal animations → publish + preview', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('animations.js');
-    expect(index.body).not.toContain('aos-init');
+    expect(index.body).not.toContain('sw-animation-init');
     expect((await client.get(`/sites/${slug}/animations.js`)).statusCode).toBe(404);
   });
 

@@ -1,5 +1,5 @@
 // Re-express a source site's scroll-reveal motion (WOW.js / animate.css / AOS) as the platform's own
-// data-aos runtime. The original animation is JS-driven and gets stripped on import; the capture records
+// data-sw-animation runtime. The original animation is JS-driven and gets stripped on import; the capture records
 // the COMPUTED animation (keyframe name + delay + duration), and this maps it to a platform effect +
 // timing. Pure + unit-testable. Returns null for non-reveal keyframes (continuous spin/pulse/etc.).
 
@@ -10,8 +10,8 @@ export interface AosAttrs {
 }
 
 /**
- * Map an animate.css/WOW keyframe (or class) name → a platform data-aos effect. Directions follow
- * animate.css semantics (fadeInLeft ENTERS from the left → AOS fade-right). Null = not a scroll reveal.
+ * Map an animate.css/WOW keyframe (or class) name → a platform data-sw-animation effect. Directions follow
+ * animate.css semantics (fadeInLeft ENTERS from the left → fade-right). Null = not a scroll reveal.
  */
 export function mapAosEffect(c: string | null | undefined): string | null {
   if (!c) return null;
@@ -37,7 +37,7 @@ export function ms(v: string | undefined): number {
   return Math.max(0, Math.min(5000, Math.round(n)));
 }
 
-/** Build the data-aos attribute set from a captured {name,delay,dur}, or null if it isn't a scroll reveal. */
+/** Build the data-sw-animation attribute set from a captured {name,delay,dur}, or null if it isn't a scroll reveal. */
 export function aosAttrs(a: { name: string; delay: string; dur: string } | null | undefined): AosAttrs | null {
   if (!a) return null;
   const effect = mapAosEffect(a.name);

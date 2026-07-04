@@ -29,7 +29,7 @@ export function pageFaq(): Page {
     {{/each}}
   </div>
 
-  <div class="relative mt-14 overflow-hidden rounded-3xl bg-neutral p-10 text-center text-neutral-content" data-aos="fade-up">
+  <div class="relative mt-14 overflow-hidden rounded-3xl bg-neutral p-10 text-center text-neutral-content" data-sw-animation="fade-up">
     <div class="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-secondary/20 blur-3xl" aria-hidden="true"></div>
     <p class="relative text-xl font-bold tracking-tight" data-sw-translate="faq.faq_cta_t">Still curious?</p>
     <a class="btn btn-primary relative mt-5" href="/contact" data-sw-href="href_contact"><span data-sw-translate="faq.faq_cta">Ask us anything</span> ${icon('arrow-right', 'h-4 w-4')}</a>

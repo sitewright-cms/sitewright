@@ -20,7 +20,7 @@
 //   data-sw-parallax-scene                  position:relative; overflow:hidden (clips)
 //   data-sw-parallax-layer                  an absolutely-positioned, independently-animated layer
 //
-// Authored as plain attributes in code-first sources, snippets, or raw Html blocks — like data-aos
+// Authored as plain attributes in code-first sources, snippets, or raw Html blocks — like data-sw-animation
 // (see animations.ts). The vocabulary every HTML template / LLM understands; NO third-party library
 // is bundled. Tenants supply DATA only (values parsed / clamped / validated below), never JavaScript.
 //

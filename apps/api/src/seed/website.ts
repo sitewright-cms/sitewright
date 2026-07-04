@@ -70,7 +70,7 @@ export const EXAMPLE_WEBSITE = {
   // catalog keys, and it gates the third-party integrations.
   // RAW slot (not validated, not escaped): CSS-only motion + the demo's design-system utilities,
   // so the site looks alive in the JS-blocked preview AND on export. Scroll-reveal sections use
-  // the first-party data-aos runtime (PE: fully visible without JS); these utilities cover the
+  // the first-party data-sw-animation runtime (PE: fully visible without JS); these utilities cover the
   // rest — the dark aurora field, the blueprint grid texture, card lift/zoom, the gradient ring,
   // and the nw-rise hero intro.
   criticalCss: `:root{scroll-behavior:smooth}

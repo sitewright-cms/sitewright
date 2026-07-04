@@ -1,3 +1,4 @@
+export * from './timing.js';
 export * from './animations.js';
 export * from './marquee.js';
 export * from './lazyload.js';

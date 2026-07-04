@@ -254,7 +254,7 @@ export async function captureScreenshots(
         else await route.abort('blockedbyclient');
       });
       await page.setContent(doc, { waitUntil: 'load', timeout });
-      // Scroll through the page to trigger scroll-reveal (AOS) + lazy-load runtimes, then return to top.
+      // Scroll through the page to trigger scroll-reveal + lazy-load runtimes, then return to top.
       // (Runs in the browser; the API tsconfig has no DOM lib, so reach the globals via globalThis.)
       await page
         .evaluate(async () => {

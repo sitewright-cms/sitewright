@@ -1,4 +1,4 @@
-// AOS scroll-reveal effect names. Inlined (not imported from @sitewright/blocks) so the
+// Entrance / scroll-reveal effect names (data-sw-animation). Inlined (not imported from @sitewright/blocks) so the
 // main editor bundle doesn't pull the blocks barrel — which would drag the full Lucide
 // icon set in too. `catalog-icons.test.ts` asserts this stays in sync with the source.
 const ANIMATION_EFFECTS: readonly string[] = [
@@ -8,12 +8,12 @@ const ANIMATION_EFFECTS: readonly string[] = [
 ];
 
 // The Library catalog: a static, searchable reference of everything the platform
-// gives an author — icons, the AOS / lazyload / ripple vocabularies, and a curated
+// gives an author — icons, the animation / lazyload / ripple vocabularies, and a curated
 // set of DaisyUI components. Each entry carries a copy-paste `example` snippet.
 // The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
 // LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
-export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'parallax' | 'scrollspy' | 'lazyload' | 'ripple' | 'daisyui';
+export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'animation' | 'parallax' | 'scrollspy' | 'lazyload' | 'ripple' | 'daisyui';
 
 /**
  * One documented VARIANT of a component (e.g. "Primary", "Outline", "Large") — a labeled,
@@ -65,12 +65,12 @@ export interface LibrarySection {
   preview?: boolean;
 }
 
-const AOS_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
-  id: `aos-${effect}`,
+const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
+  id: `anim-${effect}`,
   name: effect,
-  keywords: 'aos animate scroll reveal animation',
-  description: `Scroll-reveal “${effect}”. Add optional data-aos-delay (ms), data-aos-duration, data-aos-once="false".`,
-  example: `<div data-aos="${effect}" data-aos-delay="0">…</div>`,
+  keywords: 'animate scroll reveal animation entrance',
+  description: `Scroll-reveal “${effect}”. Add optional data-sw-delay (ms), data-sw-duration, data-sw-once="false".`,
+  example: `<div data-sw-animation="${effect}" data-sw-delay="0">…</div>`,
 }));
 
 const LAZYLOAD_ITEMS: LibraryItem[] = [
@@ -299,7 +299,7 @@ export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{sw-icon "brand:slug"}}.', items: [], lazy: 'brand' },
   { category: 'flags', label: 'Country flags', blurb: 'Full-color country flags. Insert with {{sw-flag "de"}} (rectangular) or {{sw-flag "de-circle"}} (round).', items: [], lazy: 'flags' },
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
-  { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
+  { category: 'animation', label: 'Animation (Entrance + Scroll-Reveal)', blurb: 'Animate elements as they scroll into view via data-sw-animation.', items: ANIMATION_ITEMS },
   { category: 'parallax', label: 'Parallax (scroll-linked)', blurb: 'Depth, fade, scale & blur tied to scroll via data-sw-parallax* — or compose one in the builder above.', items: PARALLAX_ITEMS },
   { category: 'scrollspy', label: 'ScrollSpy (section in view)', blurb: 'Highlight the nav link whose in-page section is scrolled into view via data-sw-scrollspy (or the site-wide toggle in Website settings).', items: SCROLLSPY_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },

@@ -36,7 +36,7 @@ function previewHtml(example: string): string {
 /**
  * The project-level Library reference: a LEFT-edge {@link SidePanel} that expands on hover. Each
  * section title is a button that opens a searchable gallery modal — Icons (lazy-loaded, the whole
- * pack), AOS, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
+ * pack), Animation, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
  * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
  */
 export function LibraryPanel() {

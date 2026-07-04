@@ -11,7 +11,7 @@ describe('LibraryPanel', () => {
   it('expands on hover and lists the section buttons', () => {
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    for (const name of [/Icons/, /AOS/, /Lazy-load/, /Ripple effect/, /DaisyUI components/]) {
+    for (const name of [/Icons/, /Animation/, /Lazy-load/, /Ripple effect/, /DaisyUI components/]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
   });

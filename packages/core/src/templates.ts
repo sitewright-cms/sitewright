@@ -20,16 +20,16 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     source: `<div class="hero min-h-[60vh] bg-base-200">
   <div class="hero-content text-center">
     <div class="max-w-xl">
-      <h1 class="text-5xl font-bold" data-aos="fade-up" data-sw-text="headline">A clear, bold promise</h1>
-      <p class="py-6 text-base-content/70" data-aos="fade-up" data-aos-delay="150" data-sw-text="subline">One supporting sentence that earns the click.</p>
+      <h1 class="text-5xl font-bold" data-sw-animation="fade-up" data-sw-text="headline">A clear, bold promise</h1>
+      <p class="py-6 text-base-content/70" data-sw-animation="fade-up" data-sw-delay="150" data-sw-text="subline">One supporting sentence that earns the click.</p>
       <a class="btn btn-primary" href="{{sw-url "/contact"}}" data-sw-text="cta">Get in touch</a>
     </div>
   </div>
 </div>
 <section class="mx-auto grid max-w-5xl gap-6 px-6 py-16 md:grid-cols-3">
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up"><div class="card-body"><h2 class="card-title" data-sw-text="f1_title">First benefit</h2><p data-sw-text="f1_text">Why it matters to the visitor.</p></div></div>
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="100"><div class="card-body"><h2 class="card-title" data-sw-text="f2_title">Second benefit</h2><p data-sw-text="f2_text">Why it matters to the visitor.</p></div></div>
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="200"><div class="card-body"><h2 class="card-title" data-sw-text="f3_title">Third benefit</h2><p data-sw-text="f3_text">Why it matters to the visitor.</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-sw-animation="fade-up"><div class="card-body"><h2 class="card-title" data-sw-text="f1_title">First benefit</h2><p data-sw-text="f1_text">Why it matters to the visitor.</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-sw-animation="fade-up" data-sw-delay="100"><div class="card-body"><h2 class="card-title" data-sw-text="f2_title">Second benefit</h2><p data-sw-text="f2_text">Why it matters to the visitor.</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-sw-animation="fade-up" data-sw-delay="200"><div class="card-body"><h2 class="card-title" data-sw-text="f3_title">Third benefit</h2><p data-sw-text="f3_text">Why it matters to the visitor.</p></div></div>
 </section>`,
   },
   {

@@ -113,7 +113,7 @@ import {
 const UTILITY_STYLESHEET = 'styles.css';
 /** The platform component-behavior bundle, written at the site root and linked per page. */
 const COMPONENT_SCRIPT = 'components.js';
-/** The scroll-reveal (data-aos) runtime, written at the site root and linked per page. */
+/** The scroll-reveal (data-sw-animation) runtime, written at the site root and linked per page. */
 const ANIMATION_SCRIPT = 'animations.js';
 /** The parallax / scroll-linked property runtime (translate/opacity/scale/blur), linked per page. */
 const PARALLAX_SCRIPT = 'parallax.js';

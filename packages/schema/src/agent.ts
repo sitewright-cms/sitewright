@@ -214,13 +214,13 @@ THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are 
 
 1) HERO (split — the flagship default):
 <section class="py-20 sm:py-28"><div class="sw-container grid lg:grid-cols-2 gap-12 items-center">
-  <div data-aos="fade-up">
+  <div data-sw-animation="fade-up">
     <p class="text-sm font-semibold uppercase tracking-wide text-primary">{{ company.name }}</p>
     <h1 class="mt-3 text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight">Headline that states the value</h1>
     <p class="mt-5 text-lg text-base-content/70">One sentence that earns the next scroll.</p>
     <div class="mt-8 flex flex-wrap gap-3"><a href="#contact" class="btn btn-primary">Primary action</a><a href="#work" class="btn btn-ghost">Secondary</a></div>
   </div>
-  <div data-aos="fade-up" data-aos-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200"><img src="..." alt="..." class="h-full w-full object-cover"></div>
+  <div data-sw-animation="fade-up" data-sw-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200"><img src="..." alt="..." class="h-full w-full object-cover"></div>
 </div></section>
 
 2) PROOF STRIP: a muted row of client logos or 3 trust stats directly under the hero.
@@ -241,7 +241,7 @@ THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are 
 
 IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty boxes/placeholder greys read as unfinished. Keep a consistent aspect per group (aspect-[4/3], aspect-video, aspect-square) + object-cover + rounded-2xl; galleries -> data-sw-component="lightbox". Never distort an image.
 
-MOTION (restraint): exactly one data-aos="fade-up" focus per section; stagger a grid's children with increasing data-aos-delay (0/100/200). Animating everything cheapens it.
+MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200). Animating everything cheapens it.
 
 CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? every section's content wrapped in .sw-container (one aligned width throughout)? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
 `,
@@ -297,7 +297,7 @@ Quick rules vs the similar-looking DaisyUI classes:
   "remind" (snooze data-remind-days). data-frequency="once|session|days:N|always", data-position
   (bottom/top/corners/center/inline), data-delay (ms or "scroll"); give each a UNIQUE
   data-sw-banner-id. Place ONCE per banner (a chrome slot OR a single page body). ENTRANCE: a fade+rise
-  by default, or add data-aos="fade-up|zoom-in|flip-left|…" (+ data-aos-delay/-duration/-easing) — the
+  by default, or add data-sw-animation="fade-up|zoom-in|flip-left|…" (+ data-sw-delay/-duration/-easing) — the
   dismiss reverses it. RICH BACKGROUND (photo / gradient / nested data-sw-component="shader-bg"): an
   inline banner is position:static, so put the absolute media + scrim in an INNER relative wrapper (else
   they escape the box), give the root overflow-hidden + a light text colour. Recipes to copy:
@@ -369,15 +369,16 @@ Images"; loose singletons like the logo/icon → "Main".
     title: "Effects, animations & ripple",
     summary: "nav/button/preloader effect schemes (+ custom code), scroll animations, ripple, WebGL animated backgrounds (shader-bg)",
     body: `
-ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
-data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
-data-aos-once="false" to replay on every re-entry, data-aos-easing="ease-out"
+ANIMATIONS (entrance / scroll-reveal): add data-sw-animation directly on elements —
+data-sw-animation="fade-up" plus optional data-sw-delay="200", data-sw-duration="600" (ms,
+default 400, max 20000), data-sw-once="false" to replay on every re-entry, data-sw-easing="ease-out"
 (linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
 zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
-detects data-aos and ships its own tiny runtime automatically — do NOT add the aos
-package, CDN links, or any script (they'd be rejected anyway). Content stays visible
-without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
-data-aos-delay per item (e.g. 0/100/200).
+detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any
+animation library, CDN links, or scripts (they'd be rejected anyway). Content stays visible
+without JS and motion respects prefers-reduced-motion. The data-sw-duration/-delay/-easing/-once
+timing attributes are SHARED with the SVG animation engine (data-sw-svg). Stagger lists by
+increasing data-sw-delay per item (e.g. 0/100/200).
 
 PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
 any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
@@ -1054,7 +1055,7 @@ sample the original's real values, don't approximate to the nearest token):
   \`brand:x-twitter\` / the classic bird, \`brand:whatsapp\`, …) inside the original's solid circle badge if it
   has one; for a filled UI glyph pick the closest filled treatment — don't ship thin outline icons where the
   original is solid+filled.
-- ENTRANCE / MOTION animations: the import strips the foreign JS (AOS etc.), so fade/slide-in-on-scroll and
+- ENTRANCE / MOTION animations: the import strips the foreign JS (foreign animation libraries etc.), so fade/slide-in-on-scroll and
   entrance animations are LOST. Re-add them with the platform animation directives (get_guide("effects") /
   data-sw-animation) where the original animates — e.g. the nav's fade-in-down, section reveals.
 - TOOLTIPS for icon affordances: where the original reveals a label/hint on HOVER (an amenity/feature icon

@@ -145,55 +145,55 @@ describe('Banner runtime behavior (jsdom)', () => {
     expect(root().hasAttribute('hidden')).toBe(false);
   });
 
-  it('a plain banner uses the built-in reveal flag (next frame), not the AOS classes', async () => {
+  it('a plain banner uses the built-in reveal flag (next frame), not the animation classes', async () => {
     mountAndRun(banner('data-frequency="once"'));
     await new Promise((r) => setTimeout(r, 70)); // let the reveal rAF fire
     expect(root().hasAttribute('data-sw-banner-shown')).toBe(true);
-    expect(root().classList.contains('aos-init')).toBe(false);
+    expect(root().classList.contains('sw-animation-init')).toBe(false);
   });
 
-  it('drives the AOS entrance for a data-aos banner (aos-init now → aos-animate next frame; timing inline)', async () => {
-    mountAndRun(banner('data-frequency="once" data-aos="fade-up" data-aos-duration="800" data-aos-delay="120"'));
-    // aos-init applied SYNCHRONOUSLY (the hidden state) BEFORE un-hiding → no flash; timing is inline.
-    expect(root().classList.contains('aos-init')).toBe(true);
+  it('drives the animation entrance for a data-sw-animation banner (sw-animation-init now → sw-animation-active next frame; timing inline)', async () => {
+    mountAndRun(banner('data-frequency="once" data-sw-animation="fade-up" data-sw-duration="800" data-sw-delay="120"'));
+    // sw-animation-init applied SYNCHRONOUSLY (the hidden state) BEFORE un-hiding → no flash; timing is inline.
+    expect(root().classList.contains('sw-animation-init')).toBe(true);
     expect(root().hasAttribute('hidden')).toBe(false);
     expect(root().style.transitionDuration).toBe('800ms');
     expect(root().style.transitionDelay).toBe('120ms');
     await new Promise((r) => setTimeout(r, 70));
-    expect(root().classList.contains('aos-animate')).toBe(true); // entrance triggered
-    expect(root().hasAttribute('data-sw-banner-shown')).toBe(false); // the AOS path skips the built-in flag
+    expect(root().classList.contains('sw-animation-active')).toBe(true); // entrance triggered
+    expect(root().hasAttribute('data-sw-banner-shown')).toBe(false); // the animation path skips the built-in flag
   });
 
-  it('clamps a hostile data-aos-easing to nothing (allowlist) and ceilings an out-of-range duration', () => {
-    mountAndRun(banner('data-frequency="once" data-aos="fade-up" data-aos-easing="constructor" data-aos-duration="999999"'));
+  it('clamps a hostile data-sw-easing to nothing (allowlist) and ceilings an out-of-range duration', () => {
+    mountAndRun(banner('data-frequency="once" data-sw-animation="fade-up" data-sw-easing="constructor" data-sw-duration="999999"'));
     expect(root().style.transitionTimingFunction).toBe(''); // 'constructor' is not in the allowlist → unset
     expect(root().style.transitionDuration).toBe('5000ms'); // clamped to the [0,5000] ceiling
   });
 
-  it('reverses the AOS entrance on dismiss (drops aos-animate) and still records the dismissal', async () => {
-    mountAndRun(banner('data-frequency="once" data-aos="zoom-in"'));
+  it('reverses the animation entrance on dismiss (drops sw-animation-active) and still records the dismissal', async () => {
+    mountAndRun(banner('data-frequency="once" data-sw-animation="zoom-in"'));
     await new Promise((r) => setTimeout(r, 70));
-    expect(root().classList.contains('aos-animate')).toBe(true);
+    expect(root().classList.contains('sw-animation-active')).toBe(true);
     click('dismiss');
-    expect(root().classList.contains('aos-animate')).toBe(false); // entrance reversed
+    expect(root().classList.contains('sw-animation-active')).toBe(false); // entrance reversed
     expect(JSON.parse(localStorage.getItem('sw-banner:promo') as string).d).toBeGreaterThan(0);
   });
 
-  it('clears the entrance data-aos-delay on dismiss so the exit reversal starts immediately (no snap)', async () => {
-    mountAndRun(banner('data-frequency="once" data-aos="fade-up" data-aos-delay="300" data-aos-duration="400"'));
+  it('clears the entrance data-sw-delay on dismiss so the exit reversal starts immediately (no snap)', async () => {
+    mountAndRun(banner('data-frequency="once" data-sw-animation="fade-up" data-sw-delay="300" data-sw-duration="400"'));
     await new Promise((r) => setTimeout(r, 70));
     expect(root().style.transitionDelay).toBe('300ms'); // entrance staggered by the delay
     click('dismiss');
     // The sticky inline delay is reset to 0 so the exit fade is NOT held off (and then hidden after the duration).
     expect(root().style.transitionDelay).toBe('0ms');
-    expect(root().classList.contains('aos-animate')).toBe(false);
+    expect(root().classList.contains('sw-animation-active')).toBe(false);
   });
 
-  it('treats an EMPTY data-aos="" as a plain banner (strips it so the built-in CSS reveal applies)', async () => {
-    mountAndRun(banner('data-frequency="once" data-aos=""'));
-    expect(root().hasAttribute('data-aos')).toBe(false); // normalized away in enhance()
+  it('treats an EMPTY data-sw-animation="" as a plain banner (strips it so the built-in CSS reveal applies)', async () => {
+    mountAndRun(banner('data-frequency="once" data-sw-animation=""'));
+    expect(root().hasAttribute('data-sw-animation')).toBe(false); // normalized away in enhance()
     await new Promise((r) => setTimeout(r, 70));
     expect(root().hasAttribute('data-sw-banner-shown')).toBe(true); // built-in reveal path
-    expect(root().classList.contains('aos-init')).toBe(false);
+    expect(root().classList.contains('sw-animation-init')).toBe(false);
   });
 });

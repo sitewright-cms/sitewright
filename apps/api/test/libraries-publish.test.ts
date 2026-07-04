@@ -92,7 +92,7 @@ describe('lazyload + ripple runtimes → publish', () => {
 
   it('ships all three runtimes together when a page uses all markers', async () => {
     const html = await publishWith(
-      '<section data-bg="/media/bg.jpg"><h1 data-aos="fade-up">Hi</h1>' +
+      '<section data-bg="/media/bg.jpg"><h1 data-sw-animation="fade-up">Hi</h1>' +
         '<a class="btn waves-effect waves-light">Act</a></section>',
     );
     expect(html).toContain('<script defer src="animations.js?v=');

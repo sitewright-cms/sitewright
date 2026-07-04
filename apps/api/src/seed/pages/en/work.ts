@@ -26,7 +26,7 @@ export function pageWork(): Page {
   <div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{sw-translate "work.aria_caption"}}">
     <div data-sw-part="grid" class="!grid-cols-1 gap-10 md:!grid-cols-2">
       {{#each dataset.projects}}
-      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom" data-aos="fade-up">
+      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom" data-sw-animation="fade-up">
         <figure class="relative aspect-[16/10] overflow-hidden">
           <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] h-full w-full object-cover" loading="lazy" />
           <span class="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" aria-hidden="true"></span>

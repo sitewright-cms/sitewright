@@ -342,7 +342,7 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   if (n.style) at.push(`style="${n.style}"`);
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
-  if (n.aos) { at.push(`data-aos="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-aos-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-aos-duration="${n.aos.dur}"`); }
+  if (n.aos) { at.push(`data-sw-animation="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-sw-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-sw-duration="${n.aos.dur}"`); }
   if (tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push(`loading="${n.belowFold ? 'lazy' : 'eager'}"`); }
   // MODAL trigger → reference the dialog: an <a> uses href="#id"; any other element uses [data-sw-modal].
   else if (n.modalTarget && tag === 'a') at.push(`href="#${escAttr(n.modalTarget)}"`);

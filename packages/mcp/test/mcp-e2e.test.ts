@@ -111,8 +111,8 @@ suite('@sitewright/mcp bridge — end to end', () => {
       '<div class="hero min-h-[50vh] bg-base-200">',
       '  <div class="hero-content text-center">',
       '    <div class="max-w-xl">',
-      '      <h1 class="text-4xl font-bold" data-aos="fade-up" data-sw-text="headline">Reliable plumbing in Windhoek</h1>',
-      '      <p class="py-4 text-base-content/70" data-aos="fade-up" data-aos-delay="150" data-sw-text="sub">24/7 emergency plumbing, leak repairs, and installations.</p>',
+      '      <h1 class="text-4xl font-bold" data-sw-animation="fade-up" data-sw-text="headline">Reliable plumbing in Windhoek</h1>',
+      '      <p class="py-4 text-base-content/70" data-sw-animation="fade-up" data-sw-delay="150" data-sw-text="sub">24/7 emergency plumbing, leak repairs, and installations.</p>',
       '      <a class="btn btn-primary" href="/contact" data-sw-text="cta">Book a plumber</a>',
       '    </div>',
       '  </div>',
@@ -141,9 +141,9 @@ suite('@sitewright/mcp bridge — end to end', () => {
     expect(liveCss).toContain('#0a6cba'); // brand color present…
     expect(liveCss).not.toContain('oklch(45% 0.24 277.023)'); // …and DaisyUI's default primary is gone (robust to color serialization)
 
-    // 6. The agent's data-aos attributes (per the server INSTRUCTIONS) shipped the
+    // 6. The agent's data-sw-animation attributes (per the server INSTRUCTIONS) shipped the
     // first-party scroll-reveal runtime with the live site — no library, no setup.
-    expect(liveHtml).toContain('data-aos="fade-up"');
+    expect(liveHtml).toContain('data-sw-animation="fade-up"');
     expect(liveHtml).toContain('<script defer src="animations.js"></script>');
     const liveAnim = await (await fetch(`${BASE_URL}/sites/${slug}/animations.js`)).text();
     expect(liveAnim).toContain('IntersectionObserver');

@@ -55,6 +55,10 @@ export const SVG_ANIM_EFFECTS: readonly string[] = [
   'flip-x',
   'flip-y',
   'blur',
+  // Scale from a named origin (Enliven'em "scale*"): grows from that anchor.
+  'scale-c', 'scale-t', 'scale-b', 'scale-l', 'scale-r', 'scale-tl', 'scale-tr', 'scale-bl', 'scale-br',
+  // Expand along one axis from 0 (Enliven'em "expand*").
+  'expand-x', 'expand-y', 'expand-t', 'expand-b', 'expand-l', 'expand-r',
   // Motion path (CSS offset-path): travels along data-sw-svg-path, optionally rotating to face it.
   'along-path',
   // Mask / clip reveals (CSS clip-path): a wipe or iris that uncovers the element in place.
@@ -104,6 +108,16 @@ const SVG_ANIM_CORE = `
   SVG_TF['fade-left']='translate(18%,0)';SVG_TF['fade-right']='translate(-18%,0)';
   SVG_TF['zoom-in']='scale(0.6)';SVG_TF['zoom-out']='scale(1.18)';
   SVG_TF['flip-x']='perspective(600px) rotateX(90deg)';SVG_TF['flip-y']='perspective(600px) rotateY(90deg)';
+  // Scale from a named origin (all scale(0.6)); value = transform-origin.
+  var SVG_SCALE=Object.create(null);
+  SVG_SCALE['scale-c']='center';SVG_SCALE['scale-t']='center top';SVG_SCALE['scale-b']='center bottom';
+  SVG_SCALE['scale-l']='left center';SVG_SCALE['scale-r']='right center';
+  SVG_SCALE['scale-tl']='left top';SVG_SCALE['scale-tr']='right top';SVG_SCALE['scale-bl']='left bottom';SVG_SCALE['scale-br']='right bottom';
+  // Expand along one axis from 0; value = [from-transform, transform-origin].
+  var SVG_EXPAND=Object.create(null);
+  SVG_EXPAND['expand-x']=['scaleX(0)','center'];SVG_EXPAND['expand-y']=['scaleY(0)','center'];
+  SVG_EXPAND['expand-l']=['scaleX(0)','left center'];SVG_EXPAND['expand-r']=['scaleX(0)','right center'];
+  SVG_EXPAND['expand-t']=['scaleY(0)','center top'];SVG_EXPAND['expand-b']=['scaleY(0)','center bottom'];
   // Clip-path reveals: [from (clipped) → to (full)]. inset order is top right bottom left.
   var SVG_REVEAL=Object.create(null);
   SVG_REVEAL['reveal-right']=['inset(0 100% 0 0)','inset(0px)'];
@@ -111,65 +125,74 @@ const SVG_ANIM_CORE = `
   SVG_REVEAL['reveal-down']=['inset(0 0 100% 0)','inset(0px)'];
   SVG_REVEAL['reveal-up']=['inset(100% 0 0 0)','inset(0px)'];
   SVG_REVEAL['reveal-iris']=['circle(0%)','circle(75%)'];
-  // Build the [from,to] WAAPI keyframes for one member. Draw is special (stroke dash); everything else
-  // interpolates opacity (+ optional transform / blur) to the element's NATURAL state.
+  // DRAW setup — hide the fill + apply an outline stroke for a FILLED shape (draw-then-fill: the fill is
+  // revealed only AFTER the outline finishes drawing), then return the stroke-dash keyframes. A pure
+  // line-art shape (no fill) just draws its own stroke.
+  function svgDraw(m){
+    var len=m.len;if(!(len>0))return [{opacity:0},{opacity:1}]; // non-strokable → graceful fade
+    m.el.style.strokeDasharray=len+'px';
+    var cs=window.getComputedStyle(m.el);
+    var noFill=(!cs.fill||cs.fill==='none'||cs.fill==='transparent'||cs.fill.indexOf('rgba(0, 0, 0, 0)')>-1);
+    if(m.fill||!noFill){
+      m.drawFill=true;m.el.style.fillOpacity='0';
+      var hasStroke=(cs.stroke&&cs.stroke!=='none'&&cs.stroke.indexOf('rgba(0, 0, 0, 0)')<0);
+      var col=m.el.getAttribute('data-sw-svg-draw-color');
+      if(col&&/^[#a-zA-Z0-9(). ,%-]{1,40}$/.test(col)){m.el.style.stroke=col;m.tempStroke=!hasStroke;}
+      else if(!hasStroke){m.el.style.stroke='currentColor';m.tempStroke=true;}
+      var w=m.el.getAttribute('data-sw-svg-draw-width');
+      if(w&&/^[0-9.]{1,6}$/.test(w))m.el.style.strokeWidth=w;else if(!hasStroke)m.el.style.strokeWidth='2';
+    }
+    var a=(m.dir==='reverse'?-len:len);
+    return [{strokeDashoffset:a+'px'},{strokeDashoffset:'0px'}];
+  }
+  // Build the entrance [from,to] WAAPI keyframes for one member (in-direction). svgPlay reverses them for
+  // an OUT (exit) direction. Effects set any needed inline base (dash / offset-path / transform-origin).
   function svgFrames(m){
-    if(m.effect==='draw'){
-      if(m.len>0){
-        m.el.style.strokeDasharray=m.len+'px';
-        var a=(m.dir==='reverse'?-m.len:m.len);
-        return [{strokeDashoffset:a+'px'},{strokeDashoffset:'0px'}];
-      }
-      return [{opacity:0},{opacity:1}]; // non-strokable → graceful fade
-    }
-    if(m.effect.indexOf('reveal-')===0){
-      var rv=SVG_REVEAL[m.effect];
-      // Reveal in-place via clip-path (opacity stays 1 — the clip does the work).
-      if(rv)return [{clipPath:rv[0]},{clipPath:rv[1]}];
-      return [{opacity:0},{opacity:1}];
-    }
-    if(m.effect==='along-path'){
-      if(m.path){m.el.style.offsetPath="path('"+m.path+"')";m.el.style.offsetRotate=(m.rotate==='0')?'0deg':'auto';
-        return [{offsetDistance:'0%'},{offsetDistance:'100%'}];}
-      return [{opacity:0},{opacity:1}]; // no path → graceful fade
-    }
+    if(m.effect==='draw')return svgDraw(m);
+    if(m.effect.indexOf('reveal-')===0){var rv=SVG_REVEAL[m.effect];if(rv)return [{clipPath:rv[0]},{clipPath:rv[1]}];return [{opacity:0},{opacity:1}];}
+    if(m.effect==='along-path'){if(m.path){m.el.style.offsetPath="path('"+m.path+"')";m.el.style.offsetRotate=(m.rotate==='0')?'0deg':'auto';return [{offsetDistance:'0%'},{offsetDistance:'100%'}];}return [{opacity:0},{opacity:1}];}
+    if(SVG_SCALE[m.effect]!==undefined){m.el.style.transformOrigin=SVG_SCALE[m.effect];return [{opacity:0,transform:'scale(0.6)'},{opacity:1,transform:'none'}];}
+    if(SVG_EXPAND[m.effect]!==undefined){var ex=SVG_EXPAND[m.effect];m.el.style.transformOrigin=ex[1];return [{opacity:0,transform:ex[0]},{opacity:1,transform:'none'}];}
     var f={opacity:0},t={opacity:1};
     if(m.effect==='blur'){f.filter='blur(6px)';t.filter='blur(0px)';}
     var tf=SVG_TF[m.effect];
     if(tf){f.transform=tf;
-      // Flips interpolate to their OWN identity (perspective + rotate 0) so WAAPI tweens the same
-      // transform structure; translate/scale tween cleanly to the 'none' identity.
+      // Flips interpolate to their OWN identity (perspective + rotate 0); translate/scale tween to 'none'.
       t.transform=(m.effect==='flip-x')?'perspective(600px) rotateX(0deg)':(m.effect==='flip-y')?'perspective(600px) rotateY(0deg)':'none';}
     return [f,t];
   }
-  // Clear any inline styles WAAPI left behind so the element rests at its authored natural state.
-  function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.fillOpacity='';el.style.clipPath='';el.style.offsetPath='';el.style.offsetDistance='';el.style.offsetRotate='';}
+  // Clear any inline styles WAAPI/effects left behind so the element rests at its authored natural state.
+  function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.strokeOpacity='';el.style.fillOpacity='';el.style.clipPath='';el.style.offsetPath='';el.style.offsetDistance='';el.style.offsetRotate='';}
+  // draw-then-fill finish: fade the fill in; fade + remove a TEMP outline stroke (one we added).
+  function svgFillReveal(m){
+    m.el.style.fillOpacity='0';var dur2=Math.max(200,m.dur*0.4);
+    try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:dur2,fill:'both'});m.fillAnim=fa;
+      fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';m.el.style.strokeDasharray='';m.el.style.strokeDashoffset='';if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}};}
+    catch(e){m.el.style.fillOpacity='';}
+    if(m.tempStroke){try{m.el.animate([{strokeOpacity:1},{strokeOpacity:0}],{duration:dur2,fill:'both'});}catch(e){}}
+  }
   function svgPlay(m){
     if(m.playing)return;m.playing=true;
     if(m.origin)m.el.style.transformOrigin=m.origin;
     m.el.classList.remove('sw-svg-init');
     var frames;try{frames=svgFrames(m);}catch(e){svgClear(m.el);return;}
+    if(m.io==='out')frames=[frames[1],frames[0]]; // exit: play natural → hidden
     var opts={duration:m.dur,delay:m.delay,fill:'both'};
     try{opts.easing=swEase(m.el);}catch(e){}
-    var anim;
-    try{anim=m.el.animate(frames,opts);}catch(e){svgClear(m.el);return;}
+    var anim;try{anim=m.el.animate(frames,opts);}catch(e){svgClear(m.el);return;}
     m.anim=anim;
     anim.onfinish=function(){
-      // along-path rests at the path END: keep the WAAPI fill:'both' end state (offset-distance 100%),
-      // don't cancel/clear (that would snap the element back to its natural position).
-      if(m.effect==='along-path')return;
+      // along-path + OUT rest at their END state (path end / hidden) — keep the WAAPI fill:'both' hold.
+      if(m.effect==='along-path'||m.io==='out')return;
       try{anim.cancel();}catch(e){}
-      svgClear(m.el);
-      // draw + data-sw-svg-fill: once the stroke is drawn, fade the fill in.
-      if(m.effect==='draw'&&m.fill){
-        m.el.style.fillOpacity='0';
-        try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:Math.max(200,m.dur*0.4),fill:'both'});m.fillAnim=fa;fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';};}
-        catch(e){m.el.style.fillOpacity='';}
-      }
+      if(m.effect==='draw'&&m.drawFill){ // keep the fill hidden, then reveal it (no flash)
+        m.el.style.transform='';m.el.style.opacity='';m.el.style.filter='';svgFillReveal(m);
+      }else{svgClear(m.el);}
     };
   }
-  // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class.
-  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);m.el.classList.add('sw-svg-init');}
+  // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class (IN only —
+  // an OUT element starts visible, so it is not init-hidden).
+  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);if(m.io!=='out')m.el.classList.add('sw-svg-init');}
 `;
 
 export const SVG_ANIM_JS = `(function(){
@@ -190,6 +213,7 @@ export const SVG_ANIM_JS = `(function(){
     if(effect==='draw'){m.len=svgLen(el);m.dir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
     if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
+    m.io=el.getAttribute('data-sw-svg-dir')==='out'?'out':'in';
     return m;
   }
   // A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
@@ -213,7 +237,7 @@ export const SVG_ANIM_JS = `(function(){
   });
   if(units.length===0)return;
   // Arm: hide every member (PE-first init class) before anything triggers.
-  units.forEach(function(u){u.members.forEach(function(m){m.el.classList.add('sw-svg-init');});});
+  units.forEach(function(u){u.members.forEach(function(m){if(m.io!=='out')m.el.classList.add('sw-svg-init');});});
   function playUnit(u){u.members.forEach(svgPlay);}
   function resetUnit(u){u.members.forEach(svgReset);}
   // 'load' units fire now; 'view' units wait for the IntersectionObserver.
@@ -304,6 +328,7 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
     if(ok==='draw'){m.len=svgLen(el);m.dir=el.getAttribute('data-sw-svg-draw-dir')==='reverse'?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
     if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
+    m.io=el.getAttribute('data-sw-svg-dir')==='out'?'out':'in';
     return m;
   }
   var els=document.querySelectorAll('.sample');

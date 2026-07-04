@@ -26,6 +26,16 @@ describe('SVG Studio canvas document', () => {
     expect(doc).toContain('/^on/i');
   });
 
+  it('fits any SVG to the canvas (viewBox-only icons must not collapse to 0x0)', () => {
+    // Regression: an SVG with only a viewBox (no width/height, the norm for icon sets) previously
+    // sized to `height:auto` inside the centred stage and rendered invisibly. The canvas must
+    // synthesize a viewBox when absent and size the element to fill the stage.
+    expect(doc).toContain("setAttribute('viewBox'"); // synthesize from width/height when missing
+    expect(doc).toContain("s.style.width='100%'");
+    expect(doc).toContain("s.style.height='100%'");
+    expect(doc).not.toContain("s.style.height='auto'"); // the old collapsing rule is gone
+  });
+
   it('is a well-formed static doc (exactly one <style> + one <script> block)', () => {
     // Content is injected only via postMessage, so the doc structure is fixed — a single style + script.
     expect((doc.match(/<\/style>/gi) || []).length).toBe(1);

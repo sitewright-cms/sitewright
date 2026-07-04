@@ -30,7 +30,14 @@ const SVG_STUDIO_PREVIEW_JS = `(function(){
   function render(svg){
     lastSvg=svg||'';hideHi();
     stage.innerHTML=lastSvg;strip(stage);
-    var s=stage.querySelector('svg');if(s){s.removeAttribute('width');s.removeAttribute('height');s.style.maxWidth='100%';s.style.maxHeight='100%';s.style.height='auto';}
+    var s=stage.querySelector('svg');if(s){
+      // Fit-to-canvas: an SVG with only a viewBox (no width/height — the norm for icon sets) collapses
+      // to 0x0 when sized 'auto' inside the centred stage, so it renders invisibly. Synthesize a viewBox
+      // from the authored width/height when absent, then size the element to fill the stage — the viewBox
+      // + default preserveAspectRatio scales & centres the drawing regardless of how it was authored.
+      if(!s.getAttribute('viewBox')){var w=parseFloat(s.getAttribute('width'))||0,h=parseFloat(s.getAttribute('height'))||0;if(w>0&&h>0)s.setAttribute('viewBox','0 0 '+w+' '+h);}
+      s.removeAttribute('width');s.removeAttribute('height');s.style.width='100%';s.style.height='100%';s.style.maxHeight='80vh';
+    }
   }
   function play(){
     if(!lastSvg)return;render(lastSvg); // reset to static, then run the real runtime once
@@ -63,8 +70,8 @@ export function svgStudioPreviewDoc(): string {
     `html,body{margin:0;height:100%}body{display:grid;place-items:center;background:` +
     `repeating-conic-gradient(#eef0f7 0% 25%,#f7f8fc 0% 50%) 50%/22px 22px;color:#1a1a23;font-family:system-ui,sans-serif}` +
     `#wrap{position:relative;width:92%;height:92%;display:grid;place-items:center}` +
-    `#stage{max-width:100%;max-height:100%;display:grid;place-items:center;cursor:pointer}` +
-    `#stage svg{max-width:100%;max-height:78vh}` +
+    `#stage{width:100%;height:100%;display:grid;place-items:center;cursor:pointer}` +
+    `#stage svg{width:100%;height:100%;max-height:80vh}` +
     `#hi{position:absolute;display:none;border:2px solid #4f46e5;border-radius:3px;pointer-events:none;box-shadow:0 0 0 2px rgba(79,70,229,.25)}` +
     SVG_ANIM_CSS +
     `</style></head><body><div id="wrap"><div id="stage"></div><div id="hi"></div></div>` +

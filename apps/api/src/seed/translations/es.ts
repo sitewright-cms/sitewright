@@ -189,6 +189,35 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
         'Cada elemento permanece exactamente donde está en el documento — el runtime solo añade encima una transformación/opacidad/filtro, así que nada se desplaza, se solapa ni desaparece. El parallax es decoración, nunca estructura.',
     },
   },
+  'comp-svg': {
+    path: 'svg-animation',
+    title: 'Animación SVG',
+    navTitle: 'Animación SVG',
+    description:
+      'Anima dentro de un SVG — trazo que se dibuja, transformaciones de entrada, revelados con clip-path, recorrido por una trayectoria, escenas escalonadas y morphing de formas, todo con atributos data-sw-svg. Un runtime diminuto, solo cuando se usa, y totalmente visible con movimiento reducido.',
+    data: {
+      svg_intro:
+        'Anima las partes individuales de un SVG en línea. Pon un atributo data-sw-svg en un trazado, grupo o forma y la plataforma incluye un runtime diminuto que lo dibuja, revela, mueve o transforma al entrar en pantalla — el tiempo comparte los mismos atributos de duración/retardo/easing que las animaciones de entrada, y cada forma permanece totalmente visible sin JavaScript. Desplázate hacia abajo.',
+      draw_t: 'Dibujar',
+      draw_d:
+        'data-sw-svg="draw" anima el desfase del trazo de un trazado para que la línea se dibuje sola. Añade data-sw-svg-fill="true" para fundir el relleno una vez que termina el trazo — perfecto para logotipos e iconos de línea.',
+      scene_t: 'Escena escalonada',
+      scene_d:
+        'Envuelve varios elementos en data-sw-svg-scene con data-sw-svg-stagger y aparecen en cascada al entrar la escena en pantalla — aquí cinco barras se funden una tras otra.',
+      reveal_t: 'Revelados con clip-path',
+      reveal_d:
+        'reveal-right / -left / -down / -up / -iris descubren el elemento en su sitio con un barrido de clip-path — sin fundido, solo un borde limpio que cruza.',
+      path_t: 'Por una trayectoria',
+      path_d:
+        'data-sw-svg="along-path" envía el elemento a recorrer una trayectoria de movimiento (data-sw-svg-path), girando para orientarse a ella — ideal para un avión, un cometa o un cursor.',
+      morph_t: 'Morphing de forma',
+      morph_d:
+        'data-sw-svg="morph" transforma el contorno hacia una forma objetivo (data-sw-svg-to) — la marca de abajo pasa de un cuadrado redondeado a una estrella al desplazarse.',
+      nojs_t: 'Sin JavaScript (o con movimiento reducido)',
+      nojs_d:
+        'Cada forma se muestra en su estado original — un trazado completamente dibujado, un icono sin transformar, la forma inicial del morph. El runtime solo añade el movimiento por encima, así que un SVG nunca queda oculto ni roto; la animación es decoración, nunca estructura.',
+    },
+  },
   'comp-scrollspy': {
     path: 'scrollspy',
     title: 'ScrollSpy',

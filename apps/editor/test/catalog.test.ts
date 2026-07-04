@@ -3,11 +3,11 @@ import { ANIMATION_EFFECTS } from '@sitewright/blocks';
 import { LIBRARY_SECTIONS } from '../src/views/library/catalog';
 
 describe('Library catalog', () => {
-  it('keeps the inlined AOS list in sync with @sitewright/blocks (no drift)', () => {
+  it('keeps the inlined animation list in sync with @sitewright/blocks (no drift)', () => {
     // catalog.ts inlines the effect names to avoid pulling the blocks barrel (and the
     // 1865-icon set) into the main bundle; this guards them against drifting apart.
-    const aos = LIBRARY_SECTIONS.find((s) => s.category === 'aos')!;
-    expect(aos.items.map((i) => i.name)).toEqual([...ANIMATION_EFFECTS]);
+    const anim = LIBRARY_SECTIONS.find((s) => s.category === 'animation')!;
+    expect(anim.items.map((i) => i.name)).toEqual([...ANIMATION_EFFECTS]);
   });
 
   it('documents the parallax channels as a read-only reference section (every data-sw-parallax* knob)', () => {

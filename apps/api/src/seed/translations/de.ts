@@ -191,6 +191,35 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
         'Jedes Element bleibt genau dort, wo es im Dokument steht — die Laufzeit fügt nur eine Transformation/Deckkraft/Filter darüber hinzu, sodass nichts verrutscht, überlappt oder verschwindet. Parallax ist Dekoration, niemals Struktur.',
     },
   },
+  'comp-svg': {
+    path: 'svg-animation',
+    title: 'SVG-Animation',
+    navTitle: 'SVG-Animation',
+    description:
+      'Im SVG animieren — Strich-Zeichnen, Eingangstransformationen, Clip-Path-Enthüllungen, Bewegung entlang eines Pfads, gestaffelte Szenen und Form-Morphing, alles über data-sw-svg-Attribute. Eine winzige Laufzeit, nur bei Verwendung, und bei reduzierter Bewegung vollständig sichtbar.',
+    data: {
+      svg_intro:
+        'Animiere die einzelnen Teile eines Inline-SVG. Füge einem Pfad, einer Gruppe oder Form ein data-sw-svg-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Hereinscrollen zeichnet, enthüllt, bewegt oder morpht — die Zeitsteuerung teilt sich dieselben Dauer-/Verzögerungs-/Easing-Attribute wie Eingangsanimationen, und jede Form bleibt ohne JavaScript vollständig sichtbar. Scroll nach unten.',
+      draw_t: 'Zeichnen',
+      draw_d:
+        'data-sw-svg="draw" animiert den Strich-Offset eines Pfads, sodass sich die Linie selbst zeichnet. Füge data-sw-svg-fill="true" hinzu, um die Füllung einzublenden, sobald der Strich fertig ist — ideal für Line-Art-Logos und Icons.',
+      scene_t: 'Gestaffelte Szene',
+      scene_d:
+        'Umschließe mehrere Elemente mit data-sw-svg-scene und data-sw-svg-stagger, und sie erscheinen nacheinander, sobald die Szene in den Blick kommt — hier blenden fünf Balken nacheinander auf.',
+      reveal_t: 'Clip-Path-Enthüllungen',
+      reveal_d:
+        'reveal-right / -left / -down / -up / -iris enthüllen das Element an Ort und Stelle mit einem Clip-Path-Wisch — kein Einblenden, nur eine saubere Kante, die hinüberfährt.',
+      path_t: 'Entlang eines Pfads',
+      path_d:
+        'data-sw-svg="along-path" schickt das Element entlang eines Bewegungspfads (data-sw-svg-path) auf die Reise und dreht es in Fahrtrichtung — ideal für ein Flugzeug, einen Kometen oder einen Cursor.',
+      morph_t: 'Form-Morphing',
+      morph_d:
+        'data-sw-svg="morph" überführt die Umrisslinie in eine Zielform (data-sw-svg-to) — die Marke unten morpht beim Hereinscrollen von einem abgerundeten Quadrat in einen Stern.',
+      nojs_t: 'Ohne JavaScript (oder bei reduzierter Bewegung)',
+      nojs_d:
+        'Jede Form wird in ihrem ursprünglichen Zustand dargestellt — ein fertig gezeichneter Pfad, ein untransformiertes Icon, die Ausgangsform des Morphs. Die Laufzeit fügt die Bewegung nur darüber hinzu, sodass ein SVG nie verborgen oder kaputt ist; Animation ist Dekoration, niemals Struktur.',
+    },
+  },
   'comp-scrollspy': {
     path: 'scrollspy',
     title: 'ScrollSpy',

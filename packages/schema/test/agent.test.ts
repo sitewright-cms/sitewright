@@ -79,7 +79,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
       'data-sw-component', // components
       'FORMS (contact', // forms (folded into components)
       'search_stock_images', // images
-      'data-aos=', // animations (effects)
+      'data-sw-animation=', // animations (effects)
       'waves-effect', // ripple (effects)
       'sw-nav-', // nav effects (effects)
       'CUSTOM EFFECT', // custom code (effects)

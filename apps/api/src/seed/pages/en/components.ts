@@ -26,7 +26,7 @@ export function pageComponents(): Page {
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-28">
-  <div class="grid gap-6 sm:grid-cols-2" data-aos="fade-up">
+  <div class="grid gap-6 sm:grid-cols-2" data-sw-animation="fade-up">
     {{#each page.children}}
     <a class="nw-card group flex flex-col rounded-3xl border border-base-200 bg-base-100 p-8 no-underline shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" href="{{sw-url path}}">
       <h2 class="text-2xl font-bold tracking-tight">{{title}}</h2>

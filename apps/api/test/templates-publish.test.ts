@@ -90,18 +90,18 @@ describe('templates → publish (code-first sources)', () => {
     expect(html).toContain('class="prose'); // the global template's own classes compiled + emitted
   });
 
-  it("a template's Tailwind classes and data-aos usage feed the shared asset scans", async () => {
+  it("a template's Tailwind classes and data-sw-animation usage feed the shared asset scans", async () => {
     const proj = client.project(projectId);
     const template = {
       id: 'animated',
       name: 'Animated',
-      source: '<div class="badge" data-aos="fade-up" data-sw-text="text">Hi</div>',
+      source: '<div class="badge" data-sw-animation="fade-up" data-sw-text="text">Hi</div>',
     };
     expect((await proj.putContent('template', 'animated', template)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'tpl-page', templatePage('animated'))).statusCode).toBe(200);
 
     const html = await publishAndFetch('offer/index.html');
-    expect(html).toContain('data-aos="fade-up"');
+    expect(html).toContain('data-sw-animation="fade-up"');
     expect(html).toContain('<script defer src="../animations.js?v='); // detected via the template
     const css = await client.get(`/sites/${slug}/styles.css`);
     expect(css.body).toContain('.badge'); // template classes reach the shared sheet

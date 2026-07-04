@@ -10,6 +10,7 @@ import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { ParallaxBuilder } from './ParallaxBuilder';
+import { SvgAnimBuilder } from './SvgAnimBuilder';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -36,7 +37,7 @@ function previewHtml(example: string): string {
 /**
  * The project-level Library reference: a LEFT-edge {@link SidePanel} that expands on hover. Each
  * section title is a button that opens a searchable gallery modal — Icons (lazy-loaded, the whole
- * pack), AOS, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
+ * pack), Animation, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
  * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
  */
 export function LibraryPanel() {
@@ -46,6 +47,7 @@ export function LibraryPanel() {
   const [bgOpen, setBgOpen] = useState(false);
   const [btnOpen, setBtnOpen] = useState(false);
   const [pxOpen, setPxOpen] = useState(false);
+  const [svgOpen, setSvgOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   // The first-party SiteWright components guide — a tab-based reference (one tab per component),
@@ -112,6 +114,18 @@ export function LibraryPanel() {
           </span>
         </button>
 
+        {/* The SVG animation builder — compose an entrance for an SVG element (draw-on / fade / zoom /
+            flip / blur + timing), preview it looping live, and copy the data-sw-svg* markup. */}
+        <button
+          onClick={() => setSvgOpen(true)}
+          className="waves-effect rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2.5 text-left transition hover:from-emerald-100 hover:to-teal-100"
+        >
+          <span className="block text-sm font-bold text-emerald-800">SVG animation builder</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80">
+            Draw-on, fade, zoom, flip & blur for SVG paths/icons — compose, preview & copy the markup.
+          </span>
+        </button>
+
         {LIBRARY_SECTIONS.map((s) => (
           // The SiteWright Components entry sits immediately before the DaisyUI components section.
           <Fragment key={s.category}>
@@ -131,6 +145,7 @@ export function LibraryPanel() {
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
+      {svgOpen && <SvgAnimBuilder onClose={() => setSvgOpen(false)} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

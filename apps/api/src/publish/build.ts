@@ -45,26 +45,7 @@ import {
   componentAssets,
   systemI18nData,
   usesDialog,
-  usesAnimations,
-  ANIMATION_CSS,
-  ANIMATION_JS,
-  usesParallax,
-  PARALLAX_CSS,
-  PARALLAX_JS,
-  usesMarquee,
-  MARQUEE_CSS,
-  usesLazyload,
-  LAZYLOAD_CSS,
-  LAZYLOAD_JS,
-  usesRipple,
-  RIPPLE_CSS,
-  RIPPLE_JS,
-  usesCart,
-  CART_CSS,
-  CART_JS,
   usesConsent,
-  CONSENT_CSS,
-  CONSENT_JS,
   consentMountMarkup,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
@@ -88,6 +69,7 @@ import {
   neutralizeInlineScript,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
+import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
 import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
@@ -113,18 +95,6 @@ import {
 const UTILITY_STYLESHEET = 'styles.css';
 /** The platform component-behavior bundle, written at the site root and linked per page. */
 const COMPONENT_SCRIPT = 'components.js';
-/** The scroll-reveal (data-aos) runtime, written at the site root and linked per page. */
-const ANIMATION_SCRIPT = 'animations.js';
-/** The parallax / scroll-linked property runtime (translate/opacity/scale/blur), linked per page. */
-const PARALLAX_SCRIPT = 'parallax.js';
-/** The lazy-load (data-bg / lazyload) runtime, written at the site root and linked per page. */
-const LAZYLOAD_SCRIPT = 'lazyload.js';
-/** The ripple (waves-effect) runtime, written at the site root and linked per page. */
-const RIPPLE_SCRIPT = 'ripple.js';
-/** The MINI SHOP cart runtime, written at the site root and linked per page. */
-const CART_SCRIPT = 'cart.js';
-/** The CONSENT MANAGER runtime, written at the site root and linked per page. */
-const CONSENT_SCRIPT = 'consent.js';
 /** The color-scheme toggle + no-flash runtime, written at the site root and linked SYNC in <head>. */
 const THEME_SCRIPT = 'theme.js';
 /** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
@@ -530,17 +500,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       routes.some((r) => strFn(effectiveSource(r.page))) ||
       slotSources.some(strFn) ||
       Object.values(usedSnippets).some(strFn);
-    const usesAnims = usesMarker(usesAnimations);
-    const usesPx = usesMarker(usesParallax);
-    const usesMarq = usesMarker(usesMarquee); // CSS-only logo marquee → ship MARQUEE_CSS when used
-    const usesLazy = usesMarker(usesLazyload);
-    const usesWaves = usesMarker(usesRipple);
-    // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
-    // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
-    const usesCartRuntime = usesMarker(usesCart);
     // The consent runtime also hydrates HELD author iframes/scripts, which only exist when the manager is
     // enabled — so ship it whenever consent is on, not only when a {{sw-consent}} marker is authored.
     const usesConsentRuntime = website?.consent?.enabled === true || usesMarker(usesConsent);
+    // The marker-gated BODY-effect runtimes (animation, parallax, svg-anim, marquee, lazyload, ripple,
+    // cart, consent), resolved from the SHARED registry (effect-runtimes.ts) that the editor preview also
+    // consumes — so preview + deploy can NEVER ship a different set (the drift that motivated this). Every
+    // entry is pure only-used-ships via its marker, EXCEPT consent (its settings-aware gate above).
+    const usedBodyEffects = BODY_EFFECT_RUNTIMES.filter((r) => (r.key === 'consent' ? usesConsentRuntime : usesMarker(r.uses)));
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -844,25 +811,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const fxCode = websiteEffectsCustomCode(website?.effects);
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
-          ...(usesAnims ? [ANIMATION_CSS] : []),
-          ...(usesPx ? [PARALLAX_CSS] : []),
-          ...(usesMarq ? [MARQUEE_CSS] : []),
-          ...(usesLazy ? [LAZYLOAD_CSS] : []),
-          ...(usesWaves ? [RIPPLE_CSS] : []),
-          ...(usesCartRuntime ? [CART_CSS] : []),
-          ...(usesConsentRuntime ? [CONSENT_CSS] : []),
+          // Shared registry: every used body-effect runtime's inline CSS (animation, parallax, svg-anim,
+          // marquee, lazyload, ripple, cart, consent) — same set + order as the editor preview.
+          ...usedBodyEffects.flatMap((r) => (r.css ? [r.css] : [])),
           ...(usesThemeToggleRuntime ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
           ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
         ];
         const pageScripts = [
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
-          ...(usesAnims ? [`${siteRoot}${ANIMATION_SCRIPT}`] : []),
-          ...(usesPx ? [`${siteRoot}${PARALLAX_SCRIPT}`] : []),
-          ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
-          ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
-          ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
-          ...(usesConsentRuntime ? [`${siteRoot}${CONSENT_SCRIPT}`] : []),
+          // Shared registry: link each used runtime's external script at the site root (marquee is
+          // CSS-only → no script). Same set as the inline CSS above + the editor preview's inline JS.
+          ...usedBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${r.script}`] : [])),
           ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
@@ -1037,41 +997,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(components.js);
     }
 
-    // The scroll-reveal runtime (first-party behavior; only-used-ships).
-    if (usesAnims) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, ANIMATION_SCRIPT), ANIMATION_JS, 'utf8');
-      bytes += Buffer.byteLength(ANIMATION_JS);
-    }
-    // The parallax / scroll-linked property runtime (first-party behavior; only-used-ships).
-    if (usesPx) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, PARALLAX_SCRIPT), PARALLAX_JS, 'utf8');
-      bytes += Buffer.byteLength(PARALLAX_JS);
-    }
-    // The lazy-load runtime (first-party behavior; only-used-ships).
-    if (usesLazy) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, LAZYLOAD_SCRIPT), LAZYLOAD_JS, 'utf8');
-      bytes += Buffer.byteLength(LAZYLOAD_JS);
-    }
-    // The ripple runtime (first-party behavior; only-used-ships).
-    if (usesWaves) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, RIPPLE_SCRIPT), RIPPLE_JS, 'utf8');
-      bytes += Buffer.byteLength(RIPPLE_JS);
-    }
-    // The MINI SHOP cart runtime (first-party behavior; only-used-ships).
-    if (usesCartRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, CART_SCRIPT), CART_JS, 'utf8');
-      bytes += Buffer.byteLength(CART_JS);
-    }
-    // The CONSENT MANAGER runtime (first-party behavior; only-used-ships).
-    if (usesConsentRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, CONSENT_SCRIPT), CONSENT_JS, 'utf8');
-      bytes += Buffer.byteLength(CONSENT_JS);
+    // Write each used body-effect runtime's JS at the site root (first-party behavior; only-used-ships).
+    // Consolidated from the SHARED registry so the editor preview + deploy never diverge on which
+    // runtimes ship (marquee is CSS-only → no script to write).
+    for (const r of usedBodyEffects) {
+      if (!r.script || !r.js) continue;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- registry-constant filename under the validated tmp dir
+      await writeFile(join(tmp, r.script), r.js, 'utf8');
+      bytes += Buffer.byteLength(r.js);
     }
     // The color-scheme toggle + no-flash runtime (first-party behavior; only-used-ships).
     if (usesThemeToggleRuntime) {

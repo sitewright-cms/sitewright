@@ -155,7 +155,7 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     expect(shop.isError).toBeFalsy();
     expect(text(shop)).toContain('sw-add-to-cart');
     // case-insensitive
-    expect(text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'EFFECTS' } }))).toContain('data-aos');
+    expect(text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'EFFECTS' } }))).toContain('data-sw-animation');
     // unknown topic → an error that lists the valid topics
     const bad = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'nope' } });
     expect(bad.isError).toBe(true);
@@ -678,14 +678,14 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     await mcp.close();
   });
 
-  it('the effects guide teaches scroll-reveal animations via the standard data-aos vocabulary', async () => {
+  it('the effects guide teaches scroll-reveal animations via the standard data-sw-animation vocabulary', async () => {
     const mcp = await connect(fakeClient(), writeScope);
     const effects = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'effects' } }));
-    expect(effects).toContain('data-aos="fade-up"');
-    expect(effects).toContain('data-aos-delay');
-    expect(effects).toContain('data-aos-once');
+    expect(effects).toContain('data-sw-animation="fade-up"');
+    expect(effects).toContain('data-sw-delay');
+    expect(effects).toContain('data-sw-once');
     // The platform ships its own runtime — agents must NOT add the library themselves.
-    expect(effects).toMatch(/do NOT add the aos\s+package/i);
+    expect(effects).toMatch(/do NOT add any\s+animation library/i);
     expect(effects).toContain('prefers-reduced-motion');
     await mcp.close();
   });

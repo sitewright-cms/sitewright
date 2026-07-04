@@ -790,7 +790,7 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
   it('does NOT gate data-srcset or other data-* (only data-src/data-bg join the URL set)', () => {
     allows('<img data-srcset="{{ page.srcset }}" alt="x">'); // mirrors plain srcset — image-fetch only
     allows('<div data-sw-text="{{ dataset.v }}"></div>'); // editor directive attr — unaffected
-    allows('<div data-aos="{{ dataset.fx }}"></div>'); // animation attr — unaffected
+    allows('<div data-sw-animation="{{ dataset.fx }}"></div>'); // animation attr — unaffected
   });
 
   it('allows interpolation in element text and quoted non-URL attributes', () => {

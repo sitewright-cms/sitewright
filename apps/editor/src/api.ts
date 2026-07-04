@@ -822,6 +822,10 @@ export const api = {
    *  actually runs. `query` is a pre-built, encoded query string (the channel knobs). */
   parallaxPreviewUrl: (query: string) => `${BASE}/authoring/parallax-preview${query ? `?${query}` : ''}`,
 
+  /** The SVG-animation builder preview doc URL (same sandbox-CSP route pattern as the parallax preview;
+   *  loaded via iframe `src`). Config is pushed live via postMessage, so no query is needed. */
+  svgAnimPreviewUrl: (query: string) => `${BASE}/authoring/svg-preview${query ? `?${query}` : ''}`,
+
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),

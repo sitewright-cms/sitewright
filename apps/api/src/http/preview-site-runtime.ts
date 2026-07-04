@@ -20,7 +20,7 @@ export const PREVIEW_SITE_RUNTIME_JS = `(function () {
   // because Chrome renders a sandboxed sub-frame's VIEWPORT scrollbar as an auto-hiding overlay — so the
   // brand ::-webkit-scrollbar never shows there. A non-root scroll container's scrollbar IS classic +
   // styled, giving the preview a real, visible scrollbar like the published tab. Bridge window scroll →
-  // the body so scroll-linked page JS (back-to-top, parallax, scrollTo, anchor jumps, AOS) keeps working.
+  // the body so scroll-linked page JS (back-to-top, parallax, scrollTo, anchor jumps, entrance animations) keeps working.
   function bridgeScroll() {
     var b = document.body;
     // Self-guard: only bridge when the body is ACTUALLY the scroll container (the renderer's

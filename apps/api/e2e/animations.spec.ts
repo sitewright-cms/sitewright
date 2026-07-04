@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-// Scroll-reveal animations (the AOS `data-aos` vocabulary) against a deployed
-// instance: an author writes plain data-aos attributes in a code-first source
+// Scroll-reveal animations (the `data-sw-animation` vocabulary) against a deployed
+// instance: an author writes plain data-sw-animation attributes in a code-first source
 // page; the published export ships the first-party runtime (animations.js +
 // inline animation CSS) — and ONLY for sites that use it.
 
-test('publish ships the data-aos runtime for an animated code-first site', async ({ playwright, baseURL }) => {
+test('publish ships the data-sw-animation runtime for an animated code-first site', async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
@@ -28,9 +28,9 @@ test('publish ships the data-aos runtime for an animated code-first site', async
     root: { id: 'r', type: 'Section' },
     source:
       '<div class="p-8">' +
-      '<h1 data-aos="fade-up">Welcome</h1>' +
-      '<p data-aos="fade-up" data-aos-delay="200">Revealed on scroll</p>' +
-      '<div data-aos="zoom-in" data-aos-duration="800" data-aos-once="false">Replays</div>' +
+      '<h1 data-sw-animation="fade-up">Welcome</h1>' +
+      '<p data-sw-animation="fade-up" data-sw-delay="200">Revealed on scroll</p>' +
+      '<div data-sw-animation="zoom-in" data-sw-duration="800" data-sw-once="false">Replays</div>' +
       '</div>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
@@ -39,8 +39,8 @@ test('publish ships the data-aos runtime for an animated code-first site', async
   const preview = await ctx.post(`${base}/preview`, { data: page });
   expect(preview.status()).toBe(200);
   const previewHtml = (await preview.json()).html as string;
-  expect(previewHtml).toContain('data-aos="fade-up"');
-  expect(previewHtml).toContain('[data-aos].aos-init');
+  expect(previewHtml).toContain('data-sw-animation="fade-up"');
+  expect(previewHtml).toContain('[data-sw-animation].sw-animation-init');
   expect(previewHtml).toContain('IntersectionObserver');
 
   // Publish, then verify the exported site over HTTP.
@@ -50,10 +50,10 @@ test('publish ships the data-aos runtime for an animated code-first site', async
   expect(index.status()).toBe(200);
   const html = await index.text();
   // Authored attributes survive; runtime linked; CSS inlined with the a11y gate.
-  expect(html).toContain('data-aos="fade-up"');
-  expect(html).toContain('data-aos-delay="200"');
+  expect(html).toContain('data-sw-animation="fade-up"');
+  expect(html).toContain('data-sw-delay="200"');
   expect(html).toContain('<script defer src="animations.js"></script>');
-  expect(html).toContain('[data-aos].aos-init');
+  expect(html).toContain('[data-sw-animation].sw-animation-init');
   expect(html).toContain('prefers-reduced-motion');
 
   // The runtime is served from the site root and is the real thing.
@@ -61,12 +61,12 @@ test('publish ships the data-aos runtime for an animated code-first site', async
   expect(js.status()).toBe(200);
   const runtime = await js.text();
   expect(runtime).toContain('IntersectionObserver');
-  expect(runtime).toContain('aos-animate');
+  expect(runtime).toContain('sw-animation-active');
 
   await ctx.dispose();
 });
 
-test('a site without data-aos ships no animation assets', async ({ playwright, baseURL }) => {
+test('a site without data-sw-animation ships no animation assets', async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
@@ -92,7 +92,7 @@ test('a site without data-aos ships no animation assets', async ({ playwright, b
   expect(index.status()).toBe(200);
   const html = await index.text();
   expect(html).not.toContain('animations.js');
-  expect(html).not.toContain('aos-init');
+  expect(html).not.toContain('sw-animation-init');
   expect((await ctx.get(`/sites/${slug}/animations.js`)).status()).toBe(404);
 
   await ctx.dispose();

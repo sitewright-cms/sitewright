@@ -23,7 +23,7 @@ const EXAMPLE_ENTRIES = exampleEntries({});
  * the exported site carries the multilingual story it exists to demonstrate — inherit-mode
  * German pages (shared code, translated data), localized slugs/datasets/forms/chrome, hreflang,
  * the flag switcher — plus the feature showcases (carousel/tabs/lightbox/modal/
- * data-aos/form embed) and the sitemap/noindex behavior of the legal pages.
+ * data-sw-animation/form embed) and the sitemap/noindex behavior of the legal pages.
  */
 describe('seeded demo — flagship multilingual showcase publishes correctly', () => {
   let harness: Harness;
@@ -119,10 +119,10 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(de).toContain('Erzählen Sie uns von Ihrem Projekt'); // translated field label
   });
 
-  it('showcases the first-party components: carousel, tabs, lightbox, modal, data-aos', async () => {
+  it('showcases the first-party components: carousel, tabs, lightbox, modal, data-sw-animation', async () => {
     const home = await page('index.html');
     expect(home).toContain('data-sw-component="carousel"');
-    expect(home).toContain('data-aos="fade-up"');
+    expect(home).toContain('data-sw-animation="fade-up"');
     expect(home).toContain('components.js'); // only-used-ships runtime linked
     expect(home).toContain('data-src'); // lazy-loaded hero (bare attr when the test's asset map is empty)
     expect(home).toContain('lazyload.js'); // its runtime ships (only-used-ships)

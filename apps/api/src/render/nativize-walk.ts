@@ -93,7 +93,7 @@ export function WALK(ROOT_SEL) {
     // Mark it so we emit min-w-0 (the standard flex-overflow fix).
     node.pflex = !!(pcs && /flex/.test(pcs.display));
     // MOTION: scroll-reveal (WOW/animate.css/AOS) is JS-driven + stripped. Capture the computed animation
-    // (keyframe + delay + duration) → re-expressed as data-aos. Fall back to the class for WOW elements
+    // (keyframe + delay + duration) → re-expressed as data-sw-animation. Fall back to the class for WOW elements
     // whose animation already finished by capture time (animationName resets to 'none').
     {
       const an = cs.animationName, acl = el.getAttribute('class') || '';

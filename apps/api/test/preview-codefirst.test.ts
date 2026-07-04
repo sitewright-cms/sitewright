@@ -84,9 +84,9 @@ describe('code-first preview', () => {
   it('inlines the animation / lazyload / ripple runtimes (and cart CSS) for their code-first markers', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-      source: '<section><div data-aos="fade-up" class="waves-effect" data-bg="/hero.jpg" data-sw-cart>x</div></section>',
+      source: '<section><div data-sw-animation="fade-up" class="waves-effect" data-bg="/hero.jpg" data-sw-cart>x</div></section>',
     });
-    expect(html).toContain('aos-init'); // ANIMATION_CSS inlined
+    expect(html).toContain('sw-animation-init'); // ANIMATION_CSS inlined
     expect(html).toContain('IntersectionObserver'); // ANIMATION_JS inlined
     expect(html).toContain('waves'); // RIPPLE runtime inlined
   });
@@ -175,10 +175,10 @@ describe('code-first preview', () => {
   it('a RAW-HTML page skips ALL platform CSS/JS — even the animation runtime (the page brings its own)', async () => {
     const html = await previewHtml({
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-      source: '<section><div data-aos="fade-up" class="w-100">hi</div></section>',
+      source: '<section><div data-sw-animation="fade-up" class="w-100">hi</div></section>',
       rawHtml: true,
     });
-    expect(html).not.toContain('aos-init'); // ANIMATION_CSS NOT inlined under rawHtml
+    expect(html).not.toContain('sw-animation-init'); // ANIMATION_CSS NOT inlined under rawHtml
     expect(html).not.toContain('IntersectionObserver'); // ANIMATION_JS NOT inlined
     expect(html).not.toContain('--tw-'); // and no utility sheet
   });

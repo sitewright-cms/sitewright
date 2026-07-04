@@ -1,3 +1,4 @@
+export * from './timing.js';
 export * from './animations.js';
 export * from './marquee.js';
 export * from './lazyload.js';
@@ -11,6 +12,8 @@ export * from './preloader.js';
 export * from './back-to-top.js';
 export * from './sticky-header.js';
 export * from './parallax.js';
+export * from './svg-anim.js';
+export * from './svg-anim-morph.js';
 export * from './scrollspy.js';
 export * from './theme-mode.js';
 export * from './escape.js';

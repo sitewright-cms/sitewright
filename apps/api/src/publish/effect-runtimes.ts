@@ -1,0 +1,98 @@
+// Single source of truth for the MARKER-GATED body-effect runtimes (CSS + JS the platform injects when
+// an authored surface uses the effect's data-attribute). BOTH delivery paths consume this table so they
+// can never drift:
+//   - PUBLISH / whole-site draft preview (build.ts): inline the CSS per page + write the JS as an external
+//     `<script src>` at the site root (only-used-ships).
+//   - SINGLE-PAGE editor preview (app.ts): inline BOTH the CSS and the JS (the sandboxed preview CSP
+//     allows inline script), so the effect runs live for WYSIWYG parity.
+//
+// Historically the single-page preview kept a hand-maintained copy of this list, which silently drifted
+// (a new engine shipped on deploy but not in the preview). Deriving both paths from THIS array — and the
+// `runtime-parity.test.ts` guard — makes that regression class structural-impossible for these runtimes.
+//
+// NOT covered here (each has a path-specific policy, documented at its call site + asserted by the parity
+// test's allowlist): whole-site CHROME injected only in the full build (back-to-top button, preloader
+// overlay), body-class / shell-gated effects (nav-effects, button-effects, sticky-header, scrollspy),
+// the head-inline theme toggle, the component bundle, and the editor↔preview bridges.
+import {
+  usesAnimations,
+  ANIMATION_CSS,
+  ANIMATION_JS,
+  usesParallax,
+  PARALLAX_CSS,
+  PARALLAX_JS,
+  usesSvgAnim,
+  SVG_ANIM_CSS,
+  SVG_ANIM_JS,
+  usesMarquee,
+  MARQUEE_CSS,
+  usesLazyload,
+  LAZYLOAD_CSS,
+  LAZYLOAD_JS,
+  usesRipple,
+  RIPPLE_CSS,
+  RIPPLE_JS,
+  usesCart,
+  CART_CSS,
+  CART_JS,
+  usesConsent,
+  CONSENT_CSS,
+  CONSENT_JS,
+  usesSvgAnimMorph,
+  SVG_ANIM_MORPH_JS,
+} from '@sitewright/blocks';
+
+/** How a runtime behaves in the SINGLE-PAGE editor preview:
+ *  - 'run'        → inline its CSS + JS (the effect runs live for WYSIWYG parity).
+ *  - 'style-only' → inline its CSS but DELIBERATELY not its JS. cart/consent drive floating overlays +
+ *                   click handlers that would fight the click-to-edit bridge, so they render styled but
+ *                   inert; the live behaviour runs on the published /sites/<slug>/ site. */
+export type PreviewMode = 'run' | 'style-only';
+
+export interface BodyEffectRuntime {
+  /** Stable key (also the parity-test id). */
+  key: string;
+  /** Marker detection over the scanned body/slots/snippets HTML. */
+  uses: (html: string | null | undefined) => boolean;
+  /** Inline stylesheet (both paths inline CSS). */
+  css?: string;
+  /** Runtime JS — inlined in the single-page preview, written as `script` for publish. Omit for CSS-only. */
+  js?: string;
+  /** Published filename at the site root (external `<script src>`). Omit for CSS-only runtimes. */
+  script?: string;
+  /** Single-page-preview behaviour (default 'run'). */
+  preview?: PreviewMode;
+}
+
+/** The registry. Order is the CSS-cascade order both paths emit (platform runtime CSS before the utility
+ *  sheet). Add a new marker-gated body-effect runtime HERE and it lights up in preview AND publish at once. */
+export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
+  { key: 'animation', uses: usesAnimations, css: ANIMATION_CSS, js: ANIMATION_JS, script: 'animations.js' },
+  { key: 'parallax', uses: usesParallax, css: PARALLAX_CSS, js: PARALLAX_JS, script: 'parallax.js' },
+  { key: 'svg-anim', uses: usesSvgAnim, css: SVG_ANIM_CSS, js: SVG_ANIM_JS, script: 'svg-anim.js' },
+  // JS-only, SEPARATE chunk: the path-morph interpolator ships only on pages that morph (the core
+  // svg-anim runtime skips data-sw-svg="morph"). A morph-only page also loads svg-anim.js (it no-ops).
+  { key: 'svg-morph', uses: usesSvgAnimMorph, js: SVG_ANIM_MORPH_JS, script: 'svg-anim-morph.js' },
+  { key: 'marquee', uses: usesMarquee, css: MARQUEE_CSS }, // CSS-only (pure CSS animation)
+  { key: 'lazyload', uses: usesLazyload, css: LAZYLOAD_CSS, js: LAZYLOAD_JS, script: 'lazyload.js' },
+  { key: 'ripple', uses: usesRipple, css: RIPPLE_CSS, js: RIPPLE_JS, script: 'ripple.js' },
+  { key: 'cart', uses: usesCart, css: CART_CSS, js: CART_JS, script: 'cart.js', preview: 'style-only' },
+  { key: 'consent', uses: usesConsent, css: CONSENT_CSS, js: CONSENT_JS, script: 'consent.js', preview: 'style-only' },
+];
+
+/** The inline CSS blocks for every registry runtime a page uses (both paths). */
+export function bodyEffectStyles(scanHtml: string): string[] {
+  return BODY_EFFECT_RUNTIMES.filter((r) => r.css && r.uses(scanHtml)).map((r) => r.css as string);
+}
+
+/** The inline JS blocks for the SINGLE-PAGE preview — every 'run' runtime the page uses (style-only ones
+ *  like cart/consent are excluded: styled but inert in the editor canvas). */
+export function previewBodyEffectScripts(scanHtml: string): string[] {
+  return BODY_EFFECT_RUNTIMES.filter((r) => r.js && (r.preview ?? 'run') === 'run' && r.uses(scanHtml)).map((r) => r.js as string);
+}
+
+/** The external site-root scripts to LINK for a publish/whole-site build (every runtime with a `script`
+ *  the page uses). Returned as {script, js} so the caller links + writes them. */
+export function publishBodyEffectFiles(scanHtml: string): Array<{ script: string; js: string }> {
+  return BODY_EFFECT_RUNTIMES.filter((r) => r.script && r.js && r.uses(scanHtml)).map((r) => ({ script: r.script as string, js: r.js as string }));
+}

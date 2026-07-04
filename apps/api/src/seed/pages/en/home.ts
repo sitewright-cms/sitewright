@@ -3,7 +3,7 @@ import { icon, STARS } from '../../helpers.js';
 
 // ---------------------------------------------------------------- HOME
 // The flagship landing page: a dark aurora hero (blueprint grid texture, lazy-loaded brand art,
-// a floating Lighthouse chip), a glass stats card pulled up over the hero edge, data-aos scroll
+// a floating Lighthouse chip), a glass stats card pulled up over the hero edge, data-sw-animation scroll
 // reveals, a keyed-lookup case-study spotlight (`item.projects` driven by page.data.spotlight —
 // so locale variants point at their own entry ids), dataset grids, and a testimonial CAROUSEL on
 // a dark glow band. Every visible string is a data-sw-text/html leaf (EN defaults authored here;
@@ -67,21 +67,21 @@ export function pageHome(assets: Record<string, string>): Page {
 
 <section class="relative z-10 mx-auto -mt-20 max-w-5xl px-6 lg:-mt-24">
   <dl class="grid grid-cols-2 gap-y-10 rounded-3xl border border-base-200/80 bg-base-100/95 px-6 py-10 shadow-2xl shadow-neutral/10 backdrop-blur-xl md:grid-cols-4">
-    <div class="text-center" data-aos="fade-up"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat1_n">120+</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat1_l">Sites shipped</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="100"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat2_n">9</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat2_l">Years in business</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="200"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat3_n">100</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat3_l">Avg. Lighthouse score</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="300"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat4_n">38%</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat4_l">Avg. lift in enquiries</dd></div>
+    <div class="text-center" data-sw-animation="fade-up"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat1_n">120+</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat1_l">Sites shipped</dd></div>
+    <div class="text-center" data-sw-animation="fade-up" data-sw-delay="100"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat2_n">9</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat2_l">Years in business</dd></div>
+    <div class="text-center" data-sw-animation="fade-up" data-sw-delay="200"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat3_n">100</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat3_l">Avg. Lighthouse score</dd></div>
+    <div class="text-center" data-sw-animation="fade-up" data-sw-delay="300"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat4_n">38%</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat4_l">Avg. lift in enquiries</dd></div>
   </dl>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pt-24">
   <div class="grid gap-12 lg:grid-cols-2 lg:items-center">
-    <div data-aos="fade-right">
+    <div data-sw-animation="fade-right">
       <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="home.why_eyebrow">Why Northwind</span>
       <h2 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.why_title">Senior people, no hand-offs, no surprises</h2>
       <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-translate="home.why_sub">You work directly with the designers and engineers building your site — start to finish.</p>
     </div>
-    <ul class="grid list-none gap-4 p-0 sm:grid-cols-2" data-aos="fade-left">
+    <ul class="grid list-none gap-4 p-0 sm:grid-cols-2" data-sw-animation="fade-left">
       <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why1">Fixed scope &amp; timeline</span></li>
       <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why2">Perfect Lighthouse scores</span></li>
       <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why3">You can edit the content yourself</span></li>
@@ -93,11 +93,11 @@ export function pageHome(assets: Record<string, string>): Page {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-24">
-  <div class="max-w-2xl" data-aos="fade-up">
+  <div class="max-w-2xl" data-sw-animation="fade-up">
     <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.svc_title">Everything you need under one roof</h2>
     <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-translate="home.svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
   </div>
-  <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
+  <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-sw-animation="fade-up" data-sw-delay="100">
     {{#each dataset.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
       <div class="card-body p-7">
@@ -116,14 +116,14 @@ export function pageHome(assets: Record<string, string>): Page {
     <!-- Case-study spotlight: a KEYED dataset lookup (item.projects.<id>), with the id in
          page.data so each locale variant points at its own entry (proj-harbor / proj-harbor-de). -->
     {{#with (lookup @root.item.projects @root.page.data.spotlight)}}
-    <div class="relative" data-aos="zoom-in">
+    <div class="relative" data-sw-animation="zoom-in">
       <div class="absolute -inset-6 -rotate-2 rounded-[2rem] bg-gradient-to-br from-primary/20 to-secondary/20" aria-hidden="true"></div>
       <div class="nw-zoom relative overflow-hidden rounded-3xl shadow-2xl shadow-neutral/20">
         <img src="{{sw-url image}}" alt="{{title}}" class="h-full w-full object-cover" loading="lazy" />
         <span class="absolute left-4 top-4 rounded-full bg-black/45 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-white backdrop-blur">{{category}}</span>
       </div>
     </div>
-    <div data-aos="fade-left">
+    <div data-sw-animation="fade-left">
       <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="home.spot_eyebrow">Case study</span>
       <h2 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">{{title}}</h2>
       <p class="mt-3 text-sm font-medium text-base-content/45">{{client}} · {{category}} · {{year}}</p>
@@ -135,11 +135,11 @@ export function pageHome(assets: Record<string, string>): Page {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-24">
-  <div class="flex flex-wrap items-end justify-between gap-4" data-aos="fade-up">
+  <div class="flex flex-wrap items-end justify-between gap-4" data-sw-animation="fade-up">
     <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.work_title">Selected work</h2>
     <a class="nw-underline inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-translate="home.work_link">View all projects</span> ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
-  <div class="mt-12 grid gap-7 md:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
+  <div class="mt-12 grid gap-7 md:grid-cols-3" data-sw-animation="fade-up" data-sw-delay="100">
     {{#each dataset.projects}}
     <a class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 nw-zoom" href="/work" data-sw-href="href_work">
       <figure class="relative aspect-[4/3] overflow-hidden">
@@ -161,10 +161,10 @@ export function pageHome(assets: Record<string, string>): Page {
   <div class="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/25 blur-3xl" aria-hidden="true" data-sw-parallax-translate="-60,60"></div>
   <div class="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-secondary/20 blur-3xl" aria-hidden="true" data-sw-parallax-translate="60,-60"></div>
   <div class="relative mx-auto max-w-4xl px-6 py-24">
-    <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="home.tst_title">Loved by the brands we build for</h2>
+    <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-sw-animation="fade-up" data-sw-translate="home.tst_title">Loved by the brands we build for</h2>
     <!-- First-party CAROUSEL: scroll-snap track (swipeable without JS); the runtime adds arrows,
          dots, keyboard nav, and gentle autoplay (pausing on hover/focus/reduced-motion). -->
-    <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-aos="fade-up" data-aos-delay="100">
+    <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-sw-animation="fade-up" data-sw-delay="100">
       <div data-sw-part="track">
         {{#each dataset.testimonials}}
         <figure data-sw-part="slide" class="px-1 sm:px-10">

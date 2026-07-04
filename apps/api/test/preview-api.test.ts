@@ -377,7 +377,7 @@ describe('preview API — code-first source page', () => {
     expect(html).toContain('class="sw" href="/de">de</a>'); // switcher (root-relative link)
   });
 
-  it('inlines the scroll-reveal runtime when the source uses data-aos (and omits it otherwise)', async () => {
+  it('inlines the scroll-reveal runtime when the source uses data-sw-animation (and omits it otherwise)', async () => {
     const { t, projectId } = await setup('anim@acme.test', poolApp);
     const animated = await poolApp.inject({
       method: 'POST',
@@ -385,14 +385,14 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<section><h1 data-aos="fade-up">Reveal</h1></section>',
+        source: '<section><h1 data-sw-animation="fade-up">Reveal</h1></section>',
       },
     });
     expect(animated.statusCode).toBe(200);
     const html = (animated.json() as { html: string }).html;
     // Self-contained sandboxed preview: animation CSS + runtime are INLINED, so
     // the reveal actually plays inside the iframe (its CSP allows scripts).
-    expect(html).toContain('[data-aos].aos-init');
+    expect(html).toContain('[data-sw-animation].sw-animation-init');
     expect(html).toContain('IntersectionObserver');
     expect(html).not.toContain('src="animations.js"');
 
@@ -405,7 +405,7 @@ describe('preview API — code-first source page', () => {
         source: '<section><h1>Static</h1></section>',
       },
     });
-    expect((plain.json() as { html: string }).html).not.toContain('aos-init');
+    expect((plain.json() as { html: string }).html).not.toContain('sw-animation-init');
   });
 
   it('bridges body→window scroll in the editor preview when a scroll-linked effect is used', async () => {

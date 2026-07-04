@@ -38,7 +38,7 @@ export function pageContact(): Page {
       </div>
     </div>
 
-    <div class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-8 shadow-2xl shadow-neutral/10" data-aos="fade-up">
+    <div class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-8 shadow-2xl shadow-neutral/10" data-sw-animation="fade-up">
       <div class="absolute inset-x-0 top-0 h-1.5 rounded-t-3xl bg-gradient-to-r from-primary to-secondary" aria-hidden="true"></div>
       <h2 class="text-lg font-bold tracking-tight" data-sw-translate="contact.c_form_t">Project enquiry</h2>
       {{sw-form "contact" class="mt-4"}}

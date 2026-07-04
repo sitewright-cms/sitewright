@@ -125,6 +125,14 @@ describe('dataset + entry content API', () => {
     const list = (await app.inject({ method: 'GET', url: `${base}/content/entry`, cookies })).json() as { items: Array<{ id: string }> };
     expect(list.items.filter((e) => e.id === 'intro')).toHaveLength(2);
 
+    // ?dataset= scopes the entry list to ONE dataset's rows.
+    const postsList = (await app.inject({ method: 'GET', url: `${base}/content/entry?dataset=posts`, cookies })).json() as { items: Array<{ id: string; dataset: string; values: { title: string } }> };
+    expect(postsList.items).toHaveLength(1);
+    expect(postsList.items[0]!.dataset).toBe('posts');
+    expect(postsList.items[0]!.values.title).toBe('Posts intro');
+    // an invalid dataset slug → 400
+    expect((await app.inject({ method: 'GET', url: `${base}/content/entry?dataset=Bad Slug!`, cookies })).statusCode).toBe(400);
+
     // GET by (dataset, id) resolves the RIGHT one.
     const posts = (await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=posts`, cookies })).json() as { item: { values: { title: string } } };
     const news = (await app.inject({ method: 'GET', url: `${base}/content/entry/intro?dataset=news`, cookies })).json() as { item: { values: { title: string } } };

@@ -2183,12 +2183,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
   // to flood the site-wide settings (criticalCss/head/scripts) write.
-  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind',
     { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
-      return reply.send({ items: await contentRepo.list(ctx, parseGenericKind(req.params.kind)) });
+      const kind = parseGenericKind(req.params.kind);
+      const items = await contentRepo.list(ctx, kind);
+      // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
+      // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
+      // Validated against the slug charset; ignored for every other (project-global) kind.
+      if (kind === 'entry' && req.query.dataset !== undefined) {
+        const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
+        if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
+        return reply.send({ items: items.filter((it) => (it as { dataset?: string }).dataset === parsed.data) });
+      }
+      return reply.send({ items });
     },
   );
 

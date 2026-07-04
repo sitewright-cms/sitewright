@@ -396,8 +396,12 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'list_content',
-    { description: 'List all entities of a content kind.', inputSchema: { kind: GENERIC_KIND } },
-    gate(null, ({ kind }) => client.listContent(kind)),
+    {
+      description:
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together.",
+      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional() },
+    },
+    gate(null, ({ kind, dataset }) => client.listContent(kind, dataset)),
   );
 
   server.registerTool(

@@ -44,18 +44,25 @@ const SVG_STUDIO_PREVIEW_JS = `(function(){
     if(script&&script.parentNode)script.parentNode.removeChild(script);
     script=document.createElement('script');script.textContent=SW_RT;document.body.appendChild(script);
   }
+  // AUTO-LOOP: replay on an interval so edits are reviewed without pressing Play each time (editor-only).
+  var autoTimer=null,AUTO_MS=2400;
+  function autoloop(on){
+    if(autoTimer){clearInterval(autoTimer);autoTimer=null;}
+    if(on){play();autoTimer=setInterval(play,AUTO_MS);}else if(lastSvg){render(lastSvg);}
+  }
   function hideHi(){hi.style.display='none';}
   function highlight(id){
-    hideHi();if(!id)return;var el;try{el=stage.querySelector('[id="'+String(id).replace(/["\\\\]/g,'')+'"]');}catch(e){}
+    hideHi();if(!id)return;var el;try{el=stage.querySelector('#'+((window.CSS&&CSS.escape)?CSS.escape(String(id)):String(id).replace(/[^\\w-]/g,'')));}catch(e){}
     if(!el||!el.getBoundingClientRect)return;var r=el.getBoundingClientRect(),sr=stage.getBoundingClientRect();
     hi.style.display='block';hi.style.left=(r.left-sr.left-2)+'px';hi.style.top=(r.top-sr.top-2)+'px';hi.style.width=(r.width+4)+'px';hi.style.height=(r.height+4)+'px';
   }
   stage.addEventListener('click',function(e){
     var n=e.target;while(n&&n!==stage){if(n.getAttribute&&n.getAttribute('id')){post({type:'sw-studio-click',id:n.getAttribute('id')});return;}n=n.parentNode;}
   });
-  window.addEventListener('message',function(e){var d=e.data;if(!d||!d.type)return;
-    if(d.type==='sw-studio-render'&&typeof d.svg==='string')render(d.svg);
+  window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;if(!d||!d.type)return; // only the editor (our parent) drives this canvas
+    if(d.type==='sw-studio-render'&&typeof d.svg==='string'){render(d.svg);if(autoTimer)play();} // reflect edits at once while auto-looping
     else if(d.type==='sw-studio-play')play();
+    else if(d.type==='sw-studio-autoloop')autoloop(!!d.on);
     else if(d.type==='sw-studio-highlight')highlight(d.id);
   });
   post({type:'sw-studio-ready'});

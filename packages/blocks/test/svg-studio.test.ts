@@ -11,9 +11,17 @@ describe('SVG Studio canvas document', () => {
   });
 
   it('speaks the editor↔canvas protocol', () => {
-    for (const m of ['sw-studio-render', 'sw-studio-play', 'sw-studio-highlight', 'sw-studio-ready', 'sw-studio-click']) {
+    for (const m of ['sw-studio-render', 'sw-studio-play', 'sw-studio-autoloop', 'sw-studio-highlight', 'sw-studio-ready', 'sw-studio-click']) {
       expect(doc).toContain(m);
     }
+  });
+
+  it('auto-loop replays on a timer and stops cleanly (Play-free review of edits)', () => {
+    expect(doc).toContain('function autoloop(on)');
+    expect(doc).toContain('setInterval(play,AUTO_MS)');
+    expect(doc).toContain('clearInterval(autoTimer)');
+    // while looping, an incoming edit re-plays at once
+    expect(doc).toContain('if(autoTimer)play()');
   });
 
   it('renders only postMessage content (no tenant string is baked into the doc)', () => {

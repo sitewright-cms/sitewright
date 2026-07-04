@@ -15,6 +15,14 @@
 //   data-sw-svg-stagger="80"              ms between successive children (DOM order)
 //   data-sw-svg-scene-trigger="view|load" trigger for the whole scene (children inherit)
 //
+// GLOBAL (whole-SVG) settings — authored on the ROOT <svg>; when any is present the SVG animates as ONE
+// coordinated unit driven by these (individual elements keep their own effect/timing/direction):
+//   data-sw-svg-trigger="view|load"       when the whole SVG plays (default: view — on scroll-in)
+//   data-sw-svg-replay="true"             re-play every time it (re-)enters the viewport, any direction
+//   data-sw-svg-click="true"              clicking the SVG re-plays it (with a pointer ripple)
+//   data-sw-svg-loop="10000"              auto-repeat the whole animation every N ms (0.5s–10min)
+//   data-sw-svg-responsive="true"         scale the SVG to fill its parent (pure CSS, no-JS friendly)
+//
 // TIMING is the SHARED vocabulary (timing.ts), identical to the entrance engine:
 //   data-sw-duration (default 400) · data-sw-delay · data-sw-easing · data-sw-once
 //
@@ -86,6 +94,17 @@ export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
 export const SVG_ANIM_CSS = [
   '[data-sw-svg]{transform-box:fill-box;transform-origin:center}',
   '@media (prefers-reduced-motion: no-preference){[data-sw-svg].sw-svg-init{opacity:0}}',
+  // --- Global (whole-SVG) settings, authored on the root <svg> ---
+  // Responsive: scale the SVG to fill its parent container (no-JS friendly — pure CSS).
+  'svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}',
+  // Click-to-replay: hint interactivity.
+  'svg[data-sw-svg-click]{cursor:pointer}',
+  // Click ripple — mirrors the button ripple, but body-anchored (position:fixed) at the pointer so it
+  // works over an inline <svg> without needing a positioned wrapper. Colour is set inline from the SVG.
+  '.sw-svg-ripple{position:fixed;z-index:2147483646;border-radius:50%;pointer-events:none;opacity:.3;transform:translate(-50%,-50%) scale(0)}',
+  '@media (prefers-reduced-motion: no-preference){.sw-svg-ripple{animation:sw-svg-ripple .6s ease-out forwards}}',
+  '@media (prefers-reduced-motion: reduce){.sw-svg-ripple{display:none}}',
+  '@keyframes sw-svg-ripple{to{transform:translate(-50%,-50%) scale(1);opacity:0}}',
 ].join('');
 
 // --- shared runtime core ----------------------------------------------------
@@ -226,45 +245,91 @@ export const SVG_ANIM_JS = `(function(){
   function isMorph(el){return el.getAttribute('data-sw-svg')==='morph';}
   function isImg(el){return el.tagName&&String(el.tagName).toLowerCase()==='img';}
   var once=function(el){return el.getAttribute('${SW_TIMING_ATTRS.once}')!=='false';};
-  // Build + arm + trigger the animation UNITS within a subtree ROOT (the document, or a freshly-inlined
-  // <svg>). A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
+  // --- global (whole-SVG) settings, authored on the root <svg> ---
+  var LOOP_MIN=500,LOOP_MAX=600000; // auto-repeat bounds (ms): 0.5s … 10min
+  function boolAttr(el,name){return el.getAttribute(name)==='true';}
+  function loopMsOf(el){var v=el.getAttribute('data-sw-svg-loop');if(!v)return 0;var n=parseInt(v,10);if(!isFinite(n)||n<=0)return 0;if(n<LOOP_MIN)n=LOOP_MIN;if(n>LOOP_MAX)n=LOOP_MAX;return n;}
+  // A <svg> is a GLOBAL orchestration root when it carries a whole-SVG directive. A self-animated <svg>
+  // (data-sw-svg on the <svg> itself) is a STANDALONE element, not a container — so it's excluded here and
+  // keeps reading its own per-element trigger (back-compat: data-sw-svg-trigger was a per-element attr).
+  function hasGlobal(svg){if(svg.hasAttribute('data-sw-svg'))return false;return svg.hasAttribute('data-sw-svg-trigger')||svg.hasAttribute('data-sw-svg-replay')||svg.hasAttribute('data-sw-svg-click')||svg.hasAttribute('data-sw-svg-loop');}
+  // Candidate <svg> roots in a subtree — querySelectorAll misses the subtree root itself (the inlined case),
+  // which is added FIRST so an inlined outer <svg>'s global settings win over any nested <svg>.
+  function svgRoots(root){var list=[];Array.prototype.forEach.call(root.querySelectorAll('svg'),function(s){list.push(s);});if(root.tagName&&String(root.tagName).toLowerCase()==='svg')list.unshift(root);return list;}
+  // Body-anchored ripple at the pointer — the click-to-replay affordance (mirrors the button ripple).
+  function swRipple(e,host){
+    try{
+      var span=document.createElement('span');span.className='sw-svg-ripple';
+      var r=host.getBoundingClientRect();var size=Math.max(r.width,r.height)*0.55;if(!(size>0))size=90;
+      var x=(e&&e.clientX!=null)?e.clientX:r.left+r.width/2,y=(e&&e.clientY!=null)?e.clientY:r.top+r.height/2;
+      span.style.width=span.style.height=size+'px';span.style.left=x+'px';span.style.top=y+'px';
+      var col='';try{col=window.getComputedStyle(host).color;}catch(_e){}
+      span.style.background=(col&&col.indexOf('rgba(0, 0, 0, 0)')<0)?col:'currentColor';
+      document.body.appendChild(span);
+      var rm=function(){if(span.parentNode)span.parentNode.removeChild(span);};
+      span.addEventListener('animationend',rm,{once:true});setTimeout(rm,800);
+    }catch(_e){}
+  }
+  // Build + arm + trigger animation UNITS within a subtree ROOT (document, or a freshly-inlined <svg>). A
+  // UNIT = one trigger SOURCE (an explicit scene, a global <svg> root, or a standalone element) + its
+  // ordered members, sharing one trigger/replay/click/loop. Settings on the <svg> drive the whole SVG.
   function runSvgAnim(root){
     var els=root.querySelectorAll('[data-sw-svg]');
-    var scenes=root.querySelectorAll('[data-sw-svg-scene]');
-    var claimed=[];Array.prototype.forEach.call(scenes,function(s){var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,function(k){claimed.push(k);});});
-    function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
+    var claimed=[];function claim(el){claimed.push(el);}function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
     var units=[];
+    // 1) explicit scenes — a container staggers its descendants (claimed first so they aren't re-grouped).
+    var scenes=root.querySelectorAll('[data-sw-svg-scene]');
     Array.prototype.forEach.call(scenes,function(s){
+      var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,claim);
       var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
       var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
-      var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
-      Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
-      if(members.length)units.push({root:s,trigger:trig,members:members});
+      var members=[];Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
+      if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s)});
     });
+    // 2) global <svg> roots — the whole SVG animates as ONE coordinated unit driven by its root settings.
+    Array.prototype.forEach.call(svgRoots(root),function(svg){
+      if(!hasGlobal(svg))return;
+      var kids=svg.querySelectorAll('[data-sw-svg]');var members=[];
+      Array.prototype.forEach.call(kids,function(k){if(isClaimed(k)||isMorph(k)||isImg(k))return;claim(k);members.push(member(k,0));});
+      if(!members.length)return;
+      var trig=(svg.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
+      units.push({root:svg,trigger:trig,members:members,replay:boolAttr(svg,'data-sw-svg-replay'),click:boolAttr(svg,'data-sw-svg-click'),loopMs:loopMsOf(svg)});
+    });
+    // 3) remaining standalone elements — per-element trigger/replay (back-compat).
     Array.prototype.forEach.call(els,function(el){
       if(isClaimed(el)||isMorph(el)||isImg(el))return;
       var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
-      units.push({root:el,trigger:trig,members:[member(el,0)]});
+      units.push({root:el,trigger:trig,members:[member(el,0)],replay:!once(el)});
     });
     if(units.length===0)return;
-    // Arm: hide every member (PE-first init class) before anything triggers (OUT members start visible).
+    // Arm: hide every IN member (PE-first init class) before anything triggers (OUT members start visible).
     units.forEach(function(u){u.members.forEach(function(m){if(m.io!=='out')m.el.classList.add('sw-svg-init');});});
     function playUnit(u){u.members.forEach(svgPlay);}
     function resetUnit(u){u.members.forEach(svgReset);}
-    units.forEach(function(u){if(u.trigger==='load')playUnit(u);});
+    function replayUnit(u){resetUnit(u);if(window.requestAnimationFrame)requestAnimationFrame(function(){playUnit(u);});else playUnit(u);}
+    // Self-clearing: once the root leaves the document (SPA nav / re-inline / removal) the timer stops, so
+    // no interval outlives its element (no leak, no ticks on a detached node).
+    function startLoop(u){if(u.loopMs>0&&!u.timer){u.timer=setInterval(function(){if(!document.contains(u.root)){clearInterval(u.timer);u.timer=null;return;}if(u.trigger==='load'||u.shown)replayUnit(u);},u.loopMs);}}
+    // click-to-replay + ripple (global roots only).
+    units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){replayUnit(u);swRipple(e,u.root);});});
+    // load-trigger: play immediately (+ start the auto-repeat loop).
+    units.forEach(function(u){if(u.trigger==='load'){u.shown=true;playUnit(u);startLoop(u);}});
     var viewUnits=units.filter(function(u){return u.trigger==='view';});
     if(viewUnits.length===0)return;
-    if(!('IntersectionObserver' in window)){viewUnits.forEach(playUnit);return;} // PE fallback: just play
+    if(!('IntersectionObserver' in window)){viewUnits.forEach(function(u){u.shown=true;playUnit(u);startLoop(u);});return;} // PE fallback
+    // Play when meaningfully visible; RE-ARM replay only on a FULL exit (ratio 0), so replay fires from ANY
+    // scroll direction (the old single bottom-margin threshold missed re-entry from some directions).
     var io=new IntersectionObserver(function(entries){
       entries.forEach(function(entry){
-        for(var i=0;i<viewUnits.length;i++){
-          if(viewUnits[i].root!==entry.target)continue;
-          var u=viewUnits[i];
-          if(entry.isIntersecting){playUnit(u);if(once(u.root))io.unobserve(u.root);}
-          else if(!once(u.root))resetUnit(u);
+        var u=null;for(var i=0;i<viewUnits.length;i++){if(viewUnits[i].root===entry.target){u=viewUnits[i];break;}}
+        if(!u)return;
+        if(entry.isIntersecting&&entry.intersectionRatio>=0.15){
+          if(!u.shown){u.shown=true;playUnit(u);startLoop(u);if(!u.replay)io.unobserve(u.root);}
+        }else if(entry.intersectionRatio===0){
+          if(u.shown&&u.replay){u.shown=false;resetUnit(u);}
         }
       });
-    },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
+    },{threshold:[0,0.15],rootMargin:'0px 0px -5% 0px'});
     viewUnits.forEach(function(u){io.observe(u.root);});
   }
   // INLINE an <img data-sw-svg src="…svg"> so its per-element data-sw-svg directives can run: fetch the

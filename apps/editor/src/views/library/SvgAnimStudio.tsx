@@ -24,6 +24,26 @@ const EFFECT_LABELS: Record<string, string> = {
 };
 const EASINGS = ['ease-out', 'ease', 'ease-in', 'ease-in-out', 'linear', 'back', 'bounce', 'elastic'];
 
+// Dropdown order — a friendlier grouping than the engine's raw list: Reveal wipes sit right after the
+// Fade family (both are "uncover in place"). Any effect the engine adds but this list misses is appended,
+// so the picker never silently drops a new effect.
+const EFFECT_ORDER = [
+  'draw',
+  'fade', 'fade-up', 'fade-down', 'fade-left', 'fade-right',
+  'reveal-right', 'reveal-left', 'reveal-down', 'reveal-up', 'reveal-iris',
+  'zoom-in', 'zoom-out', 'flip-x', 'flip-y', 'blur',
+  'scale-c', 'scale-t', 'scale-b', 'scale-l', 'scale-r', 'scale-tl', 'scale-tr', 'scale-bl', 'scale-br',
+  'expand-x', 'expand-y', 'expand-t', 'expand-b', 'expand-l', 'expand-r',
+  'along-path', 'morph',
+];
+const ORDERED_EFFECTS: string[] = [
+  ...EFFECT_ORDER.filter((e) => SVG_ANIM_EFFECTS.includes(e)),
+  ...SVG_ANIM_EFFECTS.filter((e) => !EFFECT_ORDER.includes(e)),
+];
+
+/** Auto-repeat loop default (10s) when the toggle is switched on. */
+const LOOP_DEFAULT_MS = 10000;
+
 /**
  * The SVG Animation Studio — import an SVG, see every element in a tree, assign an animation (effect +
  * timing) to each, preview it live, and export the annotated inline SVG (or download the .svg). The engine
@@ -42,6 +62,8 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [svgText, setSvgText] = useState('');
+  const [panelTab, setPanelTab] = useState<'element' | 'global'>('element');
+  const [autoLoop, setAutoLoop] = useState(false);
   const [, bump] = useState(0);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -133,6 +155,16 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
     reserialize();
     bump((v) => v + 1);
   };
+
+  // GLOBAL (whole-SVG) settings live on the root <svg>.
+  const rootAttr = (n: string) => svgRef.current?.getAttribute(n) || '';
+  const setRootAttr = (name: string, value: string | null) => {
+    if (!svgRef.current) return;
+    if (value === null || value === '') svgRef.current.removeAttribute(name);
+    else svgRef.current.setAttribute(name, value);
+    reserialize();
+    bump((v) => v + 1);
+  };
   const setEffect = (e: string) => {
     if (!sel) return;
     if (!e) {
@@ -157,6 +189,9 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
   useEffect(() => {
     if (readyRef.current) send({ type: 'sw-studio-highlight', id: selectedId });
   }, [selectedId]);
+  useEffect(() => {
+    if (readyRef.current) send({ type: 'sw-studio-autoloop', on: autoLoop });
+  }, [autoLoop]);
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
@@ -192,7 +227,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
   const showOrigin = /^(scale|zoom|flip)/.test(effect);
 
   return (
-    <Modal title="SVG animation studio" size="full" onClose={onClose}>
+    <Modal title="SVG animation studio" size="studio" onClose={onClose}>
       {stage === 'import' ? (
         <div className="mx-auto flex max-w-2xl flex-col gap-4 p-6">
           <p className="text-sm text-slate-500">
@@ -230,24 +265,28 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
       ) : (
         <div className="flex h-full min-h-0">
           {/* element tree */}
-          <div className="flex w-64 shrink-0 flex-col border-r border-slate-200">
-            <div className="flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-500">
+          <div className="flex w-72 shrink-0 flex-col border-r border-slate-200">
+            <div className="flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
               <span>Elements</span>
-              <button type="button" className="text-[11px] font-semibold text-primary" onClick={() => setStage('import')}>
+              <button type="button" className="text-[11px] font-semibold normal-case tracking-normal text-primary" onClick={() => setStage('import')}>
                 ← re-import
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               <TreeList nodes={tree} selectedId={selectedId} onSelect={setSelectedId} svg={svgRef.current} />
             </div>
           </div>
 
           {/* canvas */}
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center gap-2 px-3 py-2">
+            <div className="flex items-center gap-3 px-3 py-2">
               <button type="button" className={primaryButton} onClick={() => send({ type: 'sw-studio-play' })}>
                 ▶ Play
               </button>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500" title="Replay the animation on a loop so you can review edits without pressing Play">
+                <input type="checkbox" className={toggleInput} checked={autoLoop} onChange={(e) => setAutoLoop(e.target.checked)} aria-label="Auto-loop preview" />
+                Auto-loop
+              </label>
               <span className="text-xs text-slate-400">{selectedId ? `selected: ${selectedId}` : 'click an element to select it'}</span>
             </div>
             <iframe ref={iframeRef} title="SVG studio canvas" src={previewSrc} sandbox="allow-scripts" className="min-h-0 flex-1 border-y border-slate-200 bg-white" />
@@ -282,61 +321,60 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
             </div>
           </div>
 
-          {/* per-element panel */}
-          <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 p-4">
-            {!sel ? (
-              <p className="text-sm text-slate-400">Select an element (in the tree or on the canvas) to animate it.</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <div className="text-xs font-bold text-slate-500">
-                  {sel.tagName.toLowerCase()} <span className="font-mono text-[11px] text-slate-400">#{selectedId}</span>
-                </div>
-                <Field label="Effect" desc="What this element does.">
-                  <select aria-label="Effect" className={`${glassInput} text-xs`} value={effect} onChange={(e) => setEffect(e.target.value)}>
-                    <option value="">— none —</option>
-                    {SVG_ANIM_EFFECTS.map((e) => (
-                      <option key={e} value={e}>
-                        {EFFECT_LABELS[e] ?? e}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {effect && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Duration" desc="ms">
-                        <input aria-label="Duration" type="number" min={0} max={SVG_ANIM_LIMITS.duration.max} step={100} value={attr('data-sw-duration') || 600} onChange={(e) => setAttr('data-sw-duration', String(clampN(e.target.value, 0, SVG_ANIM_LIMITS.duration.max)))} className={`${glassInput} w-full`} />
+          {/* right panel: Element | Global settings */}
+          <div className="flex w-80 shrink-0 flex-col border-l border-slate-200">
+            <div className="flex shrink-0 border-b border-slate-200 text-xs font-semibold">
+              {([['element', 'Element'], ['global', 'Global settings']] as const).map(([t, lbl]) => (
+                <button key={t} type="button" onClick={() => setPanelTab(t)} className={`flex-1 px-3 py-2.5 transition ${panelTab === t ? 'border-b-2 border-primary text-primary' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {panelTab === 'global' ? (
+                <GlobalSettings rootAttr={rootAttr} setRootAttr={setRootAttr} />
+              ) : !sel ? (
+                <p className="text-sm text-slate-400">Select an element (in the tree or on the canvas) to animate it.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="text-xs font-bold text-slate-500">
+                    {sel.tagName.toLowerCase()} <span className="font-mono text-[11px] text-slate-400">#{selectedId}</span>
+                  </div>
+                  <Field label="Effect" desc="What this element does.">
+                    <select aria-label="Effect" className={`${glassInput} text-xs`} value={effect} onChange={(e) => setEffect(e.target.value)}>
+                      <option value="">— none —</option>
+                      {ORDERED_EFFECTS.map((e) => (
+                        <option key={e} value={e}>
+                          {EFFECT_LABELS[e] ?? e}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {effect && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Duration" desc="ms">
+                          <input aria-label="Duration" type="number" min={0} max={SVG_ANIM_LIMITS.duration.max} step={100} value={attr('data-sw-duration') || 600} onChange={(e) => setAttr('data-sw-duration', String(clampN(e.target.value, 0, SVG_ANIM_LIMITS.duration.max)))} className={`${glassInput} w-full`} />
+                        </Field>
+                        <Field label="Delay" desc="ms">
+                          <input aria-label="Delay" type="number" min={0} max={SVG_ANIM_LIMITS.delay.max} step={50} value={attr('data-sw-delay') || 0} onChange={(e) => setAttr('data-sw-delay', num(e.target.value) > 0 ? String(clampN(e.target.value, 0, SVG_ANIM_LIMITS.delay.max)) : null)} className={`${glassInput} w-full`} />
+                        </Field>
+                      </div>
+                      <Field label="Easing" desc="Timing curve.">
+                        <select aria-label="Easing" className={`${glassInput} text-xs`} value={attr('data-sw-easing') || 'ease-out'} onChange={(e) => setAttr('data-sw-easing', e.target.value === 'ease-out' ? null : e.target.value)}>
+                          {EASINGS.map((z) => (
+                            <option key={z} value={z}>{z}</option>
+                          ))}
+                        </select>
                       </Field>
-                      <Field label="Delay" desc="ms">
-                        <input aria-label="Delay" type="number" min={0} max={SVG_ANIM_LIMITS.delay.max} step={50} value={attr('data-sw-delay') || 0} onChange={(e) => setAttr('data-sw-delay', num(e.target.value) > 0 ? String(clampN(e.target.value, 0, SVG_ANIM_LIMITS.delay.max)) : null)} className={`${glassInput} w-full`} />
-                      </Field>
-                    </div>
-                    <Field label="Easing" desc="Timing curve.">
-                      <select aria-label="Easing" className={`${glassInput} text-xs`} value={attr('data-sw-easing') || 'ease-out'} onChange={(e) => setAttr('data-sw-easing', e.target.value === 'ease-out' ? null : e.target.value)}>
-                        {EASINGS.map((z) => (
-                          <option key={z} value={z}>{z}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <div className="grid grid-cols-2 gap-3">
                       <Field label="Direction" desc="Enter or exit.">
                         <select aria-label="Direction" className={`${glassInput} text-xs`} value={attr('data-sw-svg-dir') || 'in'} onChange={(e) => setAttr('data-sw-svg-dir', e.target.value === 'in' ? null : 'out')}>
                           <option value="in">In (enter)</option>
                           <option value="out">Out (exit)</option>
                         </select>
                       </Field>
-                      <Field label="Trigger" desc="When it plays.">
-                        <select aria-label="Trigger" className={`${glassInput} text-xs`} value={attr('data-sw-svg-trigger') || 'view'} onChange={(e) => setAttr('data-sw-svg-trigger', e.target.value === 'view' ? null : 'load')}>
-                          <option value="view">On scroll-in</option>
-                          <option value="load">On load</option>
-                        </select>
-                      </Field>
-                    </div>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" className={toggleInput} checked={attr('data-sw-once') === 'false'} onChange={(e) => setAttr('data-sw-once', e.target.checked ? 'false' : null)} aria-label="Replay on every scroll-in" />
-                      <span className="text-xs text-slate-600">Replay on every scroll-in (loop)</span>
-                    </label>
-                    {effect === 'draw' && (
+                      <p className="text-[11px] leading-snug text-slate-400">Trigger, replay, click &amp; loop are set once for the whole SVG in <button type="button" className="font-semibold text-primary" onClick={() => setPanelTab('global')}>Global settings</button>.</p>
+                      {effect === 'draw' && (
                       <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-2">
                         <Field label="Stroke color" desc="draw outline">
                           <input aria-label="Stroke color" type="text" placeholder="currentColor" value={attr('data-sw-svg-draw-color')} onChange={(e) => setAttr('data-sw-svg-draw-color', e.target.value || null)} className={`${glassInput} w-full text-xs`} />
@@ -365,10 +403,11 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
                         </select>
                       </Field>
                     )}
-                  </>
-                )}
-              </div>
-            )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -394,6 +433,52 @@ function Field({ label, desc, children }: { label: string; desc: string; childre
   );
 }
 
+/** Whole-SVG settings, stored as data-sw-svg* attributes on the root <svg> (see the engine). */
+function GlobalSettings({ rootAttr, setRootAttr }: { rootAttr: (n: string) => string; setRootAttr: (n: string, v: string | null) => void }) {
+  const trigger = rootAttr('data-sw-svg-trigger') || 'view';
+  const replay = rootAttr('data-sw-svg-replay') === 'true';
+  const click = rootAttr('data-sw-svg-click') === 'true';
+  const responsive = rootAttr('data-sw-svg-responsive') === 'true';
+  const loopMs = parseInt(rootAttr('data-sw-svg-loop') || '0', 10) || 0;
+  const loopOn = loopMs > 0;
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-[11px] leading-snug text-slate-400">These apply to the whole SVG — how &amp; when the entire animation plays.</p>
+      <Field label="Trigger" desc="When it plays.">
+        <select aria-label="Trigger" className={`${glassInput} text-xs`} value={trigger} onChange={(e) => setRootAttr('data-sw-svg-trigger', e.target.value === 'view' ? null : 'load')}>
+          <option value="view">On scroll-in</option>
+          <option value="load">On page load</option>
+        </select>
+      </Field>
+      <GlobalToggle label="Replay on scroll-in" desc="Re-plays each time the SVG re-enters the viewport (any direction)." checked={replay} onChange={(v) => setRootAttr('data-sw-svg-replay', v ? 'true' : null)} />
+      <GlobalToggle label="Replay on click" desc="Clicking the SVG re-plays it, with a ripple." checked={click} onChange={(v) => setRootAttr('data-sw-svg-click', v ? 'true' : null)} />
+      <div className="flex flex-col gap-2">
+        <GlobalToggle label="Auto-repeat loop" desc="Replay the whole animation on a timer." checked={loopOn} onChange={(v) => setRootAttr('data-sw-svg-loop', v ? String(LOOP_DEFAULT_MS) : null)} />
+        {loopOn && (
+          <label className="ml-7 flex items-center gap-2 text-xs text-slate-600">
+            every
+            <input aria-label="Loop interval (seconds)" type="number" min={1} max={600} step={1} value={Math.round(loopMs / 1000)} onChange={(e) => setRootAttr('data-sw-svg-loop', String(Math.max(1, Math.min(600, num(e.target.value))) * 1000))} className={`${glassInput} w-20`} />
+            seconds
+          </label>
+        )}
+      </div>
+      <GlobalToggle label="Responsive" desc="Scale the SVG to fill its parent container." checked={responsive} onChange={(v) => setRootAttr('data-sw-svg-responsive', v ? 'true' : null)} />
+    </div>
+  );
+}
+
+function GlobalToggle({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5">
+      <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+      <span className="leading-tight">
+        <span className="block text-xs font-semibold text-slate-700">{label}</span>
+        <span className="block text-[11px] text-slate-400">{desc}</span>
+      </span>
+    </label>
+  );
+}
+
 function TreeList({ nodes, selectedId, onSelect, svg }: { nodes: TreeNode[]; selectedId: string; onSelect: (id: string) => void; svg: SVGSVGElement | null }) {
   return (
     <ul>
@@ -404,13 +489,13 @@ function TreeList({ nodes, selectedId, onSelect, svg }: { nodes: TreeNode[]; sel
             <button
               type="button"
               onClick={() => onSelect(n.id)}
-              style={{ paddingLeft: 8 + n.depth * 14 }}
-              className={`flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs ${selectedId === n.id ? 'bg-primary/10 font-semibold text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+              style={{ paddingLeft: 8 + n.depth * 16 }}
+              className={`flex w-full items-center gap-2 rounded-md py-1.5 pr-2.5 text-left text-[13px] ${selectedId === n.id ? 'bg-primary/10 font-semibold text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              <span className={`inline-block h-1.5 w-1.5 rounded-full ${animated ? 'bg-emerald-500' : 'bg-transparent'}`} />
-              <span>{n.tag}</span>
-              {n.authored && <span className="font-mono text-[10px] text-slate-400">#{n.id}</span>}
-              {n.tag === 'g' && <span className="text-[10px] text-slate-400">({n.children.length})</span>}
+              <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${animated ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+              <span className="shrink-0 font-medium">{n.tag}</span>
+              {n.authored && <span className="truncate font-mono text-[11px] text-slate-400">#{n.id}</span>}
+              {n.tag === 'g' && <span className="ml-auto shrink-0 text-[11px] text-slate-400">({n.children.length})</span>}
             </button>
             {n.children.length > 0 && <TreeList nodes={n.children} selectedId={selectedId} onSelect={onSelect} svg={svg} />}
           </li>

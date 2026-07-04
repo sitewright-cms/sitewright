@@ -23,7 +23,9 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
     setLoading(true);
     setError(null);
     try {
-      setItems((await api.listDeletedMedia(projectId)).items);
+      // Most-recently-deleted first, then by name — the server returns them unordered.
+      const deleted = (await api.listDeletedMedia(projectId)).items;
+      setItems([...deleted].sort((a, b) => b.deletedAt - a.deletedAt || a.filename.localeCompare(b.filename)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load the Recycle Bin');
     } finally {

@@ -38,6 +38,8 @@ import {
   usesConsent,
   CONSENT_CSS,
   CONSENT_JS,
+  usesSvgAnimMorph,
+  SVG_ANIM_MORPH_JS,
 } from '@sitewright/blocks';
 
 /** How a runtime behaves in the SINGLE-PAGE editor preview:
@@ -68,6 +70,9 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   { key: 'animation', uses: usesAnimations, css: ANIMATION_CSS, js: ANIMATION_JS, script: 'animations.js' },
   { key: 'parallax', uses: usesParallax, css: PARALLAX_CSS, js: PARALLAX_JS, script: 'parallax.js' },
   { key: 'svg-anim', uses: usesSvgAnim, css: SVG_ANIM_CSS, js: SVG_ANIM_JS, script: 'svg-anim.js' },
+  // JS-only, SEPARATE chunk: the path-morph interpolator ships only on pages that morph (the core
+  // svg-anim runtime skips data-sw-svg="morph"). A morph-only page also loads svg-anim.js (it no-ops).
+  { key: 'svg-morph', uses: usesSvgAnimMorph, js: SVG_ANIM_MORPH_JS, script: 'svg-anim-morph.js' },
   { key: 'marquee', uses: usesMarquee, css: MARQUEE_CSS }, // CSS-only (pure CSS animation)
   { key: 'lazyload', uses: usesLazyload, css: LAZYLOAD_CSS, js: LAZYLOAD_JS, script: 'lazyload.js' },
   { key: 'ripple', uses: usesRipple, css: RIPPLE_CSS, js: RIPPLE_JS, script: 'ripple.js' },

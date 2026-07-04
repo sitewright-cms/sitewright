@@ -28,7 +28,8 @@ const ALL_MARKERS =
   '<section>' +
   '<div data-sw-animation="fade-up">a</div>' +
   '<div data-sw-parallax-translate="40,-40">p</div>' +
-  '<svg viewBox="0 0 10 10" data-sw-svg-scene><path data-sw-svg="draw" d="M0 0 H10" stroke="currentColor" fill="none"/></svg>' +
+  '<svg viewBox="0 0 10 10" data-sw-svg-scene><path data-sw-svg="draw" d="M0 0 H10" stroke="currentColor" fill="none"/>' +
+  '<path data-sw-svg="morph" data-sw-svg-to="M0 0 H10 V10" d="M0 0 H10"/></svg>' +
   '<div data-sw-marquee><span>m</span></div>' +
   '<img data-bg="/x.jpg" alt="" />' +
   '<a class="waves-effect">r</a>' +
@@ -42,7 +43,7 @@ describe('effect-runtime registry — self-consistency', () => {
     expect(new Set(keys).size).toBe(keys.length); // no dup keys
     for (const r of BODY_EFFECT_RUNTIMES) {
       expect(typeof r.uses).toBe('function');
-      expect(r.css, `${r.key} has inline CSS`).toBeTruthy();
+      expect(r.css || r.js, `${r.key} is deliverable (has CSS and/or JS)`).toBeTruthy();
       if (r.js) expect(r.script, `${r.key} JS is shippable (has a script filename)`).toBeTruthy();
     }
   });
@@ -57,8 +58,8 @@ describe('effect-runtime registry — self-consistency', () => {
   });
 
   it('the helpers resolve the full set for an all-markers page, and nothing for a plain one', () => {
-    // Every runtime inlines CSS in both paths.
-    expect(bodyEffectStyles(ALL_MARKERS)).toHaveLength(BODY_EFFECT_RUNTIMES.length);
+    // Every runtime WITH css inlines it in both paths (svg-morph is JS-only).
+    expect(bodyEffectStyles(ALL_MARKERS)).toHaveLength(BODY_EFFECT_RUNTIMES.filter((r) => r.css).length);
     // Preview JS = 'run' runtimes that have JS (excludes CSS-only marquee + style-only cart/consent).
     const runWithJs = BODY_EFFECT_RUNTIMES.filter((r) => r.js && (r.preview ?? 'run') === 'run');
     expect(previewBodyEffectScripts(ALL_MARKERS)).toHaveLength(runWithJs.length);

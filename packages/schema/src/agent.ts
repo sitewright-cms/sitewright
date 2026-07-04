@@ -400,7 +400,10 @@ sparingly. Recipe to copy: parallax-hero. Compose one in the editor's Parallax b
 SVG ANIMATION (animate INSIDE an svg): put data-sw-svg on an element INSIDE an <svg> (a <path>, <g>, or
 shape) — NOT on the <svg> wrapper of a whole illustration unless you mean to animate it as one. Effects:
 draw (the signature stroke draw-on — the element MUST have stroke + fill="none"), fade, fade-up/-down/-left/
--right, zoom-in, zoom-out, flip-x, flip-y, blur. Timing = the SAME shared attributes as entrance animations:
+-right, zoom-in, zoom-out, flip-x, flip-y, blur, reveal-right/-left/-down/-up/-iris (a clip-path wipe/iris),
+along-path (travel a motion path — add data-sw-svg-path="M…", optional data-sw-svg-rotate="0" to not face it),
+and morph (tween the shape — the element's own d= is the START, add data-sw-svg-to="M…" for the target; for a
+clean morph keep the two paths similar in structure). Timing = the SAME shared attributes as entrance animations:
 data-sw-duration (default 400), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false".
 draw extras: data-sw-svg-draw-dir="reverse", data-sw-svg-fill="true" (fade the fill in after the stroke).
 scale/flip pivot: data-sw-svg-origin="center|top|bottom left|…". SCENES: wrap several animated elements in

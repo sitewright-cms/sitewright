@@ -826,6 +826,9 @@ export const api = {
    *  loaded via iframe `src`). Config is pushed live via postMessage, so no query is needed. */
   svgAnimPreviewUrl: (query: string) => `${BASE}/authoring/svg-preview${query ? `?${query}` : ''}`,
 
+  /** The SVG Animation Studio's live canvas doc URL (same sandbox-CSP route; content pushed via postMessage). */
+  svgStudioPreviewUrl: () => `${BASE}/authoring/svg-studio-preview`,
+
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),
@@ -986,6 +989,9 @@ export const api = {
   /** Download a remote URL into the library (self-host) — returns the new asset. */
   importMediaUrl: (projectId: string, url: string, folder = '') =>
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
+  /** Overwrite an existing SVG asset's content in place (Studio "save to the same file"); id-stable. */
+  overwriteSvgMedia: (projectId: string, id: string, svg: string) =>
+    request<{ item: MediaAsset }>('PUT', `/projects/${projectId}/media/${id}/svg`, { svg }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
   /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */

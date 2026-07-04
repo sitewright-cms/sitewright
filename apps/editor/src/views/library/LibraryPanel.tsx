@@ -10,7 +10,7 @@ import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { ParallaxBuilder } from './ParallaxBuilder';
-import { SvgAnimBuilder } from './SvgAnimBuilder';
+import { SvgAnimStudio } from './SvgAnimStudio';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -40,7 +40,7 @@ function previewHtml(example: string): string {
  * pack), Animation, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
  * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
  */
-export function LibraryPanel() {
+export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
@@ -114,15 +114,15 @@ export function LibraryPanel() {
           </span>
         </button>
 
-        {/* The SVG animation builder — compose an entrance for an SVG element (draw-on / fade / zoom /
-            flip / blur + timing), preview it looping live, and copy the data-sw-svg* markup. */}
+        {/* The SVG Animation Studio — import an SVG, animate each element (effect + timing) with a live
+            canvas, and export the animated SVG. */}
         <button
           onClick={() => setSvgOpen(true)}
           className="waves-effect rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2.5 text-left transition hover:from-emerald-100 hover:to-teal-100"
         >
-          <span className="block text-sm font-bold text-emerald-800">SVG animation builder</span>
+          <span className="block text-sm font-bold text-emerald-800">SVG animation studio</span>
           <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80">
-            Draw-on, fade, zoom, flip & blur for SVG paths/icons — compose, preview & copy the markup.
+            Import an SVG → animate each element (draw-on / fade / zoom / flip / reveal / morph) → export.
           </span>
         </button>
 
@@ -145,7 +145,7 @@ export function LibraryPanel() {
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
-      {svgOpen && <SvgAnimBuilder onClose={() => setSvgOpen(false)} />}
+      {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

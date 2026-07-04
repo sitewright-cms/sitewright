@@ -23,8 +23,6 @@ import { SW_TIMING_CORE } from './timing.js';
 
 export const SVG_ANIM_MORPH_JS = `(function(){
   'use strict';
-  var els=document.querySelectorAll('[data-sw-svg="morph"]');
-  if(els.length===0)return;
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   ${SW_TIMING_CORE}
   var NS='http://www.w3.org/2000/svg',N=64;
@@ -69,27 +67,38 @@ export const SVG_ANIM_MORPH_JS = `(function(){
     raf(frame);
   }
   var once=function(el){return el.getAttribute('data-sw-once')!=='false';};
-  var view=[];
-  Array.prototype.forEach.call(els,function(el){
-    if(el.getAttribute('data-sw-svg-trigger')==='load')run(el);else view.push(el);
-  });
-  if(view.length===0)return;
-  if(!('IntersectionObserver' in window)){view.forEach(run);return;}
-  var io=new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      var el=en.target;
-      if(en.isIntersecting){run(el);if(once(el))io.unobserve(el);}
-      // Replay (once="false"): restore the start shape on viewport-leave so the next entry re-morphs.
-      else if(!once(el)&&!el.__swMorphing&&el.__swMorphFrom!=null)el.setAttribute('d',el.__swMorphFrom);
+  // Run morph within a subtree ROOT (the document, or an <svg> the core runtime inlined from an <img>).
+  function runMorph(root){
+    var els=root.querySelectorAll('[data-sw-svg="morph"]');
+    if(els.length===0)return;
+    var view=[];
+    Array.prototype.forEach.call(els,function(el){
+      if(el.getAttribute('data-sw-svg-trigger')==='load')run(el);else view.push(el);
     });
-  },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
-  view.forEach(function(el){io.observe(el);});
+    if(view.length===0)return;
+    if(!('IntersectionObserver' in window)){view.forEach(run);return;}
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        var el=en.target;
+        if(en.isIntersecting){run(el);if(once(el))io.unobserve(el);}
+        // Replay (once="false"): restore the start shape on viewport-leave so the next entry re-morphs.
+        else if(!once(el)&&!el.__swMorphing&&el.__swMorphFrom!=null)el.setAttribute('d',el.__swMorphFrom);
+      });
+    },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
+    view.forEach(function(el){io.observe(el);});
+  }
+  runMorph(document);
+  // Morph elements inside an <img data-sw-svg> are invisible to the page-scan, so also morph any SVG the
+  // core runtime inlines at runtime (it fires 'sw-svg-inlined' with the new subtree).
+  document.addEventListener('sw-svg-inlined',function(e){if(e&&e.detail&&e.detail.root)runMorph(e.detail.root);});
 })();`;
 
-// Detection is the literal morph marker — a page ships this chunk ONLY when it actually morphs.
+// Detection: the literal morph marker, OR an `<img … data-sw-svg …>` — the .svg it references may contain
+// morph elements the page-scan can't see, so the chunk ships (its inline-event listener then handles them).
 const SVG_ANIM_MORPH_MARKER = 'data-sw-svg="morph"';
+const IMG_INLINE_RE = /<img\b[^>]*\bdata-sw-svg\b/i;
 
-/** Whether an authored HTML/template string uses the SVG morph effect. */
+/** Whether an authored HTML/template string uses the SVG morph effect (directly, or via an inlined <img>). */
 export function usesSvgAnimMorph(html: string | null | undefined): boolean {
-  return typeof html === 'string' && html.includes(SVG_ANIM_MORPH_MARKER);
+  return typeof html === 'string' && (html.includes(SVG_ANIM_MORPH_MARKER) || IMG_INLINE_RE.test(html));
 }

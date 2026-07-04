@@ -14,6 +14,7 @@ export * from './sticky-header.js';
 export * from './parallax.js';
 export * from './svg-anim.js';
 export * from './svg-anim-morph.js';
+export * from './svg-studio.js';
 export * from './scrollspy.js';
 export * from './theme-mode.js';
 export * from './escape.js';

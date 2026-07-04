@@ -99,11 +99,25 @@ describe('SVG animation detection + surface', () => {
     expect('data-sw-animation'.includes('data-sw-svg')).toBe(false);
   });
 
-  it('exposes a stable, allowlisted effect vocabulary incl. draw, reveals, along-path + morph', () => {
-    for (const e of ['draw', 'fade-up', 'flip-x', 'along-path', 'reveal-right', 'reveal-iris', 'morph']) {
+  it('exposes a stable, allowlisted effect vocabulary incl. draw, scale/expand, reveals, along-path + morph', () => {
+    for (const e of ['draw', 'fade-up', 'flip-x', 'scale-tl', 'scale-c', 'expand-x', 'expand-b', 'along-path', 'reveal-right', 'reveal-iris', 'morph']) {
       expect(SVG_ANIM_EFFECTS).toContain(e);
     }
     expect(new Set(SVG_ANIM_EFFECTS).size).toBe(SVG_ANIM_EFFECTS.length); // no dupes
+  });
+
+  it('draw-then-fill: hides the fill during the draw, then reveals it (not shown throughout)', () => {
+    expect(SVG_ANIM_JS).toContain('function svgDraw('); // draw setup path
+    expect(SVG_ANIM_JS).toContain("fillOpacity='0'"); // fill hidden while drawing
+    expect(SVG_ANIM_JS).toContain('function svgFillReveal('); // reveal AFTER the stroke draws
+    expect(SVG_ANIM_JS).toContain('data-sw-svg-draw-color'); // author stroke color/width
+    expect(SVG_ANIM_JS).toContain('data-sw-svg-draw-width');
+  });
+
+  it('supports an OUT (exit) direction: not init-hidden, plays natural→hidden', () => {
+    expect(SVG_ANIM_JS).toContain("data-sw-svg-dir')==='out'");
+    expect(SVG_ANIM_JS).toContain('if(m.io===');
+    expect(SVG_ANIM_JS).toContain("if(m.io!=='out')m.el.classList.add('sw-svg-init')"); // OUT starts visible
   });
 
   it('drives reveals via clip-path and along-path via CSS offset-path, with validated path data', () => {
@@ -118,5 +132,14 @@ describe('SVG animation detection + surface', () => {
   it('leaves morph to the separate morph runtime (the core skips data-sw-svg="morph")', () => {
     expect(SVG_ANIM_JS).toContain('isMorph');
     expect(SVG_ANIM_JS).toContain("getAttribute('data-sw-svg')==='morph'");
+  });
+
+  it('inlines a SAME-ORIGIN <img data-sw-svg src> and animates it (excludes imgs from the effect set)', () => {
+    expect(SVG_ANIM_JS).toContain('function runSvgAnim(root)'); // reusable per-subtree runner
+    expect(SVG_ANIM_JS).toContain("img[data-sw-svg]");
+    expect(SVG_ANIM_JS).toContain('function isImg('); // imgs are inline targets, never effect elements
+    expect(SVG_ANIM_JS).toContain('u.origin!==location.origin'); // SAME-ORIGIN ONLY (XSS guard)
+    expect(SVG_ANIM_JS).toContain("dispatchEvent(new CustomEvent('sw-svg-inlined'"); // notify morph runtime
+    expect(SVG_ANIM_JS).toContain('function stripUnsafe('); // strip script/foreignObject/on*
   });
 });

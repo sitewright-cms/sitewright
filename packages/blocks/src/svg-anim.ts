@@ -194,6 +194,102 @@ export const SVG_ANIM_JS = `(function(){
   viewUnits.forEach(function(u){io.observe(u.root);});
 })();`;
 
+// --- editor builder preview -------------------------------------------------
+// The Library "SVG animation builder" previews the chosen effect + timing on a sample line-art SVG,
+// LOOPING it so the (one-shot) entrance reads. Served same-origin under `Content-Security-Policy:
+// sandbox allow-scripts` and loaded via the iframe `src` (NOT `srcdoc`) — the editor's own CSP is
+// `script-src 'self'`, which a srcdoc iframe inherits and which would block the inline runtime. The
+// sandbox CSP gives the doc an opaque, isolated origin where inline script DOES run, with no access to
+// the editor session. Only allowlisted effect keywords + clamped numbers reach the markup.
+
+/** One composed animation for the preview (and the emitted copy-paste markup). */
+export interface SvgAnimPreviewOpts {
+  effect?: string;
+  duration?: number;
+  delay?: number;
+  easing?: string;
+  drawDir?: 'normal' | 'reverse';
+  fill?: boolean;
+  origin?: string;
+}
+
+function clampInt(n: number | undefined, lo: number, hi: number, def: number): number {
+  const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : def;
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+/** The validated `data-sw-svg*` + timing attributes for one composed animation. Effect keyword and
+ *  easing are allowlisted; numbers are clamped; origin passes only a keyword charset. Shared by the
+ *  preview doc and the editor builder's emitted markup so the two can never diverge. */
+export function svgAnimAttrs(opts: SvgAnimPreviewOpts = {}): string {
+  const effect = SVG_ANIM_EFFECTS.includes(opts.effect ?? '') ? (opts.effect as string) : 'draw';
+  const dur = clampInt(opts.duration, SVG_ANIM_LIMITS.duration.min, SVG_ANIM_LIMITS.duration.max, SW_DURATION_DEFAULT);
+  const parts = [`data-sw-svg="${effect}"`, `data-sw-duration="${dur}"`];
+  const delay = clampInt(opts.delay, SVG_ANIM_LIMITS.delay.min, SVG_ANIM_LIMITS.delay.max, 0);
+  if (delay > 0) parts.push(`data-sw-delay="${delay}"`);
+  if (opts.easing && /^[a-z-]{1,16}$/.test(opts.easing) && opts.easing !== 'ease-out') parts.push(`data-sw-easing="${opts.easing}"`);
+  if (effect === 'draw' && opts.drawDir === 'reverse') parts.push('data-sw-svg-draw-dir="reverse"');
+  if (effect === 'draw' && opts.fill) parts.push('data-sw-svg-fill="true"');
+  if (opts.origin && /^[a-z- ]{1,20}$/.test(opts.origin) && opts.origin !== 'center') parts.push(`data-sw-svg-origin="${opts.origin}"`);
+  return parts.join(' ');
+}
+
+// The preview runtime: LOOPS the effect on the `.sample` element(s) and accepts live postMessage updates
+// from the builder (so tweaking a value never reloads the iframe). Same MATH as production (shared
+// SVG_ANIM_CORE). Only whitelisted data-sw-* attribute names + a safe value charset are applied.
+const SVG_ANIM_PREVIEW_JS = `(function(){
+  'use strict';
+  ${SVG_ANIM_CORE}
+  var EFFECTS=${JSON.stringify(SVG_ANIM_EFFECTS)},DMAX=${SVG_ANIM_LIMITS.duration.max};
+  function build(el){
+    var e=el.getAttribute('data-sw-svg')||'',ok='fade';for(var i=0;i<EFFECTS.length;i++){if(EFFECTS[i]===e)ok=e;}
+    var dur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(dur>DMAX)dur=DMAX;
+    var m={el:el,effect:ok,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0),playing:false};
+    if(ok==='draw'){m.len=svgLen(el);m.dir=el.getAttribute('data-sw-svg-draw-dir')==='reverse'?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
+    var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
+    return m;
+  }
+  var els=document.querySelectorAll('.sample');
+  if(parent)parent.postMessage({type:'sw-svg-ready'},'*');
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){var h=document.querySelector('.hint');if(h)h.textContent='Motion is off under your system reduced-motion setting — visitors with it see the final artwork, no animation.';return;}
+  var timer=null;
+  function run(){var maxD=0;Array.prototype.forEach.call(els,function(el){var m=build(el);if(m.delay+m.dur>maxD)maxD=m.delay+m.dur;svgClear(el);svgPlay(m);});return maxD;}
+  function loop(){var d=run();timer=setTimeout(loop,d+1100);}
+  loop();
+  window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sw-svg'||!(d.entries instanceof Array))return;
+    Array.prototype.forEach.call(els,function(el){
+      var a=el.attributes,i;for(i=a.length-1;i>=0;i--){var n=a[i].name;if(n.indexOf('data-sw-svg')===0||n==='data-sw-duration'||n==='data-sw-delay'||n==='data-sw-easing')el.removeAttribute(n);}
+      for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];if(/^data-sw-(svg[a-z-]*|duration|delay|easing)$/.test(k)&&/^[a-z0-9 .,%_-]{0,40}$/i.test(v))el.setAttribute(k,v);}
+    });
+    if(timer){clearTimeout(timer);}loop();
+  });
+})();`;
+
+/** Build the SVG-builder preview document (see note above). A line-art heart is the sample so the DRAW
+ *  effect reads clearly and every transform/blur effect looks good on it. */
+export function svgAnimPreviewDoc(opts: SvgAnimPreviewOpts = {}): string {
+  const attrs = svgAnimAttrs(opts);
+  // A single line-art path (drawable) + a small filled dot, both animated, on a neutral demo surface.
+  return (
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>` +
+    `html,body{margin:0;height:100%}body{display:grid;place-items:center;font-family:system-ui,sans-serif;` +
+    `background:radial-gradient(circle at 50% 30%,#fbfbfe,#eef0f7);color:#1a1a23}` +
+    `.stage{display:grid;place-items:center;gap:14px;text-align:center}` +
+    `.hint{position:fixed;top:0;left:0;right:0;text-align:center;font-size:12px;font-weight:600;padding:8px 10px;` +
+    `background:rgba(255,255,255,.86);backdrop-filter:blur(4px);border-bottom:1px solid rgba(0,0,0,.08)}` +
+    `svg{width:180px;height:180px;overflow:visible}.sample.stroke{fill:none;stroke:#4f46e5;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}` +
+    `.sample.dot{fill:#0ea5e9}` +
+    SVG_ANIM_CSS +
+    `</style></head><body>` +
+    `<div class="hint">↻ Looping preview — this is how the effect plays once on your page</div>` +
+    `<div class="stage"><svg viewBox="0 0 120 120">` +
+    `<path class="sample stroke" ${attrs} d="M60 96 C18 66 22 28 44 28 C55 28 60 38 60 46 C60 38 65 28 76 28 C98 28 102 66 60 96 Z"/>` +
+    `<circle class="sample dot" ${attrs} cx="60" cy="14" r="6"/>` +
+    `</svg></div>` +
+    `<script>${SVG_ANIM_PREVIEW_JS}</script></body></html>`
+  );
+}
+
 // Detection is a literal substring match: every attribute in the family contains `data-sw-svg`, so one
 // marker gates the whole engine. A `data-sw-svg` written via a Handlebars variable won't be detected
 // (don't do that); a prose mention over-ships a couple KB — benign either way.

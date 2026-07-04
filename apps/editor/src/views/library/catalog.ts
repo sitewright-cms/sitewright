@@ -13,7 +13,7 @@ const ANIMATION_EFFECTS: readonly string[] = [
 // The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
 // LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
-export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'animation' | 'parallax' | 'scrollspy' | 'lazyload' | 'ripple' | 'daisyui';
+export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'animation' | 'svg' | 'parallax' | 'scrollspy' | 'lazyload' | 'ripple' | 'daisyui';
 
 /**
  * One documented VARIANT of a component (e.g. "Primary", "Outline", "Large") — a labeled,
@@ -272,6 +272,47 @@ const PARALLAX_ITEMS: LibraryItem[] = [
   },
 ];
 
+// SVG animation (data-sw-svg*) — animate INDIVIDUAL SVG sub-elements (paths/shapes/groups): stroke
+// draw-on, fade/zoom/flip/blur entrances, and staggered scenes. Timing via the shared
+// data-sw-duration/-delay/-easing/-once primitives. The Library "SVG animation builder" composes +
+// previews these live; this section is the copy-paste lookup.
+const SVG_ANIM_ITEMS: LibraryItem[] = [
+  {
+    id: 'svg-draw',
+    name: 'Draw on (stroke)',
+    keywords: 'svg draw stroke line signature outline handwriting dash data-sw-svg',
+    description:
+      'Draw a stroked path/shape on as it scrolls into view (stroke-dashoffset). Add data-sw-svg-draw-dir="reverse" or data-sw-svg-fill="true" (fade the fill in after).',
+    example:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n  <path data-sw-svg="draw" data-sw-duration="1200" d="M4 12 L10 18 L20 6" />\n</svg>',
+  },
+  {
+    id: 'svg-fade',
+    name: 'Fade / zoom / flip in',
+    keywords: 'svg fade zoom flip blur entrance reveal transform data-sw-svg',
+    description:
+      'Entrance transforms on any SVG element: fade, fade-up/-down/-left/-right, zoom-in/-out, flip-x/-y, blur. Pivot scale/flip with data-sw-svg-origin.',
+    example: '<circle data-sw-svg="zoom-in" data-sw-duration="600" data-sw-svg-origin="center" cx="12" cy="12" r="8" />',
+  },
+  {
+    id: 'svg-scene',
+    name: 'Staggered scene',
+    keywords: 'svg scene stagger cascade sequence orchestrate group logo data-sw-svg-scene',
+    description:
+      'Wrap several animated elements in data-sw-svg-scene with data-sw-svg-stagger="80" (ms) — the children cascade in DOM order when the scene enters view (or set data-sw-svg-scene-trigger="load").',
+    example:
+      '<svg viewBox="0 0 120 40" data-sw-svg-scene data-sw-svg-stagger="90">\n  <rect data-sw-svg="fade-up" x="0" y="8" width="24" height="24" />\n  <rect data-sw-svg="fade-up" x="32" y="8" width="24" height="24" />\n  <rect data-sw-svg="fade-up" x="64" y="8" width="24" height="24" />\n</svg>',
+  },
+  {
+    id: 'svg-timing',
+    name: 'Timing (shared)',
+    keywords: 'svg duration delay easing once timing data-sw-duration data-sw-delay data-sw-easing',
+    description:
+      'The same timing primitives as entrance animations: data-sw-duration (default 400), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false" to replay on every re-entry.',
+    example: '<path data-sw-svg="draw" data-sw-duration="900" data-sw-delay="150" data-sw-easing="back" data-sw-once="false" d="M2 12 H22" stroke="currentColor" fill="none" />',
+  },
+];
+
 // ScrollSpy (data-sw-scrollspy) — highlight the nav link whose in-page section is in view. Toggles
 // .active + aria-current, so it composes with the Nav effects above. Site-wide via Website settings.
 const SCROLLSPY_ITEMS: LibraryItem[] = [
@@ -301,6 +342,7 @@ export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'animation', label: 'Animation (Entrance + Scroll-Reveal)', blurb: 'Animate elements as they scroll into view via data-sw-animation.', items: ANIMATION_ITEMS },
   { category: 'parallax', label: 'Parallax (scroll-linked)', blurb: 'Depth, fade, scale & blur tied to scroll via data-sw-parallax* — or compose one in the builder above.', items: PARALLAX_ITEMS },
+  { category: 'svg', label: 'SVG animation', blurb: 'Draw-on, fade/zoom/flip/blur & staggered scenes for SVG paths & icons via data-sw-svg* — or compose one in the builder above.', items: SVG_ANIM_ITEMS },
   { category: 'scrollspy', label: 'ScrollSpy (section in view)', blurb: 'Highlight the nav link whose in-page section is scrolled into view via data-sw-scrollspy (or the site-wide toggle in Website settings).', items: SCROLLSPY_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },
   { category: 'ripple', label: 'Ripple effect', blurb: 'Material “waves” click ripple via waves-effect.', items: RIPPLE_ITEMS },

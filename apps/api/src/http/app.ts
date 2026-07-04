@@ -65,21 +65,9 @@ import {
   componentAssets,
   systemI18nData,
   usesDialog,
-  usesAnimations,
-  ANIMATION_CSS,
-  ANIMATION_JS,
   usesParallax,
-  PARALLAX_CSS,
-  PARALLAX_JS,
   parallaxPreviewDoc,
-  usesMarquee,
-  MARQUEE_CSS,
-  usesLazyload,
-  LAZYLOAD_CSS,
-  LAZYLOAD_JS,
-  usesRipple,
-  RIPPLE_CSS,
-  RIPPLE_JS,
+  svgAnimPreviewDoc,
   usesNavEffects,
   NAV_EFFECTS_JS,
   STICKY_HEADER_JS,
@@ -87,10 +75,6 @@ import {
   SCROLLSPY_JS,
   usesButtonEffects,
   BUTTON_EFFECTS_JS,
-  usesCart,
-  CART_CSS,
-  usesConsent,
-  CONSENT_CSS,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -171,6 +155,7 @@ import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
 import { PublishError, type ReleaseManifest } from '../publish/build.js';
+import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
@@ -612,22 +597,14 @@ async function styledSourceDocument(
   // adds them the same way via `themeClassNames`). Without this the selected global button configuration
   // is not applied in the page-editor preview.
   const compileCandidates = [...new Set([...(shell.bodyClass ?? '').split(/\s+/).filter(Boolean), ...classNames])];
-  // Platform-runtime markers in the rendered body/slots → inline the first-party
-  // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
+  // Platform-runtime markers in the rendered body/slots → inline the first-party runtime(s) so they work
+  // live in the sandboxed preview (its CSP allows scripts). The marker-gated BODY-effect runtimes
+  // (animation, parallax, svg-anim, marquee, lazyload, ripple, cart, consent) are resolved from the
+  // SHARED registry (effect-runtimes.ts) that the publish path also uses — so the preview can never again
+  // drift behind deploy. cart/consent are 'style-only' there (CSS in, JS inert: their floating overlays +
+  // click handlers would fight the click-to-edit bridge; the live behaviour runs on /sites/<slug>/).
   // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
-  const animated = usesAnimations(scanHtml);
-  const parallaxed = usesParallax(scanHtml);
-  const marquee = usesMarquee(scanHtml);
-  const lazy = usesLazyload(scanHtml);
-  const waves = usesRipple(scanHtml);
-  // MINI SHOP: style the add-to-cart buttons in the preview, but do NOT ship the cart runtime here —
-  // cart.js is deliberately INERT in the editor preview so its click handlers + floating drawer never
-  // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
-  const cart = usesCart(scanHtml);
-  // CONSENT MANAGER: style the banner in the preview but keep consent.js INERT here (like the cart) — its
-  // banner/preferences UI would cover the editor canvas + fight the click-to-edit bridge. It runs live on
-  // the published /sites/<slug>/ site.
-  const consent = usesConsent(scanHtml);
+  const parallaxed = usesParallax(scanHtml); // also gates the preview scroll bridge below
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
   // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
@@ -664,13 +641,9 @@ async function styledSourceDocument(
     ? []
     : [
         ...(componentCss ? [componentCss] : []),
-        ...(animated ? [ANIMATION_CSS] : []),
-        ...(parallaxed ? [PARALLAX_CSS] : []),
-        ...(marquee ? [MARQUEE_CSS] : []),
-        ...(lazy ? [LAZYLOAD_CSS] : []),
-        ...(waves ? [RIPPLE_CSS] : []),
-        ...(cart ? [CART_CSS] : []),
-        ...(consent ? [CONSENT_CSS] : []),
+        // Shared registry: every marker-gated body-effect runtime's CSS (animation, parallax, svg-anim,
+        // marquee, lazyload, ripple, cart, consent) — same set + order as the publish path.
+        ...bodyEffectStyles(scanHtml),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
         ...(compileCandidates.length > 0
           ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
@@ -686,10 +659,9 @@ async function styledSourceDocument(
         // parallax, scrollspy + back-to-top in this shell (the whole-site preview has its own bridge).
         ...(parallaxed || stickyHeaderRuntime || scrollSpyRuntime ? [PREVIEW_SCROLL_BRIDGE_JS] : []),
         ...(componentJs ? [componentJs] : []),
-        ...(animated ? [ANIMATION_JS] : []),
-        ...(parallaxed ? [PARALLAX_JS] : []),
-        ...(lazy ? [LAZYLOAD_JS] : []),
-        ...(waves ? [RIPPLE_JS] : []),
+        // Shared registry: the 'run' body-effect runtimes' JS (animation, parallax, svg-anim, lazyload,
+        // ripple). cart/consent are 'style-only' (excluded) — styled but inert in the editor canvas.
+        ...previewBodyEffectScripts(scanHtml),
         ...(navRuntime ? [NAV_EFFECTS_JS] : []),
         ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
         ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
@@ -4861,6 +4833,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         opacity: chan('opacity'),
         scale: chan('scale'),
         blur: chan('blur'),
+      });
+      return reply
+        .header('content-security-policy', 'sandbox allow-scripts')
+        .header('x-frame-options', 'SAMEORIGIN')
+        .type('text/html')
+        .send(html);
+    },
+  );
+
+  // The Library "SVG animation" builder's live preview DOCUMENT (the chosen effect + timing looping on a
+  // sample line-art SVG, driven by the REAL runtime). Served under `Content-Security-Policy: sandbox
+  // allow-scripts` like the parallax preview above, for the same reason. Only the allowlisted effect
+  // keyword + clamped numeric timing reach the markup (svgAnimAttrs validates) → no injection surface.
+  app.get<{ Querystring: Record<string, string | undefined> }>(
+    '/authoring/svg-preview',
+    { config: rl(60) },
+    async (req, reply) => {
+      const q = req.query;
+      const int = (v: string | undefined): number | undefined => {
+        const n = Number.parseInt(v ?? '', 10);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      const html = svgAnimPreviewDoc({
+        effect: q.effect,
+        duration: int(q.duration),
+        delay: int(q.delay),
+        easing: q.easing,
+        drawDir: q['draw-dir'] === 'reverse' ? 'reverse' : undefined,
+        fill: q.fill === 'true',
+        origin: q.origin,
       });
       return reply
         .header('content-security-policy', 'sandbox allow-scripts')

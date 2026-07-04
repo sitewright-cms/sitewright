@@ -28,7 +28,7 @@ export const SVG_ANIM_MORPH_JS = `(function(){
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   ${SW_TIMING_CORE}
   var NS='http://www.w3.org/2000/svg',N=64;
-  var PATHRE=/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/;
+  var PATHRE=/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/;
   // Sample a d-string into N+1 evenly-spaced points via a detached <path>. Null when it isn't a real path.
   function sample(d){
     if(!d||!PATHRE.test(d))return null;

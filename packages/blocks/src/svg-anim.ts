@@ -68,8 +68,11 @@ export const SVG_ANIM_EFFECTS: readonly string[] = [
 ];
 
 /** A permissive-but-safe SVG path-data grammar (commands + numbers + separators). Used to validate
- *  author-supplied `data-sw-svg-path` / `data-sw-svg-to` so only a real path string reaches CSS/`d`. */
-export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+\-]{1,4000}$/;
+ *  author-supplied `data-sw-svg-path` / `data-sw-svg-to` so only a real path string reaches CSS/`d`.
+ *  The `-` is intentionally the LAST char in the class (a literal hyphen) — keep it last so it can never
+ *  form an unintended range. No quote / paren / semicolon / backslash is admitted, so a validated value
+ *  cannot break out of `offsetPath: path('…')` or an attribute. (Same grammar mirrored in the runtimes.) */
+export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
 
 // --- CSS --------------------------------------------------------------------
 // Structural only — the MOTION is JS-applied via WAAPI, so it never sits in the sheet. `transform-box:
@@ -185,7 +188,7 @@ export const SVG_ANIM_JS = `(function(){
     var effect=effectOf(el);
     var m={el:el,effect:effect,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0)+extraDelay,playing:false};
     if(effect==='draw'){m.len=svgLen(el);m.dir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
-    if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
+    if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
@@ -299,7 +302,7 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
     var dur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(dur>DMAX)dur=DMAX;
     var m={el:el,effect:ok,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0),playing:false};
     if(ok==='draw'){m.len=svgLen(el);m.dir=el.getAttribute('data-sw-svg-draw-dir')==='reverse'?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
-    if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
+    if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
@@ -315,7 +318,7 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
       var a=el.attributes,i;for(i=a.length-1;i>=0;i--){var n=a[i].name;if(n.indexOf('data-sw-svg')===0||n==='data-sw-duration'||n==='data-sw-delay'||n==='data-sw-easing')el.removeAttribute(n);}
       for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];
         // Path attributes carry SVG path-data (longer, its own grammar); everything else is a short enum/number.
-        var okVal=(k==='data-sw-svg-path'||k==='data-sw-svg-to')?/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+\\-]{1,4000}$/.test(v):/^[a-z0-9 .,%_-]{0,40}$/i.test(v);
+        var okVal=(k==='data-sw-svg-path'||k==='data-sw-svg-to')?/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(v):/^[a-z0-9 .,%_-]{0,40}$/i.test(v);
         if(/^data-sw-(svg[a-z-]*|duration|delay|easing)$/.test(k)&&okVal)el.setAttribute(k,v);}
     });
     if(timer){clearTimeout(timer);}loop();

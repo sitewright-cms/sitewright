@@ -7,6 +7,13 @@ describe('SVG morph runtime', () => {
     expect(usesSvgAnimMorph('<path data-sw-svg="draw"/>')).toBe(false); // core-only, not morph
     expect(usesSvgAnimMorph('<div>plain</div>')).toBe(false);
     expect(usesSvgAnimMorph(null)).toBe(false);
+    // Also ships for an <img data-sw-svg> — the referenced .svg may contain morph the page-scan can't see.
+    expect(usesSvgAnimMorph('<img data-sw-svg src="/media/x/y/a.svg">')).toBe(true);
+  });
+
+  it('handles morph inside a runtime-inlined <img> SVG (runMorph on the sw-svg-inlined subtree)', () => {
+    expect(SVG_ANIM_MORPH_JS).toContain('function runMorph(root)');
+    expect(SVG_ANIM_MORPH_JS).toContain("addEventListener('sw-svg-inlined'");
   });
 
   it('bails under reduced motion (leaves the authored start shape — PE-safe)', () => {

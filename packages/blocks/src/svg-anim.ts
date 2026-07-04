@@ -197,10 +197,9 @@ const SVG_ANIM_CORE = `
 
 export const SVG_ANIM_JS = `(function(){
   'use strict';
-  var els=document.querySelectorAll('[data-sw-svg]');
-  if(els.length===0)return;
+  if(!document.querySelector('[data-sw-svg]'))return;
   // Reduced motion / no matchMedia support with the query present → show everything at its natural
-  // state and do nothing (never hide, never animate).
+  // state and do nothing (never hide, never animate; a data-sw-svg <img> just stays a static <img>).
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   ${SVG_ANIM_CORE}
   var DMIN=${SVG_ANIM_LIMITS.duration.min},DMAX=${SVG_ANIM_LIMITS.duration.max};
@@ -216,47 +215,88 @@ export const SVG_ANIM_JS = `(function(){
     m.io=el.getAttribute('data-sw-svg-dir')==='out'?'out':'in';
     return m;
   }
-  // A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
-  // morph is owned by the SEPARATE svg-anim-morph runtime — this core runtime never touches it.
+  // morph is owned by the SEPARATE svg-anim-morph runtime; an <img data-sw-svg> is an INLINE target
+  // (handled below), never an effect element — both are excluded from the animatable set.
   function isMorph(el){return el.getAttribute('data-sw-svg')==='morph';}
-  var scenes=document.querySelectorAll('[data-sw-svg-scene]');
-  var claimed=[];Array.prototype.forEach.call(scenes,function(s){var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,function(k){claimed.push(k);});});
-  function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
-  var units=[];
-  Array.prototype.forEach.call(scenes,function(s){
-    var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
-    var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
-    var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
-    Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k))members.push(member(k,step*i));});
-    if(members.length)units.push({root:s,trigger:trig,members:members});
-  });
-  Array.prototype.forEach.call(els,function(el){
-    if(isClaimed(el)||isMorph(el))return;
-    var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
-    units.push({root:el,trigger:trig,members:[member(el,0)]});
-  });
-  if(units.length===0)return;
-  // Arm: hide every member (PE-first init class) before anything triggers.
-  units.forEach(function(u){u.members.forEach(function(m){if(m.io!=='out')m.el.classList.add('sw-svg-init');});});
-  function playUnit(u){u.members.forEach(svgPlay);}
-  function resetUnit(u){u.members.forEach(svgReset);}
-  // 'load' units fire now; 'view' units wait for the IntersectionObserver.
-  units.forEach(function(u){if(u.trigger==='load')playUnit(u);});
-  var viewUnits=units.filter(function(u){return u.trigger==='view';});
-  if(viewUnits.length===0)return;
-  if(!('IntersectionObserver' in window)){viewUnits.forEach(playUnit);return;} // PE fallback: just play
+  function isImg(el){return el.tagName&&String(el.tagName).toLowerCase()==='img';}
   var once=function(el){return el.getAttribute('${SW_TIMING_ATTRS.once}')!=='false';};
-  var io=new IntersectionObserver(function(entries){
-    entries.forEach(function(entry){
-      for(var i=0;i<viewUnits.length;i++){
-        if(viewUnits[i].root!==entry.target)continue;
-        var u=viewUnits[i];
-        if(entry.isIntersecting){playUnit(u);if(once(u.root))io.unobserve(u.root);}
-        else if(!once(u.root))resetUnit(u);
-      }
+  // Build + arm + trigger the animation UNITS within a subtree ROOT (the document, or a freshly-inlined
+  // <svg>). A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
+  function runSvgAnim(root){
+    var els=root.querySelectorAll('[data-sw-svg]');
+    var scenes=root.querySelectorAll('[data-sw-svg-scene]');
+    var claimed=[];Array.prototype.forEach.call(scenes,function(s){var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,function(k){claimed.push(k);});});
+    function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
+    var units=[];
+    Array.prototype.forEach.call(scenes,function(s){
+      var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
+      var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
+      var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
+      Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
+      if(members.length)units.push({root:s,trigger:trig,members:members});
     });
-  },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
-  viewUnits.forEach(function(u){io.observe(u.root);});
+    Array.prototype.forEach.call(els,function(el){
+      if(isClaimed(el)||isMorph(el)||isImg(el))return;
+      var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
+      units.push({root:el,trigger:trig,members:[member(el,0)]});
+    });
+    if(units.length===0)return;
+    // Arm: hide every member (PE-first init class) before anything triggers (OUT members start visible).
+    units.forEach(function(u){u.members.forEach(function(m){if(m.io!=='out')m.el.classList.add('sw-svg-init');});});
+    function playUnit(u){u.members.forEach(svgPlay);}
+    function resetUnit(u){u.members.forEach(svgReset);}
+    units.forEach(function(u){if(u.trigger==='load')playUnit(u);});
+    var viewUnits=units.filter(function(u){return u.trigger==='view';});
+    if(viewUnits.length===0)return;
+    if(!('IntersectionObserver' in window)){viewUnits.forEach(playUnit);return;} // PE fallback: just play
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        for(var i=0;i<viewUnits.length;i++){
+          if(viewUnits[i].root!==entry.target)continue;
+          var u=viewUnits[i];
+          if(entry.isIntersecting){playUnit(u);if(once(u.root))io.unobserve(u.root);}
+          else if(!once(u.root))resetUnit(u);
+        }
+      });
+    },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
+    viewUnits.forEach(function(u){io.observe(u.root);});
+  }
+  // INLINE an <img data-sw-svg src="…svg"> so its per-element data-sw-svg directives can run: fetch the
+  // SAME-ORIGIN svg (media SVGs are pre-sanitized), strip script/foreignObject/on* (belt-and-suspenders),
+  // replace the <img> with the inline <svg>, animate it, and notify the morph runtime.
+  function stripUnsafe(el){
+    var bad=el.querySelectorAll('script,foreignObject');Array.prototype.forEach.call(bad,function(n){if(n.parentNode)n.parentNode.removeChild(n);});
+    function clean(n){if(!n.attributes)return;for(var i=n.attributes.length-1;i>=0;i--){var a=n.attributes[i].name;if(/^on/i.test(a))n.removeAttribute(a);}}
+    clean(el);Array.prototype.forEach.call(el.querySelectorAll('*'),clean);
+  }
+  function inlineImgs(){
+    if(!('fetch' in window))return;
+    var imgs=document.querySelectorAll('img[data-sw-svg]');
+    Array.prototype.forEach.call(imgs,function(img){
+      var src=img.getAttribute('src');if(!src)return;
+      var u;try{u=new URL(src,location.href);}catch(e){return;}
+      if(u.origin!==location.origin)return; // SAME-ORIGIN ONLY — no arbitrary remote SVG (XSS guard)
+      fetch(u.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;}).then(function(text){
+        if(!text)return;
+        // Ensure the SVG namespace so the inlined elements are real SVG (getTotalLength/style/etc.).
+        if(text.indexOf('xmlns')<0)text=text.replace(/<svg/i,'<svg xmlns="http://www.w3.org/2000/svg"');
+        var doc;try{doc=new DOMParser().parseFromString(text,'image/svg+xml');}catch(e){return;}
+        if(doc.querySelector('parsererror'))return;
+        var svg=doc.documentElement;if(!svg||String(svg.nodeName).toLowerCase()!=='svg')return;
+        stripUnsafe(svg);
+        if(img.getAttribute('class'))svg.setAttribute('class',img.getAttribute('class'));
+        if(img.getAttribute('width')&&!svg.getAttribute('width'))svg.setAttribute('width',img.getAttribute('width'));
+        if(img.getAttribute('height')&&!svg.getAttribute('height'))svg.setAttribute('height',img.getAttribute('height'));
+        var adopted;try{adopted=document.importNode(svg,true);}catch(e){return;}
+        if(!img.parentNode)return;img.parentNode.replaceChild(adopted,img);
+        // Defer to the next frame so the freshly-inlined SVG is laid out — else getTotalLength() (draw) is 0.
+        var go=function(){runSvgAnim(adopted);try{document.dispatchEvent(new CustomEvent('sw-svg-inlined',{detail:{root:adopted}}));}catch(e){}};
+        if(window.requestAnimationFrame)requestAnimationFrame(go);else go();
+      }).catch(function(){});
+    });
+  }
+  inlineImgs();
+  runSvgAnim(document);
 })();`;
 
 // --- editor builder preview -------------------------------------------------

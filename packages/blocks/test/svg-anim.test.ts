@@ -133,4 +133,13 @@ describe('SVG animation detection + surface', () => {
     expect(SVG_ANIM_JS).toContain('isMorph');
     expect(SVG_ANIM_JS).toContain("getAttribute('data-sw-svg')==='morph'");
   });
+
+  it('inlines a SAME-ORIGIN <img data-sw-svg src> and animates it (excludes imgs from the effect set)', () => {
+    expect(SVG_ANIM_JS).toContain('function runSvgAnim(root)'); // reusable per-subtree runner
+    expect(SVG_ANIM_JS).toContain("img[data-sw-svg]");
+    expect(SVG_ANIM_JS).toContain('function isImg('); // imgs are inline targets, never effect elements
+    expect(SVG_ANIM_JS).toContain('u.origin!==location.origin'); // SAME-ORIGIN ONLY (XSS guard)
+    expect(SVG_ANIM_JS).toContain("dispatchEvent(new CustomEvent('sw-svg-inlined'"); // notify morph runtime
+    expect(SVG_ANIM_JS).toContain('function stripUnsafe('); // strip script/foreignObject/on*
+  });
 });

@@ -3671,6 +3671,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 
+    // Overwrite an existing SVG asset's CONTENT in place (the Studio's "save to the same file"). Re-sanitizes
+    // like the upload path and keeps the asset id + stored filename, so every existing reference (<img src>,
+    // {{sw-image}}, inline embeds) stays valid.
+    const OverwriteSvgBody = z.object({ svg: z.string().min(1).max(5_000_000) });
+    app.put<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/svg', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = OverwriteSvgBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid svg' });
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+      if (asset.kind !== 'image' || (asset as ImageAsset).format !== 'svg') return reply.code(400).send({ error: 'not an SVG asset' });
+      const clean = sanitizeSvg(body.data.svg);
+      if (!clean) return reply.code(400).send({ error: 'svg failed sanitization' });
+      const buffer = Buffer.from(clean, 'utf8');
+      const img = asset as ImageAsset;
+      const storedName = img.original || `${MediaStorage.safeStoredName(img.filename).replace(/\.[^.]+$/, '')}.svg`;
+      await storage.storeFile(project.slug, asset.id, storedName, buffer);
+      const dims = svgIntrinsicSize(clean) ?? { width: img.width, height: img.height };
+      const next = { ...img, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
+      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    });
+
     // Duplicate a single asset (optionally into another folder).
     const CopyAssetBody = z.object({ folder: MediaFolderSchema.optional() });
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/copy', { config: rl(30) }, async (req, reply) => {

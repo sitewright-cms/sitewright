@@ -5,9 +5,23 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
 import { glassInput, ghostButton, primaryButton, toggleInput } from '../../theme';
+import { FilePicker } from '../files/FilePicker';
 
 interface SvgAnimStudioProps {
   onClose: () => void;
+  /** When present, enables "pick from media" (SVG files) + "save to media" (overwrite / new). */
+  projectId?: string;
+}
+
+/** {id, filename} of the media asset the SVG was imported from (enables in-place overwrite on save). */
+interface SourceAsset {
+  id: string;
+  filename: string;
+}
+/** The media URL for an SVG asset is `/media/<slug>/<assetId>/<name>` — pull the assetId + filename back. */
+function assetFromUrl(url: string): SourceAsset | null {
+  const m = url.match(/\/media\/[^/]+\/([^/]+)\/(?:file\/)?([^/?#]+)/);
+  return m ? { id: m[1]!, filename: decodeURIComponent(m[2]!) } : null;
 }
 
 // --- SVG helpers (client-side) ----------------------------------------------
@@ -81,10 +95,15 @@ const EASINGS = ['ease-out', 'ease', 'ease-in', 'ease-in-out', 'linear', 'back',
  * stores each animation AS data-sw-svg* attributes on the element, so the editor edits those directly and
  * export is just re-serialising the SVG. The live canvas is a sandboxed iframe running the real runtimes.
  */
-export function SvgAnimStudio({ onClose }: SvgAnimStudioProps) {
+export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
   const [stage, setStage] = useState<'import' | 'edit'>('import');
   const [pasteText, setPasteText] = useState('');
   const [importError, setImportError] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [source, setSource] = useState<SourceAsset | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [newName, setNewName] = useState('animation');
+  const [saveMsg, setSaveMsg] = useState('');
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [svgText, setSvgText] = useState('');
@@ -100,7 +119,7 @@ export function SvgAnimStudio({ onClose }: SvgAnimStudioProps) {
     setSvgText(new XMLSerializer().serializeToString(svgRef.current));
   };
 
-  const doImport = (text: string) => {
+  const doImport = (text: string, src: SourceAsset | null = null) => {
     const svg = parseSvg(text);
     if (!svg) {
       setImportError('That doesn’t look like a valid SVG. Paste the full <svg>…</svg> markup.');
@@ -111,8 +130,45 @@ export function SvgAnimStudio({ onClose }: SvgAnimStudioProps) {
     setTree(buildTree(svg, 0));
     setSelectedId('');
     setImportError('');
+    setSource(src);
+    setSaveMsg('');
     setSvgText(new XMLSerializer().serializeToString(svg));
     setStage('edit');
+  };
+
+  // Pick an existing SVG from the project's media library, fetch it, and import it (remembering the asset
+  // so "Save" can overwrite it in place).
+  const pickFromMedia = async (url: string) => {
+    setPickerOpen(false);
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      doImport(await res.text(), assetFromUrl(url));
+    } catch {
+      setImportError('Could not load that SVG from the library.');
+    }
+  };
+  const saveOverwrite = async () => {
+    if (!projectId || !source) return;
+    try {
+      await api.overwriteSvgMedia(projectId, source.id, svgText);
+      setSaveMsg(`Saved to ${source.filename}`);
+      toast.show(`Saved to ${source.filename}`);
+    } catch {
+      setSaveMsg('Save failed');
+    }
+  };
+  const saveNew = async () => {
+    if (!projectId) return;
+    const name = `${(newName.trim() || 'animation').replace(/\.svg$/i, '')}.svg`;
+    try {
+      const { item } = await api.uploadMedia(projectId, new File([svgText], name, { type: 'image/svg+xml' }));
+      setSource({ id: item.id, filename: item.filename });
+      setNaming(false);
+      setSaveMsg(`Saved as ${item.filename}`);
+      toast.show(`Saved ${item.filename} to the library`);
+    } catch {
+      setSaveMsg('Save failed');
+    }
   };
 
   const onFile = (file: File | undefined) => {
@@ -213,7 +269,15 @@ export function SvgAnimStudio({ onClose }: SvgAnimStudioProps) {
               Upload .svg
               <input type="file" accept=".svg,image/svg+xml" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
             </label>
+            {projectId && (
+              <button type="button" className={ghostButton} onClick={() => setPickerOpen(true)}>
+                Pick from media
+              </button>
+            )}
           </div>
+          {projectId && pickerOpen && (
+            <FilePicker projectId={projectId} accept={(a) => a.kind === 'image' && (a as { format?: string }).format === 'svg'} onPick={pickFromMedia} onClose={() => setPickerOpen(false)} />
+          )}
         </div>
       ) : (
         <div className="flex h-full min-h-0">
@@ -246,6 +310,27 @@ export function SvgAnimStudio({ onClose }: SvgAnimStudioProps) {
               <button type="button" className={ghostButton} onClick={download}>
                 Download .svg
               </button>
+              {projectId &&
+                (naming ? (
+                  <span className="flex items-center gap-1">
+                    <input aria-label="New file name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="animation" className={`${glassInput} w-32 text-xs`} />
+                    <span className="text-xs text-slate-400">.svg</span>
+                    <button type="button" className={primaryButton} onClick={saveNew}>Save</button>
+                    <button type="button" className={ghostButton} onClick={() => setNaming(false)}>Cancel</button>
+                  </span>
+                ) : (
+                  <>
+                    {source && (
+                      <button type="button" className={primaryButton} onClick={saveOverwrite}>
+                        Save (overwrite {source.filename})
+                      </button>
+                    )}
+                    <button type="button" className={source ? ghostButton : primaryButton} onClick={() => setNaming(true)}>
+                      Save as new file
+                    </button>
+                  </>
+                ))}
+              {saveMsg && <span className="text-xs font-semibold text-emerald-600">{saveMsg}</span>}
             </div>
           </div>
 

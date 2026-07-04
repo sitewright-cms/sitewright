@@ -40,7 +40,7 @@ function previewHtml(example: string): string {
  * pack), Animation, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
  * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
  */
-export function LibraryPanel() {
+export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
@@ -145,7 +145,7 @@ export function LibraryPanel() {
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
-      {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} />}
+      {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

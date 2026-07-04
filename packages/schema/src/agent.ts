@@ -857,8 +857,10 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    preview, not the static whole-site preview; and put data-sw-text/html on the fields so the inner text is
    editable too. If a row is FULLY covered by editable leaves, click the row's teal entry badge (or any
    non-text chrome / use the Regions panel) to open the full item editor.
-7. IMAGES: keep the self-hosted images the import found (same src); fill gaps with import_image (from a URL)
-   or search_stock_images (SVGs and oversize images may have been dropped).
+7. IMAGES: keep the self-hosted images the import found (same src) — including SVG logos/illustrations,
+   which are now self-hosted too (kept as sanitized, still-animated VECTORS, not rasterized). Only fill
+   genuine GAPS with import_image (from a URL) or search_stock_images (an oversize image may have been
+   dropped). An SVG renders as a plain <img>/{{sw-image}} — it needs no size variants (it scales natively).
 8. ASSET FOLDERS: the import dumps every self-hosted file into a TRANSIENT \`imported/\` tree — REORGANIZE it
    into a clean, human-readable library. Group by the page/role that uses each file (a dedicated folder when
    a page has a cluster of ~3+, e.g. \`Management Team\`; a shared role folder for once-per-page assets like

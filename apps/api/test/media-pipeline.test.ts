@@ -213,14 +213,32 @@ describe('media pipeline (HTTP layer)', () => {
     expect(xl.headers['content-type']).toBe('image/webp');
   });
 
-  // (2) SVG is intentionally excluded for SSRF reasons; a text file with an image
-  // content-type is also rejected. Both surface as 400 (unsupported/invalid image).
-  it('rejects an SVG upload (SSRF-excluded format) with 400', async () => {
+  // (2) SVG is PRESERVED as a sanitized vector image (kind:'image', format:'svg') — never routed
+  // through sharp, stored verbatim, served inline under a locked-down CSP.
+  it('preserves an SVG upload as a sanitized vector image (201, format svg)', async () => {
     const { t, base } = await setup('a@acme.test');
     const svg = Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><script>steal()</script><rect width="120" height="40"/></svg>',
     );
     const res = await upload(base, t, 'logo.svg', 'image/svg+xml', svg);
+    expect(res.statusCode).toBe(201);
+    const item = res.json().item;
+    expect(item.kind).toBe('image');
+    expect(item.format).toBe('svg');
+    expect(item.width).toBe(120);
+    expect(item.height).toBe(40);
+    expect(item.url).toMatch(/\.svg$/);
+    // the stored/served bytes are sanitized — the <script> is gone
+    const served = await app.inject({ method: 'GET', url: item.url });
+    expect(served.statusCode).toBe(200);
+    expect(served.headers['content-type']).toMatch(/image\/svg\+xml/);
+    expect(served.headers['content-security-policy']).toMatch(/default-src 'none'/);
+    expect(served.body).not.toMatch(/<script/i);
+  });
+
+  it('rejects a malformed SVG upload (nothing usable after sanitization) with 400', async () => {
+    const { t, base } = await setup('a@acme.test');
+    const res = await upload(base, t, 'bad.svg', 'image/svg+xml', Buffer.from('not an svg at all'));
     expect(res.statusCode).toBe(400);
   });
 

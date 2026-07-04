@@ -108,8 +108,12 @@ import {
   storeOriginal,
   generateThumbnail,
   isThumbnailable,
+  isSvgFile,
   isSizeToken,
   isThumbFormat,
+  sanitizeSvg,
+  svgIntrinsicSize,
+  MAX_SVG_BYTES,
   thumbFileName,
   THUMB_SIZES,
   DEFAULT_SIZE,
@@ -3077,6 +3081,52 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store an SVG as a first-class VECTOR IMAGE (kind:'image', format:'svg'): sanitized (scripts /
+    // handlers / remote refs stripped — see sanitizeSvg) then kept VERBATIM (no sharp, no rasterize),
+    // so it stays animated + infinitely scalable. It is served inline under a locked-down CSP; combined
+    // with `<img>` secure-static rendering, that makes an inline foreign SVG safe. Returns null if the
+    // bytes aren't a usable SVG. The importer + the upload route both funnel SVG through here.
+    async function createSvgAsset(
+      ctx: ProjectContext,
+      projectSlug: string,
+      svgText: string,
+      meta: { filename: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
+    ): Promise<ImageAsset | null> {
+      const clean = sanitizeSvg(svgText);
+      if (!clean) return null;
+      const buffer = Buffer.from(clean, 'utf8');
+      const assetId = randomUUID();
+      // Force a `.svg` stored name regardless of the source filename's extension.
+      const base = MediaStorage.safeStoredName(meta.filename || 'image').replace(/\.[^.]+$/, '');
+      const storedName = `${base}.svg`;
+      const dims = svgIntrinsicSize(clean) ?? { width: 300, height: 150 };
+      try {
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
+        const asset = ImageAssetSchema.parse({
+          kind: 'image',
+          id: assetId,
+          filename: meta.filename || storedName,
+          folder: meta.folder ?? '',
+          format: 'svg',
+          bytes: buffer.length,
+          width: Math.max(1, dims.width),
+          height: Math.max(1, dims.height),
+          hasAlpha: true,
+          // SVG animation (SMIL / @keyframes) is preserved IN the file; this flag tracks the GIF/WebP
+          // frame-loop semantics (which drive animated-thumbnail generation), and SVG has none.
+          animated: false,
+          original: storedName,
+          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...(meta.attribution ? { attribution: meta.attribution } : {}),
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store a NON-image upload as-is (any file type). Served download-only (attachment + nosniff),
     // so an uploaded HTML/SVG can never execute on the API/site origin.
     async function createFileAsset(
@@ -3190,11 +3240,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
 
         const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
-        // An optimizable raster `image/*` upload is optimized (corrupt/oversized images 400). SVG is
-        // NEVER optimized — explicitly rejected here, so safety doesn't hinge on the pipeline
-        // rejecting it. Any other type is stored as-is (download-only).
+        // An SVG upload is SANITIZED (scripts/handlers/remote refs stripped) and kept VERBATIM as a
+        // vector image (never routed through sharp) — served inline under a locked-down CSP. Malformed
+        // SVG (nothing usable after sanitization) → 400.
         const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
-        if (isSvg) return reply.code(400).send({ error: 'SVG is not accepted' });
+        if (isSvg) {
+          if (buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });
+          const saved = await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename: meta.filename, folder });
+          if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
+          return reply.code(201).send({ item: saved });
+        }
+        // An optimizable raster `image/*` upload is optimized (corrupt/oversized images 400). Any other
+        // type is stored as-is (download-only).
         if (meta.mimetype.startsWith('image/')) {
           try {
             const saved = await createMediaAsset(ctx, project.slug, buffer, meta);
@@ -3245,7 +3302,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Import a remote URL INTO the library (download + self-host), so a field that pasted a URL can
     // keep the published export self-contained. SSRF-guarded like the stock downloader: https-only,
     // private-host rejection, no redirects (a 3xx to a private host can't bypass the check), size cap
-    // + timeout. Images are optimized (createMediaAsset); anything else is stored as-is; SVG rejected.
+    // + timeout. Raster images are optimized (createMediaAsset); SVG is sanitized + stored as a vector
+    // image (createSvgAsset); anything else is stored as-is (download-only).
     const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
     app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rl(20) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
@@ -3294,7 +3352,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       if (oversize) return reply.code(413).send({ error: 'file exceeds size limit' });
 
-      if (contentType === 'image/svg+xml' || contentType === 'image/svg') return reply.code(400).send({ error: 'SVG is not accepted' });
+      const isSvg = contentType === 'image/svg+xml' || contentType === 'image/svg';
+      if (isSvg && buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });
       // A malformed %-sequence the URL parser accepts but decodeURIComponent rejects → a safe default.
       let filename: string;
       try {
@@ -3303,9 +3362,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         filename = 'download';
       }
       try {
-        const saved = contentType.startsWith('image/')
-          ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-          : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+        // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
+        const saved = isSvg
+          ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
+          : contentType.startsWith('image/')
+            ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+            : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+        if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
         return reply.code(201).send({ item: saved });
       } catch (err) {
         if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
@@ -3347,6 +3410,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       resolveProject,
       contentRepo,
       createMediaAsset,
+      // Self-host an imported SVG as a sanitized, verbatim VECTOR image (kept animated + scalable).
+      createSvgAsset: async (ctx, slug, svgText, meta) => {
+        try {
+          const saved = await createSvgAsset(ctx, slug, svgText, meta);
+          return saved ? { url: saved.url } : null;
+        } catch {
+          return null; // unparseable / storage error → drop (the <img> falls back to the source ref)
+        }
+      },
       // Self-host an imported @font-face web font through the existing font pipeline (magic-byte
       // validated + served inline). Invalid/oversize bytes → null (the importer keeps the url() as-is).
       hostFontAsset: async (ctx, slug, buffer, font) => {
@@ -3732,6 +3804,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .type('text/javascript; charset=utf-8')
             .send(bytes);
         }
+        // An SVG (kind:'image', format:'svg') is served INLINE as image/svg+xml so a cloned <img src>
+        // renders — but under a LOCKED-DOWN CSP (no scripts, no external fetches) that neutralizes any
+        // residual direct-navigation vector (the bytes were already sanitized on store; `<img>` rendering
+        // is secure-static anyway). `?size`/`?format` are ignored — a vector scales natively. + nosniff +
+        // CORS so the sandboxed (opaque-origin) preview iframe can load it too.
+        if (isSvgFile(file)) {
+          let bytes: Buffer;
+          try {
+            bytes = await storage.readStored(projectSlug, assetId, file);
+          } catch {
+            return reply.code(404).send({ error: 'not found' });
+          }
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+            .header('access-control-allow-origin', '*')
+            .header('cross-origin-resource-policy', 'cross-origin')
+            .type('image/svg+xml; charset=utf-8')
+            .send(bytes);
+        }
         // IMAGE delivery. `file` is the stored ORIGINAL name (any raster ext). `?size` (default xl)
         // selects a responsive thumbnail generated on demand + cached; `?size=original` serves the raw
         // original inline; `?format=avif` opts into AVIF (WebP is the default).
@@ -4079,6 +4172,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('vary', 'Host')
             .header('x-content-type-options', 'nosniff');
           if (binary.attachment) reply.header('content-disposition', 'attachment');
+          if (binary.csp) reply.header('content-security-policy', binary.csp);
           return reply.type(binary.contentType).send(binary.body);
         }
         const asset = await store.readAsset(slug, path);
@@ -4445,6 +4539,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (binary !== null) {
             crossOrigin();
             if (binary.attachment) reply.header('content-disposition', 'attachment');
+            if (binary.csp) reply.header('content-security-policy', binary.csp);
             return reply.type(binary.contentType).send(binary.body);
           }
           const asset = await preview.readAsset(project.slug, path);

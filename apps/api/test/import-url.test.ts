@@ -122,8 +122,20 @@ describe('POST /projects/:projectId/media/import-url', () => {
     expect(res.json().error).toMatch(/too many redirects/);
   });
 
-  it('rejects an SVG download (consistent with the upload route)', async () => {
-    vi.stubGlobal('fetch', fetchReturning(Buffer.from('<svg/>'), 'image/svg+xml'));
+  it('preserves an SVG download as a sanitized vector image (consistent with the upload route)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchReturning(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24"/></svg>'), 'image/svg+xml'),
+    );
+    const { t, projectId } = await setup();
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload: { url: 'https://cdn.example.com/x.svg' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().item.format).toBe('svg');
+    expect(res.json().item.url).toMatch(/\.svg$/);
+  });
+
+  it('rejects a malformed SVG download (nothing usable after sanitization) with 400', async () => {
+    vi.stubGlobal('fetch', fetchReturning(Buffer.from('not an svg'), 'image/svg+xml'));
     const { t, projectId } = await setup();
     const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload: { url: 'https://cdn.example.com/x.svg' } });
     expect(res.statusCode).toBe(400);

@@ -77,6 +77,15 @@ describe('buildSwImage', () => {
   it('neutralizes an unsafe url (safeUrl collapses javascript: to "#")', () => {
     expect(buildSwImage('javascript:alert(1)', [img])).toBe('<img src="#" alt="" loading="lazy" decoding="async">');
   });
+
+  it('emits a PLAIN <img> for an SVG (vector) — no srcset/?size, keeps intrinsic dims', () => {
+    const svg: RenderMedia = { id: 's1', folder: '', kind: 'image', filename: 'logo.svg', url: '/media/acme/s1/logo.svg', alt: 'Logo', width: 300, height: 120 };
+    const html = buildSwImage(svg.url, [svg]);
+    expect(html).toBe('<img src="/media/acme/s1/logo.svg" alt="Logo" width="300" height="120" loading="lazy" decoding="async">');
+    expect(html).not.toContain('srcset');
+    expect(html).not.toContain('?size=');
+    expect(html).not.toContain('<picture');
+  });
 });
 
 describe('{{sw-image}} via renderTemplate', () => {

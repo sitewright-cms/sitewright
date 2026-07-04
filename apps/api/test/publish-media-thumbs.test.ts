@@ -57,6 +57,16 @@ describe('rewriteMediaThumbUrls', () => {
     expect(rewriteMediaThumbUrls(html, 'acme', refs)).toBe(html);
     expect(refs.size).toBe(0);
   });
+
+  it('records an SVG image as an ORIGINAL ref (copied verbatim), strips any ?size, keeps the .svg name', () => {
+    const refs: ThumbRefs = new Map();
+    const out = rewriteMediaThumbUrls('<img src="/media/acme/s1/logo.svg?size=lg">', 'acme', refs);
+    expect(out).toContain('/media/acme/s1/logo.svg');
+    expect(out).not.toContain('?size=');
+    expect(out).not.toContain('logo-lg'); // never thumbnailed
+    expect(refs.get('s1')?.original).toBe(true);
+    expect(refs.get('s1')?.thumbs.size).toBe(0);
+  });
 });
 
 describe('resolveThumbForHead', () => {
@@ -71,6 +81,14 @@ describe('resolveThumbForHead', () => {
     const refs: ThumbRefs = new Map();
     expect(resolveThumbForHead('https://cdn/y.jpg', '/media/acme/', '_assets/', 'lg', 'webp', refs)).toBeUndefined();
     expect(refs.size).toBe(0);
+  });
+
+  it('resolves an SVG head image to its verbatim original (no thumbnail variant)', () => {
+    const refs: ThumbRefs = new Map();
+    const url = resolveThumbForHead('/media/acme/s1/logo.svg', '/media/acme/', '_assets/', 'lg', 'webp', refs);
+    expect(url).toBe('_assets/s1/logo.svg');
+    expect(refs.get('s1')?.original).toBe(true);
+    expect(refs.get('s1')?.thumbs.size).toBe(0);
   });
 });
 
@@ -110,6 +128,30 @@ describe('materializeImageThumbs', () => {
     expect(existsSync(join(dir, '_assets', 'a1', 'p-md.webp'))).toBe(false);
     const b = await readFile(join(dir, '_assets', 'a1', 'p-sm.webp'));
     expect(b.toString('ascii', 0, 4)).toBe('RIFF'); // valid WebP container
+  });
+
+  it('copies an SVG original VERBATIM (no thumbnails generated, no sharp)', async () => {
+    const svgBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40"><rect width="100" height="40"/></svg>');
+    const svgAsset: MediaAsset = {
+      kind: 'image',
+      id: 'sv1',
+      filename: 'logo.svg',
+      folder: '',
+      bytes: svgBytes.length,
+      format: 'svg',
+      width: 100,
+      height: 40,
+      hasAlpha: true,
+      animated: false,
+      original: 'logo.svg',
+      url: '/media/x/sv1/logo.svg',
+    };
+    // The publish rewrite only ever records an SVG as an original ref (thumbs stays empty).
+    const refs: ThumbRefs = new Map([['sv1', { thumbs: new Set(), original: true }]]);
+    await materializeImageThumbs(dir, [svgAsset], refs, async () => svgBytes);
+    const out = join(dir, '_assets', 'sv1', 'logo.svg');
+    expect(existsSync(out)).toBe(true);
+    expect(await readFile(out)).toEqual(svgBytes); // byte-for-byte, not rasterized
   });
 
   it('skips an asset whose original is missing (ENOENT tolerated, build not failed)', async () => {

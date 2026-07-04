@@ -70,7 +70,8 @@ const baseShape = {
 export const ImageAssetSchema = z.object({
   kind: z.literal('image'),
   ...baseShape,
-  /** Format of the STORED original (sharp): `png`|`jpeg`|`webp`|`gif`|`avif`|`tiff`. */
+  /** Format of the STORED original (sharp): `png`|`jpeg`|`webp`|`gif`|`avif`|`tiff` — or `svg` for a
+   *  vector image (stored verbatim after sanitization, served inline as-is, never rasterized). */
   format: z.string().min(1).max(20),
   /** Intrinsic dimensions of the stored original (for `width`/`height` attrs → no CLS). */
   width: z.number().int().positive(),
@@ -85,12 +86,13 @@ export const ImageAssetSchema = z.object({
   original: StoredFileNameSchema,
   /** Root-relative DELIVERY URL — id-bearing, ends in the stored original's (image) name; a bare fetch
    *  defaults to the `xl` thumbnail. The extension is a raster image type (storeOriginal normalizes the
-   *  stored name to the detected format), never an arbitrary/executable one. */
+   *  stored name to the detected format) — OR `svg` for a vector image, served inline as-is (never
+   *  rasterized/thumbnailed). Never an arbitrary/executable one. */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg|jpeg|png|gif|tiff)$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg|jpeg|png|gif|tiff|svg)$/),
 });
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 

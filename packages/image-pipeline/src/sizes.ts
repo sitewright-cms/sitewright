@@ -60,6 +60,15 @@ export function isThumbnailable(filename: string): boolean {
 }
 
 /**
+ * True if `filename` is an SVG. SVG is a `kind:'image'` asset but is NEVER thumbnailed (it is a
+ * vector — it scales natively) and never routed through sharp; it is stored sanitized + served
+ * inline verbatim. Callers use this to serve/materialize the SVG original instead of a raster thumb.
+ */
+export function isSvgFile(filename: string): boolean {
+  return /\.svg$/i.test(filename);
+}
+
+/**
  * The on-disk / export file name for a thumbnail of `originalName` at `size` in `format`,
  * e.g. `photo.jpg` + `xl` + `webp` → `photo-xl.webp`. The stem is separated from the size
  * with `-` (never a `.`) so the result stays a single-extension name that matches the

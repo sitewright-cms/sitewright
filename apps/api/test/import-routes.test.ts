@@ -23,6 +23,7 @@ interface Built {
   app: FastifyInstance;
   importBundle: ReturnType<typeof vi.fn>;
   createMediaAsset: ReturnType<typeof vi.fn>;
+  createSvgAsset: ReturnType<typeof vi.fn>;
   hostScript: ReturnType<typeof vi.fn>;
 }
 
@@ -33,11 +34,13 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
   void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
   const createMediaAsset = vi.fn(async () => ({ url: '/media/x/1.jpg' }));
+  const createSvgAsset = vi.fn(async () => ({ url: '/media/x/logo.svg' }));
   const hostScript = vi.fn(async (_ctx: unknown, slug: string) => `/media/${slug}/sid/script.js`);
   registerImportRoutes(app, {
     resolveProject: async (req) => ({ ctx: ctxFor(req.params.projectId, opts.role ?? 'owner'), project: { id: req.params.projectId, name: 'P', slug: 'p' } }),
     contentRepo: { importBundle } as never,
     createMediaAsset,
+    createSvgAsset,
     hostScript: hostScript as never,
     rl: (max) => ({ rateLimit: { max, timeWindow: '1 minute' } }),
     log: app.log,
@@ -48,7 +51,7 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
     render: undefined,
     ...(opts.cacheSourceRefs ? { cacheSourceRefs: opts.cacheSourceRefs as never } : {}),
   });
-  return { app, importBundle, createMediaAsset, hostScript };
+  return { app, importBundle, createMediaAsset, createSvgAsset, hostScript };
 }
 
 const ticks = async (n = 4): Promise<void> => {
@@ -253,9 +256,13 @@ describe('POST /projects/:id/import/website/stream', () => {
     expect(createMediaAsset).toHaveBeenCalledTimes(1); // both URLs → one hosted asset (content hash)
   });
 
-  it('fetches + self-hosts a remote image, and skips an SVG', async () => {
-    // Inject a stub pinnedFetch (the route's outbound) — png hosted, svg returned as image/svg+xml.
-    const pinnedFetch: PinnedStub = async (u) => ({ status: 200, contentType: u.endsWith('.svg') ? 'image/svg+xml' : 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) });
+  it('fetches + self-hosts a remote raster image AND preserves an SVG (sanitized vector)', async () => {
+    // Inject a stub pinnedFetch (the route's outbound) — png hosted as raster, svg returned as image/svg+xml.
+    const pinnedFetch: PinnedStub = async (u) => ({
+      status: 200,
+      contentType: u.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+      bytes: u.endsWith('.svg') ? new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>') : new Uint8Array([1, 2, 3, 4]),
+    });
     const crawl = async (): Promise<CrawlResult> => ({
       site: {
         baseUrl: 'https://ex.com/',
@@ -266,10 +273,11 @@ describe('POST /projects/:id/import/website/stream', () => {
       truncated: true,
       warnings: ['blocked (SSRF): https://ex.com/secret'],
     });
-    const { app, createMediaAsset } = track(makeApp({ crawl, pinnedFetch }));
+    const { app, createMediaAsset, createSvgAsset } = track(makeApp({ crawl, pinnedFetch }));
     const res = await app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
-    // png hosted, svg skipped (MediaPort rejects image/svg+xml).
+    // png hosted as a raster; svg PRESERVED via the vector path (not dropped, not rasterized).
     expect(createMediaAsset).toHaveBeenCalledTimes(1);
+    expect(createSvgAsset).toHaveBeenCalledTimes(1);
     expect(res.payload).toContain('"truncated":true');
   });
 

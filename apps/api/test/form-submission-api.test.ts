@@ -147,6 +147,29 @@ describe('public form submission endpoint', () => {
     expect(nested.statusCode).toBe(400);
   });
 
+  it('joins a checkbox-group array into a single stored text value; rejects a non-string array element', async () => {
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'lead@x.co', features: ['SEO', 'Analytics', 'Hosting'], _elapsed: '5000' },
+    });
+    expect(ok.statusCode).toBe(200);
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const items = (list.json() as { items: Array<{ fields: Record<string, string> }> }).items;
+    expect(items[0]!.fields.features).toBe('SEO, Analytics, Hosting'); // array joined
+    // when only ONE box in a group is checked, the client sends a plain STRING (not an array) — stored as-is
+    const single = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', features: 'SEO', _elapsed: '5000' } });
+    expect(single.statusCode).toBe(200);
+    const items2 = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } })).json() as { items: Array<{ fields: Record<string, string> }> }).items;
+    expect(items2[0]!.fields.features).toBe('SEO');
+    // an array with a non-string element is rejected (still no objects/binary)
+    const bad = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { features: ['ok', { x: 1 }], _elapsed: '5000' } });
+    expect(bad.statusCode).toBe(400);
+    // a control (trap) field must NEVER be an array — reject rather than normalize it into a value
+    expect((await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@b.co', _hpt: [], _elapsed: '5000' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@b.co', _elapsed: ['5000'] } })).statusCode).toBe(400);
+  });
+
   it('still stores the submission when mail delivery is unavailable', async () => {
     mailer.result = false; // SMTP not configured / disabled
     const res = await app.inject({

@@ -551,6 +551,14 @@ const FORM_CSS = [
   '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
   '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
   '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
+  // checkbox / radio inputs must NOT stretch to 100% — they sit inline next to their option label.
+  '[data-sw-block="Form"] input[type=checkbox],[data-sw-block="Form"] input[type=radio]{width:auto;padding:0;border-radius:0;flex:none}',
+  '[data-sw-block="Form"] fieldset[data-sw-part="field"]{border:0;padding:0;margin:0 0 1rem;min-inline-size:0}',
+  '[data-sw-block="Form"] legend[data-sw-part="label"]{padding:0;margin-bottom:.35rem;font-size:.875rem}',
+  // option ROWS inside a group sit tight (.25rem); a single-checkbox field keeps the normal field margin.
+  '[data-sw-block="Form"] .sw-form-opt{display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem}',
+  '[data-sw-block="Form"] .sw-form-check{display:flex;align-items:center;gap:.5rem}',
+  '[data-sw-block="Form"] .sw-form-check [data-sw-part="label"]{margin-bottom:0}',
   // The submit button uses the vendored .btn (rendered with `class="btn btn-primary"`); only the
   // submitting/disabled cursor is kept here.
   '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{cursor:progress}',
@@ -590,7 +598,14 @@ const FORM_JS = `(function(){
       var data={};
       Array.prototype.forEach.call(form.querySelectorAll('input,textarea,select'),function(el){
         if(!el.name||el.type==='submit'||el.type==='button')return;
-        data[el.name]=el.value;
+        if((el.type==='checkbox'||el.type==='radio')&&!el.checked)return; // only CHECKED options count
+        if(el.type==='checkbox'&&Object.prototype.hasOwnProperty.call(data,el.name)){
+          // a checkbox GROUP (several boxes share a name) collects into an array; the endpoint joins them
+          if(!Array.isArray(data[el.name]))data[el.name]=[data[el.name]];
+          data[el.name].push(el.value);
+        }else{
+          data[el.name]=el.value;
+        }
       });
       data['_elapsed']=String(Date.now()-started);
       if(submit)submit.disabled=true;

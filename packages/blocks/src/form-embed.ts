@@ -112,16 +112,37 @@ function renderFormField(field: FormPublic['fields'][number]): string {
   const name = escapeAttr(field.name);
   const required = field.required ? ' required' : '';
   const ph = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : '';
+  const labelHtml = escapeHtml(field.label);
+  const options = field.options ?? [];
+
+  // A radio group, or a checkbox GROUP (a checkbox WITH options) → a <fieldset> of option rows. A radio
+  // group carries `required` on its inputs as a SEMANTIC / a11y signal only (the form is `novalidate`, so
+  // — like every other field — nothing actually blocks an empty submit; see renderFormMarkup). A checkbox
+  // group has no native "at least one" rule at all, so it carries no `required`. Each checked box submits
+  // under the same name and the endpoint joins the values.
+  if (field.type === 'radio' || (field.type === 'checkbox' && options.length > 0)) {
+    const req = field.type === 'radio' ? required : '';
+    const rows = options
+      .map((o) => `<label class="sw-form-opt"><input type="${field.type}" name="${name}" value="${escapeAttr(o)}"${req} /><span>${escapeHtml(o)}</span></label>`)
+      .join('');
+    return `<fieldset data-sw-part="field"><legend data-sw-part="label">${labelHtml}</legend>${rows}</fieldset>`;
+  }
+
+  // A single (boolean) checkbox — no options → the label sits beside the box; submits "Yes" when checked.
+  if (field.type === 'checkbox') {
+    return `<label data-sw-part="field" class="sw-form-check"><input type="checkbox" name="${name}" value="Yes"${required} /><span data-sw-part="label">${labelHtml}</span></label>`;
+  }
+
   let control: string;
   if (field.type === 'textarea') {
     control = `<textarea name="${name}"${required}${ph}></textarea>`;
   } else if (field.type === 'select') {
-    const opts = (field.options ?? []).map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`).join('');
+    const opts = options.map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`).join('');
     control = `<select name="${name}"${required}><option value="">—</option>${opts}</select>`;
   } else {
     control = `<input type="${field.type}" name="${name}"${required}${ph} />`;
   }
-  return `<label data-sw-part="field"><span data-sw-part="label">${escapeHtml(field.label)}</span>${control}</label>`;
+  return `<label data-sw-part="field"><span data-sw-part="label">${labelHtml}</span>${control}</label>`;
 }
 
 /**

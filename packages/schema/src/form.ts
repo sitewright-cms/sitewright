@@ -16,20 +16,34 @@ function hasControlChars(value: string): boolean {
 // renderer emits only the public parts — the recipient never reaches exported
 // HTML. Submissions are stored TEXT-ONLY: there is no file/attachment field type.
 
-/** A single input in a form. No `file` type — attachments are never accepted. */
-export const FormFieldTypeSchema = z.enum(['text', 'email', 'tel', 'url', 'number', 'textarea', 'select']);
+/** A single input in a form. No `file` type — attachments are never accepted. `radio` is a
+ *  single-select option group; `checkbox` WITH options is a multi-select group (its values submit
+ *  joined with ", "), WITHOUT options it is one boolean checkbox. */
+export const FormFieldTypeSchema = z.enum(['text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox']);
 export type FormFieldType = z.infer<typeof FormFieldTypeSchema>;
 
-export const FormFieldSchema = z.object({
-  /** HTML input `name` (also the submission key). */
-  name: KeyNameSchema,
-  label: z.string().min(1).max(200),
-  type: FormFieldTypeSchema.default('text'),
-  required: z.boolean().default(false),
-  placeholder: z.string().max(200).optional(),
-  /** Options for `select` (ignored otherwise). */
-  options: z.array(z.string().min(1).max(200)).max(100).optional(),
-});
+export const FormFieldSchema = z
+  .object({
+    /** HTML input `name` (also the submission key). Reserved prototype identifiers are refused so a field
+     *  name can never collide with the submission map's prototype (defence-in-depth; the endpoint also skips
+     *  them). */
+    name: KeyNameSchema.refine((n) => n !== '__proto__' && n !== 'constructor' && n !== 'prototype', {
+      message: 'reserved identifier; choose a different field name',
+    }),
+    label: z.string().min(1).max(200),
+    type: FormFieldTypeSchema.default('text'),
+    required: z.boolean().default(false),
+    placeholder: z.string().max(200).optional(),
+    /** Options for `select` / `radio`, and a `checkbox` GROUP (a checkbox WITH options renders a
+     *  multi-select group; without options it's a single boolean). Ignored for other types. */
+    options: z.array(z.string().min(1).max(200)).max(100).optional(),
+  })
+  // A `radio` is an option-driven single-select — a radio group with no options renders nothing.
+  // (A 0-option `select` still renders its placeholder, so it stays lenient for backward-compat.)
+  .refine((f) => f.type !== 'radio' || (f.options?.length ?? 0) >= 1, {
+    message: 'a radio field needs at least one option',
+    path: ['options'],
+  });
 export type FormField = z.infer<typeof FormFieldSchema>;
 
 /**

@@ -49,6 +49,13 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   const cls = opts.className ? ` class="${escapeAttr(opts.className)}"` : '';
   const loading = opts.loading === 'eager' ? 'eager' : 'lazy';
 
+  // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
+  // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).
+  if (/\.svg(?:$|\?)/i.test(src)) {
+    const svgDims = asset && asset.kind === 'image' && asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : '';
+    return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${cls}>`;
+  }
+
   // Unresolved / external / dimensionless → a plain lazy <img> (no srcset/dims/LQIP available).
   if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) {
     return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${cls}>`;

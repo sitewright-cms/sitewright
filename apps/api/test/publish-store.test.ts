@@ -80,6 +80,18 @@ describe('PublishStore HTML serving', () => {
     expect(bin?.attachment).toBe(true);
   });
 
+  it('serves a bundled SVG INLINE (image/svg+xml) under a locked-down CSP, not a download', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets', 'svg1'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'svg1', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
+    const svg = await store.readBinary('site', '/_assets/svg1/logo.svg');
+    expect(svg?.contentType).toBe('image/svg+xml; charset=utf-8');
+    expect(svg?.attachment).toBe(false); // inline, so a cloned <img src=logo.svg> renders
+    // the CSP forbids scripts + external fetches (belt to the sanitize-on-store suspenders)
+    expect(svg?.csp).toMatch(/default-src 'none'/);
+    expect(svg?.csp).toMatch(/sandbox/);
+  });
+
   it('still rejects traversal segments', async () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
     await expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();

@@ -96,6 +96,14 @@ export interface ImportRouteDeps {
     meta: { filename: string; mimetype: string; folder?: string },
     storeOpts?: { cap?: number },
   ) => Promise<{ url: string }>;
+  /** Self-host an SVG as a sanitized, verbatim VECTOR image (kind:'image', format:'svg') → its /media
+   *  URL (or null if the bytes aren't a usable SVG). Omit to DROP SVGs (the old behaviour). */
+  createSvgAsset?: (
+    ctx: ProjectContext,
+    slug: string,
+    svgText: string,
+    meta: { filename: string; folder?: string },
+  ) => Promise<{ url: string } | null>;
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
@@ -294,7 +302,19 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
             const saved = await deps.hostFileAsset(ctx, slug, buf, { filename: fn, mimetype: mt || 'application/octet-stream', folder }).catch(() => null);
             return saved ? { ref: saved.url } : null;
           }
-          if (mt === 'image/svg+xml' || mt === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
+          // SVG: PRESERVED as a vector, not rasterized (keeps animation + infinite scaling + tiny bytes).
+          // It is sanitized (scripts / handlers / remote refs stripped) and stored verbatim, then served
+          // inline under a locked-down CSP. Old behaviour dropped every SVG logo/illustration outright.
+          if (mt === 'image/svg+xml' || mt === 'image/svg') {
+            if (!deps.createSvgAsset) return null;
+            try {
+              const folder = importMediaFolder(remoteRef, true);
+              const saved = await deps.createSvgAsset(ctx, slug, buf.toString('utf8'), { filename: fn, folder });
+              return saved ? { ref: saved.url } : null;
+            } catch {
+              return null;
+            }
+          }
           if (mt && !mt.startsWith('image/')) return null; // only host images
           try {
             const folder = importMediaFolder(remoteRef, true);

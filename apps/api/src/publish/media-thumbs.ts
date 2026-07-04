@@ -6,6 +6,7 @@ import {
   isSizeToken,
   isThumbFormat,
   isThumbnailable,
+  isSvgFile,
   thumbFileName,
   generateThumbnail,
   type SizeToken,
@@ -80,6 +81,12 @@ export function rewriteMediaThumbUrls(html: string, projectSlug: string, refs: T
   // (quotes, whitespace, ')', ',', '>'), so a match never runs past its own URL.
   const re = new RegExp(`${escapeRegExp(prefix)}([A-Za-z0-9_-]+)/([A-Za-z0-9_.-]+)(\\?[A-Za-z0-9=&%_-]*)?`, 'g');
   return html.replace(re, (whole, id: string, name: string, query: string | undefined) => {
+    // SVG is a `kind:'image'` asset but is NOT thumbnailable — it is copied VERBATIM (record its
+    // original so materialize copies it) and served inline as-is; drop any `?size=` the source added.
+    if (isSvgFile(name)) {
+      addOriginalRef(refs, id);
+      return `${prefix}${id}/${name}`;
+    }
     if (!isThumbnailable(name)) return whole; // font/css/js/`file`/pdf — leave for the plain rebase
     const { size, format } = parseQuery(query ?? '');
     if (size === 'original') {
@@ -113,7 +120,13 @@ export function resolveThumbForHead(
   if (slash < 0) return undefined;
   const id = clean.slice(0, slash);
   const name = clean.slice(slash + 1);
-  if (!id || !name || name.includes('/') || !isThumbnailable(name)) return undefined;
+  if (!id || name.includes('/')) return undefined;
+  // A vector (SVG) head/SEO image (og:image / logo) is copied verbatim — no thumbnail variant.
+  if (isSvgFile(name)) {
+    addOriginalRef(refs, id);
+    return `${assetRoot}${id}/${name}`;
+  }
+  if (!name || !isThumbnailable(name)) return undefined;
   addThumbRef(refs, id, size, format);
   return `${assetRoot}${id}/${thumbFileName(name, size, format)}`;
 }

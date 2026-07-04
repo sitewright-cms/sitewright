@@ -20,9 +20,17 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
   ['.webmanifest', 'application/manifest+json'],
 ]);
 
+// A locked-down response CSP for inline-served SVG. SVG can carry <script>; even though our imported
+// SVGs are SANITIZED and referenced via <img> (browser "secure static mode" = no scripts/fetches), this
+// CSP is the HARD guarantee for the residual DIRECT-navigation vector: no script executes and no remote
+// resource loads, even on this same-origin (`/sites/<slug>/`) route. `style-src 'unsafe-inline'` keeps
+// the SVG's own <style>/@keyframes animation working; `img-src data:` keeps embedded data: rasters.
+export const SVG_MEDIA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+
 // Inline-servable types for the bundled `_assets/` binaries. Anything NOT in this map (raw uploads,
-// .svg, .html, .js, …) is served download-only (octet-stream + attachment), so an uploaded file can
-// never render/execute on this cookie-bearing origin. Mirrors the /media route's allowlist.
+// .html, .js, …) is served download-only (octet-stream + attachment), so an uploaded file can never
+// render/execute on this cookie-bearing origin. SVG is handled separately (inline + a locked-down CSP,
+// see below). Mirrors the /media route's allowlist.
 const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   ['.avif', 'image/avif'],
   ['.webp', 'image/webp'],
@@ -47,11 +55,13 @@ const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   // bytes are still copied into the exported artifact for that deploy.
 ]);
 
-/** A bundled binary asset to serve: its bytes, content type, and whether it's download-only. */
+/** A bundled binary asset to serve: its bytes, content type, and whether it's download-only.
+ *  `csp`, when set, is a locked-down `Content-Security-Policy` the caller must apply (SVG only). */
 export interface PublishedBinary {
   body: Buffer;
   contentType: string;
   attachment: boolean;
+  csp?: string;
 }
 
 /**
@@ -156,6 +166,10 @@ export class PublishStore {
       return null;
     }
     const ext = extname(rel).toLowerCase();
+    // SVG is inline-servable (so a cloned <img src=logo.svg> renders) but ONLY under a locked-down CSP
+    // that forbids scripts/external resources — the bytes were sanitized on store; this is the belt to
+    // that suspenders, covering the same-origin direct-navigation case.
+    if (ext === '.svg') return { body, contentType: 'image/svg+xml; charset=utf-8', attachment: false, csp: SVG_MEDIA_CSP };
     const imageType = PUBLISHED_IMAGE_TYPES.get(ext);
     if (imageType) return { body, contentType: imageType, attachment: false };
     // Sandboxed-preview ONLY (opt-in, cross-site script load): run an imported `.js` in the opaque

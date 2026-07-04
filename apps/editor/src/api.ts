@@ -826,6 +826,9 @@ export const api = {
    *  loaded via iframe `src`). Config is pushed live via postMessage, so no query is needed. */
   svgAnimPreviewUrl: (query: string) => `${BASE}/authoring/svg-preview${query ? `?${query}` : ''}`,
 
+  /** The SVG Animation Studio's live canvas doc URL (same sandbox-CSP route; content pushed via postMessage). */
+  svgStudioPreviewUrl: () => `${BASE}/authoring/svg-studio-preview`,
+
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),

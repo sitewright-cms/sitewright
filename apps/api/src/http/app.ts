@@ -68,6 +68,7 @@ import {
   usesParallax,
   parallaxPreviewDoc,
   svgAnimPreviewDoc,
+  svgStudioPreviewDoc,
   usesNavEffects,
   NAV_EFFECTS_JS,
   STICKY_HEADER_JS,
@@ -4880,6 +4881,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         .type('text/html')
         .send(html);
     },
+  );
+
+  // The SVG Animation Studio's live CANVAS document (renders the user's SVG + plays the real runtimes +
+  // reports clicks/highlights). STATIC — all content arrives via postMessage from the editor; served
+  // under the same sandbox CSP as the previews above (opaque origin, no session).
+  app.get('/authoring/svg-studio-preview', { config: rl(60) }, async (_req, reply) =>
+    reply
+      .header('content-security-policy', 'sandbox allow-scripts')
+      .header('x-frame-options', 'SAMEORIGIN')
+      .type('text/html')
+      .send(svgStudioPreviewDoc()),
   );
 
   // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets

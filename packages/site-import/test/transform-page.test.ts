@@ -198,4 +198,37 @@ describe('transformBody', () => {
     expect(source).toContain('Keep me'); // sibling content preserved
     expect(source).toContain('class="bar"'); // wrapper kept (not empty)
   });
+
+  it('strips HTML comments (dead weight in editable source), keeping the real content', () => {
+    const { source } = run('<div><!-- a disabled legacy nav: <nav id="main-nav"><a href="/x">Old</a></nav> --><p>Real copy</p></div>');
+    expect(source).not.toContain('<!--');
+    expect(source).not.toContain('disabled legacy nav');
+    expect(source).not.toContain('main-nav');
+    expect(source).toContain('Real copy');
+  });
+
+  it('removes a bare (content-less) loading overlay but KEEPS a content-rich one (the hero)', () => {
+    const bare = run('<div class="loading-overlay"><div class="spinner"></div></div><p>page</p>');
+    expect(bare.source).not.toContain('loading-overlay');
+    expect(bare.diagnostics.some((d) => d.code === 'preloader-removed')).toBe(true);
+
+    // A "loading-overlay" that holds the headline + CTAs is the hero — it must NOT be stripped.
+    const hero = run('<div class="loading-overlay"><h1>NEXT-GEN WEB DEVELOPMENT</h1><a href="#a">GET STARTED</a><a href="#b">ABOUT</a></div><p>page</p>');
+    expect(hero.source).toContain('NEXT-GEN WEB DEVELOPMENT');
+    expect(hero.source).toContain('GET STARTED');
+    expect(hero.diagnostics.some((d) => d.code === 'preloader-removed')).toBe(false);
+  });
+
+  it('still removes a preloader that has only ICON-ONLY links (social icons are not CTAs)', () => {
+    // ≥2 links but NO text labels + little text ⇒ a real loader, not a hero. Must be stripped.
+    const { source, diagnostics } = run(
+      '<div class="preloader"><a href="/"><img src="/logo.png"></a>' +
+        '<a href="https://fb.com/co"><i class="fab fa-facebook"></i></a>' +
+        '<a href="https://twitter.com/co"><i class="fab fa-twitter"></i></a></div><p>real page</p>',
+    );
+    expect(source).not.toContain('preloader');
+    expect(source).not.toContain('fa-facebook');
+    expect(source).toContain('real page');
+    expect(diagnostics.some((d) => d.code === 'preloader-removed')).toBe(true);
+  });
 });

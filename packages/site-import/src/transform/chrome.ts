@@ -8,7 +8,7 @@
 import { findOne, removeElement } from 'domutils';
 import { isTag } from 'domhandler';
 import { serialize, type Document, type Element } from '../dom.js';
-import { transformFragment, type TransformCtx } from './page.js';
+import { transformFragment, isContentfulOverlay, type TransformCtx } from './page.js';
 import type { ImportLimits } from '../types.js';
 
 type Matcher = (el: Element) => boolean;
@@ -119,7 +119,10 @@ export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult
   // page-specific content that merely matches the pattern (e.g. a `cookie-recipe` article) is never lost.
   // The hoisted HTML is discarded (we don't reproduce the broken overlay); a preloader enables the
   // platform's own effect instead.
-  const preloaderFound = extractRegion(pages, ctx, (body) => findFirst(body, PRELOADER)) !== undefined;
+  // Only a CONTENT-LESS overlay is a real preloader — an overlay that holds a heading / CTAs / a form is
+  // the page HERO reusing splash/loading markup (a common pattern), and stripping it would delete the
+  // whole above-the-fold. Skip those here so they stay in the page body.
+  const preloaderFound = extractRegion(pages, ctx, (body) => findFirst(body, (el) => PRELOADER(el) && !isContentfulOverlay(el))) !== undefined;
   extractRegion(pages, ctx, (body) => findFirst(body, COOKIE));
 
   // Header → mainNav (a slide-out mobile menu nested in the header travels with it; the platform's

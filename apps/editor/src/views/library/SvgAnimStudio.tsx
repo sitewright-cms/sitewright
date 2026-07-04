@@ -171,7 +171,10 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount-only listener: the 'ready' branch runs once (right after the iframe loads), so the
+    // initial `selectedId` is correct there; ongoing selection highlighting is driven by the
+    // effect above. (This project's eslint config does not register react-hooks/exhaustive-deps,
+    // so no disable directive is needed here.)
   }, []);
 
   const download = () => {

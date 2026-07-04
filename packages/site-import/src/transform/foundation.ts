@@ -362,7 +362,9 @@ export function nativeMainNav(identity: Pick<CorporateIdentity, 'name' | 'logo'>
 
 /** A clean native footer from identity (company + contact + optional map + copyright). Agents may enrich it later. */
 export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' | 'telephone' | 'mapUrl'>): string {
-  const year = '{{year}}';
+  // The CURRENT year via the real helper — `{{year}}` is NOT a binding (it renders empty/literal); the
+  // engine's date helper always resolves to this year, so the copyright never goes stale.
+  const year = '{{sw-date "now" "YYYY"}}';
   const contacts: string[] = [];
   if (identity.telephone) contacts.push(`<a href="tel:${esc(identity.telephone.replace(/\s+/g, ''))}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "phone" "h-4 w-4 text-primary"}}${esc(identity.telephone)}</a>`);
   if (identity.email) contacts.push(`<a href="mailto:${esc(identity.email)}" class="inline-flex items-center gap-1.5 hover:text-primary">{{sw-icon "mail" "h-4 w-4 text-primary"}}${esc(identity.email)}</a>`);

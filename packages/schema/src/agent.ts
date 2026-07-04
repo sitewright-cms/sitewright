@@ -1149,7 +1149,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
   { name: 'list_pages', description: "List the project's pages." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
-  { name: 'list_content', description: "List all entities of a content kind." },
+  { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows)." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },

@@ -189,10 +189,10 @@ export class SitewrightClient {
     return scope;
   }
 
-  async listContent(kind: string): Promise<unknown[]> {
+  async listContent(kind: string, dataset?: string): Promise<unknown[]> {
     const res = await this.request<{ items: unknown[] }>(
       'GET',
-      this.projectPath(`/content/${encodeURIComponent(kind)}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}${datasetQuery(dataset)}`),
     );
     return res.items;
   }

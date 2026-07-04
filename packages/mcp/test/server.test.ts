@@ -736,10 +736,13 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(res.isError).toBeFalsy();
   });
 
-  it('list_content forwards the requested kind', async () => {
+  it('list_content forwards the requested kind (+ optional dataset scope for entries)', async () => {
     const client = fakeClient();
-    await (await connect(client, readScope)).callTool({ name: 'list_content', arguments: { kind: 'dataset' } });
-    expect(calls(client).listContent).toHaveBeenCalledWith('dataset');
+    const mcp = await connect(client, readScope);
+    await mcp.callTool({ name: 'list_content', arguments: { kind: 'dataset' } });
+    expect(calls(client).listContent).toHaveBeenCalledWith('dataset', undefined);
+    await mcp.callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team' } });
+    expect(calls(client).listContent).toHaveBeenCalledWith('entry', 'team');
   });
 
   it('get_content forwards kind + id (+ dataset for an entry)', async () => {

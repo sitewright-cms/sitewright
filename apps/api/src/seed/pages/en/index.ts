@@ -11,6 +11,7 @@ import { pageComponentsConsent } from './components-consent.js';
 import { pageComponentsForms } from './components-forms.js';
 import { pageComponentsDateTimePicker } from './components-datetimepicker.js';
 import { pageComponentsParallax } from './components-parallax.js';
+import { pageComponentsSvg } from './components-svg.js';
 import { pageComponentsScrollSpy } from './components-scrollspy.js';
 import { pageComponentsShader } from './components-shader.js';
 import { pagesServices } from './services.js';
@@ -46,6 +47,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
     pageComponentsParallax(),
+    pageComponentsSvg(),
     pageComponentsScrollSpy(),
     pageComponentsShader(),
     pageFaq(),

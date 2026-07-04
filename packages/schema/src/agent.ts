@@ -904,6 +904,14 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 CHROME (do this too — it isn't done until the slots are ported). The header / footer slots
 (in the settings entity, website.mainNav/.footer) still hold literal foreign HTML. Port them the
 same way — same layout, native classes + tokens + {{company.*}} — editing the settings entity.
+SLOT VALIDATION IS STRICTER THAN A PAGE: a chrome slot (mainNav/footer/sidebar*) is validated on save and
+REJECTS things an imported PAGE source keeps — inline \`style="…"\` attributes, \`<style>\` blocks, HTML
+comments, the reserved landmarks (\`<header>/<nav>/<footer>/<aside>\` — use a \`<div>\`), and a bare-binding
+URL attr (\`src="{{company.logo}}"\` must be \`src="{{sw-url company.logo}}"\`). So when you move markup FROM a
+page body INTO a slot, first: convert every inline \`style="width:95%"\`→a Tailwind class (\`w-[95%]\`), a
+\`style="background-image:url(x)"\`→a real \`<img>\` (or a bg utility), drop comments, rename landmarks to
+\`<div>\`, and wrap every binding used as a URL in \`{{sw-url …}}\`. The validator reports ONE violation per
+save, so fix them up front rather than discovering them one 400 at a time.
 USE THE DEFAULT NAV AS THE STARTING POINT — DON'T HAND-ROLL A MENU WITH HARD-CODED ITEMS, and don't assume
 the bare partial is enough. The mainNav SLOT is already populated (the importer put the foreign header there;
 new projects ship {{> nav-header}}) — start from what's in the slot and ADAPT it; you do NOT need to fetch the
@@ -965,6 +973,13 @@ sit indented.
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
 embed with {{sw-form}}).
+FORM ENTITY SHAPE (put_content "form" { … }): { id, name, recipient (REQUIRED — the email that receives
+submissions), fields: [ { name, label, type, required?, placeholder?, options? } … ], plus optional
+submitLabel / successMessage }. FIELD \`type\` is one of: text | email | tel | url | number | textarea |
+select (a \`select\` carries \`options: ["A","B"]\`). There is NO checkbox/radio/file field type — for a
+multi-select "choose features" grid, either use ONE multi-line \`textarea\` (list the options in the label)
+or a \`select\`; do NOT hand-author <input type=checkbox> inside the form (it won't submit). Embed the form
+with {{sw-form "<id>"}}. Match the ORIGINAL form's field layout + required markers + submit-button look.
 
 COMMON FIDELITY MISSES — these keep happening even when the port "looks close". Self-audit EVERY page
 against this list BEFORE you publish it:

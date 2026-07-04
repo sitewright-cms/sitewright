@@ -298,6 +298,9 @@ describe('nativeFooter', () => {
     expect(f).toContain('mailto:hi@acme.com');
     expect(f).toContain('tel:+1555000');
     expect(f).not.toMatch(/<footer[\s>]/);
+    // the copyright year uses the REAL date helper (never the non-binding `{{year}}`)
+    expect(f).toContain('{{sw-date "now" "YYYY"}}');
+    expect(f).not.toContain('{{year}}');
   });
 
   it('embeds the captured map via the {{sw-url company.mapUrl}} HELPER and PASSES validateTemplate', () => {

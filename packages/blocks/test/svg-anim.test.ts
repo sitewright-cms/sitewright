@@ -83,6 +83,64 @@ describe('SVG animation runtime', () => {
   });
 });
 
+describe('SVG animation global (whole-SVG) settings', () => {
+  it('CSS adds responsive (fill parent), click cursor, and a reduced-motion-safe ripple', () => {
+    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}');
+    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-click]{cursor:pointer}');
+    expect(SVG_ANIM_CSS).toContain('@keyframes sw-svg-ripple');
+    // ripple only animates when motion is allowed
+    expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){.sw-svg-ripple{animation:sw-svg-ripple');
+    expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: reduce){.sw-svg-ripple{display:none}}');
+  });
+
+  it('treats a root <svg> with any global directive as ONE coordinated unit', () => {
+    expect(SVG_ANIM_JS).toContain('function hasGlobal(svg)');
+    expect(SVG_ANIM_JS).toContain("svg.hasAttribute('data-sw-svg-trigger')");
+    expect(SVG_ANIM_JS).toContain("svg.hasAttribute('data-sw-svg-replay')");
+    expect(SVG_ANIM_JS).toContain("svg.hasAttribute('data-sw-svg-click')");
+    expect(SVG_ANIM_JS).toContain("svg.hasAttribute('data-sw-svg-loop')");
+    // the unit carries replay/click/loop pulled from the root svg
+    expect(SVG_ANIM_JS).toContain("replay:boolAttr(svg,'data-sw-svg-replay'),click:boolAttr(svg,'data-sw-svg-click'),loopMs:loopMsOf(svg)");
+  });
+
+  it('finds the subtree ROOT svg too (so an inlined <img data-sw-svg> svg gets its global settings), root first', () => {
+    expect(SVG_ANIM_JS).toContain('function svgRoots(root)');
+    expect(SVG_ANIM_JS).toContain("String(root.tagName).toLowerCase()==='svg'");
+    expect(SVG_ANIM_JS).toContain('list.unshift(root)'); // outer/inlined root wins over any nested <svg>
+  });
+
+  it('back-compat: a SELF-animated root <svg> (data-sw-svg on the svg) is NOT a global container', () => {
+    // Else it would double-process (standalone element + global unit) and override its own per-element trigger.
+    expect(SVG_ANIM_JS).toContain("function hasGlobal(svg){if(svg.hasAttribute('data-sw-svg'))return false");
+  });
+
+  it('the auto-repeat loop self-clears when its root leaves the document (no timer leak)', () => {
+    expect(SVG_ANIM_JS).toContain('if(!document.contains(u.root)){clearInterval(u.timer)');
+  });
+
+  it('click-to-replay adds a listener + a pointer ripple (global roots only)', () => {
+    expect(SVG_ANIM_JS).toContain('function swRipple(');
+    expect(SVG_ANIM_JS).toContain("if(u.click)u.root.addEventListener('click'");
+    expect(SVG_ANIM_JS).toContain('swRipple(e,u.root)');
+  });
+
+  it('auto-repeat loop is clamped and replays on a timer', () => {
+    expect(SVG_ANIM_JS).toContain('var LOOP_MIN=500,LOOP_MAX=600000');
+    expect(SVG_ANIM_JS).toContain('function loopMsOf(el)');
+    expect(SVG_ANIM_JS).toContain('function startLoop(u)');
+    expect(SVG_ANIM_JS).toContain('setInterval(');
+  });
+
+  it('re-arms scroll replay on a FULL exit (ratio 0) so it fires from ANY scroll direction', () => {
+    // play on meaningful visibility, re-arm (reset) only when fully out — direction-agnostic.
+    expect(SVG_ANIM_JS).toContain('entry.intersectionRatio>=0.15');
+    expect(SVG_ANIM_JS).toContain('entry.intersectionRatio===0');
+    expect(SVG_ANIM_JS).toContain('threshold:[0,0.15]');
+    // the old single-threshold bottom-margin observer is gone
+    expect(SVG_ANIM_JS).not.toContain("{threshold:0.15,rootMargin:'0px 0px -10% 0px'}");
+  });
+});
+
 describe('SVG animation detection + surface', () => {
   it('detects the data-sw-svg marker in authored HTML', () => {
     expect(usesSvgAnim('<svg><path data-sw-svg="draw"/></svg>')).toBe(true);

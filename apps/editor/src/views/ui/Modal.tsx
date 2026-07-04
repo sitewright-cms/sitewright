@@ -33,6 +33,8 @@ const SIZES = {
    *  more horizontal room (e.g. a multi-column picker). */
   '2xl': 'max-w-6xl',
   full: 'max-w-5xl h-[82vh]',
+  /** The SVG Studio workbench — wider than `full` (three columns: tree · canvas · settings) + tall. */
+  studio: 'max-w-[92rem] h-[88vh]',
   /** Near-fullscreen workbench (the page editor): wide + tall (90vh) for maximum editing room. The
    *  bottom side-panel rails are nudged up (z above the modal) so they stay visible over it. */
   screen: 'max-w-none h-[90vh]',

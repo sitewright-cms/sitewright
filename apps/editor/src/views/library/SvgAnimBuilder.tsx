@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SVG_ANIM_EFFECTS, SVG_ANIM_LIMITS } from '@sitewright/blocks';
+import { SVG_ANIM_EFFECTS, SVG_ANIM_LIMITS, SVG_DEMO_PATH } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
@@ -28,6 +28,13 @@ const EFFECT_LABELS: Record<string, string> = {
   'flip-x': 'Flip (X axis)',
   'flip-y': 'Flip (Y axis)',
   blur: 'Blur in',
+  'along-path': 'Along a path',
+  'reveal-right': 'Reveal → right',
+  'reveal-left': 'Reveal → left',
+  'reveal-down': 'Reveal ↓ down',
+  'reveal-up': 'Reveal ↑ up',
+  'reveal-iris': 'Reveal (iris)',
+  morph: 'Morph shape',
 };
 const EASINGS = ['ease-out', 'ease', 'ease-in', 'ease-in-out', 'linear', 'back', 'bounce', 'elastic'] as const;
 const ORIGINS = ['center', 'top', 'bottom', 'left', 'right', 'top left', 'top right', 'bottom left', 'bottom right'] as const;
@@ -63,6 +70,9 @@ export function SvgAnimBuilder({ onClose }: SvgAnimBuilderProps) {
   const [drawDir, setDrawDir] = useState<'normal' | 'reverse'>('normal');
   const [fill, setFill] = useState(false);
   const [origin, setOrigin] = useState<string>('center');
+  const [motionPath, setMotionPath] = useState<string>(SVG_DEMO_PATH);
+  const [rotate, setRotate] = useState(true);
+  const [morphTo, setMorphTo] = useState('');
   const toast = useToast();
   const [, copy] = useCopy(() => toast.show('SVG animation markup copied — paste it onto an element inside your SVG'));
 
@@ -78,8 +88,13 @@ export function SvgAnimBuilder({ onClose }: SvgAnimBuilderProps) {
     if (effect === 'draw' && drawDir === 'reverse') e.push(['data-sw-svg-draw-dir', 'reverse']);
     if (effect === 'draw' && fill) e.push(['data-sw-svg-fill', 'true']);
     if (originEffects.has(effect) && origin !== 'center') e.push(['data-sw-svg-origin', origin]);
+    if (effect === 'along-path') {
+      e.push(['data-sw-svg-path', (motionPath.trim() || SVG_DEMO_PATH)]);
+      if (!rotate) e.push(['data-sw-svg-rotate', '0']);
+    }
+    if (effect === 'morph' && morphTo.trim()) e.push(['data-sw-svg-to', morphTo.trim()]);
     return e;
-  }, [effect, duration, delay, easing, drawDir, fill, origin]);
+  }, [effect, duration, delay, easing, drawDir, fill, origin, motionPath, rotate, morphTo]);
 
   // The emitted copy-paste markup adds the trigger (a page concern, not shown in the looping preview).
   const code = useMemo(() => {
@@ -190,6 +205,43 @@ export function SvgAnimBuilder({ onClose }: SvgAnimBuilderProps) {
                 ))}
               </select>
             </Field>
+          )}
+          {effect === 'along-path' && (
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3">
+              <Field label="Motion path" desc="SVG path data the element travels along (data-sw-svg-path).">
+                <input
+                  aria-label="Motion path"
+                  type="text"
+                  spellCheck={false}
+                  value={motionPath}
+                  onChange={(e) => setMotionPath(e.target.value)}
+                  className={`${glassInput} w-full font-mono text-[11px]`}
+                />
+              </Field>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" className={toggleInput} checked={rotate} onChange={(e) => setRotate(e.target.checked)} aria-label="Rotate to face the path" />
+                <span className="text-xs text-slate-600">Rotate the element to face the path</span>
+              </label>
+            </div>
+          )}
+          {effect === 'morph' && (
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+              <Field label="Target shape" desc="Path the element morphs TO (data-sw-svg-to). Its own d= is the start.">
+                <textarea
+                  aria-label="Morph target path"
+                  spellCheck={false}
+                  rows={3}
+                  placeholder="M12 2 L22 22 L2 22 Z"
+                  value={morphTo}
+                  onChange={(e) => setMorphTo(e.target.value)}
+                  className={`${glassInput} w-full font-mono text-[11px]`}
+                />
+              </Field>
+              <p className="text-[11px] text-slate-400">
+                Morph tweens the path’s <code>d</code>. For a clean morph, start and target should have a similar command
+                structure. Preview it on your own page.
+              </p>
+            </div>
           )}
           <p className="text-xs text-slate-500">
             Put these attributes on any element inside an SVG (a <code>&lt;path&gt;</code>, <code>&lt;g&gt;</code>, or shape). Wrap several in{' '}

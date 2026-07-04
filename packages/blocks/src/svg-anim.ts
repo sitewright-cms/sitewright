@@ -41,8 +41,8 @@ export const SVG_ANIM_LIMITS = {
   stagger: { min: 0, max: 5000 },
 } as const;
 
-/** The effect keywords understood in Phase 1. Unknown/blank → a plain opacity `fade` (never broken).
- *  Later phases extend this (along-path, reveal-*, morph). */
+/** The effect keywords. Unknown/blank → a plain opacity `fade` (never broken). `morph` (Phase 4) needs
+ *  the separate svg-anim-morph runtime; every other effect runs in the core runtime here. */
 export const SVG_ANIM_EFFECTS: readonly string[] = [
   'draw',
   'fade',
@@ -55,7 +55,21 @@ export const SVG_ANIM_EFFECTS: readonly string[] = [
   'flip-x',
   'flip-y',
   'blur',
+  // Motion path (CSS offset-path): travels along data-sw-svg-path, optionally rotating to face it.
+  'along-path',
+  // Mask / clip reveals (CSS clip-path): a wipe or iris that uncovers the element in place.
+  'reveal-right',
+  'reveal-left',
+  'reveal-down',
+  'reveal-up',
+  'reveal-iris',
+  // SVG path MORPH (Phase 4 — svg-anim-morph runtime): tween the `d` toward data-sw-svg-to.
+  'morph',
 ];
+
+/** A permissive-but-safe SVG path-data grammar (commands + numbers + separators). Used to validate
+ *  author-supplied `data-sw-svg-path` / `data-sw-svg-to` so only a real path string reaches CSS/`d`. */
+export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
 
 // --- CSS --------------------------------------------------------------------
 // Structural only — the MOTION is JS-applied via WAAPI, so it never sits in the sheet. `transform-box:
@@ -87,6 +101,13 @@ const SVG_ANIM_CORE = `
   SVG_TF['fade-left']='translate(18%,0)';SVG_TF['fade-right']='translate(-18%,0)';
   SVG_TF['zoom-in']='scale(0.6)';SVG_TF['zoom-out']='scale(1.18)';
   SVG_TF['flip-x']='perspective(600px) rotateX(90deg)';SVG_TF['flip-y']='perspective(600px) rotateY(90deg)';
+  // Clip-path reveals: [from (clipped) → to (full)]. inset order is top right bottom left.
+  var SVG_REVEAL=Object.create(null);
+  SVG_REVEAL['reveal-right']=['inset(0 100% 0 0)','inset(0px)'];
+  SVG_REVEAL['reveal-left']=['inset(0 0 0 100%)','inset(0px)'];
+  SVG_REVEAL['reveal-down']=['inset(0 0 100% 0)','inset(0px)'];
+  SVG_REVEAL['reveal-up']=['inset(100% 0 0 0)','inset(0px)'];
+  SVG_REVEAL['reveal-iris']=['circle(0%)','circle(75%)'];
   // Build the [from,to] WAAPI keyframes for one member. Draw is special (stroke dash); everything else
   // interpolates opacity (+ optional transform / blur) to the element's NATURAL state.
   function svgFrames(m){
@@ -98,6 +119,17 @@ const SVG_ANIM_CORE = `
       }
       return [{opacity:0},{opacity:1}]; // non-strokable → graceful fade
     }
+    if(m.effect.indexOf('reveal-')===0){
+      var rv=SVG_REVEAL[m.effect];
+      // Reveal in-place via clip-path (opacity stays 1 — the clip does the work).
+      if(rv)return [{clipPath:rv[0]},{clipPath:rv[1]}];
+      return [{opacity:0},{opacity:1}];
+    }
+    if(m.effect==='along-path'){
+      if(m.path){m.el.style.offsetPath="path('"+m.path+"')";m.el.style.offsetRotate=(m.rotate==='0')?'0deg':'auto';
+        return [{offsetDistance:'0%'},{offsetDistance:'100%'}];}
+      return [{opacity:0},{opacity:1}]; // no path → graceful fade
+    }
     var f={opacity:0},t={opacity:1};
     if(m.effect==='blur'){f.filter='blur(6px)';t.filter='blur(0px)';}
     var tf=SVG_TF[m.effect];
@@ -108,7 +140,7 @@ const SVG_ANIM_CORE = `
     return [f,t];
   }
   // Clear any inline styles WAAPI left behind so the element rests at its authored natural state.
-  function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.fillOpacity='';}
+  function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.fillOpacity='';el.style.clipPath='';el.style.offsetPath='';el.style.offsetDistance='';el.style.offsetRotate='';}
   function svgPlay(m){
     if(m.playing)return;m.playing=true;
     if(m.origin)m.el.style.transformOrigin=m.origin;
@@ -120,6 +152,9 @@ const SVG_ANIM_CORE = `
     try{anim=m.el.animate(frames,opts);}catch(e){svgClear(m.el);return;}
     m.anim=anim;
     anim.onfinish=function(){
+      // along-path rests at the path END: keep the WAAPI fill:'both' end state (offset-distance 100%),
+      // don't cancel/clear (that would snap the element back to its natural position).
+      if(m.effect==='along-path')return;
       try{anim.cancel();}catch(e){}
       svgClear(m.el);
       // draw + data-sw-svg-fill: once the stroke is drawn, fade the fill in.
@@ -150,10 +185,13 @@ export const SVG_ANIM_JS = `(function(){
     var effect=effectOf(el);
     var m={el:el,effect:effect,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0)+extraDelay,playing:false};
     if(effect==='draw'){m.len=svgLen(el);m.dir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
+    if(effect==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
   // A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
+  // morph is owned by the SEPARATE svg-anim-morph runtime — this core runtime never touches it.
+  function isMorph(el){return el.getAttribute('data-sw-svg')==='morph';}
   var scenes=document.querySelectorAll('[data-sw-svg-scene]');
   var claimed=[];Array.prototype.forEach.call(scenes,function(s){var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,function(k){claimed.push(k);});});
   function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
@@ -162,11 +200,11 @@ export const SVG_ANIM_JS = `(function(){
     var step=swMs(s,'data-sw-svg-stagger',0);
     var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
     var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
-    Array.prototype.forEach.call(kids,function(k,i){members.push(member(k,step*i));});
+    Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k))members.push(member(k,step*i));});
     if(members.length)units.push({root:s,trigger:trig,members:members});
   });
   Array.prototype.forEach.call(els,function(el){
-    if(isClaimed(el))return;
+    if(isClaimed(el)||isMorph(el))return;
     var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
     units.push({root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')==='load'?'load':trig,members:[member(el,0)]});
   });
@@ -211,7 +249,16 @@ export interface SvgAnimPreviewOpts {
   drawDir?: 'normal' | 'reverse';
   fill?: boolean;
   origin?: string;
+  /** motion path for along-path (data-sw-svg-path). */
+  path?: string;
+  /** whether along-path rotates to face the path (default true → 'auto'). */
+  rotate?: boolean;
+  /** target path for morph (data-sw-svg-to). */
+  to?: string;
 }
+
+/** A gentle default motion path for the along-path preview (an arc across the sample box). */
+export const SVG_DEMO_PATH = 'M10 60 Q 60 -10 110 60';
 
 function clampInt(n: number | undefined, lo: number, hi: number, def: number): number {
   const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : def;
@@ -231,6 +278,12 @@ export function svgAnimAttrs(opts: SvgAnimPreviewOpts = {}): string {
   if (effect === 'draw' && opts.drawDir === 'reverse') parts.push('data-sw-svg-draw-dir="reverse"');
   if (effect === 'draw' && opts.fill) parts.push('data-sw-svg-fill="true"');
   if (opts.origin && /^[a-z- ]{1,20}$/.test(opts.origin) && opts.origin !== 'center') parts.push(`data-sw-svg-origin="${opts.origin}"`);
+  if (effect === 'along-path') {
+    const path = opts.path && SVG_PATH_DATA.test(opts.path) ? opts.path : SVG_DEMO_PATH;
+    parts.push(`data-sw-svg-path="${path}"`);
+    if (opts.rotate === false) parts.push('data-sw-svg-rotate="0"');
+  }
+  if (effect === 'morph' && opts.to && SVG_PATH_DATA.test(opts.to)) parts.push(`data-sw-svg-to="${opts.to}"`);
   return parts.join(' ');
 }
 
@@ -246,6 +299,7 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
     var dur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(dur>DMAX)dur=DMAX;
     var m={el:el,effect:ok,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0),playing:false};
     if(ok==='draw'){m.len=svgLen(el);m.dir=el.getAttribute('data-sw-svg-draw-dir')==='reverse'?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
+    if(ok==='along-path'){var p=el.getAttribute('data-sw-svg-path');if(p&&/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(p)){m.path=p;m.rotate=el.getAttribute('data-sw-svg-rotate');}}
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     return m;
   }
@@ -259,7 +313,10 @@ const SVG_ANIM_PREVIEW_JS = `(function(){
   window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sw-svg'||!(d.entries instanceof Array))return;
     Array.prototype.forEach.call(els,function(el){
       var a=el.attributes,i;for(i=a.length-1;i>=0;i--){var n=a[i].name;if(n.indexOf('data-sw-svg')===0||n==='data-sw-duration'||n==='data-sw-delay'||n==='data-sw-easing')el.removeAttribute(n);}
-      for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];if(/^data-sw-(svg[a-z-]*|duration|delay|easing)$/.test(k)&&/^[a-z0-9 .,%_-]{0,40}$/i.test(v))el.setAttribute(k,v);}
+      for(i=0;i<d.entries.length;i++){var k=''+d.entries[i][0],v=''+d.entries[i][1];
+        // Path attributes carry SVG path-data (longer, its own grammar); everything else is a short enum/number.
+        var okVal=(k==='data-sw-svg-path'||k==='data-sw-svg-to')?/^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\\s+-]{1,4000}$/.test(v):/^[a-z0-9 .,%_-]{0,40}$/i.test(v);
+        if(/^data-sw-(svg[a-z-]*|duration|delay|easing)$/.test(k)&&okVal)el.setAttribute(k,v);}
     });
     if(timer){clearTimeout(timer);}loop();
   });

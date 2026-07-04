@@ -397,6 +397,21 @@ inline inset so no edge shows). RESTRAINT: at most one parallax accent per secti
 inherits prefers-reduced-motion (no motion = static, in-flow — never breaks layout). Blur is heavier — use
 sparingly. Recipe to copy: parallax-hero. Compose one in the editor's Parallax builder (Library).
 
+SVG ANIMATION (animate INSIDE an svg): put data-sw-svg on an element INSIDE an <svg> (a <path>, <g>, or
+shape) — NOT on the <svg> wrapper of a whole illustration unless you mean to animate it as one. Effects:
+draw (the signature stroke draw-on — the element MUST have stroke + fill="none"), fade, fade-up/-down/-left/
+-right, zoom-in, zoom-out, flip-x, flip-y, blur. Timing = the SAME shared attributes as entrance animations:
+data-sw-duration (default 400), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false".
+draw extras: data-sw-svg-draw-dir="reverse", data-sw-svg-fill="true" (fade the fill in after the stroke).
+scale/flip pivot: data-sw-svg-origin="center|top|bottom left|…". SCENES: wrap several animated elements in
+data-sw-svg-scene with data-sw-svg-stagger="80" (ms) — they cascade in DOM order when the scene enters view
+(or set data-sw-svg-scene-trigger="load"). Per-element trigger: data-sw-svg-trigger="view"(default)|"load".
+Great for animated logos, line-art icons, illustrated diagrams. The platform ships a tiny runtime (WAAPI +
+IntersectionObserver) automatically when it sees data-sw-svg — do NOT add any SVG/animation library. Content
+is fully visible without JS + under prefers-reduced-motion (draw shows the finished artwork). Example:
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path data-sw-svg="draw"
+data-sw-duration="1200" d="M4 12 L10 18 L20 6"/></svg>. Compose one in the editor's SVG animation builder (Library).
+
 RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
 "waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
 waves-effect waves-light"). The platform ships its own ripple runtime when it sees

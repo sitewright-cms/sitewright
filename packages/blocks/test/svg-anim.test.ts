@@ -93,10 +93,24 @@ describe('SVG animation detection + surface', () => {
     expect('data-sw-animation'.includes('data-sw-svg')).toBe(false);
   });
 
-  it('exposes a stable, allowlisted effect vocabulary incl. the signature draw effect', () => {
-    expect(SVG_ANIM_EFFECTS).toContain('draw');
-    expect(SVG_ANIM_EFFECTS).toContain('fade-up');
-    expect(SVG_ANIM_EFFECTS).toContain('flip-x');
+  it('exposes a stable, allowlisted effect vocabulary incl. draw, reveals, along-path + morph', () => {
+    for (const e of ['draw', 'fade-up', 'flip-x', 'along-path', 'reveal-right', 'reveal-iris', 'morph']) {
+      expect(SVG_ANIM_EFFECTS).toContain(e);
+    }
     expect(new Set(SVG_ANIM_EFFECTS).size).toBe(SVG_ANIM_EFFECTS.length); // no dupes
+  });
+
+  it('drives reveals via clip-path and along-path via CSS offset-path, with validated path data', () => {
+    expect(SVG_ANIM_JS).toContain('SVG_REVEAL');
+    expect(SVG_ANIM_JS).toContain('clipPath');
+    expect(SVG_ANIM_JS).toContain('offsetPath');
+    expect(SVG_ANIM_JS).toContain('offsetDistance');
+    // author path-data is grammar-validated before it reaches CSS.
+    expect(SVG_ANIM_JS).toMatch(/MmLlHhVvCcSsQqTtAaZz/);
+  });
+
+  it('leaves morph to the separate morph runtime (the core skips data-sw-svg="morph")', () => {
+    expect(SVG_ANIM_JS).toContain('isMorph');
+    expect(SVG_ANIM_JS).toContain("getAttribute('data-sw-svg')==='morph'");
   });
 });

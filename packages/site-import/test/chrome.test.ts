@@ -76,6 +76,50 @@ describe('extractChrome', () => {
     }
   });
 
+  it('KEEPS a content-rich "loading-overlay" (the hero reusing splash markup), still removes a bare preloader', () => {
+    // phoenix-tech.net reuses `.loading-overlay > .splash-*` markup as its ABOVE-THE-FOLD hero (logo +
+    // headline + CTAs). A bare spinner overlay is a real preloader; the content-rich one is the hero.
+    const hero =
+      '<div class="loading-overlay animated"><div class="splash-heading"><h1>NEXT-GEN WEB DEVELOPMENT</h1></div>' +
+      '<a class="btn" href="#start">GET STARTED</a><a class="btn" href="#about">ABOUT PHOENIX</a></div>';
+    const bare = '<div class="loading-overlay"><div class="spinner"></div></div>';
+    const heroPages = ['/a', '/b'].map((u) => pp(u, `<html><body>${hero}<main>content</main></body></html>`));
+    const heroResult = extractChrome(heroPages, ctx);
+    expect(heroResult.preloaderEffect).toBeUndefined(); // NOT treated as a preloader
+    for (const p of heroPages) {
+      const html = serialize(getBody(p.doc)!.children);
+      expect(html).toContain('NEXT-GEN WEB DEVELOPMENT'); // the hero survives
+      expect(html).toContain('GET STARTED');
+    }
+    const barePages = ['/a', '/b'].map((u) => pp(u, `<html><body>${bare}<main>content</main></body></html>`));
+    const bareResult = extractChrome(barePages, ctx);
+    expect(bareResult.preloaderEffect).toBe('spinner'); // a genuine spinner-only overlay IS removed
+    for (const p of barePages) expect(serialize(getBody(p.doc)!.children)).not.toContain('loading-overlay');
+  });
+
+  it('finds the REAL preloader when a content-rich hero overlay appears first', () => {
+    const hero = '<div class="loading-overlay"><h1>Hero</h1><a href="#a">CTA One</a><a href="#b">CTA Two</a></div>';
+    const preloader = '<div class="preloader"><div class="spinner"></div></div>';
+    const pages = ['/a', '/b'].map((u) => pp(u, `<html><body>${hero}${preloader}<main>content</main></body></html>`));
+    const result = extractChrome(pages, ctx);
+    expect(result.preloaderEffect).toBe('spinner'); // the genuine spinner is still found + removed
+    for (const p of pages) {
+      const html = serialize(getBody(p.doc)!.children);
+      expect(html).toContain('Hero'); // hero kept
+      expect(html).not.toContain('spinner'); // real preloader gone
+    }
+  });
+
+  it('strips HTML comments from hoisted chrome (header/footer)', () => {
+    const hdr = '<header><!-- legacy nav --><nav><a href="/about">About</a></nav></header>';
+    const pages = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${hdr}<main>content</main></body></html>`));
+    const result = extractChrome(pages, ctx);
+    expect(result.mainNav).toBeDefined();
+    expect(result.mainNav).not.toContain('<!--');
+    expect(result.mainNav).not.toContain('legacy nav');
+    expect(result.mainNav).toContain('>About</a>'); // the real nav link survives (href normalizes via ctx routes)
+  });
+
   it('hoists a shared header + footer and removes them from page bodies', () => {
     const pages = [
       pp('https://ex.com/', `<html><body>${HEADER}<main>a</main>${FOOTER}</body></html>`),

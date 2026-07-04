@@ -4,6 +4,7 @@
 // of the four skeleton landmarks (<nav>/<main>/<footer>/<aside>), no on* handlers, and no stray `{{`.
 import { validateTemplate } from '@sitewright/blocks';
 import { removeElement, textContent } from 'domutils';
+import { isComment } from 'domhandler';
 import {
   elements,
   eachTextLike,
@@ -33,7 +34,36 @@ const isBackToTop = (el: Element): boolean =>
 /** Foreign page PRELOADER / loading overlay (the spinner cover shown on `<body class="loading">`) — the
  *  platform has its own preloader; the imported one nativizes to a stray full-screen / black band. */
 const PRELOADER_RE = /\b(?:preloader|pre-loader|page-loader|site-loader|loading-(?:animation|overlay|screen|spinner|wrap|wrapper|container))\b/i;
-const isPreloader = (el: Element): boolean => PRELOADER_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`);
+const matchesPreloader = (el: Element): boolean => PRELOADER_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`);
+/**
+ * Does this overlay hold REAL content rather than just a spinner/logo? A heading, a `<form>`, ≥2
+ * links/buttons, or ≥60 chars of visible text means the "loading-overlay"/"splash" is actually the page
+ * HERO — a common pattern where a site reuses its intro-animation markup as the above-the-fold hero
+ * (e.g. `.loading-overlay > .splash-heading + CTAs`). Such a band must NOT be stripped as a preloader,
+ * or the whole above-the-fold vanishes. A genuine (transient) preloader has none of these.
+ */
+export function isContentfulOverlay(el: Element): boolean {
+  // Only count a link/button as a CTA when it has a TEXT LABEL — an icon-only `<a><i class="fa-…"></i></a>`
+  // (e.g. social icons on a loader screen) is NOT content, so a bare preloader with a couple of social
+  // links isn't mistaken for a hero. Returns early once the verdict is settled.
+  let ctas = 0;
+  const walk = (nodes: Element['children']): boolean => {
+    for (const n of nodes) {
+      if (!isTag(n)) continue;
+      if (/^h[1-6]$/.test(n.name) || n.name === 'form') return true; // a heading or form ⇒ real content
+      if ((n.name === 'a' || n.name === 'button') && textContent([n]).trim().length >= 2) {
+        ctas += 1;
+        if (ctas >= 2) return true; // ≥2 labelled CTAs ⇒ a hero, not a spinner
+      }
+      if (walk(n.children)) return true;
+    }
+    return false;
+  };
+  if (walk(el.children)) return true;
+  return textContent([el]).replace(/\s+/g, ' ').trim().length >= 60; // substantial copy ⇒ real content
+}
+/** A foreign preloader to strip: matches the class/id pattern AND is genuinely content-less (not a hero). */
+const isPreloader = (el: Element): boolean => matchesPreloader(el) && !isContentfulOverlay(el);
 /** A wrapper with no element children and no non-whitespace text (e.g. once its only child was removed). */
 const isEmptyWrapper = (el: Element): boolean => el.children.filter(isTag).length === 0 && textContent([el]).trim() === '';
 
@@ -82,7 +112,20 @@ function rewriteStyleUrls(style: string, ctx: TransformCtx): string {
  * refs), and neutralize stray `{{`. Pushes diagnostics for anything dropped/changed materially.
  */
 export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagnostic[]): void {
-  // First remove forbidden elements (snapshot, since removeElement mutates the tree).
+  // Strip HTML comments — pure dead weight in an EDITABLE source. A foreign page routinely carries
+  // kilobytes of commented-out markup (e.g. phoenix ships a disabled legacy nav as a 12.8KB `<!-- … -->`
+  // block); it renders nothing, so keep it out of the source a human/agent edits. Collect first, since
+  // removeElement mutates the tree.
+  const comments: AnyNode[] = [];
+  const collectComments = (ns: AnyNode[]): void => {
+    for (const n of ns) {
+      if (isComment(n)) comments.push(n);
+      else if (isTag(n)) collectComments(n.children);
+    }
+  };
+  collectComments(nodes);
+  for (const c of comments) removeElement(c);
+  // Then remove forbidden elements (snapshot, since removeElement mutates the tree).
   for (const el of elements(nodes)) {
     if (REMOVE_TAGS.has(el.name)) {
       if (el.name === 'script') diags.push({ code: 'script-dropped', message: 'inline/external <script> removed', page: ctx.pageUrl });
@@ -122,7 +165,8 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
     }
     rewriteElementAttrs(el, ctx, diags);
   }
-  // Finally neutralize braces in every text/comment node so no literal {{ survives.
+  // Finally neutralize braces in every surviving TEXT node so no literal {{ remains. (Comments were
+  // stripped above, so eachTextLike's comment branch is inert here — text nodes are what's left.)
   eachTextLike(nodes, (n) => {
     n.data = neutralizeMustaches(n.data);
   });

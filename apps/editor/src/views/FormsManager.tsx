@@ -10,7 +10,9 @@ import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
 import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput } from '../theme';
 
-const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
+const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox'];
+/** Field types whose entries come from an options list (select/radio, and a checkbox GROUP). */
+const OPTION_TYPES = new Set<FormField['type']>(['select', 'radio', 'checkbox']);
 
 const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
   { value: 'globalSmtp', label: 'Platform email (global SMTP)' },
@@ -143,6 +145,12 @@ export function FormsManager({ project }: { project: Project }) {
       setError(`duplicate field name "${dup}" (names are normalized — make them distinct)`);
       return;
     }
+    // A radio field is nothing without options (the schema also refuses it) — catch it before the round-trip.
+    const radioNoOptions = form.fields.findIndex((f) => f.type === 'radio' && !f.options?.length);
+    if (radioNoOptions !== -1) {
+      setError(`field ${radioNoOptions + 1} (radio) needs at least one option`);
+      return;
+    }
     try {
       await api.putForm(project.id, form);
       setSaved(true);
@@ -260,7 +268,7 @@ export function FormsManager({ project }: { project: Project }) {
                     onChange={(e) => patchField(i, { placeholder: e.target.value || undefined })}
                     placeholder="placeholder (optional)"
                   />
-                  {field.type === 'select' && (
+                  {OPTION_TYPES.has(field.type) && (
                     <input
                       aria-label={`Field ${i + 1} options`}
                       className={`${glassInput} flex-1 px-2 py-1 text-xs`}
@@ -273,8 +281,13 @@ export function FormsManager({ project }: { project: Project }) {
                             .filter(Boolean),
                         })
                       }
-                      placeholder="option A, option B, …"
+                      placeholder={field.type === 'checkbox' ? 'options (blank = single checkbox)' : 'option A, option B, …'}
                     />
+                  )}
+                  {field.type === 'checkbox' && (field.options?.length ?? 0) > 0 && field.required && (
+                    <span className="w-full text-xs text-amber-600">
+                      “required” isn’t enforced on a multi-select checkbox group (the browser has no “at least one” rule).
+                    </span>
                   )}
                 </div>
               </li>

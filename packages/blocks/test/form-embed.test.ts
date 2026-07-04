@@ -93,6 +93,28 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
     expect(html).toContain('<select name="budget"><option value="">—</option><option value="Under $10k">Under $10k</option><option value="$10k &amp; up">$10k &amp; up</option></select>');
     expect(html).toContain('<textarea name="message" required></textarea>');
   });
+  it('renders a radio group as a fieldset of option inputs (required propagates to the inputs)', () => {
+    const f = formsOf(pub({ fields: [{ name: 'plan', label: 'Plan', type: 'radio', required: true, options: ['Basic', 'Pro'] }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain('<fieldset data-sw-part="field"><legend data-sw-part="label">Plan</legend>');
+    expect(out).toContain('<label class="sw-form-opt"><input type="radio" name="plan" value="Basic" required /><span>Basic</span></label>');
+    expect(out).toContain('<input type="radio" name="plan" value="Pro" required />');
+  });
+  it('renders a checkbox GROUP (options) — same name, NOT required per-box (no "at least one" HTML rule)', () => {
+    const f = formsOf(pub({ fields: [{ name: 'features', label: 'Features', type: 'checkbox', required: true, options: ['SEO', 'Analytics'] }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain('<fieldset data-sw-part="field"><legend data-sw-part="label">Features</legend>');
+    expect(out).toContain('<input type="checkbox" name="features" value="SEO" /><span>SEO</span>');
+    expect(out).toContain('<input type="checkbox" name="features" value="Analytics" />');
+    expect(out).not.toContain('value="SEO" required'); // a checkbox group box is never HTML-required
+  });
+  it('renders a single (option-less) checkbox as an inline box + label, honouring required', () => {
+    const f = formsOf(pub({ fields: [{ name: 'agree', label: 'I agree to the terms', type: 'checkbox', required: true }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain('<label data-sw-part="field" class="sw-form-check"><input type="checkbox" name="agree" value="Yes" required /><span data-sw-part="label">I agree to the terms</span></label>');
+    expect(out).not.toContain('<fieldset'); // not a group
+  });
+
   it('renders submit + hidden success/error parts with escaped copy', () => {
     expect(html).toContain('<button type="submit" data-sw-part="submit" class="btn btn-primary">Send enquiry</button>');
     expect(html).toContain('<p data-sw-part="success" role="status" hidden>Thanks — we got it.</p>');

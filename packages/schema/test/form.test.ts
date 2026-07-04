@@ -16,9 +16,19 @@ describe('FormFieldSchema', () => {
     expect(f.required).toBe(false);
   });
 
-  it('rejects a file type (no attachments) and a bad field name', () => {
+  it('rejects a file type (no attachments), a bad field name, and reserved prototype names', () => {
     expect(() => FormFieldSchema.parse({ name: 'cv', label: 'CV', type: 'file' })).toThrow();
     expect(() => FormFieldSchema.parse({ name: '1bad', label: 'x' })).toThrow();
+    for (const n of ['__proto__', 'constructor', 'prototype']) {
+      expect(() => FormFieldSchema.parse({ name: n, label: 'x' })).toThrow(/reserved identifier/);
+    }
+  });
+
+  it('accepts radio + checkbox; a radio REQUIRES options; a checkbox is a group WITH options / boolean without', () => {
+    expect(FormFieldSchema.parse({ name: 'plan', label: 'Plan', type: 'radio', options: ['A', 'B'] }).type).toBe('radio');
+    expect(() => FormFieldSchema.parse({ name: 'plan', label: 'Plan', type: 'radio' })).toThrow(/at least one option/); // radio needs options
+    expect(FormFieldSchema.parse({ name: 'feats', label: 'Features', type: 'checkbox', options: ['SEO'] }).options).toEqual(['SEO']); // group
+    expect(FormFieldSchema.parse({ name: 'agree', label: 'Agree', type: 'checkbox' }).type).toBe('checkbox'); // single boolean, no options
   });
 });
 

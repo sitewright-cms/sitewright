@@ -81,9 +81,20 @@ function parseSubmission(raw: unknown): ParsedSubmission | null {
   let elapsed: number | undefined;
   let captchaToken: string | undefined;
   let total = 0;
-  for (const [key, value] of entries) {
+  for (const [key, rawValue] of entries) {
     if (key.length > MAX_KEY_LEN) return null;
-    // Text fields ONLY — reject arrays/objects/null/binary (no attachments).
+    // The control fields (honeypot / time-trap / captcha) are ALWAYS single scalars — an array for any of
+    // them is malformed (and must not be silently normalized into a value that could weaken the check).
+    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) return null;
+    // A checkbox GROUP submits several checked values under one name → a string ARRAY; join them into a
+    // single readable text value ("A, B, C"). Any non-string element (or nesting) is rejected — still no
+    // attachments/objects. The MAX_VALUE_LEN / MAX_TOTAL_BYTES caps below bound the joined size.
+    let value: unknown = rawValue;
+    if (Array.isArray(rawValue)) {
+      if (rawValue.length > 100 || !rawValue.every((v) => typeof v === 'string')) return null;
+      value = (rawValue as string[]).join(', ');
+    }
+    // Text fields ONLY — reject objects/null/binary (no attachments).
     if (typeof value !== 'string') return null;
     // The captcha token is large; pull it out before the per-field length cap
     // (verified server-side, never stored). Real hCaptcha tokens are < 2 KB —

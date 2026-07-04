@@ -976,10 +976,12 @@ embed with {{sw-form}}).
 FORM ENTITY SHAPE (put_content "form" { … }): { id, name, recipient (REQUIRED — the email that receives
 submissions), fields: [ { name, label, type, required?, placeholder?, options? } … ], plus optional
 submitLabel / successMessage }. FIELD \`type\` is one of: text | email | tel | url | number | textarea |
-select (a \`select\` carries \`options: ["A","B"]\`). There is NO checkbox/radio/file field type — for a
-multi-select "choose features" grid, either use ONE multi-line \`textarea\` (list the options in the label)
-or a \`select\`; do NOT hand-author <input type=checkbox> inside the form (it won't submit). Embed the form
-with {{sw-form "<id>"}}. Match the ORIGINAL form's field layout + required markers + submit-button look.
+select | radio | checkbox. OPTION-driven types carry \`options: ["A","B"]\`: \`select\` (dropdown) and
+\`radio\` (single-choice group) BOTH need options; a \`checkbox\` WITH options is a MULTI-select group (the
+"choose features" grid — checked values submit joined as "A, B"), a \`checkbox\` WITHOUT options is one
+boolean box (e.g. "I agree"). There is no \`file\` type (no attachments). Do NOT hand-author raw
+<input type=checkbox/radio> in the page — declare them as form FIELDS so they render + submit correctly.
+Embed the form with {{sw-form "<id>"}}. Match the ORIGINAL form's field layout + required markers + submit look.
 
 COMMON FIDELITY MISSES — these keep happening even when the port "looks close". Self-audit EVERY page
 against this list BEFORE you publish it:

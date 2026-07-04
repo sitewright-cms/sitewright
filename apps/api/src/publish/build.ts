@@ -51,6 +51,9 @@ import {
   usesParallax,
   PARALLAX_CSS,
   PARALLAX_JS,
+  usesSvgAnim,
+  SVG_ANIM_CSS,
+  SVG_ANIM_JS,
   usesMarquee,
   MARQUEE_CSS,
   usesLazyload,
@@ -117,6 +120,8 @@ const COMPONENT_SCRIPT = 'components.js';
 const ANIMATION_SCRIPT = 'animations.js';
 /** The parallax / scroll-linked property runtime (translate/opacity/scale/blur), linked per page. */
 const PARALLAX_SCRIPT = 'parallax.js';
+/** The SVG animation runtime (data-sw-svg: draw / transform / blur / scenes), linked per page. */
+const SVG_ANIM_SCRIPT = 'svg-anim.js';
 /** The lazy-load (data-bg / lazyload) runtime, written at the site root and linked per page. */
 const LAZYLOAD_SCRIPT = 'lazyload.js';
 /** The ripple (waves-effect) runtime, written at the site root and linked per page. */
@@ -532,6 +537,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       Object.values(usedSnippets).some(strFn);
     const usesAnims = usesMarker(usesAnimations);
     const usesPx = usesMarker(usesParallax);
+    const usesSvg = usesMarker(usesSvgAnim);
     const usesMarq = usesMarker(usesMarquee); // CSS-only logo marquee → ship MARQUEE_CSS when used
     const usesLazy = usesMarker(usesLazyload);
     const usesWaves = usesMarker(usesRipple);
@@ -846,6 +852,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesComponents && components.css ? [components.css] : []),
           ...(usesAnims ? [ANIMATION_CSS] : []),
           ...(usesPx ? [PARALLAX_CSS] : []),
+          ...(usesSvg ? [SVG_ANIM_CSS] : []),
           ...(usesMarq ? [MARQUEE_CSS] : []),
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
@@ -859,6 +866,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
           ...(usesAnims ? [`${siteRoot}${ANIMATION_SCRIPT}`] : []),
           ...(usesPx ? [`${siteRoot}${PARALLAX_SCRIPT}`] : []),
+          ...(usesSvg ? [`${siteRoot}${SVG_ANIM_SCRIPT}`] : []),
           ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
@@ -1048,6 +1056,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, PARALLAX_SCRIPT), PARALLAX_JS, 'utf8');
       bytes += Buffer.byteLength(PARALLAX_JS);
+    }
+    // The SVG animation runtime (first-party behavior; only-used-ships).
+    if (usesSvg) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, SVG_ANIM_SCRIPT), SVG_ANIM_JS, 'utf8');
+      bytes += Buffer.byteLength(SVG_ANIM_JS);
     }
     // The lazy-load runtime (first-party behavior; only-used-ships).
     if (usesLazy) {

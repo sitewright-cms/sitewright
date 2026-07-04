@@ -1,0 +1,205 @@
+// SVG animation engine: a first-party runtime for animating INDIVIDUAL SVG sub-elements (paths,
+// groups, shapes, text) — the complement to the entrance engine (`data-sw-animation`, which reveals
+// a whole DOM box) and the parallax engine (scroll-linked drift). Its reason to exist is the effects
+// those can't express: stroke DRAW-ON, per-element staggered SCENES, and (later phases) mask reveals,
+// motion along a path, and shape MORPH.
+//
+//   data-sw-svg="draw"                    the effect (see SVG_ANIM_EFFECTS)
+//   data-sw-svg-trigger="view|load"       when it plays (default: view — on scroll-in)
+//   data-sw-svg-draw-dir="normal|reverse" draw direction (draw effect only)
+//   data-sw-svg-fill="true"               fade the fill in AFTER the stroke draws (draw effect only)
+//   data-sw-svg-origin="center|top|…"     transform pivot for scale/zoom/flip (default center)
+//
+// SCENES — a container orchestrates its descendants with a stagger:
+//   data-sw-svg-scene                     an orchestration root
+//   data-sw-svg-stagger="80"              ms between successive children (DOM order)
+//   data-sw-svg-scene-trigger="view|load" trigger for the whole scene (children inherit)
+//
+// TIMING is the SHARED vocabulary (timing.ts), identical to the entrance engine:
+//   data-sw-duration (default 400) · data-sw-delay · data-sw-easing · data-sw-once
+//
+// Authored as plain attributes in code-first sources, snippets, inline SVGs, or {{sw-icon}} output.
+// Tenants supply DATA only (effect keyword allowlisted, numerics clamped); never JavaScript.
+//
+// Invariants (shared with parallax.ts / animations.ts):
+// - PE-first: the hidden pre-play state is gated on the runtime-added `.sw-svg-init` class, so no JS /
+//   no IntersectionObserver / reduced motion → every element renders at its natural, fully-visible
+//   state (a fully-drawn path, an untransformed shape). Content is NEVER hidden without JS.
+// - Accessibility: ALL motion is JS-applied and the runtime BAILS entirely under
+//   prefers-reduced-motion: reduce (nothing is hidden, nothing animates).
+// - Performance: effects run on the Web Animations API (compositor-friendly transform/opacity/filter);
+//   view-triggered units are gated by one IntersectionObserver, so off-screen SVGs do no work.
+// - First-party, audited, static code only.
+import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_TIMING_CORE } from './timing.js';
+
+/** Clamp ranges shared by the runtime, the editor builder, and tests. */
+export const SVG_ANIM_LIMITS = {
+  /** per-element / scene-inherited animation length (ms). */
+  duration: { min: 0, max: 20000 },
+  /** start delay + per-child scene stagger step (ms). */
+  delay: { min: 0, max: 20000 },
+  stagger: { min: 0, max: 5000 },
+} as const;
+
+/** The effect keywords understood in Phase 1. Unknown/blank → a plain opacity `fade` (never broken).
+ *  Later phases extend this (along-path, reveal-*, morph). */
+export const SVG_ANIM_EFFECTS: readonly string[] = [
+  'draw',
+  'fade',
+  'fade-up',
+  'fade-down',
+  'fade-left',
+  'fade-right',
+  'zoom-in',
+  'zoom-out',
+  'flip-x',
+  'flip-y',
+  'blur',
+];
+
+// --- CSS --------------------------------------------------------------------
+// Structural only — the MOTION is JS-applied via WAAPI, so it never sits in the sheet. `transform-box:
+// fill-box` makes CSS transform percentages + `transform-origin` resolve against each element's OWN
+// bounding box (viewBox-scale-independent). The hidden state is gated on `.sw-svg-init` (runtime-added)
+// so a no-JS / reduced-motion visitor sees the natural, fully-visible artwork.
+export const SVG_ANIM_CSS = [
+  '[data-sw-svg]{transform-box:fill-box;transform-origin:center}',
+  '@media (prefers-reduced-motion: no-preference){[data-sw-svg].sw-svg-init{opacity:0}}',
+].join('');
+
+// --- shared runtime core ----------------------------------------------------
+// Embedded verbatim in BOTH the production runtime and the builder-preview runtime so the two can
+// never drift: timing parse (swMs), the easing allowlist (swEase — CSS keywords + spring curves),
+// the per-effect keyframe builder (svgFrames), stroke length (svgLen), and the play/reset helpers.
+const SVG_ANIM_CORE = `
+  ${SW_TIMING_CORE}
+  var SVG_EASE=Object.create(null);
+  SVG_EASE['linear']='linear';SVG_EASE['ease']='ease';SVG_EASE['ease-in']='ease-in';
+  SVG_EASE['ease-out']='ease-out';SVG_EASE['ease-in-out']='ease-in-out';
+  SVG_EASE['back']='cubic-bezier(0.34,1.56,0.64,1)';
+  SVG_EASE['bounce']='linear(0,0.012,0.05,0.113,0.2,0.313,0.45,0.612,0.8,0.65,0.522,0.412,0.325,0.262,0.225,0.212,0.225,0.288,0.375,0.487,0.625,0.788,0.975,0.887,0.837,0.825,0.85,0.912,1)';
+  SVG_EASE['elastic']='linear(0,0.218,0.427,0.616,0.774,0.892,0.966,1,1.002,0.994,0.986,0.984,0.988,0.995,1.001,1.003,1.002,1.001,1)';
+  function swEase(el){return SVG_EASE[el.getAttribute('${SW_TIMING_ATTRS.easing}')||'']||'ease-out';}
+  // A shape's outline length for the draw effect; 0 when the element isn't strokable (falls back to fade).
+  function svgLen(el){try{var l=el.getTotalLength?el.getTotalLength():0;return (l&&isFinite(l))?l:0;}catch(e){return 0;}}
+  var SVG_TF=Object.create(null);
+  SVG_TF['fade-up']='translate(0,18%)';SVG_TF['fade-down']='translate(0,-18%)';
+  SVG_TF['fade-left']='translate(18%,0)';SVG_TF['fade-right']='translate(-18%,0)';
+  SVG_TF['zoom-in']='scale(0.6)';SVG_TF['zoom-out']='scale(1.18)';
+  SVG_TF['flip-x']='perspective(600px) rotateX(90deg)';SVG_TF['flip-y']='perspective(600px) rotateY(90deg)';
+  // Build the [from,to] WAAPI keyframes for one member. Draw is special (stroke dash); everything else
+  // interpolates opacity (+ optional transform / blur) to the element's NATURAL state.
+  function svgFrames(m){
+    if(m.effect==='draw'){
+      if(m.len>0){
+        m.el.style.strokeDasharray=m.len+'px';
+        var a=(m.dir==='reverse'?-m.len:m.len);
+        return [{strokeDashoffset:a+'px'},{strokeDashoffset:'0px'}];
+      }
+      return [{opacity:0},{opacity:1}]; // non-strokable → graceful fade
+    }
+    var f={opacity:0},t={opacity:1};
+    if(m.effect==='blur'){f.filter='blur(6px)';t.filter='blur(0px)';}
+    var tf=SVG_TF[m.effect];
+    if(tf){f.transform=tf;
+      // Flips interpolate to their OWN identity (perspective + rotate 0) so WAAPI tweens the same
+      // transform structure; translate/scale tween cleanly to the 'none' identity.
+      t.transform=(m.effect==='flip-x')?'perspective(600px) rotateX(0deg)':(m.effect==='flip-y')?'perspective(600px) rotateY(0deg)':'none';}
+    return [f,t];
+  }
+  // Clear any inline styles WAAPI left behind so the element rests at its authored natural state.
+  function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.fillOpacity='';}
+  function svgPlay(m){
+    if(m.playing)return;m.playing=true;
+    if(m.origin)m.el.style.transformOrigin=m.origin;
+    m.el.classList.remove('sw-svg-init');
+    var frames;try{frames=svgFrames(m);}catch(e){svgClear(m.el);return;}
+    var opts={duration:m.dur,delay:m.delay,fill:'both'};
+    try{opts.easing=swEase(m.el);}catch(e){}
+    var anim;
+    try{anim=m.el.animate(frames,opts);}catch(e){svgClear(m.el);return;}
+    m.anim=anim;
+    anim.onfinish=function(){
+      try{anim.cancel();}catch(e){}
+      svgClear(m.el);
+      // draw + data-sw-svg-fill: once the stroke is drawn, fade the fill in.
+      if(m.effect==='draw'&&m.fill){
+        m.el.style.fillOpacity='0';
+        try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:Math.max(200,m.dur*0.4),fill:'both'});fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';};}
+        catch(e){m.el.style.fillOpacity='';}
+      }
+    };
+  }
+  // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class.
+  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}svgClear(m.el);m.el.classList.add('sw-svg-init');}
+`;
+
+export const SVG_ANIM_JS = `(function(){
+  'use strict';
+  var els=document.querySelectorAll('[data-sw-svg]');
+  if(els.length===0)return;
+  // Reduced motion / no matchMedia support with the query present → show everything at its natural
+  // state and do nothing (never hide, never animate).
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  ${SVG_ANIM_CORE}
+  var DMIN=${SVG_ANIM_LIMITS.duration.min},DMAX=${SVG_ANIM_LIMITS.duration.max};
+  var EFFECTS=${JSON.stringify(SVG_ANIM_EFFECTS)};
+  function effectOf(el){var e=el.getAttribute('data-sw-svg')||'';for(var i=0;i<EFFECTS.length;i++){if(EFFECTS[i]===e)return e;}return 'fade';}
+  function member(el,extraDelay){
+    var dur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(dur<DMIN)dur=DMIN;if(dur>DMAX)dur=DMAX;
+    var effect=effectOf(el);
+    var m={el:el,effect:effect,dur:dur,delay:swMs(el,'${SW_TIMING_ATTRS.delay}',0)+extraDelay,playing:false};
+    if(effect==='draw'){m.len=svgLen(el);m.dir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';m.fill=el.getAttribute('data-sw-svg-fill')==='true';}
+    var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
+    return m;
+  }
+  // A UNIT = one trigger source (a scene root, or a standalone element) + its ordered members.
+  var scenes=document.querySelectorAll('[data-sw-svg-scene]');
+  var claimed=[];Array.prototype.forEach.call(scenes,function(s){var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,function(k){claimed.push(k);});});
+  function isClaimed(el){for(var i=0;i<claimed.length;i++){if(claimed[i]===el)return true;}return false;}
+  var units=[];
+  Array.prototype.forEach.call(scenes,function(s){
+    var step=swMs(s,'data-sw-svg-stagger',0);
+    var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
+    var kids=s.querySelectorAll('[data-sw-svg]');var members=[];
+    Array.prototype.forEach.call(kids,function(k,i){members.push(member(k,step*i));});
+    if(members.length)units.push({root:s,trigger:trig,members:members});
+  });
+  Array.prototype.forEach.call(els,function(el){
+    if(isClaimed(el))return;
+    var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
+    units.push({root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')==='load'?'load':trig,members:[member(el,0)]});
+  });
+  if(units.length===0)return;
+  // Arm: hide every member (PE-first init class) before anything triggers.
+  units.forEach(function(u){u.members.forEach(function(m){m.el.classList.add('sw-svg-init');});});
+  function playUnit(u){u.members.forEach(svgPlay);}
+  function resetUnit(u){u.members.forEach(svgReset);}
+  // 'load' units fire now; 'view' units wait for the IntersectionObserver.
+  units.forEach(function(u){if(u.trigger==='load')playUnit(u);});
+  var viewUnits=units.filter(function(u){return u.trigger==='view';});
+  if(viewUnits.length===0)return;
+  if(!('IntersectionObserver' in window)){viewUnits.forEach(playUnit);return;} // PE fallback: just play
+  var once=function(el){return el.getAttribute('${SW_TIMING_ATTRS.once}')!=='false';};
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      for(var i=0;i<viewUnits.length;i++){
+        if(viewUnits[i].root!==entry.target)continue;
+        var u=viewUnits[i];
+        if(entry.isIntersecting){playUnit(u);if(once(u.root))io.unobserve(u.root);}
+        else if(!once(u.root))resetUnit(u);
+      }
+    });
+  },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
+  viewUnits.forEach(function(u){io.observe(u.root);});
+})();`;
+
+// Detection is a literal substring match: every attribute in the family contains `data-sw-svg`, so one
+// marker gates the whole engine. A `data-sw-svg` written via a Handlebars variable won't be detected
+// (don't do that); a prose mention over-ships a couple KB — benign either way.
+const SVG_ANIM_MARKER = 'data-sw-svg';
+
+/** Whether an authored HTML/template string uses the SVG animation engine. */
+export function usesSvgAnim(html: string | null | undefined): boolean {
+  return typeof html === 'string' && html.includes(SVG_ANIM_MARKER);
+}

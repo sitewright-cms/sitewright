@@ -69,4 +69,19 @@ describe('refoldLoops', () => {
     expect(new Set(aIds).size).toBe(aIds.length); // still unique WITHIN each dataset
     expect(new Set(bIds).size).toBe(bIds.length);
   });
+
+  it('keeps an emitted `{{> logo-marquee}}` partial intact when the page also folds a loop', async () => {
+    // Regression: refold re-serializes the whole body, and serialize() HTML-escapes text — corrupting the
+    // emitter's partial token to `{{&gt; logo-marquee}}`, which is invalid Handlebars and fails the page
+    // build (→ the WHOLE site build aborts). The partial (a sibling of the grid) must survive un-escaped.
+    const cards = [0, 1, 2, 3].map((i) => `<a class="card" href="/p${i}"><h3>Title ${i}</h3><p>Body ${i}</p></a>`).join('');
+    const html = `<div>{{> logo-marquee}}</div><section class="grid">${cards}</section>`;
+    const res = await refoldLoops(html, new Set<string>(), new Set<string>(), probe);
+    expect(res.datasets).toHaveLength(1); // the grid still folded
+    expect(res.html).toContain('{{> logo-marquee}}'); // partial preserved …
+    expect(res.html).not.toContain('{{&gt;'); // … and NOT HTML-escaped
+    // …and it now COMPILES: `{{&gt; …}}` is a Handlebars parse error, `{{> …}}` resolves the partial.
+    const out = renderTemplate(res.html, { dataset: { [res.datasets[0]!.slug]: [] }, partials: { 'logo-marquee': '<div class="mq"></div>' } } as never);
+    expect(out).toContain('<div class="mq">');
+  });
 });

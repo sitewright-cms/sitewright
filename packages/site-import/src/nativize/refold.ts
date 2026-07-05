@@ -10,7 +10,7 @@
 import { validateTemplate } from '@sitewright/blocks';
 import { textContent } from 'domutils';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
-import { elements, getBody, isTag, parse, serialize, setText, type Element } from '../dom.js';
+import { elements, getBody, isTag, parse, restoreMustacheEntities, serialize, setText, type Element } from '../dom.js';
 import { bgUrl, collectSlots, fieldNames, slugFor, slugifyId, type Slot, type SlotType } from '../transform/datasets.js';
 
 const MIN_CHILDREN = 4;
@@ -231,5 +231,8 @@ export async function refoldLoops(
   if (replacements.length === 0) return { html, datasets: [], entries: [] };
   let out = serialize(body.children);
   for (const { from, to } of replacements) out = out.replace(from, () => to); // fn form → no $-substitution
-  return { html: out, datasets, entries };
+  // `from` (a serialized run) and `out` are both HTML-escaped, so match them first; only THEN restore the
+  // mustache tokens serialize() corrupted (e.g. an emitted `{{> logo-marquee}}` → `{{&gt; logo-marquee}}`,
+  // which would fail the page build). `to` (a raw loop template) has intact mustaches — restore is a no-op.
+  return { html: restoreMustacheEntities(out), datasets, entries };
 }

@@ -38,17 +38,35 @@ const SVG_STUDIO_PREVIEW_JS = `(function(){
       if(!s.getAttribute('viewBox')){var w=parseFloat(s.getAttribute('width'))||0,h=parseFloat(s.getAttribute('height'))||0;if(w>0&&h>0)s.setAttribute('viewBox','0 0 '+w+' '+h);}
       s.removeAttribute('width');s.removeAttribute('height');s.style.width='100%';s.style.height='100%';s.style.maxHeight='80vh';
     }
+    // The engine hides [data-sw-svg] from first paint (no-FOUC on real pages). The Studio is an EDITING
+    // surface, so show every element in the static view — Play/auto-loop then animates them (revealing +
+    // re-hiding via .sw-svg-shown). Mark armed too so the CSS failsafe never kicks in here.
+    var an=stage.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(an,function(e){e.classList.add('sw-svg-armed');e.classList.add('sw-svg-shown');});
   }
   function play(){
     if(!lastSvg)return;render(lastSvg); // reset to static, then run the real runtime once
     if(script&&script.parentNode)script.parentNode.removeChild(script);
     script=document.createElement('script');script.textContent=SW_RT;document.body.appendChild(script);
   }
-  // AUTO-LOOP: replay on an interval so edits are reviewed without pressing Play each time (editor-only).
-  var autoTimer=null,AUTO_MS=2400;
+  // AUTO-LOOP (editor-only): replay the WHOLE timeline once it has FULLY finished (+ a short gap), so
+  // every element — the draw included — restarts cleanly each cycle, exactly like pressing Play. Driven by
+  // animation-completion, NOT a fixed interval (a fixed interval could cut a long draw mid-way and leave
+  // the static filled shape on screen). A generation counter cancels an in-flight cycle on toggle/re-toggle.
+  var autoTimer=null,autoGen=0,autoOn=false;
+  function stopAuto(){autoGen++;if(autoTimer){clearTimeout(autoTimer);autoTimer=null;}}
   function autoloop(on){
-    if(autoTimer){clearInterval(autoTimer);autoTimer=null;}
-    if(on){play();autoTimer=setInterval(play,AUTO_MS);}else if(lastSvg){render(lastSvg);}
+    stopAuto();autoOn=!!on;
+    if(!on){if(lastSvg)render(lastSvg);return;}
+    var gen=autoGen;
+    function idleThen(next){var t0=Date.now(),idle=0;(function poll(){if(gen!==autoGen)return;
+      var busy=document.getAnimations?document.getAnimations().some(function(a){return a.playState==='running'||a.playState==='pending';}):false;
+      if(busy){idle=0;}else{idle++;}
+      // Require TWO consecutive idle polls so the sub-ms gap between the draw finishing and its fill-reveal
+      // starting is never mistaken for "done". A 15s ceiling bounds an SVG with an infinite CSS animation.
+      if((!busy&&idle>=2)||Date.now()-t0>15000){next();}else{autoTimer=setTimeout(poll,120);}})();}
+    function cycle(){if(gen!==autoGen)return;play();
+      autoTimer=setTimeout(function(){idleThen(function(){if(gen===autoGen)autoTimer=setTimeout(cycle,650);});},140);}
+    cycle();
   }
   function hideHi(){hi.style.display='none';}
   function highlight(id){
@@ -60,7 +78,7 @@ const SVG_STUDIO_PREVIEW_JS = `(function(){
     var n=e.target;while(n&&n!==stage){if(n.getAttribute&&n.getAttribute('id')){post({type:'sw-studio-click',id:n.getAttribute('id')});return;}n=n.parentNode;}
   });
   window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;if(!d||!d.type)return; // only the editor (our parent) drives this canvas
-    if(d.type==='sw-studio-render'&&typeof d.svg==='string'){render(d.svg);if(autoTimer)play();} // reflect edits at once while auto-looping
+    if(d.type==='sw-studio-render'&&typeof d.svg==='string'){render(d.svg);if(autoOn)autoloop(true);} // reflect edits at once: restart the loop from the new SVG
     else if(d.type==='sw-studio-play')play();
     else if(d.type==='sw-studio-autoloop')autoloop(!!d.on);
     else if(d.type==='sw-studio-highlight')highlight(d.id);

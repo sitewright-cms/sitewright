@@ -508,6 +508,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // consumes — so preview + deploy can NEVER ship a different set (the drift that motivated this). Every
     // entry is pure only-used-ships via its marker, EXCEPT consent (its settings-aware gate above).
     const usedBodyEffects = BODY_EFFECT_RUNTIMES.filter((r) => (r.key === 'consent' ? usesConsentRuntime : usesMarker(r.uses)));
+    // No-JS un-hide for any used runtime that hides content from first paint (svg-anim's no-FOUC rule):
+    // one `<noscript><style>` at body-end so a scripting-off visitor — whom the runtime can never reveal —
+    // still sees the artwork (keeps the PE-first "never hide content without JS" guarantee). '' when none.
+    const effectNoscriptCss = usedBodyEffects
+      .flatMap((r) => (r.noscript ? [r.noscript] : []))
+      .join('');
+    const effectNoscriptHtml = effectNoscriptCss ? `<noscript><style>${effectNoscriptCss}</style></noscript>` : undefined;
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -916,7 +923,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).
           rawFidelity: page.rawHtml === true,
           // Raw-HTML pages also drop the platform effect JS — only the user's own website.scripts remains.
-          customScripts: [website?.scripts, page.rawHtml ? undefined : fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
+          customScripts: [website?.scripts, page.rawHtml ? undefined : fxCode.bodyEnd, page.rawHtml ? undefined : effectNoscriptHtml].filter(Boolean).join('\n') || undefined,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.

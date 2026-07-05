@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   BODY_EFFECT_RUNTIMES,
   bodyEffectStyles,
+  bodyEffectNoscript,
   previewBodyEffectScripts,
   publishBodyEffectFiles,
 } from '../src/publish/effect-runtimes.js';
@@ -68,6 +69,15 @@ describe('effect-runtime registry — self-consistency', () => {
     // No false positives.
     expect(bodyEffectStyles('<p>plain</p>')).toEqual([]);
     expect(previewBodyEffectScripts('<p>plain</p>')).toEqual([]);
+  });
+
+  it('emits a single <noscript> un-hide for a first-paint-hiding runtime (svg-anim), nothing otherwise', () => {
+    const ns = bodyEffectNoscript(ALL_MARKERS);
+    expect(ns).toContain('<noscript><style>');
+    expect(ns).toContain('[data-sw-svg]{opacity:1!important;animation:none!important}');
+    expect((ns.match(/<noscript>/g) || []).length).toBe(1); // one combined block
+    expect(bodyEffectNoscript('<p>plain</p>')).toBe(''); // no hiding runtime → nothing
+    expect(bodyEffectNoscript('<div data-sw-animation="fade-up">a</div>')).toBe(''); // entrance is PE-first (no hide)
   });
 });
 

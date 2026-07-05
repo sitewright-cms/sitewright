@@ -16,12 +16,18 @@ describe('SVG Studio canvas document', () => {
     }
   });
 
-  it('auto-loop replays on a timer and stops cleanly (Play-free review of edits)', () => {
+  it('auto-loop restarts the WHOLE timeline on completion (not a fixed interval that could cut a draw)', () => {
     expect(doc).toContain('function autoloop(on)');
-    expect(doc).toContain('setInterval(play,AUTO_MS)');
-    expect(doc).toContain('clearInterval(autoTimer)');
-    // while looping, an incoming edit re-plays at once
-    expect(doc).toContain('if(autoTimer)play()');
+    expect(doc).toContain('document.getAnimations'); // completion-driven: waits until no animation is running
+    expect(doc).toContain("a.playState==='running'||a.playState==='pending'");
+    expect(doc).toContain('idle>=2'); // debounce: two consecutive idle polls (bridges the draw→fill gap)
+    expect(doc).not.toContain('setInterval(play'); // the old fixed-interval loop is gone
+    // while looping, an incoming edit restarts the loop from the new SVG
+    expect(doc).toContain('if(autoOn)autoloop(true)');
+  });
+
+  it('shows the imported SVG in the STATIC canvas (marks it shown despite the engine first-paint hide)', () => {
+    expect(doc).toContain("classList.add('sw-svg-armed');e.classList.add('sw-svg-shown')");
   });
 
   it('renders only postMessage content (no tenant string is baked into the doc)', () => {

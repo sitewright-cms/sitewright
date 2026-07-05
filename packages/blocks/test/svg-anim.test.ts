@@ -2,18 +2,25 @@ import { describe, it, expect } from 'vitest';
 import {
   SVG_ANIM_CSS,
   SVG_ANIM_JS,
+  SVG_ANIM_NOSCRIPT,
   SVG_ANIM_EFFECTS,
   SVG_ANIM_LIMITS,
   usesSvgAnim,
 } from '../src/svg-anim.js';
 
 describe('SVG animation stylesheet', () => {
-  it('hides the pre-play state ONLY behind the runtime class, inside prefers-reduced-motion:no-preference', () => {
-    // The only opacity:0 must be gated on BOTH .sw-svg-init (runtime-added → PE-first) and the
-    // no-preference media query (→ reduced-motion visitors are never hidden).
-    expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){[data-sw-svg].sw-svg-init{opacity:0}}');
-    // No ungated hide of the base selector.
+  it('hides from FIRST PAINT until revealed (no FOUC), only inside prefers-reduced-motion:no-preference', () => {
+    // Hidden until the runtime adds .sw-svg-shown; OUT (exit) elements start visible; reduced-motion never
+    // hides (rule sits inside the no-preference media query).
+    expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){');
+    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
+    // No UNGATED hide of the base selector (must live inside the no-preference media query).
     expect(SVG_ANIM_CSS).not.toMatch(/\[data-sw-svg\]\s*\{[^}]*opacity:0/);
+  });
+
+  it('is PE-first: an un-armed element (JS off / runtime failed) self-reveals via a failsafe', () => {
+    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg-dir="out"]){animation:sw-svg-failsafe');
+    expect(SVG_ANIM_CSS).toContain('@keyframes sw-svg-failsafe{to{opacity:1}}');
   });
 
   it('sets transform-box:fill-box so % translate + transform-origin resolve per-element (viewBox-safe)', () => {
@@ -28,11 +35,17 @@ describe('SVG animation stylesheet', () => {
 describe('SVG animation runtime', () => {
   it('bails entirely under prefers-reduced-motion (never hides, never animates)', () => {
     expect(SVG_ANIM_JS).toContain('(prefers-reduced-motion: reduce)');
-    // The reduced-motion return precedes ANY class-add so content stays visible.
+    // The reduced-motion return precedes ANY arming/reveal, so content stays visible + nothing runs.
     const idxBail = SVG_ANIM_JS.indexOf('(prefers-reduced-motion: reduce)');
-    const idxInit = SVG_ANIM_JS.indexOf("classList.add('sw-svg-init')");
+    const idxArm = SVG_ANIM_JS.indexOf("classList.add('sw-svg-armed')");
     expect(idxBail).toBeGreaterThan(-1);
-    expect(idxInit).toBeGreaterThan(idxBail);
+    expect(idxArm).toBeGreaterThan(idxBail);
+  });
+
+  it('starts the reveal only when the page is READY (preloader clear / load) via swWhenReady', () => {
+    expect(SVG_ANIM_JS).toContain('function swWhenReady('); // embedded shared gate
+    expect(SVG_ANIM_JS).toContain("addEventListener('sw:ready'");
+    expect(SVG_ANIM_JS).toContain('swWhenReady(function(){'); // trigger phase is gated
   });
 
   it('drives the draw effect with getTotalLength + stroke-dashoffset', () => {
@@ -168,14 +181,16 @@ describe('SVG animation detection + surface', () => {
     expect(SVG_ANIM_JS).toContain('function svgDraw('); // draw setup path
     expect(SVG_ANIM_JS).toContain("fillOpacity='0'"); // fill hidden while drawing
     expect(SVG_ANIM_JS).toContain('function svgFillReveal('); // reveal AFTER the stroke draws
+    expect(SVG_ANIM_JS).toContain('Math.max(140,m.dur*0.28)'); // snappy fill-in (was 0.4 / floor 200)
     expect(SVG_ANIM_JS).toContain('data-sw-svg-draw-color'); // author stroke color/width
     expect(SVG_ANIM_JS).toContain('data-sw-svg-draw-width');
   });
 
-  it('supports an OUT (exit) direction: not init-hidden, plays natural→hidden', () => {
+  it('supports an OUT (exit) direction: starts visible (excluded from the hide), plays natural→hidden', () => {
     expect(SVG_ANIM_JS).toContain("data-sw-svg-dir')==='out'");
     expect(SVG_ANIM_JS).toContain('if(m.io===');
-    expect(SVG_ANIM_JS).toContain("if(m.io!=='out')m.el.classList.add('sw-svg-init')"); // OUT starts visible
+    // OUT elements are excluded from the first-paint hide in CSS (they start visible).
+    expect(SVG_ANIM_CSS).toContain(':not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
   });
 
   it('drives reveals via clip-path and along-path via CSS offset-path, with validated path data', () => {
@@ -199,5 +214,21 @@ describe('SVG animation detection + surface', () => {
     expect(SVG_ANIM_JS).toContain('u.origin!==location.origin'); // SAME-ORIGIN ONLY (XSS guard)
     expect(SVG_ANIM_JS).toContain("dispatchEvent(new CustomEvent('sw-svg-inlined'"); // notify morph runtime
     expect(SVG_ANIM_JS).toContain('function stripUnsafe('); // strip script/foreignObject/on*
+  });
+
+  it('shows an <img data-sw-svg> immediately (static fallback) — it is never armed by a unit', () => {
+    // The first-paint hide matches <img data-sw-svg>; since imgs are excluded from units they would stay
+    // hidden (cross-origin / failed fetch / no-fetch). inlineImgs marks them armed+shown up front, BEFORE
+    // the fetch-availability early return, so they stay visible either way.
+    expect(SVG_ANIM_JS).toContain("img.classList.add('sw-svg-armed');img.classList.add('sw-svg-shown')");
+    const idxArm = SVG_ANIM_JS.indexOf("img.classList.add('sw-svg-shown')");
+    const idxFetchGuard = SVG_ANIM_JS.indexOf("if(!('fetch' in window))return");
+    expect(idxArm).toBeGreaterThan(-1);
+    expect(idxArm).toBeLessThan(idxFetchGuard);
+  });
+
+  it('exports a no-JS un-hide override (for the build to emit inside <noscript>)', () => {
+    expect(SVG_ANIM_NOSCRIPT).toBe('[data-sw-svg]{opacity:1!important;animation:none!important}');
+    expect(SVG_ANIM_NOSCRIPT.toLowerCase()).not.toContain('</style');
   });
 });

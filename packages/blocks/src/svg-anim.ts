@@ -30,15 +30,19 @@
 // Tenants supply DATA only (effect keyword allowlisted, numerics clamped); never JavaScript.
 //
 // Invariants (shared with parallax.ts / animations.ts):
-// - PE-first: the hidden pre-play state is gated on the runtime-added `.sw-svg-init` class, so no JS /
-//   no IntersectionObserver / reduced motion → every element renders at its natural, fully-visible
-//   state (a fully-drawn path, an untransformed shape). Content is NEVER hidden without JS.
+// - No-FOUC + PE-safe: an animated element is hidden from FIRST PAINT via CSS (so it never flashes before
+//   it animates), and the runtime reveals it (`.sw-svg-shown`) when the page is ready. Content is never
+//   STRANDED hidden: a no-JS visitor is un-hidden by a `<noscript>` override (build-emitted), a visitor
+//   whose runtime failed to load is un-hidden by a CSS failsafe (~9s), and a reduced-motion visitor is
+//   never hidden at all (every rule sits inside `prefers-reduced-motion: no-preference`).
+// - Coordinated start: the reveal waits for the page-ready signal (`sw:ready`, dispatched by the preloader
+//   when it clears, or fired immediately when there is no preloader) — never behind a still-up overlay.
 // - Accessibility: ALL motion is JS-applied and the runtime BAILS entirely under
 //   prefers-reduced-motion: reduce (nothing is hidden, nothing animates).
 // - Performance: effects run on the Web Animations API (compositor-friendly transform/opacity/filter);
 //   view-triggered units are gated by one IntersectionObserver, so off-screen SVGs do no work.
 // - First-party, audited, static code only.
-import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_TIMING_CORE } from './timing.js';
+import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_TIMING_CORE, SW_READY_CORE } from './timing.js';
 
 /** Clamp ranges shared by the runtime, the editor builder, and tests. */
 export const SVG_ANIM_LIMITS = {
@@ -88,12 +92,21 @@ export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
 
 // --- CSS --------------------------------------------------------------------
 // Structural only — the MOTION is JS-applied via WAAPI, so it never sits in the sheet. `transform-box:
-// fill-box` makes CSS transform percentages + `transform-origin` resolve against each element's OWN
-// bounding box (viewBox-scale-independent). The hidden state is gated on `.sw-svg-init` (runtime-added)
-// so a no-JS / reduced-motion visitor sees the natural, fully-visible artwork.
+// fill-box` makes CSS transform percentages + `transform-origin` resolve per-element (viewBox-safe).
+//
+// No-FOUC: an animated element is hidden from FIRST PAINT (not gated on a JS-added class) so it never
+// flashes visible before it animates — the runtime reveals it by adding `.sw-svg-shown`. PE-first is
+// preserved by a self-healing failsafe: an element the runtime never marks `.sw-svg-armed` (JS disabled
+// or the runtime failed to load) reveals itself after a grace period, so content is never stranded
+// hidden. Everything is inside `prefers-reduced-motion: no-preference` → reduced-motion visitors see the
+// natural, fully-visible artwork with no hide and no failsafe. OUT (exit) elements start visible.
 export const SVG_ANIM_CSS = [
   '[data-sw-svg]{transform-box:fill-box;transform-origin:center}',
-  '@media (prefers-reduced-motion: no-preference){[data-sw-svg].sw-svg-init{opacity:0}}',
+  '@media (prefers-reduced-motion: no-preference){' +
+    '[data-sw-svg]:not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}' +
+    '[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg-dir="out"]){animation:sw-svg-failsafe .01s linear 9s forwards}' +
+    '@keyframes sw-svg-failsafe{to{opacity:1}}' +
+    '}',
   // --- Global (whole-SVG) settings, authored on the root <svg> ---
   // Responsive: scale the SVG to fill its parent container (no-JS friendly — pure CSS).
   'svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}',
@@ -106,6 +119,11 @@ export const SVG_ANIM_CSS = [
   '@media (prefers-reduced-motion: reduce){.sw-svg-ripple{display:none}}',
   '@keyframes sw-svg-ripple{to{transform:translate(-50%,-50%) scale(1);opacity:0}}',
 ].join('');
+
+/** No-JS override (emitted inside a `<noscript><style>` by the build): when scripting is off, the runtime
+ *  can never reveal the elements, so cancel the first-paint hide + failsafe immediately — a no-JS visitor
+ *  sees the artwork at once (restores the PE-first "never hide content without JS" guarantee). */
+export const SVG_ANIM_NOSCRIPT = '[data-sw-svg]{opacity:1!important;animation:none!important}';
 
 // --- shared runtime core ----------------------------------------------------
 // Embedded verbatim in BOTH the production runtime and the builder-preview runtime so the two can
@@ -185,7 +203,7 @@ const SVG_ANIM_CORE = `
   function svgClear(el){el.style.transform='';el.style.opacity='';el.style.filter='';el.style.strokeDasharray='';el.style.strokeDashoffset='';el.style.strokeOpacity='';el.style.fillOpacity='';el.style.clipPath='';el.style.offsetPath='';el.style.offsetDistance='';el.style.offsetRotate='';}
   // draw-then-fill finish: fade the fill in; fade + remove a TEMP outline stroke (one we added).
   function svgFillReveal(m){
-    m.el.style.fillOpacity='0';var dur2=Math.max(200,m.dur*0.4);
+    m.el.style.fillOpacity='0';var dur2=Math.max(140,m.dur*0.28); // snappier fill-in after the outline draws
     try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:dur2,fill:'both'});m.fillAnim=fa;
       fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';m.el.style.strokeDasharray='';m.el.style.strokeDashoffset='';if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}};}
     catch(e){m.el.style.fillOpacity='';}
@@ -193,7 +211,7 @@ const SVG_ANIM_CORE = `
   }
   function svgPlay(m){
     if(m.playing)return;m.playing=true;
-    m.el.classList.remove('sw-svg-init');
+    m.el.classList.add('sw-svg-shown'); // reveal (WAAPI fill:'both' holds the from-frame → no jump)
     var frames;try{frames=svgFrames(m);}catch(e){svgClear(m.el);return;}
     // AFTER svgFrames so an author's data-sw-svg-origin overrides an effect's baked-in origin (scale-*).
     if(m.origin)m.el.style.transformOrigin=m.origin;
@@ -211,13 +229,13 @@ const SVG_ANIM_CORE = `
       }else{svgClear(m.el);}
     };
   }
-  // Re-hide a member for replay (data-sw-once="false"): cancel, reset, re-arm the init class (IN only —
-  // an OUT element starts visible, so it is not init-hidden).
+  // Re-hide a member for replay: cancel, reset, drop the sw-svg-shown class so the CSS re-hides it (IN only
+  // — an OUT element starts visible and is excluded from the hide rule).
   function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);
     // Cancelling a fill-reveal mid-flight never fires its onfinish, so clear the TEMP outline stroke here
     // (else a filled draw+once=false shape keeps an outline it never had). Never clears an authored stroke.
     if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}
-    if(m.io!=='out')m.el.classList.add('sw-svg-init');}
+    m.el.classList.remove('sw-svg-shown');}
 `;
 
 export const SVG_ANIM_JS = `(function(){
@@ -227,6 +245,7 @@ export const SVG_ANIM_JS = `(function(){
   // state and do nothing (never hide, never animate; a data-sw-svg <img> just stays a static <img>).
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   ${SVG_ANIM_CORE}
+  ${SW_READY_CORE}
   var DMIN=${SVG_ANIM_LIMITS.duration.min},DMAX=${SVG_ANIM_LIMITS.duration.max};
   var EFFECTS=${JSON.stringify(SVG_ANIM_EFFECTS)};
   function effectOf(el){var e=el.getAttribute('data-sw-svg')||'';for(var i=0;i<EFFECTS.length;i++){if(EFFECTS[i]===e)return e;}return 'fade';}
@@ -302,35 +321,41 @@ export const SVG_ANIM_JS = `(function(){
       units.push({root:el,trigger:trig,members:[member(el,0)],replay:!once(el)});
     });
     if(units.length===0)return;
-    // Arm: hide every IN member (PE-first init class) before anything triggers (OUT members start visible).
-    units.forEach(function(u){u.members.forEach(function(m){if(m.io!=='out')m.el.classList.add('sw-svg-init');});});
+    // ARM every member NOW (before the ready gate): marks .sw-svg-armed so the CSS first-paint failsafe
+    // stands down (JS is managing these). Hiding itself is from first paint via CSS (.sw-svg-shown reveals),
+    // so nothing flashes before it animates.
+    units.forEach(function(u){u.members.forEach(function(m){m.el.classList.add('sw-svg-armed');});});
     function playUnit(u){u.members.forEach(svgPlay);}
     function resetUnit(u){u.members.forEach(svgReset);}
     function replayUnit(u){resetUnit(u);if(window.requestAnimationFrame)requestAnimationFrame(function(){playUnit(u);});else playUnit(u);}
     // Self-clearing: once the root leaves the document (SPA nav / re-inline / removal) the timer stops, so
     // no interval outlives its element (no leak, no ticks on a detached node).
     function startLoop(u){if(u.loopMs>0&&!u.timer){u.timer=setInterval(function(){if(!document.contains(u.root)){clearInterval(u.timer);u.timer=null;return;}if(u.trigger==='load'||u.shown)replayUnit(u);},u.loopMs);}}
-    // click-to-replay + ripple (global roots only).
-    units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){replayUnit(u);swRipple(e,u.root);});});
-    // load-trigger: play immediately (+ start the auto-repeat loop).
-    units.forEach(function(u){if(u.trigger==='load'){u.shown=true;playUnit(u);startLoop(u);}});
-    var viewUnits=units.filter(function(u){return u.trigger==='view';});
-    if(viewUnits.length===0)return;
-    if(!('IntersectionObserver' in window)){viewUnits.forEach(function(u){u.shown=true;playUnit(u);startLoop(u);});return;} // PE fallback
-    // Play when meaningfully visible; RE-ARM replay only on a FULL exit (ratio 0), so replay fires from ANY
-    // scroll direction (the old single bottom-margin threshold missed re-entry from some directions).
-    var io=new IntersectionObserver(function(entries){
-      entries.forEach(function(entry){
-        var u=null;for(var i=0;i<viewUnits.length;i++){if(viewUnits[i].root===entry.target){u=viewUnits[i];break;}}
-        if(!u)return;
-        if(entry.isIntersecting&&entry.intersectionRatio>=0.15){
-          if(!u.shown){u.shown=true;playUnit(u);startLoop(u);if(!u.replay)io.unobserve(u.root);}
-        }else if(entry.intersectionRatio===0){
-          if(u.shown&&u.replay){u.shown=false;resetUnit(u);}
-        }
-      });
-    },{threshold:[0,0.15],rootMargin:'0px 0px -5% 0px'});
-    viewUnits.forEach(function(u){io.observe(u.root);});
+    // REVEAL/triggering waits until the page is READY (preloader cleared / page load) — so nothing fires
+    // behind a still-visible preloader overlay. Click/loop wiring lives here too (post-ready is correct).
+    swWhenReady(function(){
+      // click-to-replay + ripple (global roots only).
+      units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){replayUnit(u);swRipple(e,u.root);});});
+      // load-trigger: play immediately (+ start the auto-repeat loop).
+      units.forEach(function(u){if(u.trigger==='load'){u.shown=true;playUnit(u);startLoop(u);}});
+      var viewUnits=units.filter(function(u){return u.trigger==='view';});
+      if(viewUnits.length===0)return;
+      if(!('IntersectionObserver' in window)){viewUnits.forEach(function(u){u.shown=true;playUnit(u);startLoop(u);});return;} // PE fallback
+      // Play when meaningfully visible; RE-ARM replay only on a FULL exit (ratio 0), so replay fires from ANY
+      // scroll direction (the old single bottom-margin threshold missed re-entry from some directions).
+      var io=new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          var u=null;for(var i=0;i<viewUnits.length;i++){if(viewUnits[i].root===entry.target){u=viewUnits[i];break;}}
+          if(!u)return;
+          if(entry.isIntersecting&&entry.intersectionRatio>=0.15){
+            if(!u.shown){u.shown=true;playUnit(u);startLoop(u);if(!u.replay)io.unobserve(u.root);}
+          }else if(entry.intersectionRatio===0){
+            if(u.shown&&u.replay){u.shown=false;resetUnit(u);}
+          }
+        });
+      },{threshold:[0,0.15],rootMargin:'0px 0px -5% 0px'});
+      viewUnits.forEach(function(u){io.observe(u.root);});
+    });
   }
   // INLINE an <img data-sw-svg src="…svg"> so its per-element data-sw-svg directives can run: fetch the
   // SAME-ORIGIN svg (media SVGs are pre-sanitized), strip script/foreignObject/on* (belt-and-suspenders),
@@ -343,8 +368,13 @@ export const SVG_ANIM_JS = `(function(){
     clean(el);Array.prototype.forEach.call(el.querySelectorAll('*'),clean);
   }
   function inlineImgs(){
-    if(!('fetch' in window))return;
     var imgs=document.querySelectorAll('img[data-sw-svg]');
+    // An <img data-sw-svg> is a STATIC image until it is (maybe) inlined. It is NEVER part of an animation
+    // unit, so it never gets armed/shown — mark it now so the first-paint hide + failsafe stand down and it
+    // stays visible. If fetch is unavailable, or the SVG is cross-origin / fails to load, it simply remains
+    // the static image (the old behaviour). On a successful inline it leaves the DOM.
+    Array.prototype.forEach.call(imgs,function(img){img.classList.add('sw-svg-armed');img.classList.add('sw-svg-shown');});
+    if(!('fetch' in window))return;
     Array.prototype.forEach.call(imgs,function(img){
       var src=img.getAttribute('src');if(!src)return;
       var u;try{u=new URL(src,location.href);}catch(e){return;}

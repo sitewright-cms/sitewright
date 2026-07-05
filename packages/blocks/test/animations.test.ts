@@ -77,6 +77,15 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain('io.unobserve(el)');
   });
 
+  it('gates the reveal on the page-ready signal (starts after preloader clear / load, not behind it)', () => {
+    // init hides as soon as JS runs, but OBSERVING (the reveal) waits for swWhenReady.
+    expect(ANIMATION_JS).toContain('function swWhenReady(');
+    expect(ANIMATION_JS).toContain("addEventListener('sw:ready'");
+    expect(ANIMATION_JS).toContain('swWhenReady(function(){');
+    // observation happens inside the ready callback, not eagerly in the setup loop.
+    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{Array\.prototype\.forEach\.call\(els,function\(el\)\{io\.observe\(el\)/);
+  });
+
   it('cannot break out of a <script> block', () => {
     expect(ANIMATION_JS.toLowerCase()).not.toContain('</script');
   });

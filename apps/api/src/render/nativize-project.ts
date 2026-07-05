@@ -6,6 +6,7 @@
 // the "bulk of the job"; an agent can fine-tune individual pages afterward.
 import type { FastifyBaseLogger } from 'fastify';
 import type { Page, Entry, Dataset } from '@sitewright/schema';
+import { SLOT_MAX } from '@sitewright/schema';
 import { validateTemplate, renderTemplate, type TemplateContext } from '@sitewright/blocks';
 import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
 import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, extractTemplates, type RenderProbe, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
@@ -209,6 +210,23 @@ async function nativizeFragment(
 }
 
 /**
+ * Whether a rebuilt chrome slot is safe to WRITE: within the schema length cap AND valid template HTML.
+ * The settings `put` only enforces the LENGTH cap (Zod `.max(SLOT_MAX)`); the template check is
+ * belt-and-suspenders (the HTTP save path validates slots, but the nativizer writes via the repo directly).
+ * Checking here lets the nativizer fall back to a slot's prior (already-valid) value instead of throwing a
+ * schema error that would abort the whole finalize. Conservative — only ever a false negative.
+ */
+function slotFits(value: string): boolean {
+  if (value.length > SLOT_MAX) return false;
+  try {
+    validateTemplate(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Nativize every rawFidelity page in `project` (concurrently). Emits per-page progress and returns a
  * summary. A page that fails to render/capture/validate is left untouched (still a faithful replica) and
  * reported in `skipped`, so one bad page never aborts the batch. Once EVERY page is native (no rawFidelity
@@ -368,9 +386,9 @@ export async function nativizeProject(
     const footerSrc = typeof website?.footer === 'string' && website.footer.trim() ? website.footer : '';
     const nativeFooter = footerSrc ? await nativizeFragment(footerSrc, fctx, foreignHead, deps, capture, nctx, loopbackOrigin) : '';
     // The foreign CSS/JS can only be dropped once the footer no longer needs it. If the footer couldn't be
-    // nativized, keep the foreign sheet so it stays styled (the data-driven nav uses platform classes, so
-    // it renders regardless).
-    const footerOk = !footerSrc || nativeFooter !== null;
+    // nativized — capture failed (null) OR the native footer wouldn't fit / validate in the slot — keep the
+    // foreign sheet + foreign footer so it stays styled (the data-driven nav uses platform classes regardless).
+    const footerOk = !footerSrc || (nativeFooter !== null && slotFits(nativeFooter));
 
     const newWebsite: Record<string, unknown> = {
       ...website,
@@ -398,9 +416,35 @@ export async function nativizeProject(
     const fbTab = fbFloatingTab(typeof website?.sidebarLeft === 'string' ? website.sidebarLeft : undefined);
     if (fbTab) newWebsite.sidebarLeft = '';
     const priorBottom = typeof website?.bottom === 'string' && website.bottom.trim() ? website.bottom : '';
-    const bottomParts = [modalBottom, fbTab, priorBottom].filter((s): s is string => Boolean(s));
-    if (bottomParts.length) newWebsite.bottom = bottomParts.join('\n');
-    if (modalBottom) {
+    // The `bottom` slot is capped at SLOT_MAX. Hoisting large / multi-step modals into the site-wide slot can
+    // exceed it (or, in theory, invalidate it) → the settings write below would throw + abort the WHOLE
+    // nativize. Only hoist when the resulting `bottom` fits + validates; otherwise leave each modal in its
+    // own page (still opens; just not deduped site-wide). `priorBottom` was persisted so it is already valid.
+    const wantHoist = modalBottom !== '';
+    const candidateBottom = [modalBottom, fbTab, priorBottom].filter(Boolean).join('\n');
+    const hoistFits = wantHoist && slotFits(candidateBottom);
+    if (wantHoist && !hoistFits) {
+      deps.log.warn({ bottomLen: candidateBottom.length, cap: SLOT_MAX }, 'nativize: global-modal hoist skipped (would not fit/validate the bottom slot) — modals kept per-page');
+    }
+    if (hoistFits) {
+      // `candidateBottom` already passed slotFits (that IS what made hoistFits true) → writable + will be
+      // stripped from the pages below. Keeping these two facts on the SAME `hoistFits` branch makes the
+      // invariant "a modal is only removed from a page once it is safely in `bottom`" structural, not implicit.
+      newWebsite.bottom = candidateBottom;
+    } else {
+      // No modal hoisted → `bottom` is just the fb edge-tab + any prior bottom. Write it only when it fits;
+      // else keep the prior value (an edge case: a near-cap prior bottom + the fb tab) rather than overflow.
+      const bottomOut = [fbTab, priorBottom].filter(Boolean).join('\n');
+      if (bottomOut && slotFits(bottomOut)) newWebsite.bottom = bottomOut;
+      else if (bottomOut) deps.log.warn({ bottomLen: bottomOut.length, cap: SLOT_MAX }, 'nativize: bottom slot over cap — kept prior value');
+    }
+    const newSettings = typography ? { ...settings, identity: { ...(settings.identity ?? {}), typography }, website: newWebsite } : { ...settings, website: newWebsite };
+    // Write the rebuilt chrome FIRST. The per-page modal STRIP below runs ONLY after this succeeds — so a
+    // rejected settings write can never remove a modal from a page without it having landed in `bottom`.
+    // (footer + bottom are already gated to fit; a genuine write error therefore surfaces, as before.)
+    await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, newSettings, { op: 'put', note: 'nativize-chrome' });
+    chromeRebuilt = footerOk;
+    if (hoistFits) {
       for (const np of nativizedPages) {
         const h = strippedPages.get(np.id);
         if (h === undefined) continue;
@@ -412,9 +456,6 @@ export async function nativizeProject(
         }
       }
     }
-    const newSettings = typography ? { ...settings, identity: { ...(settings.identity ?? {}), typography }, website: newWebsite } : { ...settings, website: newWebsite };
-    await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, newSettings, { op: 'put', note: 'nativize-chrome' });
-    chromeRebuilt = footerOk;
   }
 
   // CROSS-PAGE TEMPLATES: collapse pages that share ONE skeleton (the service pages — hero/intro/projects/

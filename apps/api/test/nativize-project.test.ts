@@ -3,6 +3,7 @@ import { nativizeProject, bodyBgCss, buildTypography, detectContainerWidth, type
 import type { ProjectContext } from '../src/repo/context.js';
 import type { BodyBackground } from '../src/render/nativize-capture.js';
 import type { CapturedNode } from '@sitewright/site-import';
+import { SLOT_MAX } from '@sitewright/schema';
 
 const ctx: ProjectContext = { userId: 'u1', projectId: 'p1', role: 'owner' };
 
@@ -26,6 +27,7 @@ interface DepOverrides {
   capture?: CaptureFn;
   entries?: unknown[];
   datasets?: unknown[];
+  failSettingsPut?: boolean; // simulate a rejected settings write (e.g. an unexpected DB error)
 }
 function makeDeps(o: DepOverrides = {}) {
   const pages = o.pages ?? [
@@ -48,7 +50,7 @@ function makeDeps(o: DepOverrides = {}) {
     get: vi.fn(async () => settings),
     list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : kind === 'media' ? fonts : kind === 'dataset' ? datasets : pages)),
     put: vi.fn(async (_c: unknown, kind: string, id: string, raw: unknown) => {
-      if (kind === 'settings') settingsPut = raw as never;
+      if (kind === 'settings') { if (o.failSettingsPut) throw new Error('settings write boom'); settingsPut = raw as never; }
       else if (kind === 'page') pagePuts.push({ id, raw: raw as never });
       return raw;
     }),
@@ -125,6 +127,50 @@ describe('nativizeProject', () => {
     expect(w.mainNav).toContain('sw-nav-drawer'); // the rebuilt navbar is a self-contained responsive bar
     expect(w.footer).toContain('text-primary'); // footer nativized (foreign classes → platform tokens)
     expect(w.footer).not.toContain('rgba-black-strong'); // foreign footer class gone
+  });
+
+  it('skips the global-modal hoist when the deduped modals would overflow the bottom slot cap (kept per-page)', async () => {
+    // A modal (isModal + id) whose nativized HTML exceeds SLOT_MAX, present on BOTH pages → hoistGlobalModals
+    // would dedupe it into website.bottom and overflow the 64k slot cap. The nativize must NOT throw on the
+    // settings write — it skips the hoist (each page keeps its own modal) and still completes. Footer capture
+    // stays small (differentiated by doc content) so only the PAGE bottom would overflow.
+    const bigModal = (): CapturedNode[] => [
+      { tag: 'div', s: {}, isModal: true, id: 'huge-modal', children: [{ tag: 'p', s: {}, text: 'x'.repeat(70_000), children: [] }] },
+    ];
+    const capture: CaptureFn = async (doc, opts) => (doc.includes('Foreign footer')
+      ? okCapture(doc, opts) // the footer fragment stays small
+      : { base: bigModal(), md: bigModal(), lg: bigModal(), bodyBg: undefined });
+    const { deps, getSettingsPut, log, pagePuts } = makeDeps({ capture });
+    const report = await nativizeProject(ctx, deps, () => {}); // must NOT throw
+    expect(report.pagesNativized).toBe(2);
+    expect(report.chromeRebuilt).toBe(true); // chrome still rebuilt — the settings write did not overflow
+    const w = getSettingsPut()!.website;
+    expect((w.bottom ?? '').length).toBeLessThanOrEqual(SLOT_MAX); // bottom stays within the slot cap
+    expect(w.bottom ?? '').not.toContain('huge-modal'); // the oversized modal was NOT hoisted into bottom
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ bottomLen: expect.any(Number) }),
+      expect.stringContaining('hoist skipped'),
+    );
+    // Hoist skipped → NO strip write ran, so every non-empty page source still holds its modal (a strip write
+    // would be a non-empty source WITHOUT the modal; a later template-extraction write is empty → excluded).
+    const written = pagePuts.filter((p) => p.raw.source !== '');
+    expect(written.length).toBeGreaterThanOrEqual(2);
+    expect(written.every((p) => p.raw.source.includes('huge-modal'))).toBe(true); // nothing was stripped/lost
+  });
+
+  it('does NOT strip modals from pages when the chrome settings write fails (write-first, strip-after)', async () => {
+    // A modal small enough to hoist (hoistFits=true). If the settings write then throws, the per-page STRIP
+    // must not have run yet — else the modal would be gone from the pages AND never written to `bottom` (loss).
+    const smallModal = (): CapturedNode[] => [
+      { tag: 'div', s: {}, isModal: true, id: 'm1', children: [{ tag: 'p', s: {}, text: 'hello modal', children: [] }] },
+    ];
+    const capture: CaptureFn = async (doc, opts) => (doc.includes('Foreign footer')
+      ? okCapture(doc, opts)
+      : { base: smallModal(), md: smallModal(), lg: smallModal(), bodyBg: undefined });
+    const { deps, pagePuts } = makeDeps({ capture, failSettingsPut: true });
+    await expect(nativizeProject(ctx, deps, () => {})).rejects.toThrow(); // the genuine write error surfaces
+    expect(pagePuts.length).toBe(2); // only the per-page nativize writes — NO extra strip writes ran
+    expect(pagePuts.every((p) => p.raw.source.includes('id="m1"'))).toBe(true); // every page still holds its modal
   });
 
   it('keeps the foreign CSS when the footer cannot be nativized (so it stays styled)', async () => {

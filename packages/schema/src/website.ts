@@ -10,7 +10,8 @@ const HTML_MAX = 20_000;
 // Chrome SLOTS (mainNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
 // they hold a full shared header/footer — and a mechanically NATIVIZED chrome (ported from an imported
 // site) is verbose (responsive variants + per-element utilities), so 20k is too tight for a real footer.
-const SLOT_MAX = 64_000;
+// Exported so the nativizer can gate what it writes into a slot on the same cap the schema enforces.
+export const SLOT_MAX = 64_000;
 
 // --- website.data: an editable, free-form JSON object the author manages in the CMS (a graphical
 // tree editor), exposed in templates as {{ website.data.* }} and {{#each website.data.x}}. It is the

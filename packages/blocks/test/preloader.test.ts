@@ -103,6 +103,12 @@ describe('PRELOADER_JS', () => {
     expect(PRELOADER_JS).toContain("addEventListener('load',done)");
   });
 
+  it('announces "sw:ready" when it clears so entrance/SVG animations start on preloader-clear', () => {
+    expect(PRELOADER_JS).toContain("dispatchEvent(new CustomEvent('sw:ready'))");
+    // dispatched from clear() — the same function that removes the loading class.
+    expect(PRELOADER_JS).toMatch(/classList\.remove\('loading'\)[^}]*dispatchEvent\(new CustomEvent\('sw:ready'\)\)/);
+  });
+
   it('on an internal-link click: fades the overlay in THEN navigates (no pop); fresh load is instant', () => {
     // Internal-link detection: resolve against the current URL so bare-relative links count; exclude
     // external origins + same-page #hash links.

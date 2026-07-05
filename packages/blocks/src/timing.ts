@@ -41,3 +41,23 @@ export const SW_EASINGS: Readonly<Record<string, string>> = {
 export const SW_TIMING_CORE = `
   function swMs(el,attr,def){var v=parseInt(el.getAttribute(attr)||'',10);return isNaN(v)?def:Math.max(0,Math.min(v,${SW_TIMING_MAX_MS}));}
 `;
+
+/** The global "the page is ready to start entrance animations" signal. The preloader dispatches it on
+ *  `document` when it clears; the entrance + SVG engines gate their first reveal on it so animations begin
+ *  AFTER the preloader/page-load — coordinated, not fired behind a still-visible overlay. */
+export const SW_READY_EVENT = 'sw:ready';
+
+/** A runtime JS snippet (IIFE-embeddable) defining `swWhenReady(cb)`: run `cb` once the page is ready to
+ *  animate — after the preloader clears (it dispatches `${SW_READY_EVENT}`), or IMMEDIATELY when there is
+ *  no active preloader on the page. A failsafe fires `cb` even if the signal never arrives, so a missing/
+ *  broken preloader can never strand the animations un-triggered. Embedded verbatim in both engines. */
+export const SW_READY_CORE = `
+  function swWhenReady(cb){
+    var pl=document.querySelector('[data-sw-preloader]');
+    if(pl&&pl.classList&&pl.classList.contains('loading')){
+      var done=false,t=0,fire=function(){if(done)return;done=true;if(t)clearTimeout(t);cb();};
+      document.addEventListener('${SW_READY_EVENT}',fire,{once:true});
+      t=setTimeout(fire,9000); // failsafe (past the preloader's own 8s max) — never strand animations
+    }else{cb();}
+  }
+`;

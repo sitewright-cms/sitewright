@@ -24,6 +24,7 @@ import {
   usesSvgAnim,
   SVG_ANIM_CSS,
   SVG_ANIM_JS,
+  SVG_ANIM_NOSCRIPT,
   usesMarquee,
   MARQUEE_CSS,
   usesLazyload,
@@ -62,6 +63,9 @@ export interface BodyEffectRuntime {
   script?: string;
   /** Single-page-preview behaviour (default 'run'). */
   preview?: PreviewMode;
+  /** Optional CSS emitted inside a `<noscript><style>` — for a runtime that hides content from first paint
+   *  (svg-anim's no-FOUC rule): when scripting is off the runtime can't reveal, so this cancels the hide. */
+  noscript?: string;
 }
 
 /** The registry. Order is the CSS-cascade order both paths emit (platform runtime CSS before the utility
@@ -69,7 +73,7 @@ export interface BodyEffectRuntime {
 export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   { key: 'animation', uses: usesAnimations, css: ANIMATION_CSS, js: ANIMATION_JS, script: 'animations.js' },
   { key: 'parallax', uses: usesParallax, css: PARALLAX_CSS, js: PARALLAX_JS, script: 'parallax.js' },
-  { key: 'svg-anim', uses: usesSvgAnim, css: SVG_ANIM_CSS, js: SVG_ANIM_JS, script: 'svg-anim.js' },
+  { key: 'svg-anim', uses: usesSvgAnim, css: SVG_ANIM_CSS, js: SVG_ANIM_JS, script: 'svg-anim.js', noscript: SVG_ANIM_NOSCRIPT },
   // JS-only, SEPARATE chunk: the path-morph interpolator ships only on pages that morph (the core
   // svg-anim runtime skips data-sw-svg="morph"). A morph-only page also loads svg-anim.js (it no-ops).
   { key: 'svg-morph', uses: usesSvgAnimMorph, js: SVG_ANIM_MORPH_JS, script: 'svg-anim-morph.js' },
@@ -83,6 +87,16 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
 /** The inline CSS blocks for every registry runtime a page uses (both paths). */
 export function bodyEffectStyles(scanHtml: string): string[] {
   return BODY_EFFECT_RUNTIMES.filter((r) => r.css && r.uses(scanHtml)).map((r) => r.css as string);
+}
+
+/** A single `<noscript><style>…</style></noscript>` un-hide for every used runtime that hides content from
+ *  first paint (currently svg-anim), or '' when none apply. Emitted at body-end so a no-JS visitor — who the
+ *  runtime can never reveal — still sees the content (PE-first). Empty for a page with no such runtime. */
+export function bodyEffectNoscript(scanHtml: string): string {
+  const css = BODY_EFFECT_RUNTIMES.filter((r) => r.noscript && r.uses(scanHtml))
+    .map((r) => r.noscript as string)
+    .join('');
+  return css ? `<noscript><style>${css}</style></noscript>` : '';
 }
 
 /** The inline JS blocks for the SINGLE-PAGE preview — every 'run' runtime the page uses (style-only ones

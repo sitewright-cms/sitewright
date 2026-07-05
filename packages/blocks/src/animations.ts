@@ -18,7 +18,7 @@
 //   also bails out under reduced motion.
 // - First-party, audited, static code only — tenants supply DATA (attribute values, parsed /
 //   clamped / allowlisted below); never JavaScript.
-import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_EASINGS, SW_TIMING_CORE } from './timing.js';
+import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_EASINGS, SW_TIMING_CORE, SW_READY_CORE } from './timing.js';
 
 /** The `data-sw-animation` effects with a dedicated initial transform (plain `fade` is the base rule). */
 export const ANIMATION_EFFECTS: readonly string[] = [
@@ -93,6 +93,7 @@ export const ANIMATION_JS = `(function(){
   var els=document.querySelectorAll('[data-sw-animation]:not([data-sw-component="banner"])');
   if(els.length===0)return;
   ${SW_TIMING_CORE}
+  ${SW_READY_CORE}
   // Null-prototype map: a hostile key ('constructor', 'toString', …) must miss, not resolve to an
   // inherited Object.prototype member.
   var EASINGS=Object.create(null);
@@ -110,6 +111,9 @@ export const ANIMATION_JS = `(function(){
       }
     });
   },{threshold:0.1,rootMargin:'0px 0px -48px 0px'});
+  // Hide (init) as soon as JS runs, but DEFER observing (the reveal) until the page is ready — so entrance
+  // reveals start after the preloader clears / page load, not behind a still-visible overlay. A failsafe in
+  // swWhenReady guarantees observation begins even if the ready signal never arrives.
   Array.prototype.forEach.call(els,function(el){
     var delay=swMs(el,'${SW_TIMING_ATTRS.delay}',0);
     if(delay>0)el.style.transitionDelay=delay+'ms';
@@ -118,8 +122,8 @@ export const ANIMATION_JS = `(function(){
     var easing=EASINGS[el.getAttribute('${SW_TIMING_ATTRS.easing}')||''];
     if(easing)el.style.transitionTimingFunction=easing;
     el.classList.add('sw-animation-init');
-    io.observe(el);
   });
+  swWhenReady(function(){Array.prototype.forEach.call(els,function(el){io.observe(el);});});
 })();`;
 
 // Detection is a literal substring match: `data-sw-animation` written via a Handlebars variable

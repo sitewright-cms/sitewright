@@ -17,6 +17,7 @@
 // shows softly behind it. Every effect is themed entirely by the --sw-color-* brand tokens.
 
 import type { PreloaderEffect } from '@sitewright/schema';
+import { SW_READY_EVENT } from './timing.js';
 
 /** A built-in abstract "spark" brand mark — the fallback logo + the draw-on target (inline SVG so it
  *  can be stroke-animated, which a raster/<img> logo cannot). Tinted with the brand primary. */
@@ -159,7 +160,9 @@ export const PRELOADER_JS = `(function(){
   var docEl=document.documentElement, MIN=400, MAX=8000, start=Date.now(), navigated=false, failsafe;
   var reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
   function lock(){docEl.style.overflow='hidden';}
-  function clear(){pl.classList.remove('loading');docEl.style.overflow='';}
+  // Clearing the overlay is the "page is ready" moment → announce it so entrance/SVG animations start
+  // NOW (they gate on this instead of firing behind the still-visible overlay). Idempotent listeners.
+  function clear(){pl.classList.remove('loading');docEl.style.overflow='';try{document.dispatchEvent(new CustomEvent('${SW_READY_EVENT}'));}catch(e){}}
   if(pl.classList.contains('loading'))lock(); // shipped already-loading on a fresh load → instant cover
   function done(){setTimeout(clear,Math.max(0,MIN-(Date.now()-start)));}
   if(document.readyState==='complete'){done();}else{window.addEventListener('load',done);}

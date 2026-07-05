@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mapAosEffect, ms, aosAttrs } from '../src/nativize/aos.js';
 import { mergeTree, mergeTrees, renderTree, toRoute, snapButton, expandCarouselDirect, type CapturedNode, type NativizeContext } from '../src/nativize/emit.js';
 import { DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
+import { restoreMustacheEntities } from '../src/dom.js';
 
 const ctx: NativizeContext = {
   palette: { colors: { '11,74,119': 'primary', '57,193,240': 'secondary' }, fonts: DEFAULT_FONT_MAP },
@@ -133,6 +134,19 @@ describe('emit hardening — captured external content is escaped, not injected'
 
   it('an empty origin host does NOT become a catch-all that internalizes external links', () => {
     expect(toRoute('https://google.com/page', [''])).toBe('https://google.com/page');
+  });
+
+  it('neutralizes mustaches in captured text — an imported `{{> partial}}` cannot become a live directive', () => {
+    // A hostile source can put a Handlebars token in VISIBLE page text. Emit must ZWSP-break its braces so
+    // that even after a downstream re-serialize + restoreMustacheEntities (refold/templatize) it stays inert
+    // literal text — never a functional partial include or variable read. Guards against the entity-restore
+    // "un-escaping" an attacker `{{&gt; logo-marquee}}` back into a real directive.
+    const p = node('p', {}, { text: '{{> logo-marquee}} and {{company.secret}}' });
+    const html = renderTree(mergeTrees([p], [p], [p], ctx), ctx).html;
+    const restored = restoreMustacheEntities(html); // the terminal step refold/templatize apply
+    expect(restored).not.toContain('{{> logo-marquee}}'); // not a live partial include
+    expect(restored).not.toContain('{{company.secret}}'); // not a live variable read
+    expect(restored).toContain(String.fromCharCode(0x200b)); // U+200B ZWSP-broken braces, not a live token
   });
 });
 

@@ -9,7 +9,7 @@
 // rendered with that page's data is whitespace-normalized byte-equal to the page's own source rendered
 // standalone (the same per-page render-equivalence used by the re-fold). Anything that wouldn't reproduce
 // is left as an ordinary page.
-import { parse, getBody, serialize, isTag, isText, elements, type AnyNode, type Element } from '../dom.js';
+import { parse, getBody, serialize, serializeTemplate, isTag, isText, elements, type AnyNode, type Element } from '../dom.js';
 import { textContent } from 'domutils';
 import type { RenderProbe } from './refold.js';
 
@@ -152,7 +152,7 @@ export async function extractTemplates(
     if (!tplBody) continue;
     const data: Array<Record<string, unknown>> = members.map(() => ({}));
     if (!bind(tplBody.children, members.map((m) => m.body.children), data, { n: 0 })) continue;
-    const templateSource = serialize(tplBody.children);
+    const templateSource = serializeTemplate(tplBody.children); // terminal template output → keep emitted `{{…}}` tokens intact
 
     // Fold each member's lifted loops into its page.data.
     const built: TemplateMember[] = members.map((m, i) => {

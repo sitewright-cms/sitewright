@@ -18,6 +18,37 @@ export function serialize(nodes: AnyNode | AnyNode[]): string {
   return render(nodes, { encodeEntities: 'utf8' });
 }
 
+// A Handlebars mustache span: `{{ … }}` whose body carries no braces. INVARIANT: every token the
+// nativizer emits is a single, flat mustache whose body contains no literal `{` or `}` — i.e. no
+// `{{{raw}}}` (the template validator bans it) and no `}}` inside a quoted arg (the emitter uses only
+// bare paths + simple string/number args, never a sub-expression like `{{a (b "}}")}}`). Under that
+// invariant `[^{}]*` matches a whole token body; a body that broke it would be split at the first `}}`
+// and only its head decoded — so a future emitter that adds sub-expressions must revisit this.
+const MUSTACHE_SPAN = /\{\{[^{}]*\}\}/g;
+
+/**
+ * Restore the HTML entities that {@link serialize} escapes INSIDE mustache spans. A serialized text node
+ * is HTML — so `>` becomes `&gt;`, `<` becomes `&lt;`, `&` becomes `&amp;` — but an emitted Handlebars
+ * token is TEMPLATE SYNTAX, not text, and must survive re-serialization verbatim. The `>` of a partial
+ * reference (`{{> logo-marquee}}`) is the concrete case: escaped to `{{&gt; logo-marquee}}` it is invalid
+ * Handlebars and fails the whole page build. Decoding is confined to `{{ … }}` spans, so real page text is
+ * untouched; `&amp;` is decoded last so a genuine `&amp;` inside a helper arg round-trips to a single `&`.
+ */
+export function restoreMustacheEntities(html: string): string {
+  return html.replace(MUSTACHE_SPAN, (span) =>
+    span.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'),
+  );
+}
+
+/**
+ * Serialize nodes to a Handlebars TEMPLATE string (a terminal nativizer output): {@link serialize} plus
+ * {@link restoreMustacheEntities}, so emitted `{{…}}` tokens are not corrupted by HTML escaping. Use this
+ * (not `serialize`) for any serialized fragment that is RETURNED as template source rather than re-parsed.
+ */
+export function serializeTemplate(nodes: AnyNode | AnyNode[]): string {
+  return restoreMustacheEntities(serialize(nodes));
+}
+
 // Block-level tags get their own line + indentation in prettySerialize; everything else (inline runs,
 // rawtext) is kept compact so text/inline formatting + whitespace-significant content are preserved.
 const BLOCK_TAGS = new Set([

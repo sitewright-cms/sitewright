@@ -441,6 +441,10 @@ export async function nativizeProject(
       for (const g of groups) {
         tn += 1;
         const tplId = `page-template-${tn}`;
+        // Defence-in-depth: the extract quality-gate already renders (→ validates) each template, but validate
+        // the exact source being persisted so a never-buildable template can NEVER reach the DB (a single bad
+        // page template would 409 the whole publish + blank the preview). Cheap + independent of the probe ctx.
+        validateTemplate(g.templateSource);
         await deps.contentRepo.put(ctx, 'template', tplId, { id: tplId, name: `Page template ${tn}`, source: g.templateSource }, { op: 'put', note: 'nativize-template' });
         const consumed = new Set<string>();
         for (const m of g.members) {

@@ -8,6 +8,7 @@ import { type EmitContext, type StyleMap, emitGroups, mergeGroups } from './tail
 import { mapFaIcon } from './icon-map.js';
 import { colorToken, dim, hexOf, type NativizePalette } from './tokens.js';
 import { aosAttrs, type AosAttrs } from './aos.js';
+import { neutralizeMustaches } from '../dom.js';
 
 /** A node from the multi-viewport DOM walk (structure is shared; the style map `s` is per-viewport). */
 export interface CapturedNode {
@@ -291,7 +292,12 @@ export function toRoute(href: string | undefined, hosts: readonly string[]): str
 // also validateTemplate-checked downstream). Handlebars expressions emit() inserts are added separately,
 // so they pass through intact.
 const escAttr = (v: string): string => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-const escText = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// IMPORTED page text is data, never template syntax — neutralize its `{{`/`}}` (ZWSP) BEFORE HTML-escaping
+// so a literal `{{> partial}}` / `{{helper}}` in the source cannot become a live Handlebars directive after
+// a downstream re-serialize + restoreMustacheEntities. (The nativizer's OWN tokens are emitted separately,
+// not through escText.) Mirrors the ZWSP guard the transformBody/sanitizeForSource import path already applies.
+const escText = (v: string): string =>
+  neutralizeMustaches(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 /** Route an href, then neutralize script-y schemes (javascript:/vbscript:/data:) → '#'. */
 function safeHref(href: string | undefined, hosts: readonly string[]): string {
   const r = toRoute(href, hosts) ?? '';

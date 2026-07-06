@@ -183,10 +183,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     hostableCss = '';
     diagnostics.push({ code: 'css-overflow', message: `imported CSS exceeds ${Math.round(MAX_HOSTABLE_CSS_BYTES / 1024)} KB; omitted` });
   }
-  // In FOUNDATION mode the foreign stylesheet + scripts are discarded (the foundation replaces them with
-  // native chrome + theme), so don't self-host them at all — otherwise the .css/.js files linger in the
-  // media library (File Manager pollution). Non-foundation import behaves exactly as before.
-  const cssUrl = !opts.foundation && hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
+  // Self-host the imported stylesheet even in FOUNDATION mode: the mechanical NATIVIZE reads each page's
+  // computed styles from a headless screenshot, and without the foreign CSS the page renders UNSTYLED — so
+  // every layout that came from the site's own classes (`.d-grid`, `.blue-gradient`) collapses to a plain
+  // block and the nativized result is stacked + colourless. The link goes into `website.head` for the
+  // capture; nativize strips it again at finalize (stripForeignStylesheet), so the PUBLISHED site stays
+  // clean. Foreign SCRIPTS are still discarded (never needed for the capture).
+  const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
   const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
   const pageStyles = opts.foundation || cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
 
@@ -326,9 +329,10 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // goes live. The subsequent nativize keeps published pages published.
   for (const p of routeRes.pages) p.status = (p.data as { swImport?: unknown } | undefined)?.swImport ? 'published' : 'draft';
 
-  // In FOUNDATION mode the foreign stylesheet/scripts are discarded (the foundation extractor replaces
-  // them with native theme + chrome), so don't wire the <link>/<script> into the website slots.
-  let website = buildWebsite(chrome, opts.foundation ? undefined : cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined);
+  // The foreign stylesheet <link> IS wired into website.head even in FOUNDATION mode — the nativize capture
+  // needs it to read real computed styles (see the cssUrl note above); nativize strips it at finalize. Only
+  // foreign SCRIPTS stay discarded in foundation mode (the extractor replaces chrome/theme; JS isn't needed).
+  let website = buildWebsite(chrome, cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined);
   let bundleIdentity = identity;
   let bundlePages = routeRes.pages;
   if (opts.foundation) {

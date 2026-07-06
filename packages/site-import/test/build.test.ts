@@ -242,7 +242,7 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     'h1{font-family:"brandhead",serif}' +
     '</style>';
 
-  it('applies native theme + fonts + data-driven chrome and discards foreign css/js', async () => {
+  it('applies native theme + fonts + data-driven chrome (no hostStylesheet port → no foreign CSS link), discards foreign js', async () => {
     const result = await buildImportBundle(
       site([
         { sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Welcome</h1>', HOME_HEAD + STYLE) },
@@ -262,8 +262,8 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     expect(id.typography?.body).toMatchObject({ source: 'asset' });
     expect(w.mainNav).toContain('{{#each nav.header}}');
     expect(w.criticalCss).toContain('.bp-hero');
-    expect(w.head ?? '').not.toContain('stylesheet');
-    expect(w.scripts ?? '').toBe('');
+    expect(w.head ?? '').not.toContain('stylesheet'); // this mock has no hostStylesheet port, so nothing to link (the R30 test covers the hosted-CSS path)
+    expect(w.scripts ?? '').toBe(''); // foreign JS is still discarded (not needed for the capture)
     const home = bundle.pages.find((p) => p.path === '')!;
     expect(home.nav).toMatchObject({ slots: expect.arrayContaining(['header']), title: 'Home' });
     expect(result.diagnostics.some((d) => d.code === 'foundation-applied')).toBe(true);
@@ -273,7 +273,7 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     for (const p of bundle.pages) expect((p as { rawHtml?: boolean }).rawHtml).toBeUndefined();
   });
 
-  it('does NOT host the foreign stylesheet, scripts, or icon fonts (keeps brand fonts) — R30', async () => {
+  it('HOSTS the foreign stylesheet (for the nativize capture) but not scripts/icon fonts (keeps brand fonts) — R30', async () => {
     const fonts: string[] = [];
     let cssHosted = 0;
     let scriptHosted = 0;
@@ -290,8 +290,8 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1><script>doThing()</script>', HOME_HEAD + STYLE_FA) }]),
       { media, foundation: true },
     );
-    expect(cssHosted).toBe(0); // foreign stylesheet not hosted
-    expect(scriptHosted).toBe(0); // foreign scripts not hosted
+    expect(cssHosted).toBe(1); // foreign stylesheet IS hosted now — the nativize capture reads real computed styles from it
+    expect(scriptHosted).toBe(0); // foreign scripts still not hosted (not needed for the capture)
     expect(fonts).toEqual(expect.arrayContaining(['brandhead', 'brandbody'])); // brand fonts kept
     expect(fonts).not.toContain('FontAwesome'); // icon font skipped
   });

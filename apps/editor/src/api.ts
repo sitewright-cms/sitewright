@@ -724,6 +724,10 @@ export const api = {
     request<void>('DELETE', `/projects/${projectId}/members/${encodeURIComponent(userId)}`),
   createProject: (name: string, slug: string) =>
     request<{ project: Project }>('POST', '/projects', { name, slug }),
+  /** Rename a project's display NAME and/or its SLUG (owner-only). A slug change rewrites media refs + moves
+   *  media on the server; the callers refresh the project list afterwards (the id is unchanged). */
+  updateProject: (id: string, patch: { name?: string; slug?: string }) =>
+    request<{ project: Project }>('PATCH', `/projects/${id}`, patch),
   /** SOFT-delete (recoverable): hides the project everywhere; an admin can restore or permanently reap it. */
   deleteProject: (id: string) => request<void>('DELETE', `/projects/${id}`),
   /** Admin: every soft-deleted project (for the "deleted projects" management surface). */

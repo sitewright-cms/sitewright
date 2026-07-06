@@ -22,6 +22,7 @@ import { NewProjectModal } from './views/NewProjectModal';
 import { ImportWebsiteModal } from './views/ImportWebsiteModal';
 import { ImportProjectModal } from './views/ImportProjectModal';
 import { DuplicateProjectModal } from './views/DuplicateProjectModal';
+import { ProjectSettingsModal } from './views/ProjectSettingsModal';
 import { AcceptInvite } from './views/AcceptInvite';
 import { LivePreview } from './views/LivePreview';
 import { SitePreview } from './views/SitePreview';
@@ -115,6 +116,7 @@ function MainApp({
   const [importFor, setImportFor] = useState<Project | null>(null);
   // The project the Duplicate modal targets, if open.
   const [duplicateFor, setDuplicateFor] = useState<Project | null>(null);
+  const [settingsFor, setSettingsFor] = useState<Project | null>(null);
   // Bumped after an import so an already-open project re-mounts and refetches its new content.
   const [projectNonce, setProjectNonce] = useState(0);
   // The Publish & Deploy Options modal (header overflow); `publishRefresh` bumps PublishBar so its
@@ -336,6 +338,7 @@ function MainApp({
           onExportProject={inProject ? () => downloadProjectExport(inProject.id) : undefined}
           onDuplicateProject={inProject && canCreateProjects ? () => setDuplicateFor(inProject) : undefined}
           onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
+          onProjectSettings={inProject && !isClient ? () => setSettingsFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
@@ -438,6 +441,19 @@ function MainApp({
             void refresh();
             setProjects((prev) => (prev.some((p) => p.id === copy.id) ? prev : [...prev, copy]));
             openProject(copy);
+          }}
+        />
+      )}
+      {settingsFor && (
+        <ProjectSettingsModal
+          project={settingsFor}
+          existingSlugs={new Set(projects.filter((p) => p.id !== settingsFor.id).map((p) => p.slug))}
+          onClose={() => setSettingsFor(null)}
+          onSaved={(updated) => {
+            setSettingsFor(null);
+            setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+            openProject(updated); // id unchanged; refresh the header name/slug + reselect
+            void refresh();
           }}
         />
       )}

@@ -736,14 +736,18 @@ const AcceptInviteBody = z.object({
   token: z.string().min(1).max(200),
 });
 
-const CreateProjectBody = z.object({
-  name: z.string().min(1).max(200),
-  slug: z
-    .string()
-    .max(64)
-    // eslint-disable-next-line security/detect-unsafe-regex -- linear (hyphen separator), length-capped by .max()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase alphanumeric with hyphens'),
-});
+const ProjectSlug = z
+  .string()
+  .max(64)
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear (hyphen separator), length-capped by .max()
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase alphanumeric with hyphens');
+const CreateProjectBody = z.object({ name: z.string().min(1).max(200), slug: ProjectSlug });
+// Rename a project: name and/or slug; at least one must be present.
+const UpdateProjectBody = z
+  .object({ name: z.string().min(1).max(200).optional(), slug: ProjectSlug.optional() })
+  .refine((b) => b.name !== undefined || b.slug !== undefined, 'nothing to update');
+// Content kinds whose serialized value can embed a `/media/<slug>/…` reference (credentials/folders can't).
+const MEDIA_REF_KINDS = ['settings', 'page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'media', 'form'] as const;
 
 const CreateApiKeyBody = z.object({
   name: z.string().min(1).max(120),
@@ -2153,6 +2157,65 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.code(204).send();
     },
   );
+
+  // Rename a project's display NAME and/or its SLUG (owner-only). A slug change is a heavier operation:
+  // media URLs embed the slug (`/media/<slug>/…`) in content AND on disk. We COPY the media to the new slug
+  // dir FIRST (non-destructive — the old dir stays intact), then rewrite every content ref old→new, then
+  // flip the project row, then remove the old dir. Copy-first is what keeps it recoverable: because the new
+  // dir exists BEFORE any content points at it, no single-step failure ever 404s a media URL. A mid-flight
+  // failure can leave a transient inconsistency (some refs rewritten / the row lagging the content), but both
+  // dirs resolve so nothing breaks, and a retry heals it (already-rewritten items skip the `includes(from)`
+  // guard). It is NOT a fully atomic operation — the row flip can still race a concurrent rename to the same
+  // slug (that loser's rename() throws ConflictError; the copy/rewrite it did are orphaned + retryable).
+  app.patch<{ Params: { id: string } }>('/projects/:id', { config: rl(20) }, async (req, reply) => {
+    if (req.params.id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
+    const userId = await requireUserId(req);
+    const role = await resolveProjectRole(db, userId, req.params.id);
+    if (role !== 'owner') throw new ForbiddenError('insufficient role to rename this project');
+    const body = UpdateProjectBody.parse(req.body);
+    const project = await projects.get(req.params.id);
+    if (project.deletedAt) throw new NotFoundError('project not found');
+    const ctx = { userId, projectId: project.id, role, actor: 'user' as const };
+    const slugChanged = body.slug !== undefined && body.slug !== project.slug;
+    if (slugChanged && body.slug) {
+      // Pre-check the slug is free BEFORE touching media, so a collision fails cleanly (rename() re-checks
+      // authoritatively). A soft-deleted project still holds its slug until reaped — name that case so the
+      // owner has a path to resolution, matching projects.rename()'s message.
+      const existing = await projects.getBySlug(body.slug).catch(() => null);
+      if (existing) {
+        throw new ConflictError(
+          existing.deletedAt
+            ? 'a deleted project is holding this slug — restore or permanently remove it first'
+            : 'a project with this slug already exists',
+        );
+      }
+      await mediaStorage?.copyProjectMedia(project.slug, body.slug);
+      const from = `/media/${project.slug}/`, to = `/media/${body.slug}/`;
+      for (const kind of MEDIA_REF_KINDS) {
+        for (const item of await contentRepo.list(ctx, kind)) {
+          const s = JSON.stringify(item);
+          if (!s.includes(from)) continue;
+          const rewritten = JSON.parse(s.split(from).join(to)) as { id: string };
+          await contentRepo.put(ctx, kind, rewritten.id, rewritten, { op: 'put', note: 'project slug rename' });
+        }
+      }
+    }
+    // Flip the row (atomic slug claim — rename() re-checks the collision) BEFORE the identity-name sync, so a
+    // colliding rename fails without leaving the on-site company name changed but the project row unchanged.
+    const updated = await projects.rename(project.id, { name: body.name, slug: body.slug });
+    // Keep the on-site company name (identity.name) in sync with the display name.
+    if (body.name && body.name !== project.name) {
+      const settings = (await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as { identity?: Record<string, unknown> } | null;
+      if (settings) await contentRepo.put(ctx, 'settings', 'settings', { ...settings, identity: { ...(settings.identity ?? {}), name: body.name } }, { op: 'put', note: 'project rename' });
+    }
+    if (slugChanged) {
+      await mediaStorage?.removeProject(project.slug).catch((err: unknown) => app.log.warn({ err, project: project.id }, 'old media dir cleanup after slug rename failed (orphaned, harmless)'));
+      // The published site / preview build are keyed by slug — drop the stale build so the new slug rebuilds.
+      previewBuiltVersion.delete(project.id);
+      previewBuilds.delete(project.id);
+    }
+    return reply.send({ project: updated });
+  });
 
   /**
    * REAP a (soft-deleted) project: permanently delete its rows, then its on-disk artifacts, then any

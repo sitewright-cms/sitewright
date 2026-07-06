@@ -277,6 +277,10 @@ const MAX_EVENT_SUBSCRIBERS_PER_PROJECT = 20;
 const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
+// A content write can carry a full settings object: 5 chrome slots at SLOT_MAX (256 KiB each, e.g. a
+// nativized site-wide `bottom` of deduped modals) + head/criticalCss + JSON envelope ~= 1.7 MiB, above
+// Fastify's 1 MiB default. 4 MiB gives headroom so a nativized settings save doesn't 413 in the editor/MCP.
+const CONTENT_BODY_LIMIT = 4 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
@@ -2220,7 +2224,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.put<{ Params: ContentParams }>(
     '/projects/:projectId/content/:kind/:entityId',
-    { config: rl(60) },
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);
@@ -2271,7 +2275,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.put<{ Params: { kind: string; entityId: string } }>(
     '/admin/global/:kind/:entityId',
-    { config: rl(60) },
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rl(60) },
     async (req, reply) => {
       const userId = await requireInstanceAdmin(req);
       validateSourceOnSave(req.params.kind, req.body); // global snippets/templates: same save-time gate

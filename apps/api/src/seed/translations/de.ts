@@ -200,6 +200,10 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
       svg_intro:
         'Animiere die einzelnen Teile eines Inline-SVG. Füge einem Pfad, einer Gruppe oder Form ein data-sw-svg-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Hereinscrollen zeichnet, enthüllt, bewegt oder morpht — die Zeitsteuerung teilt sich dieselben Dauer-/Verzögerungs-/Easing-Attribute wie Eingangsanimationen, und jede Form bleibt ohne JavaScript vollständig sichtbar. Scroll nach unten.',
+      logos_t: 'Zusammengesetzte Markenzeichen',
+      logos_d:
+        'Kombiniere mehrere Effekte in einem SVG und steuere sie von der Wurzel aus: ein Strich-Zeichnen, eine gestaffelte Enthüllung und ein Feder-Pop setzen ein Logo auf einer gemeinsamen Zeitleiste zusammen (data-sw-delay). Die gesamte Marke läuft dann per Timer in einer Schleife (data-sw-svg-loop), spielt beim erneuten Hereinscrollen erneut ab (data-sw-svg-replay) und beim Klick (data-sw-svg-click) — alle Auslöser auf einmal.',
+      logos_hint: 'Klicke auf ein Zeichen, um es erneut abzuspielen — jedes läuft außerdem in einer Schleife und startet beim Hereinscrollen neu.',
       draw_t: 'Zeichnen',
       draw_d:
         'data-sw-svg="draw" animiert den Strich-Offset eines Pfads, sodass sich die Linie selbst zeichnet. Füge data-sw-svg-fill="true" hinzu, um die Füllung einzublenden, sobald der Strich fertig ist — ideal für Line-Art-Logos und Icons.',

@@ -198,6 +198,10 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
       svg_intro:
         'Anima las partes individuales de un SVG en línea. Pon un atributo data-sw-svg en un trazado, grupo o forma y la plataforma incluye un runtime diminuto que lo dibuja, revela, mueve o transforma al entrar en pantalla — el tiempo comparte los mismos atributos de duración/retardo/easing que las animaciones de entrada, y cada forma permanece totalmente visible sin JavaScript. Desplázate hacia abajo.',
+      logos_t: 'Marcas compuestas',
+      logos_d:
+        'Combina varios efectos en un SVG y contrólalos desde la raíz: un trazo que se dibuja, una revelación escalonada y un rebote elástico ensamblan un logotipo en una línea de tiempo compartida (data-sw-delay). Toda la marca se repite luego con un temporizador (data-sw-svg-loop), se reproduce al volver a entrar en vista (data-sw-svg-replay) y al hacer clic (data-sw-svg-click) — todos los disparadores a la vez.',
+      logos_hint: 'Haz clic en cualquier marca para reproducirla de nuevo — cada una también se repite en bucle y se reinicia al desplazarte.',
       draw_t: 'Dibujar',
       draw_d:
         'data-sw-svg="draw" anima el desfase del trazo de un trazado para que la línea se dibuje sola. Añade data-sw-svg-fill="true" para fundir el relleno una vez que termina el trazo — perfecto para logotipos e iconos de línea.',

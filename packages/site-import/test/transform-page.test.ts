@@ -231,4 +231,51 @@ describe('transformBody', () => {
     expect(source).toContain('real page');
     expect(diagnostics.some((d) => d.code === 'preloader-removed')).toBe(true);
   });
+
+  it('strips a foreign off-canvas mobile-nav drawer from the body (platform provides a responsive nav)', () => {
+    const { source, diagnostics } = run(
+      '<div id="mobile-nav" class="off-canvas fixed w-0 no-overflow"><a class="close-btn"></a>' +
+        '<ul class="navlist"><li><a href="/">Home</a></li><li><a href="/services">Services</a></li></ul></div>' +
+        '<section><h1>Real content</h1></section>',
+    );
+    expect(source).not.toContain('mobile-nav');
+    expect(source).not.toContain('navlist');
+    expect(source).toContain('Real content'); // page body preserved
+    expect(diagnostics.some((d) => d.code === 'mobile-nav-removed')).toBe(true);
+  });
+
+  it('strips Materialize sidenav / mmenu drawers too', () => {
+    expect(run('<ul class="sidenav" id="mobile-demo"><li><a href="/a">A</a></li><li><a href="/b">B</a></li></ul><p>body</p>').source).not.toContain('sidenav');
+    expect(run('<nav class="mmenu"><ul><li><a href="/a">A</a></li><li><a href="/b">B</a></li></ul></nav><p>body</p>').source).not.toMatch(/mmenu|<ul>/);
+  });
+
+  it('does NOT strip an off-canvas panel that holds real content (a cart/search panel is not a nav)', () => {
+    // Same "off-canvas mobile" idiom, but a heading + form ⇒ a content panel, not a duplicate nav.
+    const { source, diagnostics } = run(
+      '<div class="offcanvas mobile-menu"><h2>Your Cart</h2><form action="/checkout"><input name="qty"></form><a href="/cart">View</a><a href="/pay">Pay</a></div><p>body</p>',
+    );
+    expect(source).toContain('Your Cart'); // content preserved
+    expect(diagnostics.some((d) => d.code === 'mobile-nav-removed')).toBe(false);
+  });
+
+  it('does NOT strip a mobile-nav-named element that carries no navigation (guard against false positives)', () => {
+    // Matches the id idiom but has <2 links ⇒ not a real drawer; left untouched.
+    const { source } = run('<div id="mobile-nav-toggle"><span>Menu</span></div><p>body</p>');
+    expect(source).toContain('mobile-nav-toggle');
+  });
+
+  it('covers the drawer token variants (push/slide/hamburger/off-canvas-nav)', () => {
+    for (const cls of ['push-menu', 'slide-menu', 'hamburger-menu', 'off-canvas-nav', 'menu-drawer']) {
+      const { source } = run(`<div class="${cls}"><a href="/a">A</a><a href="/b">B</a></div><p>body</p>`);
+      expect(source, cls).not.toContain(cls);
+      expect(source, cls).toContain('body');
+    }
+  });
+
+  it('removes an ancestor wrapper the stripped drawer leaves empty (no stray empty band)', () => {
+    const { source } = run('<div class="nav-overlay-wrapper"><ul class="mobile-nav"><li><a href="/a">A</a></li><li><a href="/b">B</a></li></ul></div><section><p>real</p></section>');
+    expect(source).not.toContain('mobile-nav');
+    expect(source).not.toContain('nav-overlay-wrapper'); // empty wrapper cleaned up too
+    expect(source).toContain('real');
+  });
 });

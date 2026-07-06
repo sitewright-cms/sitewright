@@ -1,15 +1,17 @@
+import { SLOT_MAX } from '@sitewright/schema';
 import type { ImportLimits } from './types.js';
 
 /**
- * Engine defaults. The page-source / slot / CSS caps mirror the schema's own bounds
- * (`PageSchema.source` 256 KiB, `WebsiteSettings` slots 20 KB, `criticalCss` 10 KB) so the
- * engine trims BEFORE the schema would reject. Page/image counts are conservative ceilings.
+ * Engine defaults. The page-source / slot caps track the schema's own bounds (`PageSchema.source` 256 KiB,
+ * `WebsiteSettings` slots = SLOT_MAX) so the engine drops a fragment BEFORE the schema would reject it — a
+ * hoisted header/footer at the slot cap must NOT be silently dropped for being over an out-of-date local
+ * limit. Page/image counts are conservative ceilings.
  */
 export const DEFAULT_LIMITS: ImportLimits = {
   maxPages: 200,
   maxSourceBytes: 256 * 1024,
   maxImages: 500,
-  maxSlotBytes: 20_000,
+  maxSlotBytes: SLOT_MAX,
 };
 
 /** Merge caller overrides over the defaults (undefined fields fall back to the default). */

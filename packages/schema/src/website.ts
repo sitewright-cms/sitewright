@@ -5,13 +5,15 @@ import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
 // HTML head/footer blocks in practice.
-const CSS_MAX = 10_000;
-const HTML_MAX = 20_000;
+const CSS_MAX = 32_000;
+const HTML_MAX = 64_000;
 // Chrome SLOTS (mainNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
 // they hold a full shared header/footer — and a mechanically NATIVIZED chrome (ported from an imported
-// site) is verbose (responsive variants + per-element utilities), so 20k is too tight for a real footer.
-// Exported so the nativizer can gate what it writes into a slot on the same cap the schema enforces.
-export const SLOT_MAX = 64_000;
+// site) is verbose (responsive variants + per-element utilities). A real footer already strained 20k; a
+// nativized site-wide `bottom` also holds every DEDUPED global modal (multi-step forms etc.), which blows
+// past 64k — so the slot cap now tracks the page/template SOURCE cap (256 KB). Exported so the nativizer
+// gates what it writes into a slot on the same cap the schema enforces.
+export const SLOT_MAX = 256 * 1024;
 
 // --- website.data: an editable, free-form JSON object the author manages in the CMS (a graphical
 // tree editor), exposed in templates as {{ website.data.* }} and {{#each website.data.x}}. It is the

@@ -131,11 +131,12 @@ describe('nativizeProject', () => {
 
   it('skips the global-modal hoist when the deduped modals would overflow the bottom slot cap (kept per-page)', async () => {
     // A modal (isModal + id) whose nativized HTML exceeds SLOT_MAX, present on BOTH pages → hoistGlobalModals
-    // would dedupe it into website.bottom and overflow the 64k slot cap. The nativize must NOT throw on the
+    // would dedupe it into website.bottom and overflow the slot cap. The nativize must NOT throw on the
     // settings write — it skips the hoist (each page keeps its own modal) and still completes. Footer capture
-    // stays small (differentiated by doc content) so only the PAGE bottom would overflow.
+    // stays small (differentiated by doc content) so only the PAGE bottom would overflow. Sized off SLOT_MAX
+    // so it stays over-cap regardless of the exact cap value.
     const bigModal = (): CapturedNode[] => [
-      { tag: 'div', s: {}, isModal: true, id: 'huge-modal', children: [{ tag: 'p', s: {}, text: 'x'.repeat(70_000), children: [] }] },
+      { tag: 'div', s: {}, isModal: true, id: 'huge-modal', children: [{ tag: 'p', s: {}, text: 'x'.repeat(SLOT_MAX + 10_000), children: [] }] },
     ];
     const capture: CaptureFn = async (doc, opts) => (doc.includes('Foreign footer')
       ? okCapture(doc, opts) // the footer fragment stays small

@@ -131,10 +131,11 @@ describe('SVG animation global (whole-SVG) settings', () => {
     expect(SVG_ANIM_JS).toContain('if(!document.contains(u.root)){u.timer=null;return;}');
   });
 
-  it('click-to-replay resets the loop countdown + adds a pointer ripple (no timer conflict)', () => {
+  it('click-to-replay resets the loop countdown + ripple, without breaking the IO first-entry guard', () => {
     expect(SVG_ANIM_JS).toContain('function swRipple(');
-    // click goes through triggerUnit (which re-arms the loop) so a click never fights a fixed schedule.
-    expect(SVG_ANIM_JS).toContain("if(u.click)u.root.addEventListener('click',function(e){triggerUnit(u,false);swRipple(e,u.root);})");
+    // shown → triggerUnit (re-arms the loop); pre-view click → replayUnit only (must NOT set u.shown, else
+    // the IntersectionObserver's `if(!u.shown)` first-entry branch would be skipped for view-trigger units).
+    expect(SVG_ANIM_JS).toContain("if(u.shown){triggerUnit(u,false);}else{replayUnit(u);}swRipple(e,u.root);");
   });
 
   it('auto-repeat loop is a self-rescheduling timeout re-armed by EVERY trigger (not a fixed interval)', () => {

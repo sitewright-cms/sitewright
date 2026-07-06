@@ -350,8 +350,10 @@ export const SVG_ANIM_JS = `(function(){
     // REVEAL/triggering waits until the page is READY (preloader cleared / page load) — so nothing fires
     // behind a still-visible preloader overlay. Click/loop wiring lives here too (post-ready is correct).
     swWhenReady(function(){
-      // click-to-replay + ripple (global roots only) — also RESETS the loop countdown (no timer conflict).
-      units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){triggerUnit(u,false);swRipple(e,u.root);});});
+      // click-to-replay + ripple (global roots only). When the unit is already shown, re-sync the loop
+      // (triggerUnit); when clicked BEFORE its first view-in (an opacity:0 element still gets clicks), just
+      // replay WITHOUT setting u.shown — else the IntersectionObserver's first-entry guard would be skipped.
+      units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){if(u.shown){triggerUnit(u,false);}else{replayUnit(u);}swRipple(e,u.root);});});
       // load-trigger: play immediately (+ arm the auto-repeat loop).
       units.forEach(function(u){if(u.trigger==='load')triggerUnit(u,true);});
       var viewUnits=units.filter(function(u){return u.trigger==='view';});

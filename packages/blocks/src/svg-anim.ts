@@ -306,7 +306,8 @@ export const SVG_ANIM_JS = `(function(){
       var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
       var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
       var members=[];Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
-      if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s)});
+      // A scene also honours the whole-SVG loop + click-to-replay directives (like a global <svg> root).
+      if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s),click:boolAttr(s,'data-sw-svg-click'),loopMs:loopMsOf(s)});
     });
     // 2) global <svg> roots — the whole SVG animates as ONE coordinated unit driven by its root settings.
     Array.prototype.forEach.call(svgRoots(root),function(svg){

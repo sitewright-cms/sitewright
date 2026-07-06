@@ -34,15 +34,30 @@ describe('SVG morph runtime', () => {
   it('is view/load triggered via IntersectionObserver + the shared timing helper', () => {
     expect(SVG_ANIM_MORPH_JS).toContain('IntersectionObserver');
     expect(SVG_ANIM_MORPH_JS).toContain('function swMs(');
-    expect(SVG_ANIM_MORPH_JS).toContain("getAttribute('data-sw-once')!=='false'");
+    expect(SVG_ANIM_MORPH_JS).toContain("dv(el,'data-sw-once')!=='false'"); // once read via dv (element-or-svg)
+    expect(SVG_ANIM_MORPH_JS).toContain("dv(el,'data-sw-svg-trigger')==='load'");
   });
 
   it('replays correctly (data-sw-once="false"): caches the ORIGINAL start d + restores it on viewport-leave', () => {
     // After a morph completes d IS the target; without caching, replay would sample target→target (no-op).
     expect(SVG_ANIM_MORPH_JS).toContain('__swMorphFrom');
     expect(SVG_ANIM_MORPH_JS).toContain('sample(el.__swMorphFrom)');
-    // On viewport-leave (only when once="false" and not mid-morph) the start shape is restored.
-    expect(SVG_ANIM_MORPH_JS).toMatch(/else if\(!once\(el\)&&!el\.__swMorphing&&el\.__swMorphFrom!=null\)el\.setAttribute\('d',el\.__swMorphFrom\)/);
+    // On viewport-leave (once="false") the loop is stopped, the morph superseded (gen++), and start restored.
+    expect(SVG_ANIM_MORPH_JS).toContain("else if(!once(el)&&el.__swMorphFrom!=null){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}");
+  });
+
+  it('honours the whole-SVG loop + click directives (read from the element OR its owner <svg>)', () => {
+    // dv() reads a directive from the morph element, else its owner svg — so loop/click/trigger/once can be
+    // authored on the root <svg> like the core engine's whole-SVG settings.
+    expect(SVG_ANIM_MORPH_JS).toContain('function dv(el,name)');
+    expect(SVG_ANIM_MORPH_JS).toContain('el.ownerSVGElement');
+    // auto-repeat: snap to start + re-morph after the loop period (self-clearing, generation-guarded).
+    expect(SVG_ANIM_MORPH_JS).toContain('function scheduleLoop(el,gen,total)');
+    expect(SVG_ANIM_MORPH_JS).toContain('scheduleLoop(el,gen,dur+delay)');
+    expect(SVG_ANIM_MORPH_JS).toContain('var LOOP_MIN=500,LOOP_MAX=600000');
+    // click-to-replay on the owner svg (one listener per svg).
+    expect(SVG_ANIM_MORPH_JS).toContain("dv(el,'data-sw-svg-click')!=='true'");
+    expect(SVG_ANIM_MORPH_JS).toContain('s.__swMorphClick');
   });
 
   it('cannot break out of a <script> block', () => {

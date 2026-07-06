@@ -82,6 +82,10 @@ describe('SVG animation runtime', () => {
     expect(SVG_ANIM_JS).toContain('resetUnit'); // replay path re-hides members
   });
 
+  it('a scene also honours the whole-SVG click + loop directives (like a global root)', () => {
+    expect(SVG_ANIM_JS).toContain("replay:!once(s),click:boolAttr(s,'data-sw-svg-click'),loopMs:loopMsOf(s)");
+  });
+
   it('a standalone (non-scene) element uses its OWN data-sw-svg-trigger (no dead scene-attr check)', () => {
     expect(SVG_ANIM_JS).toContain('trigger:trig,members:[member(el,0)]');
     expect(SVG_ANIM_JS).not.toContain("root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')");

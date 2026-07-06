@@ -192,7 +192,7 @@ const SVG_ANIM_CORE = `
     if(SVG_SCALE[m.effect]!==undefined){m.el.style.transformOrigin=SVG_SCALE[m.effect];return [{opacity:0,transform:'scale(0.6)'},{opacity:1,transform:'none'}];}
     if(SVG_EXPAND[m.effect]!==undefined){var ex=SVG_EXPAND[m.effect];m.el.style.transformOrigin=ex[1];return [{opacity:0,transform:ex[0]},{opacity:1,transform:'none'}];}
     var f={opacity:0},t={opacity:1};
-    if(m.effect==='blur'){f.filter='blur(6px)';t.filter='blur(0px)';}
+    if(m.effect==='blur'){f.filter='blur(40px)';t.filter='blur(0px)';} // a strong, clearly-visible defocus (was a too-subtle 6px)
     var tf=SVG_TF[m.effect];
     if(tf){f.transform=tf;
       // Flips interpolate to their OWN identity (perspective + rotate 0); translate/scale tween to 'none'.

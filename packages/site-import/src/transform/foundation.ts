@@ -512,6 +512,6 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';
   const colorNote = Object.keys(extractedColors).join('/') || 'defaults';
   const bgNote = bodyImage ? 'real-texture' : 'noise-texture';
-  diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, ${bgNote}, data-driven nav + footer, foreign css/js discarded` });
+  diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, ${bgNote}, data-driven nav + footer, foreign js discarded; foreign css kept for the nativize capture (stripped at finalize — publish/author it away if you skip nativize)` });
   return { identity, website, pages: input.pages, diagnostics };
 }

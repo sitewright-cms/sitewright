@@ -82,4 +82,20 @@ export default tseslint.config(
       'security/detect-object-injection': 'off',
     },
   },
+  {
+    // The clone-fidelity gate CLI tools are Node ESM scripts that ALSO embed browser-context functions
+    // serialized into Playwright's page.evaluate (document/window/getComputedStyle/scroll*/timers) — so
+    // they need BOTH global sets. They do trusted, operator-controlled file I/O (glob the .pnpm store,
+    // write reports) and index runtime-built arrays, same allowance as the build scripts + browser runtimes.
+    files: ['packages/site-import/tools/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'security/detect-non-literal-fs-filename': 'off',
+      'security/detect-object-injection': 'off',
+      // Best-effort capture steps (font-ready waits, optional scrolls) intentionally swallow errors.
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
 );

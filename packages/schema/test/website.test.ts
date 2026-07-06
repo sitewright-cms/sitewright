@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WebsiteSettingsSchema,
+  SLOT_MAX,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
@@ -123,18 +124,18 @@ describe('WebsiteSettingsSchema', () => {
     expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
   });
 
-  it('caps each chrome slot at SLOT_MAX (64k — room for nativized chrome), rejects beyond it', () => {
-    // A real/nativized footer can be ~40k; 30k is accepted, 64k+1 is rejected.
+  it('caps each chrome slot at SLOT_MAX (256k — room for nativized chrome + deduped modals), rejects beyond it', () => {
+    // A nativized site-wide `bottom` holds every deduped global modal; 100k is accepted, SLOT_MAX+1 rejected.
     for (const slot of ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom']) {
-      expect(WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(30_000) })[slot as 'footer']).toHaveLength(30_000);
-      expect(() => WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(64_001) })).toThrow();
+      expect(WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(100_000) })[slot as 'footer']).toHaveLength(100_000);
+      expect(() => WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(SLOT_MAX + 1) })).toThrow();
     }
   });
 
   it('rejects fields beyond the size caps', () => {
-    expect(() => WebsiteSettingsSchema.parse({ criticalCss: 'a'.repeat(10_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ head: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ scripts: 'a'.repeat(20_001) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ criticalCss: 'a'.repeat(32_001) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ head: 'a'.repeat(64_001) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ scripts: 'a'.repeat(64_001) })).toThrow();
   });
 
   it('rejects a </style> breakout in criticalCss (it is inlined inside <style>)', () => {

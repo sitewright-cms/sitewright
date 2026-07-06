@@ -191,6 +191,13 @@ describe('SVG animation detection + surface', () => {
     expect(SVG_ANIM_JS).toContain('data-sw-svg-draw-width');
   });
 
+  it('the temp-stroke fade-out is stored + cancelled so a LOOP/replay draw stroke is not held invisible', () => {
+    // A fire-and-forget fill:'both' stroke-opacity fade would linger holding stroke-opacity:0 → the next
+    // loop/click/scroll draw runs but the LINE is invisible. It must be stored (m.strokeAnim) + cancelled.
+    expect(SVG_ANIM_JS).toContain('m.strokeAnim=m.el.animate([{strokeOpacity:1},{strokeOpacity:0}]');
+    expect(SVG_ANIM_JS).toContain('if(m.strokeAnim){try{m.strokeAnim.cancel();}catch(e){}m.strokeAnim=null;}'); // cleared on finish + on replay
+  });
+
   it('supports an OUT (exit) direction: starts visible (excluded from the hide), plays natural→hidden', () => {
     expect(SVG_ANIM_JS).toContain("data-sw-svg-dir')==='out'");
     expect(SVG_ANIM_JS).toContain('if(m.io===');

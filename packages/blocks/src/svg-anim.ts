@@ -205,9 +205,12 @@ const SVG_ANIM_CORE = `
   function svgFillReveal(m){
     m.el.style.fillOpacity='0';var dur2=Math.max(140,m.dur*0.28); // snappier fill-in after the outline draws
     try{var fa=m.el.animate([{fillOpacity:0},{fillOpacity:1}],{duration:dur2,fill:'both'});m.fillAnim=fa;
-      fa.onfinish=function(){try{fa.cancel();}catch(e){}m.el.style.fillOpacity='';m.el.style.strokeDasharray='';m.el.style.strokeDashoffset='';if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}};}
-    catch(e){m.el.style.fillOpacity='';}
-    if(m.tempStroke){try{m.el.animate([{strokeOpacity:1},{strokeOpacity:0}],{duration:dur2,fill:'both'});}catch(e){}}
+      fa.onfinish=function(){try{fa.cancel();}catch(e){}if(m.strokeAnim){try{m.strokeAnim.cancel();}catch(e){}m.strokeAnim=null;}m.el.style.fillOpacity='';m.el.style.strokeDasharray='';m.el.style.strokeDashoffset='';if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}};}
+    catch(e){m.el.style.fillOpacity='';m.el.style.strokeDasharray='';m.el.style.strokeDashoffset='';}
+    // Fade the TEMP outline out as the fill comes in — STORE it (m.strokeAnim) so it's cancelled on finish
+    // AND on replay. A fire-and-forget fill:'both' animation would LINGER holding stroke-opacity:0, making
+    // the NEXT loop/replay cycle's draw stroke invisible (the line draws but you can't see it).
+    if(m.tempStroke){try{m.strokeAnim=m.el.animate([{strokeOpacity:1},{strokeOpacity:0}],{duration:dur2,fill:'both'});}catch(e){}}
   }
   function svgPlay(m){
     if(m.playing)return;m.playing=true;
@@ -231,7 +234,7 @@ const SVG_ANIM_CORE = `
   }
   // Re-hide a member for replay: cancel, reset, drop the sw-svg-shown class so the CSS re-hides it (IN only
   // — an OUT element starts visible and is excluded from the hide rule).
-  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}}svgClear(m.el);
+  function svgReset(m){if(!m.playing)return;m.playing=false;if(m.anim){try{m.anim.cancel();}catch(e){}m.anim=null;}if(m.fillAnim){try{m.fillAnim.cancel();}catch(e){}m.fillAnim=null;}if(m.strokeAnim){try{m.strokeAnim.cancel();}catch(e){}m.strokeAnim=null;}svgClear(m.el);
     // Cancelling a fill-reveal mid-flight never fires its onfinish, so clear the TEMP outline stroke here
     // (else a filled draw+once=false shape keeps an outline it never had). Never clears an authored stroke.
     if(m.tempStroke){m.el.style.stroke='';m.el.style.strokeWidth='';m.el.style.strokeOpacity='';}

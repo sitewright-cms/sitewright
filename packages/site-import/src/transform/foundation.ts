@@ -10,7 +10,7 @@
 //   • CHROME  — replace the foreign nav with a data-driven {{#each nav.header}} navbar + a native footer;
 //               configure page nav (slots/order/dropdown) so nav.header is correct.
 //   • CSS     — emit reusable site CSS (body background + .bp-hero band texture + .bp-card elevation)
-//               into criticalCss; DISCARD the foreign stylesheet link + scripts (head/scripts cleared).
+//               into criticalCss; KEEP the foreign stylesheet link in head (the nativize capture needs it; stripped at finalize); DISCARD scripts.
 import type { CorporateIdentity, FontSlot, Page, WebsiteSettings } from '@sitewright/schema';
 import { CorporateIdentitySchema, WebsiteSettingsSchema } from '@sitewright/schema';
 import type { ImportDiagnostic } from '../types.js';
@@ -478,8 +478,11 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const identity = CorporateIdentitySchema.parse({ ...input.identity, colors, typography });
 
   const websiteIn: Record<string, unknown> = { ...(input.website ?? {}) };
-  delete websiteIn.head; // drop the foreign stylesheet <link>
-  delete websiteIn.scripts; // drop the foreign scripts
+  // KEEP the foreign stylesheet <link> in head: the mechanical nativize reads real computed styles from a
+  // headless screenshot, and without the CSS the page renders unstyled (every custom-class layout collapses
+  // to a plain block). Nativize strips this link again at finalize, so the PUBLISHED site stays clean; a
+  // foundation scaffold used WITHOUT nativize simply renders styled by its own sheet until authored.
+  delete websiteIn.scripts; // drop the foreign scripts (never needed for the capture)
   // The foreign sidebar is removed (its markup uses foreign classes the discarded CSS styled) — but say
   // so loudly so the author rebuilds it natively if the design needs it (R28), rather than losing it silently.
   const hadSidebar = !!((websiteIn.sidebarLeft as string)?.trim?.() || (websiteIn.sidebarRight as string)?.trim?.());

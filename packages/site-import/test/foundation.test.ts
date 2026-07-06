@@ -386,8 +386,8 @@ describe('applyFoundation', () => {
     // fonts (native typography path)
     expect(r.identity.typography?.heading?.assetId).toBe('aaa');
     expect(r.identity.typography?.body?.assetId).toBe('bbb');
-    // foreign css/js discarded; native chrome + criticalCss in
-    expect(r.website.head ?? '').toBe('');
+    // foreign CSS link KEPT (nativize reads real styles from it, then strips it); foreign JS discarded
+    expect(r.website.head ?? '').toContain('stylesheet');
     expect(r.website.scripts ?? '').toBe('');
     expect(r.website.mainNav).toContain('{{#each nav.header}}');
     expect(r.website.criticalCss).toContain('.bp-hero');

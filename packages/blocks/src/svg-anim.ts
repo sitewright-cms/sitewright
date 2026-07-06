@@ -325,22 +325,40 @@ export const SVG_ANIM_JS = `(function(){
     // stands down (JS is managing these). Hiding itself is from first paint via CSS (.sw-svg-shown reveals),
     // so nothing flashes before it animates.
     units.forEach(function(u){u.members.forEach(function(m){m.el.classList.add('sw-svg-armed');});});
+    // Longest member timeline (delay + dur, + the draw's fill-reveal tail) — the auto-repeat period is never
+    // shorter than this, so a too-short loop can't keep interrupting a slow draw before it finishes.
+    units.forEach(function(u){var mx=0;u.members.forEach(function(m){var d=m.delay+m.dur;if(m.effect==='draw')d+=Math.max(140,m.dur*0.28);if(d>mx)mx=d;});u.totalMs=mx;});
     function playUnit(u){u.members.forEach(svgPlay);}
     function resetUnit(u){u.members.forEach(svgReset);}
     function replayUnit(u){resetUnit(u);if(window.requestAnimationFrame)requestAnimationFrame(function(){playUnit(u);});else playUnit(u);}
-    // Self-clearing: once the root leaves the document (SPA nav / re-inline / removal) the timer stops, so
-    // no interval outlives its element (no leak, no ticks on a detached node).
-    function startLoop(u){if(u.loopMs>0&&!u.timer){u.timer=setInterval(function(){if(!document.contains(u.root)){clearInterval(u.timer);u.timer=null;return;}if(u.trigger==='load'||u.shown)replayUnit(u);},u.loopMs);}}
+    function stopLoop(u){if(u.timer){clearTimeout(u.timer);u.timer=null;}}
+    // (Re)arm the auto-repeat countdown from NOW. setTimeout (NOT a fixed setInterval) so the loop stays
+    // SYNCHRONIZED with the actual animation and any manual trigger: EVERY play re-arms it, so a loop tick
+    // never lands mid-draw and a click / scroll re-trigger resets the countdown instead of fighting a fixed
+    // schedule. Period = max(loopMs, full timeline). Self-clearing when the root leaves the document.
+    function armLoop(u){
+      if(!(u.loopMs>0))return;stopLoop(u); // no loop (undefined/0) for scene + standalone units → no-op
+
+      u.timer=setTimeout(function(){
+        if(!document.contains(u.root)){u.timer=null;return;}
+        if(u.trigger==='load'||u.shown){replayUnit(u);armLoop(u);}else{u.timer=null;}
+      },Math.max(u.loopMs,u.totalMs+250));
+    }
+    // Single entry point: (re)play a unit AND (re)sync its loop. first=true uses playUnit (a fresh reveal);
+    // otherwise replayUnit (reset then replay) for a click / scroll re-entry from an already-shown state.
+    function triggerUnit(u,first){u.shown=true;if(first){playUnit(u);}else{replayUnit(u);}armLoop(u);}
     // REVEAL/triggering waits until the page is READY (preloader cleared / page load) — so nothing fires
     // behind a still-visible preloader overlay. Click/loop wiring lives here too (post-ready is correct).
     swWhenReady(function(){
-      // click-to-replay + ripple (global roots only).
-      units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){replayUnit(u);swRipple(e,u.root);});});
-      // load-trigger: play immediately (+ start the auto-repeat loop).
-      units.forEach(function(u){if(u.trigger==='load'){u.shown=true;playUnit(u);startLoop(u);}});
+      // click-to-replay + ripple (global roots only). When the unit is already shown, re-sync the loop
+      // (triggerUnit); when clicked BEFORE its first view-in (an opacity:0 element still gets clicks), just
+      // replay WITHOUT setting u.shown — else the IntersectionObserver's first-entry guard would be skipped.
+      units.forEach(function(u){if(u.click)u.root.addEventListener('click',function(e){if(u.shown){triggerUnit(u,false);}else{replayUnit(u);}swRipple(e,u.root);});});
+      // load-trigger: play immediately (+ arm the auto-repeat loop).
+      units.forEach(function(u){if(u.trigger==='load')triggerUnit(u,true);});
       var viewUnits=units.filter(function(u){return u.trigger==='view';});
       if(viewUnits.length===0)return;
-      if(!('IntersectionObserver' in window)){viewUnits.forEach(function(u){u.shown=true;playUnit(u);startLoop(u);});return;} // PE fallback
+      if(!('IntersectionObserver' in window)){viewUnits.forEach(function(u){triggerUnit(u,true);});return;} // PE fallback
       // Play when meaningfully visible; RE-ARM replay only on a FULL exit (ratio 0), so replay fires from ANY
       // scroll direction (the old single bottom-margin threshold missed re-entry from some directions).
       var io=new IntersectionObserver(function(entries){
@@ -348,9 +366,9 @@ export const SVG_ANIM_JS = `(function(){
           var u=null;for(var i=0;i<viewUnits.length;i++){if(viewUnits[i].root===entry.target){u=viewUnits[i];break;}}
           if(!u)return;
           if(entry.isIntersecting&&entry.intersectionRatio>=0.15){
-            if(!u.shown){u.shown=true;playUnit(u);startLoop(u);if(!u.replay)io.unobserve(u.root);}
+            if(!u.shown){triggerUnit(u,true);if(!u.replay)io.unobserve(u.root);} // scroll-in (re)syncs the loop too
           }else if(entry.intersectionRatio===0){
-            if(u.shown&&u.replay){u.shown=false;resetUnit(u);}
+            if(u.shown&&u.replay){u.shown=false;resetUnit(u);stopLoop(u);} // out of view: pause the loop
           }
         });
       },{threshold:[0,0.15],rootMargin:'0px 0px -5% 0px'});

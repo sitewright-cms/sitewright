@@ -967,8 +967,9 @@ was dropped; turn each back on with the PLATFORM equivalent, in the settings ent
 ("preloader-removed") -> theme.preloaderEffect (get_guide("effects")); a sticky/shrinking header -> website.
 effects.stickyHeader; a back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded
 side widget ("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin =
-a consent-gated <iframe>, see get_guide("consent")). Footer/nav LISTS: a <ul> needs list-none pl-0 or items
-sit indented.
+a consent-gated <iframe>, see get_guide("consent")); a foreign off-canvas mobile-nav drawer ("mobile-nav-removed")
+-> nothing to rebuild, the platform's mainNav skeleton is already responsive (its own hamburger drawer). Footer/
+nav LISTS: a <ul> needs list-none pl-0 or items sit indented.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,

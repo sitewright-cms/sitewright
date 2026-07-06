@@ -67,6 +67,42 @@ const isPreloader = (el: Element): boolean => matchesPreloader(el) && !isContent
 /** A wrapper with no element children and no non-whitespace text (e.g. once its only child was removed). */
 const isEmptyWrapper = (el: Element): boolean => el.children.filter(isTag).length === 0 && textContent([el]).trim() === '';
 
+/**
+ * Foreign OFF-CANVAS MOBILE-NAV drawer idioms (id/class) — a hidden slide-in menu that DUPLICATES the
+ * site's navigation (Materialize `sidenav`, mmenu, `mobile-nav`, `off-canvas` nav, …). The captured
+ * header/footer become the native `mainNav`/`footer` slots and the platform's nav skeleton is already
+ * responsive, so an imported drawer is redundant chrome. Worse, its foreign `width:0`/off-screen CSS is
+ * dropped on import, so the hidden drawer un-hides into a stray full-width menu band in the page body.
+ * Bare `off-canvas`/`offcanvas` is deliberately EXCLUDED (it also names carts/filters/search panels —
+ * the {@link isMobileNavDrawer} content guard is the safety net when those tokens DO co-occur with a nav token).
+ */
+const MOBILE_NAV_RE =
+  /\b(?:mobile-?nav(?:igation)?|mobile-?menu|nav-?drawer|menu-?drawer|slide-?menu|push-?menu|off-?canvas-?nav|hamburger-?menu|mmenu|sidenav)\b/i;
+/**
+ * A foreign mobile-nav drawer safe to strip from a PAGE BODY: id/class matches {@link MOBILE_NAV_RE},
+ * it actually carries navigation (≥2 links), and it is NOT a content panel — a heading or a form means
+ * it's an off-canvas cart/search/filters panel with real content, so it is kept. Conservative on purpose.
+ * (Note: a `<button>` inside a link-only drawer does NOT count as content — only a heading/form does — so
+ * a bare menu with a close button is still strippable; that matches the redundant-nav use case.)
+ */
+function isMobileNavDrawer(el: Element): boolean {
+  if (!MOBILE_NAV_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`)) return false;
+  // Count nav links; bail the moment a heading/form appears (⇒ real content, keep it) — mirrors the
+  // early-return in isContentfulOverlay so a large content panel isn't traversed in full.
+  let links = 0;
+  const hasContent = (nodes: Element['children']): boolean => {
+    for (const n of nodes) {
+      if (!isTag(n)) continue;
+      if (/^h[1-6]$/.test(n.name) || n.name === 'form') return true;
+      if (n.name === 'a') links += 1;
+      if (hasContent(n.children)) return true;
+    }
+    return false;
+  };
+  if (hasContent(el.children)) return false;
+  return links >= 2;
+}
+
 export interface TransformCtx {
   /** This page's own source URL — the base for resolving its relative references. */
   pageUrl: string;
@@ -330,6 +366,21 @@ function byteLength(s: string): number {
 export function transformBody(doc: Document, ctx: TransformCtx): { source: string; diagnostics: ImportDiagnostic[] } {
   const diagnostics: ImportDiagnostic[] = [];
   const nodes = contentNodes(doc);
+  // Strip foreign off-canvas mobile-nav drawers from the PAGE BODY (not shared with chrome extraction,
+  // which owns the real nav) — see {@link isMobileNavDrawer}. Also drop any ancestor wrapper left empty by
+  // the removal (else it serializes to a stray empty band) — mirrors the back-to-top cleanup below. Snapshot,
+  // since removeElement mutates the tree (a nested drawer already detached with its ancestor is a safe no-op).
+  for (const el of elements(nodes)) {
+    if (!isMobileNavDrawer(el)) continue;
+    let parent = el.parent;
+    removeElement(el);
+    diagnostics.push({ code: 'mobile-nav-removed', message: 'foreign off-canvas mobile-nav drawer removed (the platform provides a responsive nav)', page: ctx.pageUrl });
+    while (parent && isTag(parent) && ['div', 'section', 'nav', 'aside', 'span'].includes(parent.name) && isEmptyWrapper(parent)) {
+      const grandparent = parent.parent;
+      removeElement(parent);
+      parent = grandparent;
+    }
+  }
   sanitizeForSource(nodes, ctx, diagnostics);
   const maxBytes = ctx.limits.maxSourceBytes;
   const fit = fitSource(nodes, maxBytes);

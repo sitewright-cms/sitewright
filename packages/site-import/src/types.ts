@@ -108,6 +108,7 @@ export type DiagnosticCode =
   | 'form-inerted'
   | 'back-to-top-removed'
   | 'preloader-removed'
+  | 'mobile-nav-removed'
   | 'image-host-failed'
   | 'image-budget-exceeded'
   | 'unsafe-url-dropped'

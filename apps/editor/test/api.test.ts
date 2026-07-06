@@ -1205,4 +1205,46 @@ describe('project transfer api', () => {
     expect(init.method).toBe('PUT');
     expect(JSON.parse(init.body as string)).toEqual({ svg: '<svg/>' });
   });
+
+  it('PATCHes updateProject with the name/slug patch body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { project: { id: 'p1', name: 'New', slug: 'new-slug' } }));
+    const res = await api.updateProject('p1', { name: 'New', slug: 'new-slug' });
+    expect(res).toEqual({ project: { id: 'p1', name: 'New', slug: 'new-slug' } });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'New', slug: 'new-slug' });
+  });
+
+  it('POSTs restoreProject to the admin restore route (id-encoded)', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.restoreProject('p 1')).toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/deleted-projects/p%201/restore');
+    expect(init.method).toBe('POST');
+  });
+
+  it('DELETEs reapProject (permanent) at the admin route', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.reapProject('p1')).toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/deleted-projects/p1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('DELETEs reapAllDeletedProjects and returns the reaped count', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { reaped: 3 }));
+    expect(await api.reapAllDeletedProjects()).toEqual({ reaped: 3 });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/deleted-projects');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('GETs listDeletedProjects from the admin surface', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { projects: [{ id: 'p1' }] }));
+    expect(await api.listDeletedProjects()).toEqual({ projects: [{ id: 'p1' }] });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/deleted-projects');
+    expect(init.method).toBe('GET');
+  });
 });

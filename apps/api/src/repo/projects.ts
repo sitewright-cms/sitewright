@@ -93,6 +93,32 @@ export class ProjectRepository {
     return project;
   }
 
+  /**
+   * Rename a project's display NAME and/or its SLUG. The name is cosmetic; a slug change is only the DB
+   * row here — the CALLER must first rewrite the `/media/<slug>/…` references + move the media binaries
+   * (media URLs embed the slug), then flip the row via this method LAST so a mid-flight failure leaves the
+   * old, consistent slug. Rejects a slug already held by any project (incl. a soft-deleted one, which keeps
+   * its slug until reaped). A no-op patch returns the current project.
+   */
+  async rename(id: string, patch: { name?: string; slug?: string }): Promise<Project> {
+    const current = await this.get(id);
+    if (current.deletedAt) throw new NotFoundError('project not found');
+    const slug = patch.slug ?? current.slug;
+    if (patch.slug && patch.slug !== current.slug) {
+      const [dup] = await this.db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.slug, patch.slug));
+      if (dup) {
+        throw new ConflictError(
+          dup.deletedAt
+            ? 'a deleted project is holding this slug — restore or permanently remove it first'
+            : 'a project with this slug already exists',
+        );
+      }
+    }
+    const name = patch.name ?? current.name;
+    await this.db.update(projects).set({ name, slug }).where(eq(projects.id, id));
+    return { ...current, name, slug };
+  }
+
   /** A project by its instance-unique slug; throws NotFound if absent. */
   async getBySlug(slug: string): Promise<Project> {
     const [project] = await this.db.select().from(projects).where(eq(projects.slug, slug));

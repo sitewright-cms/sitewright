@@ -25,6 +25,8 @@ interface HeaderSettingsMenuProps {
   onDuplicateProject?: () => void;
   /** Owner/agency-only: import an external website into the current project (absent → item hidden). */
   onImportWebsite?: () => void;
+  /** Owner-only: open the Project Settings modal (rename project + slug; absent → item hidden). */
+  onProjectSettings?: () => void;
   onSystemSettings: () => void;
   onClients: () => void;
   onTeam: () => void;
@@ -47,6 +49,7 @@ export function HeaderSettingsMenu({
   onExportProject,
   onDuplicateProject,
   onImportWebsite,
+  onProjectSettings,
   onSystemSettings,
   onClients,
   onTeam,
@@ -84,6 +87,7 @@ export function HeaderSettingsMenu({
   // live under the adjacent user icon (UserDropdown).
   const items: { label: string; onClick: () => void; dividerBefore?: boolean; danger?: boolean }[] = (
     [
+      { label: 'Project Settings', onClick: onProjectSettings ?? (() => {}), show: owner && !!onProjectSettings },
       { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
       { label: 'Export project (.zip)', onClick: onExportProject ?? (() => {}), show: inProject && !!onExportProject },
       { label: 'Duplicate project', onClick: onDuplicateProject ?? (() => {}), show: inProject && !!onDuplicateProject },

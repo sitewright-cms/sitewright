@@ -88,8 +88,8 @@ export function pageComponentsSvg(): Page {
 <section class="mx-auto max-w-6xl px-6 py-14">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="draw_t">Draw on</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="draw_d">The line draws itself on.</p>
-  <div class="mt-10 grid place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
-    <svg viewBox="0 0 240 120" class="h-32 w-auto text-primary" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+  <div class="mt-10 grid cursor-pointer place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
+    <svg viewBox="0 0 240 120" class="h-32 w-auto text-primary" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" data-sw-svg-replay="true" data-sw-svg-click="true" data-sw-svg-loop="4000">
       <path data-sw-svg="draw" data-sw-duration="1600" data-sw-easing="ease-in-out" d="M12 84 C 40 24 72 24 96 60 C 120 96 152 96 176 60 C 196 30 220 30 228 54"/>
     </svg>
   </div>
@@ -99,8 +99,8 @@ export function pageComponentsSvg(): Page {
 <section class="mx-auto max-w-6xl px-6 py-14">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="scene_t">Staggered scene</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="scene_d">They cascade in as the scene enters view.</p>
-  <div class="mt-10 grid place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
-    <svg viewBox="0 0 320 100" class="h-24 w-auto text-primary" data-sw-svg-scene data-sw-svg-stagger="110">
+  <div class="mt-10 grid cursor-pointer place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
+    <svg viewBox="0 0 320 100" class="h-24 w-auto text-primary" data-sw-svg-scene data-sw-svg-stagger="110" data-sw-once="false" data-sw-svg-click="true" data-sw-svg-loop="4000">
       <rect data-sw-svg="fade-up" data-sw-duration="600" x="8"   y="20" width="48" height="60" rx="8" fill="currentColor"/>
       <rect data-sw-svg="fade-up" data-sw-duration="600" x="72"  y="20" width="48" height="60" rx="8" fill="currentColor"/>
       <rect data-sw-svg="fade-up" data-sw-duration="600" x="136" y="20" width="48" height="60" rx="8" fill="currentColor"/>
@@ -114,8 +114,8 @@ export function pageComponentsSvg(): Page {
 <section class="mx-auto max-w-6xl px-6 py-14">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="reveal_t">Clip-path reveals</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="reveal_d">A clean edge sweeps across.</p>
-  <div class="mt-10 grid place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
-    <svg viewBox="0 0 120 120" class="h-28 w-auto text-secondary">
+  <div class="mt-10 grid cursor-pointer place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
+    <svg viewBox="0 0 120 120" class="h-28 w-auto text-secondary" data-sw-svg-replay="true" data-sw-svg-click="true" data-sw-svg-loop="3800">
       <circle data-sw-svg="reveal-iris" data-sw-duration="900" cx="60" cy="60" r="52" fill="currentColor"/>
     </svg>
   </div>
@@ -125,8 +125,8 @@ export function pageComponentsSvg(): Page {
 <section class="mx-auto max-w-6xl px-6 py-14">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="path_t">Along a path</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="path_d">The element travels a motion path.</p>
-  <div class="mt-10 grid place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
-    <svg viewBox="0 0 240 120" class="h-28 w-auto">
+  <div class="mt-10 grid cursor-pointer place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
+    <svg viewBox="0 0 240 120" class="h-28 w-auto" data-sw-svg-replay="true" data-sw-svg-click="true" data-sw-svg-loop="4200">
       <path d="M16 96 Q 120 -8 224 96" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 6" class="text-base-content/25"/>
       <circle data-sw-svg="along-path" data-sw-svg-path="M16 96 Q 120 -8 224 96" data-sw-duration="1800" data-sw-easing="ease-in-out" data-sw-once="false" cx="0" cy="0" r="9" class="text-accent" fill="currentColor"/>
     </svg>
@@ -137,8 +137,8 @@ export function pageComponentsSvg(): Page {
 <section class="mx-auto max-w-6xl px-6 py-14">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="morph_t">Shape morph</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="morph_d">The outline tweens toward a target shape.</p>
-  <div class="mt-10 grid place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
-    <svg viewBox="0 0 120 120" class="h-28 w-auto text-primary">
+  <div class="mt-10 grid cursor-pointer place-items-center rounded-3xl border border-base-200 bg-base-100 py-14 shadow-lg">
+    <svg viewBox="0 0 120 120" class="h-28 w-auto text-primary" data-sw-once="false" data-sw-svg-click="true" data-sw-svg-loop="4500">
       <path data-sw-svg="morph" data-sw-svg-to="M60 8 L74 44 L112 44 L82 68 L94 106 L60 82 L26 106 L38 68 L8 44 L46 44 Z" data-sw-duration="1200" data-sw-easing="ease-in-out" fill="currentColor" d="M28 20 H92 A12 12 0 0 1 104 32 V88 A12 12 0 0 1 92 100 H28 A12 12 0 0 1 16 88 V32 A12 12 0 0 1 28 20 Z"/>
     </svg>
   </div>

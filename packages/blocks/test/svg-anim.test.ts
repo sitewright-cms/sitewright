@@ -82,6 +82,10 @@ describe('SVG animation runtime', () => {
     expect(SVG_ANIM_JS).toContain('resetUnit'); // replay path re-hides members
   });
 
+  it('a scene also honours the whole-SVG click + loop directives (like a global root)', () => {
+    expect(SVG_ANIM_JS).toContain("replay:!once(s),click:boolAttr(s,'data-sw-svg-click'),loopMs:loopMsOf(s)");
+  });
+
   it('a standalone (non-scene) element uses its OWN data-sw-svg-trigger (no dead scene-attr check)', () => {
     expect(SVG_ANIM_JS).toContain('trigger:trig,members:[member(el,0)]');
     expect(SVG_ANIM_JS).not.toContain("root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')");
@@ -99,7 +103,7 @@ describe('SVG animation runtime', () => {
 describe('SVG animation global (whole-SVG) settings', () => {
   it('CSS adds responsive (fill parent), click cursor, and a reduced-motion-safe ripple', () => {
     expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}');
-    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-click]{cursor:pointer}');
+    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-click],[data-sw-svg-scene][data-sw-svg-click]{cursor:pointer}');
     expect(SVG_ANIM_CSS).toContain('@keyframes sw-svg-ripple');
     // ripple only animates when motion is allowed
     expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){.sw-svg-ripple{animation:sw-svg-ripple');

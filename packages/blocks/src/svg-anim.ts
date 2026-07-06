@@ -110,8 +110,8 @@ export const SVG_ANIM_CSS = [
   // --- Global (whole-SVG) settings, authored on the root <svg> ---
   // Responsive: scale the SVG to fill its parent container (no-JS friendly — pure CSS).
   'svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}',
-  // Click-to-replay: hint interactivity.
-  'svg[data-sw-svg-click]{cursor:pointer}',
+  // Click-to-replay: hint interactivity (on a whole-SVG root OR a scene container).
+  'svg[data-sw-svg-click],[data-sw-svg-scene][data-sw-svg-click]{cursor:pointer}',
   // Click ripple — mirrors the button ripple, but body-anchored (position:fixed) at the pointer so it
   // works over an inline <svg> without needing a positioned wrapper. Colour is set inline from the SVG.
   '.sw-svg-ripple{position:fixed;z-index:2147483646;border-radius:50%;pointer-events:none;opacity:.3;transform:translate(-50%,-50%) scale(0)}',
@@ -306,7 +306,8 @@ export const SVG_ANIM_JS = `(function(){
       var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
       var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
       var members=[];Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
-      if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s)});
+      // A scene also honours the whole-SVG loop + click-to-replay directives (like a global <svg> root).
+      if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s),click:boolAttr(s,'data-sw-svg-click'),loopMs:loopMsOf(s)});
     });
     // 2) global <svg> roots — the whole SVG animates as ONE coordinated unit driven by its root settings.
     Array.prototype.forEach.call(svgRoots(root),function(svg){
@@ -369,9 +370,9 @@ export const SVG_ANIM_JS = `(function(){
           var u=null;for(var i=0;i<viewUnits.length;i++){if(viewUnits[i].root===entry.target){u=viewUnits[i];break;}}
           if(!u)return;
           if(entry.isIntersecting&&entry.intersectionRatio>=0.15){
-            if(!u.shown){triggerUnit(u,true);if(!u.replay)io.unobserve(u.root);} // scroll-in (re)syncs the loop too
+            if(!u.shown){triggerUnit(u,true);if(!u.replay&&!(u.loopMs>0))io.unobserve(u.root);} // keep observing loop units (pause off-screen)
           }else if(entry.intersectionRatio===0){
-            if(u.shown&&u.replay){u.shown=false;resetUnit(u);stopLoop(u);} // out of view: pause the loop
+            if(u.shown&&(u.replay||u.loopMs>0)){u.shown=false;resetUnit(u);stopLoop(u);} // out of view: pause the loop (loop ⇒ viewport-gated)
           }
         });
       },{threshold:[0,0.15],rootMargin:'0px 0px -5% 0px'});

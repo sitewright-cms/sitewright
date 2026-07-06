@@ -45,44 +45,66 @@ export const SVG_ANIM_MORPH_JS = `(function(){
   EASE['back']=function(t){var c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);};
   function easeOf(el){return EASE[el.getAttribute('data-sw-easing')||'']||EASE['ease-out'];}
   var raf=window.requestAnimationFrame||function(f){return setTimeout(function(){f(+new Date());},16);};
+  // Whole-SVG directive: read from the morph element, else its owner <svg> — so loop/replay/click/trigger
+  // can be authored on the root <svg> exactly like the core engine's global settings.
+  function dv(el,name){var v=el.getAttribute(name);if(v!=null)return v;var s=el.ownerSVGElement;return s?s.getAttribute(name):null;}
+  var LOOP_MIN=500,LOOP_MAX=600000;
+  function loopOf(el){var v=dv(el,'data-sw-svg-loop');if(!v)return 0;var n=parseInt(v,10);if(!isFinite(n)||n<=0)return 0;if(n<LOOP_MIN)n=LOOP_MIN;if(n>LOOP_MAX)n=LOOP_MAX;return n;}
+  var once=function(el){return dv(el,'data-sw-once')!=='false';};
+  // Auto-repeat: after the morph lands, wait, snap back to the start shape and morph again. Self-clearing
+  // on removal; a generation token (el.__swGen) lets a click / re-entry supersede an in-flight morph.
+  function scheduleLoop(el,gen,total){
+    var loop=loopOf(el);if(loop<=0)return;
+    el.__swLoopT=setTimeout(function(){
+      if(el.__swGen!==gen||!document.contains(el))return;
+      el.setAttribute('d',el.__swMorphFrom);run(el);
+    },Math.max(600,loop-total));
+  }
   function run(el){
-    if(el.__swMorphing)return;
     var to=el.getAttribute('data-sw-svg-to');if(!to||!PATHRE.test(to))return;
-    // Cache the ORIGINAL start d once, so replay (data-sw-once="false") always tweens start→target
-    // (after a morph completes, d IS the target — sampling it would give a target→target no-op).
+    // Cache the ORIGINAL start d once, so replay/loop always tween start→target (after a morph completes,
+    // d IS the target — sampling it would give a target→target no-op).
     if(el.__swMorphFrom==null)el.__swMorphFrom=el.getAttribute('d')||'';
     var A=sample(el.__swMorphFrom),B=sample(to);
     if(!A||!B){el.setAttribute('d',to);return;} // un-samplable → jump to target (still correct, just no tween)
     var dur=swMs(el,'data-sw-duration',400),delay=swMs(el,'data-sw-delay',0),ease=easeOf(el);
     if(dur<=0){el.setAttribute('d',to);return;}
-    el.__swMorphing=true;var start=null;
+    if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}
+    var gen=(el.__swGen=(el.__swGen||0)+1),start=null; // supersede any in-flight morph (click / loop / re-run)
+    el.__swMorphActive=1; // a tween IS running (viewport-leave won't snap it mid-tween)
     function frame(ts){
+      if(el.__swGen!==gen)return; // superseded → stop this frame loop
       if(start===null)start=ts;var elapsed=ts-start-delay;
       if(elapsed<0){raf(frame);return;}
       var t=Math.min(elapsed/dur,1),e=ease(t),pts=[],i;
       for(i=0;i<A.length;i++)pts.push([A[i][0]+(B[i][0]-A[i][0])*e,A[i][1]+(B[i][1]-A[i][1])*e]);
       el.setAttribute('d',toD(pts));
-      if(t<1){raf(frame);}else{el.setAttribute('d',to);el.__swMorphing=false;}
+      if(t<1){raf(frame);}else{el.__swMorphActive=0;el.setAttribute('d',to);scheduleLoop(el,gen,dur+delay);}
     }
     raf(frame);
   }
-  var once=function(el){return el.getAttribute('data-sw-once')!=='false';};
   // Run morph within a subtree ROOT (the document, or an <svg> the core runtime inlined from an <img>).
   function runMorph(root){
     var els=root.querySelectorAll('[data-sw-svg="morph"]');
     if(els.length===0)return;
+    // Click-to-replay: clicking the owner <svg> snaps its morphs to start + re-morphs (one listener/svg).
+    Array.prototype.forEach.call(els,function(el){
+      if(dv(el,'data-sw-svg-click')!=='true')return;var s=el.ownerSVGElement;if(!s||s.__swMorphClick)return;s.__swMorphClick=1;
+      s.addEventListener('click',function(){Array.prototype.forEach.call(s.querySelectorAll('[data-sw-svg="morph"]'),function(m){if(m.__swMorphFrom!=null)m.setAttribute('d',m.__swMorphFrom);run(m);});});
+    });
     var view=[];
     Array.prototype.forEach.call(els,function(el){
-      if(el.getAttribute('data-sw-svg-trigger')==='load')run(el);else view.push(el);
+      if(dv(el,'data-sw-svg-trigger')==='load')run(el);else view.push(el);
     });
     if(view.length===0)return;
     if(!('IntersectionObserver' in window)){view.forEach(run);return;}
     var io=new IntersectionObserver(function(entries){
       entries.forEach(function(en){
         var el=en.target;
-        if(en.isIntersecting){run(el);if(once(el))io.unobserve(el);}
-        // Replay (once="false"): restore the start shape on viewport-leave so the next entry re-morphs.
-        else if(!once(el)&&!el.__swMorphing&&el.__swMorphFrom!=null)el.setAttribute('d',el.__swMorphFrom);
+        if(en.isIntersecting){run(el);if(once(el)&&loopOf(el)<=0)io.unobserve(el);} // keep looping morphs observed (pause off-screen)
+        // On viewport-leave (a replay OR a looping morph): STOP the loop; restore the start shape only if no
+        // tween is mid-flight (else let it finish → no ugly mid-tween snap on a quick scroll-through).
+        else if(el.__swMorphFrom!=null&&(!once(el)||loopOf(el)>0)){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}if(!el.__swMorphActive){el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}}
       });
     },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
     view.forEach(function(el){io.observe(el);});

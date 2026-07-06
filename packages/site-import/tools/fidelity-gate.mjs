@@ -16,6 +16,7 @@ import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { matchAndDiff, scorePage } from './style-diff.mjs';
 import { matchChrome, scoreChrome } from './chrome-diff.mjs';
+import { cloneUrlFor } from './preview-url.mjs';
 
 // playwright-core is a TRANSITIVE dep in this pnpm monorepo — it has no top-level `node_modules/playwright-core`
 // symlink, so `require('playwright-core')` fails. Find it in the `.pnpm` store instead. Tries the tool's own
@@ -45,6 +46,10 @@ const PID = process.env.SW_PID;
 const PAGES = JSON.parse(process.env.SW_PAGES || '[]');
 const VP = { width: Number(process.env.SW_VP_W || 1920), height: Number(process.env.SW_VP_H || 1080) };
 if (!TOKEN || !PID || !PAGES.length) { console.error('set SW_TOKEN, SW_PID, SW_PAGES=[["id","route","origUrl"],…]'); process.exit(2); }
+
+// Above this the clone's on-screen nav/header can only be unstyled: a styled chrome nav is ~60-160px, an
+// unstyled one (stylesheet failed to apply) balloons to >1000px as skew collapses and icons grow.
+const UNSTYLED_NAV_H = 400;
 
 // In-page: meaningful elements + computed styles + region (header/footer/body) + layout box. BODY keeps
 // text-bearing headings/buttons/text; CHROME (header/footer) also keeps the text-less logo img + icon-only
@@ -100,7 +105,7 @@ const AT_POINT = ([x, y]) => {
   return { bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 140), color: cs.color };
 };
 
-async function capture(browser, url) {
+async function capture(browser, url, label = '') {
   const ctx = await browser.newContext({ viewport: VP, deviceScaleFactor: 1, reducedMotion: 'reduce' });
   try {
     const page = await ctx.newPage();
@@ -113,6 +118,25 @@ async function capture(browser, url) {
       if (document.fonts?.ready) { try { await document.fonts.ready; } catch {} }
     }).catch(() => {});
     await page.waitForTimeout(400);
+    // STYLESHEET-APPLIED GUARD: if the utility sheet failed to apply (e.g. a bad relative-URL join 404'd
+    // styles.css — see preview-url.mjs), the skewed nav collapses and the chrome balloons. A styled chrome
+    // nav is ~60-160px; an unstyled one is thousands. Warn LOUDLY so a green score is never trusted off a
+    // stylesheet-less render. `getBoundingClientRect().height` is scroll-independent, so this is reliable.
+    if (label === 'clone') {
+      const navH = await page.evaluate(() => {
+        // First ON-SCREEN nav/header — skip off-screen mobile drawers, which can report full height even when
+        // the page is correctly styled (mirrors EXTRACT's r.right/r.left on-screen filter), else the guard
+        // false-positives on a fine clone.
+        for (const sel of ['#main-nav', 'header', 'nav']) {
+          const n = document.querySelector(sel);
+          if (!n) continue;
+          const r = n.getBoundingClientRect();
+          if (r.right >= 4 && r.left <= document.documentElement.clientWidth - 4) return Math.round(r.height);
+        }
+        return 0;
+      }).catch(() => 0);
+      if (navH > UNSTYLED_NAV_H) console.warn(`  ⚠️  UNSTYLED CLONE at ${url} — nav/header height=${navH}px; the stylesheet likely didn't apply (check the preview URL for a double slash). Scores below are meaningless.`);
+    }
     const items = await page.evaluate(EXTRACT).catch((e) => { console.warn(`  WARN extract ${url}: ${e.message}`); return []; });
     // HOVER PASS — for the header's interactive elements (visible at the top), move the real mouse over each
     // and record its hover bg/gradient/colour, so the chrome diff can tell a tab that lights up on hover from
@@ -136,15 +160,18 @@ async function capture(browser, url) {
 
 async function main() {
   const res = await fetch(`${BASE}/projects/${PID}/preview-url`, { headers: { Authorization: `Bearer ${TOKEN}` } });
-  const { base } = await res.json();
-  if (!base) { console.error('could not mint preview-url (auth?)'); process.exit(2); }
+  if (!res.ok) { console.error(`could not mint preview-url: HTTP ${res.status} (auth? bad SW_PID?)`); process.exit(2); }
+  const { base } = await res.json().catch(() => ({}));
+  // `base` must be the server's RELATIVE signed path (starts with '/'). Anything else — an absolute URL, a
+  // missing field — would build a malformed or unintended target; fail fast rather than point the browser at it.
+  if (typeof base !== 'string' || !base.startsWith('/')) { console.error('preview-url response missing a valid relative base (auth?)'); process.exit(2); }
   const browser = await chromium.launch({ headless: true });
   const rows = [];
   try {
     for (const [id, route, src] of PAGES) {
-      const cloneUrl = `${BASE}${base}${route}${route && !route.endsWith('/') ? '/' : ''}`;
-      const origAll = await capture(browser, src);
-      const cloneAll = await capture(browser, cloneUrl);
+      const cloneUrl = cloneUrlFor(BASE, base, route);
+      const origAll = await capture(browser, src, 'original');
+      const cloneAll = await capture(browser, cloneUrl, 'clone');
       // BODY — text-matched font/gradient diff, body region only.
       const m = matchAndDiff(origAll.filter((e) => e.region === 'body' && e.text), cloneAll.filter((e) => e.region === 'body' && e.text));
       const s = scorePage(m);

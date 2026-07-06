@@ -128,20 +128,24 @@ describe('SVG animation global (whole-SVG) settings', () => {
   });
 
   it('the auto-repeat loop self-clears when its root leaves the document (no timer leak)', () => {
-    expect(SVG_ANIM_JS).toContain('if(!document.contains(u.root)){clearInterval(u.timer)');
+    expect(SVG_ANIM_JS).toContain('if(!document.contains(u.root)){u.timer=null;return;}');
   });
 
-  it('click-to-replay adds a listener + a pointer ripple (global roots only)', () => {
+  it('click-to-replay resets the loop countdown + adds a pointer ripple (no timer conflict)', () => {
     expect(SVG_ANIM_JS).toContain('function swRipple(');
-    expect(SVG_ANIM_JS).toContain("if(u.click)u.root.addEventListener('click'");
-    expect(SVG_ANIM_JS).toContain('swRipple(e,u.root)');
+    // click goes through triggerUnit (which re-arms the loop) so a click never fights a fixed schedule.
+    expect(SVG_ANIM_JS).toContain("if(u.click)u.root.addEventListener('click',function(e){triggerUnit(u,false);swRipple(e,u.root);})");
   });
 
-  it('auto-repeat loop is clamped and replays on a timer', () => {
+  it('auto-repeat loop is a self-rescheduling timeout re-armed by EVERY trigger (not a fixed interval)', () => {
     expect(SVG_ANIM_JS).toContain('var LOOP_MIN=500,LOOP_MAX=600000');
     expect(SVG_ANIM_JS).toContain('function loopMsOf(el)');
-    expect(SVG_ANIM_JS).toContain('function startLoop(u)');
-    expect(SVG_ANIM_JS).toContain('setInterval(');
+    expect(SVG_ANIM_JS).toContain('function armLoop(u)');
+    expect(SVG_ANIM_JS).toContain('function triggerUnit(u,first)'); // load / click / scroll-in all re-sync the loop
+    expect(SVG_ANIM_JS).not.toContain('setInterval('); // the old fixed interval is gone
+    // the period is clamped so it is NEVER shorter than the full timeline (a short loop can't cut a slow draw)
+    expect(SVG_ANIM_JS).toContain('Math.max(u.loopMs,u.totalMs+250)');
+    expect(SVG_ANIM_JS).toContain("if(m.effect==='draw')d+=Math.max(140,m.dur*0.28)"); // totalMs includes the draw's fill tail
   });
 
   it('re-arms scroll replay on a FULL exit (ratio 0) so it fires from ANY scroll direction', () => {

@@ -71,6 +71,7 @@ export const SVG_ANIM_MORPH_JS = `(function(){
     if(dur<=0){el.setAttribute('d',to);return;}
     if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}
     var gen=(el.__swGen=(el.__swGen||0)+1),start=null; // supersede any in-flight morph (click / loop / re-run)
+    el.__swMorphActive=1; // a tween IS running (viewport-leave won't snap it mid-tween)
     function frame(ts){
       if(el.__swGen!==gen)return; // superseded → stop this frame loop
       if(start===null)start=ts;var elapsed=ts-start-delay;
@@ -78,7 +79,7 @@ export const SVG_ANIM_MORPH_JS = `(function(){
       var t=Math.min(elapsed/dur,1),e=ease(t),pts=[],i;
       for(i=0;i<A.length;i++)pts.push([A[i][0]+(B[i][0]-A[i][0])*e,A[i][1]+(B[i][1]-A[i][1])*e]);
       el.setAttribute('d',toD(pts));
-      if(t<1){raf(frame);}else{el.setAttribute('d',to);scheduleLoop(el,gen,dur+delay);}
+      if(t<1){raf(frame);}else{el.__swMorphActive=0;el.setAttribute('d',to);scheduleLoop(el,gen,dur+delay);}
     }
     raf(frame);
   }
@@ -100,9 +101,10 @@ export const SVG_ANIM_MORPH_JS = `(function(){
     var io=new IntersectionObserver(function(entries){
       entries.forEach(function(en){
         var el=en.target;
-        if(en.isIntersecting){run(el);if(once(el))io.unobserve(el);}
-        // Replay (once="false"): on viewport-leave stop any loop + restore the start shape so re-entry re-morphs.
-        else if(!once(el)&&el.__swMorphFrom!=null){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}
+        if(en.isIntersecting){run(el);if(once(el)&&loopOf(el)<=0)io.unobserve(el);} // keep looping morphs observed (pause off-screen)
+        // On viewport-leave (a replay OR a looping morph): STOP the loop; restore the start shape only if no
+        // tween is mid-flight (else let it finish → no ugly mid-tween snap on a quick scroll-through).
+        else if(el.__swMorphFrom!=null&&(!once(el)||loopOf(el)>0)){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}if(!el.__swMorphActive){el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}}
       });
     },{threshold:0.15,rootMargin:'0px 0px -10% 0px'});
     view.forEach(function(el){io.observe(el);});

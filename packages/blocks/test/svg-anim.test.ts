@@ -103,7 +103,7 @@ describe('SVG animation runtime', () => {
 describe('SVG animation global (whole-SVG) settings', () => {
   it('CSS adds responsive (fill parent), click cursor, and a reduced-motion-safe ripple', () => {
     expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-responsive]{width:100%;height:auto;max-width:100%}');
-    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-click]{cursor:pointer}');
+    expect(SVG_ANIM_CSS).toContain('svg[data-sw-svg-click],[data-sw-svg-scene][data-sw-svg-click]{cursor:pointer}');
     expect(SVG_ANIM_CSS).toContain('@keyframes sw-svg-ripple');
     // ripple only animates when motion is allowed
     expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){.sw-svg-ripple{animation:sw-svg-ripple');

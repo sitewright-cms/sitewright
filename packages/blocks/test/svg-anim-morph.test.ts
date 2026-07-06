@@ -42,8 +42,9 @@ describe('SVG morph runtime', () => {
     // After a morph completes d IS the target; without caching, replay would sample target→target (no-op).
     expect(SVG_ANIM_MORPH_JS).toContain('__swMorphFrom');
     expect(SVG_ANIM_MORPH_JS).toContain('sample(el.__swMorphFrom)');
-    // On viewport-leave (once="false") the loop is stopped, the morph superseded (gen++), and start restored.
-    expect(SVG_ANIM_MORPH_JS).toContain("else if(!once(el)&&el.__swMorphFrom!=null){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}");
+    // On viewport-leave (a replay OR a looping morph) the loop is stopped; the start shape is restored only
+    // if no tween is mid-flight (__swMorphActive) — avoids an ugly mid-tween snap on a quick scroll-through.
+    expect(SVG_ANIM_MORPH_JS).toContain("else if(el.__swMorphFrom!=null&&(!once(el)||loopOf(el)>0)){if(el.__swLoopT){clearTimeout(el.__swLoopT);el.__swLoopT=0;}if(!el.__swMorphActive){el.__swGen=(el.__swGen||0)+1;el.setAttribute('d',el.__swMorphFrom);}}");
   });
 
   it('honours the whole-SVG loop + click directives (read from the element OR its owner <svg>)', () => {

@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { matchAndDiff, scorePage } from './style-diff.mjs';
+import { matchChrome, scoreChrome } from './chrome-diff.mjs';
 
 // playwright-core is a TRANSITIVE dep in this pnpm monorepo — it has no top-level `node_modules/playwright-core`
 // symlink, so `require('playwright-core')` fails. Find it in the `.pnpm` store instead. Tries the tool's own
@@ -45,25 +46,58 @@ const PAGES = JSON.parse(process.env.SW_PAGES || '[]');
 const VP = { width: Number(process.env.SW_VP_W || 1920), height: Number(process.env.SW_VP_H || 1080) };
 if (!TOKEN || !PID || !PAGES.length) { console.error('set SW_TOKEN, SW_PID, SW_PAGES=[["id","route","origUrl"],…]'); process.exit(2); }
 
-// In-page: meaningful elements (headings, buttons/links-with-fill, paragraphs, list items) + computed styles.
+// In-page: meaningful elements + computed styles + region (header/footer/body) + layout box. BODY keeps
+// text-bearing headings/buttons/text; CHROME (header/footer) also keeps the text-less logo img + icon-only
+// buttons/links (matched by order). Font/size read from the deepest element that holds the full text (the
+// LEAF), since a nav <a>/button often wraps its label in an inner <span class="font-heading"> — reading the
+// outer element's font would over-report a mismatch.
 const EXTRACT = () => {
   const n = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const H = 95;
+  const vpW = document.documentElement.clientWidth || 1920;
+  const sy = window.scrollY || 0;
+  // Real content height = the max element bottom. document.scrollHeight is WRONG when the page renders inside
+  // a scroll container (e.g. the preview-site shell reports scrollHeight = viewport), which would drop every
+  // body element into the footer bucket.
+  let pageH = document.documentElement.scrollHeight;
+  for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect().bottom + sy; if (b > pageH) pageH = b; }
+  const footTop = pageH - 650;
   const out = [];
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,[class*="btn"]')) {
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,img,[class*="btn"]')) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) continue;
+    if (r.right < 4 || r.left > vpW - 4 || r.bottom < 0) continue; // skip off-screen (hidden mobile-nav variants at x:-236)
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) continue;
-    const text = n(el.textContent).slice(0, 60);
-    if (!text || text.length < 2) continue;
+    const absY = r.top + (window.scrollY || 0);
+    const region = absY < H ? 'header' : absY > footTop ? 'footer' : 'body';
     const tag = el.tagName.toLowerCase();
+    const text = tag === 'img' ? '' : n(el.textContent).slice(0, 60);
     const heading = /^h[1-6]$/.test(tag);
     const btn = tag === 'button' || (tag === 'a' && (/btn|button/i.test(el.className) || cs.backgroundImage !== 'none' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)'));
-    const role = heading ? 'heading' : btn ? 'button' : (tag === 'p' || tag === 'li') ? 'text' : 'other';
-    if (role === 'other') continue;
-    out.push({ role, tag, text, font: cs.fontFamily, size: cs.fontSize, weight: cs.fontWeight, color: cs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    let role = heading ? 'heading' : btn ? 'button' : (tag === 'p' || tag === 'li') ? 'text' : tag === 'img' ? 'img' : 'other';
+    if (region === 'body') {
+      if (role === 'other' || role === 'img' || !text || text.length < 2) continue; // body: text-bearing meaningful only
+    } else {
+      if (role === 'other' && !(tag === 'a' || tag === 'button')) continue; // chrome: keep imgs + icon-only a/button
+      if (role === 'other') role = 'button';
+    }
+    const textFull = n(el.textContent);
+    let leaf = el;
+    while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
+    const lcs = getComputedStyle(leaf);
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: Math.round(r.width), h: Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
   }
   return out;
+};
+
+// Read the computed bg/gradient/colour at a point (the closest a/button) — used for the hover pass.
+const AT_POINT = ([x, y]) => {
+  const hit = document.elementFromPoint(x, y);
+  const el = hit && (hit.closest('a,button') || hit);
+  if (!el) return null;
+  const cs = getComputedStyle(el);
+  return { bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 140), color: cs.color };
 };
 
 async function capture(browser, url) {
@@ -79,7 +113,24 @@ async function capture(browser, url) {
       if (document.fonts?.ready) { try { await document.fonts.ready; } catch {} }
     }).catch(() => {});
     await page.waitForTimeout(400);
-    return await page.evaluate(EXTRACT).catch((e) => { console.warn(`  WARN extract ${url}: ${e.message}`); return []; });
+    const items = await page.evaluate(EXTRACT).catch((e) => { console.warn(`  WARN extract ${url}: ${e.message}`); return []; });
+    // HOVER PASS — for the header's interactive elements (visible at the top), move the real mouse over each
+    // and record its hover bg/gradient/colour, so the chrome diff can tell a tab that lights up on hover from
+    // one that stays flat. (Footer hover is below the fold + rarely styled; kept to the header for speed.)
+    await page.evaluate(() => scrollTo(0, 0)).catch(() => {});
+    for (const it of items) {
+      if (it.region !== 'header' || it.role !== 'button') continue;
+      const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
+      if (cx < 0 || cy < 0 || cx > VP.width || cy > VP.height) continue;
+      try {
+        await page.mouse.move(cx, cy);
+        await page.waitForTimeout(70);
+        it.hover = await page.evaluate(AT_POINT, [cx, cy]);
+        await page.mouse.move(3, VP.height - 3);
+        await page.waitForTimeout(15);
+      } catch { /* skip */ }
+    }
+    return items;
   } finally { await ctx.close().catch(() => {}); }
 }
 
@@ -92,20 +143,27 @@ async function main() {
   try {
     for (const [id, route, src] of PAGES) {
       const cloneUrl = `${BASE}${base}${route}${route && !route.endsWith('/') ? '/' : ''}`;
-      const orig = await capture(browser, src);
-      const clone = await capture(browser, cloneUrl);
-      const m = matchAndDiff(orig, clone);
+      const origAll = await capture(browser, src);
+      const cloneAll = await capture(browser, cloneUrl);
+      // BODY — text-matched font/gradient diff, body region only.
+      const m = matchAndDiff(origAll.filter((e) => e.region === 'body' && e.text), cloneAll.filter((e) => e.region === 'body' && e.text));
       const s = scorePage(m);
-      rows.push({ id, s, m });
-      console.log(`\n### ${id}  ${s.pass ? 'PASS ✓' : 'FAIL ✗'}  coverage=${(s.coverage * 100).toFixed(0)}% (${s.matched}/${s.origCount})  font=${s.fontMiss} grad=${s.gradFail} skew=${s.skewMiss}  score=${s.score.toFixed(2)}`);
-      for (const d of m.diffs.slice(0, 14)) console.log(`   [${d.role}] "${d.text.slice(0, 42)}"  ${d.props.join('  ')}`);
-      if (m.unmatched.length) console.log(`   UNMATCHED in original (missing/renamed in clone): ${m.unmatched.slice(0, 8).map((u) => `[${u.role}]"${u.text.slice(0, 22)}"`).join(' ')}${m.unmatched.length > 8 ? ` +${m.unmatched.length - 8}` : ''}`);
+      // CHROME — structural (position/size/bg/gradient/font) diff of header + footer.
+      const ch = scoreChrome(matchChrome(origAll, cloneAll));
+      rows.push({ id, s, ch });
+      const pagePass = s.pass && ch.pass;
+      console.log(`\n### ${id}  ${pagePass ? 'PASS ✓' : 'FAIL ✗'}`);
+      console.log(`   BODY   ${s.pass ? 'pass' : 'FAIL'}  cov=${(s.coverage * 100).toFixed(0)}% (${s.matched}/${s.origCount})  font=${s.fontMiss} grad=${s.gradFail} skew=${s.skewMiss} score=${s.score.toFixed(2)}`);
+      for (const d of m.diffs.slice(0, 8)) console.log(`      [${d.role}] "${d.text.slice(0, 38)}"  ${d.props.join('  ')}`);
+      console.log(`   CHROME ${ch.pass ? 'pass' : 'FAIL'}  cov=${(ch.coverage * 100).toFixed(0)}% (${ch.matched}/${ch.origCount})  pos=${ch.posOff} size=${ch.sizeOff} style=${ch.styleOff}`);
+      for (const d of ch.diffs.slice(0, 12)) console.log(`      (${d.region}) "${d.label.slice(0, 24)}"  ${d.props.join('  ')}`);
+      if (ch.unmatched.length) console.log(`      CHROME UNMATCHED: ${ch.unmatched.slice(0, 8).map((u) => `(${u.region})"${(u.text || '[' + u.tag + ']').slice(0, 18)}"`).join(' ')}${ch.unmatched.length > 8 ? ` +${ch.unmatched.length - 8}` : ''}`);
     }
   } finally { await browser.close(); }
   console.log('\n===== FIDELITY SUMMARY =====');
-  for (const { id, s } of rows) console.log(`  ${s.pass ? 'PASS' : 'FAIL'}  ${id.padEnd(38)} cov=${(s.coverage * 100).toFixed(0)}% font=${s.fontMiss} grad=${s.gradFail} skew=${s.skewMiss} score=${s.score.toFixed(2)}`);
-  const failed = rows.filter((r) => !r.s.pass).length;
-  console.log(`\n${failed} of ${rows.length} pages FAIL the fidelity gate.`);
+  for (const { id, s, ch } of rows) console.log(`  ${s.pass && ch.pass ? 'PASS' : 'FAIL'}  ${id.padEnd(36)} body[${s.pass ? 'ok' : 'X'} cov${(s.coverage * 100).toFixed(0)} font${s.fontMiss} grad${s.gradFail}]  chrome[${ch.pass ? 'ok' : 'X'} pos${ch.posOff} size${ch.sizeOff} style${ch.styleOff}]`);
+  const failed = rows.filter((r) => !(r.s.pass && r.ch.pass)).length;
+  console.log(`\n${failed} of ${rows.length} pages FAIL the fidelity gate (body or chrome).`);
   process.exit(failed ? 1 : 0);
 }
 main().catch((e) => { console.error(e); process.exit(2); });

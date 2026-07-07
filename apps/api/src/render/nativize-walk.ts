@@ -173,7 +173,17 @@ export function BODYBG() {
   const cs = getComputedStyle(document.body);
   const hs = getComputedStyle(document.documentElement);
   const fam = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).fontFamily : ''; };
-  return { image: cs.backgroundImage, color: cs.backgroundColor, htmlColor: hs.backgroundColor, size: cs.backgroundSize, position: cs.backgroundPosition, repeat: cs.backgroundRepeat, attachment: cs.backgroundAttachment, bodyFont: cs.fontFamily, headingFont: fam('h1,h2,h3,.h1,.h2') || cs.fontFamily };
+  // DISTINCT font-families used across visible elements, frequency-ordered — so the orchestrator can map a
+  // SECONDARY/display face (e.g. a skewed button's font) to a font-<slot> utility, not just heading/body.
+  const counts = new Map();
+  for (const el of document.querySelectorAll('body *')) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    const ff = getComputedStyle(el).fontFamily;
+    if (ff) counts.set(ff, (counts.get(ff) || 0) + 1);
+  }
+  const fonts = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f).slice(0, 8);
+  return { image: cs.backgroundImage, color: cs.backgroundColor, htmlColor: hs.backgroundColor, size: cs.backgroundSize, position: cs.backgroundPosition, repeat: cs.backgroundRepeat, attachment: cs.backgroundAttachment, bodyFont: cs.fontFamily, headingFont: fam('h1,h2,h3,.h1,.h2') || cs.fontFamily, fonts };
 }
 
 /** Scroll through the page to trigger lazy-load + settle reveal animations, then return to the top. */

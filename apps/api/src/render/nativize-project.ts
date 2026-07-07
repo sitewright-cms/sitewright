@@ -6,7 +6,7 @@
 // the "bulk of the job"; an agent can fine-tune individual pages afterward.
 import type { FastifyBaseLogger } from 'fastify';
 import type { Page, Entry, Dataset } from '@sitewright/schema';
-import { SLOT_MAX } from '@sitewright/schema';
+import { SLOT_MAX, RESERVED_FONT_SLOT_NAMES } from '@sitewright/schema';
 import { validateTemplate, renderTemplate, type TemplateContext } from '@sitewright/blocks';
 import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
 import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, extractTemplates, type RenderProbe, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
@@ -147,21 +147,61 @@ export function detectContainerWidth(nodes: readonly CapturedNode[]): number | u
   return best;
 }
 
-/** Match the captured heading/body font-family to a hosted font asset (kind:'font') by family → an
- *  `identity.typography` so the nativized site renders in the SOURCE's fonts, not the platform defaults. */
-export function buildTypography(bodyBg: BodyBackground | undefined, fonts: ReadonlyArray<{ id: string; family: string }>): Record<string, unknown> | undefined {
-  if (!bodyBg || fonts.length === 0) return undefined;
-  const firstFamily = (stack: string): string => (stack || '').split(',')[0]!.replace(/['"]/g, '').trim();
+const FIRST_FAMILY = (stack: string): string => (stack || '').split(',')[0]!.replace(/['"]/g, '').trim();
+const FONT_FAMILY_OK = /^[A-Za-z0-9][A-Za-z0-9 '-]*$/; // FontFamilyNameSchema
+const MAX_NATIVE_NAMED_FONTS = 4; // secondary/tertiary/accent + one generic
+
+/**
+ * Resolve the captured font-families → BOTH (a) `identity.typography` slots (heading/body + NAMED
+ * secondary/tertiary/… for extra display faces) so the nativized site renders in the SOURCE fonts, AND
+ * (b) a `palette.fonts` map (`[family, font-<slot>]`) so the per-element transform assigns each element that
+ * SWITCHES font the matching `font-<slot>` utility. Without (b) the platform `.btn { font: inherit }` falls a
+ * display-font button back to the body font — the "button fontMiss" the fidelity gate flagged. Only faces
+ * hosted as a `kind:'font'` asset are used; extras dedup by assetId and cap at MAX_NATIVE_NAMED_FONTS.
+ */
+export function resolveFonts(
+  bodyBg: BodyBackground | undefined,
+  fonts: ReadonlyArray<{ id: string; family: string }>,
+): { typography?: Record<string, unknown>; paletteFonts: Array<readonly [string, string]> } {
+  if (!bodyBg || fonts.length === 0) return { paletteFonts: [] };
   const byFamily = new Map(fonts.map((a) => [a.family.toLowerCase(), a]));
-  const slot = (font: string, weight: number): Record<string, unknown> | undefined => {
-    const fam = firstFamily(font);
+  const resolve = (stack: string): { fam: string; assetId: string } | undefined => {
+    const fam = FIRST_FAMILY(stack);
     const a = fam ? byFamily.get(fam.toLowerCase()) : undefined;
-    return a && /^[A-Za-z0-9][A-Za-z0-9 '-]*$/.test(fam) ? { source: 'asset', family: fam, assetId: a.id, weight } : undefined;
+    return a && FONT_FAMILY_OK.test(fam) ? { fam, assetId: a.id } : undefined;
   };
-  const t: Record<string, unknown> = {};
-  const h = slot(bodyBg.headingFont, 700); if (h) t.heading = h;
-  const b = slot(bodyBg.bodyFont, 400); if (b) t.body = b;
-  return Object.keys(t).length ? t : undefined;
+  const typography: Record<string, unknown> = {};
+  const paletteFonts: Array<readonly [string, string]> = [];
+  const usedIds = new Set<string>();
+  const h = resolve(bodyBg.headingFont);
+  if (h) { typography.heading = { source: 'asset', family: h.fam, assetId: h.assetId, weight: 700 }; paletteFonts.push([h.fam, 'font-heading']); usedIds.add(h.assetId); }
+  const b = resolve(bodyBg.bodyFont);
+  if (b) { typography.body = { source: 'asset', family: b.fam, assetId: b.assetId, weight: 400 }; paletteFonts.push([b.fam, 'font-body']); usedIds.add(b.assetId); }
+  // Additional distinct faces → named slots (+ their palette entries).
+  const named: Record<string, unknown> = {};
+  const NAMES = ['secondary', 'tertiary', 'accent'];
+  let idx = 2;
+  for (const stack of bodyBg.fonts ?? []) {
+    if (Object.keys(named).length >= MAX_NATIVE_NAMED_FONTS) break;
+    const r = resolve(stack);
+    if (!r || usedIds.has(r.assetId)) continue;
+    let name = NAMES[Object.keys(named).length] ?? `font-${idx++}`;
+    while (RESERVED_FONT_SLOT_NAMES.has(name)) name = `font-${idx++}`;
+    named[name] = { source: 'asset', family: r.fam, assetId: r.assetId, weight: 400 };
+    paletteFonts.push([r.fam, `font-${name}`]);
+    usedIds.add(r.assetId);
+  }
+  if (Object.keys(named).length) typography.named = named;
+  // `tailwind.ts` matches a captured font-family by SUBSTRING (`ff.includes(k)`, first match wins), so a
+  // family name that is a prefix of another (e.g. "Roboto" ⊂ "Roboto Condensed") would steal the match and
+  // hand the wrong utility. Sort longest-key-first so the most specific family always wins.
+  const sorted = [...paletteFonts].sort((a, b) => b[0].length - a[0].length);
+  return { typography: Object.keys(typography).length ? typography : undefined, paletteFonts: sorted };
+}
+
+/** Back-compat thin wrapper — the typography slots only (heading/body[/named]). */
+export function buildTypography(bodyBg: BodyBackground | undefined, fonts: ReadonlyArray<{ id: string; family: string }>): Record<string, unknown> | undefined {
+  return resolveFonts(bodyBg, fonts).typography;
 }
 
 /** Build a site-wide `body{…}` rule from the captured page background, for `website.criticalCss`. The
@@ -284,6 +324,40 @@ export async function nativizeProject(
   const refoldDatasets: Dataset[] = [];
   const refoldEntries: Entry[] = [];
 
+  // Seed the site-wide FONT map BEFORE the (concurrent) transform loop so every page's emit assigns a
+  // font-<slot> utility to each element that switches font — else a display-font button falls back to the
+  // platform body font (`.btn { font: inherit }`). Fonts come from the foreign CSS, so ONE home render is
+  // representative; its result also becomes the final `identity.typography` (heading/body + named). Best
+  // effort: on any failure we proceed exactly as before (no per-element fonts, heading/body from the loop).
+  const fontAssets = ((await deps.contentRepo.list(ctx, 'media')) as Array<{ id: string; kind?: string; family?: string }>)
+    .filter((a) => a.kind === 'font' && typeof a.family === 'string')
+    .map((a) => ({ id: a.id, family: a.family! }));
+  let capturedTypography: Record<string, unknown> | undefined;
+  if (fontAssets.length > 0 && !deps.signal?.aborted) {
+    const homeTarget = targets.find((p) => (p.path ?? '') === '') ?? targets[0];
+    if (homeTarget) {
+      try {
+        const hLocaleData = resolveLocaleDatasets(sourceData, (homeTarget as { locale?: string }).locale);
+        const hctx = {
+          company: brand as unknown as Record<string, unknown>,
+          website: { siteUrl: website?.siteUrl, data: website?.data },
+          page: homeTarget as unknown as Record<string, unknown>,
+          dataset: hLocaleData,
+          item: keyedDatasets(homeTarget.source ?? '', hLocaleData), // mirror the loop so item-keyed branches render (+ their fonts)
+        } as unknown as TemplateContext;
+        const hbody = await deps.renderPool.render(homeTarget.source ?? '', hctx);
+        const hhead = typeof website?.head === 'string' ? website.head : '';
+        const hdoc = `<!doctype html><html lang="en"><head><meta charset="utf-8">${hhead}</head><body>${hbody}</body></html>`;
+        const hcap = await capture(hdoc, { originHostPort: deps.originHostPort, rootSelector: 'body' });
+        const rf = resolveFonts(hcap.bodyBg, fontAssets);
+        capturedTypography = rf.typography;
+        if (rf.paletteFonts.length) nctx.palette = { ...nctx.palette, fonts: rf.paletteFonts };
+      } catch (err) {
+        deps.log.warn({ err: String(err) }, 'nativize: font pre-capture failed — proceeding without per-element font utilities');
+      }
+    }
+  }
+
   await runPool(targets, PAGE_CONCURRENCY, async (page) => {
     if (deps.signal?.aborted) return; // client disconnected → stop taking new pages (those done persist)
     try {
@@ -403,11 +477,10 @@ export async function nativizeProject(
       if (bgCss) newWebsite.criticalCss = `${bgCss}${typeof website?.criticalCss === 'string' && website.criticalCss.trim() ? `\n${website.criticalCss}` : ''}`;
       if (containerWidth && containerWidth >= 760 && containerWidth <= 2000) newWebsite.containerWidth = `${Math.round(containerWidth)}px`; // sw-container cap = source's
     }
-    // Typography: match the captured heading/body fonts to the hosted @font-face assets → identity.typography
-    // so the nativized site renders in the SOURCE fonts (not the platform defaults).
-    const fontAssets = ((await deps.contentRepo.list(ctx, 'media')) as Array<{ id: string; kind?: string; family?: string }>)
-      .filter((a) => a.kind === 'font' && typeof a.family === 'string').map((a) => ({ id: a.id, family: a.family! }));
-    const typography = buildTypography(bodyBg, fontAssets);
+    // Typography: prefer the site-wide fonts captured up-front (heading/body + NAMED secondary/tertiary,
+    // and the source of the per-element font utilities); fall back to the home bodyBg if that pre-capture
+    // didn't run (e.g. no font assets, or it failed). `fontAssets` was fetched once, above.
+    const typography = capturedTypography ?? buildTypography(bodyBg, fontAssets);
     // GLOBAL MODALS → website.bottom: a `<dialog data-sw-component="modal">` repeated across the site lives
     // ONCE in the site-wide slot (rendered on every page); the per-page triggers (`<a href="#id">`) still
     // open it via the platform modal runtime. Page-LOCAL modals stay in their page.

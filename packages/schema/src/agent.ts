@@ -21,7 +21,7 @@ The writes you'll use most (argument names matter):
   snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
   matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
   copied from the id/dataset args for you. Collections = two writes (a DATASET's fields, then ENTRIES); a
-  row's field values go under \`data.values\` (flat saves EMPTY), slugs/ids are UNDERSCORE ids — get_guide("datasets").
+  row's field values go under \`data.values\` (flat saves EMPTY); the dataset SLUG + entry ids are UNDERSCORE ids — get_guide("datasets").
 - get_guide({ topic }) needs a topic, e.g. get_guide({ topic: "design" }); call it with NO argument to
   list the topics. get_reference lists every {{sw-*}} helper, data-sw-* directive, and binding.
 - get_capabilities() indexes everything the platform can do + WHERE it's documented (a need→tool map).
@@ -1144,8 +1144,9 @@ its SCHEMA (the field definitions) and its ENTRIES (the rows). You render it by 
 
 STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "faq_passengers", data })
   data = { name: "Passenger FAQ", slug: "faq_passengers", fields: [ {name, type, required?}, … ] }
-  - The slug (and the id) MUST be a lowercase UNDERSCORE identifier — "faq_passengers", NOT "faq-passengers".
-    It becomes the Handlebars path \`dataset.<slug>\`; a hyphen would parse as minus and break every loop.
+  - The SLUG MUST be a lowercase UNDERSCORE identifier — "faq_passengers", NOT "faq-passengers" — because it
+    becomes the Handlebars path \`dataset.<slug>\` and a hyphen would parse as minus and break every loop. (The
+    put_content \`id\` arg for the dataset itself has no such restriction, but conventionally matches the slug.)
   - Each field = { name: <identifier>, type, required?: false, localized?: false, config?: {} }. type is one of:
     text, richtext, number, boolean, date, time, datetime, image, file, folder, reference, select, json, list, object.
     · select needs config: { options: ["a","b","c"] }.  · reference needs config: { dataset: "<other_slug>" }.

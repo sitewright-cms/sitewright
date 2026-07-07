@@ -170,7 +170,7 @@ describe('get_capabilities index', () => {
   const idx = buildCapabilitiesIndex();
   it('composes guides + components + write kinds from the single sources of truth', () => {
     expect(idx.guides.map((g) => g.topic)).toEqual([...GUIDE_TOPICS]);
-    expect(idx.components.length).toBe(idx.components.length); // catalog present
+    expect(idx.components.length).toBeGreaterThan(0); // catalog present
     expect(idx.components.every((c) => c.type && c.marker)).toBe(true);
     expect(idx.writeKinds).toBe(WRITE_KINDS);
     expect(idx.writeKinds.find((w) => w.kind === 'entry')?.shape).toMatch(/values/);

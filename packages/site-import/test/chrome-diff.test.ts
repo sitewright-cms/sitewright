@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // Import the canonical TS source directly (the CLI's .mjs shim re-exports this from dist) so coverage sees it.
-import { matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl } from '../src/fidelity/gate.js';
+import { matchChrome, scoreChrome, scoreChromeMeta, median, isVisibleBg, hasFill, type ChromeEl } from '../src/fidelity/gate.js';
 
 // skewX(θ) computes to matrix(1,0,tanθ,1,0,0); these are the phoenix nav's real vs my old guessed angle.
 const SKEW25 = 'matrix(1, 0, -0.466308, 1, 0, 0)'; // -25°
@@ -124,6 +124,88 @@ describe('scoreChrome', () => {
     ));
     expect(r.diffs[0]!.props).toContain('gradient:EXTRA(orig-solid)');
     expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a filled NON-button tab whose fill went transparent (the orange HOME tab the gate used to miss)', () => {
+    // Both sides are role "text" (a plain <li>/<a>), NOT a button — the old gate only checked fill on buttons.
+    const r = scoreChrome(matchChrome(
+      [el({ text: 'Home', role: 'text', bg: 'rgb(243, 146, 0)' })], // orange active tab
+      [el({ text: 'Home', role: 'text', bg: 'rgba(0, 0, 0, 0)' })], // clone is transparent
+    ));
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('fill:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('does NOT flag two transparent non-button links (no meaningful fill on either side)', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'About', role: 'text' })], [el({ text: 'About', role: 'text' })]));
+    expect(r.diffs).toHaveLength(0);
+    expect(r.pass).toBe(true);
+  });
+
+  it('FAILS when a non-button CLONE gains a fill the original lacks (inverse direction)', () => {
+    const r = scoreChrome(matchChrome(
+      [el({ text: 'Home', role: 'text', bg: 'rgba(0, 0, 0, 0)' })],
+      [el({ text: 'Home', role: 'text', bg: 'rgb(243, 146, 0)' })],
+    ));
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('fill:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS when a non-button CLONE adds a gradient where the original is flat', () => {
+    const r = scoreChrome(matchChrome(
+      [el({ text: 'Services', role: 'text', bgImage: 'none', bg: 'rgba(0, 0, 0, 0)' })],
+      [el({ text: 'Services', role: 'text', bgImage: 'linear-gradient(#fff,#aaa)' })],
+    ));
+    expect(r.diffs[0]!.props).toContain('gradient:EXTRA(orig-solid)');
+    expect(r.pass).toBe(false);
+  });
+
+  it('TOLERATES a uniform horizontal shift of the whole bar (responsive re-centre) — no pos diffs', () => {
+    // 4 items each shifted +60px (a wider container / centred nav). A uniform shift is fidelity-preserving.
+    const orig = ['A', 'B', 'C', 'D'].map((t, i) => el({ text: t, x: 100 + i * 200 }));
+    const clone = ['A', 'B', 'C', 'D'].map((t, i) => el({ text: t, x: 160 + i * 200 }));
+    const r = scoreChrome(matchChrome(orig, clone));
+    expect(r.posOff).toBe(0);
+    expect(r.pass).toBe(true);
+  });
+
+  it('still FAILS a single element that moves RELATIVE to a uniformly-shifted bar', () => {
+    const orig = ['A', 'B', 'C', 'D'].map((t, i) => el({ text: t, x: 100 + i * 200 }));
+    // A,B,D shift +60; C is teleported far past that — a genuine misplacement, not the bar shift.
+    const clone = [el({ text: 'A', x: 160 }), el({ text: 'B', x: 360 }), el({ text: 'C', x: 900 }), el({ text: 'D', x: 760 })];
+    const r = scoreChrome(matchChrome(orig, clone));
+    expect(r.posOff).toBeGreaterThan(0);
+    expect(r.diffs.some((d) => d.label === 'C' && d.props.some((p) => p.startsWith('x:')))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+});
+
+describe('gate helpers', () => {
+  it('median handles empty, odd, and even lists', () => {
+    expect(median([])).toBe(0);
+    expect(median([5])).toBe(5);
+    expect(median([3, 1, 2])).toBe(2); // sorted 1,2,3
+    expect(median([4, 1, 3, 2])).toBe(2.5); // sorted 1,2,3,4 → (2+3)/2
+    expect(median([60, 60, 400, 60])).toBe(60); // outlier-robust
+  });
+
+  it('isVisibleBg reads the ALPHA channel — zero-alpha of ANY colour + both notations are invisible', () => {
+    expect(isVisibleBg('rgba(0, 0, 0, 0)')).toBe(false);
+    expect(isVisibleBg('transparent')).toBe(false);
+    expect(isVisibleBg('')).toBe(false);
+    expect(isVisibleBg(undefined)).toBe(false);
+    expect(isVisibleBg('rgba(255, 0, 0, 0)')).toBe(false); // red at alpha 0 → still invisible (non-zero RGB)
+    expect(isVisibleBg('rgb(0 0 0 / 0)')).toBe(false); // CSS Color 4 slash notation, alpha 0
+    expect(isVisibleBg('rgb(30 120 200 / 0.5)')).toBe(true); // CSS Color 4, alpha 0.5
+    expect(isVisibleBg('rgb(243, 146, 0)')).toBe(true); // opaque 3-component
+    expect(isVisibleBg('rgba(10, 20, 30, 1)')).toBe(true);
+  });
+
+  it('hasFill is true for a gradient image or a visible bg colour', () => {
+    expect(hasFill({ bgImage: 'linear-gradient(#fff,#000)', bg: 'rgba(0, 0, 0, 0)' })).toBe(true);
+    expect(hasFill({ bgImage: 'none', bg: 'rgb(238, 238, 238)' })).toBe(true);
+    expect(hasFill({ bgImage: 'none', bg: 'rgba(0, 0, 0, 0)' })).toBe(false);
+    expect(hasFill({})).toBe(false);
   });
 });
 

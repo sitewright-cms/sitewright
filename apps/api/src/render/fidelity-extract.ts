@@ -39,10 +39,19 @@ export function FIDELITY_EXTRACT() {
       if (role === 'other') role = 'button';
     }
     const textFull = n(el.textContent);
+    // Skip a nested LABEL / counter-skew wrapper inside an <a>/<button> that carries the SAME text: the
+    // enclosing interactive element already represents it. Measuring the inner span reads ITS box + radius
+    // (a skewed button counter-skews its label → radius 0, not the button's 5px) and double-counts the
+    // label, which is exactly what destabilised text-matching + reported a wrong-node radius diff.
+    const wrap = el.closest('a,button');
+    if (wrap && wrap !== el && n(wrap.textContent) === textFull) continue;
     let leaf = el;
     while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
     const lcs = getComputedStyle(leaf);
-    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: Math.round(r.width), h: Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    // w/h from OFFSET dims (untransformed border-box, integer, STABLE) not getBoundingClientRect (which
+    // includes the skew transform → the axis-aligned box inflates run-to-run: the 45↔73 height jitter that
+    // made the gate non-convergent). x/y stay viewport-relative (rect). Inline el → offset* 0 → fall back.
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
   }
   return out;
 }

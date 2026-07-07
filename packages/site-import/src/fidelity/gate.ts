@@ -24,6 +24,29 @@ export const lsPx = (ls: string | null | undefined, size: string | null | undefi
 export const radiusPx = (r: string | null | undefined): number => { const s = String(r ?? '').trim(); if (!s || s === 'none') return 0; return parseFloat(s) || 0; };
 /** Whether a computed `box-shadow` is present (not `none`/empty). */
 export const hasShadow = (s: string | null | undefined): boolean => Boolean(s) && s !== 'none';
+/** Median of a numeric list (empty → 0). Robust to outliers, so a single misplaced element doesn't move it. */
+export const median = (xs: readonly number[]): number => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+};
+/** A background COLOUR that actually paints (not transparent). Reads the ALPHA channel from legacy
+ *  `rgba(r, g, b, a)` (4th field) or CSS Color 4 `rgb(r g b / a)` (after the slash) so a zero-alpha of ANY
+ *  colour is invisible — robust to the browser switching notations (not a brittle string compare). Any
+ *  named/hex/3-component colour paints. */
+export const isVisibleBg = (bg: string | null | undefined): boolean => {
+  const s = (bg || '').trim().toLowerCase();
+  if (!s || s === 'transparent') return false;
+  const slash = /\/\s*([\d.]+)%?\s*\)$/.exec(s); // rgb(r g b / a) — alpha after the slash
+  if (slash) return parseFloat(slash[1]!) !== 0;
+  const rgba = /^rgba?\(([^)]+)\)$/.exec(s); // rgba(r, g, b, a) — alpha is the 4th comma field
+  if (rgba) { const parts = rgba[1]!.split(',').map((x) => x.trim()); if (parts.length === 4) return parseFloat(parts[3]!) !== 0; }
+  return true;
+};
+/** An element carries a MEANINGFUL fill — a gradient image or a non-transparent bg colour. Used to gate the
+ *  fill/gradient diff on filled NON-button chrome (nav tab colours, the active-item pill) too, not just buttons. */
+export const hasFill = (e: { bg?: string; bgImage?: string }): boolean => /gradient/i.test(e.bgImage || '') || isVisibleBg(e.bg);
 
 // ─── types ────────────────────────────────────────────────────────────────────────────────────────────
 export interface StyleEl {
@@ -133,9 +156,26 @@ export function scoreChrome(match: ChromeMatch, opts: ChromeThresholds = {}): Ch
   const { maxPosDx = 40, maxSizeRatio = 1.25, minCoverage = 0.85, maxSkewDeg = 4, minWeightDelta = 150, maxLsDx = 0.6, maxRadiusDx = 3 } = opts;
   const diffs: ChromeDiff[] = [];
   let posOff = 0, sizeOff = 0, styleOff = 0;
+  // A responsive rebuild can shift the WHOLE bar horizontally (a different container width, or centre vs
+  // left align) — an exact-x gate then fails every element for one systematic offset. Gate x on each
+  // element's deviation from its region's MEDIAN shift instead: a uniform shift is fidelity-preserving
+  // (all pairs move together → 0 deviation), and only an element that moves RELATIVE to its neighbours
+  // (reordered, mis-gapped) flags. Computed per region (header/footer shift independently).
+  // Need ENOUGH elements for a reliable "uniform shift" — with 1-2 pairs the median IS that element's own
+  // delta (deviation always 0), so a genuinely teleported lone element would escape. Below 3 pairs, fall
+  // back to absolute-x gating (shift 0).
+  const shiftByRegion = new Map<string, number>();
+  for (const region of ['header', 'footer']) {
+    // Filter non-finite deltas: a NaN from a broken/detached element's box would poison the sort + median
+    // and silently suppress EVERY x-diff for the region (NaN comparisons are always false).
+    const shifts = match.pairs.filter((p) => p.region === region).map((p) => (p.c.x ?? 0) - (p.o.x ?? 0)).filter(Number.isFinite);
+    if (shifts.length >= 3) shiftByRegion.set(region, median(shifts));
+  }
   for (const { region, o, c } of match.pairs) {
     const props: string[] = [];
-    if (Math.abs((o.x ?? 0) - (c.x ?? 0)) > maxPosDx) { props.push(`x:${Math.round(o.x)}→${Math.round(c.x)}`); posOff++; }
+    const shift = shiftByRegion.get(region) ?? 0;
+    const relDx = ((c.x ?? 0) - (o.x ?? 0)) - shift;
+    if (Math.abs(relDx) > maxPosDx) { props.push(`x:${Math.round(o.x)}→${Math.round(c.x)}${Math.abs(shift) > 2 ? ` (Δ${Math.round(relDx)} vs bar-shift ${Math.round(shift)})` : ''}`); posOff++; }
     if (o.w && c.w && Math.max(o.w, c.w) / Math.min(o.w, c.w) > maxSizeRatio) { props.push(`w:${Math.round(o.w)}→${Math.round(c.w)}`); sizeOff++; }
     if (o.h && c.h && Math.max(o.h, c.h) / Math.min(o.h, c.h) > maxSizeRatio) { props.push(`h:${Math.round(o.h)}→${Math.round(c.h)}`); sizeOff++; }
     if (firstFamily(o.font) !== firstFamily(c.font)) { props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`); styleOff++; }
@@ -143,14 +183,18 @@ export function scoreChrome(match: ChromeMatch, opts: ChromeThresholds = {}): Ch
     if (Math.abs(weightNum(o.weight) - weightNum(c.weight)) >= minWeightDelta) { props.push(`weight:${weightNum(o.weight)}→${weightNum(c.weight)}`); styleOff++; }
     if (Math.abs(lsPx(o.ls, o.size) - lsPx(c.ls, c.size)) > maxLsDx) { props.push(`ls:${o.ls || 'normal'}→${c.ls || 'normal'}`); styleOff++; }
     if (Math.abs(radiusPx(o.radius) - radiusPx(c.radius)) > maxRadiusDx) { props.push(`radius:${o.radius}→${c.radius}`); styleOff++; }
-    if (o.role === 'button') {
+    // Fill/gradient: gate for BUTTONS or any element with a meaningful bg on either side — so a nav TAB's
+    // fill (a gray/coloured pill, the orange active HOME tab) is caught even when it renders as a plain
+    // <li>/<a> (role text/other), not just a real button. Previously fill was button-only → tab colour
+    // mismatches were invisible to the gate (only the region screenshot caught them).
+    if (o.role === 'button' || hasFill(o) || hasFill(c)) {
       const og = /gradient/i.test(o.bgImage || ''), cg = /gradient/i.test(c.bgImage || '');
       if (og && !cg) { props.push('gradient:MISSING'); styleOff++; }
       else if (!og && cg) { props.push('gradient:EXTRA(orig-solid)'); styleOff++; }
       else if (og && cg && stripWs(o.bgImage) !== stripWs(c.bgImage)) { props.push('gradient:DIFF'); styleOff++; }
       else if (!og && !cg && o.bg !== c.bg) { props.push(`fill:${o.bg}→${c.bg}`); styleOff++; }
-      if (hasShadow(o.shadow) !== hasShadow(c.shadow)) { props.push(`shadow:${hasShadow(o.shadow) ? 'has' : 'none'}→${hasShadow(c.shadow) ? 'has' : 'none'}`); styleOff++; }
     }
+    if (o.role === 'button' && hasShadow(o.shadow) !== hasShadow(c.shadow)) { props.push(`shadow:${hasShadow(o.shadow) ? 'has' : 'none'}→${hasShadow(c.shadow) ? 'has' : 'none'}`); styleOff++; }
     if (o.color && c.color && o.color !== c.color) props.push(`color:${o.color}→${c.color}`); // reported, not gated
     if (o.hover) {
       const oHover = o.hover.bgImage !== (o.bgImage || '').slice(0, 140) || o.hover.bg !== o.bg || o.hover.color !== o.color;

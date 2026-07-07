@@ -88,10 +88,16 @@ const EXTRACT = () => {
       if (role === 'other') role = 'button';
     }
     const textFull = n(el.textContent);
+    // Skip a nested LABEL / counter-skew wrapper inside an <a>/<button> with the SAME text — the enclosing
+    // interactive element already represents it (mirrors FIDELITY_EXTRACT in apps/api render).
+    const wrap = el.closest('a,button');
+    if (wrap && wrap !== el && n(wrap.textContent) === textFull) continue;
     let leaf = el;
     while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
     const lcs = getComputedStyle(leaf);
-    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: Math.round(r.width), h: Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    // w/h from OFFSET dims (untransformed border-box, STABLE across skew) not the rect (which inflates with
+    // the transform → run-to-run height jitter). x/y stay viewport-relative.
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
   }
   return out;
 };

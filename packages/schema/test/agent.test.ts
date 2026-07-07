@@ -54,6 +54,22 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(AGENT_GUIDES.nav.body).toMatch(/CHROME SLOTS/);
   });
 
+  it('documents the nav-authoring gotchas that broke a real clone run', () => {
+    const nav = AGENT_GUIDES.nav.body;
+    // A kind:"link" placeholder still needs a (empty) path — the schema rejects a missing path.
+    expect(nav).toMatch(/path:""/);
+    // Home detection: path "/" is truthy, so {{#unless path}} never fires — must steer to @first/exact.
+    expect(nav).toContain('{{#unless path}}');
+    expect(nav).toMatch(/@first|exact=true/);
+    // A header-triggered global modal lives in website.bottom, a validated slot (must be nativized).
+    expect(nav).toContain('website.bottom');
+  });
+
+  it('documents the settings merge:true patch option in the core + nav guide', () => {
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('merge:true');
+    expect(AGENT_GUIDES.nav.body).toContain('merge:true');
+  });
+
   it('every guide has a title, summary, and non-trivial body', () => {
     expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
     for (const t of GUIDE_TOPICS) {

@@ -38,9 +38,10 @@ calls already show the work — don't narrate every step.
 
 SITE-WIDE HEADER / FOOTER / SIDEBARS (chrome shown on EVERY page) are NOT pages and NOT templates — they
 are string "slots" on the WEBSITE SETTINGS: website.mainNav (header), website.footer, website.sidebarLeft,
-website.sidebarRight, website.bottom. Fill one by editing settings (read-modify-write the whole entity),
-using <div>/<ul> markup (never <footer>/<nav> — the skeleton owns those landmarks). Never make a "header"
-or "footer" PAGE. Details + nav recipes: get_guide("nav").
+website.sidebarRight, website.bottom. Fill one by editing settings — either read-modify-write the whole
+entity, or put_content("settings","settings", { website: { footer:"…" } }, { merge:true }) to PATCH just
+that slot without resending the rest. Use <div>/<ul> markup (never <footer>/<nav> — the skeleton owns those
+landmarks). Never make a "header" or "footer" PAGE. Details + nav recipes: get_guide("nav").
 
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
@@ -725,7 +726,9 @@ the WEBSITE SETTINGS — NOT pages, NOT templates, NOT snippets on their own: we
 top bar), website.footer, website.sidebarLeft, website.sidebarRight, website.bottom. To fill one, EDIT
 SETTINGS: get_content("settings","settings") first, then put_content("settings","settings", { …keep every
 other field…, website: { …keep the rest…, footer: "<div>…</div>", mainNav: "<div>…</div>" } }) — put_content
-REPLACES the whole entity, so you must send the FULL settings back, not just the slot. The value is INNER
+REPLACES the whole entity by default, so send the FULL settings back, not just the slot — OR pass merge:true
+to PATCH just the fields you send, e.g. put_content("settings","settings", { website: { footer: "<div>…</div>" } },
+{ merge:true }), which leaves every other slot/field untouched (the safe way to change one slot). The value is INNER
 markup only; the skeleton wraps it in the landmark (<footer id="footer">, <nav id="main-nav">, <aside …>),
 so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot value can just include a recipe partial, e.g.
 website.footer = "{{> nav-footer}}". Do NOT create pages named "header"/"footer" and do NOT use a template
@@ -752,7 +755,10 @@ active item with {{sw-active path}} (boolean, no JS, root-relative). Active matc
 parent stays active on its children — except home "/" or a locale home "/es", which match only themselves);
 pass exact=true for the current page only:
   <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a>
-(.active is what the nav EFFECT styles.)
+(.active is what the nav EFFECT styles.) To single out the HOME item (e.g. a distinct fill on the first tab)
+do NOT test {{#unless path}} — home's path is "/" (a locale home is "/es"), which is NON-empty and truthy, so
+that never fires. Use {{#if @first}} (first item in the loop) or {{#if (sw-active path exact=true)}} (the
+current page is home) instead.
 
 CHILD-PAGE DROPDOWN (desktop): a CSS hover dropdown whose PARENT STAYS A REAL LINK — <li class="dropdown
 dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul class="dropdown-content menu …">{{#each
@@ -774,7 +780,12 @@ add {{sw-theme-toggle}} (renders nothing unless themes are enabled). Both auto-a
 NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own — set link.target
 ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a <dialog> in website.bottom) +
 optional link.newTab, and nav.slots/nav.dropdown as usual; its title is the menu name (may include
-{{sw-icon}}/basic HTML, output via {{sw-label}}).
+{{sw-icon}}/basic HTML, output via {{sw-label}}). put_page STILL REQUIRES a path field — a placeholder has
+no route of its own, so pass path:"" (empty string; NOT omitted — the schema rejects a missing path).
+A "#dialog-id" target opens a GLOBAL modal you author as <dialog id="dialog-id"> in website.bottom; because
+website.bottom is a validated chrome slot (below), that <dialog>'s markup must follow the SAME slot rules —
+no inline style="…"/<style>, no landmark tags — so nativize an imported modal (drop its inline styles) BEFORE
+you move it there. A modal left in a single page's body only opens on THAT page, not site-wide.
 
 LANDMARK RULE: never author <nav>/<main>/<footer>/<aside> — the skeleton owns those; nav content is the
 INNER markup of the Main Navigation / Footer slots.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // The gate's pure diff logic is a plain .mjs so the browser CLI and this test share ONE implementation.
-import { firstFamily, stripWs, matchAndDiff, scorePage, type StyleEl } from '../tools/style-diff.mjs';
+import { firstFamily, stripWs, weightNum, skewDeg, lsPx, radiusPx, hasShadow, matchAndDiff, scorePage, type StyleEl } from '../tools/style-diff.mjs';
 
 const el = (o: Partial<StyleEl> = {}): StyleEl => ({
   role: 'text', tag: 'p', text: 'x', font: 'text-font, sans-serif', size: '16px', weight: '400',
@@ -14,6 +14,38 @@ describe('firstFamily / stripWs', () => {
   });
   it('stripWs makes gradients comparable regardless of spacing', () => {
     expect(stripWs('linear-gradient( #a , #b )')).toBe('linear-gradient(#a,#b)');
+  });
+});
+
+describe('numeric style parsers (skew / weight / letter-spacing / radius / shadow)', () => {
+  it('weightNum maps keywords + numbers', () => {
+    expect(weightNum('normal')).toBe(400);
+    expect(weightNum('bold')).toBe(700);
+    expect(weightNum('700')).toBe(700);
+    expect(weightNum(600)).toBe(600);
+    expect(weightNum(undefined)).toBe(400);
+  });
+  it('skewDeg reads skewX degrees from a transform matrix', () => {
+    expect(skewDeg('none')).toBe(0);
+    expect(skewDeg('matrix(1, 0, -0.466308, 1, 0, 0)')).toBe(-25);
+    expect(skewDeg('matrix(1, 0, 0.267949, 1, 0, 0)')).toBe(15);
+    expect(skewDeg(undefined)).toBe(0);
+  });
+  it('lsPx resolves normal/px/em against font-size', () => {
+    expect(lsPx('normal', '16px')).toBe(0);
+    expect(lsPx('1px', '14px')).toBe(1);
+    expect(lsPx('0.1em', '20px')).toBeCloseTo(2);
+    expect(lsPx(undefined, undefined)).toBe(0);
+  });
+  it('radiusPx takes the first radius value in px', () => {
+    expect(radiusPx('none')).toBe(0);
+    expect(radiusPx('5px')).toBe(5);
+    expect(radiusPx('5px 5px 0px 0px')).toBe(5);
+  });
+  it('hasShadow detects presence', () => {
+    expect(hasShadow('none')).toBe(false);
+    expect(hasShadow('')).toBe(false);
+    expect(hasShadow('rgba(0,0,0,.16) 0px 2px 1px 0px')).toBe(true);
   });
 });
 

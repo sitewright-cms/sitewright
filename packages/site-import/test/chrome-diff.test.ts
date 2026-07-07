@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { matchChrome, scoreChrome, type ChromeEl } from '../tools/chrome-diff.mjs';
+import { matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl } from '../tools/chrome-diff.mjs';
+
+// skewX(θ) computes to matrix(1,0,tanθ,1,0,0); these are the phoenix nav's real vs my old guessed angle.
+const SKEW25 = 'matrix(1, 0, -0.466308, 1, 0, 0)'; // -25°
+const SKEW15 = 'matrix(1, 0, -0.267949, 1, 0, 0)'; // -15°
 
 const el = (o: Partial<ChromeEl> = {}): ChromeEl => ({
   role: 'button', tag: 'a', text: '', region: 'header', x: 0, y: 10, w: 100, h: 40,
@@ -78,5 +82,68 @@ describe('scoreChrome', () => {
     expect(r.sizeOff).toBe(0);
     expect(r.styleOff).toBe(0);
     expect(r.pass).toBe(true);
+  });
+
+  // The axes the old gate was BLIND to — each was a real, user-flagged nav defect that passed silently.
+  it('FAILS on a skew-angle mismatch (25° original vs a 15° re-author)', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'Web Design', transform: SKEW25 })], [el({ text: 'Web Design', transform: SKEW15 })]));
+    expect(r.styleOff).toBe(1);
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('skew:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a font-weight mismatch (bold vs the original 400)', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'Web Design', weight: '400' })], [el({ text: 'Web Design', weight: '700' })]));
+    expect(r.diffs[0]!.props).toContain('weight:400→700');
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a letter-spacing mismatch (1px tracking vs normal)', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'Web Design', ls: '1px' })], [el({ text: 'Web Design', ls: 'normal' })]));
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('ls:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a border-radius mismatch (5px vs 0px)', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'Web Design', radius: '5px' })], [el({ text: 'Web Design', radius: '0px' })]));
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('radius:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a missing box-shadow on a tab', () => {
+    const r = scoreChrome(matchChrome([el({ text: 'Tab', role: 'button', shadow: 'rgba(0,0,0,.16) 0px 2px 1px 0px' })], [el({ text: 'Tab', role: 'button', shadow: 'none' })]));
+    expect(r.diffs[0]!.props.some((p) => p.startsWith('shadow:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('FAILS on a gradient ADDED where the original is a flat solid (the exact "added gradients" bug)', () => {
+    const r = scoreChrome(matchChrome(
+      [el({ text: 'Tab', role: 'button', bgImage: 'none', bg: 'rgb(238, 238, 238)' })],
+      [el({ text: 'Tab', role: 'button', bgImage: 'linear-gradient(#f5f5f5,#dadada)', bg: 'rgba(0, 0, 0, 0)' })],
+    ));
+    expect(r.diffs[0]!.props).toContain('gradient:EXTRA(orig-solid)');
+    expect(r.pass).toBe(false);
+  });
+});
+
+describe('scoreChromeMeta', () => {
+  it('flags a non-pinned header (original fixed, clone static)', () => {
+    const r = scoreChromeMeta({ position: 'fixed', ripple: 5, modalTriggers: 1 }, { position: 'static', ripple: 5, modalTriggers: 1 });
+    expect(r.diffs.some((d) => d.startsWith('header-position:'))).toBe(true);
+    expect(r.pass).toBe(false);
+  });
+
+  it('flags missing ripple and missing nav modals', () => {
+    const r = scoreChromeMeta({ position: 'fixed', ripple: 157, modalTriggers: 3 }, { position: 'fixed', ripple: 0, modalTriggers: 0 });
+    expect(r.diffs.some((d) => d.startsWith('ripple:MISSING'))).toBe(true);
+    expect(r.diffs.some((d) => d.startsWith('modals:MISSING'))).toBe(true);
+    expect(r.metaOff).toBe(2);
+    expect(r.pass).toBe(false);
+  });
+
+  it('PASSES when the clone is pinned and has ripple + modals (extra is fine)', () => {
+    const r = scoreChromeMeta({ position: 'fixed', ripple: 157, modalTriggers: 3 }, { position: 'sticky', ripple: 12, modalTriggers: 3 });
+    expect(r.pass).toBe(true);
+    expect(r.metaOff).toBe(0);
   });
 });

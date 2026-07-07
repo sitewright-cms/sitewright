@@ -15,7 +15,7 @@ import { createRequire } from 'node:module';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { matchAndDiff, scorePage } from './style-diff.mjs';
-import { matchChrome, scoreChrome } from './chrome-diff.mjs';
+import { matchChrome, scoreChrome, scoreChromeMeta } from './chrome-diff.mjs';
 import { cloneUrlFor } from './preview-url.mjs';
 
 // playwright-core is a TRANSITIVE dep in this pnpm monorepo — it has no top-level `node_modules/playwright-core`
@@ -91,9 +91,25 @@ const EXTRACT = () => {
     let leaf = el;
     while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
     const lcs = getComputedStyle(leaf);
-    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: Math.round(r.width), h: Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: Math.round(r.width), h: Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
   }
   return out;
+};
+
+// Whole-bar / behavioural CHROME facts the per-element diff can't see: is the header pinned (fixed/sticky),
+// does the chrome fire click ripple, and does the nav open modals. Counted across header + footer. The SW
+// ripple runtime uses the SAME `waves-effect` class protocol as the source, so one selector covers both.
+const CHROME_META = () => {
+  const header = document.querySelector('#main-nav, header, nav');
+  const roots = [header, document.querySelector('#footer, footer')].filter(Boolean);
+  let ripple = 0, modalTriggers = 0;
+  for (const root of roots) {
+    ripple += root.querySelectorAll('.waves-effect, [class*="ripple"], .sw-btn-fx-ripple, [data-sw-ripple]').length;
+    // Materialize/Bootstrap use `data-target="id"` (no leading #) + `.modal-trigger`; SW uses data-sw-* / an
+    // anchor to a `#…modal` id. Match all so a nav that opens modals in EITHER framework is counted.
+    modalTriggers += root.querySelectorAll('[data-target], [data-bs-target], [data-sw-open], [data-sw-modal], [data-sw-modal-open], .modal-trigger, a[href*="modal"]').length;
+  }
+  return { position: header ? getComputedStyle(header).position : 'static', ripple, modalTriggers };
 };
 
 // Read the computed bg/gradient/colour at a point (the closest a/button) — used for the hover pass.
@@ -154,6 +170,8 @@ async function capture(browser, url, label = '') {
         await page.waitForTimeout(15);
       } catch { /* skip */ }
     }
+    // Whole-bar chrome facts (pinned? ripple? modals?) — attached to the array so main can diff them.
+    try { items.meta = await page.evaluate(CHROME_META); } catch { items.meta = {}; }
     return items;
   } finally { await ctx.close().catch(() => {}); }
 }
@@ -175,21 +193,25 @@ async function main() {
       // BODY — text-matched font/gradient diff, body region only.
       const m = matchAndDiff(origAll.filter((e) => e.region === 'body' && e.text), cloneAll.filter((e) => e.region === 'body' && e.text));
       const s = scorePage(m);
-      // CHROME — structural (position/size/bg/gradient/font) diff of header + footer.
+      // CHROME — per-element structural diff (pos/size/font/skew/weight/ls/radius/gradient/shadow) of
+      // header + footer, PLUS whole-bar meta (pinned position, ripple, modal triggers).
       const ch = scoreChrome(matchChrome(origAll, cloneAll));
-      rows.push({ id, s, ch });
-      const pagePass = s.pass && ch.pass;
+      const cm = scoreChromeMeta(origAll.meta, cloneAll.meta);
+      rows.push({ id, s, ch, cm });
+      const chromePass = ch.pass && cm.pass;
+      const pagePass = s.pass && chromePass;
       console.log(`\n### ${id}  ${pagePass ? 'PASS ✓' : 'FAIL ✗'}`);
       console.log(`   BODY   ${s.pass ? 'pass' : 'FAIL'}  cov=${(s.coverage * 100).toFixed(0)}% (${s.matched}/${s.origCount})  font=${s.fontMiss} grad=${s.gradFail} skew=${s.skewMiss} score=${s.score.toFixed(2)}`);
       for (const d of m.diffs.slice(0, 8)) console.log(`      [${d.role}] "${d.text.slice(0, 38)}"  ${d.props.join('  ')}`);
-      console.log(`   CHROME ${ch.pass ? 'pass' : 'FAIL'}  cov=${(ch.coverage * 100).toFixed(0)}% (${ch.matched}/${ch.origCount})  pos=${ch.posOff} size=${ch.sizeOff} style=${ch.styleOff}`);
+      console.log(`   CHROME ${chromePass ? 'pass' : 'FAIL'}  cov=${(ch.coverage * 100).toFixed(0)}% (${ch.matched}/${ch.origCount})  pos=${ch.posOff} size=${ch.sizeOff} style=${ch.styleOff} meta=${cm.metaOff}`);
       for (const d of ch.diffs.slice(0, 12)) console.log(`      (${d.region}) "${d.label.slice(0, 24)}"  ${d.props.join('  ')}`);
+      for (const d of cm.diffs) console.log(`      (meta) ${d}`);
       if (ch.unmatched.length) console.log(`      CHROME UNMATCHED: ${ch.unmatched.slice(0, 8).map((u) => `(${u.region})"${(u.text || '[' + u.tag + ']').slice(0, 18)}"`).join(' ')}${ch.unmatched.length > 8 ? ` +${ch.unmatched.length - 8}` : ''}`);
     }
   } finally { await browser.close(); }
   console.log('\n===== FIDELITY SUMMARY =====');
-  for (const { id, s, ch } of rows) console.log(`  ${s.pass && ch.pass ? 'PASS' : 'FAIL'}  ${id.padEnd(36)} body[${s.pass ? 'ok' : 'X'} cov${(s.coverage * 100).toFixed(0)} font${s.fontMiss} grad${s.gradFail}]  chrome[${ch.pass ? 'ok' : 'X'} pos${ch.posOff} size${ch.sizeOff} style${ch.styleOff}]`);
-  const failed = rows.filter((r) => !(r.s.pass && r.ch.pass)).length;
+  for (const { id, s, ch, cm } of rows) console.log(`  ${s.pass && ch.pass && cm.pass ? 'PASS' : 'FAIL'}  ${id.padEnd(36)} body[${s.pass ? 'ok' : 'X'} cov${(s.coverage * 100).toFixed(0)} font${s.fontMiss} grad${s.gradFail}]  chrome[${ch.pass && cm.pass ? 'ok' : 'X'} pos${ch.posOff} size${ch.sizeOff} style${ch.styleOff} meta${cm.metaOff}]`);
+  const failed = rows.filter((r) => !(r.s.pass && r.ch.pass && r.cm.pass)).length;
   console.log(`\n${failed} of ${rows.length} pages FAIL the fidelity gate (body or chrome).`);
   process.exit(failed ? 1 : 0);
 }

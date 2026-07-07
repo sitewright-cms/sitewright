@@ -352,4 +352,14 @@ describe('SitewrightClient', () => {
     await client.compareToSource('home', undefined, true);
     expect(calls[3]!.input).toBe('https://cms.test/projects/p1/compare/home?refresh=1');
   });
+
+  it('fidelityCheck GETs /fidelity/:id (encoded)', async () => {
+    const payload = { sourceUrl: 'https://x.test/', route: '', pass: true, body: {}, chrome: {}, diffs: { body: [], chrome: [], meta: [] } };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(payload) },
+    );
+    const res = await client.fidelityCheck('about us');
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/fidelity/about%20us');
+    expect(res.pass).toBe(true);
+  });
 });

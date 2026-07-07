@@ -7,9 +7,13 @@
 //                      SSRF-validated, connect-pinned), exactly like the importer's `renderViaBrowser`,
 //                      so the browser's unpinnable DNS is never used.
 import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
+import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta } from '@sitewright/site-import/fidelity';
 import { getBrowser, withRenderSlot, type Shot, type ViewportName } from './screenshot.js';
+import { FIDELITY_EXTRACT, FIDELITY_META } from './fidelity-extract.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
+type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
+type Page = Awaited<ReturnType<BrowserContext['newPage']>>;
 import { pinnedFetch } from '../import/pinned-fetch.js';
 
 const NAV_TIMEOUT_MS = 20_000;
@@ -59,7 +63,10 @@ export function compareTargets(opts: {
 // Drives a real headless Chromium (no browser in unit tests) — exercised by the deploy-time e2e check,
 // like renderViaBrowser. The SSRF guard it relies on (pinnedFetch) IS unit-tested.
 /* v8 ignore start */
-async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<Shot> {
+// Shared page setup for a capture in the given `mode`: new context, the SSRF-pinned network routing for an
+// external source, navigate, and scroll-settle lazy content. Both the screenshot capture (shootOne) and the
+// element capture (captureUrlElements) build on this, so the pinned routing lives in exactly ONE place.
+async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
     deviceScaleFactor: 1,
@@ -67,41 +74,53 @@ async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (t
     reducedMotion: 'reduce',
   });
   try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(NAV_TIMEOUT_MS);
-    if (mode === 'pinned') {
-      // Route the whole external page through the pinned fetcher (no browser DNS) — renderViaBrowser pattern.
-      await page.routeWebSocket(/.*/, (ws) => ws.close());
-      await page.route('**/*', async (route, request) => {
-        if (request.method() !== 'GET' || request.headers()['upgrade']) return route.abort('blockedbyclient');
-        const r = await pinnedFetch(request.url(), { timeoutMs: 10_000, maxBytes: SUBRESOURCE_MAX_BYTES, signal }).catch(() => null);
-        if (!r) return route.abort('blockedbyclient');
-        await route.fulfill({ status: r.status, headers: { 'content-type': r.contentType }, body: Buffer.from(r.bytes) }).catch(() => {});
+  const page = await context.newPage();
+  page.setDefaultTimeout(NAV_TIMEOUT_MS);
+  if (mode === 'pinned') {
+    // Route the whole external page through the pinned fetcher (no browser DNS) — renderViaBrowser pattern.
+    await page.routeWebSocket(/.*/, (ws) => ws.close());
+    await page.route('**/*', async (route, request) => {
+      if (request.method() !== 'GET' || request.headers()['upgrade']) return route.abort('blockedbyclient');
+      const r = await pinnedFetch(request.url(), { timeoutMs: 10_000, maxBytes: SUBRESOURCE_MAX_BYTES, signal }).catch(() => null);
+      if (!r) return route.abort('blockedbyclient');
+      await route.fulfill({ status: r.status, headers: { 'content-type': r.contentType }, body: Buffer.from(r.bytes) }).catch(() => {});
+    });
+  }
+  await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {});
+  // Trigger scroll-reveal/lazy content, then release any preloader scroll-lock so fullPage isn't clipped.
+  await page
+    .evaluate(async () => {
+      const g = globalThis as unknown as {
+        innerHeight: number; scrollBy: (x: number, y: number) => void; scrollTo: (x: number, y: number) => void;
+        setInterval: (fn: () => void, ms: number) => number; clearInterval: (id: number) => void;
+        setTimeout: (fn: () => void, ms: number) => void;
+        document: { documentElement: { scrollHeight: number; style: { setProperty(p: string, v: string, prio?: string): void } }; body: { style: { setProperty(p: string, v: string, prio?: string): void } } };
+      };
+      await new Promise<void>((resolve) => {
+        let y = 0, steps = 0; const step = Math.max(200, g.innerHeight);
+        const tick = g.setInterval(() => {
+          g.scrollBy(0, step); y += step;
+          if (y >= g.document.documentElement.scrollHeight || ++steps > 60) { g.clearInterval(tick); g.scrollTo(0, 0); g.setTimeout(resolve, 150); }
+        }, 50);
       });
-    }
-    await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {});
-    // Trigger scroll-reveal/lazy content, then release any preloader scroll-lock so fullPage isn't clipped.
-    await page
-      .evaluate(async () => {
-        const g = globalThis as unknown as {
-          innerHeight: number; scrollBy: (x: number, y: number) => void; scrollTo: (x: number, y: number) => void;
-          setInterval: (fn: () => void, ms: number) => number; clearInterval: (id: number) => void;
-          setTimeout: (fn: () => void, ms: number) => void;
-          document: { documentElement: { scrollHeight: number; style: { setProperty(p: string, v: string, prio?: string): void } }; body: { style: { setProperty(p: string, v: string, prio?: string): void } } };
-        };
-        await new Promise<void>((resolve) => {
-          let y = 0, steps = 0; const step = Math.max(200, g.innerHeight);
-          const tick = g.setInterval(() => {
-            g.scrollBy(0, step); y += step;
-            if (y >= g.document.documentElement.scrollHeight || ++steps > 60) { g.clearInterval(tick); g.scrollTo(0, 0); g.setTimeout(resolve, 150); }
-          }, 50);
-        });
-        for (const el of [g.document.documentElement, g.document.body]) {
-          el.style.setProperty('overflow', 'visible', 'important');
-          el.style.setProperty('height', 'auto', 'important');
-        }
-      })
-      .catch(() => {});
+      for (const el of [g.document.documentElement, g.document.body]) {
+        el.style.setProperty('overflow', 'visible', 'important');
+        el.style.setProperty('height', 'auto', 'important');
+      }
+    })
+    .catch(() => {});
+  return { context, page };
+  } catch (e) {
+    // Close the context if setup threw before we could hand it back (else the caller's finally never runs
+    // and the render slot leaks until the concurrency timeout). Security review LOW.
+    await context.close().catch(() => {});
+    throw e;
+  }
+}
+
+async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<Shot> {
+  const { context, page } = await prepPage(browser, url, mode, vp, signal);
+  try {
     await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
     // Lazy cross-origin embeds (Google Maps, video) fetch tiles/players AFTER networkidle and never
     // re-settle it, so a fullPage shot catches them mid-load (a grey box). Give a page that has any
@@ -148,4 +167,64 @@ export async function captureUrlShots(
   }
   return Object.fromEntries(out);
 }
+
+/**
+ * Capture the fidelity ELEMENTS + whole-bar meta from `url` at Full HD (1920), the same viewport the CLI gate
+ * uses — for the `fidelity_check` MCP tool. Reuses the SSRF-pinned render path (via prepPage) exactly like
+ * `captureUrlShots`, but runs the in-page extract instead of a screenshot. Returns empty on any failure so the
+ * gate degrades to a low-coverage FAIL rather than throwing.
+ */
+export async function captureUrlElements(
+  url: string,
+  opts: { mode: CaptureMode; signal?: AbortSignal },
+): Promise<{ items: ChromeEl[]; meta: ChromeMeta }> {
+  const browser = await getBrowser();
+  const vp = SCREENSHOT_VIEWPORTS.fullhd;
+  return withRenderSlot(async () => {
+    const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
+    try {
+      await page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
+      await page.waitForTimeout(400).catch(() => {}); // let scroll-reveal transitions finish painting (mirrors the CLI gate) so transform/opacity read settled, not mid-animation
+      // NOTE: unlike the CLI gate we do NOT run a mouse-hover pass here, so ChromeEl.hover is undefined both
+      // sides — scoreChrome guards on `if (o.hover)`, so hover:MISSING? is simply never surfaced (the CLI
+      // marks it "reported, not gated" anyway, so PASS/FAIL is unaffected).
+      const items = (await page.evaluate(FIDELITY_EXTRACT as () => unknown).catch(() => [])) as ChromeEl[];
+      const meta = (await page.evaluate(FIDELITY_META as () => unknown).catch(() => ({}))) as ChromeMeta;
+      return { items, meta };
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta }));
+}
 /* v8 ignore stop */
+
+/**
+ * Pure: run the fidelity diff on captured original vs build element sets + meta, and shape a compact,
+ * agent-readable result (matches the CLI gate's BODY + CHROME + META scoring). Kept out of the browser-driving
+ * code so it's unit-testable.
+ */
+export interface FidelityResult {
+  pass: boolean;
+  body: { pass: boolean; coverage: number; matched: number; orig: number; fontMiss: number; gradFail: number; score: number };
+  chrome: { pass: boolean; coverage: number; matched: number; orig: number; posOff: number; sizeOff: number; styleOff: number; metaOff: number };
+  diffs: { body: string[]; chrome: string[]; meta: string[] };
+}
+export function scoreFidelity(
+  orig: { items: ChromeEl[]; meta: ChromeMeta },
+  build: { items: ChromeEl[]; meta: ChromeMeta },
+): FidelityResult {
+  const bodyMatch = matchAndDiff(orig.items.filter((e) => e.region === 'body' && e.text), build.items.filter((e) => e.region === 'body' && e.text));
+  const body = scorePage(bodyMatch);
+  const chrome = scoreChrome(matchChrome(orig.items, build.items));
+  const meta = scoreChromeMeta(orig.meta, build.meta);
+  return {
+    pass: body.pass && chrome.pass && meta.pass,
+    body: { pass: body.pass, coverage: body.coverage, matched: body.matched, orig: body.origCount, fontMiss: body.fontMiss, gradFail: body.gradFail, score: body.score },
+    chrome: { pass: chrome.pass && meta.pass, coverage: chrome.coverage, matched: chrome.matched, orig: chrome.origCount, posOff: chrome.posOff, sizeOff: chrome.sizeOff, styleOff: chrome.styleOff, metaOff: meta.metaOff },
+    diffs: {
+      body: bodyMatch.diffs.slice(0, 10).map((d) => `[${d.role}] "${d.text.slice(0, 34)}": ${d.props.join(', ')}`),
+      chrome: chrome.diffs.slice(0, 14).map((d) => `(${d.region}) "${d.label.slice(0, 24)}": ${d.props.join(', ')}`),
+      meta: meta.diffs.slice(0, 10),
+    },
+  };
+}

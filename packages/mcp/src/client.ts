@@ -224,10 +224,12 @@ export class SitewrightClient {
     return res.item;
   }
 
-  async putContent(kind: string, entityId: string, data: unknown): Promise<unknown> {
+  async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean } = {}): Promise<unknown> {
+    // `merge` PATCHES: the body is a fragment deep-merged into the existing entity (settings only) so a
+    // partial write can't revert the slots it omits. Default (no flag) still REPLACES the whole entity.
     const res = await this.request<{ item: unknown }>(
       'PUT',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${opts.merge ? '?merge=1' : ''}`),
       data,
     );
     return res.item;

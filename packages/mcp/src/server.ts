@@ -103,7 +103,7 @@ const KIND_SHAPES = new Map<string, string>([
   ['form', describeShape(FormSchema)],
   [
     'settings',
-    'the site settings object (identity, website, seo, shop, effects, translations, …). put_content REPLACES the whole object, so READ it first with get_content("settings","settings"), modify, and write the WHOLE thing back.',
+    'the site settings object (identity, website, seo, shop, effects, translations, …). put_content REPLACES the whole object by default, so READ it first with get_content("settings","settings"), modify, and write the WHOLE thing back — OR pass merge:true to PATCH just the fields you send (e.g. { website: { footer: "…" } }) and leave every other slot untouched.',
   ],
 ]);
 
@@ -679,15 +679,21 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'put_content',
     {
       description:
-        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide.',
-      inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional(), data: z.unknown() },
+        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide. For SETTINGS, pass `merge:true` to PATCH just the fields you send (e.g. only `website.footer`) without resending the whole object — safer than a full replace, which reverts any slot your snapshot missed.',
+      inputSchema: {
+        kind: GENERIC_KIND,
+        id: z.string(),
+        dataset: z.string().optional(),
+        data: z.unknown(),
+        merge: z.boolean().optional().describe('SETTINGS only: deep-merge `data` into the existing settings (patch just the fields you pass) instead of replacing the whole object.'),
+      },
     },
-    gate('content:write', async ({ kind, id, dataset, data }) => {
+    gate('content:write', async ({ kind, id, dataset, data, merge }) => {
       // Weak-model forgiveness: parse a stringified `data` and backfill the id/dataset the schema
       // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
       const normalized = normalizePutData(kind, id, dataset, data);
       try {
-        return await client.putContent(kind, id, normalized);
+        return await client.putContent(kind, id, normalized, { merge });
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed
         // the payload wrong can self-correct next turn instead of looping on the same validation error.

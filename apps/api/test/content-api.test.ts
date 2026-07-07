@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { and, eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { projectMembers } from '../src/db/schema.js';
+import { content, projectMembers } from '../src/db/schema.js';
 import { registerAccount } from '../src/repo/accounts.js';
 
 let app: FastifyInstance;
@@ -243,5 +244,92 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
       ...base,
       website: { mainNav: '<div class="navbar"><a href="{{sw-url \'/\'}}"><img src="{{sw-url company.logo}}"></a></div>' },
     })).statusCode).toBe(200);
+  });
+});
+
+describe('content API — settings patch/merge (?merge=1)', () => {
+  const put = (t: string, projectId: string, id: string, payload: object, merge = false) =>
+    app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/settings/${id}${merge ? '?merge=1' : ''}`,
+      cookies: { sw_session: t },
+      payload,
+    });
+  const getSettings = async (t: string, projectId: string) =>
+    (await app.inject({ method: 'GET', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t } }).then((r) => r.json())) as {
+      item: { identity: { name: string }; website?: Record<string, unknown> };
+    };
+
+  it('a partial write WITHOUT merge is rejected (identity required) — showing why merge is needed', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const res = await put(t, projectId, 'settings', { website: { footer: '<div>Only the footer</div>' } });
+    expect(res.statusCode).toBe(400); // no identity → full-replace validation fails
+  });
+
+  it('merges a footer-only patch, preserving identity and the other slots', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergesite');
+    // Seed a full settings with two slots.
+    expect(
+      (await put(t, projectId, 'settings', {
+        identity: { name: 'Acme', colors: {} },
+        settings: {},
+        website: { mainNav: '<div>NAV</div>', footer: '<div>OLD FOOTER</div>' },
+      })).statusCode,
+    ).toBe(200);
+    // PATCH only the footer.
+    const patched = await put(t, projectId, 'settings', { website: { footer: '<div>NEW FOOTER</div>' } }, true);
+    expect(patched.statusCode).toBe(200);
+    const { item } = await getSettings(t, projectId);
+    expect(item.identity.name).toBe('Acme'); // untouched sibling top-level key
+    expect(item.website?.mainNav).toBe('<div>NAV</div>'); // untouched sibling slot
+    expect(item.website?.footer).toBe('<div>NEW FOOTER</div>'); // the one slot that changed
+  });
+
+  it('validates the MERGED body — an unsafe slot in the patch is rejected at save', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergeunsafe');
+    expect(
+      (await put(t, projectId, 'settings', { identity: { name: 'Acme', colors: {} }, settings: {} })).statusCode,
+    ).toBe(200);
+    const bad = await put(t, projectId, 'settings', { website: { mainNav: '<nav>landmark not allowed</nav>' } }, true);
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/Main Navigation/i);
+  });
+
+  it('accepts the ?merge=true spelling as well as ?merge=1', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergetrue');
+    expect(
+      (await put(t, projectId, 'settings', { identity: { name: 'Acme', colors: {} }, settings: {}, website: { footer: '<div>OLD</div>' } })).statusCode,
+    ).toBe(200);
+    const patched = await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/settings/settings?merge=true`,
+      cookies: { sw_session: t },
+      payload: { website: { footer: '<div>NEW</div>' } },
+    });
+    expect(patched.statusCode).toBe(200);
+    const { item } = await getSettings(t, projectId);
+    expect(item.identity.name).toBe('Acme');
+    expect(item.website?.footer).toBe('<div>NEW</div>');
+  });
+
+  it('rejects ?merge=1 for a non-settings kind', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergepage');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/home?merge=1`,
+      cookies: { sw_session: t },
+      payload: { title: 'Home' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" kind/i);
+  });
+
+  it('returns an actionable 404 when there is no settings row to merge into', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergemissing');
+    // Settings are seeded + undeletable via the API, so force the empty state directly in the DB.
+    await db.delete(content).where(and(eq(content.projectId, projectId), eq(content.kind, 'settings')));
+    const res = await put(t, projectId, 'settings', { website: { footer: '<div>x</div>' } }, true);
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toMatch(/no settings to merge into/i);
   });
 });

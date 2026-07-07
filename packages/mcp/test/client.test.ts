@@ -63,6 +63,16 @@ describe('SitewrightClient', () => {
     expect(JSON.parse(put.init!.body!)).toEqual(page);
   });
 
+  it('appends ?merge=1 only when merge is requested', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"item":{}}' },
+    );
+    await client.putContent('settings', 'settings', { website: { footer: 'x' } }, { merge: true });
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/settings/settings?merge=1');
+    await client.putContent('settings', 'settings', { website: { footer: 'x' } });
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/settings/settings'); // no query by default
+  });
+
   it('treats 204 as a void delete', async () => {
     const { client } = await introspected((input) =>
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 204 },

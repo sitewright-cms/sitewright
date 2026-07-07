@@ -12,7 +12,7 @@
 //   • CSS     — emit reusable site CSS (body background + .bp-hero band texture + .bp-card elevation)
 //               into criticalCss; KEEP the foreign stylesheet link in head (the nativize capture needs it; stripped at finalize); DISCARD scripts.
 import type { CorporateIdentity, FontSlot, Page, WebsiteSettings } from '@sitewright/schema';
-import { CorporateIdentitySchema, WebsiteSettingsSchema } from '@sitewright/schema';
+import { CorporateIdentitySchema, WebsiteSettingsSchema, RESERVED_FONT_SLOT_NAMES } from '@sitewright/schema';
 import type { ImportDiagnostic } from '../types.js';
 import { rewriteCssUrls } from './css.js';
 
@@ -116,6 +116,19 @@ const FONT_VAR_MAP: ReadonlyArray<readonly [RegExp, 'heading' | 'body']> = [
   [/^(text-font|font-text|body-font|font-body|base-font|font-base|copy-font|font-copy|paragraph-font)$/, 'body'],
 ];
 
+// ADDITIONAL semantic font vars → a NAMED slot (kept beyond heading/body). Sites often define a
+// secondary/tertiary/accent display face applied via `.secondary-font` classes; capturing it into a
+// `typography.named` slot self-hosts it (a `--sw-font-<name>` var + `font-<name>` utility) so it survives
+// nativize STRIPPING the foreign stylesheet — the exact gap that broke a real clone's secondary fonts.
+const NAMED_FONT_VAR_MAP: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^(secondary-font|font-secondary|alt-font|font-alt|subheading-font|font-subheading)$/, 'secondary'],
+  [/^(tertiary-font|font-tertiary)$/, 'tertiary'],
+  [/^(accent-font|font-accent|special-font|font-special)$/, 'accent'],
+];
+// Cap the named slots so a font-heavy import can't bloat the settings blob. (Reserved slot names are
+// filtered against the schema's own RESERVED_FONT_SLOT_NAMES — imported, not hand-copied, so it can't drift.)
+const MAX_NAMED_FONTS = 6;
+
 /** Resolve a role's family from a semantic `--*-font` custom property, when one is declared. */
 function familyFromVars(vars: Map<string, string>, role: 'heading' | 'body'): string | undefined {
   for (const [name, raw] of vars) {
@@ -195,7 +208,7 @@ function fontFaceFamilyUrls(cssText: string): Map<string, string> {
  * still resolve); a role declared via a LOCAL()-only @font-face resolves to a SYSTEM slot; only when a role
  * has NO family signal at all does it fall back to "the other font" (the common heading+body pair).
  */
-export function extractTypography(cssText: string, fonts: readonly HostedFont[]): { heading?: FontSlot; body?: FontSlot } {
+export function extractTypography(cssText: string, fonts: readonly HostedFont[]): { heading?: FontSlot; body?: FontSlot; named?: Record<string, FontSlot> } {
   // Drop icon/glyph fonts — they're never a text face (and must not be picked by the fallback below).
   const distinct = [...new Map(fonts.filter((f) => !ICON_FONT.test(f.family)).map((f) => [f.assetId, f])).values()];
   const vars = readCssVars(cssText);
@@ -233,11 +246,49 @@ export function extractTypography(cssText: string, fonts: readonly HostedFont[])
     head = distinct.find((f) => f.assetId !== b.assetId);
   }
   if (!head && !body && !headSys && !bodySys && distinct.length === 1) body = distinct[0];
-  const out: { heading?: FontSlot; body?: FontSlot } = {};
+  const out: { heading?: FontSlot; body?: FontSlot; named?: Record<string, FontSlot> } = {};
   if (head) out.heading = slotFor(head, 700);
   else if (headSys) out.heading = headSys;
   if (body) out.body = slotFor(body, 400);
   else if (bodySys) out.body = bodySys;
+
+  // Capture ADDITIONAL foreign faces (secondary/tertiary/accent + any leftover distinct woff) into NAMED
+  // slots so EVERY foreign font self-hosts — it keeps loading after nativize strips the foreign stylesheet,
+  // and is exposed as a `font-<name>` utility + `--sw-font-<name>` var for the nativized markup to use.
+  // Faces already adopted as heading/body (or their aliases) are skipped so a name that just re-points at
+  // the body woff doesn't duplicate it.
+  const named: Record<string, FontSlot> = {};
+  const usedIds = new Set<string>([head?.assetId, body?.assetId].filter((x): x is string => !!x));
+  const usedNames = new Set<string>();
+  const addNamed = (name: string, font: HostedFont): void => {
+    if (usedIds.has(font.assetId) || usedNames.has(name) || RESERVED_FONT_SLOT_NAMES.has(name) || usedNames.size >= MAX_NAMED_FONTS) return;
+    // Weight 400 like the heading slot's hardcoded 700 — the @font-face is emitted per stored FILE at the
+    // file's OWN weight (typography-css), so the slot weight just picks the default request; a fixed value
+    // keeps it schema-valid (an odd captured weight could fail FontWeightSchema).
+    named[name] = slotFor(font, 400);
+    usedIds.add(font.assetId);
+    usedNames.add(name);
+  };
+  // 1) A recognized secondary/tertiary/accent var → a slot named for its role.
+  for (const [re, name] of NAMED_FONT_VAR_MAP) {
+    for (const [vn, raw] of vars) {
+      if (!re.test(vn)) continue;
+      const f = match(familyName(raw, vars));
+      if (f) addNamed(name, f);
+    }
+  }
+  // 2) Any remaining distinct hosted face → a generic `font-N` slot, so nothing is silently lost. Numbering
+  //    starts at 2 (heading+body are the primary 1st/2nd faces, so a leftover reads as the 3rd+). The while
+  //    guards against a FUTURE NAMED_FONT_VAR_MAP entry that coincidentally produced a `font-N` name in
+  //    step 1 (none do today — secondary/tertiary/accent — so it's currently defensive).
+  let idx = 2;
+  for (const f of distinct) {
+    if (usedIds.has(f.assetId)) continue;
+    let name = `font-${idx++}`;
+    while (usedNames.has(name)) name = `font-${idx++}`;
+    addNamed(name, f);
+  }
+  if (Object.keys(named).length) out.named = named;
   return out;
 }
 
@@ -474,7 +525,14 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const extractedColors = extractColors(input.cssText); // parse the foreign CSS palette once
   const colors = { ...input.identity.colors, ...extractedColors };
   const extractedTypo = extractTypography(input.cssText, input.hostedFonts);
-  const typography = { ...input.identity.typography, ...extractedTypo };
+  const baseTypo = input.identity.typography;
+  const baseNamed = baseTypo?.named;
+  // Merge NAMED slots (don't let a spread of extractedTypo clobber the incoming identity's named fonts).
+  const typography = {
+    ...(baseTypo ?? {}),
+    ...extractedTypo,
+    ...(extractedTypo.named || baseNamed ? { named: { ...baseNamed, ...extractedTypo.named } } : {}),
+  };
   const identity = CorporateIdentitySchema.parse({ ...input.identity, colors, typography });
 
   const websiteIn: Record<string, unknown> = { ...(input.website ?? {}) };
@@ -509,7 +567,8 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
     diagnostics.push({ code: 'header-decor-captured', message: 'the header\'s left/right decorative images (#nav::before/::after backgrounds) were re-pinned to the native navbar edges (desktop) — restyle/reposition if the design needs it' });
   }
 
-  const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';
+  const namedCount = extractedTypo.named ? Object.keys(extractedTypo.named).length : 0;
+  const fontNote = extractedTypo.heading || extractedTypo.body ? (namedCount ? `fonts+${namedCount}named` : 'fonts') : 'no-fonts';
   const colorNote = Object.keys(extractedColors).join('/') || 'defaults';
   const bgNote = bodyImage ? 'real-texture' : 'noise-texture';
   diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, ${bgNote}, data-driven nav + footer, foreign js discarded; foreign css kept for the nativize capture (stripped at finalize — publish/author it away if you skip nativize)` });

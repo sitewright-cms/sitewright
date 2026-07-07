@@ -227,9 +227,11 @@ export type FontSlot = z.infer<typeof FontSlotSchema>;
 /**
  * A custom typography slot name → a `font-<name>` Tailwind utility + `--sw-font-<name>` var. The
  * name is a CSS-ident slug; reserved names (the built-in slots + Tailwind's default font keys) are
- * rejected so a custom slot can never shadow `font-heading`/`font-body`/`font-sans`/etc.
+ * rejected so a custom slot can never shadow `font-heading`/`font-body`/`font-sans`/etc. Exported so a
+ * producer of `named` slots (e.g. the site-import foundation extractor) filters against the SAME set,
+ * rather than a hand-copy that could drift and start emitting a name the schema then rejects.
  */
-const RESERVED_FONT_SLOT_NAMES = new Set(['heading', 'body', 'sans', 'serif', 'mono']);
+export const RESERVED_FONT_SLOT_NAMES = new Set(['heading', 'body', 'sans', 'serif', 'mono']);
 const NamedFontSlotKeySchema = z
   .string()
   .min(1)

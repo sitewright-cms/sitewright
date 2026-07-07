@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl } from '../tools/chrome-diff.mjs';
+// Import the canonical TS source directly (the CLI's .mjs shim re-exports this from dist) so coverage sees it.
+import { matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl } from '../src/fidelity/gate.js';
 
 // skewX(θ) computes to matrix(1,0,tanθ,1,0,0); these are the phoenix nav's real vs my old guessed angle.
 const SKEW25 = 'matrix(1, 0, -0.466308, 1, 0, 0)'; // -25°

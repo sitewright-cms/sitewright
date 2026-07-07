@@ -200,6 +200,22 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     const helpersOnly = JSON.parse(text(await mcp.callTool({ name: 'get_reference', arguments: { section: 'helpers' } }))) as Record<string, unknown>;
     expect(Object.keys(helpersOnly)).toEqual(['helpers']);
   });
+
+  it('get_capabilities returns the capability index — components + guides + write kinds + need→tool map (no auth)', async () => {
+    const mcp = await connect(fakeClient(), null);
+    expect(await toolNames(mcp)).toContain('get_capabilities');
+    const idx = JSON.parse(text(await mcp.callTool({ name: 'get_capabilities', arguments: {} }))) as {
+      guides: Array<{ topic: string }>;
+      components: Array<{ marker: string }>;
+      writeKinds: Array<{ kind: string; shape: string }>;
+      findByNeed: Array<{ need: string; where: string }>;
+    };
+    expect(idx.guides.some((g) => g.topic === 'datasets')).toBe(true);
+    expect(idx.components.some((c) => c.marker === 'modal')).toBe(true);
+    // the write shapes flag the entry `values` gotcha, and the need-map answers the wrongly-assumed-missing ones
+    expect(idx.writeKinds.find((w) => w.kind === 'entry')?.shape).toMatch(/values/);
+    expect(idx.findByNeed.some((n) => n.need.toLowerCase().includes('ripple'))).toBe(true);
+  });
 });
 
 describe('createSitewrightMcpServer — snippet authoring (was unreachable)', () => {

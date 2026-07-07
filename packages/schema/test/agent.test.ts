@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS } from '../src/agent.js';
+import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS, buildCapabilitiesIndex, CAPABILITY_MAP, WRITE_KINDS } from '../src/agent.js';
 import { NAV_SLOTS } from '../src/page.js';
 import { SW_HELPERS } from '../src/authoring-reference.js';
 
@@ -18,11 +18,12 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
 
   it('is a SMALL core (feature how-tos moved to on-demand guides)', () => {
     // The served instructions are the core + a generated topic index — kept well under the old ~24k
-    // monolith so it isn't a heavy up-front prompt. (Ceiling covers the general behaviour directives —
-    // build-in-stages, editable, datasets, components, icons, preview-sparingly, snappy-chat, the
-    // explicit write-tool argument shapes that keep weaker models from omitting required args, and the
-    // chrome-slot vs page distinction — core rules that shape EVERY session, not feature how-tos.)
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(17_500);
+    // monolith (and the 32k admin-override max) so it isn't a heavy up-front prompt. (Ceiling covers the
+    // general behaviour directives — build-in-stages, editable, datasets, components, icons,
+    // preview-sparingly, snappy-chat, the explicit write-tool argument shapes that keep weaker models from
+    // omitting required args, the chrome-slot vs page distinction, the get_capabilities discovery index,
+    // and the dataset write-shape gotcha — core rules that shape EVERY session, not feature how-tos.)
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(18_500);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {
@@ -54,7 +55,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   });
 
   it('every guide has a title, summary, and non-trivial body', () => {
-    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import']);
+    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
     for (const t of GUIDE_TOPICS) {
       const g = AGENT_GUIDES[t];
       expect(g.title).toBeTruthy();
@@ -140,5 +141,49 @@ describe('MCP docs ↔ engine binding drift guards', () => {
     const unknown = new Set<string>();
     for (const m of allDocs.matchAll(/\{\{(?:#each\s+|\s*)nav\.([a-z]+)/g)) if (!known.has(m[1]!)) unknown.add(m[1]!);
     expect([...unknown], `docs loop nav.<slot> that isn't a NAV_SLOT: ${[...unknown].join(', ')}`).toEqual([]);
+  });
+});
+
+describe('datasets guide — the write shape a weak agent gets wrong', () => {
+  const body = AGENT_GUIDES.datasets.body;
+  it('teaches that entry row data goes under `values` (the read/write asymmetry)', () => {
+    // The exact silent-failure: writing flat entry data strips the fields and saves values:{} empty.
+    expect(body).toContain('values');
+    expect(body).toMatch(/data = \{ values:/);
+    expect(body).toMatch(/saves EMPTY|values:\{\}/);
+  });
+  it('teaches the underscore-identifier rule for slugs + entry ids (no hyphens)', () => {
+    expect(body).toMatch(/faq_passengers/);
+    expect(body).toMatch(/NOT ["“]?faq-passengers|not "?faq-passengers/i);
+  });
+  it('names the two-step write (dataset schema, then entries) and the dataset arg', () => {
+    expect(body).toMatch(/put_content\(\{ kind: "dataset"/);
+    expect(body).toMatch(/put_content\(\{ kind: "entry".*dataset:/);
+  });
+  it('the core bootstrap also flags the values gotcha + points at the guide', () => {
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('data.values');
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("datasets")');
+  });
+});
+
+describe('get_capabilities index', () => {
+  const idx = buildCapabilitiesIndex();
+  it('composes guides + components + write kinds from the single sources of truth', () => {
+    expect(idx.guides.map((g) => g.topic)).toEqual([...GUIDE_TOPICS]);
+    expect(idx.components.length).toBeGreaterThan(0); // catalog present
+    expect(idx.components.every((c) => c.type && c.marker)).toBe(true);
+    expect(idx.writeKinds).toBe(WRITE_KINDS);
+    expect(idx.writeKinds.find((w) => w.kind === 'entry')?.shape).toMatch(/values/);
+  });
+  it('the need→where map covers the primitives that were wrongly assumed missing', () => {
+    const needs = CAPABILITY_MAP.map((c) => c.need.toLowerCase()).join(' | ');
+    for (const probe of ['ripple', 'modal', 'drawer', 'carousel', 'collections', 'languages']) {
+      expect(needs).toContain(probe);
+    }
+    // and it points ripple at the effects guide (not "unsupported")
+    expect(CAPABILITY_MAP.find((c) => c.need.includes('ripple'))?.where).toMatch(/effects/);
+  });
+  it('the bootstrap advertises get_capabilities as the anti-"assume-missing" index', () => {
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_capabilities');
   });
 });

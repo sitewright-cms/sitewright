@@ -73,6 +73,7 @@ async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (t
     isMobile: vp.isMobile,
     reducedMotion: 'reduce',
   });
+  try {
   const page = await context.newPage();
   page.setDefaultTimeout(NAV_TIMEOUT_MS);
   if (mode === 'pinned') {
@@ -109,6 +110,12 @@ async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (t
     })
     .catch(() => {});
   return { context, page };
+  } catch (e) {
+    // Close the context if setup threw before we could hand it back (else the caller's finally never runs
+    // and the render slot leaks until the concurrency timeout). Security review LOW.
+    await context.close().catch(() => {});
+    throw e;
+  }
 }
 
 async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<Shot> {
@@ -177,6 +184,10 @@ export async function captureUrlElements(
     const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
     try {
       await page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
+      await page.waitForTimeout(400).catch(() => {}); // let scroll-reveal transitions finish painting (mirrors the CLI gate) so transform/opacity read settled, not mid-animation
+      // NOTE: unlike the CLI gate we do NOT run a mouse-hover pass here, so ChromeEl.hover is undefined both
+      // sides — scoreChrome guards on `if (o.hover)`, so hover:MISSING? is simply never surfaced (the CLI
+      // marks it "reported, not gated" anyway, so PASS/FAIL is unaffected).
       const items = (await page.evaluate(FIDELITY_EXTRACT as () => unknown).catch(() => [])) as ChromeEl[];
       const meta = (await page.evaluate(FIDELITY_META as () => unknown).catch(() => ({}))) as ChromeMeta;
       return { items, meta };
@@ -213,7 +224,7 @@ export function scoreFidelity(
     diffs: {
       body: bodyMatch.diffs.slice(0, 10).map((d) => `[${d.role}] "${d.text.slice(0, 34)}": ${d.props.join(', ')}`),
       chrome: chrome.diffs.slice(0, 14).map((d) => `(${d.region}) "${d.label.slice(0, 24)}": ${d.props.join(', ')}`),
-      meta: meta.diffs,
+      meta: meta.diffs.slice(0, 10),
     },
   };
 }

@@ -30,6 +30,14 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       build: { desktop: { base64: 'QUFB', mimeType: 'image/jpeg', width: 1280, height: 900 } },
       source: { desktop: { base64: 'QkJC', mimeType: 'image/jpeg', width: 1280, height: 900 } },
     })),
+    fidelityCheck: vi.fn(async () => ({
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      pass: false,
+      body: { pass: true, coverage: 0.9, matched: 9, orig: 10, fontMiss: 0, gradFail: 0, score: 0.05 },
+      chrome: { pass: false, coverage: 0.8, matched: 8, orig: 10, posOff: 0, sizeOff: 0, styleOff: 2, metaOff: 1 },
+      diffs: { body: [], chrome: ['(header) "Web Design": skew:25°→15°, weight:400→700'], meta: ['ripple:MISSING (original fires 8)'] },
+    })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
@@ -257,6 +265,39 @@ describe('createSitewrightMcpServer — media tools', () => {
     const errC = fakeClient({ compareToSource: vi.fn(async () => { throw new SitewrightApiError(500, 'boom'); }) });
     const r4 = await (await connect(errC, readScope)).callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
     expect(r4.isError).toBe(true);
+  });
+
+  it('fidelity_check returns measured PASS/FAIL numbers + diffs (content:read)', async () => {
+    const r = await connect(fakeClient(), readScope);
+    const res = await r.callTool({ name: 'fidelity_check', arguments: { pageId: 'about' } });
+    expect(res.isError).toBeFalsy();
+    const t = text(res);
+    expect(t).toMatch(/FIDELITY FAIL/);
+    expect(t).toMatch(/BODY\s+pass/);
+    expect(t).toMatch(/CHROME FAIL/);
+    expect(t).toMatch(/skew:25°→15°/); // the chrome diff is surfaced verbatim
+    expect(t).toMatch(/ripple:MISSING/); // the meta diff too
+    expect(t).toMatch(/NOT faithful yet/); // the fail guidance
+  });
+
+  it('fidelity_check reports a clean PASS when the gate passes', async () => {
+    const passC = fakeClient({ fidelityCheck: vi.fn(async () => ({ sourceUrl: 'x', route: '', pass: true, body: { pass: true, coverage: 1, matched: 5, orig: 5, fontMiss: 0, gradFail: 0, score: 0 }, chrome: { pass: true, coverage: 1, matched: 5, orig: 5, posOff: 0, sizeOff: 0, styleOff: 0, metaOff: 0 }, diffs: { body: [], chrome: [], meta: [] } })) });
+    const res = await (await connect(passC, readScope)).callTool({ name: 'fidelity_check', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toMatch(/FIDELITY PASS ✓/);
+    expect(text(res)).not.toMatch(/NOT faithful/);
+  });
+
+  it('fidelity_check: gates on login + content:read, and surfaces client errors', async () => {
+    expect((await (await connect(fakeClient(), null)).callTool({ name: 'fidelity_check', arguments: { pageId: 'home' } })).isError).toBe(true);
+    const noRead = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: ['publish'] });
+    const r2 = await noRead.callTool({ name: 'fidelity_check', arguments: { pageId: 'home' } });
+    expect(r2.isError).toBe(true);
+    expect(text(r2)).toMatch(/content:read/);
+    const errC = fakeClient({ fidelityCheck: vi.fn(async () => { throw new SitewrightApiError(400, 'no source'); }) });
+    const r3 = await (await connect(errC, readScope)).callTool({ name: 'fidelity_check', arguments: { pageId: 'home' } });
+    expect(r3.isError).toBe(true);
+    expect(text(r3)).toMatch(/no source/);
   });
 
   it('list_media_folders is content:read', async () => {

@@ -102,12 +102,20 @@ const EXTRACT = () => {
 const CHROME_META = () => {
   const header = document.querySelector('#main-nav, header, nav');
   const roots = [header, document.querySelector('#footer, footer')].filter(Boolean);
+  // A candidate counts as a MODAL trigger only if the element it targets is ACTUALLY a modal — resolving the
+  // id and checking that the TARGET's class or id carries "modal" (Materialize `.modal`, custom `cb-modal` /
+  // `modal-lg`, a `#…-modal` id) or is an SW modal. This catches real modals while still excluding a Bootstrap
+  // dropdown/tab/collapse `data-target` (→ `.dropdown-menu`, no "modal") or a plain in-page `#anchor` link.
+  const isModal = (el) => Boolean(el) && (el.getAttribute('data-sw-component') === 'modal' || /modal/i.test(el.className || '') || /modal/i.test(el.id || ''));
+  const targetOf = (el) => { const raw = el.getAttribute('data-target') || el.getAttribute('data-bs-target') || el.getAttribute('data-sw-open') || el.getAttribute('data-sw-modal') || el.getAttribute('data-sw-modal-open') || el.getAttribute('href') || ''; return raw ? document.getElementById(raw.replace(/^#/, '')) : null; };
   let ripple = 0, modalTriggers = 0;
   for (const root of roots) {
-    ripple += root.querySelectorAll('.waves-effect, [class*="ripple"], .sw-btn-fx-ripple, [data-sw-ripple]').length;
-    // Materialize/Bootstrap use `data-target="id"` (no leading #) + `.modal-trigger`; SW uses data-sw-* / an
-    // anchor to a `#…modal` id. Match all so a nav that opens modals in EITHER framework is counted.
-    modalTriggers += root.querySelectorAll('[data-target], [data-bs-target], [data-sw-open], [data-sw-modal], [data-sw-modal-open], .modal-trigger, a[href*="modal"]').length;
+    // `[class~="ripple"]` = the exact `ripple` token (not `.no-ripple`/`.ripple-disabled`); waves = the shared
+    // Materialize/SW ripple protocol.
+    ripple += root.querySelectorAll('.waves-effect, [class~="ripple"], .sw-btn-fx-ripple, [data-sw-ripple]').length;
+    for (const el of root.querySelectorAll('[data-target], [data-bs-target], [data-sw-open], [data-sw-modal], [data-sw-modal-open], .modal-trigger, a[href^="#"]')) {
+      if (el.classList.contains('modal-trigger') || isModal(targetOf(el))) modalTriggers++;
+    }
   }
   return { position: header ? getComputedStyle(header).position : 'static', ripple, modalTriggers };
 };

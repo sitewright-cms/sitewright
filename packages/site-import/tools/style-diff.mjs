@@ -15,7 +15,9 @@ export const weightNum = (w) => { const s = String(w ?? '').toLowerCase().trim()
 export const skewDeg = (t) => { const m = /matrix\(([^)]+)\)/.exec(t || ''); if (!m) return 0; const p = m[1].split(',').map(Number); if (p.length < 4 || !Number.isFinite(p[0])) return 0; return Math.round((Math.atan2(p[2], p[0]) * 180) / Math.PI); };
 /** letter-spacing in PX (`normal`→0; `em` resolved against the element's font-size). */
 export const lsPx = (ls, size) => { const s = String(ls ?? '').trim(); if (!s || s === 'normal') return 0; if (s.endsWith('em')) return (parseFloat(s) || 0) * (parseFloat(size) || 16); return parseFloat(s) || 0; };
-/** First border-radius value in PX (`none`/empty→0). */
+/** First (top-left) border-radius value in PX (`none`/empty→0). Only the first corner is compared, so a
+ *  difference confined to the OTHER corners of an asymmetric radius is not caught — fine for the symmetric
+ *  tab corners this gates; revisit if asymmetric-radius chrome ever needs per-corner fidelity. */
 export const radiusPx = (r) => { const s = String(r ?? '').trim(); if (!s || s === 'none') return 0; return parseFloat(s) || 0; };
 /** Whether a computed `box-shadow` is present (not `none`/empty). */
 export const hasShadow = (s) => Boolean(s) && s !== 'none';

@@ -30,6 +30,10 @@ describe('numeric style parsers (skew / weight / letter-spacing / radius / shado
     expect(skewDeg('matrix(1, 0, -0.466308, 1, 0, 0)')).toBe(-25);
     expect(skewDeg('matrix(1, 0, 0.267949, 1, 0, 0)')).toBe(15);
     expect(skewDeg(undefined)).toBe(0);
+    // pure skewX is immune to scale (a and c scale together); a pure ROTATION reads as -angle — a genuine
+    // transform difference the gate SHOULD flag, just labelled `skew:` (documented degradation).
+    expect(skewDeg('matrix(2, 0, -0.932616, 2, 0, 0)')).toBe(-25); // scale(2) · skewX(-25°) → still -25°
+    expect(skewDeg('matrix(0.984808, 0.173648, -0.173648, 0.984808, 0, 0)')).toBe(-10); // rotate(10°) → -10°
   });
   it('lsPx resolves normal/px/em against font-size', () => {
     expect(lsPx('normal', '16px')).toBe(0);

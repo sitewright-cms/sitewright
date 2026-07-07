@@ -1108,6 +1108,8 @@ VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after au
   mobile. Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs +
   their inner media, accordion, footer/sub-footer, the fixed social rail — and match background, borders,
   colours, TYPE SIZES, icon/graphic sizes, SHADOW strength, and component-control styling. Fix, and repeat.
+  For FINE chrome detail the full-page 1× image smears (gradient stops, exact skew, thin shadows, font weight),
+  use compare_regions(pageId) — 2× lossless crops of the header + footer.
 - fidelity_check(pageId) to PROVE they're gone — the OBJECTIVE gate. It MEASURES computed styles of build vs
   original and returns a PASS/FAIL: body (font/gradient/coverage) + chrome (position/size/style + skew,
   font-WEIGHT, letter-spacing, radius, shadow, solid-vs-gradient, fixed-position, ripple, modals). It catches
@@ -1177,6 +1179,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
   { name: 'fidelity_check', description: "The OBJECTIVE clone-fidelity GATE: measures computed styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) and returns a PASS/FAIL number. Terminate the nativize loop on this, not a screenshot.", capability: 'content:read' },
+  { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },

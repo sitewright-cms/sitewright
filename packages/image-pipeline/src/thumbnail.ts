@@ -65,3 +65,14 @@ export async function generateThumbnail(
 
   return { buffer: data, width: info.width, height, format };
 }
+
+/**
+ * Transcode a screenshot PNG (Chromium can only emit PNG/JPEG) to LOSSLESS WebP — smaller than PNG and,
+ * unlike JPEG, artifact-free, so a high-res fidelity crop keeps crisp gradient stops / skew edges / thin
+ * shadows intact for a visual compare. Pure compute over an in-memory buffer; the input-pixel bomb guard
+ * is the same as {@link generateThumbnail}.
+ */
+export async function pngToLosslessWebp(png: Buffer): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const { data, info } = await sharp(png, SHARP_OPTIONS).webp({ lossless: true }).toBuffer({ resolveWithObject: true });
+  return { buffer: data, width: info.width, height: info.height };
+}

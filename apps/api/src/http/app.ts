@@ -265,7 +265,7 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
-import { captureUrlShots, captureUrlElements, scoreFidelity, compareTargets, type ComparePageInput } from '../render/compare.js';
+import { captureUrlShots, captureUrlElements, captureUrlRegions, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -4598,6 +4598,47 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           captureUrlElements(target.sourceUrl, { mode: 'pinned', signal: abort.signal }),
         ]);
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...scoreFidelity(source, build) });
+      },
+    );
+
+    // compare_regions: HIGH-RESOLUTION region crops (default header + footer) of the BUILD (loopback) and the
+    // imported SOURCE (SSRF-pinned), at 2× device scale as LOSSLESS WebP — so an agent can SEE fine chrome
+    // detail (gradient stops, skew edges, thin shadows) that the 1× JPEG full-page compare_to_source smears.
+    // Optional `?regions=header,footer` limits which default regions to capture. Owner/member (content:read).
+    app.get<{ Params: { projectId: string; pageId: string }; Querystring: { regions?: string } }>(
+      '/projects/:projectId/compare-regions/:pageId',
+      { config: rl(6) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const allPages = (await contentRepo.list(ctx, 'page').catch(() => [])) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        const fullRoute = targetPage ? pathToSlug(pagePath(targetPage, byId)) : undefined;
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput | null,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) {
+          if (target.error === 'not-found') throw new NotFoundError('page not found');
+          return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        }
+        // Which default regions to capture (unknown names dropped; empty/absent → all defaults).
+        const wanted = (req.query.regions ?? '').split(',').map((s) => s.trim()).filter((s) => Object.hasOwn(DEFAULT_COMPARE_REGIONS, s));
+        const regions = wanted.length ? Object.fromEntries(wanted.map((n) => [n, DEFAULT_COMPARE_REGIONS[n]!])) : DEFAULT_COMPARE_REGIONS;
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        const [build, source] = await Promise.all([
+          captureUrlRegions(target.buildUrl, { mode: 'loopback', regions, signal: abort.signal }),
+          captureUrlRegions(target.sourceUrl, { mode: 'pinned', regions, signal: abort.signal }),
+        ]);
+        // Shape as { region: { build, source } } so the tool can lay each region out build-then-source.
+        const out: Record<string, { build?: RegionShot; source?: RegionShot }> = {};
+        for (const name of Object.keys(regions)) out[name] = { build: build[name], source: source[name] };
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, regions: out });
       },
     );
 

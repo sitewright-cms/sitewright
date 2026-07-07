@@ -38,6 +38,14 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       chrome: { pass: false, coverage: 0.8, matched: 8, orig: 10, posOff: 0, sizeOff: 0, styleOff: 2, metaOff: 1 },
       diffs: { body: [], chrome: ['(header) "Web Design": skew:25°→15°, weight:400→700'], meta: ['ripple:MISSING (original fires 8)'] },
     })),
+    compareRegions: vi.fn(async () => ({
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      regions: {
+        header: { build: { base64: 'QlVJTEQ', mimeType: 'image/webp' as const, width: 3840, height: 200 }, source: { base64: 'U1JD', mimeType: 'image/webp' as const, width: 3840, height: 200 } },
+        footer: { build: { base64: 'RlRS', mimeType: 'image/webp' as const, width: 3840, height: 700 }, source: { base64: 'RlRS', mimeType: 'image/webp' as const, width: 3840, height: 700 } },
+      },
+    })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
@@ -298,6 +306,29 @@ describe('createSitewrightMcpServer — media tools', () => {
     const r3 = await (await connect(errC, readScope)).callTool({ name: 'fidelity_check', arguments: { pageId: 'home' } });
     expect(r3.isError).toBe(true);
     expect(text(r3)).toMatch(/no source/);
+  });
+
+  it('compare_regions returns high-res BUILD + ORIGINAL image blocks per region (content:read)', async () => {
+    const r = await connect(fakeClient(), readScope);
+    const res = await r.callTool({ name: 'compare_regions', arguments: { pageId: 'about' } });
+    expect(res.isError).toBeFalsy();
+    const imgs = (res.content as Array<{ type: string; mimeType?: string }>).filter((b) => b.type === 'image');
+    expect(imgs).toHaveLength(4); // header build+source, footer build+source
+    expect(imgs.every((b) => b.mimeType === 'image/webp')).toBe(true);
+    expect(text(res)).toMatch(/HIGH-RES chrome compare/);
+  });
+
+  it('compare_regions: gates on login + content:read, empty regions note, and client errors', async () => {
+    expect((await (await connect(fakeClient(), null)).callTool({ name: 'compare_regions', arguments: { pageId: 'home' } })).isError).toBe(true);
+    const noRead = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: ['publish'] });
+    expect((await noRead.callTool({ name: 'compare_regions', arguments: { pageId: 'home' } })).isError).toBe(true);
+    // no crops captured → a note, no image blocks
+    const emptyC = fakeClient({ compareRegions: vi.fn(async () => ({ sourceUrl: 'x', route: '', regions: {} })) });
+    const r2 = await (await connect(emptyC, readScope)).callTool({ name: 'compare_regions', arguments: { pageId: 'home' } });
+    expect(r2.isError).toBeFalsy();
+    expect((r2.content as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+    const errC = fakeClient({ compareRegions: vi.fn(async () => { throw new SitewrightApiError(400, 'no source'); }) });
+    expect((await (await connect(errC, readScope)).callTool({ name: 'compare_regions', arguments: { pageId: 'home' } })).isError).toBe(true);
   });
 
   it('list_media_folders is content:read', async () => {

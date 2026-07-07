@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COMPONENT_CATALOG } from './component-catalog.js';
 // Agent (MCP) defaults shared across packages: the bridge's fallback instructions, the API's
 // effective-instructions resolution, and the admin panel's editor + endpoint list all read from here.
 // The CORE agent instructions — always sent in the MCP `instructions` field (kept small). The
@@ -19,9 +20,13 @@ The writes you'll use most (argument names matter):
 - put_content({ kind, id, data }) — for the OTHER kinds (settings, dataset, entry, form, template,
   snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
   matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
-  copied from the id/dataset args for you.
+  copied from the id/dataset args for you. Collections = two writes (a DATASET's fields, then ENTRIES); a
+  row's field values go under \`data.values\` (flat saves EMPTY), slugs/ids are UNDERSCORE ids — get_guide("datasets").
 - get_guide({ topic }) needs a topic, e.g. get_guide({ topic: "design" }); call it with NO argument to
   list the topics. get_reference lists every {{sw-*}} helper, data-sw-* directive, and binding.
+- get_capabilities() indexes everything the platform can do + WHERE it's documented (a need→tool map).
+  Coverage is SPREAD across get_components/get_reference/get_guide, so NEVER conclude "can't do X" from one
+  tool — if unsure a feature exists (ripple, modals, drawers, sliders, i18n, datasets…), call it FIRST.
 If a write is REJECTED, the error names the wrong field AND the expected shape — read it, fix that one
 thing, and retry; do NOT resend the same failing call. To see a kind's exact shape before writing,
 get_content an existing entity of that kind (e.g. the seeded home page) and mirror it.
@@ -1129,6 +1134,46 @@ WHEN A PAGE IS DONE (i.e. fidelity_check returns pass ✓ AND the STRUCTURE CHEC
 set page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
 `,
   },
+  datasets: {
+    title: "Datasets — collections (schema + entries) and how to WRITE them",
+    summary: "define a collection's fields, then add rows — the put_content shapes + the two gotchas that make writes silently fail (row data under `values`; UNDERSCORE slugs/ids) — READ before writing a dataset",
+    body: `
+A DATASET is a reusable COLLECTION (team members, FAQs, menu items, testimonials, slides). It has TWO parts:
+its SCHEMA (the field definitions) and its ENTRIES (the rows). You render it by looping in a page source with
+{{#each dataset.<slug>}}…{{/each}}. Writing one is TWO steps — the dataset, then its entries.
+
+STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "faq_passengers", data })
+  data = { name: "Passenger FAQ", slug: "faq_passengers", fields: [ {name, type, required?}, … ] }
+  - The slug (and the id) MUST be a lowercase UNDERSCORE identifier — "faq_passengers", NOT "faq-passengers".
+    It becomes the Handlebars path \`dataset.<slug>\`; a hyphen would parse as minus and break every loop.
+  - Each field = { name: <identifier>, type, required?: false, localized?: false, config?: {} }. type is one of:
+    text, richtext, number, boolean, date, time, datetime, image, file, folder, reference, select, json, list, object.
+    · select needs config: { options: ["a","b","c"] }.  · reference needs config: { dataset: "<other_slug>" }.
+    · image/file store a media URL/path string; folder stores a media-folder path.
+    · list (repeatable group) and object (named sub-group) are NESTED — they MUST carry child \`fields: [ … ]\`
+      (a list field \`slides\` with fields [{name:"image",type:"image"},{name:"caption",type:"text"}] models a slider).
+
+STEP 2 — ADD EACH ROW (entry): put_content({ kind: "entry", id: "delays", dataset: "faq_passengers", data })
+  - Pass the owning dataset SLUG as the \`dataset\` ARG — REQUIRED for entries (an entry with no dataset is rejected).
+  - **THE ROW'S FIELD VALUES GO UNDER \`values\`** → data = { values: { question: "…", answer: "…" } }.
+    THIS IS THE #1 MISTAKE. The RENDER side reads fields DIRECTLY ({{question}} in the loop, no \`values.\` prefix),
+    but the WRITE side NESTS them under \`values\`. If you send data:{ question, answer } FLAT, the unknown keys are
+    STRIPPED and the entry saves EMPTY (values:{}) — it looks like it worked but renders nothing. Always wrap the
+    row in \`values\`.
+  - The entry id is an underscore identifier too ("fast_pickup", not "fast-pickup"). Omit data.id / data.dataset —
+    they're copied from the id/dataset args. Optional on data: status ("draft" default | "published"), order, locale.
+  - A list/object field's value is stored as-is: values: { slides: [ { image:"/media/…", caption:"A" }, … ] }.
+
+STEP 3 — LOOP IT in a page/template source:
+  {{#each dataset.faq_passengers}}<div class="py-4"><h3>{{question}}</h3><p>{{answer}}</p></div>{{/each}}
+  Fields read DIRECTLY by name (no \`values.\`). {{@entry.id}} / {{@entry.dataset}} identify the row (its edit handle).
+  A list field → {{#each <field>}}…{{/each}}; an object field → {{<field>.<key>}}.
+
+RENAME safely with rename_dataset — it cascades the slug across every entry AND every {{#each dataset.<slug>}} /
+dataset="<slug>" reference in one transaction (don't hand-edit). To see a real shape before writing, get_content the
+dataset and one of its entries and MIRROR them.
+`,
+  },
 } as const;
 export type GuideTopic = keyof typeof AGENT_GUIDES;
 export const GUIDE_TOPICS = Object.keys(AGENT_GUIDES) as GuideTopic[];
@@ -1201,5 +1246,70 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
   { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
+  { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];
+
+/**
+ * "Can the platform do X, and where is it documented?" — a curated need→where index so an agent NEVER
+ * concludes a primitive is missing by looking in the wrong tool (the recurring failure: coverage is spread
+ * across get_components / get_reference / get_guide, so a check of just one tool wrongly reads as "unsupported").
+ */
+export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
+  { need: 'click ripple / Material "waves" on buttons + nav', where: 'get_guide("effects") — the classes waves-effect / waves-light are first-class' },
+  { need: 'modal / dialog / popup', where: 'get_components (data-sw-component="modal")' },
+  { need: 'mobile nav / hamburger / off-canvas drawer', where: 'get_guide("nav") — DaisyUI drawer / dropdown' },
+  { need: 'image carousel / slider / slideshow', where: 'get_components (data-sw-component="carousel")' },
+  { need: 'image lightbox / zoom', where: 'get_components (data-sw-component="lightbox")' },
+  { need: 'tabs / accordion', where: 'get_components (data-sw-component="tabs"); accordion = DaisyUI <details>/collapse' },
+  { need: 'date / time picker', where: 'get_components (data-sw-component="datetimepicker")' },
+  { need: 'contact / signup form', where: 'get_components (data-sw-component="form") + get_guide("templates")' },
+  { need: 'animated WebGL / shader background', where: 'get_components (data-sw-component="shader-bg")' },
+  { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
+  { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
+  { need: 'icons (Lucide) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon}}, brand:<slug>, {{sw-flag}}' },
+  { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
+  { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values)' },
+  { need: 'multiple languages / translations', where: 'get_guide("i18n") + the add_language tool' },
+  { need: 'shopping cart / products / add-to-cart', where: 'get_guide("shop")' },
+  { need: 'cookie / consent banner + gated 3rd-party embeds', where: 'get_guide("consent")' },
+  { need: 'image galleries from a media folder', where: '{{#sw-folder}} — see get_reference + the core instructions' },
+  { need: 'reusable page layout shared across pages', where: 'get_guide("templates")' },
+  { need: 'site header / footer / sidebar (chrome on every page)', where: 'the website.mainNav/footer/sidebar* settings slots — get_guide("nav")' },
+  { need: 'compare my build to the original + PROVE fidelity', where: 'compare_to_source (see) · compare_regions (2× crisp chrome crops) · fidelity_check (the PASS/FAIL gate)' },
+  { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },
+];
+
+/** How each writable content kind is written (tool + the one shape gotcha most likely to trip a write). */
+export const WRITE_KINDS: readonly { kind: string; tool: string; shape: string }[] = [
+  { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write; prefer over put_content' },
+  { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data })', shape: 'read-modify-write the WHOLE settings entity (identity + website slots)' },
+  { kind: 'dataset', tool: 'put_content({ kind:"dataset", id, data })', shape: '{ name, slug (UNDERSCORE id), fields:[{name,type,required?}] } — get_guide("datasets")' },
+  { kind: 'entry', tool: 'put_content({ kind:"entry", id, dataset, data })', shape: '{ values:{ <field>:… } } — row data goes under `values`; pass the `dataset` slug arg' },
+  { kind: 'form', tool: 'put_content({ kind:"form", id, data })', shape: 'form definition (fields, endpoint) — get_guide("templates")' },
+  { kind: 'template', tool: 'put_content({ kind:"template", id, data })', shape: 'a reusable page layout — get_guide("templates")' },
+  { kind: 'snippet', tool: 'put_content({ kind:"snippet", id, data })', shape: 'a reusable {{> snippet}} partial source' },
+  { kind: 'translation', tool: 'add_language / put_content({ kind:"translation" })', shape: 'per-locale page overrides — get_guide("i18n")' },
+];
+
+/** The consolidated capability index returned by the get_capabilities tool. Composed from the single
+ *  sources of truth (COMPONENT_CATALOG, AGENT_GUIDES, MCP_TOOL_CATALOG) so it can't drift. */
+export function buildCapabilitiesIndex(): {
+  server: string;
+  note: string;
+  guides: { topic: string; summary: string }[];
+  components: { type: string; marker: string; summary: string }[];
+  reference: string;
+  writeKinds: typeof WRITE_KINDS;
+  findByNeed: typeof CAPABILITY_MAP;
+} {
+  return {
+    server: 'sitewright',
+    note: 'Coverage is SPREAD across get_components (interactive components), get_reference (every helper/directive/binding), and get_guide (feature how-tos). Do NOT conclude a capability is missing from checking one tool — consult findByNeed. The platform DOES support ripple, modals, drawers, sliders, i18n, datasets, and more.',
+    guides: GUIDE_TOPICS.map((t) => ({ topic: t, summary: AGENT_GUIDES[t].summary })),
+    components: COMPONENT_CATALOG.map((c) => ({ type: c.type, marker: c.marker, summary: c.summary.slice(0, 140) })),
+    reference: 'Call get_reference for every {{sw-*}} helper, data-sw-* directive, binding namespace, and loop variable (drift-proof — derived from the engine, so never guess a helper name).',
+    writeKinds: WRITE_KINDS,
+    findByNeed: CAPABILITY_MAP,
+  };
+}

@@ -12,6 +12,7 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS,
   COMPONENT_CATALOG,
   AGENT_GUIDES,
+  buildCapabilitiesIndex,
   GUIDE_TOPICS,
   SW_HELPERS,
   SW_DIRECTIVES,
@@ -326,6 +327,18 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       }
       return ok({ components: COMPONENT_CATALOG });
     },
+  );
+
+  // The capability INDEX — one place that maps every platform feature to WHERE it's documented (components,
+  // guides, the {{sw-*}} reference, the write shapes) plus a need→tool lookup. Exists so an agent never
+  // concludes a primitive is missing by checking only one discovery tool. Static; no connection needed.
+  server.registerTool(
+    'get_capabilities',
+    {
+      description:
+        "One INDEX of everything this platform can do and WHERE each is documented: the interactive components, the get_guide topics, the {{sw-*}} reference, how each content kind is written, and a need→tool lookup (e.g. \"ripple\" → get_guide effects, \"collections\" → get_guide datasets). Call this before assuming a capability doesn't exist — coverage is spread across get_components / get_reference / get_guide, so checking just one wrongly reads as unsupported.",
+    },
+    () => ok(buildCapabilitiesIndex()),
   );
 
   // On-demand reference guides — the detailed how-to for a feature area, kept OUT of the core

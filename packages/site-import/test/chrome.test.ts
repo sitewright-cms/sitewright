@@ -24,6 +24,95 @@ describe('extractChrome', () => {
     for (const p of pages) expect(serialize(getBody(p.doc)!.children)).not.toContain('rail');
   });
 
+  it('with stripUnsharedChrome, removes a header that was NOT shared enough to hoist (foundation de-dup)', () => {
+    // Two pages carry the SAME header, one carries a DIFFERENT one → no version hits the 60% hoist gate,
+    // so nothing is hoisted. In foundation mode the native rebuild would otherwise render on top of these
+    // leftover inline headers ("two headers"). stripUnsharedChrome removes them from every body.
+    const pages = [
+      pp('/a', `<html><body><header><a href="/a">HdrA</a></header><main>a</main><footer>FtA</footer></body></html>`),
+      pp('/b', `<html><body><header><a href="/b">HdrB</a></header><main>b</main><footer>FtB</footer></body></html>`),
+      pp('/c', `<html><body><header><a href="/c">HdrC</a></header><main>c</main><footer>FtC</footer></body></html>`),
+    ];
+    const result = extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    expect(result.mainNav).toBeUndefined(); // nothing shared enough to hoist
+    for (const p of pages) {
+      const body = serialize(getBody(p.doc)!.children);
+      expect(body).not.toContain('<header>');
+      expect(body).not.toContain('<footer>');
+      expect(body).toContain('<main>'); // content untouched
+    }
+  });
+
+  it('WITHOUT stripUnsharedChrome, leaves an unshared inline header in place (literal import)', () => {
+    const pages = [
+      pp('/a', `<html><body><header><a href="/a">HdrA</a></header><main>a</main></body></html>`),
+      pp('/b', `<html><body><header><a href="/b">HdrB</a></header><main>b</main></body></html>`),
+    ];
+    extractChrome(pages, ctx); // default opts
+    for (const p of pages) expect(serialize(getBody(p.doc)!.children)).toContain('<header>');
+  });
+
+  it('stripUnsharedChrome does not remove a nested content <header> (e.g. an article header)', () => {
+    const pages = [
+      pp('/a', `<html><body><header>SITE</header><main><article><header>ARTICLE</header>body</article></main></body></html>`),
+      pp('/b', `<html><body><header>SITE</header><main><article><header>ARTICLE2</header>body</article></main></body></html>`),
+    ];
+    extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    // The top-of-body SITE header is stripped; the article header (nested, sorts later) stays.
+    const bodyA = serialize(getBody(pages[0]!.doc)!.children);
+    expect(bodyA).not.toContain('SITE');
+    expect(bodyA).toContain('ARTICLE');
+  });
+
+  it('stripUnsharedChrome reaches chrome WRAPPED in a top-level container div (page-wrapper)', () => {
+    // Common layout: a single <div class="page-wrapper"> holds header + content + footer. Direct-child
+    // matching would miss the header inside; the recursive pickers reach it.
+    const pages = [
+      pp('/a', `<html><body><div class="page-wrapper"><header>HdrA</header><main>a</main><footer>FtA</footer></div></body></html>`),
+      pp('/b', `<html><body><div class="page-wrapper"><header>HdrB</header><main>b</main><footer>FtB</footer></div></body></html>`),
+    ];
+    extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    const bodyA = serialize(getBody(pages[0]!.doc)!.children);
+    expect(bodyA).not.toContain('<header>');
+    expect(bodyA).not.toContain('<footer>');
+    expect(bodyA).toContain('<main>');
+  });
+
+  it('stripUnsharedChrome (header/footer only) never removes a content wrapper that matches a sidebar class', () => {
+    // A `sidebar-wrapper` div holding per-page CONTENT must be left intact — the strip is scoped to
+    // header+footer, so a leftover foreign sidebar is left for nativize (it has no native counterpart to
+    // duplicate against).
+    const pages = [
+      pp('/a', `<html><body><div class="sidebar-wrapper"><aside>links A</aside><section>CONTENT A</section></div></body></html>`),
+      pp('/b', `<html><body><div class="sidebar-wrapper"><aside>links B</aside><section>CONTENT B</section></div></body></html>`),
+    ];
+    extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    const bodyA = serialize(getBody(pages[0]!.doc)!.children);
+    expect(bodyA).toContain('CONTENT A'); // content untouched
+    expect(bodyA).toContain('links A'); // the sidebar is left inline (not a duplicate) for nativize
+  });
+
+  it('stripUnsharedChrome removes a CLASS-matched chrome div (e.g. div.site-header) not just a <header> tag', () => {
+    const pages = [
+      pp('/a', `<html><body><div class="site-header">navA</div><main>a</main></body></html>`),
+      pp('/b', `<html><body><div class="site-header">navB</div><main>b</main></body></html>`),
+    ];
+    extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    for (const p of pages) expect(serialize(getBody(p.doc)!.children)).not.toContain('site-header');
+  });
+
+  it('stripUnsharedChrome is a no-op when the chrome was already hoisted (shared header)', () => {
+    const shared = '<header><a href="/about">Menu</a></header>';
+    const pages = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${shared}<main>${u}</main></body></html>`));
+    const r = extractChrome(pages, ctx, { stripUnsharedChrome: true });
+    expect(r.mainNav).toContain('Menu'); // hoisted by the ≥60% gate
+    for (const p of pages) {
+      const body = serialize(getBody(p.doc)!.children);
+      expect(body).not.toContain('<header>'); // removed once (by the hoist), not double-removed
+      expect(body).toContain('<main>'); // content intact
+    }
+  });
+
   it('hoists a hyphenated-id sidebar wrapper (e.g. #side-bar-left-wrapper) but not a no-sidebar modifier', () => {
     const sidebar = '<div id="side-bar-left-wrapper" class="wrapper">fb rail</div>';
     const ok = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${sidebar}<main>content</main></body></html>`));

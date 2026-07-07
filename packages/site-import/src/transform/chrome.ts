@@ -112,8 +112,19 @@ export interface ChromeResult {
   extracted: boolean;
 }
 
+export interface ChromeOptions {
+  /**
+   * FOUNDATION mode rebuilds the chrome NATIVELY (a fresh nav/footer replaces the slot regardless of what
+   * was hoisted). Any foreign header/footer/aside still sitting INLINE in a page body — because it wasn't
+   * shared on ≥60% of pages, or matched no hoist group — would then render a SECOND time under the native
+   * chrome (the "two headers" bug). When true, strip the top-level header/footer/asides from EVERY page so
+   * nothing duplicates. Off (default) = literal import keeps each page's own inline chrome, as-is.
+   */
+  stripUnsharedChrome?: boolean;
+}
+
 /** Extract shared chrome into its slots; mutates the page docs (removes the hoisted/cruft elements). */
-export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult {
+export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx, opts: ChromeOptions = {}): ChromeResult {
   // JS-driven overlays (preloader, cookie banner) would block/persist without their stripped scripts.
   // Remove them — but ONLY when they're SHARED site chrome (≥60% of pages, via extractRegion's gate), so
   // page-specific content that merely matches the pattern (e.g. a `cookie-recipe` article) is never lost.
@@ -134,6 +145,34 @@ export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult
   // single-aside site yields only a left sidebar, and a two-aside site fills both — no index drift).
   const sidebarLeft = extractRegion(pages, ctx, (body) => findFirst(body, isAside) ?? findFirst(body, ASIDE_CLASS));
   const sidebarRight = extractRegion(pages, ctx, (body) => findLast(body, isAside) ?? findLast(body, ASIDE_CLASS));
+
+  // FOUNDATION cleanup: after the shared-chrome hoist, remove any foreign HEADER / FOOTER LEFT INLINE (the
+  // < 60%-shared pages, or one that matched no hoist group) so the native rebuild doesn't render a DUPLICATE
+  // header/footer. Scoped to header+footer — the actual two-chrome-bars bug: a leftover inline sidebar has NO
+  // native counterpart (foundation discards sidebars), so it isn't a duplicate and is left for nativize.
+  // Use the SAME pickers extractRegion hoists with (so chrome nested in a top-level `<div class="wrapper">`
+  // is still found, unlike a direct-children-only scan), but NEVER remove a match inside page CONTENT (a
+  // `<main>`/`<article>` — e.g. an `<article><header>` byline): findFirst/findLast return the site-level
+  // chrome first, and the content guard protects a page whose ONLY header is a content header.
+  if (opts.stripUnsharedChrome) {
+    const inContent = (el: Element): boolean => {
+      for (let a: Element['parent'] = el.parent; a; a = a.parent) {
+        if (isTag(a) && (a.name === 'main' || a.name === 'article' || a.attribs.role === 'main')) return true;
+      }
+      return false;
+    };
+    const pickers: Array<(body: Element) => Element | undefined> = [
+      (body) => findFirst(body, isHeader) ?? findFirst(body, HEADER_CLASS),
+      (body) => findLast(body, isFooter) ?? findLast(body, FOOTER_CLASS),
+    ];
+    for (const p of pages) {
+      if (!p.body) continue;
+      for (const pick of pickers) {
+        const el = pick(p.body);
+        if (el && !inContent(el)) removeElement(el);
+      }
+    }
+  }
 
   const result: ChromeResult = {
     extracted: Boolean(mainNav || footer || sidebarLeft || sidebarRight || preloaderFound),

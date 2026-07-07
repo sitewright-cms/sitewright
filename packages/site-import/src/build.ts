@@ -213,7 +213,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   }
 
   // Hoist shared chrome into its slots (mutates docs: removes the hoisted regions + preloader/cookie cruft).
-  const chrome = extractChrome(parsed, { siteBase: workSite.baseUrl, internalRoutes: routeRes.internalRoutes, assetMap, limits });
+  // In FOUNDATION mode the chrome is rebuilt natively, so also strip any foreign chrome left inline (the
+  // < 60%-shared pages) — otherwise the native nav/footer renders on top of a leftover foreign one.
+  const chrome = extractChrome(
+    parsed,
+    { siteBase: workSite.baseUrl, internalRoutes: routeRes.internalRoutes, assetMap, limits },
+    { stripUnsharedChrome: opts.foundation },
+  );
   if (chrome.extracted) {
     const parts = [
       chrome.mainNav && 'header→mainNav',

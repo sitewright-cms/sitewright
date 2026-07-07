@@ -89,6 +89,16 @@ export interface CompareResult {
   source: Partial<Record<ScreenshotViewportName, PreviewShot>>;
 }
 
+/** The measured clone-fidelity gate result (GET /projects/:id/fidelity/:pageId). */
+export interface FidelityCheckResult {
+  sourceUrl: string;
+  route: string;
+  pass: boolean;
+  body: { pass: boolean; coverage: number; matched: number; orig: number; fontMiss: number; gradFail: number; score: number };
+  chrome: { pass: boolean; coverage: number; matched: number; orig: number; posOff: number; sizeOff: number; styleOff: number; metaOff: number };
+  diffs: { body: string[]; chrome: string[]; meta: string[] };
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -267,6 +277,11 @@ export class SitewrightClient {
     if (refresh) qs.set('refresh', '1');
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request('GET', this.projectPath(`/compare/${encodeURIComponent(pageId)}${suffix}`));
+  }
+
+  /** The measured clone-fidelity gate: render BUILD vs imported SOURCE, diff computed styles, return numbers. */
+  async fidelityCheck(pageId: string): Promise<FidelityCheckResult> {
+    return this.request('GET', this.projectPath(`/fidelity/${encodeURIComponent(pageId)}`));
   }
 
   async publish(): Promise<unknown> {

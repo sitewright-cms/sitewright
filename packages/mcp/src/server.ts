@@ -526,6 +526,38 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'fidelity_check',
+    {
+      description:
+        "The OBJECTIVE clone-fidelity gate for an imported page: renders your BUILD and the ORIGINAL source, measures computed styles per element + whole-bar chrome facts, and returns a measured PASS/FAIL — body (font/gradient/coverage) and chrome (position/size/style + skew, font-weight, letter-spacing, radius, shadow, fixed-position, ripple, modals). Use this to TERMINATE the nativize loop: a page is faithful ONLY when this returns pass:true — never from your own render or a screenshot. Runs slower than compare_to_source (it renders both sides live); use compare_to_source to SEE differences, this to PROVE they're gone. The page must have an import source.",
+      inputSchema: { pageId: z.string() },
+    },
+    async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const r = await client.fidelityCheck(pageId);
+        const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+        const lines = [
+          `FIDELITY ${r.pass ? 'PASS ✓' : 'FAIL ✗'} for page “${pageId}” (original: ${r.sourceUrl}).`,
+          `BODY   ${r.body.pass ? 'pass' : 'FAIL'} — coverage ${pct(r.body.coverage)} (${r.body.matched}/${r.body.orig}), fontMiss ${r.body.fontMiss}, gradFail ${r.body.gradFail}, score ${r.body.score.toFixed(2)}`,
+          `CHROME ${r.chrome.pass ? 'pass' : 'FAIL'} — coverage ${pct(r.chrome.coverage)} (${r.chrome.matched}/${r.chrome.orig}), pos ${r.chrome.posOff}, size ${r.chrome.sizeOff}, style ${r.chrome.styleOff}, meta ${r.chrome.metaOff}`,
+        ];
+        if (r.diffs.body.length) lines.push('', 'BODY diffs:', ...r.diffs.body.map((d) => `  ${d}`));
+        if (r.diffs.chrome.length) lines.push('', 'CHROME diffs:', ...r.diffs.chrome.map((d) => `  ${d}`));
+        if (r.diffs.meta.length) lines.push('', 'CHROME meta (fixed/ripple/modals):', ...r.diffs.meta.map((d) => `  ${d}`));
+        if (!r.pass) lines.push('', 'This page is NOT faithful yet — fix the diffs above (port the ORIGINAL’s measured values) and run fidelity_check again. Do not declare it done until pass ✓.');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'fidelity check failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'get_publish_status',
     { description: 'Read the project’s latest published release (or null if never published).' },
     gate(null, () => client.publishStatus()),

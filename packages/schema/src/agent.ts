@@ -1103,14 +1103,19 @@ sample the original's real values, don't approximate to the nearest token):
   human-readable library and PRUNE duplicates + unused files. In a multi-agent split, run this as a FINAL
   dedicated pass after every page is authored (don't skip it to avoid races).
 
-VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
-compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.
-Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs + their
-inner media, accordion, footer/sub-footer, the fixed social rail — and match background, borders, colours,
-TYPE SIZES, icon/graphic sizes, SHADOW strength, and component-control styling (slider arrows/dots, tab
-centering + active state) — not just layout and content. Fix the differences and call it AGAIN. Keep
-iterating until the build matches the original; a page is NOT done because your own screenshot looks fine. Work ONE page at a time so conventions (theme tokens, datasets,
-chrome) carry across the site.
+VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, use TWO tools:
+- compare_to_source(pageId) to SEE the differences — YOUR BUILD and the ORIGINAL side-by-side at desktop +
+  mobile. Go region by region — header (logo treatment), every section/tile (incl. ICON SIZE + shadow), tabs +
+  their inner media, accordion, footer/sub-footer, the fixed social rail — and match background, borders,
+  colours, TYPE SIZES, icon/graphic sizes, SHADOW strength, and component-control styling. Fix, and repeat.
+- fidelity_check(pageId) to PROVE they're gone — the OBJECTIVE gate. It MEASURES computed styles of build vs
+  original and returns a PASS/FAIL: body (font/gradient/coverage) + chrome (position/size/style + skew,
+  font-WEIGHT, letter-spacing, radius, shadow, solid-vs-gradient, fixed-position, ripple, modals). It catches
+  the exact treatments a screenshot glance misses (e.g. a 15° skew that should be 25°, bold that should be 400,
+  a gradient added where the original is flat, a missing fixed header / ripple / nav modal).
+A page is faithful ONLY when fidelity_check returns pass ✓ — never from your own screenshot, and never override
+a FAIL by eye. Port the ORIGINAL's measured values the gate reports; don't re-author from a mental image. Work
+ONE page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
 
 STRUCTURE CHECK (compare_to_source only catches VISUAL diffs — these are STRUCTURAL, so self-verify, they
 won't show in a screenshot): the header + footer menus are DATA-DRIVEN (built from {{#each nav.*}} over page
@@ -1118,7 +1123,7 @@ nav-membership + link-placeholders), NOT a hard-coded <a> list; in-page section 
 placeholders (not literal href="#…" in a hand-rolled menu); pages sharing a layout (legal/repeated) render
 from ONE shared template, not duplicated page source.
 
-WHEN A PAGE IS DONE (i.e. compare_to_source shows it matching the original AND the STRUCTURE CHECK passes):
+WHEN A PAGE IS DONE (i.e. fidelity_check returns pass ✓ AND the STRUCTURE CHECK passes):
 set page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
 `,
   },
@@ -1171,6 +1176,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
+  { name: 'fidelity_check', description: "The OBJECTIVE clone-fidelity GATE: measures computed styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) and returns a PASS/FAIL number. Terminate the nativize loop on this, not a screenshot.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },

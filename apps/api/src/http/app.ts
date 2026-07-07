@@ -265,7 +265,7 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
-import { captureUrlShots, compareTargets, type ComparePageInput } from '../render/compare.js';
+import { captureUrlShots, captureUrlElements, scoreFidelity, compareTargets, type ComparePageInput } from '../render/compare.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -4559,6 +4559,45 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const build = await buildP;
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, sourceFrom, capturedAt, build, source });
+      },
+    );
+
+    // fidelity_check: the OBJECTIVE clone-fidelity gate. Render the page's BUILD (loopback) and its imported
+    // SOURCE (SSRF-pinned) at Full HD, extract computed styles per element + whole-bar chrome facts, and diff
+    // them — returning measured PASS/FAIL numbers (body font/gradient/coverage; chrome pos/size/style/meta:
+    // skew, weight, letter-spacing, radius, shadow, fixed-position, ripple, modals) instead of only images.
+    // This is what lets ANY agent terminate the nativize loop on a number, not an eyeballed screenshot.
+    // Owner/member (content:read); the page must carry an import source. Source is always rendered LIVE here
+    // (element extraction needs a real render, unlike the screenshot cache).
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/fidelity/:pageId',
+      { config: rl(6) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const allPages = (await contentRepo.list(ctx, 'page').catch(() => [])) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        const fullRoute = targetPage ? pathToSlug(pagePath(targetPage, byId)) : undefined;
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput | null,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) {
+          if (target.error === 'not-found') throw new NotFoundError('page not found');
+          return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        }
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        // Render both sides concurrently (build = the agent's current work, source = the real site) and diff.
+        const [build, source] = await Promise.all([
+          captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
+          captureUrlElements(target.sourceUrl, { mode: 'pinned', signal: abort.signal }),
+        ]);
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...scoreFidelity(source, build) });
       },
     );
 

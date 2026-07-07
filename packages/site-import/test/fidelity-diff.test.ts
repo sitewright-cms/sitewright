@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-// The gate's pure diff logic is a plain .mjs so the browser CLI and this test share ONE implementation.
-import { firstFamily, stripWs, weightNum, skewDeg, lsPx, radiusPx, hasShadow, matchAndDiff, scorePage, type StyleEl } from '../tools/style-diff.mjs';
+// Import the canonical TS source directly (the CLI's .mjs shim re-exports this from dist) so coverage sees it.
+import { firstFamily, stripWs, weightNum, skewDeg, lsPx, radiusPx, hasShadow, matchAndDiff, scorePage, type StyleEl } from '../src/fidelity/gate.js';
 
 const el = (o: Partial<StyleEl> = {}): StyleEl => ({
   role: 'text', tag: 'p', text: 'x', font: 'text-font, sans-serif', size: '16px', weight: '400',

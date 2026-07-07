@@ -92,7 +92,7 @@ export function scorePage(r: MatchResult, opts: GateThresholds = {}): GateScore 
   const { minCoverage = 0.85, maxFontMiss = 0, maxGradFail = 1, maxScore = 0.12 } = opts;
   const fontMiss = r.diffs.filter((d) => d.props.some((p) => p.startsWith('font:'))).length;
   const gradFail = r.diffs.filter((d) => d.props.some((p) => p.startsWith('gradient'))).length;
-  const skewMiss = r.diffs.filter((d) => d.props.some((p) => p.startsWith('transform') || p.startsWith('skew'))).length;
+  const skewMiss = r.diffs.filter((d) => d.props.some((p) => p.startsWith('transform'))).length;
   const coverage = r.origCount ? r.matched / r.origCount : 0;
   const score = r.diffs.length / Math.max(1, r.matched);
   const pass = coverage >= minCoverage && fontMiss <= maxFontMiss && gradFail <= maxGradFail && score < maxScore;

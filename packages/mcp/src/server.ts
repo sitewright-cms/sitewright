@@ -558,6 +558,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'compare_regions',
+    {
+      description:
+        "HIGH-RESOLUTION visual compare of an imported page's chrome: crops the nav HEADER and FOOTER (or pass regions to limit) of your BUILD and the ORIGINAL, at 2× device scale as lossless WebP, and returns them build-then-original per region. Use it to SEE fine detail that compare_to_source's 1× full-page image smears — gradient stops, skew angles, thin shadows, icon weight, letter-spacing. Pair with fidelity_check (which gives the measured numbers): compare_regions to see WHAT's off, fidelity_check to PROVE it's fixed. The page must have an import source.",
+      inputSchema: { pageId: z.string(), regions: z.array(z.enum(['header', 'footer'])).optional() },
+    },
+    async ({ pageId, regions }: { pageId: string; regions?: Array<'header' | 'footer'> }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const r = await client.compareRegions(pageId, regions?.length ? regions.join(',') : undefined);
+        const content: ContentBlock[] = [{ type: 'text', text: `HIGH-RES chrome compare for page “${pageId}” (original: ${r.sourceUrl}). For each region you get YOUR BUILD then the ORIGINAL at 2× — compare skew angle, gradient (solid vs graded), font weight + letter-spacing, shadow, icon size, spacing. Fix what differs, then run fidelity_check to prove it.` }];
+        for (const [name, pair] of Object.entries(r.regions)) {
+          if (pair.build) { content.push({ type: 'text', text: `— ${name.toUpperCase()} · YOUR BUILD (${pair.build.width}×${pair.build.height}) —` }); content.push({ type: 'image', data: pair.build.base64, mimeType: pair.build.mimeType }); }
+          if (pair.source) { content.push({ type: 'text', text: `— ${name.toUpperCase()} · ORIGINAL (${pair.source.width}×${pair.source.height}) —` }); content.push({ type: 'image', data: pair.source.base64, mimeType: pair.source.mimeType }); }
+        }
+        if (content.length === 1) content.push({ type: 'text', text: 'No region crops could be captured (no Chromium on this server, or the regions were not found on the page).' });
+        return { content };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'compare regions failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'get_publish_status',
     { description: 'Read the project’s latest published release (or null if never published).' },
     gate(null, () => client.publishStatus()),

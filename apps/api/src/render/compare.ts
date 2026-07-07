@@ -8,8 +8,9 @@
 //                      so the browser's unpinnable DNS is never used.
 import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
 import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta } from '@sitewright/site-import/fidelity';
+import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, type Shot, type ViewportName } from './screenshot.js';
-import { FIDELITY_EXTRACT, FIDELITY_META } from './fidelity-extract.js';
+import { FIDELITY_EXTRACT, FIDELITY_META, REGION_BOX } from './fidelity-extract.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
 type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
@@ -66,10 +67,10 @@ export function compareTargets(opts: {
 // Shared page setup for a capture in the given `mode`: new context, the SSRF-pinned network routing for an
 // external source, navigate, and scroll-settle lazy content. Both the screenshot capture (shootOne) and the
 // element capture (captureUrlElements) build on this, so the pinned routing lives in exactly ONE place.
-async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<{ context: BrowserContext; page: Page }> {
+async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal, deviceScaleFactor = 1): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
-    deviceScaleFactor: 1,
+    deviceScaleFactor,
     isMobile: vp.isMobile,
     reducedMotion: 'reduce',
   });
@@ -195,6 +196,49 @@ export async function captureUrlElements(
       await context.close().catch(() => {});
     }
   }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta }));
+}
+
+/** A high-res region crop, lossless WebP, base64. */
+export interface RegionShot { base64: string; mimeType: 'image/webp'; width: number; height: number }
+/** Default regions for the high-res chrome compare: the nav header and the footer. */
+export const DEFAULT_COMPARE_REGIONS: Record<string, string> = { header: '#main-nav, header, nav', footer: '#footer, footer' };
+
+/**
+ * Capture HIGH-RESOLUTION crops of named page REGIONS (default: header + footer) at 2× device scale, encoded
+ * as LOSSLESS WebP — for the `compare_regions` tool, so an agent can SEE fine chrome detail (gradient stops,
+ * skew edges, thin shadows) that a 1× full-page JPEG smears. Reuses the same SSRF-pinned render path
+ * (prepPage) as the screenshot + element captures; Chromium emits PNG, transcoded to lossless WebP via sharp.
+ * Returns {} on any failure (the caller degrades to "no crop for this side").
+ */
+export async function captureUrlRegions(
+  url: string,
+  opts: { mode: CaptureMode; regions?: Record<string, string>; signal?: AbortSignal },
+): Promise<Record<string, RegionShot>> {
+  const regions = opts.regions ?? DEFAULT_COMPARE_REGIONS;
+  const browser = await getBrowser();
+  const vp = SCREENSHOT_VIEWPORTS.fullhd;
+  return withRenderSlot(async () => {
+    const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal, 2); // 2× = high-res
+    const out: Record<string, RegionShot> = {};
+    try {
+      for (const [name, sel] of Object.entries(regions)) {
+        const box = (await page.evaluate(REGION_BOX as (s: string) => { x: number; y: number; w: number; h: number } | null, sel).catch(() => null));
+        if (!box || box.w < 4 || box.h < 4) continue;
+        await page.waitForTimeout(120).catch(() => {}); // let the scrolled region settle before the shot
+        // Cap the crop height (CSS px) so a very tall footer can't blow up the base64 payload: at 2× this is
+        // 3000 physical px — a header is ~60-120px and a footer ~200-600px, so 1500 is generous headroom
+        // while bounding worst-case response size (4 crops/response). Security/code review MEDIUM.
+        const clip = { x: box.x, y: box.y, width: Math.min(vp.width - box.x, box.w), height: Math.min(1500, box.h) };
+        const png = await page.screenshot({ type: 'png', clip }).catch(() => null);
+        if (!png) continue;
+        const w = await pngToLosslessWebp(png).catch(() => null);
+        if (w) out[name] = { base64: w.buffer.toString('base64'), mimeType: 'image/webp', width: w.width, height: w.height };
+      }
+      return out;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }).catch(() => ({}) as Record<string, RegionShot>);
 }
 /* v8 ignore stop */
 

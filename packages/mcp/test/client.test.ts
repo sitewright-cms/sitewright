@@ -362,4 +362,15 @@ describe('SitewrightClient', () => {
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/fidelity/about%20us');
     expect(res.pass).toBe(true);
   });
+
+  it('compareRegions GETs /compare-regions/:id (encoded) with optional regions', async () => {
+    const payload = { sourceUrl: 'https://x.test/', route: '', regions: {} };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(payload) },
+    );
+    await client.compareRegions('home');
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/compare-regions/home');
+    await client.compareRegions('about us', 'header');
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/compare-regions/about%20us?regions=header');
+  });
 });

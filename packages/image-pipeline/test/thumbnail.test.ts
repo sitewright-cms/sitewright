@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import sharp from 'sharp';
-import { generateThumbnail } from '../src/thumbnail.js';
+import { generateThumbnail, pngToLosslessWebp } from '../src/thumbnail.js';
 
 let landscape: Buffer = Buffer.alloc(0); // 1600x900 opaque
 let small: Buffer = Buffer.alloc(0); // 800x600 opaque
@@ -55,5 +55,20 @@ describe('generateThumbnail', () => {
   it('rejects invalid width and quality', async () => {
     await expect(generateThumbnail(landscape, { width: 0 })).rejects.toThrow(/width/);
     await expect(generateThumbnail(landscape, { width: 500, quality: 0 })).rejects.toThrow(/quality/);
+  });
+});
+
+describe('pngToLosslessWebp', () => {
+  it('transcodes a screenshot PNG to a lossless WebP, preserving dimensions', async () => {
+    const png = await sharp({ create: { width: 120, height: 40, channels: 3, background: { r: 2, g: 139, b: 192 } } }).png().toBuffer();
+    const r = await pngToLosslessWebp(png);
+    expect(r.width).toBe(120);
+    expect(r.height).toBe(40);
+    // RIFF/WEBP container magic
+    expect(r.buffer.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(r.buffer.subarray(8, 12).toString('ascii')).toBe('WEBP');
+    const meta = await sharp(r.buffer).metadata();
+    expect(meta.format).toBe('webp');
+    expect(meta.width).toBe(120);
   });
 });

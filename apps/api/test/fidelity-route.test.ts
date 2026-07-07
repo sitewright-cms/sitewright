@@ -20,6 +20,9 @@ vi.mock('../src/render/compare.js', async (importOriginal) => {
         ? { items: [el({ text: 'Web Design', transform: 'matrix(1, 0, -0.466308, 1, 0, 0)' })], meta: { position: 'fixed', ripple: 8, modalTriggers: 3 } } // ORIGINAL: 25° skew, pinned, ripple, modals
         : { items: [el({ text: 'Web Design', transform: 'matrix(1, 0, -0.267949, 1, 0, 0)' })], meta: { position: 'static', ripple: 0, modalTriggers: 0 } }, // BUILD: 15° skew, none of the above
     ),
+    captureUrlRegions: vi.fn(async (_url: string, opts: { mode: string; regions?: Record<string, string> }) =>
+      Object.fromEntries(Object.keys(opts.regions ?? { header: 1, footer: 1 }).map((name) => [name, { base64: opts.mode === 'pinned' ? 'U1JD' : 'QlVJTEQ', mimeType: 'image/webp', width: 3840, height: 200 }])),
+    ),
   };
 });
 
@@ -72,5 +75,38 @@ describe('GET /projects/:id/fidelity/:pageId', () => {
     expect(body.chrome.styleOff).toBeGreaterThanOrEqual(1); // the 25°→15° skew
     expect(body.chrome.metaOff).toBe(3); // not pinned + missing ripple + missing modals
     expect(body.diffs.meta.join(' ')).toMatch(/ripple:MISSING/);
+  });
+});
+
+describe('GET /projects/:id/compare-regions/:pageId', () => {
+  it('404s for a missing page', async () => {
+    const { t, pid } = await setup();
+    expect((await app.inject({ method: 'GET', url: `/projects/${pid}/compare-regions/nope`, cookies: { sw_session: t } })).statusCode).toBe(404);
+  });
+
+  it('400s when the page has no import source', async () => {
+    const { t, pid } = await setup();
+    await putPage(pid, t, { id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' });
+    expect((await app.inject({ method: 'GET', url: `/projects/${pid}/compare-regions/home`, cookies: { sw_session: t } })).statusCode).toBe(400);
+  });
+
+  it('returns build+source high-res crops per region (default header+footer)', async () => {
+    const { t, pid } = await setup();
+    await putPage(pid, t, { id: 'about', path: 'about', title: 'About', source: '<h1>About</h1>', data: { swImport: { sourceUrl: 'https://example.com/about', rewritten: false } } });
+    const r = await app.inject({ method: 'GET', url: `/projects/${pid}/compare-regions/about`, cookies: { sw_session: t } });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { regions: Record<string, { build?: { base64: string; mimeType: string }; source?: { base64: string } }> };
+    expect(Object.keys(body.regions).sort()).toEqual(['footer', 'header']);
+    expect(body.regions.header!.build!.mimeType).toBe('image/webp');
+    expect(body.regions.header!.build!.base64).toBe('QlVJTEQ'); // loopback = build
+    expect(body.regions.header!.source!.base64).toBe('U1JD'); // pinned = source
+  });
+
+  it('limits to the requested regions (drops unknowns)', async () => {
+    const { t, pid } = await setup();
+    await putPage(pid, t, { id: 'about', path: 'about', title: 'About', source: '<h1>About</h1>', data: { swImport: { sourceUrl: 'https://example.com/about', rewritten: false } } });
+    const r = await app.inject({ method: 'GET', url: `/projects/${pid}/compare-regions/about?regions=header,bogus`, cookies: { sw_session: t } });
+    expect(r.statusCode).toBe(200);
+    expect(Object.keys((r.json() as { regions: object }).regions)).toEqual(['header']);
   });
 });

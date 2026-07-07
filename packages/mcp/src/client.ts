@@ -99,6 +99,15 @@ export interface FidelityCheckResult {
   diffs: { body: string[]; chrome: string[]; meta: string[] };
 }
 
+/** A high-res region crop (lossless WebP, base64). */
+export interface RegionCrop { base64: string; mimeType: 'image/webp'; width: number; height: number }
+/** High-resolution region compare (GET /projects/:id/compare-regions/:pageId). */
+export interface RegionCompareResult {
+  sourceUrl: string;
+  route: string;
+  regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -282,6 +291,12 @@ export class SitewrightClient {
   /** The measured clone-fidelity gate: render BUILD vs imported SOURCE, diff computed styles, return numbers. */
   async fidelityCheck(pageId: string): Promise<FidelityCheckResult> {
     return this.request('GET', this.projectPath(`/fidelity/${encodeURIComponent(pageId)}`));
+  }
+
+  /** High-res region crops (header/footer) of BUILD vs SOURCE, lossless WebP, for a crisp visual compare. */
+  async compareRegions(pageId: string, regions?: string): Promise<RegionCompareResult> {
+    const suffix = regions ? `?regions=${encodeURIComponent(regions)}` : '';
+    return this.request('GET', this.projectPath(`/compare-regions/${encodeURIComponent(pageId)}${suffix}`));
   }
 
   async publish(): Promise<unknown> {

@@ -68,4 +68,17 @@ export function FIDELITY_META() {
   }
   return { position: header ? getComputedStyle(header).position : 'static', ripple, modalTriggers };
 }
+
+/**
+ * Scroll the first element matching `sel` into view and return its viewport-relative bounding box (rounded,
+ * clamped to >=0) — for the high-res region-compare crop. Returns null if nothing matches. The scroll is
+ * instant (synchronous layout), so the box read immediately after is accurate.
+ */
+export function REGION_BOX(sel) {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  el.scrollIntoView({ block: 'start', inline: 'nearest' });
+  const r = el.getBoundingClientRect();
+  return { x: Math.max(0, Math.round(r.x)), y: Math.max(0, Math.round(r.y)), w: Math.round(r.width), h: Math.round(r.height) };
+}
 /* v8 ignore stop */

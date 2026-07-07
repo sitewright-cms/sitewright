@@ -163,6 +163,83 @@ describe('extractTypography', () => {
     expect(out.heading).toMatchObject({ assetId: 'h' });
     expect(out.body).toMatchObject({ assetId: 'b' }); // distinct urls → each resolves to its OWN asset
   });
+
+  it('captures a SECONDARY display face (var --secondary-font, distinct from body) into a named slot', () => {
+    const css = `
+      :root{--primary-font:"primary-font";--text-font:"text-font";--secondary-font:"display-font";}
+      @font-face{font-family:"primary-font";src:url('/p.woff')}
+      @font-face{font-family:"text-font";src:url('/t.woff')}
+      @font-face{font-family:"display-font";src:url('/d.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}
+    `;
+    const fonts: HostedFont[] = [
+      { family: 'primary-font', assetId: 'p', weight: 700, style: 'normal' },
+      { family: 'text-font', assetId: 't', weight: 400, style: 'normal' },
+      { family: 'display-font', assetId: 'd', weight: 400, style: 'normal' },
+    ];
+    const out = extractTypography(css, fonts);
+    expect(out.heading?.assetId).toBe('p');
+    expect(out.body?.assetId).toBe('t');
+    expect(out.named?.secondary).toMatchObject({ source: 'asset', assetId: 'd' }); // the 3rd face self-hosts
+  });
+
+  it('does NOT create a named slot when a secondary-font var just aliases the body face', () => {
+    // CSS's --secondary-font === --text-font === "secondary-font" (assetId bbb, used as body) → no duplicate.
+    const out = extractTypography(CSS, FONTS);
+    expect(out.body?.assetId).toBe('bbb');
+    expect(out.named).toBeUndefined();
+  });
+
+  it('captures a leftover distinct woff (no recognized var) into a generic font-N slot', () => {
+    const css = `:root{--primary-font:"primary-font";--text-font:"text-font";}
+      @font-face{font-family:"primary-font";src:url('/p.woff')}
+      @font-face{font-family:"text-font";src:url('/t.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}`;
+    const fonts: HostedFont[] = [
+      { family: 'primary-font', assetId: 'p', weight: 700, style: 'normal' },
+      { family: 'text-font', assetId: 't', weight: 400, style: 'normal' },
+      { family: 'orphan-font', assetId: 'o', weight: 400, style: 'normal' }, // referenced by no var
+    ];
+    const out = extractTypography(css, fonts);
+    const namedSlots = Object.values(out.named ?? {});
+    expect(namedSlots).toHaveLength(1);
+    expect(namedSlots[0]).toMatchObject({ source: 'asset', assetId: 'o' });
+  });
+
+  it('never emits a reserved slot name and self-hosts every distinct non-icon face', () => {
+    const css = `:root{--primary-font:"h";--text-font:"b";--secondary-font:"s";--tertiary-font:"e";}
+      @font-face{font-family:"h";src:url('/h.woff')}@font-face{font-family:"b";src:url('/b.woff')}
+      @font-face{font-family:"s";src:url('/s.woff')}@font-face{font-family:"e";src:url('/e.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}`;
+    const fonts: HostedFont[] = [
+      { family: 'h', assetId: 'h', weight: 700, style: 'normal' },
+      { family: 'b', assetId: 'b', weight: 400, style: 'normal' },
+      { family: 's', assetId: 's', weight: 400, style: 'normal' },
+      { family: 'e', assetId: 'e', weight: 400, style: 'normal' },
+    ];
+    const out = extractTypography(css, fonts);
+    const names = Object.keys(out.named ?? {});
+    for (const n of names) expect(['heading', 'body', 'sans', 'serif', 'mono']).not.toContain(n);
+    // heading+body+secondary+tertiary → all four distinct faces are placed.
+    expect(out.named?.secondary?.assetId).toBe('s');
+    expect(out.named?.tertiary?.assetId).toBe('e');
+  });
+
+  it('caps named slots at MAX_NAMED_FONTS (6), dropping the overflow rather than bloating settings', () => {
+    // heading + body + 10 leftover distinct woffs → only 6 named slots may be emitted.
+    const css = `:root{--primary-font:"h";--text-font:"b";}
+      @font-face{font-family:"h";src:url('/h.woff')}@font-face{font-family:"b";src:url('/b.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}`;
+    const fonts: HostedFont[] = [
+      { family: 'h', assetId: 'h', weight: 700, style: 'normal' },
+      { family: 'b', assetId: 'b', weight: 400, style: 'normal' },
+      ...Array.from({ length: 10 }, (_, i) => ({ family: `x${i}`, assetId: `x${i}`, weight: 400, style: 'normal' as const })),
+    ];
+    const out = extractTypography(css, fonts);
+    expect(out.heading?.assetId).toBe('h');
+    expect(out.body?.assetId).toBe('b');
+    expect(Object.keys(out.named ?? {})).toHaveLength(6); // capped, not 10
+  });
 });
 
 describe('foundationCriticalCss', () => {
@@ -395,6 +472,24 @@ describe('applyFoundation', () => {
     // page nav configured
     expect(pages.find((p) => p.id === 'home')!.nav).toMatchObject({ title: 'Home' });
     expect(r.diagnostics[0]!.code).toBe('foundation-applied');
+  });
+
+  it('flows a captured SECONDARY font through to identity.typography.named (self-hosts after nativize)', () => {
+    const css = `
+      :root{--primary-font:"primary-font";--text-font:"text-font";--secondary-font:"display-font";}
+      @font-face{font-family:"primary-font";src:url('/p.woff')}
+      @font-face{font-family:"text-font";src:url('/t.woff')}
+      @font-face{font-family:"display-font";src:url('/d.woff')}
+      body{font-family:var(--text-font)} .primary-font{font-family:var(--primary-font)}
+    `;
+    const fonts: HostedFont[] = [
+      { family: 'primary-font', assetId: 'p', weight: 700, style: 'normal' },
+      { family: 'text-font', assetId: 't', weight: 400, style: 'normal' },
+      { family: 'display-font', assetId: 'd', weight: 400, style: 'normal' },
+    ];
+    const r = applyFoundation({ cssText: css, identity: { name: 'X', colors: {} } as never, website: {} as never, pages: [page('home', '', 'Home')], hostedFonts: fonts });
+    expect(r.identity.typography?.named?.secondary).toMatchObject({ source: 'asset', assetId: 'd' });
+    expect(r.diagnostics.find((d) => d.code === 'foundation-applied')!.message).toContain('named');
   });
 
   it('reports (does not silently swallow) a discarded foreign sidebar — R28', () => {

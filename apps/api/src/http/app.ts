@@ -255,6 +255,7 @@ import {
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
+import { deepMerge } from '../repo/merge.js';
 import { RevisionsRepository } from '../repo/revisions.js';
 import {
   ConflictError,
@@ -2285,16 +2286,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.put<{ Params: ContentParams }>(
+  app.put<{ Params: ContentParams; Querystring: { merge?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { bodyLimit: CONTENT_BODY_LIMIT, config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);
-      validateSourceOnSave(req.params.kind, req.body); // fail fast on unsafe Handlebars source
-      const item = await contentRepo.put(ctx, kind, req.params.entityId, req.body);
+      // `?merge=1` PATCHES the existing entity instead of replacing it: the body is a FRAGMENT that is
+      // deep-merged into the current value (siblings the fragment omits are kept). Scoped to `settings`,
+      // the one big singleton where a partial write from a stale snapshot silently reverts other slots;
+      // for other kinds a partial write is meaningless (id-keyed rows), so it's rejected rather than
+      // silently full-replacing. The merged result still goes through the schema in contentRepo.put.
+      const wantMerge = req.query.merge === '1' || req.query.merge === 'true';
+      let body: unknown = req.body;
+      if (wantMerge) {
+        if (kind !== 'settings') {
+          return reply.code(400).send({ error: 'merge (?merge=1) is only supported for the "settings" kind' });
+        }
+        const current = await contentRepo
+          .get(ctx, 'settings', req.params.entityId)
+          .catch((err: unknown) => {
+            if (err instanceof NotFoundError) return null;
+            throw err;
+          });
+        // Merge needs a base. Settings are seeded on project create and can't be deleted, so this is a
+        // defensive guard — but return an ACTIONABLE 404 rather than letting a fragment fall through to a
+        // full write and fail Zod with a bare "identity: Required" the agent can't interpret.
+        if (!current) {
+          return reply.code(404).send({ error: 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)' });
+        }
+        body = deepMerge(current, req.body);
+      }
+      validateSourceOnSave(req.params.kind, body); // fail fast on unsafe Handlebars source (in the MERGED body)
+      const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
-      if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (req.body as { source?: unknown }).source, app.log);
+      if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
       return reply.send({ item });
     },
   );

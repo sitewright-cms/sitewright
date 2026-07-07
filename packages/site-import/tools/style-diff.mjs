@@ -8,6 +8,20 @@ export const firstFamily = (f) => (f || '').replace(/\s+/g, ' ').trim().split(',
 /** Whitespace-stripped (so `linear-gradient( a , b )` compares equal to `linear-gradient(a,b)`). */
 export const stripWs = (s) => (s || '').replace(/\s+/g, '');
 
+/** Numeric font-weight (`normal`→400, `bold`→700, else the number) — so 400-vs-700 is comparable. */
+export const weightNum = (w) => { const s = String(w ?? '').toLowerCase().trim(); if (s === 'normal') return 400; if (s === 'bold') return 700; const n = parseInt(s, 10); return Number.isFinite(n) ? n : 400; };
+/** skewX angle in DEGREES from a computed `transform` matrix (`none`→0). The nav's parallelogram tabs are
+ *  pure skewX, so `matrix(1,0,tanθ,1,0,0)` → `atan2(c,a)`; catches the 15°-vs-25° skew the old gate missed. */
+export const skewDeg = (t) => { const m = /matrix\(([^)]+)\)/.exec(t || ''); if (!m) return 0; const p = m[1].split(',').map(Number); if (p.length < 4 || !Number.isFinite(p[0])) return 0; return Math.round((Math.atan2(p[2], p[0]) * 180) / Math.PI); };
+/** letter-spacing in PX (`normal`→0; `em` resolved against the element's font-size). */
+export const lsPx = (ls, size) => { const s = String(ls ?? '').trim(); if (!s || s === 'normal') return 0; if (s.endsWith('em')) return (parseFloat(s) || 0) * (parseFloat(size) || 16); return parseFloat(s) || 0; };
+/** First (top-left) border-radius value in PX (`none`/empty→0). Only the first corner is compared, so a
+ *  difference confined to the OTHER corners of an asymmetric radius is not caught — fine for the symmetric
+ *  tab corners this gates; revisit if asymmetric-radius chrome ever needs per-corner fidelity. */
+export const radiusPx = (r) => { const s = String(r ?? '').trim(); if (!s || s === 'none') return 0; return parseFloat(s) || 0; };
+/** Whether a computed `box-shadow` is present (not `none`/empty). */
+export const hasShadow = (s) => Boolean(s) && s !== 'none';
+
 /**
  * Match each ORIGINAL element to a CLONE element by normalized text (same-role preferred, greedy 1:1),
  * and record the per-element computed-style divergences that matter for fidelity:

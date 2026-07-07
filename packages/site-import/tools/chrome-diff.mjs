@@ -4,7 +4,7 @@
 // within a region (header/footer) by text, then text-less ones (logo/icons) by left-to-right order, and
 // compare x-position, width, height, background/gradient, colour and font. The x-position check is what
 // catches a nav that's boxed in the container vs. the original's full-width bar (logo x=392 vs x=11).
-import { firstFamily, stripWs } from './style-diff.mjs';
+import { firstFamily, stripWs, weightNum, skewDeg, lsPx, radiusPx, hasShadow } from './style-diff.mjs';
 
 /** Group a flat element list by chrome region, each sorted left-to-right (then top-down). */
 function byRegion(items, region) {
@@ -48,7 +48,10 @@ export function matchChrome(orig, clone, regions = ['header', 'footer']) {
  * ≤1 style breach, and coverage ≥ `minCoverage` of the original's chrome elements.
  */
 export function scoreChrome(match, opts = {}) {
-  const { maxPosDx = 40, maxSizeRatio = 1.25, minCoverage = 0.85 } = opts;
+  const {
+    maxPosDx = 40, maxSizeRatio = 1.25, minCoverage = 0.85,
+    maxSkewDeg = 4, minWeightDelta = 150, maxLsDx = 0.6, maxRadiusDx = 3,
+  } = opts;
   const diffs = [];
   let posOff = 0, sizeOff = 0, styleOff = 0;
   for (const { region, o, c } of match.pairs) {
@@ -57,12 +60,24 @@ export function scoreChrome(match, opts = {}) {
     if (o.w && c.w && Math.max(o.w, c.w) / Math.min(o.w, c.w) > maxSizeRatio) { props.push(`w:${Math.round(o.w)}→${Math.round(c.w)}`); sizeOff++; }
     if (o.h && c.h && Math.max(o.h, c.h) / Math.min(o.h, c.h) > maxSizeRatio) { props.push(`h:${Math.round(o.h)}→${Math.round(c.h)}`); sizeOff++; }
     if (firstFamily(o.font) !== firstFamily(c.font)) { props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`); styleOff++; }
-    // gradient / fill only where it's meaningful (a tab/button)
+    // SKEW — the parallelogram angle. 15°-vs-25° read as "close" but is a real, visible mismatch the old
+    // gate never saw (it captured `transform` but never compared it).
+    if (Math.abs(skewDeg(o.transform) - skewDeg(c.transform)) > maxSkewDeg) { props.push(`skew:${skewDeg(o.transform)}°→${skewDeg(c.transform)}°`); styleOff++; }
+    // FONT-WEIGHT — bold-vs-400 (only family was compared before, so weight slipped through).
+    if (Math.abs(weightNum(o.weight) - weightNum(c.weight)) >= minWeightDelta) { props.push(`weight:${weightNum(o.weight)}→${weightNum(c.weight)}`); styleOff++; }
+    // LETTER-SPACING — the nav's 1px tracking vs a re-authored `tracking-wide`.
+    if (Math.abs(lsPx(o.ls, o.size) - lsPx(c.ls, c.size)) > maxLsDx) { props.push(`ls:${o.ls || 'normal'}→${c.ls || 'normal'}`); styleOff++; }
+    // BORDER-RADIUS — the tab corner radius (5px original vs a guessed value).
+    if (Math.abs(radiusPx(o.radius) - radiusPx(c.radius)) > maxRadiusDx) { props.push(`radius:${o.radius}→${c.radius}`); styleOff++; }
+    // gradient / fill / shadow only where it's meaningful (a tab/button)
     if (o.role === 'button') {
       const og = /gradient/i.test(o.bgImage || ''), cg = /gradient/i.test(c.bgImage || '');
       if (og && !cg) { props.push('gradient:MISSING'); styleOff++; }
+      else if (!og && cg) { props.push('gradient:EXTRA(orig-solid)'); styleOff++; } // solid→gradient: the exact "added gradients where the original is flat" bug
       else if (og && cg && stripWs(o.bgImage) !== stripWs(c.bgImage)) { props.push('gradient:DIFF'); styleOff++; }
-      else if (!og && o.bg !== c.bg) { props.push(`fill:${o.bg}→${c.bg}`); styleOff++; }
+      else if (!og && !cg && o.bg !== c.bg) { props.push(`fill:${o.bg}→${c.bg}`); styleOff++; }
+      // BOX-SHADOW presence — the tab drop-shadow that makes the skewed chip read as raised.
+      if (hasShadow(o.shadow) !== hasShadow(c.shadow)) { props.push(`shadow:${hasShadow(o.shadow) ? 'has' : 'none'}→${hasShadow(c.shadow) ? 'has' : 'none'}`); styleOff++; }
     }
     if (o.color && c.color && o.color !== c.color) props.push(`color:${o.color}→${c.color}`); // reported, not gated (AA-ish)
     // HOVER — the original element changes on hover (bg/gradient/colour) but the clone stays flat ⇒ missing
@@ -81,4 +96,22 @@ export function scoreChrome(match, opts = {}) {
   // diffs pass unflagged, so anything flagged is a real, beyond-tolerance mismatch the clone must fix.
   const pass = posOff === 0 && sizeOff === 0 && styleOff === 0 && coverage >= minCoverage;
   return { matched: match.pairs.length, origCount, coverage, posOff, sizeOff, styleOff, diffs, unmatched: match.unmatched, pass };
+}
+
+/**
+ * Score CHROME-LEVEL structure the per-element diff can't see, because it's a property of the whole bar or a
+ * behaviour rather than a single matched element:
+ *  - header POSITION — a `fixed`/`sticky` pinned bar vs a static one (the original nav stays pinned on scroll),
+ *  - RIPPLE — the click ripple the original fires on every tab/button (Materialize `waves` / a ripple runtime),
+ *  - MODAL triggers — nav icons/buttons that open a modal (mail→contact, info→about, REQUEST QUOTE→quote).
+ * Each side's `meta` = `{ position:string, ripple:number, modalTriggers:number }` captured once per page.
+ * Only flags a REGRESSION (original has it, clone lacks it) — an extra ripple/modal in the clone is fine.
+ */
+export function scoreChromeMeta(o = {}, c = {}) {
+  const diffs = [];
+  const oPinned = /fixed|sticky/.test(o.position || ''), cPinned = /fixed|sticky/.test(c.position || '');
+  if (oPinned && !cPinned) diffs.push(`header-position:${o.position || 'static'}→${c.position || 'static'} (not pinned)`);
+  if ((o.ripple || 0) > 0 && (c.ripple || 0) === 0) diffs.push(`ripple:MISSING (original fires ${o.ripple})`);
+  if ((o.modalTriggers || 0) > 0 && (c.modalTriggers || 0) === 0) diffs.push(`modals:MISSING (original has ${o.modalTriggers} nav modal trigger(s))`);
+  return { diffs, metaOff: diffs.length, pass: diffs.length === 0 };
 }

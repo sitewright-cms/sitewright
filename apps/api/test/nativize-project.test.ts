@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { nativizeProject, bodyBgCss, buildTypography, detectContainerWidth, type CaptureFn, type NativizeDeps } from '../src/render/nativize-project.js';
+import { nativizeProject, bodyBgCss, buildTypography, resolveFonts, detectContainerWidth, type CaptureFn, type NativizeDeps } from '../src/render/nativize-project.js';
 import type { ProjectContext } from '../src/repo/context.js';
 import type { BodyBackground } from '../src/render/nativize-capture.js';
 import type { CapturedNode } from '@sitewright/site-import';
@@ -192,7 +192,8 @@ describe('nativizeProject', () => {
 
   it('skips a page whose capture throws, and does NOT rebuild chrome (a rawFidelity page remains)', async () => {
     let n = 0;
-    const capture: CaptureFn = async (...args) => { n += 1; if (n === 1) throw new Error('render boom'); return okCapture(...args); };
+    // n===1 is the up-front FONT pre-capture (best-effort); make a LOOP page's capture throw (n===2).
+    const capture: CaptureFn = async (...args) => { n += 1; if (n === 2) throw new Error('render boom'); return okCapture(...args); };
     const { deps, pagePuts, getSettingsPut, log } = makeDeps({ capture });
     const report = await nativizeProject(ctx, deps, () => {});
     expect(report.skipped).toHaveLength(1);
@@ -218,7 +219,9 @@ describe('nativizeProject', () => {
   it('the abort signal stops the tail of a concurrent batch', async () => {
     const ac = new AbortController();
     const pages = Array.from({ length: 6 }, (_, i) => ({ id: `p${i}`, path: `p${i}`, title: `P${i}`, source: '<div>raw</div>', status: 'draft', data: { swImport: { sourceUrl: `https://www.example.com/p${i}`, rewritten: false } } }));
-    const capture: CaptureFn = async (...args) => { ac.abort(); return okCapture(...args); }; // abort during the first captures
+    // n===1 is the up-front font pre-capture; abort from the 2nd call so the abort lands DURING the loop.
+    let n = 0;
+    const capture: CaptureFn = async (...args) => { n += 1; if (n >= 2) ac.abort(); return okCapture(...args); };
     const { deps } = makeDeps({ pages, capture });
     deps.signal = ac.signal;
     const report = await nativizeProject(ctx, deps, () => {});
@@ -269,6 +272,66 @@ describe('buildTypography', () => {
   });
   it('returns undefined when no captured font matches a hosted asset', () => {
     expect(buildTypography(bg({ headingFont: 'Arial', bodyFont: 'Georgia' }), fonts)).toBeUndefined();
+  });
+});
+
+describe('resolveFonts', () => {
+  const fonts = [
+    { id: 'fh', family: 'primary-font' },
+    { id: 'fb', family: 'text-font' },
+    { id: 'fs', family: 'display-font' },
+  ];
+
+  it('returns heading/body typography + a palette map for the per-element font utilities', () => {
+    const { typography, paletteFonts } = resolveFonts(bg({ headingFont: '"primary-font", serif', bodyFont: 'text-font' }), fonts);
+    expect(typography!.heading).toMatchObject({ assetId: 'fh', weight: 700 });
+    expect(typography!.body).toMatchObject({ assetId: 'fb', weight: 400 });
+    // palette maps each captured family → its font-<slot> utility (what tailwind.ts assigns per element).
+    expect(paletteFonts).toContainEqual(['primary-font', 'font-heading']);
+    expect(paletteFonts).toContainEqual(['text-font', 'font-body']);
+  });
+
+  it('captures an extra distinct face (a display-font button) into a NAMED slot + palette entry', () => {
+    const { typography, paletteFonts } = resolveFonts(
+      bg({ headingFont: 'primary-font', bodyFont: 'text-font', fonts: ['text-font', '"display-font", sans-serif', 'primary-font'] }),
+      fonts,
+    );
+    expect((typography!.named as Record<string, unknown>).secondary).toMatchObject({ assetId: 'fs', weight: 400 });
+    expect(paletteFonts).toContainEqual(['display-font', 'font-secondary']); // so a button in display-font gets font-secondary
+  });
+
+  it('does not duplicate the heading/body face into a named slot (dedup by assetId)', () => {
+    const { typography } = resolveFonts(
+      bg({ headingFont: 'primary-font', bodyFont: 'text-font', fonts: ['primary-font', 'text-font'] }),
+      fonts,
+    );
+    expect(typography!.named).toBeUndefined(); // both distinct fonts are already heading/body
+  });
+
+  it('empty result (no bodyBg / no fonts) yields an empty palette', () => {
+    expect(resolveFonts(undefined, fonts)).toEqual({ paletteFonts: [] });
+    expect(resolveFonts(bg({ headingFont: 'primary-font' }), [])).toEqual({ paletteFonts: [] });
+  });
+
+  it('orders paletteFonts longest-key-first so a prefix family cannot steal a sibling match', () => {
+    // "Roboto" ⊂ "Roboto Condensed": tailwind.ts matches by ff.includes(k), first wins → the more specific
+    // family MUST come first, else an element in "Roboto Condensed" would wrongly get font-heading.
+    const sib = [
+      { id: 'rh', family: 'Roboto' },
+      { id: 'rc', family: 'Roboto Condensed' },
+    ];
+    const { paletteFonts } = resolveFonts(
+      bg({ headingFont: 'Roboto', bodyFont: 'Roboto', fonts: ['"Roboto Condensed", sans-serif', 'Roboto'] }),
+      sib,
+    );
+    // "Roboto Condensed" (16) must appear before "Roboto" (6) in the ordered map.
+    const idxCondensed = paletteFonts.findIndex(([k]) => k === 'Roboto Condensed');
+    const idxRoboto = paletteFonts.findIndex(([k]) => k === 'Roboto');
+    expect(idxCondensed).toBeGreaterThanOrEqual(0);
+    expect(idxCondensed).toBeLessThan(idxRoboto);
+    // and an element rendered in "Roboto Condensed" resolves to font-secondary (first .includes hit).
+    const ff = '"Roboto Condensed", sans-serif';
+    expect(paletteFonts.find(([k]) => ff.includes(k))![1]).toBe('font-secondary');
   });
 });
 

@@ -28,6 +28,9 @@ export interface BodyBackground {
   /** Computed font-family of the body + a heading → matched to a hosted font asset for typography. */
   bodyFont: string;
   headingFont: string;
+  /** Distinct font-families across the page (frequency-ordered) → additional SECONDARY/display faces mapped
+   *  to `named` slots + per-element font-<slot> utilities. Optional so older captures/fixtures stay valid. */
+  fonts?: string[];
 }
 export interface CapturedTrees {
   base: CapturedNode[];

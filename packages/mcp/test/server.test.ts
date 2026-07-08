@@ -339,7 +339,26 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(t).toMatch(/\[BEHAVIOUR\]/);
     expect(t).toMatch(/\[VISUAL\]/);
     expect(t).toMatch(/FAIL {2}datasets deduped/); // a failing check surfaces its detail
+    expect(t).toMatch(/advisory {2}chrome computed-style/); // the advisory chrome line is labelled "advisory", NOT "FAIL"
+    expect(t).not.toMatch(/FAIL {2}chrome computed-style/);
     expect(t).toMatch(/NOT done/); // fail guidance
+  });
+
+  it('clone_audit is DONE when every GATING check passes even though the advisory chrome check fails', async () => {
+    const advC = fakeClient({ cloneAudit: vi.fn(async () => ({
+      sourceUrl: 'x', route: '', pass: true, passed: 8, total: 8,
+      checks: [
+        { leg: 'structure' as const, id: 'datasets', label: 'datasets deduped + meaningfully named', pass: true, detail: 'ok' },
+        { leg: 'visual' as const, id: 'body-fidelity', label: 'body computed-style fidelity vs original', pass: true, detail: 'coverage 90%' },
+        { leg: 'visual' as const, id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: false, advisory: true, detail: 'coverage 33%' },
+      ],
+      fidelity: { sourceUrl: 'x', route: '', pass: false, body: { pass: true, coverage: 0.9, matched: 9, orig: 10, fontMiss: 0, gradFail: 0, score: 0 }, chrome: { pass: false, coverage: 0.33, matched: 3, orig: 10, posOff: 0, sizeOff: 0, styleOff: 8, metaOff: 2 }, diffs: { body: [], chrome: [], meta: [] } },
+    })) });
+    const t = text(await (await connect(advC, readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } }));
+    expect(t).toMatch(/CLONE AUDIT PASS ✓/);
+    expect(t).toMatch(/advisory {2}chrome computed-style/); // still reported, just not gating
+    expect(t).toMatch(/the clone is DONE/);
+    expect(t).not.toMatch(/NOT done/);
   });
 
   it('clone_audit reports a clean PASS when every leg is green', async () => {

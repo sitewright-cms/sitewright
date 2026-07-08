@@ -4,7 +4,8 @@
 //     content client-EDITABLE (data-sw-*).
 //   • BEHAVIOUR (a live build render): sliders actually enhance, modals present, the heading+body fonts truly
 //     LOAD (not just declared), the mobile menu is reachable at a phone width.
-//   • VISUAL (fidelity_check, folded in): body + chrome computed-style fidelity vs the ORIGINAL.
+//   • VISUAL (fidelity_check, folded in): body computed-style fidelity GATES; chrome element-fidelity is
+//     ADVISORY (reported, not gated — structurally-different chrome can't reliably reach 85% correspondence).
 // fidelity_check alone passes a clone whose datasets are duplicated, whose modals were dropped, whose slider
 // is dead, or whose mobile menu is missing — none of which move a computed-style number. This gate closes that.
 // The pure scorers live here (unit-tested); the browser-driving capture lives in compare.ts.

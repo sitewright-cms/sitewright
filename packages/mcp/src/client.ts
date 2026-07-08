@@ -106,7 +106,9 @@ export interface CloneAuditResult {
   sourceUrl: string;
   route: string;
   pass: boolean;
+  /** GATING (non-advisory) checks that passed. */
   passed: number;
+  /** Total GATING (non-advisory) checks — advisory checks are in `checks` but NOT counted here. */
   total: number;
   checks: AuditCheck[];
   fidelity: FidelityCheckResult;

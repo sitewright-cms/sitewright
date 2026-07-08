@@ -75,7 +75,7 @@ export default tseslint.config(
     // Browser code run via page.evaluate (Playwright serializes the function source): the mechanical-nativizer
     // DOM walk + the fidelity-gate extract. Intentionally unchecked against the Node tsconfig (no DOM lib) and
     // indexes fixed property lists, not tenant objects — same allowance as the vendored browser runtimes above.
-    files: ['apps/api/src/render/nativize-walk.ts', 'apps/api/src/render/fidelity-extract.ts'],
+    files: ['apps/api/src/render/nativize-walk.ts', 'apps/api/src/render/fidelity-extract.ts', 'apps/api/src/render/clone-audit-probe.ts'],
     languageOptions: { globals: globals.browser },
     rules: {
       '@typescript-eslint/ban-ts-comment': 'off',

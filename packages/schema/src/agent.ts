@@ -1156,18 +1156,26 @@ VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after au
   font-WEIGHT, letter-spacing, radius, shadow, solid-vs-gradient, fixed-position, ripple, modals). It catches
   the exact treatments a screenshot glance misses (e.g. a 15° skew that should be 25°, bold that should be 400,
   a gradient added where the original is flat, a missing fixed header / ripple / nav modal).
-A page is faithful ONLY when fidelity_check returns pass ✓ — never from your own screenshot, and never override
-a FAIL by eye. Port the ORIGINAL's measured values the gate reports; don't re-author from a mental image. Work
-ONE page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
+fidelity_check proves the LOOK, but it CANNOT see a dropped modal, a dead slider, an unloaded font, a
+duplicated dataset, or a missing mobile menu — none of those move a computed-style number, yet every one
+is a recurring clone failure. So the SINGLE terminating gate is:
+- clone_audit(pageId) — the COMPREHENSIVE acceptance gate. Runs all three legs and returns one PASS/FAIL:
+  STRUCTURE (datasets deduped + meaningfully named, media out of the imported/ tree, page content editable
+  via data-sw-*), BEHAVIOUR (a live render: sliders actually enhance, modals present when the original has
+  them, heading+body fonts truly LOAD, mobile menu reachable at phone width), and VISUAL (fidelity_check
+  body+chrome, folded in). Never override a FAIL by eye; port the ORIGINAL's measured values it reports.
+A page is DONE only when clone_audit returns pass ✓ — NOT fidelity_check alone, NOT a screenshot, NOT your
+own judgement. Fix every FAIL (compare_regions / compare_to_source to SEE the visual ones), then re-run it.
+Work ONE page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
 
-STRUCTURE CHECK (compare_to_source only catches VISUAL diffs — these are STRUCTURAL, so self-verify, they
-won't show in a screenshot): the header + footer menus are DATA-DRIVEN (built from {{#each nav.*}} over page
-nav-membership + link-placeholders), NOT a hard-coded <a> list; in-page section links are kind:"link"
-placeholders (not literal href="#…" in a hand-rolled menu); pages sharing a layout (legal/repeated) render
-from ONE shared template, not duplicated page source.
+The STRUCTURE + BEHAVIOUR facts clone_audit gates (self-verify these while authoring — they never show in a
+screenshot): header + footer menus DATA-DRIVEN ({{#each nav.*}} over nav-membership + link-placeholders), NOT
+a hard-coded <a> list; in-page section links are kind:"link" placeholders; pages sharing a layout render from
+ONE shared template; repeated content is a NAMED dataset (not "List"/"items"); the imported/ media tree is
+reorganised; sliders/modals rebuilt as working components; a mobile drawer exists; content carries data-sw-*.
 
-WHEN A PAGE IS DONE (i.e. fidelity_check returns pass ✓ AND the STRUCTURE CHECK passes):
-set page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
+WHEN A PAGE IS DONE (clone_audit returns pass ✓): set page.data.swImport.rewritten:true (or remove the marker)
+and flip its status to "published".
 `,
   },
   datasets: {
@@ -1260,7 +1268,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
-  { name: 'fidelity_check', description: "The OBJECTIVE clone-fidelity GATE: measures computed styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) and returns a PASS/FAIL number. Terminate the nativize loop on this, not a screenshot.", capability: 'content:read' },
+  { name: 'fidelity_check', description: "The VISUAL fidelity gate: measures computed styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals), returns a PASS/FAIL number. Use it to prove the LOOK matches — but a clone is DONE only when clone_audit passes (fidelity_check can't see dropped modals / dead sliders / unloaded fonts / dup datasets / missing mobile menu).", capability: 'content:read' },
+  { name: 'clone_audit', description: "The COMPREHENSIVE acceptance GATE — the ONE check that terminates the clone/nativize loop. All three legs: STRUCTURE (datasets deduped+named, media out of imported/, content editable), BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable), VISUAL (fidelity_check folded in). A clone is DONE only when this returns pass:true — never fidelity_check alone or a screenshot.", capability: 'content:read' },
   { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },

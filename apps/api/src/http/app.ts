@@ -266,7 +266,8 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
-import { captureUrlShots, captureUrlElements, captureUrlRegions, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
+import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit } from '../render/clone-audit.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -4624,6 +4625,63 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           captureUrlElements(target.sourceUrl, { mode: 'pinned', signal: abort.signal }),
         ]);
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...scoreFidelity(source, build) });
+      },
+    );
+
+    // clone_audit: the COMPREHENSIVE acceptance gate — fidelity_check measures computed styles, but a clone can
+    // pass that while its datasets are duplicated, its modals dropped, its slider dead, its fonts not actually
+    // loaded, or its mobile menu missing. This runs all three legs — STRUCTURE (repo: datasets/folders/editable),
+    // BEHAVIOUR (a live build render: sliders enhance / modals present / fonts load / mobile menu reachable), and
+    // VISUAL (fidelity_check folded in) — and returns one PASS/FAIL the clone loop terminates on. content:read.
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/clone-audit/:pageId',
+      { config: rl(3) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        // A failed list should 500, not silently pass the STRUCTURE checks against empty data (fail loud).
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        if (!targetPage) throw new NotFoundError('page not found');
+        const fullRoute = pathToSlug(pagePath(targetPage, byId));
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) {
+          // targetPage is non-null (thrown above), so the only reachable error is a missing import source.
+          return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        }
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        // VISUAL leg first: render BUILD + SOURCE and diff (also tells us whether the ORIGINAL has modals).
+        const [build, source] = await Promise.all([
+          captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
+          captureUrlElements(target.sourceUrl, { mode: 'pinned', signal: abort.signal }),
+        ]);
+        const fidelity = scoreFidelity(source, build);
+        // BEHAVIOUR leg: probe the live BUILD (desktop + phone). Require modals only if the ORIGINAL has triggers.
+        // Count DISTINCT header paths (nav membership is locale-independent) so a multilingual project doesn't
+        // inflate navExpected past what a single-locale render can show.
+        const navExpected = new Set(allPages.filter((p) => (p.nav?.slots ?? []).includes('header') && (p.path ?? '') !== '').map((p) => p.path)).size;
+        const behaviour = await captureBehaviour(target.buildUrl, {
+          mode: 'loopback',
+          signal: abort.signal,
+          navExpected,
+          hasModalTrigger: (source.meta.modalTriggers ?? 0) > 0,
+        });
+        // STRUCTURE leg: pure over repo data.
+        const [datasets, media] = await Promise.all([contentRepo.list(ctx, 'dataset'), contentRepo.list(ctx, 'media')]);
+        const audit = assembleAudit([
+          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string }>, media: media as Array<{ folder?: string }>, pageSource: targetPage.source ?? null }),
+          behaviouralChecks(behaviour),
+          visualChecks(fidelity),
+        ]);
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...audit, fidelity });
       },
     );
 

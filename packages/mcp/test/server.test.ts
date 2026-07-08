@@ -38,6 +38,24 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       chrome: { pass: false, coverage: 0.8, matched: 8, orig: 10, posOff: 0, sizeOff: 0, styleOff: 2, metaOff: 1 },
       diffs: { body: [], chrome: ['(header) "Web Design": skew:25°→15°, weight:400→700'], meta: ['ripple:MISSING (original fires 8)'] },
     })),
+    cloneAudit: vi.fn(async () => ({
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      pass: false,
+      passed: 6,
+      total: 8,
+      checks: [
+        { leg: 'structure' as const, id: 'datasets', label: 'datasets deduped + meaningfully named', pass: false, detail: '2 generic-named' },
+        { leg: 'structure' as const, id: 'media-folders', label: 'media out of the transient imported/ tree', pass: true, detail: '0 under imported/' },
+        { leg: 'structure' as const, id: 'editable', label: 'page content client-editable (data-sw-*)', pass: true, detail: '4 directives' },
+        { leg: 'behaviour' as const, id: 'sliders', label: 'sliders actually enhance', pass: true, detail: '1/1' },
+        { leg: 'behaviour' as const, id: 'modals', label: 'modals present', pass: true, detail: '1 dialog(s)' },
+        { leg: 'behaviour' as const, id: 'fonts', label: 'heading + body fonts actually load', pass: true, detail: 'loaded' },
+        { leg: 'behaviour' as const, id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: true, detail: '5/3' },
+        { leg: 'visual' as const, id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: false, detail: 'coverage 30%' },
+      ],
+      fidelity: { sourceUrl: 'https://orig.test/', route: '', pass: false, body: { pass: true, coverage: 0.9, matched: 9, orig: 10, fontMiss: 0, gradFail: 0, score: 0.05 }, chrome: { pass: false, coverage: 0.3, matched: 3, orig: 10, posOff: 0, sizeOff: 0, styleOff: 5, metaOff: 2 }, diffs: { body: [], chrome: [], meta: [] } },
+    })),
     compareRegions: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
@@ -310,6 +328,32 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(res.isError).toBeFalsy();
     expect(text(res)).toMatch(/FIDELITY PASS ✓/);
     expect(text(res)).not.toMatch(/NOT faithful/);
+  });
+
+  it('clone_audit returns the three-leg scorecard + fail guidance (content:read)', async () => {
+    const res = await (await connect(fakeClient(), readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    const t = text(res);
+    expect(t).toMatch(/CLONE AUDIT FAIL ✗ — 6\/8/);
+    expect(t).toMatch(/\[STRUCTURE\]/);
+    expect(t).toMatch(/\[BEHAVIOUR\]/);
+    expect(t).toMatch(/\[VISUAL\]/);
+    expect(t).toMatch(/FAIL {2}datasets deduped/); // a failing check surfaces its detail
+    expect(t).toMatch(/NOT done/); // fail guidance
+  });
+
+  it('clone_audit reports a clean PASS when every leg is green', async () => {
+    const passC = fakeClient({ cloneAudit: vi.fn(async () => ({ sourceUrl: 'x', route: '', pass: true, passed: 8, total: 8, checks: [{ leg: 'structure' as const, id: 'datasets', label: 'datasets deduped + meaningfully named', pass: true, detail: 'ok' }], fidelity: { sourceUrl: 'x', route: '', pass: true, body: { pass: true, coverage: 1, matched: 5, orig: 5, fontMiss: 0, gradFail: 0, score: 0 }, chrome: { pass: true, coverage: 1, matched: 5, orig: 5, posOff: 0, sizeOff: 0, styleOff: 0, metaOff: 0 }, diffs: { body: [], chrome: [], meta: [] } } })) });
+    const res = await (await connect(passC, readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toMatch(/CLONE AUDIT PASS ✓/);
+    expect(text(res)).not.toMatch(/NOT done/);
+  });
+
+  it('clone_audit: gates on login + content:read', async () => {
+    expect((await (await connect(fakeClient(), null)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } })).isError).toBe(true);
+    const noRead = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: ['publish'] });
+    expect((await noRead.callTool({ name: 'clone_audit', arguments: { pageId: 'home' } })).isError).toBe(true);
   });
 
   it('fidelity_check: gates on login + content:read, and surfaces client errors', async () => {

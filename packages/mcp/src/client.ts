@@ -99,6 +99,19 @@ export interface FidelityCheckResult {
   diffs: { body: string[]; chrome: string[]; meta: string[] };
 }
 
+/** One clone_audit check. */
+export interface AuditCheck { leg: 'structure' | 'behaviour' | 'visual'; id: string; label: string; pass: boolean; detail: string }
+/** The comprehensive clone-acceptance gate (GET /projects/:id/clone-audit/:pageId). */
+export interface CloneAuditResult {
+  sourceUrl: string;
+  route: string;
+  pass: boolean;
+  passed: number;
+  total: number;
+  checks: AuditCheck[];
+  fidelity: FidelityCheckResult;
+}
+
 /** A high-res region crop (lossless WebP, base64). */
 export interface RegionCrop { base64: string; mimeType: 'image/webp'; width: number; height: number }
 /** High-resolution region compare (GET /projects/:id/compare-regions/:pageId). */
@@ -293,6 +306,11 @@ export class SitewrightClient {
   /** The measured clone-fidelity gate: render BUILD vs imported SOURCE, diff computed styles, return numbers. */
   async fidelityCheck(pageId: string): Promise<FidelityCheckResult> {
     return this.request('GET', this.projectPath(`/fidelity/${encodeURIComponent(pageId)}`));
+  }
+
+  /** The COMPREHENSIVE clone-acceptance gate: structure + behaviour + visual legs, one PASS/FAIL to terminate on. */
+  async cloneAudit(pageId: string): Promise<CloneAuditResult> {
+    return this.request('GET', this.projectPath(`/clone-audit/${encodeURIComponent(pageId)}`));
   }
 
   /** High-res region crops (header/footer) of BUILD vs SOURCE, lossless WebP, for a crisp visual compare. */

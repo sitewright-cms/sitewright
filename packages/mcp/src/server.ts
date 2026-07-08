@@ -571,6 +571,35 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'clone_audit',
+    {
+      description:
+        "The COMPREHENSIVE clone-acceptance gate — the ONE check that TERMINATES the clone/nativize loop. fidelity_check only measures computed styles, so it passes a clone whose datasets are duplicated, whose modals were dropped, whose slider is dead, whose fonts don't actually load, or whose mobile menu is missing. clone_audit runs ALL THREE legs and returns a single PASS/FAIL: STRUCTURE (datasets deduped + named, media out of the imported/ tree, page content editable via data-sw-*), BEHAVIOUR (a live render: sliders enhance, modals present, heading+body fonts actually LOAD, mobile menu reachable at phone width), and VISUAL (fidelity_check body+chrome, folded in). A clone is DONE only when this returns pass:true — never from fidelity_check alone, a screenshot, or your own judgement. Slower than fidelity_check (extra live renders). The page must have an import source.",
+      inputSchema: { pageId: z.string() },
+    },
+    async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const r = await client.cloneAudit(pageId);
+        const legName: Record<string, string> = { structure: 'STRUCTURE', behaviour: 'BEHAVIOUR', visual: 'VISUAL' };
+        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} checks for page “${pageId}” (original: ${r.sourceUrl}).`];
+        for (const leg of ['structure', 'behaviour', 'visual'] as const) {
+          lines.push('', `[${legName[leg]}]`);
+          for (const c of r.checks.filter((x) => x.leg === leg)) lines.push(`  ${c.pass ? 'pass' : 'FAIL'}  ${c.label}${c.pass ? '' : ` — ${c.detail}`}`);
+        }
+        if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("nativize") for how), then run clone_audit again. Do not declare it done until pass ✓.');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'clone audit failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'compare_regions',
     {
       description:

@@ -373,6 +373,16 @@ describe('SitewrightClient', () => {
     expect(res.pass).toBe(true);
   });
 
+  it('cloneAudit GETs /clone-audit/:id (encoded)', async () => {
+    const payload = { sourceUrl: 'https://x.test/', route: '', pass: false, passed: 6, total: 8, checks: [], fidelity: {} };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(payload) },
+    );
+    const res = await client.cloneAudit('about us');
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/clone-audit/about%20us');
+    expect(res.pass).toBe(false);
+  });
+
   it('compareRegions GETs /compare-regions/:id (encoded) with optional regions', async () => {
     const payload = { sourceUrl: 'https://x.test/', route: '', regions: {} };
     const { client, calls } = await introspected((input) =>

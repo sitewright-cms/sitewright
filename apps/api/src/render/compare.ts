@@ -11,6 +11,8 @@ import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, typ
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, REGION_BOX } from './fidelity-extract.js';
+import { BEHAVIOUR_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import type { BehaviourFacts } from './clone-audit.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
 type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
@@ -196,6 +198,50 @@ export async function captureUrlElements(
       await context.close().catch(() => {});
     }
   }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta }));
+}
+
+/**
+ * Capture the BEHAVIOUR facts of a BUILD render for `clone_audit`: a desktop probe (carousels enhanced,
+ * modals present, heading/body fonts actually LOADED) plus a phone-width (390px) pass that counts the
+ * header nav links reachable — clicking a menu toggle first if they're collapsed — so a missing mobile
+ * drawer is caught. Reuses the SSRF-pinned scroll-and-settle render (prepPage); degrades to a safe-empty
+ * result on any failure (the caller surfaces that as the relevant check failing).
+ */
+export async function captureBehaviour(
+  url: string,
+  opts: { mode: CaptureMode; signal?: AbortSignal; navExpected: number; hasModalTrigger: boolean },
+): Promise<BehaviourFacts> {
+  const browser = await getBrowser();
+  // FAIL-BY-DEFAULT: a render failure must not green-light the fonts check — fonts default UNLOADED so an
+  // audit fails conservatively on instability (only a SUCCESSFUL probe of a genuinely system-font page reports
+  // loaded, via the probe's own isSystem path). Overwritten wholesale by a successful BEHAVIOUR_PROBE.
+  const desktopFallback = { carousels: 0, carouselsEnhanced: 0, dialogs: 0, headingFont: '', bodyFont: '', headingFontLoaded: false, bodyFontLoaded: false };
+  const nav = { navExpected: opts.navExpected, hasModalTrigger: opts.hasModalTrigger };
+  return withRenderSlot(async () => {
+    // DESKTOP probe: sliders / modals / fonts-loaded.
+    const dp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.fullhd, opts.signal);
+    let desktop = desktopFallback;
+    try {
+      await dp.page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
+      await dp.page.waitForTimeout(500).catch(() => {});
+      desktop = ((await dp.page.evaluate(BEHAVIOUR_PROBE as () => unknown).catch(() => null)) as typeof desktopFallback | null) ?? desktopFallback;
+    } finally {
+      await dp.context.close().catch(() => {});
+    }
+    // MOBILE pass: nav reachability at 390px (open the toggle if the links are collapsed).
+    const mp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.mobile, opts.signal);
+    let navReachableMobile = 0;
+    try {
+      navReachableMobile = ((await mp.page.evaluate(NAV_COUNT as () => unknown).catch(() => 0)) as number) || 0;
+      if (navReachableMobile < opts.navExpected) {
+        const opened = ((await mp.page.evaluate(NAV_TOGGLE as () => unknown).catch(() => false)) as boolean);
+        if (opened) { await mp.page.waitForTimeout(450).catch(() => {}); navReachableMobile = ((await mp.page.evaluate(NAV_COUNT as () => unknown).catch(() => 0)) as number) || 0; }
+      }
+    } finally {
+      await mp.context.close().catch(() => {});
+    }
+    return { ...desktop, ...nav, navReachableMobile };
+  }).catch(() => ({ ...desktopFallback, ...nav, navReachableMobile: 0 }));
 }
 
 /** A high-res region crop, lossless WebP, base64. */

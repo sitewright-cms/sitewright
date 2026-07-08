@@ -187,7 +187,20 @@ export async function captureUrlElements(
     const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
     try {
       await page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
-      await page.waitForTimeout(400).catch(() => {}); // let scroll-reveal transitions finish painting (mirrors the CLI gate) so transform/opacity read settled, not mid-animation
+      // Stabilise animations before extracting so an auto-rotating slider / scroll-reveal doesn't change which
+      // elements are present/visible run-to-run — which drifts the ORIGINAL's element count (the coverage
+      // denominator). PAUSE CSS animations (animation-play-state, NOT `animation:none` — the latter drops
+      // animation-fill-mode:forwards and would snap a finished reveal back to its hidden base) and settle
+      // transitions; finish WAAPI animations to their end-state. Applied identically to BOTH sides, so the
+      // comparison stays fair AND stable across runs.
+      await page.evaluate(() => {
+        const g = globalThis as unknown as { document: { getAnimations?: () => Array<{ finish: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } } };
+        try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { /* running/infinite */ } }); } catch { /* not supported */ }
+        const s = g.document.createElement('style');
+        s.textContent = '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}';
+        g.document.head?.appendChild(s);
+      }).catch(() => {});
+      await page.waitForTimeout(400).catch(() => {}); // browser repaint settle after the animation freeze + WAAPI finish() so transform/opacity read settled
       // NOTE: unlike the CLI gate we do NOT run a mouse-hover pass here, so ChromeEl.hover is undefined both
       // sides — scoreChrome guards on `if (o.hover)`, so hover:MISSING? is simply never surfaced (the CLI
       // marks it "reported, not gated" anyway, so PASS/FAIL is unaffected).

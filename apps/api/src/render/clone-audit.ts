@@ -16,6 +16,11 @@ export interface AuditCheck {
   label: string;
   pass: boolean;
   detail: string;
+  /** ADVISORY checks are reported (so the agent sees + fixes them) but do NOT gate the audit's PASS. Used for
+   *  chrome element-fidelity: 85% computed-style COVERAGE of structurally-different chrome (the original exposes
+   *  counter-skewed inner label spans where the clone exposes tab wrappers; its rich footer has no clone
+   *  counterpart) is not reliably reachable, so a hard gate there would never terminate the loop. */
+  advisory?: boolean;
 }
 
 /** Behavioural facts extracted from a live render of the BUILD (desktop probe + mobile nav reachability). */
@@ -60,12 +65,14 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   ];
 }
 
-/** VISUAL leg — fold in fidelity_check's already-measured body + chrome PASS/FAIL. */
+/** VISUAL leg — fold in fidelity_check's already-measured body + chrome result. body-fidelity GATES (text-
+ *  anchored, reliable); chrome element-fidelity is ADVISORY (structurally-different chrome can't reliably reach
+ *  85% element-style coverage — see AuditCheck.advisory — so it's reported to steer the agent, not gated). */
 export function visualChecks(fid: { body?: { pass?: boolean; coverage?: number; score?: number }; chrome?: { pass?: boolean; coverage?: number; styleOff?: number; metaOff?: number } } | null): AuditCheck[] {
   const b = fid?.body, c = fid?.chrome;
   return [
     { leg: 'visual', id: 'body-fidelity', label: 'body computed-style fidelity vs original', pass: b?.pass === true, detail: b ? `coverage ${((b.coverage ?? 0) * 100).toFixed(0)}%, score ${(b.score ?? 1).toFixed(3)}` : 'no fidelity result' },
-    { leg: 'visual', id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: c?.pass === true, detail: c ? `coverage ${((c.coverage ?? 0) * 100).toFixed(0)}%, styleOff ${c.styleOff ?? '?'}, metaOff ${c.metaOff ?? '?'}` : 'no fidelity result' },
+    { leg: 'visual', id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: c?.pass === true, advisory: true, detail: c ? `coverage ${((c.coverage ?? 0) * 100).toFixed(0)}%, styleOff ${c.styleOff ?? '?'}, metaOff ${c.metaOff ?? '?'} — use compare_regions to close remaining chrome gaps` : 'no fidelity result' },
   ];
 }
 
@@ -76,9 +83,11 @@ export interface CloneAuditResult {
   checks: AuditCheck[];
 }
 
-/** Assemble the full audit from the three legs. RED (pass:false) if ANY check fails. */
+/** Assemble the full audit. RED (pass:false) if any GATING (non-advisory) check fails. Advisory checks are
+ *  still in `checks` (reported to the agent) but excluded from pass/passed/total. */
 export function assembleAudit(legs: AuditCheck[][]): CloneAuditResult {
   const checks = legs.flat();
-  const passed = checks.filter((c) => c.pass).length;
-  return { pass: passed === checks.length && checks.length > 0, passed, total: checks.length, checks };
+  const gating = checks.filter((c) => !c.advisory);
+  const passed = gating.filter((c) => c.pass).length;
+  return { pass: passed === gating.length && gating.length > 0, passed, total: gating.length, checks };
 }

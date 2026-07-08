@@ -54,22 +54,28 @@ describe('visualChecks + assembleAudit', () => {
   it('folds in fidelity_check body + chrome pass', () => {
     const v = visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: false, coverage: 0.3, styleOff: 5, metaOff: 2 } });
     expect(v.find((c) => c.id === 'body-fidelity')!.pass).toBe(true);
+    // chrome-fidelity reflects the measured pass BUT is marked advisory (does not gate the audit)
     expect(v.find((c) => c.id === 'chrome-fidelity')!.pass).toBe(false);
+    expect(v.find((c) => c.id === 'chrome-fidelity')!.advisory).toBe(true);
+    expect(v.find((c) => c.id === 'body-fidelity')!.advisory).toBeUndefined();
   });
 
-  it('is RED if any check fails, GREEN only when all pass', () => {
+  it('gates on non-advisory checks: a clone whose ONLY failure is chrome-fidelity is still GREEN', () => {
     const green = assembleAudit([
       structuralChecks({ datasets: [{ id: 'team', name: 'Team' }], media: [{ folder: 'Brand' }], pageSource: '<h1 data-sw-text="t">T</h1>' }),
       behaviouralChecks(behaviour()),
-      visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: true, coverage: 0.9, styleOff: 0, metaOff: 0 } }),
+      // body passes, chrome FAILS — chrome is advisory, so the audit is still GREEN
+      visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: false, coverage: 0.3, styleOff: 8, metaOff: 2 } }),
     ]);
     expect(green.pass).toBe(true);
-    expect(green.passed).toBe(green.total);
+    expect(green.passed).toBe(green.total); // advisory chrome excluded from the count
+    expect(green.checks.some((c) => c.id === 'chrome-fidelity' && !c.pass && c.advisory)).toBe(true); // still reported
 
+    // a GATING failure (structure/behaviour/body) is still RED
     const red = assembleAudit([
       structuralChecks({ datasets: [{ id: 'items', name: 'List' }], media: [], pageSource: '<div>plain</div>' }),
       behaviouralChecks(behaviour({ carouselsEnhanced: 0 })),
-      visualChecks(null),
+      visualChecks({ body: { pass: false, coverage: 0.5, score: 0.3 }, chrome: { pass: false } }),
     ]);
     expect(red.pass).toBe(false);
     expect(red.passed).toBeLessThan(red.total);

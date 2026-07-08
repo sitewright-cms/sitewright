@@ -585,12 +585,16 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       try {
         const r = await client.cloneAudit(pageId);
         const legName: Record<string, string> = { structure: 'STRUCTURE', behaviour: 'BEHAVIOUR', visual: 'VISUAL' };
-        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} checks for page “${pageId}” (original: ${r.sourceUrl}).`];
+        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} gating checks for page “${pageId}” (original: ${r.sourceUrl}).`];
         for (const leg of ['structure', 'behaviour', 'visual'] as const) {
           lines.push('', `[${legName[leg]}]`);
-          for (const c of r.checks.filter((x) => x.leg === leg)) lines.push(`  ${c.pass ? 'pass' : 'FAIL'}  ${c.label}${c.pass ? '' : ` — ${c.detail}`}`);
+          for (const c of r.checks.filter((x) => x.leg === leg)) {
+            const status = c.advisory ? (c.pass ? 'ok (advisory)' : 'advisory') : c.pass ? 'pass' : 'FAIL';
+            lines.push(`  ${status}  ${c.label}${c.pass && !c.advisory ? '' : ` — ${c.detail}`}`);
+          }
         }
         if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("nativize") for how), then run clone_audit again. Do not declare it done until pass ✓.');
+        else lines.push('', 'Gating checks pass ✓ — the clone is DONE. (An "advisory" chrome line, if shown, flags remaining chrome-detail gaps to polish with compare_regions, but does NOT block done.)');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);

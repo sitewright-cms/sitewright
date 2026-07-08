@@ -43,7 +43,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       route: '',
       pass: false,
       passed: 6,
-      total: 8,
+      total: 7,
       checks: [
         { leg: 'structure' as const, id: 'datasets', label: 'datasets deduped + meaningfully named', pass: false, detail: '2 generic-named' },
         { leg: 'structure' as const, id: 'media-folders', label: 'media out of the transient imported/ tree', pass: true, detail: '0 under imported/' },
@@ -52,7 +52,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
         { leg: 'behaviour' as const, id: 'modals', label: 'modals present', pass: true, detail: '1 dialog(s)' },
         { leg: 'behaviour' as const, id: 'fonts', label: 'heading + body fonts actually load', pass: true, detail: 'loaded' },
         { leg: 'behaviour' as const, id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: true, detail: '5/3' },
-        { leg: 'visual' as const, id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: false, detail: 'coverage 30%' },
+        { leg: 'visual' as const, id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: false, advisory: true, detail: 'coverage 30%' },
       ],
       fidelity: { sourceUrl: 'https://orig.test/', route: '', pass: false, body: { pass: true, coverage: 0.9, matched: 9, orig: 10, fontMiss: 0, gradFail: 0, score: 0.05 }, chrome: { pass: false, coverage: 0.3, matched: 3, orig: 10, posOff: 0, sizeOff: 0, styleOff: 5, metaOff: 2 }, diffs: { body: [], chrome: [], meta: [] } },
     })),
@@ -334,7 +334,7 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await (await connect(fakeClient(), readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } });
     expect(res.isError).toBeFalsy();
     const t = text(res);
-    expect(t).toMatch(/CLONE AUDIT FAIL ✗ — 6\/8/);
+    expect(t).toMatch(/CLONE AUDIT FAIL ✗ — 6\/7 gating/);
     expect(t).toMatch(/\[STRUCTURE\]/);
     expect(t).toMatch(/\[BEHAVIOUR\]/);
     expect(t).toMatch(/\[VISUAL\]/);

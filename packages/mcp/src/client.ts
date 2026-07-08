@@ -99,14 +99,16 @@ export interface FidelityCheckResult {
   diffs: { body: string[]; chrome: string[]; meta: string[] };
 }
 
-/** One clone_audit check. */
-export interface AuditCheck { leg: 'structure' | 'behaviour' | 'visual'; id: string; label: string; pass: boolean; detail: string }
+/** One clone_audit check. `advisory` checks are reported but do NOT gate the audit's PASS (chrome element-fidelity). */
+export interface AuditCheck { leg: 'structure' | 'behaviour' | 'visual'; id: string; label: string; pass: boolean; detail: string; advisory?: boolean }
 /** The comprehensive clone-acceptance gate (GET /projects/:id/clone-audit/:pageId). */
 export interface CloneAuditResult {
   sourceUrl: string;
   route: string;
   pass: boolean;
+  /** GATING (non-advisory) checks that passed. */
   passed: number;
+  /** Total GATING (non-advisory) checks — advisory checks are in `checks` but NOT counted here. */
   total: number;
   checks: AuditCheck[];
   fidelity: FidelityCheckResult;

@@ -747,6 +747,38 @@ export function componentTypesInSource(html: string | null | undefined): string[
 }
 
 /**
+ * Component types whose stylesheet keys on `[data-sw-block="<Type>"]` (Carousel, Lightbox, Form) — as
+ * opposed to the ones that key on `[data-sw-component="<name>"]` directly (Banner, Tabs, Modal, …) and
+ * so need no paired block attribute. DERIVED from each component's own CSS so this can never drift as
+ * components are added or re-keyed. Used by {@link addComponentBlockMarkers}.
+ */
+const BLOCK_KEYED_TYPES: ReadonlySet<string> = new Set(
+  [...COMPONENTS].filter(([type, asset]) => asset.css.includes(`[data-sw-block="${type}"]`)).map(([type]) => type),
+);
+
+/**
+ * Pair a `data-sw-component="<name>"` marker with the `data-sw-block="<Type>"` attribute its stylesheet
+ * keys on, when (and only when) that component is BLOCK-KEYED (Carousel, Lightbox, Form) and the tag
+ * lacks it. For those, `data-sw-component` ships the CSS/JS (via {@link componentTypesInSource}) + is what
+ * the runtime enhances, while `data-sw-block` is the CSS selector target — part layout, control chrome,
+ * and the visually-hidden `.sw-sr-only` live region. Source that writes ONLY `data-sw-component` (an easy
+ * miss when authoring a clone) would otherwise render the component with NONE of its stylesheet applied:
+ * an on-screen "Slide x of y" live region, unsized slides, inert controls left visible. Every seed page /
+ * snippet / widget already authors both; this makes the single-attribute form work too. Component-keyed
+ * components (Banner/Tabs/Modal/…) are left untouched — their CSS needs no block attribute. Idempotent
+ * (skips a tag that already has `data-sw-block`) and a no-op for component-free markup. Runs as a
+ * renderTemplate post-pass so BOTH the preview and publish paths get it (no drift).
+ */
+export function addComponentBlockMarkers(html: string): string {
+  if (typeof html !== 'string' || html.indexOf('data-sw-component=') === -1) return html;
+  return html.replace(/<[a-zA-Z][^>]*\bdata-sw-component="([a-z-]+)"[^>]*>/g, (tag: string, name: string) => {
+    const type = COMPONENT_NAME_TO_TYPE.get(name);
+    if (!type || !BLOCK_KEYED_TYPES.has(type) || /\bdata-sw-block\s*=/.test(tag)) return tag;
+    return tag.replace(`data-sw-component="${name}"`, `data-sw-component="${name}" data-sw-block="${type}"`);
+  });
+}
+
+/**
  * Bundles the CSS + JS for the given component types into single strings (deduped,
  * in stable registry order). Unknown types are ignored. Empty when none are used,
  * so callers ship nothing for sites that use no components.

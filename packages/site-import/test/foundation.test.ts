@@ -439,6 +439,34 @@ describe('cleanNavLabel', () => {
     expect(cleanNavLabel('Contact', 'eTaxi Worldwide')).toBe('Contact'); // no suffix → unchanged
     expect(cleanNavLabel('eTaxi Worldwide', 'eTaxi Worldwide')).toBe('eTaxi Worldwide'); // don't blank it out
   });
+
+  it('picks a SHORT label out of a multi-phrase SEO <title> (R13b)', () => {
+    // The recurring bug: the menu leaked the full SEO title instead of a short label.
+    expect(cleanNavLabel('High-End Website Design in Namibia | Web Development | SEO | PHOENIX', 'PHOENIX')).toBe(
+      'Web Development',
+    );
+    expect(cleanNavLabel('Web Software | Automation | Productivity Tools | by PHOENIX Namibia', 'PHOENIX')).toBe(
+      'Web Software',
+    );
+    // comma LIST title (no pipes) → first 2–3-word phrase
+    expect(cleanNavLabel('Namibia Web Hosting, Email, Domain Registration, Cloud', 'PHOENIX')).toBe('Namibia Web Hosting');
+  });
+
+  it('keeps a valid SHORT first segment instead of a later phrase', () => {
+    expect(cleanNavLabel('About | Our Story')).toBe('About'); // not "Our Story"
+    expect(cleanNavLabel('FAQ | Frequently Asked Questions')).toBe('FAQ');
+  });
+
+  it('strips a site name that ends in punctuation', () => {
+    expect(cleanNavLabel('Contact | eTaxi Ltd.', 'eTaxi Ltd.')).toBe('Contact');
+    expect(cleanNavLabel('Services - Acme Co.', 'Acme Co.')).toBe('Services');
+  });
+
+  it('caps a runaway separator-free title at 4 words but leaves short labels intact', () => {
+    expect(cleanNavLabel('About Us')).toBe('About Us');
+    expect(cleanNavLabel('Our Professional Services')).toBe('Our Professional Services');
+    expect(cleanNavLabel('Welcome to our brand new home page')).toBe('Welcome to our brand');
+  });
 });
 
 describe('isIconFont', () => {

@@ -1,5 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { COMPONENT_TYPES, componentTypesInSource, componentAssets } from '../src/components.js';
+import { COMPONENT_TYPES, componentTypesInSource, componentAssets, addComponentBlockMarkers } from '../src/components.js';
+
+describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)', () => {
+  it('adds the block marker for a BLOCK-KEYED component missing it (Carousel / Lightbox / Form)', () => {
+    expect(addComponentBlockMarkers('<div data-sw-component="carousel" data-effect="fade"></div>')).toBe(
+      '<div data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade"></div>',
+    );
+    expect(addComponentBlockMarkers('<div data-sw-component="lightbox"></div>')).toBe(
+      '<div data-sw-component="lightbox" data-sw-block="Lightbox"></div>',
+    );
+    expect(addComponentBlockMarkers('<form data-sw-component="form"></form>')).toBe(
+      '<form data-sw-component="form" data-sw-block="Form"></form>',
+    );
+  });
+
+  it('leaves COMPONENT-keyed components (Modal / Tabs / Banner) untouched — their CSS needs no block attr', () => {
+    for (const name of ['modal', 'tabs', 'banner', 'datetimepicker', 'shader-bg']) {
+      const tag = `<div data-sw-component="${name}"></div>`;
+      expect(addComponentBlockMarkers(tag)).toBe(tag);
+    }
+  });
+
+  it('is idempotent — leaves a tag that already has data-sw-block untouched, never doubles it', () => {
+    const already = '<div data-sw-component="carousel" data-sw-block="Carousel"></div>';
+    expect(addComponentBlockMarkers(already)).toBe(already);
+    expect(addComponentBlockMarkers(addComponentBlockMarkers('<div data-sw-component="carousel"></div>'))).toBe(
+      '<div data-sw-component="carousel" data-sw-block="Carousel"></div>',
+    );
+  });
+
+  it('ignores unknown component names and component-free markup', () => {
+    expect(addComponentBlockMarkers('<div data-sw-component="bogus"></div>')).toBe('<div data-sw-component="bogus"></div>');
+    expect(addComponentBlockMarkers('<section class="hero"></section>')).toBe('<section class="hero"></section>');
+    expect(addComponentBlockMarkers('')).toBe('');
+  });
+
+  it('pairs every block-keyed component in a multi-root fragment', () => {
+    const out = addComponentBlockMarkers(
+      '<div data-sw-component="carousel"><div data-sw-part="track"></div></div><div data-sw-component="lightbox"></div>',
+    );
+    expect(out).toContain('data-sw-component="carousel" data-sw-block="Carousel"');
+    expect(out).toContain('data-sw-component="lightbox" data-sw-block="Lightbox"');
+  });
+
+  it('injects a block marker for EXACTLY the components whose CSS keys on data-sw-block', () => {
+    // Guards the derived BLOCK_KEYED_TYPES set: a component injected iff its stylesheet uses [data-sw-block].
+    const nameToType: Record<string, string> = {
+      carousel: 'Carousel', lightbox: 'Lightbox', modal: 'Modal', banner: 'Banner',
+      tabs: 'Tabs', form: 'Form', datetimepicker: 'DateTimePicker', 'shader-bg': 'ShaderBg',
+    };
+    for (const [name, type] of Object.entries(nameToType)) {
+      const injected = addComponentBlockMarkers(`<div data-sw-component="${name}"></div>`).includes('data-sw-block');
+      const keyed = componentAssets([type]).css.includes(`[data-sw-block="${type}"]`);
+      expect(injected).toBe(keyed);
+    }
+  });
+});
 
 describe('componentTypesInSource (code-first detection)', () => {
   it('detects interactive components by their data-sw-component marker in rendered source', () => {

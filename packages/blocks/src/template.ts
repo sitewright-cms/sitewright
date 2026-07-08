@@ -23,6 +23,7 @@ import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
+import { addComponentBlockMarkers } from './components.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
@@ -1075,6 +1076,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   } catch (err) {
     throw new TemplateError(err instanceof Error ? err.message : 'form embed failed');
   }
+  // Pair every `data-sw-component="x"` with the `data-sw-block="X"` its stylesheet is keyed on, so
+  // source that authored only the component marker still gets the component's CSS (unsized slides /
+  // a visible "Slide x of y" live region / inert controls otherwise). No-op without a marker.
+  html = addComponentBlockMarkers(html);
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
   if (html.length > max) throw new TemplateError('template output exceeded the size limit');
   return html;

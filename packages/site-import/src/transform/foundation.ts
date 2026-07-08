@@ -448,18 +448,46 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
 
 // ─────────────────────────────── page nav config ───────────────────────────────
 
-/** A clean per-page NAV LABEL: the page title minus the site-name suffix/prefix (`Imprint | eTaxi
- *  Worldwide` → `Imprint`), so the menu doesn't leak the imported `<title>` boilerplate (R13b). */
+/**
+ * A clean, SHORT per-page NAV LABEL from the imported `<title>` (R13b), so the menu doesn't leak
+ * SEO boilerplate. Two steps:
+ *  1. Strip the site-name affix + anything trailing it (`Imprint | eTaxi Worldwide` → `Imprint`;
+ *     `Web Software | … | by PHOENIX Namibia` → `Web Software | …`).
+ *  2. A menu item is SHORT. A real SEO `<title>` packs several phrases with separators
+ *     (`High-End Website Design in Namibia | Web Development | SEO`); split on those and pick the
+ *     FIRST 2–3-word phrase — the primary label ("Web Development"), not the long lede or a bare
+ *     acronym. Falls back to the first segment, then a 4-word hard cap so a runaway title never
+ *     becomes a menu item.
+ * A title that is already a plain short label (no site-name, no separators) passes through unchanged.
+ */
 export function cleanNavLabel(title: string, siteName?: string): string {
   let t = (title ?? '').trim();
   const n = (siteName ?? '').trim();
   if (n) {
     const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     t = t
-      .replace(new RegExp(`\\s*[|\\-–—:·]\\s*${esc}\\s*$`, 'i'), '')
-      .replace(new RegExp(`^\\s*${esc}\\s*[|\\-–—:·]\\s*`, 'i'), '')
+      // drop " | SiteName …" (and any trailing "by SiteName …" boilerplate) and a leading "SiteName | ".
+      // `(?![\w-])` (not \b) so a site name ENDING in punctuation ("eTaxi Ltd.", "Co.") still strips.
+      .replace(new RegExp(`\\s*[|\\-–—:·•]\\s*(?:by\\s+)?${esc}(?![\\w-]).*$`, 'i'), '')
+      .replace(new RegExp(`^\\s*${esc}\\s*[|\\-–—:·•]\\s*`, 'i'), '')
       .trim();
   }
+  // Segment an SEO title into its phrases: pipes/dashes/bullets always; commas only when the title
+  // is a comma LIST (≥2 commas, e.g. "Web Hosting, Email, Domains, Cloud") — never a single phrase.
+  let segs = t.split(/\s*[|–—·•]\s*/).map((s) => s.trim()).filter(Boolean);
+  if (segs.length === 1 && (t.match(/,/g)?.length ?? 0) >= 2) {
+    segs = t.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+  }
+  if (segs.length > 1) {
+    const wordCount = (s: string): number => s.split(/\s+/).length;
+    t =
+      (wordCount(segs[0]!) <= 3 ? segs[0] : undefined) ?? // the FIRST segment already reads as a label ("About | Our Story" → About)
+      segs.find((s) => wordCount(s) >= 2 && wordCount(s) <= 3) ?? // else skip a long lede for the first 2–3-word phrase
+      segs.find((s) => s.length >= 3 && wordCount(s) <= 3) ?? // else any short segment (incl. 1-word)
+      segs[0]!;
+  }
+  const words = t.split(/\s+/);
+  if (words.length > 4) t = words.slice(0, 4).join(' ');
   return t || (title ?? '').trim();
 }
 

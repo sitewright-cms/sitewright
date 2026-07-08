@@ -972,6 +972,31 @@ don't silently drop links. A fixed social/contact RAIL that the original shows o
 desktop — author it with the original's breakpoints, not md:hidden (mobile-only), or it vanishes on the
 desktop compare.
 
+SIGNATURE CHROME CSS → website.criticalCss (NOT a slot <style>): a chrome slot REJECTS <style> blocks and
+inline style="…", so the header/footer's site-wide CSS lives in website.criticalCss (emitted unlayered,
+site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules in criticalCss. For a
+SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
+REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
+on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do
+NOT express a transform as a Tailwind ARBITRARY-VALUE class ([transform:skewX(-25deg)] or a captured
+[transform:matrix(1,0,-0.46,1,0,0)]) — the class extractor can choke on the commas/parens and the rule
+silently never renders (a flat tab where the original is skewed). MEASURE the original (its computed
+transform, gradient stops, letter-spacing, border-radius, fill colour, font) and reproduce those NUMBERS —
+don't eyeball. Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
+named slot like --sw-font-secondary), not a hard-coded family.
+STICKY HEADER: if the source header is FIXED/pinned (or shrinks on scroll), set website.effects.stickyHeader
+("pinned" | "shrink" | "hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the
+body isn't hidden under the bar — the runtime measures --sw-header-h so there's no layout shift. A static
+clone of a fixed header fails the fidelity meta check (header-position). See get_guide("nav").
+FOUNDATION IMPORT (theme-only): when the project was imported in FOUNDATION mode, the mainNav/footer slots
+hold a GENERIC data-driven nav/footer (the extractor's native default), NOT the foreign header — so you must
+AUTHOR the faithful design yourself. Use the ORIGINAL as the reference: compare_regions (crisp 2× header/
+footer crops of BUILD vs ORIGINAL) + a rendered screenshot to read the exact bar height, tab shape/skew,
+colours, and the logo; then build it data-driven ({{#each nav.header}}) with the signature CSS in criticalCss.
+VERIFY THE CHROME with the gate, not a thumbnail: fidelity_check scores the chrome too (skew, weight,
+letter-spacing, radius, shadow, gradient, fixed-position, ripple, modal triggers) — iterate until its chrome
+score passes; use compare_regions to SEE what's still off. That objective pass is when the chrome is done.
+
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
 (website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
 no longer referenced (trim the criticalCss/head to nothing once every section is token-driven; delete unused

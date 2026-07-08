@@ -172,11 +172,13 @@ export function matchChrome(
     // TEXT-LESS elements (logo, icon tabs) — two passes so we neither mis-pair nor falsely strand:
     // PASS 1 pairs only a MUTUAL nearest same-tag correspondence (o's nearest is c AND c's nearest is o), so a
     // logo <a> is never linked to a nav-tab <a> just because they share a tag (the old array-index bug). PASS 2
-    // then matches any element PASS 1 left stranded to its nearest STILL-UNUSED same-tag clone — a dense cluster
-    // (e.g. footer icons at a 40px pitch) can strand a valid element when a neighbour was slightly closer to its
-    // clone, and by pass 2 the remaining unused clone is its only option, so this recovers coverage without
-    // reintroducing a mis-pair (a genuine mis-pair's clone was already claimed in pass 1). `nearestIn` breaks a
-    // distance tie by document order (leftmost), deterministically.
+    // recovers any element PASS 1 stranded — but ONLY to a NEARBY still-unused clone (`FALLBACK_MAX_DIST`): a
+    // dense cluster (footer icons at ~40px pitch) can strand a valid element when a neighbour was slightly closer
+    // to its clone, and there the only remaining clone is genuinely CLOSE. A FAR "nearest unused" is not a real
+    // counterpart — force-matching it just manufactures garbage skew/fill/font diffs — so leave it unmatched.
+    // (Container-shift, a legit FAR move, is still caught: those elements MUTUAL-match in pass 1.) `nearestIn`
+    // breaks a distance tie by document order (leftmost), deterministically.
+    const FALLBACK_MAX_DIST = 80;
     for (const o of O) {
       if (o.text || matchedO.has(o)) continue;
       const c = nearestIn(o, C.filter((x) => !x.text && x.tag === o.tag), usedC);
@@ -187,7 +189,7 @@ export function matchChrome(
     for (const o of O) {
       if (o.text || matchedO.has(o)) continue;
       const c = nearestIn(o, C.filter((x) => !x.text && x.tag === o.tag), usedC);
-      if (c) { usedC.add(c); matchedO.add(o); pairs.push({ region, o, c }); }
+      if (c && elemDist(o, c) <= FALLBACK_MAX_DIST) { usedC.add(c); matchedO.add(o); pairs.push({ region, o, c }); }
     }
     for (const o of O) if (!matchedO.has(o)) unmatched.push(o);
   }

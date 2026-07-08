@@ -56,6 +56,16 @@ describe('matchChrome', () => {
     expect(unmatched).toHaveLength(0);
   });
 
+  it('pass-2 recovers a NEARBY stranded element but NOT a FAR one (no manufactured mis-pair)', () => {
+    // a@40 mutual-matches c@31; a@20 is stranded and its only unused clone (c@500) is FAR → left unmatched
+    // rather than force-matched into a garbage skew/fill/font diff.
+    const orig = [el({ tag: 'a', text: '', x: 20 }), el({ tag: 'a', text: '', x: 40 })];
+    const clone = [el({ tag: 'a', text: '', x: 31 }), el({ tag: 'a', text: '', x: 500 })];
+    const { pairs, unmatched } = matchChrome(orig, clone);
+    expect(pairs).toHaveLength(1);
+    expect(unmatched.map((u) => u.x)).toEqual([20]);
+  });
+
   it('keeps header and footer matching separate', () => {
     const orig = [el({ text: 'A', region: 'header' }), el({ text: 'A', region: 'footer' })];
     const clone = [el({ text: 'A', region: 'footer' }), el({ text: 'A', region: 'header' })];

@@ -56,6 +56,25 @@ describe('matchChrome', () => {
     expect(unmatched).toHaveLength(0);
   });
 
+  it('pass-2 recovers a NEARBY stranded element but NOT a FAR one (no manufactured mis-pair)', () => {
+    // a@40 mutual-matches c@31; a@20 is stranded and its only unused clone (c@500) is FAR → left unmatched
+    // rather than force-matched into a garbage skew/fill/font diff.
+    const orig = [el({ tag: 'a', text: '', x: 20 }), el({ tag: 'a', text: '', x: 40 })];
+    const clone = [el({ tag: 'a', text: '', x: 31 }), el({ tag: 'a', text: '', x: 500 })];
+    const { pairs, unmatched } = matchChrome(orig, clone);
+    expect(pairs).toHaveLength(1);
+    expect(unmatched.map((u) => u.x)).toEqual([20]);
+  });
+
+  it('pass-2 fallback boundary: accepts a stray at exactly the max distance (80), rejects one past it (81)', () => {
+    // o@40 mutual-claims the near clone c@45; o@0 is stranded → pass 2 matches it to the far clone iff dist ≤ 80.
+    const base = [el({ tag: 'a', text: '', x: 0, y: 0 }), el({ tag: 'a', text: '', x: 40, y: 0 })];
+    const at80 = matchChrome(base, [el({ tag: 'a', text: '', x: 45, y: 0 }), el({ tag: 'a', text: '', x: 80, y: 0 })]);
+    expect(at80.unmatched).toHaveLength(0); // o@0 → c@80 (dist 80) recovered
+    const at81 = matchChrome(base, [el({ tag: 'a', text: '', x: 45, y: 0 }), el({ tag: 'a', text: '', x: 81, y: 0 })]);
+    expect(at81.unmatched.map((u) => u.x)).toEqual([0]); // o@0 → c@81 (dist 81) rejected
+  });
+
   it('keeps header and footer matching separate', () => {
     const orig = [el({ text: 'A', region: 'header' }), el({ text: 'A', region: 'footer' })];
     const clone = [el({ text: 'A', region: 'footer' }), el({ text: 'A', region: 'header' })];

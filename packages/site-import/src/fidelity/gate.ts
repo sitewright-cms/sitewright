@@ -156,6 +156,12 @@ export function matchChrome(
   // Cap elements per region before the O(n²) proximity matching — bounds worst-case cost on an adversarial
   // source page (hundreds of stacked nav anchors) while staying far above any real chrome bar (~5–30 items).
   const MAX_PER_REGION = 400;
+  // Max Manhattan distance for a PASS-2 text-less fallback pair (see the two-pass comment below). Dense
+  // clusters strand elements only a pitch or two away; a far "nearest unused" is not a real counterpart. NB:
+  // this is Manhattan (|dx|+|dy|), so an element that shifts in BOTH axes (e.g. a hamburger into a taller band)
+  // can exceed it and go unmatched — a benign coverage drop, not a garbage diff. Header/footer chrome shares a
+  // horizontal bar (dy≈0), so in practice it gates on x.
+  const FALLBACK_MAX_DIST = 80;
   for (const region of regions) {
     const O = byRegion(orig, region).slice(0, MAX_PER_REGION);
     const C = byRegion(clone, region).slice(0, MAX_PER_REGION);
@@ -178,7 +184,6 @@ export function matchChrome(
     // counterpart — force-matching it just manufactures garbage skew/fill/font diffs — so leave it unmatched.
     // (Container-shift, a legit FAR move, is still caught: those elements MUTUAL-match in pass 1.) `nearestIn`
     // breaks a distance tie by document order (leftmost), deterministically.
-    const FALLBACK_MAX_DIST = 80;
     for (const o of O) {
       if (o.text || matchedO.has(o)) continue;
       const c = nearestIn(o, C.filter((x) => !x.text && x.tag === o.tag), usedC);

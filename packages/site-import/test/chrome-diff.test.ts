@@ -13,7 +13,7 @@ const el = (o: Partial<ChromeEl> = {}): ChromeEl => ({
 });
 
 describe('matchChrome', () => {
-  it('matches text elements by text and text-less ones (logo/icons) by left-to-right order within a region', () => {
+  it('matches text elements by nearest same-text clone and text-less ones (logo/imgs) by mutual-nearest position within a region', () => {
     const orig = [el({ tag: 'img', text: '', x: 11 }), el({ text: 'Web Design', x: 641 }), el({ tag: 'img', text: '', x: 1700, role: 'button' })];
     const clone = [el({ tag: 'img', text: '', x: 16 }), el({ text: 'Web Design', x: 705 }), el({ tag: 'img', text: '', x: 1690, role: 'button' })];
     const { pairs, unmatched } = matchChrome(orig, clone);
@@ -26,6 +26,34 @@ describe('matchChrome', () => {
   it('reports an original chrome element with no clone counterpart as unmatched', () => {
     const { unmatched } = matchChrome([el({ text: 'REQUEST QUOTE', x: 1678 }), el({ text: 'Contact', x: 1600 })], [el({ text: 'REQUEST QUOTE', x: 1684 })]);
     expect(unmatched.map((u) => u.text)).toContain('Contact');
+  });
+
+  it('pairs text-less elements by MUTUAL nearest position — leaves the logo unmatched instead of mis-pairing it with a nav tab', () => {
+    // orig header: logo <a> @11 + an orange skewed home-tab <a> @250. The clone is MISSING the logo (only the tab).
+    const orig = [el({ tag: 'a', text: '', x: 11, bg: 'rgba(0, 0, 0, 0)' }), el({ tag: 'a', text: '', x: 250, bg: 'rgb(204, 115, 0)', transform: SKEW25 })];
+    const clone = [el({ tag: 'a', text: '', x: 255, bg: 'rgb(204, 115, 0)', transform: SKEW25 })];
+    const { pairs, unmatched } = matchChrome(orig, clone);
+    // the home-tab (@250) mutual-matches the clone tab (@255); the logo (@11) has NO real counterpart → unmatched.
+    // The OLD index matcher paired logo@11 ↔ tab@255 (i=0), reporting its fill/skew/shadow as bogus styleOff.
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]!.o.x).toBe(250);
+    expect(unmatched.map((u) => u.x)).toEqual([11]);
+  });
+
+  it('matches a repeated text label to the NEAREST clone element, not the first in document order', () => {
+    const orig = [el({ text: 'Contact', x: 1600 })];
+    const clone = [el({ text: 'Contact', x: 100 }), el({ text: 'Contact', x: 1610 })];
+    const { pairs } = matchChrome(orig, clone);
+    expect(pairs[0]!.c.x).toBe(1610); // nearest, not the far first (@100)
+  });
+
+  it('matches BOTH of two close same-tag text-less elements even when one clone shifts toward its neighbour (2-pass, no false coverage fail)', () => {
+    // dense footer-icon case: greedy single-pass strands o1@20 (c1@31 back-nearest is o2@40); pass 2 recovers it.
+    const orig = [el({ tag: 'a', text: '', x: 20 }), el({ tag: 'a', text: '', x: 40 })];
+    const clone = [el({ tag: 'a', text: '', x: 31 }), el({ tag: 'a', text: '', x: 50 })];
+    const { pairs, unmatched } = matchChrome(orig, clone);
+    expect(pairs).toHaveLength(2);
+    expect(unmatched).toHaveLength(0);
   });
 
   it('keeps header and footer matching separate', () => {

@@ -127,24 +127,67 @@ function byRegion(items: ChromeEl[], region: string): ChromeEl[] {
   return items.filter((e) => e.region === region).sort((a, b) => a.x - b.x || a.y - b.y);
 }
 
-/** Match original↔clone chrome elements within each region by text, then text-less ones (logo/icons) by order. */
-export function matchChrome(orig: ChromeEl[], clone: ChromeEl[], regions: Array<'header' | 'footer'> = ['header', 'footer']): ChromeMatch {
+/** Manhattan distance between two elements' top-left corners (px) — cheap position proximity for pairing. */
+function elemDist(a: ChromeEl, b: ChromeEl): number {
+  return Math.abs((a.x ?? 0) - (b.x ?? 0)) + Math.abs((a.y ?? 0) - (b.y ?? 0));
+}
+/** The UNUSED candidate nearest to `el` by position, or null. */
+function nearestIn(el: ChromeEl, cands: ChromeEl[], used: Set<ChromeEl>): ChromeEl | null {
+  let best: ChromeEl | null = null;
+  let bestD = Infinity;
+  for (const c of cands) {
+    if (used.has(c)) continue;
+    const d = elemDist(el, c);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best;
+}
+
+/** Match original↔clone chrome elements within each region: text elements by nearest same-text, then
+ *  text-less ones (logo/icons) by MUTUAL nearest same-tag position — never by array index (which mis-paired
+ *  the logo with a nav tab and reported its fill/skew/shadow as bogus diffs). */
+export function matchChrome(
+  orig: ChromeEl[],
+  clone: ChromeEl[],
+  regions: Array<'header' | 'footer'> = ['header', 'footer'],
+): ChromeMatch {
   const pairs: ChromePair[] = [];
   const unmatched: ChromeEl[] = [];
+  // Cap elements per region before the O(n²) proximity matching — bounds worst-case cost on an adversarial
+  // source page (hundreds of stacked nav anchors) while staying far above any real chrome bar (~5–30 items).
+  const MAX_PER_REGION = 400;
   for (const region of regions) {
-    const O = byRegion(orig, region);
-    const C = byRegion(clone, region);
+    const O = byRegion(orig, region).slice(0, MAX_PER_REGION);
+    const C = byRegion(clone, region).slice(0, MAX_PER_REGION);
     const usedC = new Set<ChromeEl>();
     const matchedO = new Set<ChromeEl>();
+    // TEXT elements: match to the NEAREST same-text clone (not the first — a header can repeat a label across
+    // desktop/mobile navs, and a stray far match would report bogus x/size/skew diffs).
     for (const o of O) {
       if (!o.text) continue;
-      const c = C.find((x) => !usedC.has(x) && x.text && x.text.toLowerCase() === o.text.toLowerCase());
+      const label = o.text.toLowerCase();
+      const c = nearestIn(o, C.filter((x) => !!x.text && x.text.toLowerCase() === label), usedC);
       if (c) { usedC.add(c); matchedO.add(o); pairs.push({ region, o, c }); }
     }
-    const remO = O.filter((o) => !matchedO.has(o) && !o.text);
-    const remC = C.filter((c) => !usedC.has(c) && !c.text);
-    for (let i = 0; i < remO.length; i++) {
-      if (remC[i]) { pairs.push({ region, o: remO[i]!, c: remC[i]! }); usedC.add(remC[i]!); matchedO.add(remO[i]!); }
+    // TEXT-LESS elements (logo, icon tabs) — two passes so we neither mis-pair nor falsely strand:
+    // PASS 1 pairs only a MUTUAL nearest same-tag correspondence (o's nearest is c AND c's nearest is o), so a
+    // logo <a> is never linked to a nav-tab <a> just because they share a tag (the old array-index bug). PASS 2
+    // then matches any element PASS 1 left stranded to its nearest STILL-UNUSED same-tag clone — a dense cluster
+    // (e.g. footer icons at a 40px pitch) can strand a valid element when a neighbour was slightly closer to its
+    // clone, and by pass 2 the remaining unused clone is its only option, so this recovers coverage without
+    // reintroducing a mis-pair (a genuine mis-pair's clone was already claimed in pass 1). `nearestIn` breaks a
+    // distance tie by document order (leftmost), deterministically.
+    for (const o of O) {
+      if (o.text || matchedO.has(o)) continue;
+      const c = nearestIn(o, C.filter((x) => !x.text && x.tag === o.tag), usedC);
+      if (!c) continue;
+      const backO = nearestIn(c, O.filter((x) => !x.text && x.tag === o.tag), matchedO);
+      if (backO === o) { usedC.add(c); matchedO.add(o); pairs.push({ region, o, c }); }
+    }
+    for (const o of O) {
+      if (o.text || matchedO.has(o)) continue;
+      const c = nearestIn(o, C.filter((x) => !x.text && x.tag === o.tag), usedC);
+      if (c) { usedC.add(c); matchedO.add(o); pairs.push({ region, o, c }); }
     }
     for (const o of O) if (!matchedO.has(o)) unmatched.push(o);
   }

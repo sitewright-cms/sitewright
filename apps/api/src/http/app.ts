@@ -9,6 +9,7 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import { parse as secureJsonParse } from 'secure-json-parse';
 import { z } from 'zod';
 import {
   MediaFolderSchema,
@@ -1067,6 +1068,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (mediaStorage) {
     await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
   }
+  // Parse `application/json` ourselves so an EMPTY body is tolerated. Fastify's built-in parser rejects
+  // an empty body under `Content-Type: application/json` with FST_ERR_CTP_EMPTY_JSON_BODY (statusCode
+  // 400) — and our error handler, which only allow-lists 429/413, would surface that as an opaque 500.
+  // A bodyless request that carries a default `application/json` header is common (many HTTP clients set
+  // it on every DELETE/POST), so an empty body parses to `undefined` and the route proceeds (a DELETE
+  // ignores the body; a route that needs one fails its own schema validation with a clean 400). Non-empty
+  // bodies use `secure-json-parse` — the same prototype-pollution-safe parser Fastify uses by default —
+  // so this is drop-in for every JSON write path, only changing the empty-body case.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = typeof body === 'string' ? body : '';
+    if (text.trim() === '') {
+      done(null, undefined);
+      return;
+    }
+    try {
+      done(null, secureJsonParse(text));
+    } catch (err) {
+      // Surface as a client error so the handler returns 400, not 500 (matches Fastify's own JSON
+      // parser). Build a NEW error carrying the status rather than mutating the library's (the handler
+      // sends a generic message, so the original detail isn't exposed — keep it as `cause` for logs).
+      const badBody = Object.assign(new Error('invalid json body'), { statusCode: 400, cause: err });
+      done(badBody, undefined);
+    }
+  });
+
   // Parse `application/x-www-form-urlencoded` (the OAuth token endpoint + the
   // consent form post). Our forms carry no repeated keys, so a flat object is fine.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
@@ -1132,6 +1158,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const status = (err as { statusCode?: number }).statusCode;
     if (status === 429) return reply.code(429).send({ error: 'rate limit exceeded — slow down' });
     if (status === 413) return reply.code(413).send({ error: 'request body too large' });
+    // A library/parse error that carries a 4xx status is a CLIENT fault (e.g. a malformed JSON body →
+    // FST_ERR_CTP_INVALID_JSON, 400) — report it as such with a generic message rather than mislabeling
+    // it a 500 server fault. Only Fastify/plugins set `statusCode` for client errors; a genuine server
+    // fault (DB, render, etc.) has none and still falls through to the opaque 500 below.
+    if (status !== undefined && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid request' });
     app.log.error(err);
     return reply.code(500).send({ error: 'internal error' });
   });

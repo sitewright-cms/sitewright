@@ -10,7 +10,7 @@ describe('preloaderHtml', () => {
   it('emits the overlay marker + loading class + effect class', () => {
     const html = preloaderHtml('spinner');
     expect(html).toContain('data-sw-preloader');
-    expect(html).toContain('class="loading sw-preloader-spinner"');
+    expect(html).toContain('class="sw-loading sw-preloader-spinner"');
     expect(html).toContain('class="pl-spinner"');
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-busy="true"');
@@ -19,7 +19,15 @@ describe('preloaderHtml', () => {
   it('preview mode omits the loading class (stays hidden in the editor)', () => {
     const html = preloaderHtml('spinner', { preview: true });
     expect(html).toContain('class="sw-preloader-spinner"');
-    expect(html).not.toContain('loading');
+    expect(html).not.toContain('sw-loading');
+  });
+
+  it('non-preview uses the PREFIXED sw-loading state class (not the bare .loading — DaisyUI collision-proof)', () => {
+    const html = preloaderHtml('dual');
+    expect(html).toContain('class="sw-loading sw-preloader-dual"');
+    // must never emit the bare `loading` class TOKEN that DaisyUI's spinner component squats on
+    // (token-boundary match: class-start/space before, space/quote after — so `sw-loading` does NOT count)
+    expect(html).not.toMatch(/class="(?:[^"]* )?loading(?: |")/);
   });
 
   it('every effect produces detectable, distinct markup', () => {
@@ -69,7 +77,7 @@ describe('PRELOADER_CSS', () => {
     expect(PRELOADER_CSS).toContain('[data-sw-preloader]{position:fixed');
     expect(PRELOADER_CSS).toContain('backdrop-filter:blur');
     expect(PRELOADER_CSS).toContain('color-mix(in srgb,var(--sw-color-base-100');
-    expect(PRELOADER_CSS).toContain('[data-sw-preloader].loading{opacity:1');
+    expect(PRELOADER_CSS).toContain('[data-sw-preloader].sw-loading{opacity:1');
     // The fade is a TRANSITION only — so a fresh load (ships already-loading) shows INSTANTLY (no
     // first-paint animation), and the fade only plays when `loading` is toggled afterwards
     // (fade-out on ready; fade-in on the leaving page during an internal-link click).
@@ -99,14 +107,14 @@ describe('PRELOADER_CSS', () => {
 describe('PRELOADER_JS', () => {
   it('shows on load, clears on window load, and locks page scroll', () => {
     expect(PRELOADER_JS).toContain("docEl.style.overflow='hidden'");
-    expect(PRELOADER_JS).toContain("classList.remove('loading')");
+    expect(PRELOADER_JS).toContain("classList.remove('sw-loading')");
     expect(PRELOADER_JS).toContain("addEventListener('load',done)");
   });
 
   it('announces "sw:ready" when it clears so entrance/SVG animations start on preloader-clear', () => {
     expect(PRELOADER_JS).toContain("dispatchEvent(new CustomEvent('sw:ready'))");
     // dispatched from clear() — the same function that removes the loading class.
-    expect(PRELOADER_JS).toMatch(/classList\.remove\('loading'\)[^}]*dispatchEvent\(new CustomEvent\('sw:ready'\)\)/);
+    expect(PRELOADER_JS).toMatch(/classList\.remove\('sw-loading'\)[^}]*dispatchEvent\(new CustomEvent\('sw:ready'\)\)/);
   });
 
   it('on an internal-link click: fades the overlay in THEN navigates (no pop); fresh load is instant', () => {

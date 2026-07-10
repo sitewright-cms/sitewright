@@ -77,7 +77,8 @@ export const ANIMATION_CSS = [
 
 // The runtime. Notes:
 // - `sw-animation-init` is added just before observing, so the pre-JS document is fully visible
-//   (PE-first) and the reveal transition starts from the hidden state.
+//   (PE-first). It is applied with the transition SUPPRESSED so the hide is instant (no animate-out);
+//   the transition is restored at observe time so only the reveal animates.
 // - `data-sw-delay` / `data-sw-duration` are parsed + clamped (swMs, timing.ts); `data-sw-easing`
 //   resolves through a fixed allowlist map. Attribute values can therefore never inject style/script.
 // - `data-sw-once="false"` keeps the element observed and replays the reveal each time it re-enters
@@ -111,19 +112,31 @@ export const ANIMATION_JS = `(function(){
       }
     });
   },{threshold:0.1,rootMargin:'0px 0px -48px 0px'});
-  // Hide (init) as soon as JS runs, but DEFER observing (the reveal) until the page is ready — so entrance
-  // reveals start after the preloader clears / page load, not behind a still-visible overlay. A failsafe in
+  // Hide (init) as soon as JS runs, but with the transition SUPPRESSED (inline transition:none) so
+  // already-painted, in-viewport content does NOT animate OUT (visible→hidden) — that reverse flash was
+  // visible through the translucent preloader. DEFER observing (the reveal) until the page is ready; the
+  // reveal transition is (re)enabled at that point, so ONLY the entrance animates. A failsafe in
   // swWhenReady guarantees observation begins even if the ready signal never arrives.
   Array.prototype.forEach.call(els,function(el){
-    var delay=swMs(el,'${SW_TIMING_ATTRS.delay}',0);
-    if(delay>0)el.style.transitionDelay=delay+'ms';
-    var duration=swMs(el,'${SW_TIMING_ATTRS.duration}',0);
-    if(duration>0)el.style.transitionDuration=duration+'ms';
-    var easing=EASINGS[el.getAttribute('${SW_TIMING_ATTRS.easing}')||''];
-    if(easing)el.style.transitionTimingFunction=easing;
+    el.style.transition='none'; // instant hide — no animate-out
     el.classList.add('sw-animation-init');
   });
-  swWhenReady(function(){Array.prototype.forEach.call(els,function(el){io.observe(el);});});
+  swWhenReady(function(){
+    // Commit the no-transition hide BEFORE re-enabling transitions (matters when there is no preloader and
+    // this runs synchronously right after the loop above — otherwise the restore could coalesce with the
+    // hide into one recalc and animate it).
+    void document.documentElement.offsetHeight;
+    Array.prototype.forEach.call(els,function(el){
+      el.style.transition=''; // restore the CSS reveal transition (opacity,transform)
+      var delay=swMs(el,'${SW_TIMING_ATTRS.delay}',0);
+      if(delay>0)el.style.transitionDelay=delay+'ms';
+      var duration=swMs(el,'${SW_TIMING_ATTRS.duration}',0);
+      if(duration>0)el.style.transitionDuration=duration+'ms';
+      var easing=EASINGS[el.getAttribute('${SW_TIMING_ATTRS.easing}')||''];
+      if(easing)el.style.transitionTimingFunction=easing;
+      io.observe(el);
+    });
+  });
 })();`;
 
 // Detection is a literal substring match: `data-sw-animation` written via a Handlebars variable

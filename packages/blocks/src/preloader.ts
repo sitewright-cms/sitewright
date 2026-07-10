@@ -4,7 +4,7 @@
 // only when the site enables a preloader (website.theme.preloaderEffect ≠ 'none').
 //
 // Authoring is no-code: the editor's effect picker stores `theme.preloaderEffect`; the platform then
-// injects `<div data-sw-preloader class="loading sw-preloader-<effect>">…</div>` as the FIRST body
+// injects `<div data-sw-preloader class="sw-loading sw-preloader-<effect>">…</div>` as the FIRST body
 // child (renderDocument) plus a `<noscript>` rule that hides it when scripting is off (so a no-JS
 // visitor is never blocked behind a stuck overlay).
 //
@@ -65,17 +65,20 @@ function innerMarkup(effect: PreloaderEffect, logo: string | undefined): string 
 export interface PreloaderOptions {
   /** Resolved site logo URL for logo-* effects (falls back to the built-in mark when absent). */
   logo?: string;
-  /** Preview mode (editor): render the markup WITHOUT the `loading` class so it stays hidden. */
+  /** Preview mode (editor): render the markup WITHOUT the `sw-loading` class so it stays hidden. */
   preview?: boolean;
 }
 
 /**
- * The preloader slot HTML — `<div data-sw-preloader class="loading sw-preloader-<effect>">…</div>` —
+ * The preloader slot HTML — `<div data-sw-preloader class="sw-loading sw-preloader-<effect>">…</div>` —
  * for the chosen effect, or '' when disabled ('none'/undefined). Emitted as the first body child.
  */
 export function preloaderHtml(effect: PreloaderEffect | 'none' | undefined, opts: PreloaderOptions = {}): string {
   if (!effect || effect === 'none') return '';
-  const loading = opts.preview ? '' : 'loading ';
+  // Shown-state toggle is `sw-loading`, NOT the bare `loading`: DaisyUI's `loading` component squats on
+  // that generic name, so a page shipping a DaisyUI `<span class="loading">` spinner would otherwise
+  // apply DaisyUI's 1.5rem sizing to this full-screen overlay and collapse it. (Prefixed → collision-proof.)
+  const loading = opts.preview ? '' : 'sw-loading ';
   return (
     `<div data-sw-preloader class="${loading}sw-preloader-${effect}" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">` +
     innerMarkup(effect, opts.logo) +
@@ -98,7 +101,7 @@ export const PRELOADER_CSS = [
   // navigation until that fade completes). visibility is delayed to the end of the fade-out so the
   // overlay stops catching pointer events.
   '[data-sw-preloader]{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:color-mix(in srgb,var(--sw-color-base-100,#fff) 62%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility 0s linear .45s}',
-  '[data-sw-preloader].loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease}',
+  '[data-sw-preloader].sw-loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease}',
   // All inner rules are scoped under the marker so the .pl-* class names can't collide with author CSS.
   // Sizes are deliberately large (~2×) for visibility on the full-screen overlay.
   '[data-sw-preloader] .pl-mark{width:148px;height:148px;display:block}',
@@ -162,8 +165,8 @@ export const PRELOADER_JS = `(function(){
   function lock(){docEl.style.overflow='hidden';}
   // Clearing the overlay is the "page is ready" moment → announce it so entrance/SVG animations start
   // NOW (they gate on this instead of firing behind the still-visible overlay). Idempotent listeners.
-  function clear(){pl.classList.remove('loading');docEl.style.overflow='';try{document.dispatchEvent(new CustomEvent('${SW_READY_EVENT}'));}catch(e){}}
-  if(pl.classList.contains('loading'))lock(); // shipped already-loading on a fresh load → instant cover
+  function clear(){pl.classList.remove('sw-loading');docEl.style.overflow='';try{document.dispatchEvent(new CustomEvent('${SW_READY_EVENT}'));}catch(e){}}
+  if(pl.classList.contains('sw-loading'))lock(); // shipped already-loading on a fresh load → instant cover
   function done(){setTimeout(clear,Math.max(0,MIN-(Date.now()-start)));}
   if(document.readyState==='complete'){done();}else{window.addEventListener('load',done);}
   failsafe=setTimeout(clear,MAX); // failsafe — a hung resource must never block the page
@@ -193,8 +196,8 @@ export const PRELOADER_JS = `(function(){
     // navigated is module-scoped → at most one location.assign even on a rapid double-click.
     var go=function(){if(navigated)return;navigated=true;window.location.assign(url.href);};
     // Already covering (clicked during the initial load) or reduced motion → no fade, just go.
-    if(reduce||pl.classList.contains('loading')){pl.classList.add('loading');go();return;}
-    pl.classList.add('loading'); // opacity 0→1 transition fires (the overlay was cleared/hidden)
+    if(reduce||pl.classList.contains('sw-loading')){pl.classList.add('sw-loading');go();return;}
+    pl.classList.add('sw-loading'); // opacity 0→1 transition fires (the overlay was cleared/hidden)
     pl.addEventListener('transitionend',function te(ev){if(ev.target===pl&&ev.propertyName==='opacity'){pl.removeEventListener('transitionend',te);go();}});
     setTimeout(go,600); // fallback if transitionend doesn't fire
   });

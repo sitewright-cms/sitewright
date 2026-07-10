@@ -548,7 +548,7 @@ export const DEFAULT_BUTTON_SHAPE: ButtonDefaultShape = 'rounded';
 
 /**
  * Curated PRELOADER effects. The chosen one (≠ 'none') makes the platform inject a
- * `<div data-sw-preloader class="loading sw-preloader-<name>">` as the first body child and ship the
+ * `<div data-sw-preloader class="sw-loading sw-preloader-<name>">` as the first body child and ship the
  * preloader runtime (overlay shown on load + during navigation, then cleared). 'logo-*' variants use
  * the site logo (company.logo), falling back to a built-in brand mark. Source-of-truth for the enum
  * below + the editor picker + the markup/CSS in @sitewright/blocks preloader.ts.

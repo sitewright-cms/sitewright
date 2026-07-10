@@ -17,7 +17,7 @@ describe('renderDocument — document shell', () => {
   });
 
   it('injects the preloader as the FIRST body child + a noscript hide, when provided', () => {
-    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', preloader: '<div data-sw-preloader class="loading sw-preloader-spinner"></div>' });
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', preloader: '<div data-sw-preloader class="sw-loading sw-preloader-spinner"></div>' });
     const bodyOpen = doc.indexOf('<body');
     const pl = doc.indexOf('data-sw-preloader');
     const main = doc.indexOf('<main id="page-content">');

@@ -15,7 +15,7 @@ describe('shared timing / ready gate', () => {
     expect(SW_READY_CORE).toContain('function swWhenReady(');
     // only waits when a preloader is still loading; otherwise runs cb now
     expect(SW_READY_CORE).toContain("querySelector('[data-sw-preloader]')");
-    expect(SW_READY_CORE).toContain("contains('loading')");
+    expect(SW_READY_CORE).toContain("contains('sw-loading')");
     expect(SW_READY_CORE).toContain(`addEventListener('${SW_READY_EVENT}'`);
     expect(SW_READY_CORE).toContain('setTimeout(fire,9000)'); // failsafe — never strand animations
     expect(SW_READY_CORE).toContain('}else{cb();}'); // no active preloader → immediate

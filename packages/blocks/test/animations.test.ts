@@ -56,6 +56,17 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("classList.add('sw-animation-active')");
   });
 
+  it('hides INSTANTLY (suppresses the transition on init) so content never animates OUT before revealing', () => {
+    // The init hide sets the transition to none; the reveal transition is restored at observe time so
+    // ONLY the entrance animates (no visible reverse flash through a translucent preloader).
+    expect(ANIMATION_JS).toContain("el.style.transition='none'");
+    expect(ANIMATION_JS).toContain("el.style.transition=''");
+    // the restore + observe happen inside the page-ready gate (after the preloader clears)
+    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*el\.style\.transition=''[\s\S]*io\.observe/);
+    // a forced reflow commits the no-transition hide before transitions are re-enabled
+    expect(ANIMATION_JS).toContain('offsetHeight');
+  });
+
   it('EXCLUDES Banner roots from the scroll observer (a data-sw-animation Banner drives its own entrance on reveal)', () => {
     expect(ANIMATION_JS).toContain('[data-sw-animation]:not([data-sw-component="banner"])');
   });
@@ -83,7 +94,7 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("addEventListener('sw:ready'");
     expect(ANIMATION_JS).toContain('swWhenReady(function(){');
     // observation happens inside the ready callback, not eagerly in the setup loop.
-    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{Array\.prototype\.forEach\.call\(els,function\(el\)\{io\.observe\(el\)/);
+    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*io\.observe\(el\)/);
   });
 
   it('cannot break out of a <script> block', () => {

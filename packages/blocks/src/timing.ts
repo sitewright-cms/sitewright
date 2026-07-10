@@ -54,7 +54,7 @@ export const SW_READY_EVENT = 'sw:ready';
 export const SW_READY_CORE = `
   function swWhenReady(cb){
     var pl=document.querySelector('[data-sw-preloader]');
-    if(pl&&pl.classList&&pl.classList.contains('loading')){
+    if(pl&&pl.classList&&pl.classList.contains('sw-loading')){
       var done=false,t=0,fire=function(){if(done)return;done=true;if(t)clearTimeout(t);cb();};
       document.addEventListener('${SW_READY_EVENT}',fire,{once:true});
       t=setTimeout(fire,9000); // failsafe (past the preloader's own 8s max) — never strand animations

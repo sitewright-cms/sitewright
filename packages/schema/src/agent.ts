@@ -463,10 +463,10 @@ STICKY HEADER ENTRANCE animation (the platform keeps entrance AUTHOR-CONTROLLED 
 website.criticalCss). Simplest (no preloader): \`@media(prefers-reduced-motion:no-preference){@keyframes
 sw-hdr-in{from{translate:0 -110%;opacity:0}to{translate:0 0;opacity:1}}#main-nav{animation:sw-hdr-in .6s
 cubic-bezier(.16,1,.3,1) both}}\`. With a PRELOADER enabled, COORDINATE it so the bar slides in AFTER the
-overlay clears (otherwise it animates hidden behind it): the preloader toggles class \`loading\` on the
+overlay clears (otherwise it animates hidden behind it): the preloader toggles class \`sw-loading\` on the
 overlay \`[data-sw-preloader]\` (a sibling of #main-nav that STAYS in the DOM), so add
-\`[data-sw-preloader].loading ~ #main-nav{visibility:hidden}\` and
-\`[data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
+\`[data-sw-preloader].sw-loading ~ #main-nav{visibility:hidden}\` and
+\`[data-sw-preloader]:not(.sw-loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
 \`animation\` (NOT \`transition\`) so the entrance doesn't clobber the shrink mode's own \`#main-nav{transition}\`.
 GOTCHA: a transform/translate on #main-nav (an entrance like the above) makes it the CONTAINING BLOCK for
 its \`position:fixed\` children — the default mobile-drawer recipe pins itself with \`h-dvh\` so it's unaffected,

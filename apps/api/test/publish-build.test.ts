@@ -696,11 +696,11 @@ describe('buildSite', () => {
     // Overlay injected as the first body child, in loading state, with the chosen effect + noscript hide.
     expect(home).toContain('data-sw-preloader');
     expect(home).toContain('sw-preloader-logo-pulse');
-    expect(home).toContain('class="loading sw-preloader-logo-pulse"');
+    expect(home).toContain('class="sw-loading sw-preloader-logo-pulse"');
     expect(home).toContain('[data-sw-preloader]{display:none!important}'); // noscript no-JS safety
     expect(home).toContain('preloader.js'); // runtime linked
     // The runtime file is emitted at the site root.
-    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
+    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('sw-loading')");
   });
 
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {

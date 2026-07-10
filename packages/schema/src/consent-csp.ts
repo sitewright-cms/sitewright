@@ -24,9 +24,10 @@ export interface CspOrigins {
   img: string[];
   style: string[];
   font: string[];
+  media: string[];
 }
 
-const EMPTY: CspOrigins = { script: [], frame: [], connect: [], img: [], style: [], font: [] };
+const EMPTY: CspOrigins = { script: [], frame: [], connect: [], img: [], style: [], font: [], media: [] };
 
 /**
  * Curated, versioned origin bundles per preset. Maintained in-repo — the owner picks a preset and never
@@ -40,6 +41,7 @@ export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>>
     img: ['www.google-analytics.com', 'www.googletagmanager.com'],
     style: [],
     font: [],
+    media: [],
   },
   gtm: {
     script: ['www.googletagmanager.com'],
@@ -48,6 +50,7 @@ export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>>
     img: ['www.googletagmanager.com', 'www.google-analytics.com'],
     style: [],
     font: [],
+    media: [],
   },
 };
 
@@ -67,6 +70,10 @@ export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>>
 // distinct char (`"`, `'`, or other) so there is no backtracking ambiguity (no ReDoS).
 const IFRAME_TAG_RE = /<iframe\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
 const SCRIPT_OPEN_TAG_RE = /<script\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
+// A cross-origin author `<video>`/`<audio>` — either a direct `src` on the media element or a `src` on a
+// nested `<source>` child → media-src (a promo clip / podcast served from a CDN). Same quote-aware matcher
+// (an attribute value may contain a `>`), same distinct-first-char alternatives (no ReDoS).
+const MEDIA_TAG_RE = /<(?:video|audio|source)\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
 
 /** Read an attribute's value from a tag's inner-attribute string (double-quoted, single-quoted, OR unquoted). */
 function attrValue(attrs: string, name: string): string | undefined {
@@ -105,18 +112,25 @@ function markerCategory(attrs: string): ConsentCategory | null {
 
 /**
  * CSP origins an author HTML body contributes: each cross-origin `<iframe>` (gated or not) → `frame-src`;
- * each gated `<script type="text/plain" data-sw-consent …>` with an https `src` → `script-src`+`connect-src`.
- * Reads both un-gated `src` and the already-gated `data-sw-consent-src` so it is order-independent.
+ * each cross-origin `<video>`/`<audio>`/`<source>` → `media-src`; each gated `<script type="text/plain"
+ * data-sw-consent …>` with an https `src` → `script-src`+`connect-src`. Reads both un-gated `src` and the
+ * already-gated `data-sw-consent-src` so it is order-independent.
  */
-export function authorContentCspOrigins(html: string | null | undefined): Pick<CspOrigins, 'frame' | 'script' | 'connect'> {
+export function authorContentCspOrigins(html: string | null | undefined): Pick<CspOrigins, 'frame' | 'script' | 'connect' | 'media'> {
   const frame = new Set<string>();
   const script = new Set<string>();
   const connect = new Set<string>();
+  const media = new Set<string>();
   if (typeof html === 'string' && html.length > 0) {
     for (const m of html.matchAll(IFRAME_TAG_RE)) {
       const attrs = m[1] ?? '';
       const h = externalHttpsHost(attrValue(attrs, 'src') ?? attrValue(attrs, 'data-sw-consent-src'));
       if (h) frame.add(h);
+    }
+    for (const m of html.matchAll(MEDIA_TAG_RE)) {
+      const attrs = m[1] ?? '';
+      const h = externalHttpsHost(attrValue(attrs, 'src'));
+      if (h) media.add(h);
     }
     for (const m of html.matchAll(SCRIPT_OPEN_TAG_RE)) {
       const attrs = m[1] ?? '';
@@ -128,7 +142,7 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
       }
     }
   }
-  return { frame: [...frame], script: [...script], connect: [...connect] };
+  return { frame: [...frame], script: [...script], connect: [...connect], media: [...media] };
 }
 
 /**
@@ -219,7 +233,7 @@ export function consentRuntimeIntegrations(consent: Consent | undefined): Consen
  * whether or not the manager is enabled.
  */
 export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): CspOrigins {
-  const acc: Record<keyof CspOrigins, Set<string>> = { script: new Set(), frame: new Set(), connect: new Set(), img: new Set(), style: new Set(), font: new Set() };
+  const acc: Record<keyof CspOrigins, Set<string>> = { script: new Set(), frame: new Set(), connect: new Set(), img: new Set(), style: new Set(), font: new Set(), media: new Set() };
   const mergeBundle = (b: Partial<CspOrigins>): void => (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => (b[k] ?? []).forEach((h) => acc[k].add(h)));
   mergeBundle(extraOrigins);
   for (const i of consent?.enabled === true ? consent.integrations ?? [] : []) {
@@ -250,6 +264,7 @@ export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Pa
     img: [...acc.img],
     style: [...acc.style],
     font: [...acc.font],
+    media: [...acc.media],
   };
 }
 
@@ -273,6 +288,7 @@ export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: P
     `connect-src 'self'${o.connect.length ? ' ' + https(o.connect) : ''}`,
   ];
   if (o.frame.length) parts.push(`frame-src 'self' ${https(o.frame)}`); // author embeds (held click-to-load) + SDK widget iframes
+  if (o.media.length) parts.push(`media-src 'self' ${https(o.media)}`); // author <video>/<audio> served from a CDN
   parts.push("object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'");
   return parts.join('; ');
 }

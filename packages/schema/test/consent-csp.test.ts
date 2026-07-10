@@ -32,6 +32,19 @@ describe('authorContentCspOrigins — author iframe + gated-script origins', () 
   it('does NOT collect an ungated script', () => {
     expect(authorContentCspOrigins('<script src="https://cdn.example.com/a.js"></script>').script).toEqual([]);
   });
+  it('collects a cross-origin <video src> into media-src', () => {
+    expect(authorContentCspOrigins('<video src="https://cdn.example.com/promo.mp4"></video>').media).toContain('cdn.example.com');
+  });
+  it('collects a cross-origin nested <source src> (video/audio) into media-src', () => {
+    expect(authorContentCspOrigins('<video><source src="https://cdn.example.com/promo.mp4" type="video/mp4"></video>').media).toContain('cdn.example.com');
+    expect(authorContentCspOrigins('<audio><source src="https://media.example.org/pod.mp3"></audio>').media).toContain('media.example.org');
+  });
+  it('ignores same-origin/relative and non-https media', () => {
+    expect(authorContentCspOrigins('<video src="/local.mp4"></video><video src="http://insecure.example/x.mp4"></video>').media).toEqual([]);
+  });
+  it('does not truncate on a `>` inside a quoted media src (quote-aware tag match)', () => {
+    expect(authorContentCspOrigins('<source src="https://cdn.example.com/v.mp4?a=1>2">').media).toContain('cdn.example.com');
+  });
 });
 
 describe('gateAuthorIframes — hold cross-origin author iframes', () => {
@@ -116,6 +129,17 @@ describe('consent CSP — author origins + integration frameOrigins', () => {
   it('returns undefined when neither integrations nor author origins are present', () => {
     expect(buildSiteCspHeader({ enabled: true } as Consent, {})).toBeUndefined();
     expect(buildSiteCspHeader(undefined, {})).toBeUndefined();
+  });
+
+  it('routes author <video>/<audio> origins into media-src (independently of consent.enabled)', () => {
+    const csp = buildSiteCspHeader(undefined, { media: ['cdn.example.com'] })!;
+    expect(csp).toContain("media-src 'self' https://cdn.example.com");
+    // media-src alone is enough to widen (hasAny) — a promo video on a site with no integrations still gets a CSP.
+    const meta = buildConsentMetaCsp(undefined, { media: ['cdn.example.com'] })!;
+    expect(meta).toContain("media-src 'self' https://cdn.example.com");
+    // …and the serve-path reconstruction from the baked meta preserves media-src.
+    const html = `<meta http-equiv="Content-Security-Policy" content="${meta}">`;
+    expect(siteCspHeaderFromHtml(html)).toContain("media-src 'self' https://cdn.example.com");
   });
 
   it('appends extraScriptSrc (preview runtime hash) ONLY to script-src, keeping publish parity otherwise', () => {

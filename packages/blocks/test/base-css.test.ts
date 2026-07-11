@@ -191,11 +191,12 @@ describe('baseStyles — platform base stylesheet', () => {
         expect(dot).not.toContain('type="radio"');
       });
 
-      it('keeps the invalid-dot INSIDE the weak sw-normalize layer (author :invalid / bg utilities still win)', () => {
+      it('keeps the invalid-dot UNLAYERED so it persists through ordinary field styling (a MORE specific author rule still wins)', () => {
+        // Unlayered like .btn — a weak-layer version would lose to any unlayered author input{background}.
         const idx = css.indexOf('input[type="text"]:invalid');
-        const layerOpen = css.lastIndexOf('@layer sw-normalize {', idx);
-        expect(layerOpen).toBeGreaterThan(-1);
-        expect(idx).toBeGreaterThan(layerOpen);
+        const priorLayer = css.lastIndexOf('@layer sw-normalize {', idx);
+        expect(priorLayer).toBeGreaterThan(-1);
+        expect(css.slice(priorLayer, idx)).toContain('}\n}'); // the preceding layer is closed before the rule
       });
 
       it('greys the submit while the form is incomplete — UNLAYERED so it beats the .btn rules', () => {

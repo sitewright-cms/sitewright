@@ -278,6 +278,17 @@ const RL_WINDOW = '1 minute';
 const MAX_EVENT_SUBSCRIBERS_PER_PROJECT = 20;
 /** Per-route rate-limit config for an expensive/sensitive endpoint. */
 const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
+// Static-asset + signed-preview serving fans out into MANY sub-requests per page view (fonts, CSS,
+// images/thumbnails, JS). On the shared GLOBAL cap that fan-out can exhaust it and 429 the HTML document
+// itself — a blank preview until reload, and intermittently missing CSS/images. @fastify/rate-limit gives
+// each route with its own `config.rateLimit` an ISOLATED counter store, so we give these routes their own
+// generous per-client buckets: heavy assets can't starve the document/API, yet each keeps a finite ceiling
+// (NOT an exemption). The one expensive path — on-demand thumbnail GENERATION — stays bounded independently
+// by the `?size`/`?format` allow-list clamp (finite, immutably-cached outputs) + ensureThumb's optimize queue.
+const MEDIA_ASSET_RL_MAX = 1000;
+// The signed whole-site preview route serves the (version-cached, coalesced) HTML doc AND its per-page
+// assets under one route; its own bucket keeps that fan-out off the shared global cap.
+const PREVIEW_SITE_RL_MAX = 600;
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 // A content write can carry a full settings object: 5 chrome slots at SLOT_MAX (256 KiB each, e.g. a
@@ -3895,6 +3906,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       Querystring: { size?: string; format?: string };
     }>(
       '/media/:projectSlug/:assetId/:file',
+      { config: rl(MEDIA_ASSET_RL_MAX) },
       async (req, reply) => {
         const { projectSlug, assetId, file } = req.params;
         const ext = (file.split('.').pop() ?? '').toLowerCase();
@@ -4018,6 +4030,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // render or execute on this (cookie-bearing) origin. Distinct `/file/` path segment.
     app.get<{ Params: { projectSlug: string; assetId: string; file: string } }>(
       '/media/:projectSlug/:assetId/file/:file',
+      { config: rl(MEDIA_ASSET_RL_MAX) },
       async (req, reply) => {
         const { projectSlug, assetId, file } = req.params;
         let bytes: Buffer;
@@ -4780,10 +4793,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // editor session); assets get cross-origin headers (the opaque-origin frame fetches them with no
     // credentials) — both kinds sit behind the same signature.
     //
-    // Left on the global request cap: a page view fans out into many asset sub-requests, and the only
-    // expensive work (a rebuild) is bounded by the version cache + coalescing + failure cooldown.
+    // Own ISOLATED, generous per-client rate-limit bucket (not the shared global cap): a page view fans out
+    // into many asset sub-requests, and on the shared bucket that fan-out exhausts it and 429s the HTML
+    // document itself (a blank preview until reload). The only expensive work (a rebuild) stays bounded
+    // independently by the version cache + coalescing + failure cooldown.
     app.get<{ Params: { projectId: string; sig: string; '*': string } }>(
       '/preview-site/:projectId/:sig/*',
+      { config: rl(PREVIEW_SITE_RL_MAX) },
       async (req, reply) => {
         const { projectId, sig } = req.params;
         if (!verifyPreview(projectId, sig, currentCookieSecret)) return reply.code(404).send();

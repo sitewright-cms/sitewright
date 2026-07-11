@@ -325,7 +325,7 @@ describe('component registry', () => {
     // The panel GROWS with content (max-height:none) and is never its own scroll box (overflow:visible)
     // — normal specificity so a moved author `overflow-*`/`max-h-*` can't re-break it. This is the
     // guarantee that the overhanging close is never clipped.
-    expect(css).toContain('[data-sw-part="panel"]{overflow:visible;max-height:none}');
+    expect(css).toContain('[data-sw-part="panel"]{overflow:visible;max-height:none;outline:none}');
     // A too-tall panel top-aligns instead of clipping its top: the panel's margin:auto in the flex
     // container centers it when it fits and degrades to top-aligned (no clip) when it overflows.
     expect(css).toContain(
@@ -345,10 +345,13 @@ describe('component registry', () => {
     expect(js).toContain('while(dialog.firstChild){panel.appendChild(dialog.firstChild);}');
     expect(js).toContain('while(dialog.firstChild){body.appendChild(dialog.firstChild);}');
     expect(js).not.toContain('body.innerHTML');
-    // The close is APPENDED LAST (position:absolute → visually unchanged) so it is not the first focusable
-    // — the dialog's open-focus lands on the first content control, not the dismiss button.
+    // The close is APPENDED LAST (position:absolute → visually unchanged) so it is not the first focusable.
     expect(js).toContain('panel.appendChild(x)');
     expect(js).not.toContain('panel.insertBefore(x,panel.firstChild)');
+    // The dialog's open-focus is anchored to the TOP (the panel, tabindex=-1 + autofocus) unless the author
+    // set their own autofocus — so a tall modal opens at its top, not scrolled to a deep focusable.
+    expect(js).toContain("dialog.querySelector('[autofocus]')");
+    expect(js).toContain("panel.setAttribute('tabindex','-1');panel.setAttribute('autofocus','')");
     // The panel is built before the close button is injected.
     expect(js.indexOf("setAttribute('data-sw-part','panel')")).toBeLessThan(
       js.indexOf("setAttribute('data-sw-part','autoclose')"),

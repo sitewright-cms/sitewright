@@ -299,8 +299,10 @@ const MODAL_CSS = [
   // author WIDTH utilities win; `width:100%` → full width on mobile, `max-width` caps desktop only.
   `:where(${mdlgp()}){position:relative;margin:auto;width:100%;max-width:32rem}`,
   // GUARANTEE (normal specificity): the panel is never its OWN scroll box and paints nothing, so the
-  // overhanging close (its child) is never clipped and all scrolling stays on the container.
-  `${mdlgp()}{overflow:visible;max-height:none}`,
+  // overhanging close (its child) is never clipped and all scrolling stays on the container. outline:none
+  // because the panel is only PROGRAMMATICALLY focused (tabindex=-1) to anchor the open-focus at the top —
+  // it's a non-interactive container (never in the Tab order), so suppressing its ring is correct.
+  `${mdlgp()}{overflow:visible;max-height:none;outline:none}`,
   // Panel enter/exit from the top; @starting-style + the container's allow-discrete let the exit animate.
   `${mdlgp()}{opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease}`,
   `${mdlgp('[open]')}{opacity:1;transform:translateY(0)}`,
@@ -428,6 +430,11 @@ const MODAL_JS = `(function(){
       }
       var st=dialog.getAttribute('style');
       if(st){body.setAttribute('style',st);dialog.removeAttribute('style');}
+      // Land the <dialog>'s open-focus on the TOP of the modal (the panel) so a TALL modal opens at its
+      // top — NOT scrolled down to whatever the first focusable content happens to be — and neither the
+      // close nor a deep control is ring-highlighted on open. Only when the author hasn't set their own
+      // autofocus; tabindex=-1 makes the panel programmatically focusable (Tab still walks into content).
+      if(!dialog.querySelector('[autofocus]')){panel.setAttribute('tabindex','-1');panel.setAttribute('autofocus','');}
       dialog.appendChild(panel);
     }
     // Config attrs live on the marker (the wrapper in the legacy form, the <dialog> in the lighter one).

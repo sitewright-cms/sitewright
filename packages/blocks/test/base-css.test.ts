@@ -216,6 +216,45 @@ describe('baseStyles — platform base stylesheet', () => {
     });
   });
 
+  describe('button Material z-depth shadow (raised default, grows on hover)', () => {
+    it('publishes the resting + hover shadow tokens', () => {
+      expect(css).toContain('--sw-btn-shadow: 0 2px 5px 0 rgba(0, 0, 0, .16), 0 2px 10px 0 rgba(0, 0, 0, .12);');
+      expect(css).toContain('--sw-btn-shadow-hover: 0 8px 17px 0 rgba(0, 0, 0, .2), 0 6px 20px 0 rgba(0, 0, 0, .19);');
+    });
+
+    it('applies the shadow at ZERO specificity (:where) so a Tailwind shadow-* utility always wins', () => {
+      // resting + hover depth live on :where() rules (0,0,0 / 0,1,0), NOT on the .btn block itself —
+      // so a per-button shadow-none / shadow-lg (0,1,0, emitted later) overrides in BOTH states.
+      expect(css).toContain(':where(.btn) { box-shadow: var(--sw-btn-shadow); }');
+      expect(css).toContain(':where(.btn:not(.btn-link):not(.btn-disabled):not(:disabled)):hover { box-shadow: var(--sw-btn-shadow-hover); }');
+      // the main .btn declaration block must NOT hardcode a box-shadow declaration (that would beat utilities)
+      const btnBlock = css.slice(css.indexOf('.btn {\n'), css.indexOf('\n}', css.indexOf('.btn {\n')));
+      expect(btnBlock).not.toContain('box-shadow:');
+    });
+
+    it('hover scales 1.05 with a .4s ease transition that keeps the focus outline instant (no `all`)', () => {
+      expect(css).toContain('.btn { transition: transform .4s ease, box-shadow .4s ease, background-color .4s ease, color .4s ease, filter .4s ease; }');
+      expect(css).not.toContain('.btn { transition: all'); // `all` would fade the :focus-visible outline
+      const anchor = '.btn:where(:not(.btn-link):not(.btn-disabled):not(:disabled)):hover {';
+      const hover = css.slice(css.indexOf(anchor), css.indexOf('}', css.indexOf(anchor)));
+      expect(hover).toContain('transform: scale(1.05);');
+    });
+
+    it('flat variants (ghost / link) reset the RESTING shadow to none; ghost still lifts on hover', () => {
+      const ghost = css.slice(css.indexOf('.btn-ghost {'), css.indexOf('}', css.indexOf('.btn-ghost {')));
+      expect(ghost).toContain('--sw-btn-shadow: none;');
+      expect(ghost).not.toContain('--sw-btn-shadow-hover'); // ghost is NOT excluded from the hover shadow (it fills + lifts)
+      const link = css.slice(css.indexOf('.btn-link {'), css.indexOf('}', css.indexOf('.btn-link {')));
+      expect(link).toContain('--sw-btn-shadow: none;');
+      // the hover shadow rule intentionally excludes only link/disabled — ghost keeps its hover lift
+      expect(css).toContain(':where(.btn:not(.btn-link):not(.btn-disabled):not(:disabled)):hover { box-shadow: var(--sw-btn-shadow-hover); }');
+    });
+
+    it('outline keeps its inset border AND gains the raised hover shadow', () => {
+      expect(css).toContain('.btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), var(--sw-btn-shadow-hover); }');
+    });
+  });
+
   describe('custom scrollbars', () => {
     it('gates webkit pseudos vs the standard props by browser (they are mutually exclusive)', () => {
       // WebKit/Blink path uses the pseudos; Firefox path uses the standard props.

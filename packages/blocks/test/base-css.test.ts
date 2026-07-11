@@ -171,6 +171,51 @@ describe('baseStyles — platform base stylesheet', () => {
       });
     });
 
+    describe('form validation affordances (native :invalid → visible cues)', () => {
+      it('shows a small red dot at the trailing edge of an invalid text field (layered longhands over the surface)', () => {
+        // the dot targets the same text-like controls the base rule styles, plus textarea, via :invalid
+        expect(css).toMatch(/input\[type="text"\]:invalid[^{]*textarea:invalid\s*\{/);
+        const rule = css.slice(css.indexOf('input[type="text"]:invalid'));
+        expect(rule).toMatch(/background-image:\s*radial-gradient\(#cc0000 15%, transparent 16%\);/);
+        expect(rule).toMatch(/background-position:\s*right center;/);
+        expect(rule).toMatch(/background-size:\s*3rem 3rem;/);
+        // LONGHANDS only (no `background:` shorthand — it would clear the field surface set above)
+        const dot = rule.slice(0, rule.indexOf('}'));
+        expect(dot).not.toMatch(/background:\s/);
+      });
+
+      it('keeps the dot off <select> (its chevron), checkbox / radio / range / color / file (native look)', () => {
+        const dot = css.slice(css.indexOf('input[type="text"]:invalid'), css.indexOf('}', css.indexOf('background-size: 3rem 3rem;')));
+        expect(dot).not.toContain('select:invalid');
+        expect(dot).not.toContain('checkbox');
+        expect(dot).not.toContain('type="radio"');
+      });
+
+      it('keeps the invalid-dot INSIDE the weak sw-normalize layer (author :invalid / bg utilities still win)', () => {
+        const idx = css.indexOf('input[type="text"]:invalid');
+        const layerOpen = css.lastIndexOf('@layer sw-normalize {', idx);
+        expect(layerOpen).toBeGreaterThan(-1);
+        expect(idx).toBeGreaterThan(layerOpen);
+      });
+
+      it('greys the submit while the form is incomplete — UNLAYERED so it beats the .btn rules', () => {
+        expect(css).toContain('form:invalid [type="submit"] {');
+        const rule = css.slice(css.indexOf('form:invalid [type="submit"] {'), css.indexOf('}', css.indexOf('form:invalid [type="submit"] {')));
+        expect(rule).toMatch(/opacity:\s*\.4;/);
+        expect(rule).toMatch(/filter:\s*grayscale\(100%\);/);
+        expect(rule).toMatch(/cursor:\s*not-allowed;/);
+        expect(rule).toMatch(/transform:\s*none;/); // no hover lift on the disabled-looking submit
+        // stays CLICKABLE (native prompt fires) — must NOT kill pointer events
+        expect(rule).not.toContain('pointer-events');
+        // UNLAYERED: the nearest preceding @layer must already be CLOSED before this rule (a layer-closing
+        // brace between them) — else an unlayered .btn{cursor:pointer} would beat a layered version.
+        const submitIdx = css.indexOf('form:invalid [type="submit"]');
+        const priorLayer = css.lastIndexOf('@layer sw-normalize {', submitIdx);
+        expect(priorLayer).toBeGreaterThan(-1);
+        expect(css.slice(priorLayer, submitIdx)).toContain('}\n}'); // dot rule + its layer both closed
+      });
+    });
+
     describe('hover dropdowns (nav submenu pattern)', () => {
       const guard = '.dropdown-hover:not(.dropdown-top):not(.dropdown-left):not(.dropdown-right)';
 

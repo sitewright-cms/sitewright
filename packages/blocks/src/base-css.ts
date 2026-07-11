@@ -237,6 +237,42 @@ const PLATFORM_DEFAULTS = `
   }
 }
 
+/* FORM VALIDATION AFFORDANCES — native constraint validation turned into a visible cue, no JS.
+   A required-but-empty (or badly-formatted) text field shows a small red dot at its trailing edge: an
+   always-visible "still needs input" hint. LONGHAND background properties layer the dot OVER the field
+   surface set above WITHOUT clearing it (the background shorthand would reset the image to none); the
+   explicit text-like type list keeps checkbox / radio / range / color / file native and leaves the
+   select its chevron background-image untouched. The :invalid selector is (0,2,1) so it beats the base
+   field rule (0,1,1) INSIDE this layer — while author :invalid rules / bg utilities / criticalCss
+   (unlayered or a higher layer) still override it. (:invalid is immediate; swap to :user-invalid to
+   defer the cue until the field is touched or a submit is attempted.) */
+@layer sw-normalize {
+  input[type="text"]:invalid, input[type="email"]:invalid, input[type="password"]:invalid,
+  input[type="search"]:invalid, input[type="url"]:invalid, input[type="tel"]:invalid,
+  input[type="number"]:invalid, input[type="date"]:invalid, input[type="time"]:invalid,
+  input[type="datetime-local"]:invalid, input[type="month"]:invalid, input[type="week"]:invalid,
+  input:not([type]):invalid, textarea:invalid {
+    background-image: radial-gradient(#cc0000 15%, transparent 16%);
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: 3rem 3rem;
+  }
+}
+
+/* While a form is INCOMPLETE (form:invalid — any required control unfilled / invalid) its submit reads
+   as disabled: dimmed, desaturated, not-allowed cursor, no hover lift. It stays CLICKABLE on purpose, so
+   a click on a natively-validated form still fires the browser's "please fill this in" prompt (on the
+   platform Form component, which is novalidate + JS-submitted, this is a purely visual cue and the form
+   runtime governs the actual submit). UNLAYERED like the .btn rules — an unlayered rule beats any layer
+   regardless of specificity, so a layered version would lose to .btn cursor:pointer; as an unlayered
+   (0,2,1) selector it still outranks .btn / .btn:hover. Covers button/input type=submit. */
+form:invalid [type="submit"] {
+  opacity: .4;
+  filter: grayscale(100%);
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Deterministic block spacing: ZERO the UA margins on flow elements so vertical spacing is set
    EXPLICITLY (spacing utilities such as mt-N, space-y-N, gap-N, or \`.prose\`), identical across
    browsers — the one Tailwind-preflight-style reset we adopt. We still KEEP the heading font-size

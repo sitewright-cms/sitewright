@@ -10,6 +10,15 @@
 // `<img data-src>` AND `<iframe data-src>` both get their real `src`/`srcset` set on
 // scroll-in. Same only-used-ships discipline as components.ts / animations.ts.
 //
+// MEDIA (`<video>`/`<audio>`): a `data-src` on the element or on a `<source data-src>` child is the
+// deferred URL — nothing is fetched until the element enters the viewport (or a closed modal that holds
+// it is opened, which is just the same visibility change). On enter the runtime copies data-src → src,
+// calls `.load()`, and — if the element carries `autoplay` OR `data-autoplay` — plays it (muted autoplay
+// is the browser-allowed case); on LEAVE it pauses (so a video pauses when it scrolls out of view, and a
+// modal video pauses when the modal closes), resuming on re-enter. This is why a muted-autoplay promo
+// video belongs in `data-src` + `data-autoplay`: the plain `autoplay` attribute alone would force a full
+// download on page load THROUGH `preload="none"`, defeating the whole point.
+//
 // Invariants:
 // - PE-first: with no JS / no IntersectionObserver, a `data-bg`/`data-src` element
 //   stays un-decorated (the runtime adds `.lazyloading`); the fade lives behind
@@ -41,9 +50,22 @@ export const LAZYLOAD_CSS = [
 export const LAZYLOAD_JS = `(function(){
   'use strict';
   if(!('IntersectionObserver' in window))return;
-  var els=document.querySelectorAll('[data-src],[data-srcset],[data-bg]');
-  if(els.length===0)return;
+  var raw=document.querySelectorAll('[data-src],[data-srcset],[data-bg]');
+  if(raw.length===0)return;
+  // A <source data-src> can't be observed (no layout box) — observe its parent <video>/<audio> instead.
+  var els=[];
+  Array.prototype.forEach.call(raw,function(el){var t=(el.tagName==='SOURCE')?el.parentNode:el;if(t&&els.indexOf(t)<0)els.push(t);});
+  function isMedia(el){return el.tagName==='VIDEO'||el.tagName==='AUDIO';}
+  function wantsPlay(el){return el.autoplay||el.hasAttribute('data-autoplay');}
   function reveal(el){
+    // MEDIA: copy data-src (on the element AND any <source data-src> child) → src, then load(). No fade
+    // classes (a video isn't awaited like an <img>); autoplay is handled by the observer on intersect.
+    if(isMedia(el)){
+      Array.prototype.forEach.call(el.querySelectorAll('source[data-src]'),function(s){if(!s.getAttribute('src'))s.setAttribute('src',s.getAttribute('data-src'));});
+      var m=el.getAttribute('data-src');if(m&&!el.getAttribute('src'))el.setAttribute('src',m);
+      if(typeof el.load==='function'){try{el.load();}catch(e){}}
+      return;
+    }
     el.classList.add('lazyloading');
     var settled=false;
     var done=function(){if(settled)return;settled=true;el.classList.remove('lazyloading');el.classList.add('lazyloaded');};
@@ -71,9 +93,14 @@ export const LAZYLOAD_JS = `(function(){
   }
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
-      if(!entry.isIntersecting)return;
-      io.unobserve(entry.target);
-      reveal(entry.target);
+      var el=entry.target;
+      if(entry.isIntersecting){
+        if(!el.__swLazyOn){el.__swLazyOn=1;reveal(el);}
+        // MEDIA plays on enter (and resumes on re-enter) when it wants autoplay; stays OBSERVED so it can
+        // pause on leave. Everything else is one-shot — unobserve so it never re-fires.
+        if(isMedia(el)){if(wantsPlay(el)&&el.paused){var p=el.play();if(p&&p.catch)p.catch(function(){});}}
+        else{io.unobserve(el);}
+      }else if(isMedia(el)&&!el.paused){el.pause();}
     });
   },{rootMargin:'200px 0px',threshold:0});
   Array.prototype.forEach.call(els,function(el){io.observe(el);});

@@ -348,6 +348,13 @@ data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is
   of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
   height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
 - BACKGROUND image: data-bg="<url>" on any element → set as the background-image on scroll-in.
+- VIDEO / AUDIO: put the URL in data-src on the <video>/<audio> — or on a <source data-src> child —
+  INSTEAD of src. NOTHING is fetched until it enters the viewport (opening a modal that holds it counts
+  as entering). On enter the runtime sets the src + load()s it; add autoplay (keep it muted) OR
+  data-autoplay to also PLAY on enter and PAUSE it when it leaves the viewport / the modal closes (it
+  resumes on re-enter). This is the ONLY correct way to embed a muted-autoplay promo video in a modal —
+  a plain autoplay <video> with a real src downloads the whole file on PAGE LOAD even through
+  preload="none", so a closed modal costs a full download; data-src defers it.
 - IFRAME, no-JS-safe alternative: native <iframe src="…" loading="lazy" title="…" width height>.
 - SKELETON while loading (whenever the media has a fixed HEIGHT): wrap it in a DaisyUI .skeleton box
   so an animated shimmer shows until it loads, then the media fades in over it —

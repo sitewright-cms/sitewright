@@ -63,8 +63,25 @@ describe('lazyload runtime', () => {
     expect(LAZYLOAD_JS).toContain('if(settled)return;settled=true');
   });
 
-  it('unobserves after the first reveal (load once)', () => {
-    expect(LAZYLOAD_JS).toContain('io.unobserve(entry.target)');
+  it('unobserves a NON-media element after the first reveal (load once), but KEEPS observing media', () => {
+    // img/iframe/bg are one-shot; a <video>/<audio> stays observed so it can pause on leave.
+    expect(LAZYLOAD_JS).toContain('io.unobserve(el)');
+    expect(LAZYLOAD_JS).toContain("else{io.unobserve(el);}");
+  });
+
+  it('lazy-loads <video>/<audio>: promotes data-src (element + <source> children), load()s, plays + pauses', () => {
+    // A <source data-src> has no box → observe the parent media instead.
+    expect(LAZYLOAD_JS).toContain("el.tagName==='SOURCE')?el.parentNode:el");
+    expect(LAZYLOAD_JS).toContain("el.tagName==='VIDEO'||el.tagName==='AUDIO'");
+    // promote both the element's own data-src AND its <source data-src> children, then load().
+    expect(LAZYLOAD_JS).toContain("querySelectorAll('source[data-src]')");
+    expect(LAZYLOAD_JS).toContain('el.load()');
+    // autoplay (attribute OR data-autoplay) plays on enter; the media pauses on LEAVE (keep observing).
+    expect(LAZYLOAD_JS).toContain("el.autoplay||el.hasAttribute('data-autoplay')");
+    expect(LAZYLOAD_JS).toContain('el.play()');
+    expect(LAZYLOAD_JS).toContain('el.pause()');
+    // the autoplay rejection is swallowed (no unhandled promise on a blocked play).
+    expect(LAZYLOAD_JS).toContain('p.catch(function(){})');
   });
 
   it('cannot break out of a <script> block', () => {

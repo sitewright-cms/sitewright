@@ -323,6 +323,11 @@ iframe { border: 0; max-width: 100%; }
   --sw-btn-py: .8rem;
   --sw-btn-px: 1.15rem;
   --sw-btn-fs: .95rem;
+  /* raised-button z-depth (Material-style): a soft resting shadow that grows on hover. Flat variants
+     (ghost / link) reset --sw-btn-shadow to none; clip-path shapes (cut / skewed) can't paint an outer
+     box-shadow so they drop-shadow on hover instead. Effects with their own hover shadow override it. */
+  --sw-btn-shadow: 0 2px 5px 0 rgba(0, 0, 0, .16), 0 2px 10px 0 rgba(0, 0, 0, .12);
+  --sw-btn-shadow-hover: 0 8px 17px 0 rgba(0, 0, 0, .2), 0 6px 20px 0 rgba(0, 0, 0, .19);
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
   /* PADDING-based sizing (no fixed height) so a button grows with its content — multi-line labels, an
      icon + text, larger glyphs — instead of clipping. Sizes set --sw-btn-py / --sw-btn-px. */
@@ -340,10 +345,18 @@ iframe { border: 0; max-width: 100%; }
   color: var(--sw-btn-face-content, var(--sw-color-base-content, var(--color-base-content, #1a1a23)));
   position: relative; isolation: isolate; overflow: hidden;
 }
+/* Resting + hover z-depth at ZERO specificity (:where → 0,0,0 / the :hover adds the only 0,1,0), so a
+   per-button Tailwind shadow utility (shadow-none / shadow-lg / shadow-xl, all 0,1,0 and emitted LATER)
+   ALWAYS wins in BOTH states — the platform default yields to the author's class. Flat variants zero
+   --sw-btn-shadow; a per-button sw-btn-fx-* effect's own hover box-shadow (>= 0,2,0) still overrides. */
+:where(.btn) { box-shadow: var(--sw-btn-shadow); }
+:where(.btn:not(.btn-link):not(.btn-disabled):not(:disabled)):hover { box-shadow: var(--sw-btn-shadow-hover); }
 /* a checkbox/radio styled as a button (daisyUI's join toggle pattern) must lose its native control */
 .btn:is(input[type="checkbox"], input[type="radio"]) { appearance: none; -webkit-appearance: none; }
 @media (prefers-reduced-motion: no-preference) {
-  .btn { transition: transform .22s cubic-bezier(.16, 1, .3, 1), box-shadow .22s ease, background-color .25s ease, color .25s ease; }
+  /* the .4s ease the design calls for — but an EXPLICIT list, NOT the all keyword, so the :focus-visible
+     outline (and disabled opacity) appear INSTANTLY for keyboard users instead of fading in over .4s. */
+  .btn { transition: transform .4s ease, box-shadow .4s ease, background-color .4s ease, color .4s ease, filter .4s ease; }
 }
 .btn:focus-visible { outline: 2px solid var(--sw-btn-fx); outline-offset: 2px; }
 /* hover: the face fills to the accent + a small lift + shadow (text-link + disabled stay flat). The
@@ -353,8 +366,7 @@ iframe { border: 0; max-width: 100%; }
 .btn:where(:not(.btn-link):not(.btn-disabled):not(:disabled)):hover {
   background-color: var(--sw-btn-hover-bg);
   color: var(--sw-btn-hover-fg);
-  transform: scale(1.03);
-  box-shadow: 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent);
+  transform: scale(1.05);
 }
 .btn:where(:not(.btn-link):not(.btn-disabled):not(:disabled)):active { transform: scale(.97); }
 .btn:disabled, .btn[disabled], .btn-disabled { cursor: not-allowed; pointer-events: none; opacity: .45; }
@@ -369,8 +381,9 @@ iframe { border: 0; max-width: 100%; }
 .btn-success   { --sw-btn-face: var(--color-success, #16a34a); --sw-btn-face-content: var(--color-success-content, #ffffff); }
 .btn-warning   { --sw-btn-face: var(--color-warning, #f59e0b); --sw-btn-face-content: var(--color-warning-content, #3a2406); }
 .btn-error     { --sw-btn-face: var(--color-error,   #dc2626); --sw-btn-face-content: var(--color-error-content,   #ffffff); }
-/* ghost: transparent, page-text colour (fills the accent on hover like every button) */
-.btn-ghost { --sw-btn-face: transparent; --sw-btn-face-content: var(--sw-color-base-content, var(--color-base-content, #1a1a23)); }
+/* ghost: transparent, page-text colour. FLAT AT REST (no resting shadow — a shadow on a transparent
+   button would float free); it fills the accent AND lifts with the hover shadow like every button. */
+.btn-ghost { --sw-btn-face: transparent; --sw-btn-face-content: var(--sw-color-base-content, var(--color-base-content, #1a1a23)); --sw-btn-shadow: none; }
 /* soft: a translucent tint of the face (defaults to primary so a bare btn-soft stays visible) */
 .btn-soft { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: color-mix(in oklab, var(--sw-btn-face) 16%, transparent); color: var(--sw-btn-face); }
 /* outline: transparent face, the face colour as text + a hairline border (inherits the variant; default primary) */
@@ -385,11 +398,11 @@ iframe { border: 0; max-width: 100%; }
 .btn-outline.btn-error,     .btn-dash.btn-error     { --sw-btn-face: var(--color-error,   #dc2626); }
 /* outline keeps its inset border on hover (matches the generic hover's specificity, declared later so
    it wins — else the generic hover box-shadow would drop the border) */
-.btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent); }
+.btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), var(--sw-btn-shadow-hover); }
 /* dash: an outline with a dashed border */
 .btn-dash { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); border: 1.5px dashed var(--sw-btn-face); box-shadow: none; }
-/* link: a bare text button (no fill / lift / vertical padding) */
-.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); padding: 0 .25rem; text-decoration: underline; text-underline-offset: 3px; }
+/* link: a bare text button (no fill / lift / vertical padding); FLAT — no resting shadow */
+.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); padding: 0 .25rem; text-decoration: underline; text-underline-offset: 3px; --sw-btn-shadow: none; }
 /* sizes — only the vertical/horizontal padding + font scale (no fixed height) */
 .btn-xs { --sw-btn-py: .4rem;  --sw-btn-px: .6rem;  --sw-btn-fs: .75rem; gap: .3rem; }
 .btn-sm { --sw-btn-py: .6rem;  --sw-btn-px: .85rem; --sw-btn-fs: .85rem; }

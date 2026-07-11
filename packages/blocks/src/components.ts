@@ -356,7 +356,20 @@ const MODAL_JS = `(function(){
     if(locks>0)locks--;
     if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;}
   }
-  function openOn(dialog){if(dialog.open)return;dialog.showModal();lock();}
+  // DEFAULT single-modal: opening a modal dismisses any OTHER open SW modal first (so a modal opened from
+  // inside a modal REPLACES it). data-allow-multiple="true" (on the marker — the <dialog> in the lighter
+  // form, the wrapper in the legacy one) OPTS OUT BOTH WAYS: opening it never dismisses others, AND it is
+  // never dismissed when another opens (stacking — the previous behavior). Foreign <dialog>s are untouched.
+  function allowMulti(dlg){var m=dlg.closest('[data-sw-component="modal"]');return !!m&&m.getAttribute('data-allow-multiple')==='true';}
+  function openOn(dialog){
+    if(dialog.open)return;
+    if(!allowMulti(dialog)){
+      Array.prototype.forEach.call(document.querySelectorAll('dialog[open]'),function(other){
+        if(other!==dialog&&other.closest('[data-sw-component="modal"]')&&!allowMulti(other))other.close();
+      });
+    }
+    dialog.showModal();lock();
+  }
   function wireTrigger(t,dialog){
     t.addEventListener('click',function(e){
       // <a href="#id"> would otherwise jump + change the URL; buttons need no preventDefault.

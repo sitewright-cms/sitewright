@@ -270,6 +270,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-backdrop-close', on: 'root', description: '"false" keeps the modal open when the backdrop is clicked (default: a backdrop click closes it). Useful for a forced-choice / confirm dialog.' },
       { name: 'data-close-label', on: 'root', description: 'Accessible label for the auto close button (default "Close"); set it per-locale for i18n, e.g. data-close-label="{{page.data.close_label}}".' },
       { name: 'data-allow-multiple', on: 'root', description: '"true" lets this modal STACK with others (the older behavior). By default only ONE modal is open at a time — opening a modal (e.g. from a trigger inside another modal) first dismisses any other open modal. The opt-out is symmetric: a modal marked data-allow-multiple="true" neither dismisses others when it opens nor is dismissed when another opens.' },
+      { name: 'data-sw-lazymedia', on: 'a <video>/<audio>/<iframe> inside the modal', description: 'LAZY-LOADS heavy media so NOTHING is fetched on page load — only when the modal opens. Park the real URL in data-src (on the element, or on its <source> children) instead of src; on open the runtime promotes data-src→src, loads it, and autoplays a muted <video>; on close it pauses. Use for a promo video / YouTube embed so a closed modal costs nothing (a muted autoplay <video> would otherwise force a full download through preload="none").' },
     ],
     skeleton: `<a href="#welcome" class="btn">What happens next?</a>
 <dialog id="welcome" data-sw-component="modal">

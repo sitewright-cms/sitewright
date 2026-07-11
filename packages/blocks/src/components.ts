@@ -386,6 +386,21 @@ const MODAL_JS = `(function(){
   // form, the wrapper in the legacy one) OPTS OUT BOTH WAYS: opening it never dismisses others, AND it is
   // never dismissed when another opens (stacking — the previous behavior). Foreign <dialog>s are untouched.
   function allowMulti(dlg){var m=dlg.closest('[data-sw-component="modal"]');return !!m&&m.getAttribute('data-allow-multiple')==='true';}
+  // LAZY MEDIA: a <video>/<audio>/<iframe data-sw-lazymedia> (with its real URL parked in data-src on the
+  // element or its <source> children) is only WIRED when the modal OPENS — nothing is fetched on page load,
+  // even for a muted video (autoplay would otherwise force a load through preload="none"). On open we promote
+  // data-src → src, load(), and autoplay a muted <video>; on close we pause it (and iframes are blanked so a
+  // YouTube embed stops). Idempotent — the src is only set once.
+  function activateLazyMedia(dialog){
+    Array.prototype.forEach.call(dialog.querySelectorAll('[data-sw-lazymedia]'),function(m){
+      var changed=false;
+      Array.prototype.forEach.call(m.querySelectorAll('source[data-src]'),function(s){if(!s.getAttribute('src')){s.setAttribute('src',s.getAttribute('data-src'));changed=true;}});
+      if(m.getAttribute('data-src')&&!m.getAttribute('src')){m.setAttribute('src',m.getAttribute('data-src'));changed=true;}
+      if(changed&&typeof m.load==='function'){try{m.load();}catch(e){}}
+      if(m.tagName==='VIDEO'&&m.muted&&typeof m.play==='function'){var p=m.play();if(p&&p.catch)p.catch(function(){});}
+    });
+  }
+  function pauseLazyMedia(dialog){Array.prototype.forEach.call(dialog.querySelectorAll('video[data-sw-lazymedia],audio[data-sw-lazymedia]'),function(m){try{m.pause();}catch(e){}});}
   function openOn(dialog){
     if(dialog.open)return;
     if(!allowMulti(dialog)){
@@ -393,7 +408,7 @@ const MODAL_JS = `(function(){
         if(other!==dialog&&other.closest('[data-sw-component="modal"]')&&!allowMulti(other))other.close();
       });
     }
-    dialog.showModal();lock();
+    dialog.showModal();lock();activateLazyMedia(dialog);
   }
   function wireTrigger(t,dialog){
     t.addEventListener('click',function(e){
@@ -429,8 +444,8 @@ const MODAL_JS = `(function(){
       if(openBtn)wireTrigger(openBtn,dialog);
     }
     // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
-    // so the lock is always released exactly once per open.
-    dialog.addEventListener('close',unlock);
+    // so the lock is always released exactly once per open; lazy media is paused on the way out.
+    dialog.addEventListener('close',function(){unlock();pauseLazyMedia(dialog);});
     // Build the neutral PANEL + the visible BODY inside the <dialog>, leaving the <dialog> itself a
     // transparent, full-viewport SCROLLER — so a TALL modal scrolls at the SCREEN edge (not inside its
     // body) and the overhanging close is never clipped. The author's class is SPLIT off the <dialog>:

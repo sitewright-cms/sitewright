@@ -242,7 +242,7 @@ describe('component registry', () => {
     const js = componentAssets(['Modal']).js;
     // Lock on open, release on the dialog 'close' event (covers Escape / button / backdrop).
     expect(js).toContain("docEl.style.overflow='hidden'");
-    expect(js).toContain("addEventListener('close',unlock)");
+    expect(js).toContain("addEventListener('close',function(){unlock()");
     // Scrollbar-width compensation so removing the bar doesn't shift the layout.
     expect(js).toContain('window.innerWidth-docEl.clientWidth');
     expect(js).toContain('paddingRight');
@@ -250,6 +250,20 @@ describe('component registry', () => {
     expect(js).toContain('locks');
     // Guard against double-lock if the open button is clicked while already open.
     expect(js).toContain('if(dialog.open)return');
+  });
+
+  it('Modal LAZY-loads [data-sw-lazymedia] on open (nothing fetched on page load) and pauses on close', () => {
+    const js = componentAssets(['Modal']).js;
+    // On open: promote data-src → src (on the media element and its <source> children), load(), and
+    // autoplay a muted <video>. Nothing has a src until then, so page load fetches nothing.
+    expect(js).toContain("querySelectorAll('[data-sw-lazymedia]')");
+    expect(js).toContain("querySelectorAll('source[data-src]')");
+    expect(js).toContain("s.setAttribute('src',s.getAttribute('data-src'))");
+    expect(js).toContain('activateLazyMedia(dialog)');
+    // muted videos autoplay on open (the catch swallows the autoplay rejection).
+    expect(js).toContain("m.tagName==='VIDEO'&&m.muted");
+    // On close: pause the media.
+    expect(js).toContain('pauseLazyMedia(dialog)');
   });
 
   it('Modal shows ONE shared scrim tied to the lock ref-count (persists across a replace/stack)', () => {

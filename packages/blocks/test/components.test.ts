@@ -165,11 +165,11 @@ describe('component registry', () => {
     const modal = componentAssets(['Modal']);
     expect(modal.css).toContain('::backdrop');
     expect(modal.js).toContain('showModal');
-    // Side gutter: a 32rem default cap + a small-screen guarantee so the box keeps a 2rem margin
-    // to each edge (≤36rem) instead of touching — beats author max-w-* overrides (not :where).
+    // Default panel width cap (author max-w-* overrides it — the :where default is zero-specificity).
     expect(modal.css).toContain('max-width:32rem');
-    expect(modal.css).toContain('@media (max-width:36rem)');
-    expect(modal.css).toContain('max-width:calc(100vw - 4rem)');
+    // The all-around safety gutter is the container's own padding (every screen size), so the panel
+    // never touches the top/sides — replacing the old ≤36rem max-width:calc(100vw - 4rem) hack.
+    expect(modal.css).toContain(';margin:0;padding:2rem;box-sizing:border-box');
   });
 
   it('Banner guards localStorage + keys on data-sw-component (no redundant data-sw-block)', () => {
@@ -197,14 +197,21 @@ describe('component registry', () => {
     expect(rm).toContain('dialog[data-sw-component="modal"]::backdrop');
   });
 
-  it('Modal is viewport-centered (position:fixed) so opening never scrolls the page', () => {
+  it('Modal <dialog> is a transparent full-viewport scroller; the panel is the centered box', () => {
     const css = componentAssets(['Modal']).css;
-    // position:fixed + inset:0 + margin:auto centers in the viewport; position:relative would put
-    // the dialog in document flow and let showModal() scroll-into-view jump the page to it. The
-    // selector covers BOTH forms (the dialog as a descendant of the marker, or the dialog IS it).
-    // The rule fires for both forms via a combined selector (descendant dialog OR the dialog itself).
-    expect(css).toContain('[data-sw-component="modal"] dialog,dialog[data-sw-component="modal"]{position:fixed;margin:auto;inset:0;');
-    expect(css).not.toContain('position:relative');
+    // The <dialog> is ONLY a transparent, full-viewport scroll CONTAINER: position:fixed + inset:0 +
+    // 100vw/100dvh + overflow-y:auto puts the scrollbar at the SCREEN edge (no inner-body scrollbar).
+    // The visible box is a [data-sw-part="panel"] child (position:relative + the appearance live there).
+    // The selector covers BOTH forms (dialog as a descendant of the marker, or the dialog IS it).
+    expect(css).toContain(
+      '[data-sw-component="modal"] dialog,dialog[data-sw-component="modal"]{position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;',
+    );
+    expect(css).toContain('background:transparent');
+    expect(css).toContain('overflow-y:auto');
+    // Reserve the scrollbar gutter on both edges so a tall modal's native scrollbar never overlaps the
+    // overhanging close button and the centered panel stays symmetric.
+    expect(css).toContain('scrollbar-gutter:stable both-edges');
+    expect(css).toContain('[data-sw-part="panel"]{overflow:visible');
   });
 
   it('Modal styling keys on data-sw-component (works on a bare <dialog>, no data-sw-block)', () => {
@@ -266,15 +273,20 @@ describe('component registry', () => {
     expect(css).toContain('width:3.25rem;height:2.25rem');
   });
 
-  it('Modal dialog defaults are zero-specificity so dialog classes win, and the backdrop blurs', () => {
+  it('Modal PANEL appearance is zero-specificity so the (moved) dialog classes win, and the backdrop blurs', () => {
     const css = componentAssets(['Modal']).css;
-    // Appearance defaults wrapped in :where() (specificity 0) → utility classes on the dialog
-    // override them without !important; bg/text come from the global theme vars; 1.5rem padding.
-    expect(css).toContain(':where([data-sw-component="modal"] dialog,dialog[data-sw-component="modal"])');
+    // Appearance defaults live on the PANEL, wrapped in :where() (specificity 0) → the utilities the
+    // author put on the <dialog> (moved onto the panel by the JS) override them without !important; bg/
+    // text come from the global theme vars; 1.5rem default padding (author p-0 / p-8 / p-6 wins). The
+    // panel is scoped as a DIRECT child (>) of the <dialog> so it can't leak onto a nested component's
+    // [data-sw-part="panel"] (e.g. Tabs panels inside a modal).
+    expect(css).toContain(
+      ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"],dialog[data-sw-component="modal"]>[data-sw-part="panel"])',
+    );
     expect(css).toContain('var(--sw-color-base-100');
     expect(css).toContain('var(--sw-color-base-content');
     expect(css).toContain('padding:1.5rem');
-    expect(css).toContain('overflow:visible'); // lets the close button overhang the corner
+    expect(css).toContain('overflow:visible'); // lets the close button overhang the panel corner
     // Backdrop dims AND blurs.
     expect(css).toContain('backdrop-filter:blur(5px)');
     // The scrim derives from --sw-color-base-content (with the slate rgba fallback) so it INVERTS
@@ -290,39 +302,49 @@ describe('component registry', () => {
     // scroll over the middle of the page. display lives on [open]; the allow-discrete transition still
     // animates the none↔flex toggle for the exit.
     const { css } = componentAssets(['Modal']);
-    // The base (closed) rule is display:none (asserted in context so it can't match the [open] rule).
-    expect(css).toContain('box-sizing:border-box;display:none;flex-direction:column');
-    // It must NOT lay the closed box out as flex (the bug) — that's the click/scroll-eating state.
-    expect(css).not.toContain('box-sizing:border-box;display:flex');
-    // The OPEN state provides display:flex (so it lays out + centers only when shown).
-    expect(css).toContain('[data-sw-component="modal"][open]{display:flex');
+    // The base (closed) CONTAINER rule is display:none (asserted with unique surrounding context so it
+    // can't match the [open] rule) — a closed <dialog> that stayed laid out would swallow clicks/scroll.
+    expect(css).toContain('background:transparent;box-shadow:none;display:none;overflow-x:hidden');
+    // The OPEN state lays it out as a flex container (the panel's margin:auto centers it, top-aligning a
+    // too-tall panel without clipping).
+    expect(css).toContain('[data-sw-component="modal"][open]{display:flex}');
     // …and the display toggle is animated discretely so the exit animation plays.
     expect(css).toContain('display .22s allow-discrete');
   });
 
-  it('Modal taller than the viewport scrolls its body (overhanging close button kept)', () => {
+  it('Modal grows past the viewport and scrolls at the SCREEN edge (no inner-body scroll); close never clipped', () => {
     const { css, js } = componentAssets(['Modal']);
-    // The dialog is height-capped to the viewport less 4rem (normal specificity so it beats the UA's
-    // own dialog{max-height}; the 4rem keeps the overhanging close button on-screen) and laid out as a
-    // flex column (when OPEN) so the body scroll region fills the remaining height.
-    expect(css).toContain('max-height:calc(100dvh - 4rem)');
-    expect(css).toContain('flex-direction:column');
-    expect(css).toContain('[open]{display:flex');
-    // box-sizing:border-box keeps the padding inside that cap so the overhang math holds regardless
-    // of the ambient reset.
-    expect(css).toContain('box-sizing:border-box');
-    // The injected body wrapper scrolls; flex:1 + min-height:0 is what lets it shrink and scroll.
-    expect(css).toContain('[data-sw-part="body"]{flex:1 1 auto;min-height:0;overflow:auto');
-    // The dialog itself stays overflow:visible so the close button still overhangs (not clipped).
-    expect(css).toContain('overflow:visible');
-    // The runtime MOVES the authored content into the body wrapper (appendChild, not innerHTML, so
-    // listeners / form state survive), and only when the author hasn't already supplied one.
-    expect(js).toContain("setAttribute('data-sw-part','body')");
+    // Scrolling happens on the CONTAINER (the transparent full-viewport <dialog>) so the scrollbar is at
+    // the SCREEN edge — NOT an inner body scrollbar. No max-height cap, no flex-column body scroll region.
+    expect(css).toContain('overflow-y:auto');
+    expect(css).not.toContain('max-height:calc(100dvh - 4rem)');
+    expect(css).not.toContain('[data-sw-part="body"]{flex:1 1 auto');
+    // The all-around SAFETY GUTTER is the container's padding, so the panel never touches the top/sides
+    // on any screen (only the bottom can meet the edge when a tall panel scrolls).
+    expect(css).toContain(';margin:0;padding:2rem;box-sizing:border-box');
+    // The panel GROWS with content (max-height:none) and is never its own scroll box (overflow:visible)
+    // — normal specificity so a moved author `overflow-*`/`max-h-*` can't re-break it. This is the
+    // guarantee that the overhanging close is never clipped.
+    expect(css).toContain('[data-sw-part="panel"]{overflow:visible;max-height:none}');
+    // A too-tall panel top-aligns instead of clipping its top: the panel's margin:auto in the flex
+    // container centers it when it fits and degrades to top-aligned (no clip) when it overflows.
+    expect(css).toContain(
+      ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"],dialog[data-sw-component="modal"]>[data-sw-part="panel"]){position:relative;margin:auto;',
+    );
+    // The runtime builds the panel and MOVES the authored content + the dialog's class/style into it
+    // (appendChild, not innerHTML, so listeners / form state survive); the bare-<dialog> authoring is
+    // unchanged. The close is a child of the PANEL so it overhangs the panel corner.
+    expect(js).toContain("setAttribute('data-sw-part','panel')");
+    expect(js).toContain('panel.className=dialog.className');
+    expect(js).toContain("dialog.removeAttribute('class')");
+    // With an author-supplied body part, ALL dialog children move into the panel (no orphaned siblings);
+    // without one, the children are wrapped in a generated body — both preserving order via appendChild.
+    expect(js).toContain('while(dialog.firstChild){panel.appendChild(dialog.firstChild);}');
     expect(js).toContain('while(dialog.firstChild){body.appendChild(dialog.firstChild);}');
     expect(js).not.toContain('body.innerHTML');
-    // The content MUST be wrapped before the close button is injected, so the close button stays a
-    // direct child of the dialog (overhanging) rather than getting swept into the scroll region.
-    expect(js.indexOf("setAttribute('data-sw-part','body')")).toBeLessThan(
+    expect(js).toContain('panel.insertBefore(x,panel.firstChild)');
+    // The panel is built before the close button is injected (so the close lands inside the panel).
+    expect(js.indexOf("setAttribute('data-sw-part','panel')")).toBeLessThan(
       js.indexOf("setAttribute('data-sw-part','autoclose')"),
     );
   });

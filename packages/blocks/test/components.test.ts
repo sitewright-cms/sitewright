@@ -183,18 +183,20 @@ describe('component registry', () => {
 
   it('Modal fades in from the top / out to the top across the <dialog> display toggle', () => {
     const css = componentAssets(['Modal']).css;
-    // The enter/exit transition needs a real duration on opacity+transform (not the default
-    // 0s = instant), a translateY(-24px) offset (from the top), and the native-<dialog>
-    // machinery that lets it animate across the display toggle (@starting-style +
-    // allow-discrete). Dropping any of these collapses the animation to an instant show/hide.
-    expect(css).toContain('transition:opacity .22s ease,transform .22s ease');
+    // The enter/exit transition needs a real duration on opacity+transform (via --sw-modal-t, not the
+    // default 0s = instant), a translateY(-24px) offset (from the top), and the native-<dialog>
+    // machinery that lets it animate across the display toggle (@starting-style + allow-discrete).
+    // Dropping any of these collapses the animation to an instant show/hide.
+    expect(css).toContain('transition:opacity var(--sw-modal-t) ease,transform var(--sw-modal-t) ease');
     expect(css).toContain('translateY(-24px)');
     expect(css).toContain('allow-discrete');
     expect(css).toContain('@starting-style');
-    // Reduced-motion drops straight to a plain show/hide — INCLUDING the ::backdrop fade/blur.
+    // The panel ENTER is DELAYED one step (staggered after the scrim) while the EXIT is not.
+    expect(css).toContain('transition:opacity var(--sw-modal-t) ease var(--sw-modal-t),transform var(--sw-modal-t) ease var(--sw-modal-t)');
+    // Reduced-motion drops straight to a plain show/hide — INCLUDING the shared scrim fade/blur.
     expect(css).toContain('prefers-reduced-motion:reduce');
     const rm = css.slice(css.indexOf('@media (prefers-reduced-motion:reduce)'));
-    expect(rm).toContain('dialog[data-sw-component="modal"]::backdrop');
+    expect(rm).toContain('[data-sw-modal-scrim]');
   });
 
   it('Modal <dialog> is a transparent full-viewport scroller; the panel is the centered box', () => {
@@ -204,7 +206,7 @@ describe('component registry', () => {
     // The visible box is a [data-sw-part="panel"] child (position:relative + the appearance live there).
     // The selector covers BOTH forms (dialog as a descendant of the marker, or the dialog IS it).
     expect(css).toContain(
-      '[data-sw-component="modal"] dialog,dialog[data-sw-component="modal"]{position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;',
+      '[data-sw-component="modal"] dialog,dialog[data-sw-component="modal"]{--sw-modal-t:.3s;position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;',
     );
     expect(css).toContain('background:transparent');
     expect(css).toContain('overflow-y:auto');
@@ -248,6 +250,20 @@ describe('component registry', () => {
     expect(js).toContain('locks');
     // Guard against double-lock if the open button is clicked while already open.
     expect(js).toContain('if(dialog.open)return');
+  });
+
+  it('Modal shows ONE shared scrim tied to the lock ref-count (persists across a replace/stack)', () => {
+    const js = componentAssets(['Modal']).js;
+    // A single body-level scrim <div> is built once (at init / lazily) and reused.
+    expect(js).toContain("setAttribute('data-sw-modal-scrim','')");
+    expect(js).toContain("document.querySelector('[data-sw-modal-scrim]')");
+    // Its .is-open rides the ref-count: added ONLY when the first modal opens (locks===0 branch), removed
+    // ONLY when the last closes (locks===0 branch) — so a replace/stack (count never 0) leaves it on →
+    // one continuous backdrop, no per-dialog ::backdrop flash.
+    expect(js).toContain("ensureScrim().classList.add('is-open')");
+    expect(js).toContain("scrim.classList.remove('is-open')");
+    // Built at init so it's painted (opacity:0) before the first open → the .is-open add transitions.
+    expect(js).toContain('if(m.length)ensureScrim()');
   });
 
   it('Modal enforces single-open by default; data-allow-multiple="true" opts into stacking', () => {
@@ -302,10 +318,18 @@ describe('component registry', () => {
     expect(css).toContain(
       ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"]>[data-sw-part="body"],dialog[data-sw-component="modal"]>[data-sw-part="panel"]>[data-sw-part="body"]){width:100%;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border-radius:.75rem;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:visible}',
     );
-    // Backdrop dims AND blurs.
+    // Backdrop is a SINGLE SHARED SCRIM element (not per-dialog ::backdrop, so it persists across a modal
+    // swap). The native ::backdrop is neutralised to transparent so it can't double the scrim.
+    expect(css).toContain('[data-sw-modal-scrim]{');
+    expect(css).toContain('dialog[data-sw-component="modal"]::backdrop{background:transparent}');
+    // The scrim dims AND blurs; .is-open (JS-toggled) is the shown state.
+    expect(css).toContain('[data-sw-modal-scrim].is-open{opacity:1;');
     expect(css).toContain('backdrop-filter:blur(5px)');
-    // The scrim derives from --sw-color-base-content (with the slate rgba fallback) so it INVERTS
-    // with the palette: a dark dim on a light site, a lighter scrim on a dark site.
+    // pointer-events:none (clicks pass through to the transparent dialog container for backdrop-close) and
+    // it sits below the top layer (the panel is above it).
+    expect(css).toContain('pointer-events:none');
+    // The scrim colour derives from --sw-color-base-content (slate rgba fallback) so it INVERTS with the
+    // palette: a dark dim on a light site, a lighter scrim on a dark site.
     expect(css).toContain('background:rgba(15,23,42,.45)');
     expect(css).toContain('background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent)');
   });
@@ -324,7 +348,7 @@ describe('component registry', () => {
     // too-tall panel without clipping).
     expect(css).toContain('[data-sw-component="modal"][open]{display:flex}');
     // …and the display toggle is animated discretely so the exit animation plays.
-    expect(css).toContain('display .22s allow-discrete');
+    expect(css).toContain('display var(--sw-modal-t) allow-discrete');
   });
 
   it('Modal grows past the viewport and scrolls at the SCREEN edge (no inner-body scroll); close never clipped', () => {

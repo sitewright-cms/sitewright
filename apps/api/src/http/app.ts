@@ -576,6 +576,20 @@ interface PreviewShell {
   theme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
   systemT?: Record<string, unknown>;
+  /** Self-hosted FONT media + an ABSOLUTE url resolver, forwarded straight to renderDocument so the editor
+   *  preview emits `@font-face`. Without them the preview sets the `--sw-font-*` vars but never declares the
+   *  fonts → fallback typography in the editor canvas. The url is root-absolute (`/media/<slug>/…`) so it
+   *  resolves inside the opaque-origin sandboxed preview iframe. See `previewFontShell`. */
+  media?: readonly MediaAsset[];
+  mediaUrl?: (asset: MediaAsset, file: string) => string;
+}
+
+/** The self-hosted FONT assets (from an already-loaded media list) + an absolute `/media/<slug>/…` url
+ *  resolver, so a styledSourceDocument preview emits `@font-face` (the editor canvas otherwise falls back to
+ *  system fonts). Pure — the caller loads media via its in-scope `contentRepo`. The url is root-absolute so
+ *  it resolves inside the opaque-origin sandboxed preview iframe. */
+function fontMediaShell(media: readonly MediaAsset[], slug: string): Pick<PreviewShell, 'media' | 'mediaUrl'> {
+  return { media: media.filter((m) => m.kind === 'font'), mediaUrl: (a, f) => `/media/${slug}/${a.id}/${f}` };
 }
 
 /**
@@ -3004,6 +3018,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // after the tenant's own scripts; a custom preloader becomes the first-body-child overlay.
         const fxCode = websiteEffectsCustomCode(website?.effects);
         const sourceHtml = await styledSourceDocument(page, brand, rendered, {
+          // Self-hosted @font-face so the editor canvas doesn't fall back to system fonts.
+          ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
           mainNav,
           sidebarLeft,
           sidebarRight,
@@ -5329,6 +5345,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let themeCustomScripts: string | undefined;
       let themePreloader: string | undefined;
       let themeEmitContentTokens = false;
+      let themeCriticalCss: string | undefined;
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let projectDefaultLocale = 'en';
       try {
@@ -5344,6 +5361,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         themeStickyHeader = settings.website?.effects?.stickyHeader;
+        themeCriticalCss = settings.website?.criticalCss;
         const fx = websiteEffectsCustomCode(settings.website?.effects);
         themeCustomScripts = fx.bodyEnd || undefined;
         themePreloader = fx.preloader;
@@ -5411,6 +5429,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           title: String(pageCtx.title ?? project.name),
         };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
+          // Self-hosted @font-face so the code-editor preview doesn't fall back to system fonts.
+          ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          criticalCss: themeCriticalCss, // site-wide critical CSS (gradient/chrome classes)
           bodyClass: themeBodyClass,
           stickyHeader: themeStickyHeader,
           customScripts: themeCustomScripts,
@@ -5485,6 +5506,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
       let themeFxBodyEnd: string | undefined;
       let containerWidth: string | undefined;
+      let themeCriticalCss: string | undefined;
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
@@ -5492,6 +5514,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent } : undefined;
         containerWidth = settings.website?.containerWidth;
+        themeCriticalCss = settings.website?.criticalCss;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         themeStickyHeader = settings.website?.effects?.stickyHeader;
         // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a
@@ -5515,6 +5538,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         });
         const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name };
         const html = await styledSourceDocument(previewPage, brand, rendered, {
+          // Self-hosted @font-face so this preview doesn't fall back to system fonts.
+          ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          criticalCss: themeCriticalCss, // site-wide critical CSS (gradient/chrome classes)
           bodyClass: themeBodyClass,
           stickyHeader: themeStickyHeader,
           customScripts: themeFxBodyEnd,

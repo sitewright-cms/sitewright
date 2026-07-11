@@ -289,7 +289,10 @@ const MODAL_CSS = [
   // scrollbar shows, so on native-gutter systems (Windows classic / some Linux) a tall modal's scrollbar
   // never overlaps the overhanging close button, and the centered panel stays symmetric. 100vh precedes
   // 100dvh as a fallback for engines without dvh (old Safari/Firefox).
-  `${mdlg()}{position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;margin:0;padding:2rem;box-sizing:border-box;border:0;background:transparent;box-shadow:none;display:none;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable both-edges;transition:overlay .22s allow-discrete,display .22s allow-discrete}`,
+  // --sw-modal-t is the ONE timing knob shared by the scrim, panel and container (declared here + on the
+  // scrim). The container's overlay/display allow-discrete lasts one step so the dialog stays in the top
+  // layer while its panel animates OUT (the scrim, a separate element, outlives it and fades after).
+  `${mdlg()}{--sw-modal-t:.3s;position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;margin:0;padding:2rem;box-sizing:border-box;border:0;background:transparent;box-shadow:none;display:none;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable both-edges;transition:overlay var(--sw-modal-t) allow-discrete,display var(--sw-modal-t) allow-discrete}`,
   `${mdlg('[open]')}{display:flex}`,
   // The PANEL is a NEUTRAL positioning wrapper — it paints NOTHING. Its only jobs: (1) hold the WIDTH so
   // the box has a stable, definite size (it's a child of the definite-width dialog flex container, so the
@@ -303,16 +306,27 @@ const MODAL_CSS = [
   // because the panel is only PROGRAMMATICALLY focused (tabindex=-1) to anchor the open-focus at the top —
   // it's a non-interactive container (never in the Tab order), so suppressing its ring is correct.
   `${mdlgp()}{overflow:visible;max-height:none;outline:none}`,
-  // Panel enter/exit from the top; @starting-style + the container's allow-discrete let the exit animate.
-  `${mdlgp()}{opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease}`,
-  `${mdlgp('[open]')}{opacity:1;transform:translateY(0)}`,
+  // Panel enter/exit from the top, STAGGERED against the scrim. EXIT (base rule) has NO delay → the panel
+  // leaves FIRST; ENTER ([open] rule) is DELAYED by one step → the panel comes in AFTER the scrim has
+  // faded in (fresh open) or the previous modal's panel has left (a replace — same one-step delay). Two
+  // one-step phases each way: scrim-in → panel-in / panel-out → scrim-out. @starting-style + the
+  // container's allow-discrete keep the exit animating.
+  `${mdlgp()}{opacity:0;transform:translateY(-24px);transition:opacity var(--sw-modal-t) ease,transform var(--sw-modal-t) ease}`,
+  `${mdlgp('[open]')}{opacity:1;transform:translateY(0);transition:opacity var(--sw-modal-t) ease var(--sw-modal-t),transform var(--sw-modal-t) ease var(--sw-modal-t)}`,
   `@starting-style{${mdlgp('[open]')}{opacity:0;transform:translateY(-24px)}}`,
-  // Backdrop: dims + BLURS, both fading in and out. The scrim derives from the CONTENT colour so it
-  // INVERTS with the palette — a dark dim on a light site, a LIGHTER scrim on a dark site (where a
-  // near-black dim would be invisible). Fallback = the old slate dim for engines without color-mix.
-  `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
-  `${mdlg('[open]::backdrop')}{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}`,
-  `@starting-style{${mdlg('[open]::backdrop')}{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}`,
+  // Backdrop: a SINGLE SHARED SCRIM element (the JS builds one <div data-sw-modal-scrim> per page), NOT
+  // the native per-dialog ::backdrop — so it can PERSIST across a modal swap (opening a modal on top of
+  // another keeps one continuous backdrop instead of two semi-transparent ::backdrops flashing/darkening).
+  // Its lifecycle rides the scroll-lock ref-count: JS adds .is-open when the FIRST modal opens and removes
+  // it when the LAST closes, so a replace/stack (count never hits 0) leaves it untouched. The native
+  // ::backdrop is made transparent so it doesn't double the scrim. z-index below the top layer (the dialog
+  // + panel are ABOVE it), huge so it dims all normal page content. Colour derives from the CONTENT colour
+  // so it INVERTS with the palette (dark dim on a light site, lighter scrim on a dark site); slate fallback
+  // for engines without color-mix. STAGGER: .is-open (enter) fades in with NO delay (scrim FIRST); the base
+  // (exit) is DELAYED one step so it fades out AFTER the panel has left (panel-out → scrim-out).
+  `${mdlg('::backdrop')}{background:transparent}`,
+  `[data-sw-modal-scrim]{--sw-modal-t:.3s;position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.45);background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);pointer-events:none;transition:opacity var(--sw-modal-t) ease var(--sw-modal-t),-webkit-backdrop-filter var(--sw-modal-t) ease var(--sw-modal-t),backdrop-filter var(--sw-modal-t) ease var(--sw-modal-t)}`,
+  `[data-sw-modal-scrim].is-open{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);transition:opacity var(--sw-modal-t) ease,-webkit-backdrop-filter var(--sw-modal-t) ease,backdrop-filter var(--sw-modal-t) ease}`,
   // The BODY is the VISIBLE CARD — all paint moved here from the panel. Defaults at ZERO specificity so
   // the author's non-width utilities (bg-*/text-*/p-*/rounded-*/shadow-*/overflow-*) win. `width:100%`
   // fills the panel so the close (on the panel) hugs the body's corner. CRUCIALLY, an author `overflow-
@@ -330,7 +344,7 @@ const MODAL_CSS = [
   `${M} [data-sw-part="autoclose"]>svg{width:1.75rem;height:1.75rem;display:block;transition:transform .2s ease}`,
   `${M} [data-sw-part="autoclose"]:hover{transform:scale(1.1)}`,
   `${M} [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}`,
-  `@media (prefers-reduced-motion:reduce){${mdlg()},${mdlgp()},${mdlg('::backdrop')},${M} [data-sw-part="autoclose"],${M} [data-sw-part="autoclose"]>svg{transition:none}}`,
+  `@media (prefers-reduced-motion:reduce){${mdlg()},${mdlgp()},[data-sw-modal-scrim],${M} [data-sw-part="autoclose"],${M} [data-sw-part="autoclose"]>svg{transition:none}}`,
 ].join('');
 
 const MODAL_JS = `(function(){
@@ -343,18 +357,29 @@ const MODAL_JS = `(function(){
   // scrollbar width so removing it doesn't shift the layout. Ref-counted so nested/sequential
   // modals don't unlock early; the prior inline styles are restored on the last close.
   var docEl=document.documentElement,locks=0,prevOverflow='',prevPad='';
+  // The ONE shared backdrop scrim (a single body-level <div>, built lazily on the first open). Its .is-open
+  // is tied to the lock ref-count: fades IN when the first modal opens, OUT when the last closes — so a
+  // replace/stack (count never hits 0) keeps ONE continuous backdrop (no per-dialog ::backdrop flash).
+  var scrim=null;
+  function ensureScrim(){
+    if(scrim&&scrim.isConnected)return scrim;
+    scrim=document.querySelector('[data-sw-modal-scrim]');
+    if(!scrim){scrim=document.createElement('div');scrim.setAttribute('data-sw-modal-scrim','');scrim.setAttribute('aria-hidden','true');document.body.appendChild(scrim);}
+    return scrim;
+  }
   function lock(){
     if(locks===0){
       var gap=window.innerWidth-docEl.clientWidth;
       prevOverflow=docEl.style.overflow;prevPad=document.body.style.paddingRight;
       docEl.style.overflow='hidden';
       if(gap>0)document.body.style.paddingRight=((parseFloat(getComputedStyle(document.body).paddingRight)||0)+gap)+'px';
+      ensureScrim().classList.add('is-open'); // scrim was built at init (painted opacity:0) → transitions cleanly
     }
     locks++;
   }
   function unlock(){
     if(locks>0)locks--;
-    if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;}
+    if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;if(scrim)scrim.classList.remove('is-open');}
   }
   // DEFAULT single-modal: opening a modal dismisses any OTHER open SW modal first (so a modal opened from
   // inside a modal REPLACES it). data-allow-multiple="true" (on the marker — the <dialog> in the lighter
@@ -470,7 +495,7 @@ const MODAL_JS = `(function(){
       dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
     }
   }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
+  function init(){var m=document.querySelectorAll('[data-sw-component="modal"]');if(m.length)ensureScrim();Array.prototype.forEach.call(m,enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 

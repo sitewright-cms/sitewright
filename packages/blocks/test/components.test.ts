@@ -250,6 +250,21 @@ describe('component registry', () => {
     expect(js).toContain('if(dialog.open)return');
   });
 
+  it('Modal enforces single-open by default; data-allow-multiple="true" opts into stacking', () => {
+    const js = componentAssets(['Modal']).js;
+    // Opening a modal dismisses any OTHER open SW modal first (a modal opened from inside a modal
+    // replaces it) — unless the opener opts into stacking.
+    expect(js).toContain("getAttribute('data-allow-multiple')==='true'");
+    expect(js).toContain("document.querySelectorAll('dialog[open]')");
+    // The close targets OTHER open SW modals (never the one being opened, never foreign <dialog>s).
+    expect(js).toContain("other!==dialog&&other.closest('[data-sw-component=\"modal\"]')");
+    expect(js).toContain('other.close()');
+    // Opt-out is symmetric: a flagged modal neither closes others (guarded on the opener) nor is closed
+    // (guarded per-other), so both directions of stacking are preserved.
+    expect(js).toContain('if(!allowMulti(dialog))');
+    expect(js).toContain('&&!allowMulti(other)');
+  });
+
   it('Modal auto-injects a styled close button and honours data-closebutton / data-backdrop-close', () => {
     const { css, js } = componentAssets(['Modal']);
     // The runtime builds a top-right close button (brand-primary square, white icon) and reads the

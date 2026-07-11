@@ -9,6 +9,7 @@ import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
 import { parseKey } from './crypto/secret.js';
+import { parseTrustProxy } from './trust-proxy.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
 import { AnthropicProvider } from './ai/provider.js';
 import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
@@ -41,13 +42,25 @@ if (isProduction && process.env.COOKIE_SECURE !== 'true') {
 // TRUST_PROXY=true (or a CIDR/comma list) when running behind a reverse proxy, so
 // rate limiting keys on the real client IP. Warn if likely misconfigured.
 const trustProxyEnv = process.env.TRUST_PROXY;
-const trustProxy: boolean | string[] =
-  trustProxyEnv === 'true' ? true : trustProxyEnv ? trustProxyEnv.split(',').map((s) => s.trim()) : false;
+// `true`/`false`, or a comma list of IPs/CIDRs — see parseTrustProxy. Resolved value keys the rate limiter
+// on the real client IP behind a proxy; without it, all clients share one bucket keyed on the proxy IP.
+const trustProxy = parseTrustProxy(trustProxyEnv);
 if (isProduction && trustProxy === false) {
   process.stderr.write(
     '[sitewright/api] WARNING: TRUST_PROXY is not set; behind a proxy, per-IP rate limits key on the proxy IP\n',
   );
 }
+// Surface the resolved trust-proxy mode at boot so an operator can confirm the rate-limit key (req.ip)
+// reflects the real client rather than the proxy.
+process.stdout.write(
+  `[sitewright/api] TRUST_PROXY=${trustProxyEnv ?? '(unset)'} → ${
+    trustProxy === true
+      ? 'trusting all proxies'
+      : trustProxy === false
+        ? 'no proxy trusted (direct socket IP)'
+        : `trusting [${trustProxy.join(', ')}]`
+  }\n`,
+);
 // In development the forced default-password change is OFF (admin@sitewright.example / 123456 just works);
 // say so loudly so a dev instance is never left internet-reachable on the default credentials.
 if (!isProduction) {

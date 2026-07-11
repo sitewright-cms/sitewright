@@ -265,6 +265,10 @@ const MP = '[data-sw-part="panel"]';
 // `>` child combinator (for both authoring forms) so they never cascade onto a nested component's
 // [data-sw-part="panel"] — e.g. a Tabs component's tab panels rendered INSIDE a modal.
 const mdlgp = (dsuffix = ''): string => `${M} dialog${dsuffix}>${MP},dialog${M}${dsuffix}>${MP}`;
+// The BODY is the visible card (all paint moved here); it's always a direct child of the panel. Scoping
+// it as `panel>body` keeps the paint defaults off any nested component's [data-sw-part="body"].
+const MB = '[data-sw-part="body"]';
+const mbody = (dsuffix = ''): string => `${M} dialog${dsuffix}>${MP}>${MB},dialog${M}${dsuffix}>${MP}>${MB}`;
 const MODAL_CSS = [
   // Legacy wrapper stays inline-flowing; the lighter form has no wrapper (the dialog IS the marker,
   // and a closed <dialog> is display:none until opened).
@@ -277,25 +281,25 @@ const MODAL_CSS = [
   // no top clip) and scrolls, touching only the bottom. display:none base so a shut modal never lays
   // out; `[open]` → flex (the panel's margin:auto then centers it, or top-aligns a too-tall one). The
   // overlay/display allow-discrete transitions keep it mounted through the exit animation. NOTHING here
-  // is author-overridable: the JS MOVES the author's class + inline style off the <dialog> onto the
-  // panel, so the one-line `<dialog id data-sw-component="modal" class="…">` authoring is unchanged (the
-  // classes just style the panel now). box-sizing:border-box keeps the padding inside the 100vw/100dvh.
+  // is author-overridable: the JS SPLITS the author's class off the <dialog> — WIDTH utilities size the
+  // panel, everything else + the inline style PAINTS the body — so the one-line `<dialog id
+  // data-sw-component="modal" class="…">` authoring is unchanged. box-sizing:border-box keeps the padding
+  // inside the 100vw/100dvh.
   // scrollbar-gutter:stable both-edges reserves the scrollbar's space on BOTH sides even when no
   // scrollbar shows, so on native-gutter systems (Windows classic / some Linux) a tall modal's scrollbar
   // never overlaps the overhanging close button, and the centered panel stays symmetric. 100vh precedes
   // 100dvh as a fallback for engines without dvh (old Safari/Firefox).
   `${mdlg()}{position:fixed;inset:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;margin:0;padding:2rem;box-sizing:border-box;border:0;background:transparent;box-shadow:none;display:none;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable both-edges;transition:overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]')}{display:flex}`,
-  // The PANEL is the visible box. Appearance defaults at ZERO specificity (:where) so the moved author
-  // utilities (bg-*/text-*/p-*/max-w-*/rounded-*/shadow-*…) win without !important — override any of
-  // them exactly as before, on the <dialog>. `margin:auto` in the flex container centers it when it fits
-  // and TOP-ALIGNS it (no top clip, unlike align-items:center) when it is taller than the viewport, so
-  // it scrolls at the screen edge. PADDING lives HERE (default 1.5rem): `p-0` → content touches the panel
-  // edge; `p-0 bg-transparent` → content floats directly on the backdrop.
-  `:where(${mdlgp()}){position:relative;margin:auto;width:100%;max-width:32rem;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border-radius:.75rem;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
-  // GUARANTEE (normal specificity — beats a moved author `overflow-*` / `max-h-*`): the panel is never
-  // its OWN scroll box, so it can't clip the overhanging close and all scrolling stays on the container.
-  // This is what makes the "close is never clipped" invariant hold no matter which utilities are added.
+  // The PANEL is a NEUTRAL positioning wrapper — it paints NOTHING. Its only jobs: (1) hold the WIDTH so
+  // the box has a stable, definite size (it's a child of the definite-width dialog flex container, so the
+  // author's width utilities — `max-w-*`/`w-11/12`/`w-full` — resolve stably here, unlike on a shrink-wrap
+  // parent), (2) be the position:relative anchor for the overhanging close, (3) center via margin:auto
+  // (top-aligning a too-tall panel — no top clip). Defaults at ZERO specificity (:where) so the moved
+  // author WIDTH utilities win; `width:100%` → full width on mobile, `max-width` caps desktop only.
+  `:where(${mdlgp()}){position:relative;margin:auto;width:100%;max-width:32rem}`,
+  // GUARANTEE (normal specificity): the panel is never its OWN scroll box and paints nothing, so the
+  // overhanging close (its child) is never clipped and all scrolling stays on the container.
   `${mdlgp()}{overflow:visible;max-height:none}`,
   // Panel enter/exit from the top; @starting-style + the container's allow-discrete let the exit animate.
   `${mdlgp()}{opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease}`,
@@ -307,9 +311,17 @@ const MODAL_CSS = [
   `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]::backdrop')}{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}`,
   `@starting-style{${mdlg('[open]::backdrop')}{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}`,
-  // Body: a plain content wrapper (the container scrolls, so NO inner scroll here). Kept so an authored
-  // [data-sw-part="body"] and the header-band negative-margin pattern reference the panel's padding edge.
-  `${M} [data-sw-part="body"]{min-width:0}`,
+  // The BODY is the VISIBLE CARD — all paint moved here from the panel. Defaults at ZERO specificity so
+  // the author's non-width utilities (bg-*/text-*/p-*/rounded-*/shadow-*/overflow-*) win. `width:100%`
+  // fills the panel so the close (on the panel) hugs the body's corner. CRUCIALLY, an author `overflow-
+  // hidden` clips the card's content (e.g. a full-bleed image to the rounded corners) WITHOUT touching
+  // the close, which lives on the neutral panel OUTSIDE this box. `p-0` → content touches the card edge;
+  // `p-0 bg-transparent` → content floats directly on the backdrop.
+  `:where(${mbody()}){width:100%;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border-radius:.75rem;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:visible}`,
+  // GUARANTEE (normal specificity — beats a moved author `max-h-*`): the body grows with content and is
+  // never its OWN scroll box, so a clipped card never turns into an inner scrollbar (scrolling stays on
+  // the container, at the screen edge). min-width:0 lets it shrink in the flex/grid context.
+  `${mbody()}{min-width:0;max-height:none}`,
   // Auto-injected close button OVERHANGS the panel's top-right corner (needs the panel's overflow:visible);
   // it lands inside the container's padding, so it stays fully on-screen. Hover zooms + spins the icon 180°.
   `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:var(--sw-color-primary-content,#fff);cursor:pointer;transition:transform .2s ease}`,
@@ -379,37 +391,49 @@ const MODAL_JS = `(function(){
     // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
     // so the lock is always released exactly once per open.
     dialog.addEventListener('close',unlock);
-    // Build the styled PANEL inside the <dialog> and move the authored content + styling into it,
-    // leaving the <dialog> itself as a transparent, full-viewport SCROLLER — so a TALL modal scrolls at
-    // the SCREEN edge (not inside its body) and the overhanging close, which sits inside the container's
-    // padding, is never clipped. The author's class + inline style MOVE off the <dialog> onto the panel,
-    // so the one-line "<dialog id data-sw-component=modal class=...>" authoring is unchanged — those
-    // utilities now style the panel (the <dialog> keeps only its id + data-* config). Nodes are
-    // MOVED, not re-serialized, so listeners / form state / iframes survive. Idempotent (skips if a
-    // panel already exists); honours an author-supplied [data-sw-part="body"].
+    // Build the neutral PANEL + the visible BODY inside the <dialog>, leaving the <dialog> itself a
+    // transparent, full-viewport SCROLLER — so a TALL modal scrolls at the SCREEN edge (not inside its
+    // body) and the overhanging close is never clipped. The author's class is SPLIT off the <dialog>:
+    // WIDTH utilities (w-/max-w-/min-w-) size the panel (whose parent — the dialog — is the definite-width
+    // flex container, so % widths resolve stably), everything else + the inline style PAINTS the body
+    // (bg/rounded/padding/shadow; an author overflow-hidden clips the card WITHOUT touching the
+    // panel-anchored close). Nodes are MOVED, not re-serialized, so listeners / form state / iframes
+    // survive. Idempotent (skips if a panel already exists); honours an author-supplied [data-sw-part="body"].
     var panel=null;
     for(var pi=0;pi<dialog.children.length;pi++){if(dialog.children[pi].getAttribute('data-sw-part')==='panel'){panel=dialog.children[pi];break;}}
     if(!panel){
       panel=document.createElement('div');
       panel.setAttribute('data-sw-part','panel');
-      if(dialog.className){panel.className=dialog.className;dialog.removeAttribute('class');}
-      var st=dialog.getAttribute('style');
-      if(st){panel.setAttribute('style',st);dialog.removeAttribute('style');}
-      var hasBody=false;
-      for(var bi=0;bi<dialog.children.length;bi++){if(dialog.children[bi].getAttribute('data-sw-part')==='body'){hasBody=true;break;}}
-      if(hasBody){
-        // Author supplied a body part: move it AND any sibling nodes into the panel, preserving order
-        // (so nothing is orphaned in the transparent, unstyled container).
+      // Find or create the BODY (the visible card). Content lives in the body; the panel paints nothing.
+      var body=null;
+      for(var bi=0;bi<dialog.children.length;bi++){if(dialog.children[bi].getAttribute('data-sw-part')==='body'){body=dialog.children[bi];break;}}
+      if(body){
+        // Author supplied a body part: move it AND any sibling nodes into the panel, preserving order.
         while(dialog.firstChild){panel.appendChild(dialog.firstChild);}
       }else{
         // No body part: wrap ALL authored children in a generated body.
-        var body=document.createElement('div');body.setAttribute('data-sw-part','body');while(dialog.firstChild){body.appendChild(dialog.firstChild);}
+        body=document.createElement('div');body.setAttribute('data-sw-part','body');while(dialog.firstChild){body.appendChild(dialog.firstChild);}
         panel.appendChild(body);
       }
+      // SPLIT the author classes: width utilities (with any variant prefix, e.g. sm:w-full) → panel;
+      // everything else → body. classList tokenizes robustly; the width regex has NO backslash escape
+      // (it lives inside this template literal, where \\s would be mangled). Then the inline style
+      // (usually a bg gradient) paints the body too.
+      if(dialog.className){
+        var wtoks=[],otoks=[],cls=Array.prototype.slice.call(dialog.classList);
+        for(var ci=0;ci<cls.length;ci++){(/^(?:[^:]+:)*(?:w|max-w|min-w)-/.test(cls[ci])?wtoks:otoks).push(cls[ci]);}
+        if(wtoks.length){panel.className=wtoks.join(' ');}
+        if(otoks.length){body.className=body.className?body.className+' '+otoks.join(' '):otoks.join(' ');}
+        dialog.removeAttribute('class');
+      }
+      var st=dialog.getAttribute('style');
+      if(st){body.setAttribute('style',st);dialog.removeAttribute('style');}
       dialog.appendChild(panel);
     }
     // Config attrs live on the marker (the wrapper in the legacy form, the <dialog> in the lighter one).
     // Auto close button OVERHANGS the panel's top-right corner, unless opted out with data-closebutton="false".
+    // Appended LAST (it's position:absolute, so visually unchanged) so it is NOT the first focusable —
+    // the <dialog>'s open-focus then lands on the first CONTENT control instead of the dismiss button.
     if(root.getAttribute('data-closebutton')!=='false'&&!panel.querySelector('[data-sw-part="autoclose"]')){
       var x=document.createElement('button');
       x.type='button';
@@ -417,7 +441,7 @@ const MODAL_JS = `(function(){
       x.setAttribute('aria-label',root.getAttribute('data-close-label')||swt('close','Close'));
       x.innerHTML=CLOSE_SVG;
       x.addEventListener('click',function(){dialog.close();});
-      panel.insertBefore(x,panel.firstChild);
+      panel.appendChild(x);
     }
     // Authored close buttons (any number) inside the dialog dismiss too.
     Array.prototype.forEach.call(dialog.querySelectorAll('[data-sw-part="close"]'),function(b){b.addEventListener('click',function(){dialog.close();});});

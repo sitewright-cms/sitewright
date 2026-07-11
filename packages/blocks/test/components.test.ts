@@ -273,20 +273,20 @@ describe('component registry', () => {
     expect(css).toContain('width:3.25rem;height:2.25rem');
   });
 
-  it('Modal PANEL appearance is zero-specificity so the (moved) dialog classes win, and the backdrop blurs', () => {
+  it('Modal PAINT lives on the BODY (zero-specificity), the PANEL is neutral, and the backdrop blurs', () => {
     const css = componentAssets(['Modal']).css;
-    // Appearance defaults live on the PANEL, wrapped in :where() (specificity 0) → the utilities the
-    // author put on the <dialog> (moved onto the panel by the JS) override them without !important; bg/
-    // text come from the global theme vars; 1.5rem default padding (author p-0 / p-8 / p-6 wins). The
-    // panel is scoped as a DIRECT child (>) of the <dialog> so it can't leak onto a nested component's
-    // [data-sw-part="panel"] (e.g. Tabs panels inside a modal).
+    // The PANEL is neutral LAYOUT only (no paint): position/margin:auto/width/max-width, at :where() so
+    // the author's moved WIDTH utilities win. It must NOT carry background/padding/box-shadow anymore.
     expect(css).toContain(
-      ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"],dialog[data-sw-component="modal"]>[data-sw-part="panel"])',
+      ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"],dialog[data-sw-component="modal"]>[data-sw-part="panel"]){position:relative;margin:auto;width:100%;max-width:32rem}',
     );
-    expect(css).toContain('var(--sw-color-base-100');
-    expect(css).toContain('var(--sw-color-base-content');
-    expect(css).toContain('padding:1.5rem');
-    expect(css).toContain('overflow:visible'); // lets the close button overhang the panel corner
+    // All PAINT moved to the BODY, wrapped in :where() (specificity 0) → the author's non-width utilities
+    // (bg-*/text-*/p-*/rounded-*/shadow-*/overflow-*) override without !important; bg/text from the global
+    // theme vars; 1.5rem default padding (author p-0 / p-8 wins); overflow:visible default so `overflow-
+    // hidden` can clip the card. Scoped as panel>body so it can't leak onto a nested component's body.
+    expect(css).toContain(
+      ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"]>[data-sw-part="body"],dialog[data-sw-component="modal"]>[data-sw-part="panel"]>[data-sw-part="body"]){width:100%;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border-radius:.75rem;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:visible}',
+    );
     // Backdrop dims AND blurs.
     expect(css).toContain('backdrop-filter:blur(5px)');
     // The scrim derives from --sw-color-base-content (with the slate rgba fallback) so it INVERTS
@@ -331,19 +331,25 @@ describe('component registry', () => {
     expect(css).toContain(
       ':where([data-sw-component="modal"] dialog>[data-sw-part="panel"],dialog[data-sw-component="modal"]>[data-sw-part="panel"]){position:relative;margin:auto;',
     );
-    // The runtime builds the panel and MOVES the authored content + the dialog's class/style into it
-    // (appendChild, not innerHTML, so listeners / form state survive); the bare-<dialog> authoring is
-    // unchanged. The close is a child of the PANEL so it overhangs the panel corner.
+    // The runtime builds the panel + body and MOVES the authored content in (appendChild, not innerHTML,
+    // so listeners / form state survive). The author's class is SPLIT: WIDTH utilities size the panel,
+    // everything else paints the body; the bare-<dialog> authoring is unchanged.
     expect(js).toContain("setAttribute('data-sw-part','panel')");
-    expect(js).toContain('panel.className=dialog.className');
+    expect(js).not.toContain('panel.className=dialog.className'); // no longer moves the WHOLE class to panel
+    expect(js).toContain('(?:w|max-w|min-w)-'); // width-utility test → panel
+    expect(js).toContain('panel.className=wtoks.join');
+    expect(js).toContain("body.className=body.className?body.className+' '+otoks.join(' '):otoks.join(' ')");
     expect(js).toContain("dialog.removeAttribute('class')");
     // With an author-supplied body part, ALL dialog children move into the panel (no orphaned siblings);
     // without one, the children are wrapped in a generated body — both preserving order via appendChild.
     expect(js).toContain('while(dialog.firstChild){panel.appendChild(dialog.firstChild);}');
     expect(js).toContain('while(dialog.firstChild){body.appendChild(dialog.firstChild);}');
     expect(js).not.toContain('body.innerHTML');
-    expect(js).toContain('panel.insertBefore(x,panel.firstChild)');
-    // The panel is built before the close button is injected (so the close lands inside the panel).
+    // The close is APPENDED LAST (position:absolute → visually unchanged) so it is not the first focusable
+    // — the dialog's open-focus lands on the first content control, not the dismiss button.
+    expect(js).toContain('panel.appendChild(x)');
+    expect(js).not.toContain('panel.insertBefore(x,panel.firstChild)');
+    // The panel is built before the close button is injected.
     expect(js.indexOf("setAttribute('data-sw-part','panel')")).toBeLessThan(
       js.indexOf("setAttribute('data-sw-part','autoclose')"),
     );

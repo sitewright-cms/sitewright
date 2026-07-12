@@ -273,7 +273,7 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     for (const p of bundle.pages) expect((p as { rawHtml?: boolean }).rawHtml).toBeUndefined();
   });
 
-  it('HOSTS the foreign stylesheet (for the nativize capture) but not scripts/icon fonts (keeps brand fonts) — R30', async () => {
+  it('DISCARDS the foreign stylesheet (nativizer retired) + scripts/icon fonts, but keeps brand fonts — R30', async () => {
     const fonts: string[] = [];
     let cssHosted = 0;
     let scriptHosted = 0;
@@ -290,8 +290,8 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1><script>doThing()</script>', HOME_HEAD + STYLE_FA) }]),
       { media, foundation: true },
     );
-    expect(cssHosted).toBe(1); // foreign stylesheet IS hosted now — the nativize capture reads real computed styles from it
-    expect(scriptHosted).toBe(0); // foreign scripts still not hosted (not needed for the capture)
+    expect(cssHosted).toBe(0); // foreign stylesheet DISCARDED in foundation mode — its only consumer (the mechanical nativize capture) is retired; it just fights the native pages
+    expect(scriptHosted).toBe(0); // foreign scripts still not hosted (never needed)
     expect(fonts).toEqual(expect.arrayContaining(['brandhead', 'brandbody'])); // brand fonts kept
     expect(fonts).not.toContain('FontAwesome'); // icon font skipped
   });

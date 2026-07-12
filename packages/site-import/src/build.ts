@@ -183,13 +183,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     hostableCss = '';
     diagnostics.push({ code: 'css-overflow', message: `imported CSS exceeds ${Math.round(MAX_HOSTABLE_CSS_BYTES / 1024)} KB; omitted` });
   }
-  // Self-host the imported stylesheet even in FOUNDATION mode: the mechanical NATIVIZE reads each page's
-  // computed styles from a headless screenshot, and without the foreign CSS the page renders UNSTYLED — so
-  // every layout that came from the site's own classes (`.d-grid`, `.blue-gradient`) collapses to a plain
-  // block and the nativized result is stacked + colourless. The link goes into `website.head` for the
-  // capture; nativize strips it again at finalize (stripForeignStylesheet), so the PUBLISHED site stays
-  // clean. Foreign SCRIPTS are still discarded (never needed for the capture).
-  const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
+  // FOUNDATION mode DISCARDS the foreign stylesheet entirely — it is NOT hosted and NOT linked. It used to
+  // be self-hosted + linked into website.head for the mechanical nativizer (which read each page's computed
+  // styles off a foreign-styled headless render); that nativizer is RETIRED, so the link's only consumer is
+  // gone. Left in, the foreign CSS's high-specificity/!important rules FIGHT the native authored pages and
+  // it's ~600 KB of dead weight — so foundation clones stand on native CSS alone. The LITERAL/raw import
+  // (rawFidelity replica) still hosts + links it below, because that mode IS the foreign site verbatim.
+  const cssUrl = !opts.foundation && hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
   const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
   const pageStyles = opts.foundation || cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
 

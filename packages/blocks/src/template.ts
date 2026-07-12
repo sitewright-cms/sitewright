@@ -371,6 +371,21 @@ function createInstance(): typeof Handlebars {
   // Our content helpers are ALL `sw-`-prefixed so they never shadow a dataset FIELD of the
   // same bare name (a field `url`/`date`/`icon` is read plainly as {{url}}/{{date}}/{{icon}}).
   hb.unregisterHelper('log');
+  // GRACEFUL unknown-helper handling. Handlebars THROWS "Missing helper: x" when an inline call
+  // `{{x arg}}` (or `{{x k=v}}`) names a helper that isn't registered — a mistyped or retired helper
+  // (e.g. the old {{sw-embed}}) would otherwise 400 the WHOLE page render over a single authoring typo,
+  // which forced manual recovery in the clone/author loop. Instead render a visible, inert HTML comment
+  // so the rest of the page renders and the mistake is DISCOVERABLE in the output. The name is stripped
+  // to an identifier so it can't break out of the comment. A BARE `{{missingField}}` (no params) is left
+  // untouched → renders empty, exactly as `strict:false` already does (so optional dataset/page fields
+  // that are undefined still render nothing, not a comment). validateTemplate still runs at save time.
+  hb.registerHelper('helperMissing', function helperMissing(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as { name?: string; hash?: Record<string, unknown> } | undefined;
+    const calledAsHelper = args.length > 1 || (options?.hash != null && Object.keys(options.hash).length > 0);
+    if (!calledAsHelper) return undefined; // bare {{missingField}} → empty (unchanged non-strict behaviour)
+    const name = String(options?.name ?? '').replace(/[^\w.:-]/g, '').slice(0, 64);
+    return new Handlebars.SafeString(`<!-- sw:unknown-helper ${name} -->`);
+  });
   // {{sw-url page.link}} → scheme-sanitized URL (blocks javascript:/data:/protocol-relative).
   hb.registerHelper('sw-url', (value: unknown) => safeUrl(typeof value === 'string' ? value : ''));
   // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; {{sw-date x "YYYY"}} → year.

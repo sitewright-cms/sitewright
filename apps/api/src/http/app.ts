@@ -268,6 +268,7 @@ import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit } from '../render/clone-audit.js';
+import { visualAudit, type AuditViewport } from '../render/visual-audit.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -4736,6 +4737,52 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           visualChecks(fidelity),
         ]);
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...audit, fidelity });
+      },
+    );
+
+    // visual_audit: the VISION acceptance gate — the reliable fidelity signal the computed-style scorers miss.
+    // Captures the CLONE (loopback build) + the LIVE original (SSRF-pinned, fresh — not the degraded import
+    // cache) full-page at desktop + mobile, hands both to the project's configured vision model, and returns a
+    // TAGGED defect list (region/category/severity) with a blocker+major PASS/FAIL. It SEES rendered fonts/
+    // images (unlike getComputedStyle, which lies) and full pages (not clipped). Needs an AI provider. content:read.
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/visual-audit/:pageId',
+      { config: rl(3) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const resolved = await resolveAiProvider(ctx);
+        if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured — the visual audit needs a vision model' });
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        if (!targetPage) throw new NotFoundError('page not found');
+        const fullRoute = pathToSlug(pagePath(targetPage, byId));
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
+        // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
+        const [buildShots, sourceShots] = await Promise.all([
+          captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
+          captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
+        ]);
+        const viewports: AuditViewport[] = vps.map((name) => ({ name, original: sourceShots[name], clone: buildShots[name] }));
+        const result = await visualAudit({
+          provider: resolved.provider,
+          viewports,
+          signal: abort.signal,
+          maxTokens: resolved.maxOutputTokens ?? 2048,
+          onUsage: (u) => { void aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, u); },
+        });
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...result });
       },
     );
 

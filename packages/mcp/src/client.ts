@@ -114,6 +114,28 @@ export interface CloneAuditResult {
   fidelity: FidelityCheckResult;
 }
 
+/** One tagged visual defect from the vision acceptance gate. */
+export interface VisualDefect {
+  region: string;
+  category: 'layout' | 'spacing' | 'typography' | 'color' | 'image' | 'component' | 'content' | 'chrome' | 'responsive';
+  severity: 'blocker' | 'major' | 'minor';
+  description: string;
+}
+/** The VISION acceptance gate (GET /projects/:id/visual-audit/:pageId) — a vision model diffs the LIVE
+ *  original vs the clone per region and returns a tagged defect list. PASS = zero blocker + zero major. */
+export interface VisualAuditResult {
+  sourceUrl: string;
+  route: string;
+  pass: boolean;
+  defects: VisualDefect[];
+  summary: string;
+  blockers: number;
+  majors: number;
+  minors: number;
+  captured: { clone: boolean; original: boolean };
+  model: string;
+}
+
 /** A high-res region crop (lossless WebP, base64). */
 export interface RegionCrop { base64: string; mimeType: 'image/webp'; width: number; height: number }
 /** High-resolution region compare (GET /projects/:id/compare-regions/:pageId). */
@@ -313,6 +335,11 @@ export class SitewrightClient {
   /** The COMPREHENSIVE clone-acceptance gate: structure + behaviour + visual legs, one PASS/FAIL to terminate on. */
   async cloneAudit(pageId: string): Promise<CloneAuditResult> {
     return this.request('GET', this.projectPath(`/clone-audit/${encodeURIComponent(pageId)}`));
+  }
+
+  /** The VISION acceptance gate: a vision model diffs the LIVE original vs the clone per region → tagged defects. */
+  async visualAudit(pageId: string): Promise<VisualAuditResult> {
+    return this.request('GET', this.projectPath(`/visual-audit/${encodeURIComponent(pageId)}`));
   }
 
   /** High-res region crops (header/footer) of BUILD vs SOURCE, lossless WebP, for a crisp visual compare. */

@@ -267,8 +267,9 @@ import {
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit } from '../render/clone-audit.js';
-import { visualAudit, type AuditViewport } from '../render/visual-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
+import { visualAudit, type AuditViewport, type VisualDefect } from '../render/visual-audit.js';
+import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -5150,6 +5151,46 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     isAdmin: isInstanceAdmin,
     getAgentInstructions: () => instanceSettingsRepo.getEffectiveAgentInstructions(),
     rl,
+    cloneOrchestration: {
+      // Imported pages that still need authoring (have an import source), home first, skipping link
+      // placeholders + collection parents. The gate — not this list — decides whether each is actually done.
+      listPages: async (ctx) => {
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        return allPages
+          .filter((p) => Boolean((p.data as { swImport?: { sourceUrl?: string } } | undefined)?.swImport?.sourceUrl))
+          .filter((p) => !isLinkPage(p) && !p.collection)
+          .sort((a, b) => (((a.path ?? '') === '' ? 0 : 1) - ((b.path ?? '') === '' ? 0 : 1)))
+          .map((p) => ({ pageId: p.id, slug: pathToSlug(pagePath(p, byId)) ?? '', title: p.title }));
+      },
+      // AUTHORITATIVE gate: re-run the (already-tested) clone-audit + visual-audit routes with the agent's
+      // own scoped token, and re-read the STORED source for the anti-lie marker check — the agent's claim is
+      // ignored. Combines the vision diff (authoritative visual), the non-advisory STRUCTURE/BEHAVIOUR
+      // checks, and the native/foreign marker ratio into one verdict.
+      runGate: async (token, ctx, pageId) => {
+        const inject = async (path: string): Promise<Record<string, unknown>> => {
+          const res = await app.inject({ method: 'GET', url: path, headers: { authorization: `Bearer ${token}` } });
+          if (res.statusCode < 200 || res.statusCode >= 300) throw new Error(`${path} → ${res.statusCode}`);
+          return JSON.parse(res.payload) as Record<string, unknown>;
+        };
+        const pid = ctx.projectId;
+        const enc = encodeURIComponent(pageId);
+        const [ca, va] = await Promise.all([
+          inject(`/projects/${pid}/clone-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
+          inject(`/projects/${pid}/visual-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
+        ]);
+        const source = ((await contentRepo.get(ctx, 'page', pageId).catch(() => null)) as Page | null)?.source ?? null;
+        const markers = checkNativeMarkers(source);
+        const checks = Array.isArray((ca as { checks?: AuditCheck[] }).checks) ? (ca as { checks: AuditCheck[] }).checks : null;
+        const structuralFails = checks
+          ? checks.filter((c) => !c.advisory && !c.pass && c.leg !== 'visual').map((c) => `${c.label} — ${c.detail}`)
+          : ['clone_audit could not run (fix the page so it renders)'];
+        const visual = typeof (va as { pass?: unknown }).pass === 'boolean'
+          ? { pass: (va as { pass: boolean }).pass, summary: String((va as { summary?: string }).summary ?? ''), defects: ((va as { defects?: VisualDefect[] }).defects ?? []) }
+          : { pass: false, summary: 'visual audit could not run', defects: [] as VisualDefect[] };
+        return { pass: visual.pass && structuralFails.length === 0 && markers.ok, visual, structuralFails, markers };
+      },
+    },
   });
 
   app.get('/health', async () => ({ ok: true }));

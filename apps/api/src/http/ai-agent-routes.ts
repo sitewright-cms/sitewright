@@ -9,6 +9,7 @@ import type { AgentProvider, AgentMessage } from '../ai/agent-provider.js';
 import { runAgentLoop } from '../ai/agent-loop.js';
 import { McpToolBridge } from '../ai/tool-bridge.js';
 import { mintAgentToken, revokeAgentToken, clearAgentTokenActive } from '../ai/agent-token.js';
+import { runCloneOrchestration, type ClonePageTask, type CloneGateResult } from '../ai/clone-orchestrator.js';
 import type { AgentGrantsRepository } from '../repo/agent-grants.js';
 
 /** First instant of the current UTC month — the basis for monthly token quotas. */
@@ -34,6 +35,11 @@ const MAX_ITERATIONS = 60;
 export const DEFAULT_AGENT_MAX_OUTPUT_TOKENS = 8192;
 /** Idle conversations are dropped from the in-memory store after this long. */
 const CONVERSATION_TTL_MS = 30 * 60_000;
+/** A whole-site clone authors many pages across many turns — give its scoped token a long lease (revoked
+ *  at the end regardless). */
+const CLONE_TOKEN_TTL_MS = 2 * 60 * 60_000;
+/** Author→gate→fix rounds per page before the orchestrator moves on (bounds runaway cost per page). */
+const CLONE_MAX_ROUNDS = 4;
 
 const CapabilityEnum = z.enum(['content:read', 'content:write', 'content:delete', 'publish']);
 
@@ -105,6 +111,15 @@ export interface AiAgentRoutesDeps {
   isAdmin: (userId: string) => Promise<boolean>;
   getAgentInstructions: () => Promise<string>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+  /** Optional clone-orchestration hooks (app.ts supplies them — they need contentRepo + the render/gate
+   *  functions). When present, the owner-only `POST /projects/:id/ai-clone` route is registered. */
+  cloneOrchestration?: {
+    /** The imported pages that still need authoring, in a sensible order (home first). */
+    listPages: (ctx: ProjectContext) => Promise<ClonePageTask[]>;
+    /** The AUTHORITATIVE per-page gate — re-renders + re-reads server-side, ignoring the agent's claim.
+     *  `token` is the scoped agent token (so it can reuse the audit routes); returns the combined verdict. */
+    runGate: (token: string, ctx: ProjectContext, pageId: string) => Promise<CloneGateResult>;
+  };
 }
 
 interface Conversation {
@@ -335,6 +350,107 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       if (raw.writable) raw.end();
     }
   });
+
+  // ── The autonomous CLONE ORCHESTRATOR (owner-initiated). Authors EVERY imported page to the acceptance
+  // gate automatically: import → author → AUTHORITATIVE gate (vision diff vs the live original + structure/
+  // behaviour + an anti-lie marker check on the stored source) → feed defects back → iterate until green.
+  // Streams per-page progress over SSE. Only registered when app.ts wires the clone hooks (contentRepo +
+  // the render/gate functions live there). This is the missing automation layer the tools always lacked.
+  if (deps.cloneOrchestration) {
+    const clone = deps.cloneOrchestration;
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/ai-clone', { config: deps.rl(3) }, async (req, reply) => {
+      const { ctx } = await deps.resolveProject(req, 'session-only');
+      if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const resolved = await deps.resolveAgent(ctx);
+      if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
+      const userIsAdmin = await deps.isAdmin(ctx.userId);
+      const since = startOfMonthUTC(new Date());
+      if (await overQuota(ctx, userIsAdmin, since, resolved)) return reply.code(429).send({ error: 'AI quota exhausted for this month' });
+      const pages = await clone.listPages(ctx);
+      if (pages.length === 0) return reply.code(400).send({ error: 'no imported pages to author — import a site with ?foundation=1 first' });
+
+      // An owner-run whole-site clone gets the full (non-deploy) capability set: it authors, deletes junk
+      // datasets/media, and publishes. Same gated MCP path as the on-page assistant (actor:'agent').
+      const capabilities = [...AGENT_MAX_CAPS];
+      const abort = new AbortController();
+      let minted: { token: string; keyId: string } | undefined;
+      let bridge: McpToolBridge;
+      let tools;
+      try {
+        minted = await mintAgentToken(deps.db, {
+          projectId: ctx.projectId,
+          userId: ctx.userId,
+          role: ctx.role === 'owner' ? 'owner' : 'member',
+          capabilities,
+          ttlMs: CLONE_TOKEN_TTL_MS,
+        });
+        bridge = new McpToolBridge(app, minted.token);
+        tools = await bridge.listTools(new Set(capabilities), WITHHELD_TOOLS);
+      } catch {
+        if (minted) {
+          clearAgentTokenActive(minted.token);
+          await revokeAgentToken(deps.db, minted.keyId).catch(() => {});
+        }
+        return reply.code(502).send({ error: 'failed to start the clone' });
+      }
+      const cloneToken = minted.token;
+      const cloneKeyId = minted.keyId;
+
+      reply.hijack();
+      const raw = reply.raw;
+      raw.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+        'x-accel-buffering': 'no',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'same-origin',
+        'x-frame-options': 'DENY',
+      });
+      const send = (event: string, data: unknown): void => {
+        if (raw.writable) raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      const heartbeat = setInterval(() => {
+        if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
+        else abort.abort();
+      }, 15_000);
+      req.raw.on('close', () => abort.abort());
+      send('start', { model: resolved.provider.model, pages: pages.length });
+
+      const meter = async (usage: { inputTokens: number; outputTokens: number }): Promise<void> => {
+        await deps.aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, usage);
+        if (await overQuota(ctx, userIsAdmin, since, resolved)) throw new Error('AI quota exhausted for this month');
+      };
+      const system = await deps.getAgentInstructions();
+      try {
+        const gen = runCloneOrchestration({
+          provider: resolved.provider,
+          bridge,
+          system,
+          tools,
+          pages,
+          runGate: (pageId) => clone.runGate(cloneToken, ctx, pageId),
+          maxIterations: MAX_ITERATIONS,
+          maxTokens: resolved.maxOutputTokens ?? DEFAULT_AGENT_MAX_OUTPUT_TOKENS,
+          maxRounds: CLONE_MAX_ROUNDS,
+          signal: abort.signal,
+          onUsage: meter,
+        });
+        let next = await gen.next();
+        while (!next.done) {
+          send(next.value.type, next.value);
+          next = await gen.next();
+        }
+      } catch (err) {
+        send('error', { message: err instanceof Error ? err.message : 'clone error' });
+      } finally {
+        clearInterval(heartbeat);
+        clearAgentTokenActive(cloneToken);
+        await revokeAgentToken(deps.db, cloneKeyId).catch(() => {});
+        if (raw.writable) raw.end();
+      }
+    });
+  }
 }
 
 /** Consume the loop generator, forwarding each event, and return its final result. */

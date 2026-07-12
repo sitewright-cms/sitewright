@@ -34,6 +34,100 @@ export function parseSvg(text: string): SVGSVGElement | null {
   return svg as unknown as SVGSVGElement;
 }
 
+// Namespaces used only by SVG editors (Inkscape, Sodipodi, Adobe Illustrator) or RDF/Dublin-Core
+// metadata. Nothing in them renders or drives animation, so every element/attribute here is cruft.
+const EDITOR_NS = new Set([
+  'http://www.inkscape.org/namespaces/inkscape',
+  'http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd',
+  'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+  'http://purl.org/dc/elements/1.1/',
+  'http://creativecommons.org/ns#',
+  'http://web.resource.org/cc/',
+  'http://ns.adobe.com/AdobeIllustrator/10.0/',
+  'http://ns.adobe.com/Graphs/1.0/',
+  'http://ns.adobe.com/AdobeSVGViewerExtensions/3.0/',
+  'http://ns.adobe.com/Extensibility/1.0/',
+  'http://ns.adobe.com/Flows/1.0/',
+  'http://ns.adobe.com/ImageReplacement/1.0/',
+  'http://ns.adobe.com/SaveForWeb/1.0/',
+  'http://ns.adobe.com/Variables/1.0/',
+  'http://ns.adobe.com/GenericCustomNamespace/1.0/',
+  'http://ns.adobe.com/XPath/1.0/',
+]);
+const XMLNS_NS = 'http://www.w3.org/2000/xmlns/';
+/** Distinctive editor prefixes, used ONLY as a fallback when the parser left a prefix unresolved
+ *  (a well-formed editor SVG resolves these via EDITOR_NS instead). Ambiguous single-letter prefixes
+ *  (i/x/a) are intentionally excluded — a legitimate custom namespace could reuse them; when they really
+ *  are Adobe's they resolve through the namespace-URI check below. */
+const EDITOR_PREFIXES = new Set(['inkscape', 'sodipodi', 'rdf', 'dc', 'cc', 'graph']);
+/** Elements whose text content is significant — never strip whitespace/comments inside these. */
+const TEXTUAL = new Set(['text', 'tspan', 'textpath', 'tref', 'title', 'desc', 'style', 'altglyph']);
+/** Pure editor-bookkeeping attributes (layer names) — safe to drop anywhere. Exact-match (not a prefix
+ *  match), so `data-sw-*` animation directives are untouched. */
+const JUNK_ATTRS = new Set(['data-name']);
+
+/** Remove editor-only attributes from one element: namespaced (inkscape:*, sodipodi:*, i:* …), their
+ *  leftover `xmlns:…` declarations, and layer-name attrs. Preserves id/class/style, xmlns, xmlns:xlink,
+ *  xlink:href, xml:*, geometry, and every data-sw-* directive. */
+function cleanAttrs(el: Element): void {
+  for (let i = el.attributes.length - 1; i >= 0; i--) {
+    const a = el.attributes[i]!;
+    const ns = a.namespaceURI || '';
+    if (ns === XMLNS_NS) {
+      // A namespace declaration: drop it only when it BINDS a prefix to an editor namespace URI. Keeps
+      // the default xmlns, xmlns:xlink, and any legitimate custom namespace — prefix name is irrelevant.
+      if (a.localName !== 'xmlns' && EDITOR_NS.has(a.value)) el.removeAttribute(a.name);
+    } else if (ns && EDITOR_NS.has(ns)) {
+      el.removeAttribute(a.name); // resolved editor attr: inkscape:label, sodipodi:role, i:extraneous …
+    } else if (JUNK_ATTRS.has(a.name.toLowerCase())) {
+      el.removeAttribute(a.name); // data-name
+    } else if (!ns) {
+      // Fallback ONLY for an unresolved prefix (parser couldn't bind it): match a distinctive editor
+      // prefix by name. A resolved non-editor attribute (ns set, not editor) is left untouched.
+      const colon = a.name.indexOf(':');
+      if (colon > 0 && EDITOR_PREFIXES.has(a.name.slice(0, colon).toLowerCase())) el.removeAttribute(a.name);
+    }
+  }
+}
+
+/** Remove comment nodes + insignificant (whitespace-only) indentation text, skipping text/CSS subtrees.
+ *  Iterative (explicit stack) so a pathologically deep SVG can't overflow the call stack. */
+function stripCommentsAndSpace(root: Element): void {
+  const stack: Element[] = [root];
+  while (stack.length) {
+    const el = stack.pop()!;
+    if (TEXTUAL.has(el.localName.toLowerCase())) continue;
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType === 8 /* Comment */) el.removeChild(child);
+      else if (child.nodeType === 3 /* Text */ && !/\S/.test(child.nodeValue || '')) el.removeChild(child);
+      else if (child.nodeType === 1 /* Element */) stack.push(child as Element);
+    }
+  }
+}
+
+/**
+ * Optional "clean up code" pass for imported SVGs: strip everything design tools leave behind that has no
+ * effect on rendering or animation — XML comments (`<!-- Generator: … -->`), `<metadata>`/RDF blocks,
+ * editor namespaces (Inkscape / Sodipodi / Illustrator) and their attributes, `data-name` layer labels,
+ * and indentation whitespace. Deliberately PRESERVES everything relevant: `<style>`/class/inline-style
+ * (CSS), ids (animation targeting + `url(#…)` refs), `<defs>` gradients/filters/masks, geometry, and all
+ * `data-sw-*` directives. Idempotent. Mutates in place (like {@link stampIds}); run before stampIds.
+ */
+export function cleanupSvg(svg: Element): void {
+  // 1. Drop editor-only elements: <metadata> and anything in an editor/RDF namespace (collect first —
+  //    querySelectorAll is static, so removing as we go is safe; nested doomed nodes .remove() as no-ops).
+  const doomed: Element[] = [];
+  svg.querySelectorAll('*').forEach((el) => {
+    if (el.localName.toLowerCase() === 'metadata' || EDITOR_NS.has(el.namespaceURI || '')) doomed.push(el);
+  });
+  doomed.forEach((el) => el.remove());
+  // 2. Comments + insignificant whitespace.
+  stripCommentsAndSpace(svg);
+  // 3. Editor attributes / leftover xmlns declarations / layer names (root + every descendant).
+  cleanAttrs(svg);
+  svg.querySelectorAll('*').forEach(cleanAttrs);
+}
+
 let stampCounter = 0;
 /** TEST-ONLY: reset the stamp counter so ids are deterministic. */
 export function resetStampCounter(): void {

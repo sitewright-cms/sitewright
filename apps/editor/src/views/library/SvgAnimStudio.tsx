@@ -6,7 +6,7 @@ import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
 import { glassInput, ghostButton, primaryButton, toggleInput } from '../../theme';
 import { FilePicker } from '../files/FilePicker';
-import { parseSvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
+import { parseSvg, cleanupSvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
 
 interface SvgAnimStudioProps {
   onClose: () => void;
@@ -53,6 +53,7 @@ const LOOP_DEFAULT_MS = 10000;
 export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
   const [stage, setStage] = useState<'import' | 'edit'>('import');
   const [pasteText, setPasteText] = useState('');
+  const [cleanup, setCleanup] = useState(true);
   const [importError, setImportError] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [source, setSource] = useState<SourceAsset | null>(null);
@@ -82,6 +83,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
       setImportError('That doesn’t look like a valid SVG. Paste the full <svg>…</svg> markup.');
       return;
     }
+    if (cleanup) cleanupSvg(svg);
     stampIds(svg);
     svgRef.current = svg;
     setTree(buildTree(svg, 0));
@@ -244,6 +246,13 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
             className={`${glassInput} w-full font-mono text-xs`}
           />
           {importError && <p className="text-xs font-semibold text-red-600">{importError}</p>}
+          <label className="flex cursor-pointer items-start gap-2.5" title="Strip comments, <metadata>, Inkscape/Illustrator/Sodipodi cruft & layer names on import — CSS, ids and animation directives are kept.">
+            <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} aria-label="Clean up code on import" />
+            <span className="leading-tight">
+              <span className="block text-xs font-semibold text-slate-700">Clean up code</span>
+              <span className="block text-[11px] text-slate-400">Remove editor cruft (comments, metadata, Inkscape/Illustrator junk). Keeps CSS, ids &amp; animation.</span>
+            </span>
+          </label>
           <div className="flex items-center gap-3">
             <button type="button" className={primaryButton} onClick={() => doImport(pasteText)}>
               Import markup

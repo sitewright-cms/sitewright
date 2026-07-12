@@ -128,6 +128,107 @@ export function cleanupSvg(svg: Element): void {
   svg.querySelectorAll('*').forEach(cleanAttrs);
 }
 
+const INDENT = '  ';
+/** Escape a text node for XML output (& and < are the only required escapes in character data). */
+function escText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+/** The element's open tag with verbatim attributes — INCLUDING xmlns declarations (they're plain
+ *  attributes), so the printed markup is namespace-correct without a serializer re-declaring anything. */
+function openTag(el: Element, selfClose: boolean): string {
+  let s = `<${el.tagName}`;
+  for (const a of Array.from(el.attributes)) s += ` ${a.name}="${escText(a.value).replace(/"/g, '&quot;')}"`;
+  return s + (selfClose ? '/>' : '>');
+}
+function hasElementChild(el: Element): boolean {
+  for (const c of Array.from(el.childNodes)) if (c.nodeType === 1) return true;
+  return false;
+}
+/** A direct text child with non-whitespace content → mixed/textual content (reformatting would change it). */
+function hasSignificantText(el: Element): boolean {
+  for (const c of Array.from(el.childNodes)) if (c.nodeType === 3 && /\S/.test(c.nodeValue || '')) return true;
+  return false;
+}
+/** Serialize a node subtree on ONE line with whitespace preserved EXACTLY — for text/CSS-bearing and leaf
+ *  subtrees where indentation would change rendering. Iterative so a pathologically deep inline subtree
+ *  (e.g. nested <tspan>) can't overflow the stack. CDATA (`<![CDATA[…]]>`, as Inkscape/Illustrator wrap
+ *  `<style>` CSS) is emitted as escaped text — semantically identical, and never dropped. */
+function inlineNode(root: Node): string {
+  let out = '';
+  const stack: Array<{ node: Node } | { close: string }> = [{ node: root }];
+  while (stack.length) {
+    const f = stack.pop()!;
+    if ('close' in f) {
+      out += f.close;
+      continue;
+    }
+    const node = f.node;
+    if (node.nodeType === 3 || node.nodeType === 4) {
+      out += escText(node.nodeValue || ''); // text / CDATA
+      continue;
+    }
+    if (node.nodeType === 8) {
+      out += `<!--${(node as Comment).data}-->`;
+      continue;
+    }
+    if (node.nodeType !== 1) continue;
+    const el = node as Element;
+    const kids = Array.from(el.childNodes);
+    if (!kids.length) {
+      out += openTag(el, true);
+      continue;
+    }
+    out += openTag(el, false);
+    stack.push({ close: `</${el.tagName}>` });
+    for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]! });
+  }
+  return out;
+}
+
+/**
+ * Pretty-print an SVG DOM to indented, multi-line markup — so a saved/exported file reads cleanly instead
+ * of collapsing onto one line. Container elements are block-indented; but any text-significant subtree
+ * (`<text>`/`<tspan>`/`<style>`/`<title>`/`<desc>`… and any element carrying mixed text) is emitted INLINE
+ * so its whitespace — and its rendered layout — is preserved exactly. Attributes (incl. xmlns declarations)
+ * are written verbatim, so the output is namespace-correct. Iterative over the block (container) nesting so
+ * a deep SVG can't overflow the stack.
+ */
+export function prettySvg(svg: Element): string {
+  const out: string[] = [];
+  const stack: Array<{ node: Node; depth: number } | { close: string; depth: number }> = [{ node: svg, depth: 0 }];
+  while (stack.length) {
+    const f = stack.pop()!;
+    if ('close' in f) {
+      out.push(INDENT.repeat(f.depth) + f.close);
+      continue;
+    }
+    const { node, depth } = f;
+    const pad = INDENT.repeat(depth);
+    if (node.nodeType === 8) {
+      out.push(pad + `<!--${(node as Comment).data}-->`);
+      continue;
+    }
+    if (node.nodeType === 3 || node.nodeType === 4) {
+      const t = (node.nodeValue || '').trim();
+      if (t) out.push(pad + escText(t)); // text / CDATA
+      continue;
+    }
+    if (node.nodeType !== 1) continue;
+    const el = node as Element;
+    // Inline (verbatim, single line) when the subtree is text-significant, mixed, or a leaf.
+    if (TEXTUAL.has(el.localName.toLowerCase()) || hasSignificantText(el) || !hasElementChild(el)) {
+      out.push(pad + inlineNode(el));
+      continue;
+    }
+    // Block: open tag, element children indented (indentation whitespace dropped), aligned close.
+    out.push(pad + openTag(el, false));
+    stack.push({ close: `</${el.tagName}>`, depth });
+    const kids = Array.from(el.childNodes).filter((c) => !(c.nodeType === 3 && !/\S/.test(c.nodeValue || '')));
+    for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]!, depth: depth + 1 });
+  }
+  return out.join('\n');
+}
+
 let stampCounter = 0;
 /** TEST-ONLY: reset the stamp counter so ids are deterministic. */
 export function resetStampCounter(): void {

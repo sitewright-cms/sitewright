@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { parseSvg, cleanupSvg, stampIds, buildTree, assetFromUrl, cssEsc, resetStampCounter } from '../src/views/library/svg-studio-helpers';
+import { parseSvg, cleanupSvg, prettySvg, stampIds, buildTree, assetFromUrl, cssEsc, resetStampCounter } from '../src/views/library/svg-studio-helpers';
 
 /** A messy export: full editor namespaces, comments, <metadata>/RDF, a <sodipodi:namedview>, layer names,
  *  namespaced attrs — mixed with everything that MUST survive (CSS, ids, gradient, geometry, data-sw-*). */
@@ -138,6 +138,69 @@ describe('svg-studio-helpers', () => {
       expect(leaf).not.toBeNull();
       // the comment sibling of the deepest rect was reached and removed
       expect(Array.from(leaf.parentNode!.childNodes).some((n) => n.nodeType === 8)).toBe(false);
+    });
+  });
+
+  describe('prettySvg', () => {
+    it('indents container elements onto multiple lines', () => {
+      const svg = parseSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g id="a"><rect id="r" width="5" height="5"/></g></svg>')!;
+      const pretty = prettySvg(svg);
+      const lines = pretty.split('\n');
+      expect(lines.length).toBeGreaterThan(3); // not one line
+      expect(lines[0]).toMatch(/^<svg /);
+      expect(pretty).toContain('\n  <g id="a">'); // group indented one level
+      expect(pretty).toContain('\n    <rect id="r"'); // rect indented two levels, self-closed
+      expect(pretty).toContain('/>');
+      expect(pretty.trimEnd().endsWith('</svg>')).toBe(true);
+    });
+
+    it('preserves text whitespace, CSS, attributes & namespaces (round-trips to the same DOM)', () => {
+      const src = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100"><defs><linearGradient id="grad"><stop offset="0" stop-color="#f00"/></linearGradient><style>.brand{fill:url(#grad)}</style></defs><g id="g"><path id="p" class="brand" d="M10 10 L90 90" data-sw-svg="draw"/><text x="5" y="20">Keep  spaces</text><use xlink:href="#p"/></g></svg>';
+      const svg = parseSvg(src)!;
+      const pretty = prettySvg(svg);
+      const re = parseSvg(pretty)!; // must re-parse cleanly
+      expect(re).not.toBeNull();
+      expect(re.querySelector('#p')!.getAttribute('data-sw-svg')).toBe('draw');
+      expect(re.querySelector('#p')!.getAttribute('d')).toBe('M10 10 L90 90');
+      expect(re.querySelector('#grad')).not.toBeNull();
+      expect(re.querySelector('style')!.textContent).toContain('.brand{fill:url(#grad)}');
+      expect(re.querySelector('text')!.textContent).toBe('Keep  spaces'); // double space intact
+      expect(re.querySelector('use')!.getAttribute('xlink:href')).toBe('#p');
+      // <text>/<style> stay on a single line (not reformatted)
+      expect(pretty).toMatch(/<text x="5" y="20">Keep  spaces<\/text>/);
+      expect(pretty).toMatch(/<style>\.brand\{fill:url\(#grad\)\}<\/style>/);
+    });
+
+    it('escapes attribute & text special characters', () => {
+      const svg = parseSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text id="t" data-x="a &amp; b &lt; c">x &amp; y</text></svg>')!;
+      const pretty = prettySvg(svg);
+      expect(pretty).toContain('data-x="a &amp; b &lt; c"');
+      expect(pretty).toContain('x &amp; y');
+      const re = parseSvg(pretty)!;
+      expect(re.querySelector('#t')!.getAttribute('data-x')).toBe('a & b < c');
+      expect(re.querySelector('#t')!.textContent).toBe('x & y');
+    });
+
+    it('preserves CDATA-wrapped <style> CSS (Inkscape/Illustrator export)', () => {
+      const svg = parseSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style><![CDATA[.cls-1{fill:#4f46e5}]]></style><rect class="cls-1" width="10" height="10"/></svg>')!;
+      const pretty = prettySvg(svg);
+      expect(pretty).toContain('.cls-1{fill:#4f46e5}'); // CSS survives the pretty pass (was silently dropped)
+      const re = parseSvg(pretty)!;
+      expect(re.querySelector('style')!.textContent).toContain('.cls-1{fill:#4f46e5}');
+    });
+
+    it('does not overflow on deep container nesting (iterative block path)', () => {
+      const depth = 3000;
+      const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">${'<g>'.repeat(depth)}<rect id="leaf" width="1" height="1"/>${'</g>'.repeat(depth)}</svg>`)!;
+      expect(() => prettySvg(svg)).not.toThrow();
+      expect(prettySvg(svg)).toContain('<rect id="leaf"');
+    });
+
+    it('does not overflow on deep inline (tspan) nesting (iterative inline path)', () => {
+      const depth = 2000;
+      const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>${'<tspan>'.repeat(depth)}x${'</tspan>'.repeat(depth)}</text></svg>`)!;
+      expect(() => prettySvg(svg)).not.toThrow();
+      expect(prettySvg(svg)).toContain('x');
     });
   });
 

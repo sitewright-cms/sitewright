@@ -6,7 +6,7 @@ import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
 import { glassInput, ghostButton, primaryButton, toggleInput } from '../../theme';
 import { FilePicker } from '../files/FilePicker';
-import { parseSvg, cleanupSvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
+import { parseSvg, cleanupSvg, prettySvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
 
 interface SvgAnimStudioProps {
   onClose: () => void;
@@ -74,7 +74,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
 
   const reserialize = () => {
     if (!svgRef.current) return;
-    setSvgText(new XMLSerializer().serializeToString(svgRef.current));
+    setSvgText(prettySvg(svgRef.current));
   };
 
   const doImport = (text: string, src: SourceAsset | null = null) => {
@@ -91,7 +91,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
     setImportError('');
     setSource(src);
     setSaveMsg('');
-    setSvgText(new XMLSerializer().serializeToString(svg));
+    setSvgText(prettySvg(svg));
     setStage('edit');
   };
 
@@ -104,7 +104,9 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
         setImportError('Can only load SVGs hosted in this project.');
         return;
       }
-      const res = await fetch(url, { credentials: 'include' });
+      // `cache: 'reload'` bypasses the browser HTTP cache: an SVG saved earlier this session may still be
+      // held under the old immutable cache entry, and re-importing must always pull the just-saved bytes.
+      const res = await fetch(url, { credentials: 'include', cache: 'reload' });
       if (!res.ok) {
         setImportError('Could not load that SVG from the library.');
         return;

@@ -64,6 +64,36 @@ describe('SVG Studio — save to the same file (overwrite)', () => {
     expect(served.body).not.toContain('<rect'); // old content is gone
   });
 
+  it('serves an overwrite-able SVG as revalidating (NOT immutable) with a content ETag, so a save is never cache-stuck', async () => {
+    const { t, projectId } = await setup('c@acme.test');
+    const asset = ((await uploadSvg(t, projectId, SVG_A)).json() as { item: { id: string; url: string } }).item;
+
+    const g1 = await app.inject({ method: 'GET', url: asset.url });
+    expect(g1.headers['cache-control']).toBe('no-cache'); // must revalidate — the URL is mutable (overwrite-in-place)
+    expect(String(g1.headers['cache-control'])).not.toContain('immutable');
+    const etag1 = g1.headers['etag'] as string;
+    expect(etag1).toBeTruthy();
+    // A conditional GET with the current validator is a cheap 304 (revalidation, no body)…
+    const cond = await app.inject({ method: 'GET', url: asset.url, headers: { 'if-none-match': etag1 } });
+    expect(cond.statusCode).toBe(304);
+    // …and the 304 must repeat the strict sandbox CSP, else the global onSend hook would stamp the weaker
+    // default policy into the browser's cached copy.
+    expect(String(cond.headers['content-security-policy'])).toContain("default-src 'none'");
+    expect(String(cond.headers['content-security-policy'])).toContain('sandbox');
+    // A comma-separated If-None-Match (RFC 9110) still matches.
+    const condMulti = await app.inject({ method: 'GET', url: asset.url, headers: { 'if-none-match': `"nomatch", ${etag1}` } });
+    expect(condMulti.statusCode).toBe(304);
+
+    // Overwrite → the content ETag changes; the stale validator no longer 304s, so the editor/`<img>` gets fresh bytes.
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/media/${asset.id}/svg`, cookies: { sw_session: t }, payload: { svg: SVG_B } });
+    const g2 = await app.inject({ method: 'GET', url: asset.url });
+    expect(g2.headers['etag']).not.toBe(etag1); // content changed → validator changed
+    expect(g2.body).toContain('data-sw-svg="draw"');
+    const stale = await app.inject({ method: 'GET', url: asset.url, headers: { 'if-none-match': etag1 } });
+    expect(stale.statusCode).toBe(200); // old validator no longer matches → full fresh body
+    expect(stale.body).toContain('data-sw-svg="draw"');
+  });
+
   it('rejects overwriting a non-SVG asset, a hostile/empty body, and unauthenticated calls', async () => {
     const { t, projectId } = await setup('b@acme.test');
     const png = ((await app.inject({ method: 'POST', url: `/projects/${projectId}/media`, cookies: { sw_session: t }, ...multipart('x.png', 'image/png', PNG_1X1) })).json() as { item: { id: string } }).item;

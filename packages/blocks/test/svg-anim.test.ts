@@ -111,8 +111,11 @@ describe('SVG animation runtime', () => {
     expect(SVG_ANIM_JS).toContain("effect:'draw'");
     // a descendant that carries its OWN directive animates as itself (skipped by the expansion)
     expect(SVG_ANIM_JS).toContain("if(k.getAttribute('data-sw-svg'))return;");
-    // container revealed on play AFTER members set their hidden from-frame → no flash of the finished art
-    expect(SVG_ANIM_JS).toContain("if(m.container)m.container.classList.add('sw-svg-shown')");
+    // container revealed on play AFTER members set their hidden from-frame → no flash of the finished art…
+    expect(SVG_ANIM_JS).toContain('function unitContainers(u)');
+    expect(SVG_ANIM_JS).toContain("s.c.classList.add('sw-svg-shown')");
+    // …and the reveal is DEFERRED by the member delay (stagger / data-sw-delay) so it doesn't show early
+    expect(SVG_ANIM_JS).toContain('s.c.__swRevealT=setTimeout(');
   });
 
   it('validates data-sw-svg-origin against an allowlist pattern (no style injection)', () => {

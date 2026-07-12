@@ -369,9 +369,12 @@ export const SVG_ANIM_JS = `(function(){
     // shorter than this, so a too-short loop can't keep interrupting a slow draw before it finishes.
     units.forEach(function(u){var mx=0;u.members.forEach(function(m){var d=m.delay+m.dur;if(m.effect==='draw')d+=Math.max(140,m.dur*0.28);if(d>mx)mx=d;});u.totalMs=mx;});
     // Reveal an expanded draw container AFTER its members set their hidden from-frame (same tick → no paint
-    // between → no flash of the fully-drawn art); resetUnit re-hides it so a replay re-draws from blank.
-    function playUnit(u){u.members.forEach(svgPlay);u.members.forEach(function(m){if(m.container)m.container.classList.add('sw-svg-shown');});}
-    function resetUnit(u){u.members.forEach(svgReset);u.members.forEach(function(m){if(m.container)m.container.classList.remove('sw-svg-shown');});}
+    // between → no flash of the finished art); resetUnit re-hides it so a replay re-draws from blank. When
+    // the members have a start delay (a stagger scene, or data-sw-delay), DEFER the reveal to match — else the
+    // group would appear during the delay window (blank, or showing any non-drawn child) before the draw runs.
+    function unitContainers(u){var s=[];u.members.forEach(function(m){if(!m.container)return;for(var i=0;i<s.length;i++){if(s[i].c===m.container){if(m.delay<s[i].d)s[i].d=m.delay;return;}}s.push({c:m.container,d:m.delay});});return s;}
+    function playUnit(u){u.members.forEach(svgPlay);unitContainers(u).forEach(function(s){if(s.c.__swRevealT){clearTimeout(s.c.__swRevealT);s.c.__swRevealT=0;}if(s.d>0){s.c.__swRevealT=setTimeout(function(){s.c.__swRevealT=0;s.c.classList.add('sw-svg-shown');},s.d);}else{s.c.classList.add('sw-svg-shown');}});}
+    function resetUnit(u){u.members.forEach(svgReset);u.members.forEach(function(m){if(!m.container)return;if(m.container.__swRevealT){clearTimeout(m.container.__swRevealT);m.container.__swRevealT=0;}m.container.classList.remove('sw-svg-shown');});}
     function replayUnit(u){resetUnit(u);if(window.requestAnimationFrame)requestAnimationFrame(function(){playUnit(u);});else playUnit(u);}
     function stopLoop(u){if(u.timer){clearTimeout(u.timer);u.timer=null;}}
     // (Re)arm the auto-repeat countdown from NOW. setTimeout (NOT a fixed setInterval) so the loop stays

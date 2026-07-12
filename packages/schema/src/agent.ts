@@ -1168,19 +1168,22 @@ VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after au
   font-WEIGHT, letter-spacing, radius, shadow, solid-vs-gradient, fixed-position, ripple, modals). It catches
   the exact treatments a screenshot glance misses (e.g. a 15° skew that should be 25°, bold that should be 400,
   a gradient added where the original is flat, a missing fixed header / ripple / nav modal).
-fidelity_check proves the LOOK, but it CANNOT see a dropped modal, a dead slider, an unloaded font, a
-duplicated dataset, or a missing mobile menu — none of those move a computed-style number, yet every one
-is a recurring clone failure. So the SINGLE terminating gate is:
-- clone_audit(pageId) — the COMPREHENSIVE acceptance gate. Runs all three legs and returns one PASS/FAIL:
-  STRUCTURE (datasets deduped + meaningfully named, media out of the imported/ tree, page content editable
-  via data-sw-*), BEHAVIOUR (a live render: sliders actually enhance, modals present when the original has
-  them, heading+body fonts truly LOAD, mobile menu reachable at phone width), and VISUAL (body computed-style
-  fidelity GATES; chrome element-fidelity is ADVISORY — reported so you keep improving it with compare_regions,
-  but not gated, because structurally-different chrome can't reliably reach 85% element correspondence). Never
-  override a FAIL by eye; port the ORIGINAL's measured values it reports, and still polish the advisory chrome.
-A page is DONE only when clone_audit returns pass ✓ — NOT fidelity_check alone, NOT a screenshot, NOT your
-own judgement. Fix every FAIL (compare_regions / compare_to_source to SEE the visual ones), then re-run it.
-Work ONE page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
+fidelity_check proves computed-style treatments, but it (and clone_audit's computed-style VISUAL leg) is
+BLIND to layout, images, section design, and modals — a hollow bare-text page can score green. So a page has
+TWO terminating gates and is DONE only when BOTH pass:
+- clone_audit(pageId) — STRUCTURE + BEHAVIOUR + computed-style visual. STRUCTURE (datasets deduped + named,
+  media out of imported/, content editable via data-sw-*), BEHAVIOUR (a live render: sliders enhance, modals
+  present when the original has them, heading+body fonts truly LOAD, mobile menu reachable at phone width).
+- visual_audit(pageId) — the RELIABLE VISION gate. It renders your build AND the LIVE original full-page
+  (desktop + mobile) and a vision model compares them REGION BY REGION, returning a tagged defect list
+  (region · category · severity). It SEES what the computed-style scorers miss: wrong/missing images and
+  illustrations, wrong layout, missing sections, dead/empty components, wrong per-element fonts (getComputedStyle
+  returns the requested font NAME even when the file never loaded — it LIES; the vision gate sees the real
+  glyphs). PASS = zero blocker + zero major defects (minors are advisory). Fix EVERY blocker + major it lists.
+A page is DONE only when clone_audit AND visual_audit both pass ✓ — NEVER from fidelity_check alone, a
+screenshot, or your own judgement (you are optimistically biased about your own work). Fix every FAIL/defect
+(compare_regions / compare_to_source to SEE them), then re-run BOTH. Work ONE page at a time so conventions
+(theme tokens, datasets, chrome) carry across the site.
 
 The STRUCTURE + BEHAVIOUR facts clone_audit gates (self-verify these while authoring — they never show in a
 screenshot): header + footer menus DATA-DRIVEN ({{#each nav.*}} over nav-membership + link-placeholders), NOT
@@ -1188,8 +1191,8 @@ a hard-coded <a> list; in-page section links are kind:"link" placeholders; pages
 ONE shared template; repeated content is a NAMED dataset (not "List"/"items"); the imported/ media tree is
 reorganised; sliders/modals rebuilt as working components; a mobile drawer exists; content carries data-sw-*.
 
-WHEN A PAGE IS DONE (clone_audit returns pass ✓): set page.data.swImport.rewritten:true (or remove the marker)
-and flip its status to "published".
+WHEN A PAGE IS DONE (clone_audit AND visual_audit both return pass ✓): set page.data.swImport.rewritten:true
+(or remove the marker) and flip its status to "published".
 `,
   },
   datasets: {

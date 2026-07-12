@@ -86,7 +86,7 @@ export function buildAuthorPrompt(task: ClonePageTask): string {
     `Author the imported page ${label} — page id: ${task.pageId} — as a FAITHFUL, near-pixel clone of its original.`,
     '',
     'Process (do it in this order):',
-    `1. Call get_guide("nativize") for the full authoring rules if you have not already this session.`,
+    `1. Call get_guide("import") for the full authoring rules if you have not already this session.`,
     `2. Call compare_to_source("${task.pageId}") to SEE the original vs your current build.`,
     '3. Map every element to a REAL platform primitive first (get_components / get_reference / widgets / website.effects) — only hand-write HTML when no primitive fits. Use Tailwind utilities for layout, CSS vars for the correct per-element fonts, {{#each dataset.x}} for repeated lists, real <dialog data-sw-component="modal"> for modals, and make text editable with data-sw-* / {{sw-control}}.',
     `4. put_page the native source.`,

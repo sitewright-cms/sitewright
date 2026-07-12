@@ -593,7 +593,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             lines.push(`  ${status}  ${c.label}${c.pass && !c.advisory ? '' : ` — ${c.detail}`}`);
           }
         }
-        if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("nativize") for how), then run clone_audit again. Do not declare it done until pass ✓.');
+        if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("import") for how), then run clone_audit again. Do not declare it done until pass ✓.');
         else lines.push('', 'Gating checks pass ✓ — the clone is DONE. (An "advisory" chrome line, if shown, flags remaining chrome-detail gaps to polish with compare_regions, but does NOT block done.)');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {

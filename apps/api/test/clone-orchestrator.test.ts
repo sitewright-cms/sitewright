@@ -35,7 +35,7 @@ describe('buildAuthorPrompt', () => {
     expect(p).toContain('page id: home');
     expect(p).toContain('visual_audit("home")');
     expect(p).toContain('clone_audit("home")');
-    expect(p).toContain('get_guide("nativize")');
+    expect(p).toContain('get_guide("import")');
     expect(p).toContain('Do NOT declare the page done');
   });
 });

@@ -40,7 +40,7 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
   expect(preview.status()).toBe(200);
   const previewHtml = (await preview.json()).html as string;
   expect(previewHtml).toContain('data-sw-animation="fade-up"');
-  expect(previewHtml).toContain('[data-sw-animation].sw-animation-init');
+  expect(previewHtml).toContain('[data-sw-animation].sw-animation-active');
   expect(previewHtml).toContain('IntersectionObserver');
 
   // Publish, then verify the exported site over HTTP.
@@ -53,7 +53,7 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
   expect(html).toContain('data-sw-animation="fade-up"');
   expect(html).toContain('data-sw-delay="200"');
   expect(html).toContain('<script defer src="animations.js"></script>');
-  expect(html).toContain('[data-sw-animation].sw-animation-init');
+  expect(html).toContain('[data-sw-animation].sw-animation-active');
   expect(html).toContain('prefers-reduced-motion');
 
   // The runtime is served from the site root and is the real thing.

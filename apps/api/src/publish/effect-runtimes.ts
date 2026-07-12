@@ -18,6 +18,7 @@ import {
   usesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
+  ANIMATION_NOSCRIPT,
   usesParallax,
   PARALLAX_CSS,
   PARALLAX_JS,
@@ -71,7 +72,7 @@ export interface BodyEffectRuntime {
 /** The registry. Order is the CSS-cascade order both paths emit (platform runtime CSS before the utility
  *  sheet). Add a new marker-gated body-effect runtime HERE and it lights up in preview AND publish at once. */
 export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
-  { key: 'animation', uses: usesAnimations, css: ANIMATION_CSS, js: ANIMATION_JS, script: 'animations.js' },
+  { key: 'animation', uses: usesAnimations, css: ANIMATION_CSS, js: ANIMATION_JS, script: 'animations.js', noscript: ANIMATION_NOSCRIPT },
   { key: 'parallax', uses: usesParallax, css: PARALLAX_CSS, js: PARALLAX_JS, script: 'parallax.js' },
   { key: 'svg-anim', uses: usesSvgAnim, css: SVG_ANIM_CSS, js: SVG_ANIM_JS, script: 'svg-anim.js', noscript: SVG_ANIM_NOSCRIPT },
   // JS-only, SEPARATE chunk: the path-morph interpolator ships only on pages that morph (the core
@@ -90,8 +91,10 @@ export function bodyEffectStyles(scanHtml: string): string[] {
 }
 
 /** A single `<noscript><style>…</style></noscript>` un-hide for every used runtime that hides content from
- *  first paint (currently svg-anim), or '' when none apply. Emitted at body-end so a no-JS visitor — who the
- *  runtime can never reveal — still sees the content (PE-first). Empty for a page with no such runtime. */
+ *  first paint (svg-anim + entrance animation), or '' when none apply. Emitted at body-end so a no-JS
+ *  visitor — who the runtime can never reveal — still sees the content (PE-first). Empty for a page with no
+ *  such runtime. (The publish path in build.ts assembles the equivalent inline; both derive from this
+ *  registry's `noscript` fields so they can't drift.) */
 export function bodyEffectNoscript(scanHtml: string): string {
   const css = BODY_EFFECT_RUNTIMES.filter((r) => r.noscript && r.uses(scanHtml))
     .map((r) => r.noscript as string)

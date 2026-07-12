@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ANIMATION_CSS,
   ANIMATION_JS,
+  ANIMATION_NOSCRIPT,
   ANIMATION_EFFECTS,
   usesAnimations,
 } from '../src/animations.js';
@@ -12,28 +13,46 @@ describe('animation stylesheet', () => {
     expect(ANIMATION_CSS.trimEnd().endsWith('}')).toBe(true);
   });
 
-  it('hides content ONLY via the runtime-added .sw-animation-init class (PE: no-JS renders visible)', () => {
-    // Every opacity:0 rule must be gated on .sw-animation-init — never a bare [data-sw-animation]
-    // selector, which would hide content when the runtime doesn't run.
+  it('hides non-banner content from FIRST PAINT (not gated on a JS-added class → no show/hide flash)', () => {
+    // The hidden rule is 0-specificity-wrapped so the non-banner branch hides BEFORE the runtime runs:
+    // there is no `.sw-XXX-init{opacity:0}` class gate that would leave content painted visible until the
+    // deferred script hides it (the old cause of the show→hide→animate flash behind the preloader).
+    expect(ANIMATION_CSS).toContain(
+      '[data-sw-animation]:where(:not([data-sw-component="banner"]):not(.sw-animation-active),.sw-animation-init){opacity:0',
+    );
+    // The hide still lives inside the reduced-motion gate, so a reduced-motion visitor is never hidden.
     for (const line of ANIMATION_CSS.split('\n')) {
-      if (line.includes('opacity:0')) expect(line).toContain('.sw-animation-init');
+      if (line.includes('opacity:0')) expect(line).not.toMatch(/^\s*\[data-sw-animation\]\s*\{/);
     }
-    expect(ANIMATION_CSS).not.toMatch(/\[data-sw-animation\]\s*\{/); // ungated base selector
+  });
+
+  it('is PE-first via a CSS self-heal failsafe + a noscript un-hide (never strands content hidden)', () => {
+    // A non-banner element the runtime never ARMS reveals itself after a grace period (JS off / script
+    // failed) — content is never stranded invisible.
+    expect(ANIMATION_CSS).toContain(
+      '[data-sw-animation]:not([data-sw-component="banner"]):not(.sw-animation-armed):not(.sw-animation-active){animation:sw-anim-reveal',
+    );
+    expect(ANIMATION_CSS).toContain('@keyframes sw-anim-reveal{to{opacity:1;transform:none;pointer-events:auto}}');
+    // The no-JS override cancels the first-paint hide + failsafe immediately (mirrors SVG_ANIM_NOSCRIPT).
+    expect(ANIMATION_NOSCRIPT).toContain('[data-sw-animation]{opacity:1!important');
+    expect(ANIMATION_NOSCRIPT).toContain('animation:none!important');
+    expect(ANIMATION_NOSCRIPT).toContain('pointer-events:auto!important');
   });
 
   it('defines an initial transform for every directional effect (plain fade is the base rule)', () => {
     for (const effect of ANIMATION_EFFECTS) {
       if (effect === 'fade') continue; // base rule, no dedicated transform
-      expect(ANIMATION_CSS).toContain(`[data-sw-animation="${effect}"].sw-animation-init{transform:`);
+      expect(ANIMATION_CSS).toContain(`[data-sw-animation="${effect}"]:where(`);
+      expect(ANIMATION_CSS).toMatch(new RegExp(`\\[data-sw-animation="${effect}"\\]:where\\([^{]*\\)\\{transform:`));
     }
   });
 
-  it('reveals via .sw-animation-active as the LAST rule (wins the order tie at equal specificity)', () => {
+  it('reveals via .sw-animation-active as the LAST rule (wins on specificity — (0,2,0) beats (0,1,0))', () => {
     const reveal = ANIMATION_CSS.indexOf('[data-sw-animation].sw-animation-active');
     expect(reveal).toBeGreaterThan(-1);
     expect(ANIMATION_CSS).toContain('opacity:1;pointer-events:auto;transform:none');
-    // No effect rule after the reveal rule.
-    expect(ANIMATION_CSS.slice(reveal)).not.toContain('.sw-animation-init{');
+    // No effect/hidden transform rule after the reveal rule (it must be last so nothing overrides it).
+    expect(ANIMATION_CSS.slice(reveal)).not.toContain(']:where(');
   });
 
   it('suspends pointer-events while hidden (invisible content must not be clickable)', () => {
@@ -42,6 +61,7 @@ describe('animation stylesheet', () => {
 
   it('cannot break out of a <style> block', () => {
     expect(ANIMATION_CSS.toLowerCase()).not.toContain('</style');
+    expect(ANIMATION_NOSCRIPT.toLowerCase()).not.toContain('</style');
   });
 });
 
@@ -51,20 +71,19 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain('(prefers-reduced-motion: reduce)');
   });
 
-  it('speaks the animation class protocol (sw-animation-init / sw-animation-active)', () => {
-    expect(ANIMATION_JS).toContain("classList.add('sw-animation-init')");
+  it('ARMS each element (cancels the CSS failsafe) and reveals via sw-animation-active', () => {
+    // The runtime no longer HIDES via JS (CSS hides from first paint); it ARMS so the self-heal failsafe
+    // stands down, then reveals in-view elements by adding .sw-animation-active.
+    expect(ANIMATION_JS).toContain("classList.add('sw-animation-armed')");
     expect(ANIMATION_JS).toContain("classList.add('sw-animation-active')");
   });
 
-  it('hides INSTANTLY (suppresses the transition on init) so content never animates OUT before revealing', () => {
-    // The init hide sets the transition to none; the reveal transition is restored at observe time so
-    // ONLY the entrance animates (no visible reverse flash through a translucent preloader).
-    expect(ANIMATION_JS).toContain("el.style.transition='none'");
-    expect(ANIMATION_JS).toContain("el.style.transition=''");
-    // the restore + observe happen inside the page-ready gate (after the preloader clears)
-    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*el\.style\.transition=''[\s\S]*io\.observe/);
-    // a forced reflow commits the no-transition hide before transitions are re-enabled
-    expect(ANIMATION_JS).toContain('offsetHeight');
+  it('never suppresses/restores an inline transition (no transition:none reflow hack) — CSS hides pre-paint', () => {
+    // Since content is hidden from FIRST PAINT by CSS, there is no already-painted state to suppress an
+    // animate-OUT for: the reveal is the only transition, so the runtime must not touch el.style.transition.
+    expect(ANIMATION_JS).not.toContain("el.style.transition='none'");
+    expect(ANIMATION_JS).not.toContain("el.style.transition=''");
+    expect(ANIMATION_JS).not.toContain('offsetHeight');
   });
 
   it('EXCLUDES Banner roots from the scroll observer (a data-sw-animation Banner drives its own entrance on reveal)', () => {
@@ -89,7 +108,7 @@ describe('animation runtime', () => {
   });
 
   it('gates the reveal on the page-ready signal (starts after preloader clear / load, not behind it)', () => {
-    // init hides as soon as JS runs, but OBSERVING (the reveal) waits for swWhenReady.
+    // Elements are armed as soon as JS runs, but OBSERVING (the reveal) waits for swWhenReady.
     expect(ANIMATION_JS).toContain('function swWhenReady(');
     expect(ANIMATION_JS).toContain("addEventListener('sw:ready'");
     expect(ANIMATION_JS).toContain('swWhenReady(function(){');

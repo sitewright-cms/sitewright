@@ -392,7 +392,7 @@ describe('preview API — code-first source page', () => {
     const html = (animated.json() as { html: string }).html;
     // Self-contained sandboxed preview: animation CSS + runtime are INLINED, so
     // the reveal actually plays inside the iframe (its CSP allows scripts).
-    expect(html).toContain('[data-sw-animation].sw-animation-init');
+    expect(html).toContain('[data-sw-animation].sw-animation-active');
     expect(html).toContain('IntersectionObserver');
     expect(html).not.toContain('src="animations.js"');
 

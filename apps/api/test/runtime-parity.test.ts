@@ -71,13 +71,18 @@ describe('effect-runtime registry — self-consistency', () => {
     expect(previewBodyEffectScripts('<p>plain</p>')).toEqual([]);
   });
 
-  it('emits a single <noscript> un-hide for a first-paint-hiding runtime (svg-anim), nothing otherwise', () => {
+  it('emits a single combined <noscript> un-hide for every first-paint-hiding runtime (svg-anim + entrance)', () => {
     const ns = bodyEffectNoscript(ALL_MARKERS);
     expect(ns).toContain('<noscript><style>');
     expect(ns).toContain('[data-sw-svg]{opacity:1!important;animation:none!important}');
-    expect((ns.match(/<noscript>/g) || []).length).toBe(1); // one combined block
+    // Entrance animations now hide from FIRST PAINT too, so they ALSO ship a PE-first no-JS un-hide.
+    expect(ns).toContain('[data-sw-animation]{opacity:1!important');
+    expect((ns.match(/<noscript>/g) || []).length).toBe(1); // one combined block for all hiding runtimes
     expect(bodyEffectNoscript('<p>plain</p>')).toBe(''); // no hiding runtime → nothing
-    expect(bodyEffectNoscript('<div data-sw-animation="fade-up">a</div>')).toBe(''); // entrance is PE-first (no hide)
+    // Entrance alone still emits its own un-hide (first-paint hide → needs the no-JS escape hatch).
+    const anim = bodyEffectNoscript('<div data-sw-animation="fade-up">a</div>');
+    expect(anim).toContain('<noscript><style>');
+    expect(anim).toContain('[data-sw-animation]{opacity:1!important');
   });
 });
 

@@ -58,8 +58,12 @@ describe('scroll-reveal animations → publish + preview', () => {
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('data-sw-animation="fade-up"');
     expect(index.body).toContain('<script defer src="animations.js?v=');
-    expect(index.body).toContain('[data-sw-animation].sw-animation-init'); // inline animation stylesheet
+    expect(index.body).toContain('[data-sw-animation].sw-animation-active'); // inline animation stylesheet (reveal rule)
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
+    // PE-first escape hatches for the FIRST-PAINT hide: the CSS self-heal failsafe (JS failed to load) +
+    // the no-JS <noscript> un-hide (scripting off) — both must ship so content is never stranded hidden.
+    expect(index.body).toContain('@keyframes sw-anim-reveal'); // CSS self-heal failsafe
+    expect(index.body).toContain('<noscript><style>[data-sw-animation]{opacity:1!important'); // no-JS un-hide
 
     // Site-wide asset: a nested page on the same site links it rebased to its depth.
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);

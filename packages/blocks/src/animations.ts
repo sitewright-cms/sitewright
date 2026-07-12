@@ -9,13 +9,17 @@
 // (see timing.ts), so there is one timing language across every animation family.
 //
 // Invariants:
-// - PE-first: the hidden initial state is gated on the `.sw-animation-init` class, which only the
-//   runtime adds. No JS / no IntersectionObserver / reduced motion → content renders fully visible
-//   (we deliberately never hide content without JS).
-// - The reveal is driven by adding `.sw-animation-active` (last rule, same specificity) — authored
-//   CSS may target `.sw-animation-init` / `.sw-animation-active` for bespoke reveals.
-// - Accessibility: all motion sits inside `prefers-reduced-motion: no-preference`, and the runtime
-//   also bails out under reduced motion.
+// - No-FOUC: a scroll-reveal element is hidden from FIRST PAINT by CSS (see {@link HIDDEN}) so it never
+//   flashes visible in its final position before the deferred runtime reveals it (the old class-gated
+//   hide painted content visible until the script ran, then popped it hidden — a visible flash through
+//   the translucent preloader). The runtime reveals by adding `.sw-animation-active`.
+// - PE-first is preserved WITHOUT leaving content visible pre-JS: a `<noscript>` un-hide
+//   ({@link ANIMATION_NOSCRIPT}) restores content when scripting is off, and a CSS self-heal failsafe
+//   reveals any element the runtime never `sw-animation-armed`s (script failed to load). Mirrors the SVG
+//   engine (svg-anim.ts). A Banner is the sole `.sw-animation-init` user — it ships `hidden` and
+//   self-drives its entrance (banner.ts), so it is excluded from the first-paint hide + the failsafe.
+// - Accessibility: all motion (and the first-paint hide + failsafe) sits inside
+//   `prefers-reduced-motion: no-preference`, and the runtime also bails out under reduced motion.
 // - First-party, audited, static code only — tenants supply DATA (attribute values, parsed /
 //   clamped / allowlisted below); never JavaScript.
 import { SW_TIMING_ATTRS, SW_DURATION_DEFAULT, SW_EASINGS, SW_TIMING_CORE, SW_READY_CORE } from './timing.js';
@@ -58,27 +62,53 @@ const EFFECT_TRANSFORMS: ReadonlyArray<readonly [string, string]> = [
   ['flip-right', 'perspective(2500px) rotateY(100deg)'],
 ];
 
+// The hidden-state selector. Two branches, both 0-specificity-wrapped in `:where()` so the
+// `.sw-animation-active` reveal rule (0,2,0) always wins over these hidden rules (0,1,0):
+//  - non-banner scroll-reveal elements are hidden from FIRST PAINT (NOT gated on a JS-added class), so
+//    they never flash visible in their final position before the deferred runtime reveals them. PE-first
+//    is preserved by the noscript un-hide + the CSS self-heal failsafe below (mirrors the SVG engine),
+//    not by leaving content visible pre-JS — which caused a visible show→hide→animate flash through the
+//    translucent preloader.
+//  - a Banner (`data-sw-component="banner"`) is EXCLUDED from the first-paint hide (it ships `hidden`,
+//    so it can't flash) and instead drives the SAME hidden state itself via the runtime-added
+//    `.sw-animation-init` class — its reveal is triggered by the banner runtime, not a scroll.
+const HIDDEN = ':where(:not([data-sw-component="banner"]):not(.sw-animation-active),.sw-animation-init)';
+
 /**
- * The animation stylesheet. Hidden state is `[data-sw-animation].sw-animation-init` (runtime-added,
- * so no-JS renders visible); `.sw-animation-active` (last rule, same specificity) reveals. The default
- * transition-duration is SW_DURATION_DEFAULT (400ms — intentionally lowered from the historical 600ms
- * to align with the shared timing default; `data-sw-duration` overrides it inline).
- * `pointer-events` is suspended while hidden so invisible content can't be clicked.
+ * The animation stylesheet. Non-banner elements are hidden from FIRST PAINT (see {@link HIDDEN}); a
+ * Banner self-drives the same hidden state via `.sw-animation-init`. `.sw-animation-active` (last rule)
+ * reveals. The default transition-duration is SW_DURATION_DEFAULT (400ms — aligned with the shared timing
+ * default; `data-sw-duration` overrides it inline). `pointer-events` is suspended while hidden so
+ * invisible content can't be clicked. A self-heal failsafe reveals any element the runtime never armed
+ * (JS disabled / the script failed) after a grace period, so content is never stranded hidden.
  */
 export const ANIMATION_CSS = [
   '@media (prefers-reduced-motion: no-preference){',
-  `[data-sw-animation].sw-animation-init{opacity:0;pointer-events:none;transition-property:opacity,transform;transition-duration:${SW_DURATION_DEFAULT}ms;transition-timing-function:cubic-bezier(.25,.46,.45,.94)}`,
+  `[data-sw-animation]${HIDDEN}{opacity:0;pointer-events:none;transition-property:opacity,transform;transition-duration:${SW_DURATION_DEFAULT}ms;transition-timing-function:cubic-bezier(.25,.46,.45,.94)}`,
   ...EFFECT_TRANSFORMS.map(
-    ([effect, transform]) => `[data-sw-animation="${effect}"].sw-animation-init{transform:${transform}}`,
+    ([effect, transform]) => `[data-sw-animation="${effect}"]${HIDDEN}{transform:${transform}}`,
   ),
+  // Self-heal failsafe: an element the runtime never armed (JS off / the script failed to load) reveals
+  // itself after a grace period so first-paint-hidden content can never be stranded. An armed element
+  // (runtime present) opts out and waits for its scroll-triggered reveal. Banners self-manage → excluded.
+  '[data-sw-animation]:not([data-sw-component="banner"]):not(.sw-animation-armed):not(.sw-animation-active){animation:sw-anim-reveal .01s linear 9s forwards}',
+  '@keyframes sw-anim-reveal{to{opacity:1;transform:none;pointer-events:auto}}',
   '[data-sw-animation].sw-animation-active{opacity:1;pointer-events:auto;transform:none}',
   '}',
 ].join('\n');
 
+/** No-JS override (emitted inside a `<noscript><style>` by the build/preview): when scripting is off the
+ *  runtime can never reveal, so cancel the first-paint hide + failsafe immediately — a no-JS visitor sees
+ *  the content at once (restores the PE-first "never hide content without JS" guarantee). Mirrors
+ *  SVG_ANIM_NOSCRIPT. (A Banner stays `hidden` regardless — it needs JS to show, so opacity:1 is inert.) */
+export const ANIMATION_NOSCRIPT =
+  '[data-sw-animation]{opacity:1!important;transform:none!important;pointer-events:auto!important;animation:none!important}';
+
 // The runtime. Notes:
-// - `sw-animation-init` is added just before observing, so the pre-JS document is fully visible
-//   (PE-first). It is applied with the transition SUPPRESSED so the hide is instant (no animate-out);
-//   the transition is restored at observe time so only the reveal animates.
+// - Content is hidden from FIRST PAINT by CSS ({@link HIDDEN}) — it never flashes visible before the
+//   reveal. The runtime marks each element `sw-animation-armed` so the CSS self-heal failsafe stands down
+//   (this runtime owns them and guarantees the reveal), then DEFERS observing (the reveal itself) until
+//   the page is ready (swWhenReady) so the entrance doesn't fire behind a still-visible preloader.
 // - `data-sw-delay` / `data-sw-duration` are parsed + clamped (swMs, timing.ts); `data-sw-easing`
 //   resolves through a fixed allowlist map. Attribute values can therefore never inject style/script.
 // - `data-sw-once="false"` keeps the element observed and replays the reveal each time it re-enters
@@ -112,22 +142,16 @@ export const ANIMATION_JS = `(function(){
       }
     });
   },{threshold:0.1,rootMargin:'0px 0px -48px 0px'});
-  // Hide (init) as soon as JS runs, but with the transition SUPPRESSED (inline transition:none) so
-  // already-painted, in-viewport content does NOT animate OUT (visible→hidden) — that reverse flash was
-  // visible through the translucent preloader. DEFER observing (the reveal) until the page is ready; the
-  // reveal transition is (re)enabled at that point, so ONLY the entrance animates. A failsafe in
-  // swWhenReady guarantees observation begins even if the ready signal never arrives.
+  // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
+  // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){
-    el.style.transition='none'; // instant hide — no animate-out
-    el.classList.add('sw-animation-init');
+    el.classList.add('sw-animation-armed');
   });
   swWhenReady(function(){
-    // Commit the no-transition hide BEFORE re-enabling transitions (matters when there is no preloader and
-    // this runs synchronously right after the loop above — otherwise the restore could coalesce with the
-    // hide into one recalc and animate it).
-    void document.documentElement.offsetHeight;
+    // DEFER the reveal (observing) until the page is ready — after the preloader clears — so the entrance
+    // animates in the open, not behind the still-visible overlay. A failsafe in swWhenReady guarantees
+    // observation begins even if the ready signal never arrives.
     Array.prototype.forEach.call(els,function(el){
-      el.style.transition=''; // restore the CSS reveal transition (opacity,transform)
       var delay=swMs(el,'${SW_TIMING_ATTRS.delay}',0);
       if(delay>0)el.style.transitionDelay=delay+'ms';
       var duration=swMs(el,'${SW_TIMING_ATTRS.duration}',0);

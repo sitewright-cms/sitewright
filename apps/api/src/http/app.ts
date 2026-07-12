@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -3968,6 +3968,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // residual direct-navigation vector (the bytes were already sanitized on store; `<img>` rendering
         // is secure-static anyway). `?size`/`?format` are ignored — a vector scales natively. + nosniff +
         // CORS so the sandboxed (opaque-origin) preview iframe can load it too.
+        //
+        // CACHE: SVG is the ONE media kind that can be OVERWRITTEN in place (the Studio's "save to the same
+        // file" → PUT …/svg keeps the asset id + URL), so its URL is MUTABLE. Serving it `immutable` froze
+        // the pre-edit bytes in the browser for a year → an overwrite never reached an open editor (re-import
+        // showed the un-animated original) or a live `<img>`. Serve it revalidating (`no-cache`) with a
+        // content ETag so a re-fetch is a cheap conditional request: 304 while unchanged, fresh 200 after a save.
         if (isSvgFile(file)) {
           let bytes: Buffer;
           try {
@@ -3975,14 +3981,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           } catch {
             return reply.code(404).send({ error: 'not found' });
           }
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
-            .header('access-control-allow-origin', '*')
-            .header('cross-origin-resource-policy', 'cross-origin')
-            .type('image/svg+xml; charset=utf-8')
-            .send(bytes);
+          const etag = `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
+          // The strict SVG headers are repeated on BOTH branches: a 304 that omitted the CSP would let the
+          // global onSend hook stamp the weaker default policy, which the browser then merges into its cached
+          // 200 — silently downgrading the sandboxed `default-src 'none'` policy. If-None-Match may carry a
+          // comma list (RFC 9110 §13.1.2), so match against any listed validator.
+          const svgHeaders = (r: typeof reply) =>
+            r
+              .header('etag', etag)
+              .header('cache-control', 'no-cache')
+              .header('x-content-type-options', 'nosniff')
+              .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+              .header('access-control-allow-origin', '*')
+              .header('cross-origin-resource-policy', 'cross-origin');
+          const inmRaw = req.headers['if-none-match'];
+          const inm = Array.isArray(inmRaw) ? inmRaw.join(',') : inmRaw;
+          if (typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag)) {
+            return svgHeaders(reply).code(304).send();
+          }
+          return svgHeaders(reply).type('image/svg+xml; charset=utf-8').send(bytes);
         }
         // IMAGE delivery. `file` is the stored ORIGINAL name (any raster ext). `?size` (default xl)
         // selects a responsive thumbnail generated on demand + cached; `?size=original` serves the raw

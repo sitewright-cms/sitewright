@@ -185,7 +185,6 @@ import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes, streamImport } from './import-routes.js';
-import { registerNativizeRoutes } from './nativize-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -268,7 +267,9 @@ import {
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit } from '../render/clone-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
+import { visualAudit, type AuditViewport, type VisualDefect } from '../render/visual-audit.js';
+import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
@@ -3613,11 +3614,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         : {}),
     });
 
-    // Server-side mechanical nativize of an imported project's rawFidelity pages → native Tailwind+token
-    // source, streamed over SSE (reuses the import progress UI). Owner-only; renders each page via the
-    // pool, then captures computed styles headlessly + runs the @sitewright/site-import transform.
-    registerNativizeRoutes(app, { resolveProject, contentRepo, renderPool, rl, log: app.log });
-
     app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(
       '/projects/:projectId/media',
       async (req, reply) => {
@@ -4762,6 +4758,52 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
+    // visual_audit: the VISION acceptance gate — the reliable fidelity signal the computed-style scorers miss.
+    // Captures the CLONE (loopback build) + the LIVE original (SSRF-pinned, fresh — not the degraded import
+    // cache) full-page at desktop + mobile, hands both to the project's configured vision model, and returns a
+    // TAGGED defect list (region/category/severity) with a blocker+major PASS/FAIL. It SEES rendered fonts/
+    // images (unlike getComputedStyle, which lies) and full pages (not clipped). Needs an AI provider. content:read.
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/visual-audit/:pageId',
+      { config: rl(3) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const resolved = await resolveAiProvider(ctx);
+        if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured — the visual audit needs a vision model' });
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        if (!targetPage) throw new NotFoundError('page not found');
+        const fullRoute = pathToSlug(pagePath(targetPage, byId));
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
+        // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
+        const [buildShots, sourceShots] = await Promise.all([
+          captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
+          captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
+        ]);
+        const viewports: AuditViewport[] = vps.map((name) => ({ name, original: sourceShots[name], clone: buildShots[name] }));
+        const result = await visualAudit({
+          provider: resolved.provider,
+          viewports,
+          signal: abort.signal,
+          maxTokens: resolved.maxOutputTokens ?? 2048,
+          onUsage: (u) => { void aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, u); },
+        });
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...result });
+      },
+    );
+
     // compare_regions: HIGH-RESOLUTION region crops (default header + footer) of the BUILD (loopback) and the
     // imported SOURCE (SSRF-pinned), at 2× device scale as LOSSLESS WebP — so an agent can SEE fine chrome
     // detail (gradient stops, skew edges, thin shadows) that the 1× JPEG full-page compare_to_source smears.
@@ -5126,6 +5168,46 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     isAdmin: isInstanceAdmin,
     getAgentInstructions: () => instanceSettingsRepo.getEffectiveAgentInstructions(),
     rl,
+    cloneOrchestration: {
+      // Imported pages that still need authoring (have an import source), home first, skipping link
+      // placeholders + collection parents. The gate — not this list — decides whether each is actually done.
+      listPages: async (ctx) => {
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        return allPages
+          .filter((p) => Boolean((p.data as { swImport?: { sourceUrl?: string } } | undefined)?.swImport?.sourceUrl))
+          .filter((p) => !isLinkPage(p) && !p.collection)
+          .sort((a, b) => (((a.path ?? '') === '' ? 0 : 1) - ((b.path ?? '') === '' ? 0 : 1)))
+          .map((p) => ({ pageId: p.id, slug: pathToSlug(pagePath(p, byId)) ?? '', title: p.title }));
+      },
+      // AUTHORITATIVE gate: re-run the (already-tested) clone-audit + visual-audit routes with the agent's
+      // own scoped token, and re-read the STORED source for the anti-lie marker check — the agent's claim is
+      // ignored. Combines the vision diff (authoritative visual), the non-advisory STRUCTURE/BEHAVIOUR
+      // checks, and the native/foreign marker ratio into one verdict.
+      runGate: async (token, ctx, pageId) => {
+        const inject = async (path: string): Promise<Record<string, unknown>> => {
+          const res = await app.inject({ method: 'GET', url: path, headers: { authorization: `Bearer ${token}` } });
+          if (res.statusCode < 200 || res.statusCode >= 300) throw new Error(`${path} → ${res.statusCode}`);
+          return JSON.parse(res.payload) as Record<string, unknown>;
+        };
+        const pid = ctx.projectId;
+        const enc = encodeURIComponent(pageId);
+        const [ca, va] = await Promise.all([
+          inject(`/projects/${pid}/clone-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
+          inject(`/projects/${pid}/visual-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
+        ]);
+        const source = ((await contentRepo.get(ctx, 'page', pageId).catch(() => null)) as Page | null)?.source ?? null;
+        const markers = checkNativeMarkers(source);
+        const checks = Array.isArray((ca as { checks?: AuditCheck[] }).checks) ? (ca as { checks: AuditCheck[] }).checks : null;
+        const structuralFails = checks
+          ? checks.filter((c) => !c.advisory && !c.pass && c.leg !== 'visual').map((c) => `${c.label} — ${c.detail}`)
+          : ['clone_audit could not run (fix the page so it renders)'];
+        const visual = typeof (va as { pass?: unknown }).pass === 'boolean'
+          ? { pass: (va as { pass: boolean }).pass, summary: String((va as { summary?: string }).summary ?? ''), defects: ((va as { defects?: VisualDefect[] }).defects ?? []) }
+          : { pass: false, summary: 'visual audit could not run', defects: [] as VisualDefect[] };
+        return { pass: visual.pass && structuralFails.length === 0 && markers.ok, visual, structuralFails, markers };
+      },
+    },
   });
 
   app.get('/health', async () => ({ ok: true }));

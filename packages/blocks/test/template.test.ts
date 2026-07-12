@@ -924,3 +924,21 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
     expect(renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { dataset: { hero: [] } } as TemplateContext)).toBe('EMPTY');
   });
 });
+
+describe('graceful missing helper (no whole-page 400 on a typo/retired helper)', () => {
+  it('renders an unknown helper CALL (with args) as an inert HTML comment instead of throwing', () => {
+    // {{sw-embed x}} was a retired helper; a mistyped helper name is the same class of mistake.
+    const out = renderTemplate('<p>before {{sw-embed page.x}} after</p>', { page: { x: '1' } } as TemplateContext);
+    expect(out).toBe('<p>before <!-- sw:unknown-helper sw-embed --> after</p>');
+  });
+  it('renders an unknown helper with a HASH arg as a comment too', () => {
+    expect(renderTemplate('{{mystery foo="bar"}}', {})).toBe('<!-- sw:unknown-helper mystery -->');
+  });
+  it('leaves a BARE undefined field rendering EMPTY (unchanged strict:false behaviour)', () => {
+    expect(renderTemplate('[{{page.nope}}][{{missingBare}}]', { page: {} } as TemplateContext)).toBe('[][]');
+  });
+  it('does not let the helper name break out of the comment (sanitised to an identifier)', () => {
+    // The parser only accepts identifier chars in a helper name anyway; belt-and-suspenders on output.
+    expect(renderTemplate('{{sw-foo.bar x}}', { x: 1 } as unknown as TemplateContext)).toContain('<!-- sw:unknown-helper');
+  });
+});

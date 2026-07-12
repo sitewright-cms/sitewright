@@ -593,12 +593,42 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             lines.push(`  ${status}  ${c.label}${c.pass && !c.advisory ? '' : ` — ${c.detail}`}`);
           }
         }
-        if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("nativize") for how), then run clone_audit again. Do not declare it done until pass ✓.');
+        if (!r.pass) lines.push('', 'This clone is NOT done. Fix every FAIL above (compare_regions / compare_to_source to SEE the visual ones; get_guide("import") for how), then run clone_audit again. Do not declare it done until pass ✓.');
         else lines.push('', 'Gating checks pass ✓ — the clone is DONE. (An "advisory" chrome line, if shown, flags remaining chrome-detail gaps to polish with compare_regions, but does NOT block done.)');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
         return toolError(`Error: ${err instanceof Error ? err.message : 'clone audit failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    'visual_audit',
+    {
+      description:
+        "The VISION acceptance gate — the RELIABLE fidelity check. The computed-style gates (fidelity_check / clone_audit's visual leg) only score fonts/gradients/coverage of TEXT elements and are BLIND to layout, images, section design, and modals — a hollow page can score green. visual_audit renders the CLONE and the LIVE original full-page (desktop + mobile) and hands both to a vision model, which compares them REGION BY REGION and returns a TAGGED defect list — each defect has a region, a category (layout|spacing|typography|color|image|component|content|chrome|responsive), a severity (blocker|major|minor), and a specific description. It SEES the rendered fonts and images (unlike getComputedStyle, which returns the requested font name even when the file never loaded) and full pages (not clipped). PASS = zero blocker + zero major defects (minors are advisory). Run it as the FINAL gate on every cloned/authored page and FIX every blocker/major before declaring the page done — never declare faithful from your own render or a number. Needs an AI provider configured. The page must have an import source.",
+      inputSchema: { pageId: z.string() },
+    },
+    async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const r = await client.visualAudit(pageId);
+        const lines = [`VISUAL AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — page “${pageId}” vs ${r.sourceUrl} (${r.blockers} blocker, ${r.majors} major, ${r.minors} minor; model ${r.model}).`];
+        if (r.summary) lines.push(r.summary);
+        if (r.defects.length) {
+          lines.push('', 'Defects (fix every blocker + major):');
+          for (const d of r.defects) lines.push(`  [${d.severity}] (${d.region} · ${d.category}) ${d.description}`);
+        }
+        if (!r.pass) lines.push('', 'This page is NOT faithful yet. Fix every blocker + major defect above (compare_regions / compare_to_source to SEE them), then run visual_audit again. Minor defects are advisory. Do not declare it done until pass ✓.');
+        else lines.push('', 'No blocking visual defects ✓ — this page is a faithful match. (Any minor defects listed are optional polish.)');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'visual audit failed'}`);
       }
     },
   );

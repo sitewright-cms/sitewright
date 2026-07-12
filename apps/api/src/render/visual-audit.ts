@@ -198,6 +198,8 @@ export function tallyDefects(defects: VisualDefect[]): { blockers: number; major
  * and return a tagged defect list + pass/fail. A missing capture on either side makes the audit
  * inconclusive → pass:false with a blocker (never silently green on a blank capture).
  */
+/* v8 ignore start -- drives a live AI provider; exercised by the deploy-time e2e with a configured model.
+   The pure parse/tally/prompt-build helpers above ARE unit-tested. */
 export async function visualAudit(opts: {
   provider: AgentProvider;
   viewports: AuditViewport[];
@@ -243,3 +245,4 @@ export async function visualAudit(opts: {
   const tally = tallyDefects(defects);
   return { pass: tally.pass, defects, summary, blockers: tally.blockers, majors: tally.majors, minors: tally.minors, captured, model };
 }
+/* v8 ignore stop */

@@ -140,6 +140,8 @@ export interface OrchestrationOptions {
  * Yields progress events; never throws for a single-page failure (it reports and moves on) so one bad page
  * can't abort the whole run.
  */
+/* v8 ignore start -- drives the live agent loop + provider; exercised by the deploy-time e2e with a
+   configured model. The pure helpers above (markers/prompt/feedback/gate) ARE unit-tested. */
 export async function* runCloneOrchestration(opts: OrchestrationOptions): AsyncGenerator<OrchestratorEvent, void> {
   const maxRounds = opts.maxRounds ?? 4;
   let passed = 0;
@@ -206,3 +208,4 @@ export async function* runCloneOrchestration(opts: OrchestrationOptions): AsyncG
   }
   yield { type: 'done', total: opts.pages.length, passed };
 }
+/* v8 ignore stop */

@@ -14,8 +14,11 @@ describe('structuralChecks', () => {
     expect(good.find((c) => c.id === 'datasets')!.pass).toBe(true);
     // zero datasets is acceptable (no repeated content)
     expect(structuralChecks({ datasets: [], media: [], pageSource: '{{sw-control "x"}}' }).find((c) => c.id === 'datasets')!.pass).toBe(true);
-    // an auto-slug id ("list"/"items3") is flagged even if the name was later made friendly
-    expect(structuralChecks({ datasets: [{ id: 'list', name: 'Clients' }], media: [], pageSource: '{{sw-control "x"}}' }).find((c) => c.id === 'datasets')!.pass).toBe(false);
+    // a generic SLUG (auto-inferred, not yet renamed) is flagged even with a friendly name
+    expect(structuralChecks({ datasets: [{ id: 'x', name: 'Clients', slug: 'list' }], media: [], pageSource: '{{sw-control "x"}}' }).find((c) => c.id === 'datasets')!.pass).toBe(false);
+    // but a properly RENAMED dataset passes even though rename keeps the immutable importer id ("items"):
+    // meaningful name + slug is what matters, not the id.
+    expect(structuralChecks({ datasets: [{ id: 'items', name: 'Featured Listings', slug: 'featured_listings' }], media: [], pageSource: '{{sw-control "x"}}' }).find((c) => c.id === 'datasets')!.pass).toBe(true);
   });
 
   it('fails when media is still under imported/', () => {

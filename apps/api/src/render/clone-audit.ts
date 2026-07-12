@@ -42,11 +42,14 @@ const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
 
 /** STRUCTURE leg — pure over repo data (datasets, media, the audited page's source). */
 export function structuralChecks(input: {
-  datasets: Array<{ id?: string; name?: string }>;
+  datasets: Array<{ id?: string; name?: string; slug?: string }>;
   media: Array<{ folder?: string }>;
   pageSource: string | null;
 }): AuditCheck[] {
-  const generic = input.datasets.filter((d) => GENERIC_DS.test((d.name || '').trim()) || GENERIC_DS.test((d.id || '').trim()));
+  // Test the USER-FACING name + slug (what rename_dataset actually changes) — NOT the immutable `id`, which
+  // the importer sets ("items") and rename keeps, so a properly-renamed dataset (name "Featured Listings",
+  // slug "featured_listings") whose id is still "items" must PASS.
+  const generic = input.datasets.filter((d) => GENERIC_DS.test((d.name || '').trim()) || GENERIC_DS.test((d.slug || '').trim()));
   const imported = input.media.filter((m) => String(m.folder || '').startsWith('imported'));
   const edits = ((input.pageSource || '').match(/data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry/g) || []).length;
   return [

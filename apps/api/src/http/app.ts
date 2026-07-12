@@ -4750,7 +4750,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // STRUCTURE leg: pure over repo data.
         const [datasets, media] = await Promise.all([contentRepo.list(ctx, 'dataset'), contentRepo.list(ctx, 'media')]);
         const audit = assembleAudit([
-          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string }>, media: media as Array<{ folder?: string }>, pageSource: targetPage.source ?? null }),
+          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string }>, pageSource: targetPage.source ?? null }),
           behaviouralChecks(behaviour),
           visualChecks(fidelity),
         ]);

@@ -88,8 +88,31 @@ describe('SVG animation runtime', () => {
   });
 
   it('a standalone (non-scene) element uses its OWN data-sw-svg-trigger (no dead scene-attr check)', () => {
-    expect(SVG_ANIM_JS).toContain('trigger:trig,members:[member(el,0)]');
+    expect(SVG_ANIM_JS).toContain('trigger:trig,members:buildMembers(el,0)');
     expect(SVG_ANIM_JS).not.toContain("root:el,trigger:el.getAttribute('data-sw-svg-scene-trigger')");
+  });
+
+  it('blur: short fade (opacity done by 20%) with the defocus spanning the full duration', () => {
+    // 3-keyframe form: opacity reaches 1 at offset 0.2 while filter blur(40px)→blur(0px) spans 0..1.
+    expect(SVG_ANIM_JS).toContain("{opacity:0,filter:'blur(40px)',offset:0},{opacity:1,offset:0.2},{filter:'blur(0px)',offset:1}");
+    // the old 2-frame form (opacity + blur BOTH over the full duration) is gone
+    expect(SVG_ANIM_JS).not.toContain("f.filter='blur(40px)';t.filter='blur(0px)'");
+  });
+
+  it('OUT (exit) reversal flips explicit keyframe offsets so a multi-stop effect (blur) reverses correctly', () => {
+    expect(SVG_ANIM_JS).toContain('rc.offset=1-rf.offset');
+  });
+
+  it('draw on a non-strokable container expands to one draw member per drawable descendant (not a group fade)', () => {
+    expect(SVG_ANIM_JS).toContain('function drawMembers(el,extraDelay)');
+    expect(SVG_ANIM_JS).toContain("el.querySelectorAll('path,line,polyline,polygon,circle,ellipse,rect')");
+    // only a DRAW on a container with no outline of its own expands; descendants inherit its settings + draw
+    expect(SVG_ANIM_JS).toContain("effectOf(el)==='draw'&&svgLen(el)===0");
+    expect(SVG_ANIM_JS).toContain("effect:'draw'");
+    // a descendant that carries its OWN directive animates as itself (skipped by the expansion)
+    expect(SVG_ANIM_JS).toContain("if(k.getAttribute('data-sw-svg'))return;");
+    // container revealed on play AFTER members set their hidden from-frame → no flash of the finished art
+    expect(SVG_ANIM_JS).toContain("if(m.container)m.container.classList.add('sw-svg-shown')");
   });
 
   it('validates data-sw-svg-origin against an allowlist pattern (no style injection)', () => {

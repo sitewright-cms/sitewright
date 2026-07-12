@@ -137,7 +137,8 @@ const SVG_ANIM_CORE = `
   SVG_EASE['back']='cubic-bezier(0.34,1.56,0.64,1)';
   SVG_EASE['bounce']='linear(0,0.012,0.05,0.113,0.2,0.313,0.45,0.612,0.8,0.65,0.522,0.412,0.325,0.262,0.225,0.212,0.225,0.288,0.375,0.487,0.625,0.788,0.975,0.887,0.837,0.825,0.85,0.912,1)';
   SVG_EASE['elastic']='linear(0,0.218,0.427,0.616,0.774,0.892,0.966,1,1.002,0.994,0.986,0.984,0.988,0.995,1.001,1.003,1.002,1.001,1)';
-  function swEase(el){return SVG_EASE[el.getAttribute('${SW_TIMING_ATTRS.easing}')||'']||'ease-out';}
+  function swEaseV(n){return SVG_EASE[n||'']||'ease-out';}
+  function swEase(el){return swEaseV(el.getAttribute('${SW_TIMING_ATTRS.easing}'));}
   // A shape's outline length for the draw effect; 0 when the element isn't strokable (falls back to fade).
   function svgLen(el){try{var l=el.getTotalLength?el.getTotalLength():0;return (l&&isFinite(l))?l:0;}catch(e){return 0;}}
   var SVG_TF=Object.create(null);
@@ -174,10 +175,10 @@ const SVG_ANIM_CORE = `
     if((m.fill||!noFill)&&m.io!=='out'){
       m.drawFill=true;m.el.style.fillOpacity='0';
       var hasStroke=(cs.stroke&&cs.stroke!=='none'&&cs.stroke.indexOf('rgba(0, 0, 0, 0)')<0);
-      var col=m.el.getAttribute('data-sw-svg-draw-color');
+      var col=m.drawColor||m.el.getAttribute('data-sw-svg-draw-color');
       if(col&&/^[#a-zA-Z0-9(). ,%-]{1,40}$/.test(col)){m.el.style.stroke=col;m.tempStroke=!hasStroke;}
       else if(!hasStroke){m.el.style.stroke='currentColor';m.tempStroke=true;}
-      var w=m.el.getAttribute('data-sw-svg-draw-width');
+      var w=m.drawWidth||m.el.getAttribute('data-sw-svg-draw-width');
       if(w&&/^[0-9.]{1,6}$/.test(w))m.el.style.strokeWidth=w;else if(!hasStroke)m.el.style.strokeWidth='2';
     }
     var a=(m.dir==='reverse'?-len:len);
@@ -192,7 +193,10 @@ const SVG_ANIM_CORE = `
     if(SVG_SCALE[m.effect]!==undefined){m.el.style.transformOrigin=SVG_SCALE[m.effect];return [{opacity:0,transform:'scale(0.6)'},{opacity:1,transform:'none'}];}
     if(SVG_EXPAND[m.effect]!==undefined){var ex=SVG_EXPAND[m.effect];m.el.style.transformOrigin=ex[1];return [{opacity:0,transform:ex[0]},{opacity:1,transform:'none'}];}
     var f={opacity:0},t={opacity:1};
-    if(m.effect==='blur'){f.filter='blur(40px)';t.filter='blur(0px)';} // a strong, clearly-visible defocus (was a too-subtle 6px)
+    // Blur: a SHORT fade (opacity reaches 1 by ~20% of the timeline) while the strong defocus resolves over
+    // the FULL duration — the mark appears quickly, then sharpens. 3 keyframes: opacity ends early (its last
+    // stop is 0.2), filter spans 0..1. svgPlay's reverse flips the offsets for an OUT (exit) direction.
+    if(m.effect==='blur')return [{opacity:0,filter:'blur(40px)',offset:0},{opacity:1,offset:0.2},{filter:'blur(0px)',offset:1}];
     var tf=SVG_TF[m.effect];
     if(tf){f.transform=tf;
       // Flips interpolate to their OWN identity (perspective + rotate 0); translate/scale tween to 'none'.
@@ -218,9 +222,10 @@ const SVG_ANIM_CORE = `
     var frames;try{frames=svgFrames(m);}catch(e){svgClear(m.el);return;}
     // AFTER svgFrames so an author's data-sw-svg-origin overrides an effect's baked-in origin (scale-*).
     if(m.origin)m.el.style.transformOrigin=m.origin;
-    if(m.io==='out')frames=[frames[1],frames[0]]; // exit: play natural → hidden
+    // exit: reverse the keyframes (flipping any explicit offsets, e.g. blur's 3 stops) → play natural → hidden.
+    if(m.io==='out'){var rv=[];for(var ri=frames.length-1;ri>=0;ri--){var rf=frames[ri];if(rf.offset==null){rv.push(rf);}else{var rc={};for(var rk in rf){rc[rk]=rf[rk];}rc.offset=1-rf.offset;rv.push(rc);}}frames=rv;}
     var opts={duration:m.dur,delay:m.delay,fill:'both'};
-    try{opts.easing=swEase(m.el);}catch(e){}
+    try{opts.easing=m.ease||swEase(m.el);}catch(e){}
     var anim;try{anim=m.el.animate(frames,opts);}catch(e){svgClear(m.el);return;}
     m.anim=anim;
     anim.onfinish=function(){
@@ -261,6 +266,37 @@ export const SVG_ANIM_JS = `(function(){
     var o=el.getAttribute('data-sw-svg-origin');if(o&&/^[a-z- ]{1,20}$/.test(o))m.origin=o;
     m.io=el.getAttribute('data-sw-svg-dir')==='out'?'out':'in';
     return m;
+  }
+  // A DRAW effect on a CONTAINER (a <g> group, or anything with no strokable outline of its own → no
+  // getTotalLength) would otherwise degrade to a plain fade. Instead expand it into ONE draw member per
+  // drawable descendant, each inheriting the container's timing / direction / fill / stroke — so a logo
+  // group visibly draws stroke-by-stroke. Descendants that carry their OWN data-sw-svg animate as
+  // themselves (skipped here). Returns [] when the container has no plain drawable descendant.
+  function drawMembers(el,extraDelay){
+    var kids=el.querySelectorAll('path,line,polyline,polygon,circle,ellipse,rect');
+    var gdur=swMs(el,'${SW_TIMING_ATTRS.duration}',${SW_DURATION_DEFAULT});if(gdur<DMIN)gdur=DMIN;if(gdur>DMAX)gdur=DMAX;
+    var gdelay=swMs(el,'${SW_TIMING_ATTRS.delay}',0)+extraDelay;
+    var gdir=(el.getAttribute('data-sw-svg-draw-dir')==='reverse')?'reverse':'normal';
+    var gfill=el.getAttribute('data-sw-svg-fill')==='true';
+    var gio=el.getAttribute('data-sw-svg-dir')==='out'?'out':'in';
+    var gcol=el.getAttribute('data-sw-svg-draw-color'),gw=el.getAttribute('data-sw-svg-draw-width');
+    var gease=swEaseV(el.getAttribute('${SW_TIMING_ATTRS.easing}'));
+    var out=[];
+    Array.prototype.forEach.call(kids,function(k){
+      if(k.getAttribute('data-sw-svg'))return; // has its own directive → its own member
+      var len=svgLen(k);if(!(len>0))return;    // not strokable (e.g. a 0-size rect) → skip
+      var m={el:k,effect:'draw',dur:gdur,delay:gdelay,playing:false,len:len,dir:gdir,fill:gfill,io:gio,ease:gease,container:el};
+      if(gcol)m.drawColor=gcol;if(gw)m.drawWidth=gw;
+      out.push(m);
+    });
+    return out;
+  }
+  // One animatable element → its member list: normally one member, but a draw on a non-strokable container
+  // expands to its drawable descendants. The container is ARMED (failsafe stands down) but stays hidden until
+  // play (playUnit reveals it AFTER the members set their hidden from-frame, so nothing flashes).
+  function buildMembers(el,extraDelay){
+    if(effectOf(el)==='draw'&&svgLen(el)===0){var dm=drawMembers(el,extraDelay);if(dm.length){el.classList.add('sw-svg-armed');return dm;}}
+    return [member(el,extraDelay)];
   }
   // morph is owned by the SEPARATE svg-anim-morph runtime; an <img data-sw-svg> is an INLINE target
   // (handled below), never an effect element — both are excluded from the animatable set.
@@ -305,7 +341,7 @@ export const SVG_ANIM_JS = `(function(){
       var kids=s.querySelectorAll('[data-sw-svg]');Array.prototype.forEach.call(kids,claim);
       var step=swMs(s,'data-sw-svg-stagger',0);if(step>${SVG_ANIM_LIMITS.stagger.max})step=${SVG_ANIM_LIMITS.stagger.max};
       var trig=(s.getAttribute('data-sw-svg-scene-trigger')==='load')?'load':'view';
-      var members=[];Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k))members.push(member(k,step*i));});
+      var members=[];Array.prototype.forEach.call(kids,function(k,i){if(!isMorph(k)&&!isImg(k)){var bm=buildMembers(k,step*i);for(var bi=0;bi<bm.length;bi++)members.push(bm[bi]);}});
       // A scene also honours the whole-SVG loop + click-to-replay directives (like a global <svg> root).
       if(members.length)units.push({root:s,trigger:trig,members:members,replay:!once(s),click:boolAttr(s,'data-sw-svg-click'),loopMs:loopMsOf(s)});
     });
@@ -313,7 +349,7 @@ export const SVG_ANIM_JS = `(function(){
     Array.prototype.forEach.call(svgRoots(root),function(svg){
       if(!hasGlobal(svg))return;
       var kids=svg.querySelectorAll('[data-sw-svg]');var members=[];
-      Array.prototype.forEach.call(kids,function(k){if(isClaimed(k)||isMorph(k)||isImg(k))return;claim(k);members.push(member(k,0));});
+      Array.prototype.forEach.call(kids,function(k){if(isClaimed(k)||isMorph(k)||isImg(k))return;claim(k);var bm=buildMembers(k,0);for(var bi=0;bi<bm.length;bi++)members.push(bm[bi]);});
       if(!members.length)return;
       var trig=(svg.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
       units.push({root:svg,trigger:trig,members:members,replay:boolAttr(svg,'data-sw-svg-replay'),click:boolAttr(svg,'data-sw-svg-click'),loopMs:loopMsOf(svg)});
@@ -322,7 +358,7 @@ export const SVG_ANIM_JS = `(function(){
     Array.prototype.forEach.call(els,function(el){
       if(isClaimed(el)||isMorph(el)||isImg(el))return;
       var trig=(el.getAttribute('data-sw-svg-trigger')==='load')?'load':'view';
-      units.push({root:el,trigger:trig,members:[member(el,0)],replay:!once(el)});
+      units.push({root:el,trigger:trig,members:buildMembers(el,0),replay:!once(el)});
     });
     if(units.length===0)return;
     // ARM every member NOW (before the ready gate): marks .sw-svg-armed so the CSS first-paint failsafe
@@ -332,8 +368,10 @@ export const SVG_ANIM_JS = `(function(){
     // Longest member timeline (delay + dur, + the draw's fill-reveal tail) — the auto-repeat period is never
     // shorter than this, so a too-short loop can't keep interrupting a slow draw before it finishes.
     units.forEach(function(u){var mx=0;u.members.forEach(function(m){var d=m.delay+m.dur;if(m.effect==='draw')d+=Math.max(140,m.dur*0.28);if(d>mx)mx=d;});u.totalMs=mx;});
-    function playUnit(u){u.members.forEach(svgPlay);}
-    function resetUnit(u){u.members.forEach(svgReset);}
+    // Reveal an expanded draw container AFTER its members set their hidden from-frame (same tick → no paint
+    // between → no flash of the fully-drawn art); resetUnit re-hides it so a replay re-draws from blank.
+    function playUnit(u){u.members.forEach(svgPlay);u.members.forEach(function(m){if(m.container)m.container.classList.add('sw-svg-shown');});}
+    function resetUnit(u){u.members.forEach(svgReset);u.members.forEach(function(m){if(m.container)m.container.classList.remove('sw-svg-shown');});}
     function replayUnit(u){resetUnit(u);if(window.requestAnimationFrame)requestAnimationFrame(function(){playUnit(u);});else playUnit(u);}
     function stopLoop(u){if(u.timer){clearTimeout(u.timer);u.timer=null;}}
     // (Re)arm the auto-repeat countdown from NOW. setTimeout (NOT a fixed setInterval) so the loop stays

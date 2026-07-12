@@ -26,7 +26,15 @@ export function parseSvg(text: string): SVGSVGElement | null {
     for (let i = n.attributes.length - 1; i >= 0; i--) {
       const a = n.attributes[i]!;
       if (/^on/i.test(a.name)) n.removeAttribute(a.name);
-      else if (/(?:^|:)href$/i.test(a.name) && /^\s*(?:javascript|vbscript|data):/i.test(a.value)) n.setAttribute(a.name, '#');
+      else if (/(?:^|:)href$/i.test(a.name)) {
+        // Mirror the server sanitizer's href policy: neutralize javascript:/vbscript: and any non-raster
+        // data: URI, but KEEP self-contained raster data:image embeds (dropping them here would silently
+        // destroy content the server would have preserved). Internal #refs and other values are left as-is.
+        const val = a.value.trimStart();
+        if (/^(?:javascript|vbscript):/i.test(val) || (/^data:/i.test(val) && !/^data:image\/(?:png|jpe?g|gif|webp|avif)[;,]/i.test(val))) {
+          n.setAttribute(a.name, '#');
+        }
+      }
     }
   };
   sanitizeEl(svg);
@@ -227,6 +235,41 @@ export function prettySvg(svg: Element): string {
     for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]!, depth: depth + 1 });
   }
   return out.join('\n');
+}
+
+/** True when an upload looks like an SVG (by MIME type or `.svg` extension). */
+export function isSvgUpload(file: File): boolean {
+  return file.type === 'image/svg+xml' || file.type === 'image/svg' || /\.svg$/i.test(file.name);
+}
+
+/**
+ * Best-effort "clean up code" for an uploaded SVG File: strip editor cruft ({@link cleanupSvg}) and
+ * pretty-print ({@link prettySvg}), returning a NEW File with the tidied bytes (same name, image/svg+xml).
+ * A non-SVG file, or SVG that fails to parse, is returned UNCHANGED — cleanup never blocks an upload, and
+ * the server still sanitizes on store. Preserves CSS, ids, geometry and animation; removes comments,
+ * `<metadata>`, Inkscape/Illustrator namespaces, `data-name`, and indentation.
+ */
+export async function cleanSvgFile(file: File): Promise<File> {
+  if (!isSvgUpload(file)) return file;
+  let text: string;
+  try {
+    text = await readAsText(file); // FileReader (not Blob.text) — universally supported incl. test env
+  } catch {
+    return file;
+  }
+  const svg = parseSvg(text);
+  if (!svg) return file; // not a usable SVG → leave it for the server to handle/reject
+  cleanupSvg(svg);
+  return new File([prettySvg(svg)], file.name, { type: 'image/svg+xml' });
+}
+/** Read a Blob as UTF-8 text via FileReader (Promise-wrapped). */
+function readAsText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(r.error || new Error('read failed'));
+    r.readAsText(blob);
+  });
 }
 
 let stampCounter = 0;

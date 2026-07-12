@@ -114,26 +114,17 @@ export interface CloneAuditResult {
   fidelity: FidelityCheckResult;
 }
 
-/** One tagged visual defect from the vision acceptance gate. */
-export interface VisualDefect {
-  region: string;
-  category: 'layout' | 'spacing' | 'typography' | 'color' | 'image' | 'component' | 'content' | 'chrome' | 'responsive';
-  severity: 'blocker' | 'major' | 'minor';
-  description: string;
-}
-/** The VISION acceptance gate (GET /projects/:id/visual-audit/:pageId) — a vision model diffs the LIVE
- *  original vs the clone per region and returns a tagged defect list. PASS = zero blocker + zero major. */
+/** The DETERMINISTIC visual gate (GET /projects/:id/visual-audit/:pageId): renders the LIVE original vs the
+ *  clone side-by-side (desktop + mobile) and returns them + a defect RUBRIC for the CALLER to judge. No
+ *  server-side AI — the driving model produces the verdict itself. */
 export interface VisualAuditResult {
   sourceUrl: string;
   route: string;
-  pass: boolean;
-  defects: VisualDefect[];
-  summary: string;
-  blockers: number;
-  majors: number;
-  minors: number;
-  captured: { clone: boolean; original: boolean };
-  model: string;
+  rubric: string;
+  categories: string[];
+  severities: string[];
+  build: Partial<Record<ScreenshotViewportName, PreviewShot>>;
+  source: Partial<Record<ScreenshotViewportName, PreviewShot>>;
 }
 
 /** A high-res region crop (lossless WebP, base64). */

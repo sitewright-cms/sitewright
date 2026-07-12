@@ -268,7 +268,7 @@ import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
-import { visualAudit, type AuditViewport, type VisualDefect } from '../render/visual-audit.js';
+import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
@@ -4758,18 +4758,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // visual_audit: the VISION acceptance gate — the reliable fidelity signal the computed-style scorers miss.
-    // Captures the CLONE (loopback build) + the LIVE original (SSRF-pinned, fresh — not the degraded import
-    // cache) full-page at desktop + mobile, hands both to the project's configured vision model, and returns a
-    // TAGGED defect list (region/category/severity) with a blocker+major PASS/FAIL. It SEES rendered fonts/
-    // images (unlike getComputedStyle, which lies) and full pages (not clipped). Needs an AI provider. content:read.
+    // visual_audit: the VISION acceptance gate — DETERMINISTIC. Renders the CLONE (loopback build) + the
+    // LIVE original (SSRF-pinned, fresh — not the degraded import cache) full-page at desktop + mobile and
+    // returns the side-by-sides + a structured defect RUBRIC. The DRIVING agent (a CLI/MCP model with its
+    // own vision) judges the pixels — the platform does NOT call an AI here, so a cheap-token CLI clone never
+    // triggers a second, platform-billed vision call (the CLI and on-platform lanes stay separate). It still
+    // beats the computed-style scorers: real side-by-side vs the LIVE original, full-page (not clipped), real
+    // rendered fonts/images (getComputedStyle lies). content:read.
     app.get<{ Params: { projectId: string; pageId: string } }>(
       '/projects/:projectId/visual-audit/:pageId',
       { config: rl(3) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
-        const resolved = await resolveAiProvider(ctx);
-        if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured — the visual audit needs a vision model' });
         const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(allPages);
         const targetPage = byId.get(req.params.pageId) ?? null;
@@ -4788,19 +4788,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         req.raw.on('close', () => abort.abort());
         const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
         // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
-        const [buildShots, sourceShots] = await Promise.all([
+        const [build, source] = await Promise.all([
           captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
           captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
         ]);
-        const viewports: AuditViewport[] = vps.map((name) => ({ name, original: sourceShots[name], clone: buildShots[name] }));
-        const result = await visualAudit({
-          provider: resolved.provider,
-          viewports,
-          signal: abort.signal,
-          maxTokens: resolved.maxOutputTokens ?? 2048,
-          onUsage: (u) => { void aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, u); },
+        return reply.send({
+          sourceUrl: target.sourceUrl,
+          route: target.route,
+          rubric: VISUAL_AUDIT_RUBRIC,
+          categories: VISUAL_DEFECT_CATEGORIES,
+          severities: VISUAL_DEFECT_SEVERITIES,
+          build,
+          source,
         });
-        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...result });
       },
     );
 
@@ -5180,10 +5180,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           .sort((a, b) => (((a.path ?? '') === '' ? 0 : 1) - ((b.path ?? '') === '' ? 0 : 1)))
           .map((p) => ({ pageId: p.id, slug: pathToSlug(pagePath(p, byId)) ?? '', title: p.title }));
       },
-      // AUTHORITATIVE gate: re-run the (already-tested) clone-audit + visual-audit routes with the agent's
-      // own scoped token, and re-read the STORED source for the anti-lie marker check — the agent's claim is
-      // ignored. Combines the vision diff (authoritative visual), the non-advisory STRUCTURE/BEHAVIOUR
-      // checks, and the native/foreign marker ratio into one verdict.
+      // AUTHORITATIVE gate — DETERMINISTIC, no server-side AI (so it never mixes a second, platform-billed
+      // AI call into a cheap-token CLI clone). Re-runs the (already-tested) clone-audit route with the
+      // agent's own scoped token — its non-advisory STRUCTURE / BEHAVIOUR / computed-style-visual checks —
+      // and re-reads the STORED source for the anti-lie marker check. The agent's own claim is ignored. The
+      // FULL visual fidelity (layout/images/sections vs the live original) is the agent's job: it self-judges
+      // the deterministic visual_audit side-by-sides while authoring.
       runGate: async (token, ctx, pageId) => {
         const inject = async (path: string): Promise<Record<string, unknown>> => {
           const res = await app.inject({ method: 'GET', url: path, headers: { authorization: `Bearer ${token}` } });
@@ -5191,21 +5193,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return JSON.parse(res.payload) as Record<string, unknown>;
         };
         const pid = ctx.projectId;
-        const enc = encodeURIComponent(pageId);
-        const [ca, va] = await Promise.all([
-          inject(`/projects/${pid}/clone-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
-          inject(`/projects/${pid}/visual-audit/${enc}`).catch((e: unknown) => ({ error: String(e) })),
-        ]);
+        const ca = await inject(`/projects/${pid}/clone-audit/${encodeURIComponent(pageId)}`).catch((e: unknown) => ({ error: String(e) }));
         const source = ((await contentRepo.get(ctx, 'page', pageId).catch(() => null)) as Page | null)?.source ?? null;
         const markers = checkNativeMarkers(source);
         const checks = Array.isArray((ca as { checks?: AuditCheck[] }).checks) ? (ca as { checks: AuditCheck[] }).checks : null;
         const structuralFails = checks
-          ? checks.filter((c) => !c.advisory && !c.pass && c.leg !== 'visual').map((c) => `${c.label} — ${c.detail}`)
+          ? checks.filter((c) => !c.advisory && !c.pass).map((c) => `${c.label} — ${c.detail}`)
           : ['clone_audit could not run (fix the page so it renders)'];
-        const visual = typeof (va as { pass?: unknown }).pass === 'boolean'
-          ? { pass: (va as { pass: boolean }).pass, summary: String((va as { summary?: string }).summary ?? ''), defects: ((va as { defects?: VisualDefect[] }).defects ?? []) }
-          : { pass: false, summary: 'visual audit could not run', defects: [] as VisualDefect[] };
-        return { pass: visual.pass && structuralFails.length === 0 && markers.ok, visual, structuralFails, markers };
+        return { pass: structuralFails.length === 0 && markers.ok, structuralFails, markers };
       },
     },
   });

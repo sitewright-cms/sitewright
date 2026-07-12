@@ -1,80 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { parseVisualAudit, tallyDefects, buildAuditPrompt, type VisualDefect, type AuditViewport } from '../src/render/visual-audit.js';
+import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../src/render/visual-audit.js';
 
-const shot = (base64: string) => ({ base64, mimeType: 'image/jpeg' as const, width: 1280, height: 3000 });
-
-describe('parseVisualAudit', () => {
-  it('parses a clean JSON object', () => {
-    const { defects, summary } = parseVisualAudit(
-      '{"summary":"close but hero image missing","defects":[{"region":"hero","category":"image","severity":"major","description":"no photo"}]}',
-    );
-    expect(summary).toBe('close but hero image missing');
-    expect(defects).toEqual([{ region: 'hero', category: 'image', severity: 'major', description: 'no photo' }]);
+describe('visual audit — deterministic (the caller judges; no server AI)', () => {
+  it('exposes the defect taxonomy the driving model tags against', () => {
+    expect(VISUAL_DEFECT_CATEGORIES).toContain('image');
+    expect(VISUAL_DEFECT_CATEGORIES).toContain('component');
+    expect(VISUAL_DEFECT_CATEGORIES).toContain('layout');
+    expect(VISUAL_DEFECT_SEVERITIES).toEqual(['blocker', 'major', 'minor']);
   });
 
-  it('tolerates ```json fences + surrounding prose', () => {
-    const text = 'Here is my audit:\n```json\n{"summary":"ok","defects":[]}\n```\nThanks!';
-    const { defects, summary } = parseVisualAudit(text);
-    expect(summary).toBe('ok');
-    expect(defects).toEqual([]);
+  it('the rubric tells the caller to judge the PIXELS region-by-region + names the lying-metric trap', () => {
+    expect(VISUAL_AUDIT_RUBRIC).toMatch(/region by region|REGION BY REGION/i);
+    // It must call out what computed-style checks miss (the whole reason the vision gate exists).
+    expect(VISUAL_AUDIT_RUBRIC.toLowerCase()).toContain('font');
+    expect(VISUAL_AUDIT_RUBRIC.toLowerCase()).toMatch(/loaded|never loaded|glyph/);
+    // The pass bar is zero blocker + major.
+    expect(VISUAL_AUDIT_RUBRIC.toLowerCase()).toContain('zero blocker');
   });
 
-  it('extracts a bare {…} object embedded in prose', () => {
-    const { defects } = parseVisualAudit('The result is {"defects":[{"region":"footer","category":"content","severity":"minor","description":"missing credit line"}]} done');
-    expect(defects).toHaveLength(1);
-    expect(defects[0]!.region).toBe('footer');
-  });
-
-  it('normalizes an unknown category/severity to safe defaults + drops empty-description entries', () => {
-    const { defects } = parseVisualAudit(
-      '{"defects":[{"region":"x","category":"bogus","severity":"nope","description":"real"},{"region":"y","description":""}]}',
-    );
-    expect(defects).toEqual([{ region: 'x', category: 'content', severity: 'major', description: 'real' }]);
-  });
-
-  it('fails LOUD (a blocker) on unparseable output — never silently green', () => {
-    const { defects } = parseVisualAudit('the site looks basically fine to me, no JSON here');
-    expect(defects).toHaveLength(1);
-    expect(defects[0]!.severity).toBe('blocker');
-  });
-
-  it('caps the defect list', () => {
-    const many = Array.from({ length: 60 }, (_, i) => ({ region: `r${i}`, category: 'layout', severity: 'minor', description: `d${i}` }));
-    const { defects } = parseVisualAudit(JSON.stringify({ defects: many }));
-    expect(defects.length).toBe(40);
-  });
-});
-
-describe('tallyDefects — blocker+major gate, minors advisory', () => {
-  const d = (severity: VisualDefect['severity']): VisualDefect => ({ region: 'r', category: 'layout', severity, description: 'x' });
-  it('passes with only minors', () => {
-    expect(tallyDefects([d('minor'), d('minor')])).toEqual({ blockers: 0, majors: 0, minors: 2, pass: true });
-  });
-  it('fails on any major or blocker', () => {
-    expect(tallyDefects([d('major')]).pass).toBe(false);
-    expect(tallyDefects([d('blocker')]).pass).toBe(false);
-  });
-  it('passes an empty defect list', () => {
-    expect(tallyDefects([])).toEqual({ blockers: 0, majors: 0, minors: 0, pass: true });
-  });
-});
-
-describe('buildAuditPrompt', () => {
-  it('emits ORIGINAL-then-CLONE attachments per complete viewport, with a legend', () => {
-    const vps: AuditViewport[] = [
-      { name: 'desktop', original: shot('od'), clone: shot('cd') },
-      { name: 'mobile', original: shot('om'), clone: shot('cm') },
-    ];
-    const { attachments, legend } = buildAuditPrompt(vps);
-    expect(attachments.map((a) => a.data)).toEqual(['od', 'cd', 'om', 'cm']);
-    expect(attachments.every((a) => a.kind === 'image')).toBe(true);
-    expect(legend).toContain('Image 1 = ORIGINAL (desktop)');
-    expect(legend).toContain('Image 2 = CLONE (desktop)');
-    expect(legend).toContain('Image 4 = CLONE (mobile)');
-  });
-
-  it('skips a viewport missing one side (no one-sided comparison)', () => {
-    const { attachments } = buildAuditPrompt([{ name: 'desktop', original: shot('od') }]);
-    expect(attachments).toHaveLength(0);
+  it('is plain text (no server prompt leaking a JSON-only contract — the caller decides its own format)', () => {
+    // We no longer force a JSON response shape (there is no server-side parse); it's guidance for a human/LLM.
+    expect(typeof VISUAL_AUDIT_RUBRIC).toBe('string');
+    expect(VISUAL_AUDIT_RUBRIC.length).toBeGreaterThan(200);
   });
 });

@@ -607,7 +607,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'visual_audit',
     {
       description:
-        "The VISION acceptance gate — the RELIABLE fidelity check. The computed-style gates (fidelity_check / clone_audit's visual leg) only score fonts/gradients/coverage of TEXT elements and are BLIND to layout, images, section design, and modals — a hollow page can score green. visual_audit renders the CLONE and the LIVE original full-page (desktop + mobile) and hands both to a vision model, which compares them REGION BY REGION and returns a TAGGED defect list — each defect has a region, a category (layout|spacing|typography|color|image|component|content|chrome|responsive), a severity (blocker|major|minor), and a specific description. It SEES the rendered fonts and images (unlike getComputedStyle, which returns the requested font name even when the file never loaded) and full pages (not clipped). PASS = zero blocker + zero major defects (minors are advisory). Run it as the FINAL gate on every cloned/authored page and FIX every blocker/major before declaring the page done — never declare faithful from your own render or a number. Needs an AI provider configured. The page must have an import source.",
+        "The VISUAL acceptance gate for a cloned/imported page — the reliable fidelity signal the computed-style scorers (fidelity_check / clone_audit's visual leg) miss (they score fonts/gradients/coverage of TEXT elements and are BLIND to layout, images, section design, and modals; a hollow page scores green). It renders your CLONE and the LIVE original full-page (desktop + mobile) and returns them SIDE-BY-SIDE plus a defect RUBRIC. YOU (this model) judge the pixels against the rubric — the platform runs NO AI, so it works whether or not the project has an AI provider. For every region (header, hero, each section, footer) tag divergences by category (layout|spacing|typography|color|image|component|content|chrome|responsive) and severity (blocker|major|minor); the page is faithful only when there are ZERO blocker + major. It SEES what measurements can't: real rendered fonts (getComputedStyle returns the requested name even when the file never loaded), real images, and layout. Run it as the FINAL visual check on every cloned page and fix every blocker/major before declaring it done — never from your own render alone. The page must have an import source.",
       inputSchema: { pageId: z.string() },
     },
     async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
@@ -617,15 +617,25 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       }
       try {
         const r = await client.visualAudit(pageId);
-        const lines = [`VISUAL AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — page “${pageId}” vs ${r.sourceUrl} (${r.blockers} blocker, ${r.majors} major, ${r.minors} minor; model ${r.model}).`];
-        if (r.summary) lines.push(r.summary);
-        if (r.defects.length) {
-          lines.push('', 'Defects (fix every blocker + major):');
-          for (const d of r.defects) lines.push(`  [${d.severity}] (${d.region} · ${d.category}) ${d.description}`);
+        const names = Object.keys(r.source).length ? Object.keys(r.source) : Object.keys(r.build);
+        const content: ContentBlock[] = [
+          { type: 'text', text: `VISUAL AUDIT — page “${pageId}” vs the live original (${r.sourceUrl}).\n\n${r.rubric}\n\nBelow, for each viewport: the ORIGINAL then your CLONE.` },
+        ];
+        for (const vp of names as Array<keyof typeof r.source>) {
+          const s = r.source[vp];
+          const b = r.build[vp];
+          if (s) {
+            content.push({ type: 'text', text: `— ${String(vp)} · ORIGINAL (${s.width}×${s.height}) —` });
+            content.push({ type: 'image', data: s.base64, mimeType: s.mimeType });
+          }
+          if (b) {
+            content.push({ type: 'text', text: `— ${String(vp)} · YOUR CLONE (${b.width}×${b.height}) —` });
+            content.push({ type: 'image', data: b.base64, mimeType: b.mimeType });
+          }
         }
-        if (!r.pass) lines.push('', 'This page is NOT faithful yet. Fix every blocker + major defect above (compare_regions / compare_to_source to SEE them), then run visual_audit again. Minor defects are advisory. Do not declare it done until pass ✓.');
-        else lines.push('', 'No blocking visual defects ✓ — this page is a faithful match. (Any minor defects listed are optional polish.)');
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        if (names.length === 0) content.push({ type: 'text', text: 'No screenshots could be captured (no Chromium on this server, or neither side rendered).' });
+        else content.push({ type: 'text', text: 'Now list every blocker + major defect you see, fix them (put_page), and run visual_audit again until there are none.' });
+        return { content };
       } catch (err) {
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
         return toolError(`Error: ${err instanceof Error ? err.message : 'visual audit failed'}`);

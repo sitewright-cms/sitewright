@@ -13,7 +13,6 @@ import type { AgentMessage, AgentProvider, AgentToolDef } from './agent-provider
 import type { AiUsage } from './provider.js';
 import type { McpToolBridge } from './tool-bridge.js';
 import { runAgentLoop } from './agent-loop.js';
-import type { VisualDefect } from '../render/visual-audit.js';
 
 /** One page the orchestrator must bring to green. */
 export interface ClonePageTask {
@@ -22,11 +21,16 @@ export interface ClonePageTask {
   title?: string;
 }
 
-/** The result of the authoritative per-page gate (visual + structure/behaviour + markers). */
+/**
+ * The result of the authoritative per-page gate. It is DETERMINISTIC — no server-side AI. It combines
+ * clone_audit's non-advisory STRUCTURE / BEHAVIOUR / computed-style-visual checks with an anti-lie MARKER
+ * check on the stored source. The full VISUAL fidelity (layout/images/sections vs the live original) is the
+ * driving agent's own job: it self-judges the deterministic `visual_audit` side-by-sides while authoring —
+ * the platform never runs a second AI judgement (keeps the CLI + on-platform lanes separate).
+ */
 export interface CloneGateResult {
   pass: boolean;
-  visual: { pass: boolean; summary: string; defects: VisualDefect[] };
-  /** Non-advisory STRUCTURE/BEHAVIOUR check failures (label — detail). */
+  /** Non-advisory clone_audit failures (structure / behaviour / computed-style visual), as "label — detail". */
   structuralFails: string[];
   markers: { native: number; foreign: number; ok: boolean };
 }
@@ -35,7 +39,7 @@ export type OrchestratorEvent =
   | { type: 'page-start'; pageId: string; slug: string; index: number; total: number }
   | { type: 'round'; pageId: string; round: number }
   | { type: 'tool'; pageId: string; name: string }
-  | { type: 'gate'; pageId: string; round: number; pass: boolean; summary: string; blockers: number; majors: number; minors: number; structuralFails: string[]; markersOk: boolean }
+  | { type: 'gate'; pageId: string; round: number; pass: boolean; structuralFails: string[]; markersOk: boolean }
   | { type: 'page-done'; pageId: string; pass: boolean; rounds: number }
   | { type: 'done'; total: number; passed: number }
   | { type: 'error'; pageId?: string; message: string };
@@ -90,33 +94,32 @@ export function buildAuthorPrompt(task: ClonePageTask): string {
     `2. Call compare_to_source("${task.pageId}") to SEE the original vs your current build.`,
     '3. Map every element to a REAL platform primitive first (get_components / get_reference / widgets / website.effects) — only hand-write HTML when no primitive fits. Use Tailwind utilities for layout, CSS vars for the correct per-element fonts, {{#each dataset.x}} for repeated lists, real <dialog data-sw-component="modal"> for modals, and make text editable with data-sw-* / {{sw-control}}.',
     `4. put_page the native source.`,
-    `5. Run visual_audit("${task.pageId}") AND clone_audit("${task.pageId}") and FIX every blocker + major defect they report. Re-render with compare_to_source to verify.`,
+    `5. Run visual_audit("${task.pageId}") — it returns the ORIGINAL vs your CLONE side-by-side (desktop + mobile) plus a defect rubric. JUDGE the pixels yourself against the rubric and FIX every blocker + major (wrong/missing images, wrong layout, dead components, wrong fonts/colors). Also run clone_audit("${task.pageId}") for the measured structure/behaviour checks.`,
     '',
-    'Do NOT declare the page done from your own render or a screenshot — the server re-runs the acceptance gate after your turn and will hand you back any remaining defects to fix. Keep going until it passes.',
+    'Do NOT declare the page done from your own render alone — judge against the visual_audit side-by-sides, and the server re-runs the deterministic acceptance gate (structure/behaviour + a raw-import marker check) after your turn and hands you back any remaining failures. Keep going until both are clean.',
   ].join('\n');
 }
 
-/** PURE: the feedback message fed back to the agent when the authoritative gate still fails. */
+/** PURE: the feedback message fed back to the agent when the authoritative (deterministic) gate still fails. */
 export function buildGateFeedback(gate: CloneGateResult): string {
-  const lines = ['The acceptance gate still FAILS for this page. You MUST fix these before it is considered done:', ''];
+  const lines = ['The deterministic acceptance gate still FAILS for this page. You MUST fix these before it is considered done:', ''];
   if (!gate.markers.ok) {
     lines.push(
       `- STILL A RAW IMPORT: the stored source has ${gate.markers.foreign} foreign framework markers (Materialize/Bootstrap/FontAwesome) and only ${gate.markers.native} native markers. Re-author the body in native primitives (data-sw-*, {{#each dataset}}, real components) — do not leave the imported markup.`,
     );
   }
-  for (const f of gate.structuralFails) lines.push(`- STRUCTURE/BEHAVIOUR: ${f}`);
-  if (gate.visual.summary) lines.push(`- VISUAL: ${gate.visual.summary}`);
-  for (const d of gate.visual.defects) {
-    if (d.severity === 'minor') continue; // minors are advisory — don't force churn on them
-    lines.push(`- VISUAL [${d.severity}] (${d.region} · ${d.category}): ${d.description}`);
-  }
-  lines.push('', 'Fix each of the above, put_page the corrected source, then it will be re-checked automatically.');
+  for (const f of gate.structuralFails) lines.push(`- ${f}`);
+  lines.push(
+    '',
+    'Also re-run visual_audit and fix any blocker/major VISUAL defect you can see in the side-by-side (wrong/missing images, wrong layout, dead components, wrong fonts) — the server gate above does not judge those, YOU must.',
+    'Then put_page the corrected source; it will be re-checked automatically.',
+  );
   return lines.join('\n');
 }
 
-/** True when a page has been authored to the acceptance bar. */
+/** True when a page passes the deterministic gate (structure/behaviour + not-a-raw-import). */
 export function gatePasses(gate: CloneGateResult): boolean {
-  return gate.visual.pass && gate.structuralFails.length === 0 && gate.markers.ok;
+  return gate.structuralFails.length === 0 && gate.markers.ok;
 }
 
 export interface OrchestrationOptions {
@@ -191,10 +194,6 @@ export async function* runCloneOrchestration(opts: OrchestrationOptions): AsyncG
         pageId: task.pageId,
         round,
         pass: gate.pass,
-        summary: gate.visual.summary,
-        blockers: gate.visual.defects.filter((d) => d.severity === 'blocker').length,
-        majors: gate.visual.defects.filter((d) => d.severity === 'major').length,
-        minors: gate.visual.defects.filter((d) => d.severity === 'minor').length,
         structuralFails: gate.structuralFails,
         markersOk: gate.markers.ok,
       };

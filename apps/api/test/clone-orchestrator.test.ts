@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { checkNativeMarkers, buildAuthorPrompt, buildGateFeedback, gatePasses, type CloneGateResult } from '../src/ai/clone-orchestrator.js';
-import type { VisualDefect } from '../src/render/visual-audit.js';
 
 describe('checkNativeMarkers — anti-lie source audit', () => {
   it('accepts a genuinely native source (native markers, ~no foreign)', () => {
@@ -40,41 +39,26 @@ describe('buildAuthorPrompt', () => {
   });
 });
 
-const defect = (severity: VisualDefect['severity'], description = 'x'): VisualDefect => ({ region: 'hero', category: 'image', severity, description });
-
 describe('buildGateFeedback', () => {
   it('surfaces the raw-import marker failure prominently', () => {
-    const gate: CloneGateResult = {
-      pass: false,
-      visual: { pass: true, summary: '', defects: [] },
-      structuralFails: [],
-      markers: { native: 2, foreign: 200, ok: false },
-    };
+    const gate: CloneGateResult = { pass: false, structuralFails: [], markers: { native: 2, foreign: 200, ok: false } };
     expect(buildGateFeedback(gate)).toContain('STILL A RAW IMPORT');
     expect(buildGateFeedback(gate)).toContain('200 foreign');
   });
 
-  it('lists blocker + major visual defects but SKIPS minors (advisory)', () => {
-    const gate: CloneGateResult = {
-      pass: false,
-      visual: { pass: false, summary: 'hero image missing', defects: [defect('major', 'no hero photo'), defect('minor', 'tiny spacing')] },
-      structuralFails: ['sliders not enhanced'],
-      markers: { native: 40, foreign: 0, ok: true },
-    };
+  it('lists the deterministic structural failures + reminds the agent to self-judge visual_audit', () => {
+    const gate: CloneGateResult = { pass: false, structuralFails: ['sliders not enhanced'], markers: { native: 40, foreign: 0, ok: true } };
     const fb = buildGateFeedback(gate);
-    expect(fb).toContain('no hero photo');
     expect(fb).toContain('sliders not enhanced');
-    expect(fb).not.toContain('tiny spacing');
+    // The visual fidelity is the agent's own job now (deterministic gate doesn't judge it).
+    expect(fb).toContain('visual_audit');
   });
 });
 
-describe('gatePasses — all three legs must pass', () => {
-  const base: CloneGateResult = { pass: false, visual: { pass: true, summary: '', defects: [] }, structuralFails: [], markers: { native: 10, foreign: 0, ok: true } };
-  it('passes when visual + structure + markers all pass', () => {
+describe('gatePasses — deterministic: structure/behaviour + not-a-raw-import', () => {
+  const base: CloneGateResult = { pass: false, structuralFails: [], markers: { native: 10, foreign: 0, ok: true } };
+  it('passes when structure + markers pass', () => {
     expect(gatePasses(base)).toBe(true);
-  });
-  it('fails if the visual leg fails', () => {
-    expect(gatePasses({ ...base, visual: { pass: false, summary: '', defects: [defect('major')] } })).toBe(false);
   });
   it('fails if a structural check fails', () => {
     expect(gatePasses({ ...base, structuralFails: ['modals missing'] })).toBe(false);

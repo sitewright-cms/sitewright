@@ -81,10 +81,20 @@ const HIDDEN = ':where(:not([data-sw-component="banner"]):not(.sw-animation-acti
  * default; `data-sw-duration` overrides it inline). `pointer-events` is suspended while hidden so
  * invisible content can't be clicked. A self-heal failsafe reveals any element the runtime never armed
  * (JS disabled / the script failed) after a grace period, so content is never stranded hidden.
+ *
+ * CRITICAL: the `transition` is declared UNCONDITIONALLY on `[data-sw-animation]` — NOT on the {@link
+ * HIDDEN} selector. If the transition lived on the hidden rule, adding `.sw-animation-active` would make
+ * the element stop matching that rule, so the transition-property would VANISH in the same style recalc
+ * that flips opacity/transform → the reveal would POP instead of animate. Keeping it unconditional means
+ * the transition is present in BOTH the hidden and revealed states, so the reveal always animates.
  */
 export const ANIMATION_CSS = [
   '@media (prefers-reduced-motion: no-preference){',
-  `[data-sw-animation]${HIDDEN}{opacity:0;pointer-events:none;transition-property:opacity,transform;transition-duration:${SW_DURATION_DEFAULT}ms;transition-timing-function:cubic-bezier(.25,.46,.45,.94)}`,
+  // Transition — ALWAYS present on a managed element (see the CRITICAL note above). Duration/easing are
+  // overridable per-element inline by the runtime from data-sw-duration / data-sw-easing.
+  `[data-sw-animation]{transition-property:opacity,transform;transition-duration:${SW_DURATION_DEFAULT}ms;transition-timing-function:cubic-bezier(.25,.46,.45,.94)}`,
+  // First-paint / un-activated HIDE (opacity + pointer-events).
+  `[data-sw-animation]${HIDDEN}{opacity:0;pointer-events:none}`,
   ...EFFECT_TRANSFORMS.map(
     ([effect, transform]) => `[data-sw-animation="${effect}"]${HIDDEN}{transform:${transform}}`,
   ),

@@ -26,6 +26,18 @@ describe('animation stylesheet', () => {
     }
   });
 
+  it('declares the reveal transition UNCONDITIONALLY (not on the hidden selector) so the reveal ANIMATES, not pops', () => {
+    // REGRESSION GUARD: if the transition-property lived on the `:where()` hidden selector, adding
+    // `.sw-animation-active` would make the element STOP matching it — so the transition would vanish in
+    // the SAME style recalc that flips opacity/transform → the reveal would POP. It MUST sit on a bare
+    // `[data-sw-animation]{…}` rule so it is present in BOTH the hidden and revealed states.
+    expect(ANIMATION_CSS).toContain('[data-sw-animation]{transition-property:opacity,transform;transition-duration:400ms');
+    // No `:where(...)`-gated rule may (re)declare transition-property — that reintroduces the pop coupling.
+    for (const line of ANIMATION_CSS.split('\n')) {
+      if (line.includes('transition-property')) expect(line).not.toContain(':where(');
+    }
+  });
+
   it('is PE-first via a CSS self-heal failsafe + a noscript un-hide (never strands content hidden)', () => {
     // A non-banner element the runtime never ARMS reveals itself after a grace period (JS off / script
     // failed) — content is never stranded invisible.

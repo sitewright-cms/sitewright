@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { parseSvg, cleanupSvg, prettySvg, stampIds, buildTree, assetFromUrl, cssEsc, resetStampCounter } from '../src/views/library/svg-studio-helpers';
+import { parseSvg, cleanupSvg, prettySvg, isSvgUpload, cleanSvgFile, stampIds, buildTree, assetFromUrl, cssEsc, resetStampCounter } from '../src/views/library/svg-studio-helpers';
 
 /** A messy export: full editor namespaces, comments, <metadata>/RDF, a <sodipodi:namedview>, layer names,
  *  namespaced attrs — mixed with everything that MUST survive (CSS, ids, gradient, geometry, data-sw-*). */
@@ -28,6 +28,13 @@ describe('svg-studio-helpers', () => {
       expect(svg).not.toBeNull();
       expect(svg!.getAttribute('xmlns')).toBe('http://www.w3.org/2000/svg');
       expect(svg!.querySelector('rect')).not.toBeNull();
+    });
+
+    it('keeps safe raster data: hrefs but neutralizes javascript: & non-raster data: (matches server policy)', () => {
+      const svg = parseSvg('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image id="img" xlink:href="data:image/png;base64,AAAA" width="1" height="1"/><image id="bad" xlink:href="data:text/html,foo" width="1" height="1"/><a id="a" xlink:href="javascript:alert(1)"/></svg>')!;
+      expect(svg.querySelector('#img')!.getAttribute('xlink:href')).toBe('data:image/png;base64,AAAA'); // raster embed preserved
+      expect(svg.querySelector('#bad')!.getAttribute('xlink:href')).toBe('#'); // non-raster data: neutralized
+      expect(svg.querySelector('#a')!.getAttribute('xlink:href')).toBe('#'); // javascript: neutralized
     });
 
     it('strips <script>, <foreignObject> and on* handlers (sanitize)', () => {
@@ -201,6 +208,58 @@ describe('svg-studio-helpers', () => {
       const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>${'<tspan>'.repeat(depth)}x${'</tspan>'.repeat(depth)}</text></svg>`)!;
       expect(() => prettySvg(svg)).not.toThrow();
       expect(prettySvg(svg)).toContain('x');
+    });
+  });
+
+  describe('isSvgUpload', () => {
+    it('detects SVG by MIME type or .svg extension, rejects others', () => {
+      expect(isSvgUpload(new File(['x'], 'a.svg', { type: 'image/svg+xml' }))).toBe(true);
+      expect(isSvgUpload(new File(['x'], 'LOGO.SVG', { type: '' }))).toBe(true); // extension, any case
+      expect(isSvgUpload(new File(['x'], 'a.png', { type: 'image/png' }))).toBe(false);
+    });
+  });
+
+  describe('cleanSvgFile', () => {
+    const MESSY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 100 100"><!-- Generator: Illustrator --><metadata id="m">junk</metadata><g id="g" inkscape:label="Layer 1" data-name="Layer 1"><circle id="c" cx="50" cy="50" r="40" fill="#4f46e5" data-sw-svg="draw"/></g></svg>`;
+    // jsdom has no Blob.text(); read via FileReader (which the helper also uses).
+    const readFile = (b: Blob): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(r.error);
+        r.readAsText(b);
+      });
+
+    it('cleans + pretty-prints an uploaded SVG, preserving ids & animation, and re-types it', async () => {
+      const input = new File([MESSY_SVG], 'logo.svg', { type: 'image/svg+xml' });
+      const out = await cleanSvgFile(input);
+      expect(out).not.toBe(input); // a NEW File with tidied bytes
+      expect(out.type).toBe('image/svg+xml');
+      expect(out.name).toBe('logo.svg');
+      const text = await readFile(out);
+      expect(text).not.toContain('<!--'); // cruft stripped
+      expect(text).not.toContain('metadata');
+      expect(text).not.toContain('inkscape:');
+      expect(text).not.toContain('data-name');
+      expect(text).toContain('data-sw-svg="draw"'); // animation kept
+      expect(text).toContain('id="c"'); // id kept
+      expect(text.split('\n').length).toBeGreaterThan(3); // pretty (multi-line), not one line
+    });
+
+    it('keeps a self-contained raster data: image embed through cleanup (no silent data loss)', async () => {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/></svg>';
+      const out = await cleanSvgFile(new File([svg], 'x.svg', { type: 'image/svg+xml' }));
+      expect(await readFile(out)).toContain('data:image/png;base64,iVBORw0KGgo=');
+    });
+
+    it('passes a non-SVG file through unchanged (same reference)', async () => {
+      const png = new File(['\x89PNG'], 'a.png', { type: 'image/png' });
+      expect(await cleanSvgFile(png)).toBe(png);
+    });
+
+    it('passes an unparseable "SVG" through unchanged rather than blocking the upload', async () => {
+      const bad = new File(['<not-svg/>'], 'x.svg', { type: 'image/svg+xml' });
+      expect(await cleanSvgFile(bad)).toBe(bad);
     });
   });
 

@@ -30,6 +30,13 @@ describe('svg-studio-helpers', () => {
       expect(svg!.querySelector('rect')).not.toBeNull();
     });
 
+    it('keeps safe raster data: hrefs but neutralizes javascript: & non-raster data: (matches server policy)', () => {
+      const svg = parseSvg('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image id="img" xlink:href="data:image/png;base64,AAAA" width="1" height="1"/><image id="bad" xlink:href="data:text/html,foo" width="1" height="1"/><a id="a" xlink:href="javascript:alert(1)"/></svg>')!;
+      expect(svg.querySelector('#img')!.getAttribute('xlink:href')).toBe('data:image/png;base64,AAAA'); // raster embed preserved
+      expect(svg.querySelector('#bad')!.getAttribute('xlink:href')).toBe('#'); // non-raster data: neutralized
+      expect(svg.querySelector('#a')!.getAttribute('xlink:href')).toBe('#'); // javascript: neutralized
+    });
+
     it('strips <script>, <foreignObject> and on* handlers (sanitize)', () => {
       const svg = parseSvg(
         '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><foreignObject><b/></foreignObject><rect onclick="x()" onload="y()" width="5" height="5"/></svg>',
@@ -237,6 +244,12 @@ describe('svg-studio-helpers', () => {
       expect(text).toContain('data-sw-svg="draw"'); // animation kept
       expect(text).toContain('id="c"'); // id kept
       expect(text.split('\n').length).toBeGreaterThan(3); // pretty (multi-line), not one line
+    });
+
+    it('keeps a self-contained raster data: image embed through cleanup (no silent data loss)', async () => {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/></svg>';
+      const out = await cleanSvgFile(new File([svg], 'x.svg', { type: 'image/svg+xml' }));
+      expect(await readFile(out)).toContain('data:image/png;base64,iVBORw0KGgo=');
     });
 
     it('passes a non-SVG file through unchanged (same reference)', async () => {

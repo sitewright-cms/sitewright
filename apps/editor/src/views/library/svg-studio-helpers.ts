@@ -26,7 +26,15 @@ export function parseSvg(text: string): SVGSVGElement | null {
     for (let i = n.attributes.length - 1; i >= 0; i--) {
       const a = n.attributes[i]!;
       if (/^on/i.test(a.name)) n.removeAttribute(a.name);
-      else if (/(?:^|:)href$/i.test(a.name) && /^\s*(?:javascript|vbscript|data):/i.test(a.value)) n.setAttribute(a.name, '#');
+      else if (/(?:^|:)href$/i.test(a.name)) {
+        // Mirror the server sanitizer's href policy: neutralize javascript:/vbscript: and any non-raster
+        // data: URI, but KEEP self-contained raster data:image embeds (dropping them here would silently
+        // destroy content the server would have preserved). Internal #refs and other values are left as-is.
+        const val = a.value.trimStart();
+        if (/^(?:javascript|vbscript):/i.test(val) || (/^data:/i.test(val) && !/^data:image\/(?:png|jpe?g|gif|webp|avif)[;,]/i.test(val))) {
+          n.setAttribute(a.name, '#');
+        }
+      }
     }
   };
   sanitizeEl(svg);

@@ -114,6 +114,11 @@ export const ANIMATION_CSS = [
 export const ANIMATION_NOSCRIPT =
   '[data-sw-animation]{opacity:1!important;transform:none!important;pointer-events:auto!important;animation:none!important}';
 
+/** Scroll-reveal trigger point: the reveal fires once at least this fraction of the element is in view
+ *  (0.2 = 20% — "meaningfully in view", intentionally later than a bare edge-touch). The reveal also
+ *  RESETS on a full exit (ratio 0) so it replays on re-entry from any scroll direction. */
+const REVEAL_RATIO = 0.2;
+
 // The runtime. Notes:
 // - Content is hidden from FIRST PAINT by CSS ({@link HIDDEN}) — it never flashes visible before the
 //   reveal. The runtime marks each element `sw-animation-armed` so the CSS self-heal failsafe stands down
@@ -121,8 +126,10 @@ export const ANIMATION_NOSCRIPT =
 //   the page is ready (swWhenReady) so the entrance doesn't fire behind a still-visible preloader.
 // - `data-sw-delay` / `data-sw-duration` are parsed + clamped (swMs, timing.ts); `data-sw-easing`
 //   resolves through a fixed allowlist map. Attribute values can therefore never inject style/script.
-// - `data-sw-once="false"` keeps the element observed and replays the reveal each time it re-enters
-//   the viewport; otherwise it is unobserved after the first reveal (the default).
+// - Scroll-reveal fires when the element is MEANINGFULLY in view ({@link REVEAL_RATIO}) — later / more in
+//   view than a bare edge-touch. By DEFAULT the reveal REPLAYS: the element is RESET on a full exit
+//   (ratio 0) and re-reveals on re-entry from ANY scroll direction (mirrors the SVG engine's approach).
+//   `data-sw-once="true"` opts into play-once (unobserved after the first reveal).
 export const ANIMATION_JS = `(function(){
   'use strict';
   if(!('IntersectionObserver' in window))return;
@@ -144,14 +151,21 @@ export const ANIMATION_JS = `(function(){
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var el=entry.target;
-      if(entry.isIntersecting){
-        el.classList.add('sw-animation-active');
-        if(el.getAttribute('${SW_TIMING_ATTRS.once}')!=='false')io.unobserve(el);
-      }else{
+      // REVEAL only once the element is MEANINGFULLY in view (ratio past REVEAL_RATIO, and past the
+      // rootMargin line 12% up from the bottom) — later / more in view than a bare edge-touch.
+      if(entry.isIntersecting&&entry.intersectionRatio>=${REVEAL_RATIO}){
+        if(!el.classList.contains('sw-animation-active')){
+          el.classList.add('sw-animation-active');
+          // DEFAULT keeps observing so the reveal REPLAYS on re-entry; data-sw-once="true" plays once.
+          if(el.getAttribute('${SW_TIMING_ATTRS.once}')==='true')io.unobserve(el);
+        }
+      }else if(entry.intersectionRatio===0){
+        // FULLY out of view → reset so the reveal replays on re-entry from ANY scroll direction. Resetting
+        // ONLY on a full exit (not on partial) means the reveal never reverses while any part is on screen.
         el.classList.remove('sw-animation-active');
       }
     });
-  },{threshold:0.1,rootMargin:'0px 0px -48px 0px'});
+  },{threshold:[0,${REVEAL_RATIO}],rootMargin:'0px 0px -12% 0px'});
   // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
   // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){

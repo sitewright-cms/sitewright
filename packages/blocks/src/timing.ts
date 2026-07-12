@@ -7,7 +7,9 @@
 //   data-sw-duration="600"   animation length in ms (default 400 when unset/blank)
 //   data-sw-delay="200"      start delay in ms
 //   data-sw-easing="ease-out"  timing curve — resolved through the allowlist below
-//   data-sw-once="false"     replay each time the element re-enters view (default: play once)
+//   data-sw-once             replay-vs-once toggle. Entrance animations REPLAY by default (re-trigger each
+//                            time the element re-enters view); data-sw-once="true" plays once. The SVG
+//                            engine defaults to play-once; data-sw-once="false" makes it replay.
 //
 // These are DATA only: values are parsed / clamped / allowlisted by each runtime, never executed.
 

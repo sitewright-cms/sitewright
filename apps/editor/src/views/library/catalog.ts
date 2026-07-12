@@ -69,7 +69,7 @@ const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
   id: `anim-${effect}`,
   name: effect,
   keywords: 'animate scroll reveal animation entrance',
-  description: `Scroll-reveal “${effect}”. Add optional data-sw-delay (ms), data-sw-duration, data-sw-once="false".`,
+  description: `Scroll-reveal “${effect}”. Replays on re-entry by default. Add optional data-sw-delay (ms), data-sw-duration, data-sw-once="true" to play once.`,
   example: `<div data-sw-animation="${effect}" data-sw-delay="0">…</div>`,
 }));
 

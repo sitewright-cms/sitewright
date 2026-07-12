@@ -384,7 +384,8 @@ Images"; loose singletons like the logo/icon → "Main".
     body: `
 ANIMATIONS (entrance / scroll-reveal): add data-sw-animation directly on elements —
 data-sw-animation="fade-up" plus optional data-sw-delay="200", data-sw-duration="600" (ms,
-default 400, max 20000), data-sw-once="false" to replay on every re-entry, data-sw-easing="ease-out"
+default 400, max 20000), data-sw-once="true" to play once (the default REPLAYS on every re-entry),
+data-sw-easing="ease-out"
 (linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
 zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
 detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any

@@ -114,9 +114,24 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).not.toMatch(/style\.transitionTimingFunction=el\.getAttribute/);
   });
 
-  it('replays only when data-sw-once="false"; unobserves otherwise (the default)', () => {
-    expect(ANIMATION_JS).toContain("getAttribute('data-sw-once')!=='false'");
+  it('REPLAYS by default (unobserves only for data-sw-once="true"); resets on a FULL exit', () => {
+    // Default = replay: the element is only unobserved when the author opts into play-once.
+    expect(ANIMATION_JS).toContain("getAttribute('data-sw-once')==='true'");
+    expect(ANIMATION_JS).not.toContain("getAttribute('data-sw-once')!=='false'"); // old play-once default is gone
     expect(ANIMATION_JS).toContain('io.unobserve(el)');
+    // Reset (replay enabler) fires ONLY on a full exit — never while any part is still on screen.
+    expect(ANIMATION_JS).toContain('entry.intersectionRatio===0');
+    expect(ANIMATION_JS).toContain("classList.remove('sw-animation-active')");
+  });
+
+  it('reveals only when MEANINGFULLY in view (ratio-gated) — later / more in view than an edge-touch', () => {
+    // The reveal is gated on intersectionRatio (not a bare isIntersecting edge-touch), and the observer
+    // uses a negative bottom rootMargin so the trigger line sits above the viewport bottom.
+    expect(ANIMATION_JS).toContain('entry.intersectionRatio>=0.2');
+    expect(ANIMATION_JS).toContain('threshold:[0,0.2]');
+    expect(ANIMATION_JS).toMatch(/rootMargin:'0px 0px -\d+% 0px'/);
+    // Guarded against a redundant re-add while already shown.
+    expect(ANIMATION_JS).toContain("!el.classList.contains('sw-animation-active')");
   });
 
   it('gates the reveal on the page-ready signal (starts after preloader clear / load, not behind it)', () => {

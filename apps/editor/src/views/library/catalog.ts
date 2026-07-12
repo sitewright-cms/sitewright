@@ -69,8 +69,8 @@ const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
   id: `anim-${effect}`,
   name: effect,
   keywords: 'animate scroll reveal animation entrance',
-  description: `Scroll-reveal “${effect}”. Replays on re-entry by default. Add optional data-sw-delay (ms), data-sw-duration, data-sw-once="true" to play once.`,
-  example: `<div data-sw-animation="${effect}" data-sw-delay="0">…</div>`,
+  description: `Scroll-reveal “${effect}”. Reveals when in view; REPLAYS on re-entry by default. Optional: data-sw-delay (ms, default 0), data-sw-duration (ms, default 450, max 20000), data-sw-easing (linear|ease|ease-in|ease-out|ease-in-out), data-sw-threshold (0-1 fraction in view before it fires, default 0.2 — higher = later), data-sw-once="true" to play once.`,
+  example: `<div data-sw-animation="${effect}" data-sw-delay="0" data-sw-duration="450">…</div>`,
 }));
 
 const LAZYLOAD_ITEMS: LibraryItem[] = [
@@ -308,7 +308,7 @@ const SVG_ANIM_ITEMS: LibraryItem[] = [
     name: 'Timing (shared)',
     keywords: 'svg duration delay easing once timing data-sw-duration data-sw-delay data-sw-easing',
     description:
-      'The same timing primitives as entrance animations: data-sw-duration (default 400), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false" to replay on every re-entry.',
+      'The same timing primitives as entrance animations: data-sw-duration (default 450), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false" to replay on every re-entry.',
     example: '<path data-sw-svg="draw" data-sw-duration="900" data-sw-delay="150" data-sw-easing="back" data-sw-once="false" d="M2 12 H22" stroke="currentColor" fill="none" />',
   },
 ];

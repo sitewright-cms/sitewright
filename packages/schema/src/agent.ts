@@ -382,17 +382,21 @@ Images"; loose singletons like the logo/icon → "Main".
     title: "Effects, animations & ripple",
     summary: "nav/button/preloader effect schemes (+ custom code), scroll animations, ripple, WebGL animated backgrounds (shader-bg)",
     body: `
-ANIMATIONS (entrance / scroll-reveal): add data-sw-animation directly on elements —
-data-sw-animation="fade-up" plus optional data-sw-delay="200", data-sw-duration="600" (ms,
-default 400, max 20000), data-sw-once="true" to play once (the default REPLAYS on every re-entry),
-data-sw-easing="ease-out"
-(linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
-zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
-detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any
+ANIMATIONS (entrance / scroll-reveal): add data-sw-animation on an element to reveal it on scroll.
+  data-sw-animation="fade-up"   the effect (REQUIRED). Effects: fade, fade-up/-down/-left/-right,
+                                zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right.
+  data-sw-delay="200"           start delay in ms (default 0).
+  data-sw-duration="600"        length in ms (default 450, max 20000).
+  data-sw-easing="ease-out"     curve: linear | ease | ease-in | ease-out | ease-in-out (default ease-out-ish).
+  data-sw-threshold="0.5"       fraction of the element (0-1) that must be in view before it reveals
+                                (default 0.2). Higher = triggers LATER / more in view; lower = earlier.
+  data-sw-once="true"           play ONCE. Default REPLAYS: the reveal resets when the element fully leaves
+                                the viewport and re-plays on re-entry (from any scroll direction).
+The platform detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any
 animation library, CDN links, or scripts (they'd be rejected anyway). Content stays visible
-without JS and motion respects prefers-reduced-motion. The data-sw-duration/-delay/-easing/-once
-timing attributes are SHARED with the SVG animation engine (data-sw-svg). Stagger lists by
-increasing data-sw-delay per item (e.g. 0/100/200).
+without JS and motion respects prefers-reduced-motion. data-sw-duration/-delay/-easing/-once are
+SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold is entrance-only. Stagger lists
+by increasing data-sw-delay per item (e.g. 0/100/200).
 
 PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
 any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
@@ -418,7 +422,7 @@ draw (the signature stroke draw-on — the element MUST have stroke + fill="none
 along-path (travel a motion path — add data-sw-svg-path="M…", optional data-sw-svg-rotate="0" to not face it),
 and morph (tween the shape — the element's own d= is the START, add data-sw-svg-to="M…" for the target; for a
 clean morph keep the two paths similar in structure). Timing = the SAME shared attributes as entrance animations:
-data-sw-duration (default 400), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false".
+data-sw-duration (default 450), data-sw-delay, data-sw-easing (…|back|bounce|elastic), data-sw-once="false".
 draw extras: data-sw-svg-draw-dir="reverse", data-sw-svg-fill="true" (fade the fill in after the stroke).
 scale/flip pivot: data-sw-svg-origin="center|top|bottom left|…". SCENES: wrap several animated elements in
 data-sw-svg-scene with data-sw-svg-stagger="80" (ms) — they cascade in DOM order when the scene enters view

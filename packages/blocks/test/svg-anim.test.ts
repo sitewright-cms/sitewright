@@ -7,6 +7,7 @@ import {
   SVG_ANIM_LIMITS,
   usesSvgAnim,
 } from '../src/svg-anim.js';
+import { SW_DURATION_DEFAULT } from '../src/timing.js';
 
 describe('SVG animation stylesheet', () => {
   it('hides from FIRST PAINT until revealed (no FOUC), only inside prefers-reduced-motion:no-preference', () => {
@@ -66,7 +67,7 @@ describe('SVG animation runtime', () => {
 
   it('clamps duration to SVG_ANIM_LIMITS and reads timing via the shared swMs helper', () => {
     expect(SVG_ANIM_JS).toContain(`var DMIN=${SVG_ANIM_LIMITS.duration.min},DMAX=${SVG_ANIM_LIMITS.duration.max}`);
-    expect(SVG_ANIM_JS).toContain("swMs(el,'data-sw-duration',400)");
+    expect(SVG_ANIM_JS).toContain(`swMs(el,'data-sw-duration',${SW_DURATION_DEFAULT})`); // shared default (450)
     expect(SVG_ANIM_JS).toContain('function swMs('); // embedded from timing.ts
   });
 

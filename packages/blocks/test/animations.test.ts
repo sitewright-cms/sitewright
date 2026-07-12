@@ -31,7 +31,7 @@ describe('animation stylesheet', () => {
     // `.sw-animation-active` would make the element STOP matching it — so the transition would vanish in
     // the SAME style recalc that flips opacity/transform → the reveal would POP. It MUST sit on a bare
     // `[data-sw-animation]{…}` rule so it is present in BOTH the hidden and revealed states.
-    expect(ANIMATION_CSS).toContain('[data-sw-animation]{transition-property:opacity,transform;transition-duration:400ms');
+    expect(ANIMATION_CSS).toContain('[data-sw-animation]{transition-property:opacity,transform;transition-duration:450ms');
     // No `:where(...)`-gated rule may (re)declare transition-property — that reintroduces the pop coupling.
     for (const line of ANIMATION_CSS.split('\n')) {
       if (line.includes('transition-property')) expect(line).not.toContain(':where(');
@@ -102,16 +102,26 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain('[data-sw-animation]:not([data-sw-component="banner"])');
   });
 
-  it('clamps delay/duration and resolves easing through a fixed allowlist (no style injection)', () => {
+  it('applies data-sw-delay + data-sw-duration inline (clamped via swMs) and resolves easing via a fixed allowlist', () => {
     expect(ANIMATION_JS).toContain('Math.max(0,Math.min(v,20000))'); // shared swMs clamp (timing.ts)
     expect(ANIMATION_JS).toContain('parseInt');
-    expect(ANIMATION_JS).toContain('isNaN(v)?def'); // non-numeric attribute → falls back to the default (0) → no inline style
-    expect(ANIMATION_JS).toContain("swMs(el,'data-sw-duration',0)"); // duration read via the shared primitive
+    expect(ANIMATION_JS).toContain('isNaN(v)?def'); // non-numeric attribute → falls back to the default → no inline style
+    expect(ANIMATION_JS).toContain("swMs(el,'data-sw-duration',0)"); // custom duration read via the shared primitive
+    expect(ANIMATION_JS).toContain("swMs(el,'data-sw-delay',0)"); // custom delay read via the shared primitive
+    expect(ANIMATION_JS).toContain('el.style.transitionDuration=duration'); // applied inline
+    expect(ANIMATION_JS).toContain('el.style.transitionDelay=delay'); // applied inline
     // Easing values resolve through a NULL-PROTOTYPE map, so a hostile key
     // ('constructor', 'toString') misses instead of resolving to an inherited
     // member; the attribute string itself is never assigned to a style property.
     expect(ANIMATION_JS).toContain('var EASINGS=Object.create(null)');
     expect(ANIMATION_JS).not.toMatch(/style\.transitionTimingFunction=el\.getAttribute/);
+  });
+
+  it('default duration is 450ms (SW_DURATION_DEFAULT) in the CSS; a custom data-sw-duration overrides inline', () => {
+    expect(ANIMATION_CSS).toContain('transition-duration:450ms');
+    // The runtime only writes an inline transitionDuration when data-sw-duration>0, so unset falls through
+    // to the CSS default; when set, the inline value wins.
+    expect(ANIMATION_JS).toContain('if(duration>0)el.style.transitionDuration=duration');
   });
 
   it('REPLAYS by default (unobserves only for data-sw-once="true"); resets on a FULL exit', () => {
@@ -124,12 +134,18 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("classList.remove('sw-animation-active')");
   });
 
-  it('reveals only when MEANINGFULLY in view (ratio-gated) — later / more in view than an edge-touch', () => {
-    // The reveal is gated on intersectionRatio (not a bare isIntersecting edge-touch), and the observer
-    // uses a negative bottom rootMargin so the trigger line sits above the viewport bottom.
-    expect(ANIMATION_JS).toContain('entry.intersectionRatio>=0.2');
-    expect(ANIMATION_JS).toContain('threshold:[0,0.2]');
+  it('reveals when MEANINGFULLY in view — per-element data-sw-threshold (default 0.2), later than an edge-touch', () => {
+    // The reveal is gated on intersectionRatio vs a PER-ELEMENT threshold (data-sw-threshold, default 0.2),
+    // not a bare isIntersecting edge-touch; the observer uses a negative bottom rootMargin so the trigger
+    // line sits above the viewport bottom.
+    expect(ANIMATION_JS).toContain("entry.intersectionRatio>=swRatio(el,'data-sw-threshold',0.2)");
+    // A single observer applies ONE threshold list to all targets → the runtime UNIONS every element's
+    // threshold (+ 0 for the reset) so the callback fires at each element's own crossing.
+    expect(ANIMATION_JS).toContain("thrSet[swRatio(el,'data-sw-threshold',0.2)]=1");
+    expect(ANIMATION_JS).toContain('threshold:THRESHOLDS');
     expect(ANIMATION_JS).toMatch(/rootMargin:'0px 0px -\d+% 0px'/);
+    // swRatio parses + CLAMPS the threshold to [0,1] (never injects — compared only as a number).
+    expect(ANIMATION_JS).toContain('function swRatio(el,attr,def){var v=parseFloat(el.getAttribute(attr));return isNaN(v)?def:Math.max(0,Math.min(v,1));}');
     // Guarded against a redundant re-add while already shown.
     expect(ANIMATION_JS).toContain("!el.classList.contains('sw-animation-active')");
   });

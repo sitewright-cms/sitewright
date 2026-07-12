@@ -46,6 +46,6 @@ export function aosAttrs(a: { name: string; delay: string; dur: string } | null 
   const dur = ms(a.dur);
   const at: AosAttrs = { effect };
   if (delay >= 50) at.delay = Math.round(delay / 50) * 50;
-  if (dur >= 100 && Math.abs(dur - 400) > 50) at.dur = dur;
+  if (dur >= 100 && Math.abs(dur - 450) > 50) at.dur = dur; // ~default (SW_DURATION_DEFAULT 450) → inherit, don't emit
   return at;
 }

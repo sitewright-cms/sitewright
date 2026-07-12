@@ -24,7 +24,7 @@
 //   data-sw-svg-responsive="true"         scale the SVG to fill its parent (pure CSS, no-JS friendly)
 //
 // TIMING is the SHARED vocabulary (timing.ts), identical to the entrance engine:
-//   data-sw-duration (default 400) · data-sw-delay · data-sw-easing · data-sw-once
+//   data-sw-duration (default 450) · data-sw-delay · data-sw-easing · data-sw-once
 //
 // Authored as plain attributes in code-first sources, snippets, inline SVGs, or {{sw-icon}} output.
 // Tenants supply DATA only (effect keyword allowlisted, numerics clamped); never JavaScript.

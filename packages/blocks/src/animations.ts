@@ -77,7 +77,7 @@ const HIDDEN = ':where(:not([data-sw-component="banner"]):not(.sw-animation-acti
 /**
  * The animation stylesheet. Non-banner elements are hidden from FIRST PAINT (see {@link HIDDEN}); a
  * Banner self-drives the same hidden state via `.sw-animation-init`. `.sw-animation-active` (last rule)
- * reveals. The default transition-duration is SW_DURATION_DEFAULT (400ms — aligned with the shared timing
+ * reveals. The default transition-duration is SW_DURATION_DEFAULT (450ms — aligned with the shared timing
  * default; `data-sw-duration` overrides it inline). `pointer-events` is suspended while hidden so
  * invisible content can't be clicked. A self-heal failsafe reveals any element the runtime never armed
  * (JS disabled / the script failed) after a grace period, so content is never stranded hidden.
@@ -124,12 +124,14 @@ const REVEAL_RATIO = 0.2;
 //   reveal. The runtime marks each element `sw-animation-armed` so the CSS self-heal failsafe stands down
 //   (this runtime owns them and guarantees the reveal), then DEFERS observing (the reveal itself) until
 //   the page is ready (swWhenReady) so the entrance doesn't fire behind a still-visible preloader.
-// - `data-sw-delay` / `data-sw-duration` are parsed + clamped (swMs, timing.ts); `data-sw-easing`
-//   resolves through a fixed allowlist map. Attribute values can therefore never inject style/script.
-// - Scroll-reveal fires when the element is MEANINGFULLY in view ({@link REVEAL_RATIO}) — later / more in
-//   view than a bare edge-touch. By DEFAULT the reveal REPLAYS: the element is RESET on a full exit
-//   (ratio 0) and re-reveals on re-entry from ANY scroll direction (mirrors the SVG engine's approach).
-//   `data-sw-once="true"` opts into play-once (unobserved after the first reveal).
+// - `data-sw-delay` (start delay, ms) / `data-sw-duration` (length, ms; default {@link SW_DURATION_DEFAULT})
+//   are parsed + clamped (swMs, timing.ts) and applied inline; `data-sw-easing` resolves through a fixed
+//   allowlist map. Attribute values can therefore never inject style/script.
+// - Scroll-reveal fires when the element is MEANINGFULLY in view — its intersectionRatio reaches
+//   `data-sw-threshold` (0-1 fraction; default {@link REVEAL_RATIO}) — later / more in view than a bare
+//   edge-touch. By DEFAULT the reveal REPLAYS: the element is RESET on a full exit (ratio 0) and re-reveals
+//   on re-entry from ANY scroll direction (mirrors the SVG engine's approach). `data-sw-once="true"` opts
+//   into play-once (unobserved after the first reveal).
 export const ANIMATION_JS = `(function(){
   'use strict';
   if(!('IntersectionObserver' in window))return;
@@ -148,12 +150,22 @@ export const ANIMATION_JS = `(function(){
   ${Object.entries(SW_EASINGS)
     .map(([k, v]) => `EASINGS[${JSON.stringify(k)}]=${JSON.stringify(v)};`)
     .join('')}
+  // Per-element reveal threshold: data-sw-threshold (0-1 fraction of the element in view; default
+  // REVEAL_RATIO). swRatio parses + clamps to [0,1]; a non-numeric value falls back to the default (no
+  // injection — the value is only ever compared as a number). A single observer applies ONE threshold
+  // list to all its targets, so we UNION every element's threshold (+ 0 for the reset) → the callback
+  // fires exactly at each element's own crossing.
+  function swRatio(el,attr,def){var v=parseFloat(el.getAttribute(attr));return isNaN(v)?def:Math.max(0,Math.min(v,1));}
+  var thrSet={};thrSet['0']=1;
+  Array.prototype.forEach.call(els,function(el){thrSet[swRatio(el,'data-sw-threshold',${REVEAL_RATIO})]=1;});
+  var THRESHOLDS=[];for(var tk in thrSet)THRESHOLDS.push(parseFloat(tk));
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var el=entry.target;
-      // REVEAL only once the element is MEANINGFULLY in view (ratio past REVEAL_RATIO, and past the
-      // rootMargin line 20% up from the bottom) — later / more in view than a bare edge-touch.
-      if(entry.isIntersecting&&entry.intersectionRatio>=${REVEAL_RATIO}){
+      // REVEAL only once the element is MEANINGFULLY in view (its intersectionRatio past data-sw-threshold /
+      // REVEAL_RATIO, and past the rootMargin line 20% up from the bottom) — later / more in view than a
+      // bare edge-touch.
+      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO})){
         if(!el.classList.contains('sw-animation-active')){
           el.classList.add('sw-animation-active');
           // DEFAULT keeps observing so the reveal REPLAYS on re-entry; data-sw-once="true" plays once.
@@ -165,7 +177,7 @@ export const ANIMATION_JS = `(function(){
         el.classList.remove('sw-animation-active');
       }
     });
-  },{threshold:[0,${REVEAL_RATIO}],rootMargin:'0px 0px -20% 0px'});
+  },{threshold:THRESHOLDS,rootMargin:'0px 0px -20% 0px'});
   // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
   // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){

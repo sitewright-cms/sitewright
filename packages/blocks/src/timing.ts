@@ -4,7 +4,7 @@
 // (`data-sw-svg`, svg-anim.ts) read the SAME author attributes, so there is ONE timing language to
 // learn and document:
 //
-//   data-sw-duration="600"   animation length in ms (default 400 when unset/blank)
+//   data-sw-duration="600"   animation length in ms (default 450 when unset/blank)
 //   data-sw-delay="200"      start delay in ms
 //   data-sw-easing="ease-out"  timing curve — resolved through the allowlist below
 //   data-sw-once             replay-vs-once toggle. Entrance animations REPLAY by default (re-trigger each
@@ -22,7 +22,7 @@ export const SW_TIMING_ATTRS = {
 } as const;
 
 /** Default animation duration (ms) applied when `data-sw-duration` is unset or non-numeric. */
-export const SW_DURATION_DEFAULT = 400;
+export const SW_DURATION_DEFAULT = 450;
 
 /** Hard clamp for any author-supplied duration / delay (ms). Shared by both engines. */
 export const SW_TIMING_MAX_MS = 20000;

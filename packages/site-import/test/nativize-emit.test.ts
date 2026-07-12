@@ -35,7 +35,7 @@ describe('aos — scroll-reveal mapping', () => {
   });
 
   it('builds data-sw-animation attrs, dropping default-ish delay/duration', () => {
-    expect(aosAttrs({ name: 'fadeInUp', delay: '0ms', dur: '400ms' })).toEqual({ effect: 'fade-up' }); // delay<50, dur~400 dropped
+    expect(aosAttrs({ name: 'fadeInUp', delay: '0ms', dur: '400ms' })).toEqual({ effect: 'fade-up' }); // delay<50; dur within 50ms of the 450 default → dropped (inherits)
     expect(aosAttrs({ name: 'fadeInLeft', delay: '300ms', dur: '800ms' })).toEqual({ effect: 'fade-right', delay: 300, dur: 800 });
     expect(aosAttrs({ name: 'spin', delay: '0s', dur: '1s' })).toBeNull();
     expect(aosAttrs(null)).toBeNull();

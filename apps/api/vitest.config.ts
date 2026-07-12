@@ -7,9 +7,8 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       // server.ts + render-worker.ts are process entry points (forked/booted), exercised
-      // by integration/E2E, not unit-imported. nativize-routes is the SSE route glue (the
-      // testable orchestration lives in nativize-project.ts, which IS unit-tested).
-      exclude: ['src/server.ts', 'src/db/schema.ts', 'src/render/render-worker.ts', 'src/http/nativize-routes.ts'],
+      // by integration/E2E, not unit-imported.
+      exclude: ['src/server.ts', 'src/db/schema.ts', 'src/render/render-worker.ts'],
       reporter: ['text', 'lcov'],
       // Auth + tenant isolation are security-critical; gate high on lines/statements/
       // functions (all ≥90). `branches` is 80 here, not 85: vitest 4's AST-aware v8

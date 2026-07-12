@@ -23,15 +23,6 @@ export {
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
 export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl, UPLOAD_BASE } from './url-util.js';
 export { looksClientRendered } from './spa-detect.js';
-export { mapFaIcon } from './nativize/icon-map.js';
-export { type NativizePalette, space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, arbitrary, DEFAULT_FONT_MAP } from './nativize/tokens.js';
-export { type StyleMap, type EmitContext, type GroupResult, type BreakpointGroups, emitGroups, mergeGroups, RESET } from './nativize/tailwind.js';
-export { mapAosEffect, ms, aosAttrs, type AosAttrs } from './nativize/aos.js';
-export { type CapturedNode, type MergedNode, type NativizeContext, type RenderResult, type SnapKind, mergeTree, mergeTrees, renderTree, toRoute, snapButton, expandCarouselDirect } from './nativize/emit.js';
-export { buildPalette, colorToRgbKey } from './nativize/palette.js';
-export { type HoistedModals, hoistGlobalModals } from './nativize/modals.js';
-export { type RefoldResult, type RenderProbe, refoldLoops } from './nativize/refold.js';
-export { type TemplateGroup, type TemplateMember, type DatasetItems, extractTemplates } from './nativize/templatize.js';
 export type {
   AssetKind,
   CapturedAsset,

@@ -185,7 +185,6 @@ import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes, streamImport } from './import-routes.js';
-import { registerNativizeRoutes } from './nativize-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -3612,11 +3611,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         : {}),
     });
-
-    // Server-side mechanical nativize of an imported project's rawFidelity pages → native Tailwind+token
-    // source, streamed over SSE (reuses the import progress UI). Owner-only; renders each page via the
-    // pool, then captures computed styles headlessly + runs the @sitewright/site-import transform.
-    registerNativizeRoutes(app, { resolveProject, contentRepo, renderPool, rl, log: app.log });
 
     app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(
       '/projects/:projectId/media',

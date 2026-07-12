@@ -906,5 +906,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('publish', () => client.publish()),
   );
 
+  // A PRE-DEFINED clone workflow, surfaced to the client as an invokable prompt (a slash-command in
+  // Claude Code, a prompt in the picker elsewhere) — so a human doesn't paste a long brief and EVERY MCP
+  // agent runs the same steps. Self-contained: it drives the deterministic gates (visual_audit that the
+  // agent JUDGES + clone_audit), never the agent's own optimistic "looks done".
+  server.registerPrompt(
+    'clone_site',
+    {
+      title: 'Clone the imported website',
+      description: 'Nativize every imported page into a faithful native Sitewright site (the full clone workflow — no server AI needed; you judge the visual side-by-sides yourself).',
+    },
+    () => ({ messages: [{ role: 'user', content: { type: 'text', text: CLONE_SITE_WORKFLOW } }] }),
+  );
+
   return server;
 }
+
+/** The canonical clone workflow — the pre-defined `clone_site` prompt body. Kept self-contained so any
+ *  MCP client (or a human) can run the exact same steps without a hand-written brief. */
+export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages.
+
+1. Call list_pages. Every page whose data carries \`swImport\` is an imported RAW scaffold (foreign Materialize/Bootstrap/FontAwesome markup) that must be rebuilt in native primitives. Read the full rules ONCE: get_guide("import").
+2. Work ONE page at a time, home first, so theme tokens / datasets / chrome carry across the site. For each imported page:
+   a. compare_to_source(pageId) — SEE the original vs your current build.
+   b. Author the body with REAL platform primitives first (get_components / get_reference / widgets / website.effects); only hand-write HTML when nothing fits. Tailwind utilities for layout, correct per-element fonts via CSS vars, {{#each dataset.x}} for repeated lists (named datasets, not "items"), real <dialog data-sw-component="modal"> for modals, a working mobile drawer, and data-sw-* / {{sw-control}} so text stays editable. Do NOT leave the imported foreign markup.
+   c. put_page the native source.
+   d. visual_audit(pageId) — it returns your CLONE vs the LIVE original SIDE-BY-SIDE (desktop + mobile) plus a defect rubric. JUDGE the pixels yourself and FIX every blocker + major: wrong/missing images or illustrations, wrong layout, dead/empty components, wrong fonts or colours. (There is no server AI here — your own vision is the judge.)
+   e. clone_audit(pageId) — fix every measured STRUCTURE/BEHAVIOUR failure it reports (datasets deduped + named, media out of the imported/ tree, sliders enhance, modals present, fonts actually load, mobile menu reachable at phone width, content editable).
+   f. Repeat d–e until visual_audit shows ZERO blocker + major AND clone_audit passes. Only THEN set page.data.swImport.rewritten:true and status "published".
+3. When every page passes, publish_project.
+
+Never declare a page done from your own render alone — judge it against the visual_audit side-by-sides. If a page is huge, edit it section by section.`;

@@ -51,7 +51,9 @@ skeleton (a real landing page is 6-9 composed sections, not a hero + three cards
 authoring vocabulary — every \`{{sw-*}}\` helper, \`data-sw-*\` directive, binding namespace, and
 loop variable — is in the \`get_reference\` tool (don't guess helper names). If a page carries a
 \`data.swImport\` marker it was IMPORTED from an external site as a raw scaffold — call
-\`get_guide("import")\` and rewrite it into native idioms.
+\`get_guide("import")\` and rewrite it into native idioms. To clone a whole imported site, run the
+pre-defined \`clone_site\` PROMPT (it lays out the exact per-page workflow: author → visual_audit +
+clone_audit → green → publish); if a task is "clone/nativize this site", follow that workflow.
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,

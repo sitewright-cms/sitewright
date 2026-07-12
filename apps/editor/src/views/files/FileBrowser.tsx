@@ -9,7 +9,8 @@ import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
 import { useDialogs } from '../ui/Dialogs';
 import { SkeletonImage } from '../ui/Skeleton';
-import { glassCard, glassPanel, ghostButton } from '../../theme';
+import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
+import { cleanSvgFile } from '../library/svg-studio-helpers';
 import {
   sortAssets,
   sortFolders,
@@ -109,6 +110,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const [folderRecords, setFolderRecords] = useState<MediaFolderRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [cleanSvg, setCleanSvg] = useState(true);
   const [stockOpen, setStockOpen] = useState(false);
   const [recycleOpen, setRecycleOpen] = useState(false);
   const [folder, setFolder] = useState('');
@@ -226,7 +228,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) await api.uploadMedia(projectId, file, target);
+      for (const file of Array.from(files)) {
+        // Tidy an uploaded SVG (strip editor cruft + pretty-print) before it's stored, when enabled.
+        // Best-effort: a non-SVG or unparseable file is passed through untouched; the server sanitizes regardless.
+        const toSend = cleanSvg ? await cleanSvgFile(file) : file;
+        await api.uploadMedia(projectId, toSend, target);
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed');
@@ -393,6 +400,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             {folder && <> Filing into <strong>{folder}</strong>.</>}
             {uploading && <span className="ml-1 text-indigo-500">uploading…</span>}
           </p>
+          <label className="mt-0.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
+            <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
+            Clean up SVG code on upload
+          </label>
         </div>
         <button type="button" onClick={() => setStockOpen(true)} className={ghostButton}>
           Search stock images

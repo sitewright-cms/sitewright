@@ -152,7 +152,7 @@ export const ANIMATION_JS = `(function(){
     entries.forEach(function(entry){
       var el=entry.target;
       // REVEAL only once the element is MEANINGFULLY in view (ratio past REVEAL_RATIO, and past the
-      // rootMargin line 12% up from the bottom) — later / more in view than a bare edge-touch.
+      // rootMargin line 20% up from the bottom) — later / more in view than a bare edge-touch.
       if(entry.isIntersecting&&entry.intersectionRatio>=${REVEAL_RATIO}){
         if(!el.classList.contains('sw-animation-active')){
           el.classList.add('sw-animation-active');
@@ -165,7 +165,7 @@ export const ANIMATION_JS = `(function(){
         el.classList.remove('sw-animation-active');
       }
     });
-  },{threshold:[0,${REVEAL_RATIO}],rootMargin:'0px 0px -12% 0px'});
+  },{threshold:[0,${REVEAL_RATIO}],rootMargin:'0px 0px -20% 0px'});
   // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
   // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){

@@ -357,7 +357,8 @@ describe('createSitewrightMcpServer — media tools', () => {
     const t = text(await (await connect(advC, readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } }));
     expect(t).toMatch(/CLONE AUDIT PASS ✓/);
     expect(t).toMatch(/advisory {2}chrome computed-style/); // still reported, just not gating
-    expect(t).toMatch(/the clone is DONE/);
+    expect(t).toMatch(/NECESSARY, NOT SUFFICIENT/); // clone_audit pass alone is not "done" — visual_audit must be zero
+    expect(t).toMatch(/visual_audit/);
     expect(t).not.toMatch(/NOT done/);
   });
 

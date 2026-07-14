@@ -168,7 +168,7 @@ import { buildAgentProvider } from '../ai/build-provider.js';
 import { isActiveAgentToken } from '../ai/agent-token.js';
 import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
-import { PublishStore } from '../publish/store.js';
+import { PublishStore, PDF_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { signPreview, verifyPreview } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
@@ -4055,6 +4055,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `file` is the STORED_FILE-validated stored name (no quotes/CRLF/Unicode) — safe in the
         // header. Do NOT swap in the asset's original `filename`, which is unsanitized (255 chars,
         // arbitrary Unicode/quotes) and would enable header injection.
+        //
+        // PDF is served INLINE + same-origin-frameable (application/pdf + nosniff + PDF_MEDIA_CSP): a
+        // browser renders it in its own sandboxed viewer (no DOM/cookie/origin access), and nosniff +
+        // the explicit type stop any HTML-reinterpretation. This lets a cloned "company profile" modal
+        // <iframe> show the doc instead of forcing a download. Everything else stays download-only
+        // (octet-stream + attachment) so an uploaded HTML/SVG/script can never render on this origin.
+        if (file.toLowerCase().endsWith('.pdf')) {
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', PDF_MEDIA_CSP)
+            // frame-ancestors 'self' is the real guard; SAMEORIGIN mirrors it for legacy browsers that
+            // don't implement frame-ancestors (defence-in-depth parity with the HTML page path).
+            .header('x-frame-options', 'SAMEORIGIN')
+            .type('application/pdf')
+            .send(bytes);
+        }
         return reply
           .header('cache-control', 'public, max-age=31536000, immutable')
           .header('x-content-type-options', 'nosniff')
@@ -4346,6 +4363,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('x-content-type-options', 'nosniff');
           if (binary.attachment) reply.header('content-disposition', 'attachment');
           if (binary.csp) reply.header('content-security-policy', binary.csp);
+          // A frameable inline PDF (its own CSP frame-ancestors 'self') mirrors that with SAMEORIGIN for
+          // legacy browsers lacking frame-ancestors (parity with the HTML page path's DENY defence-in-depth).
+          if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
           return reply.type(binary.contentType).send(binary.body);
         }
         const asset = await store.readAsset(slug, path);
@@ -4899,6 +4919,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             crossOrigin();
             if (binary.attachment) reply.header('content-disposition', 'attachment');
             if (binary.csp) reply.header('content-security-policy', binary.csp);
+            if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
             return reply.type(binary.contentType).send(binary.body);
           }
           const asset = await preview.readAsset(project.slug, path);
@@ -5182,10 +5203,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
       // AUTHORITATIVE gate — DETERMINISTIC, no server-side AI (so it never mixes a second, platform-billed
       // AI call into a cheap-token CLI clone). Re-runs the (already-tested) clone-audit route with the
-      // agent's own scoped token — its non-advisory STRUCTURE / BEHAVIOUR / computed-style-visual checks —
-      // and re-reads the STORED source for the anti-lie marker check. The agent's own claim is ignored. The
-      // FULL visual fidelity (layout/images/sections vs the live original) is the agent's job: it self-judges
-      // the deterministic visual_audit side-by-sides while authoring.
+      // agent's own scoped token — its non-advisory STRUCTURE / BEHAVIOUR checks only (the computed-style
+      // visual legs are ADVISORY: coverage is blind to casing/dividers/icon-style/section-height, so it can't
+      // terminate the loop) — and re-reads the STORED source for the anti-lie marker check. The agent's own
+      // claim is ignored. The VISUAL fidelity (layout/images/sections vs the live original) is the agent's job:
+      // it self-judges the deterministic visual_audit side-by-sides region-by-region while authoring.
       runGate: async (token, ctx, pageId) => {
         const inject = async (path: string): Promise<Record<string, unknown>> => {
           const res = await app.inject({ method: 'GET', url: path, headers: { authorization: `Bearer ${token}` } });

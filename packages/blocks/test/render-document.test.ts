@@ -16,6 +16,14 @@ describe('renderDocument — document shell', () => {
     expect(doc).toContain('</html>');
   });
 
+  it('emits the derived --sw-color-*-content tokens for a NON-themed site (keeps .btn-accent labels legible)', () => {
+    // A dark accent (#006241) → white text-on-brand. Without this token emitted unconditionally, Tailwind
+    // purges --color-accent-content and .btn-accent falls through to a hardcoded dark fallback (dark-on-dark).
+    const themed = { name: 'Acme', colors: { primary: '#3F71B7', secondary: '#E85C04', accent: '#006241' } } as Brand;
+    const doc = renderDocument(page, { brand: themed, bodyHtml: '<a class="btn btn-accent">x</a>' });
+    expect(doc).toContain('--sw-color-accent-content:#ffffff'); // derived white, purge-proof (inline :root)
+  });
+
   it('injects the preloader as the FIRST body child + a noscript hide, when provided', () => {
     const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', preloader: '<div data-sw-preloader class="sw-loading sw-preloader-spinner"></div>' });
     const bodyOpen = doc.indexOf('<body');

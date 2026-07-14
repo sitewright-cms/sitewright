@@ -15,6 +15,7 @@ import type { CorporateIdentity, FontSlot, Page, WebsiteSettings } from '@sitewr
 import { CorporateIdentitySchema, WebsiteSettingsSchema, RESERVED_FONT_SLOT_NAMES } from '@sitewright/schema';
 import type { ImportDiagnostic } from '../types.js';
 import { rewriteCssUrls } from './css.js';
+import { detectImportedEffects } from './effects.js';
 
 // ─────────────────────────────── CSS parsing helpers ───────────────────────────────
 
@@ -308,8 +309,12 @@ const SQUARES =
  */
 export function extractBodyBgImage(cssText: string, assetMap: ReadonlyMap<string, string>): string {
   let img = '';
-  // Last body/html rule wins (cascade). Only the background-image longhand (or a shorthand carrying a url).
-  for (const m of cssText.matchAll(/(?:^|[};,>\s])(?:html|body)\b[^{}]*\{([^{}]*)\}/gi)) {
+  // Last matching rule wins (cascade). Scan html/body AND the common FULL-PAGE wrapper selectors a theme
+  // parks a page-wide background image on (#page, .page-wrapper, #wrapper, .site, #main-wrapper, …) — so a
+  // watermark set on the wrapper rather than <body> is still captured. Only a background-image url() is
+  // taken, and the result only ships if it resolves to a hosted /media ref (below), so a stray match on a
+  // small component is harmless (its non-hosted url is dropped).
+  for (const m of cssText.matchAll(/(?:^|[};,>\s])(?:html|body|#page|\.page-wrapper|#wrapper|\.wrapper|\.site-wrapper|#main-wrapper|\.page-bg)\b[^{}]*\{([^{}]*)\}/gi)) {
     const block = m[1] ?? '';
     const bi = block.match(/background-image\s*:\s*([^;}]+)/i)?.[1] ?? block.match(/background\s*:\s*([^;}]*url\([^;}]*)/i)?.[1];
     if (bi && /url\(/i.test(bi)) img = bi.trim();
@@ -432,7 +437,7 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
   // can't emit a non-http(s) iframe src.
   const hasMap = !!identity.mapUrl && /^https?:\/\//i.test(identity.mapUrl);
   const map = hasMap
-    ? `<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton h-64 w-full border-0"></iframe>`
+    ? `<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton loading h-64 w-full border-0"></iframe>`
     : '';
   return (
     `<div class="bg-neutral text-neutral-content">` +
@@ -539,6 +544,9 @@ export interface FoundationInput {
   /** Foreign-url → hosted `/media` map (from the import's media pass); lets the body background-image be
    *  captured as the REAL self-hosted texture rather than a generic approximation. */
   assetMap?: ReadonlyMap<string, string>;
+  /** The page transform already removed a preloader overlay (diagnostic "preloader-removed") — a reliable
+   *  signal for detectImportedEffects even though the markup is gone by this point. */
+  preloaderRemoved?: boolean;
 }
 export interface FoundationResult {
   identity: CorporateIdentity;
@@ -581,6 +589,18 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const headerDecor = input.assetMap ? extractHeaderDecor(input.cssText, input.assetMap) : {};
   websiteIn.mainNav = nativeMainNav(identity, headerDecor); // single consolidated nav slot (+ captured edge decorations)
   websiteIn.footer = nativeFooter(identity);
+  // Recover the source's dynamic BEHAVIOURS (scroll-shrink nav / button ripple / preloader) as native
+  // website.effects — a static screenshot can't reveal them, so this is the only place they survive. Only
+  // sets a field on a clear signal; merged UNDER any incoming effects so an explicit setting always wins.
+  const detected = detectImportedEffects({
+    cssText: input.cssText,
+    scripts: typeof (input.website as { scripts?: unknown } | undefined)?.scripts === 'string' ? (input.website as { scripts?: string }).scripts : '',
+    pageHtml: input.pages.map((p) => (p as { source?: string }).source ?? '').join('\n').slice(0, 300_000),
+    preloaderRemoved: input.preloaderRemoved,
+  });
+  if (Object.keys(detected).length) {
+    websiteIn.effects = { ...detected, ...((websiteIn.effects as Record<string, unknown> | undefined) ?? {}) };
+  }
   const website = WebsiteSettingsSchema.parse(websiteIn);
 
   configurePageNav(input.pages, identity.name);
@@ -593,6 +613,9 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   }
   if (headerDecor.left || headerDecor.right) {
     diagnostics.push({ code: 'header-decor-captured', message: 'the header\'s left/right decorative images (#nav::before/::after backgrounds) were re-pinned to the native navbar edges (desktop) — restyle/reposition if the design needs it' });
+  }
+  if (Object.keys(detected).length) {
+    diagnostics.push({ code: 'effects-mapped', message: `mapped source behaviours to native website.effects: ${Object.entries(detected).map(([k, v]) => `${k}=${v}`).join(', ')} — verify/adjust in Settings › Effects` });
   }
 
   const namedCount = extractedTypo.named ? Object.keys(extractedTypo.named).length : 0;

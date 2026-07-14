@@ -36,6 +36,27 @@ export async function renderViaBrowser(url: string, opts: { signal?: AbortSignal
     });
     // networkidle can legitimately time out on a chatty SPA — capture the DOM regardless.
     await page.goto(url, { waitUntil: 'networkidle', timeout: RENDER_TIMEOUT_MS }).catch(() => {});
+    // Scroll top→bottom to trigger lazy-loaded / IntersectionObserver-mounted content (deferred lower
+    // sections, lazy-mounted modals, lazy images) so the CAPTURED DOM is COMPLETE — then settle the network
+    // its fetches kicked off. No DOM mutation (no injected style, no overflow release), so the serialized
+    // HTML isn't polluted; scroll position doesn't persist into page.content().
+    await page
+      .evaluate(async () => {
+        const g = globalThis as unknown as {
+          innerHeight: number; scrollBy: (x: number, y: number) => void; scrollTo: (x: number, y: number) => void;
+          setInterval: (fn: () => void, ms: number) => number; clearInterval: (id: number) => void; setTimeout: (fn: () => void, ms: number) => void;
+          document: { documentElement: { scrollHeight: number } };
+        };
+        await new Promise<void>((resolve) => {
+          let y = 0, steps = 0; const step = Math.max(200, g.innerHeight);
+          const tick = g.setInterval(() => {
+            g.scrollBy(0, step); y += step;
+            if (y >= g.document.documentElement.scrollHeight || ++steps > 60) { g.clearInterval(tick); g.scrollTo(0, 0); g.setTimeout(resolve, 150); }
+          }, 50);
+        });
+      })
+      .catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
     return await page.content();
   } catch {
     return null;

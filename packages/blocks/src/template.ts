@@ -422,19 +422,26 @@ function createInstance(): typeof Handlebars {
   hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) => {
     if (typeof name !== 'string') return new Handlebars.SafeString('');
     const klass = escapeAttr(typeof cls === 'string' ? cls : 'h-5 w-5');
+    // A Lucide (stroke) glyph of `n`, or undefined when the set has no such name.
+    const lucide = (n: string): string | undefined => {
+      const body = iconBody(n);
+      return body === undefined
+        ? undefined
+        : `<svg class="${klass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+          `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+    };
     if (name.startsWith('brand:')) {
-      const brand = brandIcon(name.slice('brand:'.length));
-      if (!brand) return new Handlebars.SafeString('');
-      return new Handlebars.SafeString(
-        `<svg class="${klass}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${escapeAttr(brand.path)}"/></svg>`,
-      );
+      const slug = name.slice('brand:'.length);
+      const brand = brandIcon(slug);
+      if (brand)
+        return new Handlebars.SafeString(
+          `<svg class="${klass}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${escapeAttr(brand.path)}"/></svg>`,
+        );
+      // The brand/simple-icons set lacks this slug (e.g. `linkedin`) → fall back to the Lucide glyph of the
+      // SAME name so the icon still renders (an empty SafeString would be an invisible 0×0 gap otherwise).
+      return new Handlebars.SafeString(lucide(slug) ?? '');
     }
-    const body = iconBody(name);
-    if (body === undefined) return new Handlebars.SafeString('');
-    const svg =
-      `<svg class="${klass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
-      `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-    return new Handlebars.SafeString(svg);
+    return new Handlebars.SafeString(lucide(name) ?? '');
   });
   // {{sw-flag "de" "h-4"}} → inline a FULL-COLOR country flag as an <svg>. A bare alpha-2 code is the
   // rectangular 4:3 flag; a `<code>-circle` name is the circular variant (e.g. {{sw-flag "de-circle"}}).

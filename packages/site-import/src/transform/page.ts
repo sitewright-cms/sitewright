@@ -4,7 +4,7 @@
 // of the four skeleton landmarks (<nav>/<main>/<footer>/<aside>), no on* handlers, and no stray `{{`.
 import { validateTemplate } from '@sitewright/blocks';
 import { removeElement, textContent } from 'domutils';
-import { isComment } from 'domhandler';
+import { isComment, Text } from 'domhandler';
 import {
   elements,
   eachTextLike,
@@ -18,6 +18,7 @@ import {
 } from '../dom.js';
 import { assetKey, pickFromSrcset, resolveUrl, rewriteHref, SYNTHETIC_HOST } from '../url-util.js';
 import { LAZY_ATTRS, effectiveBg, effectiveSrc, effectiveSrcset } from './assets.js';
+import { mapAosAnimation, AOS_ATTRS } from './effects.js';
 import { isAllowedEmbed } from '../embeds.js';
 import type { ImportDiagnostic, ImportLimits } from '../types.js';
 
@@ -229,10 +230,71 @@ function promoteLazyAttrs(el: Element): void {
   for (const a of LAZY_ATTRS) delete el.attribs[a];
 }
 
+/** Merge extra class tokens into a class attribute, idempotently (no duplicates). */
+function addClasses(existing: string | undefined, ...add: string[]): string {
+  const cur = (existing ?? '').split(/\s+/).filter(Boolean);
+  for (const c of add) if (!cur.includes(c)) cur.push(c);
+  return cur.join(' ');
+}
+
 function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagnostic[]): void {
   promoteLazyAttrs(el); // lazy-load data-* → real src/srcset/bg before the normal url rewrite hosts them
+  // A self-hosted DOCUMENT embed in a modal <iframe> (<embed>/<object> are already stripped by REMOVE_TAGS
+  // before this pass, so only <iframe> reaches here — the common PDF-modal pattern).
+  //  • A PDF is served INLINE + same-origin-frameable, so KEEP it as a lazy <iframe> pointing at the
+  //    hosted /media ref — the browser's sandboxed viewer renders it (e.g. the original's "Company Profile"
+  //    modal PDF). Carries loading="lazy" + `.skeleton .loading` (platform rule: every iframe lazy-loads
+  //    behind a placeholder) + a min-height so the frame has size before it paints. Finalised HERE and the
+  //    function RETURNS — otherwise the main src loop would run isAllowedEmbed() on this same-origin /media
+  //    path (not an allow-listed provider host) and DROP it.
+  //  • A NON-PDF doc (doc/xls/…) a browser can't render inline → convert to a LINK the browser downloads.
+  if (el.name === 'iframe') {
+    const rawSrc = el.attribs.src;
+    const dkey = rawSrc ? assetKey(rawSrc, ctx.pageUrl) : null;
+    const hostedDoc = dkey ? ctx.assetMap.get(dkey) : undefined;
+    if (hostedDoc && /\.pdf(?:$|[?#])/i.test(hostedDoc)) {
+      const title = (el.attribs.title || el.attribs['aria-label'] || 'Document').trim() || 'Document';
+      el.name = 'iframe';
+      (el as { tagName?: string }).tagName = 'iframe';
+      for (const k of Object.keys(el.attribs)) delete el.attribs[k];
+      el.attribs.src = hostedDoc; // same-origin /media ref; publish rebases it to _assets/…​.pdf
+      el.attribs.title = title;
+      el.attribs.loading = 'lazy';
+      el.attribs.class = 'skeleton loading w-full border-0';
+      el.attribs.style = 'min-height:80vh';
+      el.children = [];
+      diags.push({ code: 'document-embed-framed', message: `a PDF embed was self-hosted and kept as a lazy inline <iframe> (PDFs are served frameable): ${truncate(hostedDoc)}`, page: ctx.pageUrl });
+      return;
+    }
+    if (hostedDoc) {
+      const label = (el.attribs.title || el.attribs['aria-label'] || 'View document').trim() || 'View document';
+      el.name = 'a';
+      (el as { tagName?: string }).tagName = 'a';
+      for (const k of Object.keys(el.attribs)) delete el.attribs[k];
+      el.attribs.href = hostedDoc;
+      el.attribs.target = '_blank';
+      el.attribs.rel = 'noopener';
+      const text = new Text(label);
+      text.parent = el;
+      el.children = [text];
+      diags.push({ code: 'document-embed-linked', message: `a document embed (non-PDF) was self-hosted and converted to a download link — office/other docs are served download-only and can't be iframed: ${truncate(hostedDoc)}`, page: ctx.pageUrl });
+    }
+  }
+  // Map foreign AOS scroll-motion (data-aos="fade-up" …) to the native data-sw-animation primitives, then
+  // strip the AOS attrs. Computed now, ATTACHED after the loop (the loop deletes any data-sw-* to block
+  // forged directives — adding it afterwards keeps our sanitised, enum-checked mapping).
+  const aos = mapAosAnimation(el.attribs);
+  for (const a of AOS_ATTRS) delete el.attribs[a];
   const isImageEl = el.name === 'img';
   const isMediaSource = el.name === 'source' || el.name === 'picture';
+  // When a self-hosted <img> carries a srcset, promote its LARGEST variant to `src`. Otherwise the clone
+  // shows the tiny placeholder `src` (a thumbnail) while the full-size srcset image sits hosted-but-orphaned
+  // — the double-capture. collectImageRefs() mirrors this (it collects ONLY the largest), so exactly one
+  // full-res asset is hosted per image and it's the one rendered.
+  if (isImageEl && el.attribs.src) {
+    const largest = pickFromSrcset(el.attribs.srcset ?? el.attribs.imagesrcset ?? '');
+    if (largest) el.attribs.src = largest;
+  }
   // Capture the <img>'s ORIGINAL asset key now (before the loop rewrites src to the /media ref) so we
   // can attach the hosted WebP srcset after the foreign srcset has been stripped.
   const imgKey = isImageEl && el.attribs.src ? assetKey(el.attribs.src, ctx.pageUrl) : null;
@@ -268,8 +330,9 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
     if (name === 'src') {
       if (el.name === 'iframe') {
         const abs = resolveUrl(value, ctx.pageUrl);
-        // Keep embeds only from the trusted provider allowlist (video, maps, social incl. Facebook,
-        // audio, forms, code, commerce, …); they're origin-isolated. Defer loading, allow the usual
+        // (A self-hosted DOCUMENT embed was already converted to a link in the pre-pass — download-only docs
+        // can't be iframed.) Keep embeds only from the trusted provider allowlist (video, maps, social incl.
+        // Facebook, audio, forms, code, commerce, …); they're origin-isolated. Defer loading, allow the usual
         // embed capabilities + fullscreen, and don't leak the full referrer. Anything else is dropped.
         if (abs && isAllowedEmbed(abs)) {
           el.attribs.src = abs;
@@ -279,6 +342,9 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
           // No clipboard-write by default (silent-clipboard risk); a legit embed's own allow is kept.
           if (!('allow' in el.attribs)) el.attribs.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
           if (!('allowfullscreen' in el.attribs)) el.attribs.allowfullscreen = '';
+          // LOADING STATE (platform rule: every iframe = lazy + a `.skeleton` shimmer placeholder until it
+          // paints, so a slow cross-origin embed shows no blank grey box). Idempotent class merge.
+          el.attribs.class = addClasses(el.attribs.class, 'skeleton');
         } else {
           removeElement(el);
           if (abs) diags.push({ code: 'unsafe-url-dropped', message: `iframe from non-allowlisted host dropped: ${truncate(abs)}`, page: ctx.pageUrl });
@@ -313,6 +379,14 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
     if (!el.attribs.sizes) el.attribs.sizes = '100vw';
     if (!el.attribs.loading) el.attribs.loading = 'lazy';
     if (!el.attribs.decoding) el.attribs.decoding = 'async';
+  }
+
+  // Attach the mapped AOS → native scroll-motion (AFTER the loop's data-sw-* strip, so it survives). Values
+  // are enum-checked / bounded in mapAosAnimation, so this can't smuggle an arbitrary directive.
+  if (aos) {
+    el.attribs['data-sw-animation'] = aos.animation;
+    if (aos.duration) el.attribs['data-sw-duration'] = aos.duration;
+    if (aos.delay) el.attribs['data-sw-delay'] = aos.delay;
   }
 }
 

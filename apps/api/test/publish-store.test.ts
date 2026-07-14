@@ -92,6 +92,17 @@ describe('PublishStore HTML serving', () => {
     expect(svg?.csp).toMatch(/sandbox/);
   });
 
+  it('serves a bundled PDF INLINE (application/pdf) + same-origin frameable, not a download', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets', 'doc1', 'file'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'doc1', 'file', 'company_profile.pdf'), '%PDF-1.4 fake');
+    const pdf = await store.readBinary('site', '/_assets/doc1/file/company_profile.pdf');
+    expect(pdf?.contentType).toBe('application/pdf');
+    expect(pdf?.attachment).toBe(false); // inline, so a cloned modal <iframe src=…​.pdf> renders it
+    // frame-ancestors 'self' lets ONLY the same-origin published page frame it (also skips onSend's DENY)
+    expect(pdf?.csp).toMatch(/frame-ancestors 'self'/);
+  });
+
   it('still rejects traversal segments', async () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
     await expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();

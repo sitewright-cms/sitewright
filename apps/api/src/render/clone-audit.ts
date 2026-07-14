@@ -4,10 +4,16 @@
 //     content client-EDITABLE (data-sw-*).
 //   • BEHAVIOUR (a live build render): sliders actually enhance, modals present, the heading+body fonts truly
 //     LOAD (not just declared), the mobile menu is reachable at a phone width.
-//   • VISUAL (fidelity_check, folded in): body computed-style fidelity GATES; chrome element-fidelity is
-//     ADVISORY (reported, not gated — structurally-different chrome can't reliably reach 85% correspondence).
-// fidelity_check alone passes a clone whose datasets are duplicated, whose modals were dropped, whose slider
-// is dead, or whose mobile menu is missing — none of which move a computed-style number. This gate closes that.
+//   • VISUAL (fidelity_check, folded in): body + chrome computed-style fidelity are BOTH ADVISORY — reported
+//     to steer the agent, NOT gated. Computed-style COVERAGE is blind to the defect class that actually breaks
+//     a clone visually: letter-casing, missing divider rules, plain-vs-badged icons, a wrong sub-band colour, a
+//     wrong section height, a wrong repeated-item count — the words/fonts/colours all match, so coverage reads
+//     ~90% while the page is visibly off. So the computed-style number is NOT a terminator (optimising it is a
+//     trap). The RELIABLE visual gate is the agent-judged `visual_audit` SIDE-BY-SIDE vs the live original,
+//     enumerated region-by-region to zero blocker+major — that lives with the driving agent, not in this gate.
+// clone_audit therefore gates ONLY the OBJECTIVE facts a screenshot can't show and coverage can't game:
+// datasets deduped+named, media out of imported/, content editable, sliders enhance, modals present, fonts
+// truly LOAD, mobile menu reachable. Those never move a computed-style number and never show in a thumbnail.
 // The pure scorers live here (unit-tested); the browser-driving capture lives in compare.ts.
 
 /** One audit check. `leg` groups them; `id` is a stable key; `detail` is the human/agent-readable evidence. */
@@ -69,14 +75,17 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   ];
 }
 
-/** VISUAL leg — fold in fidelity_check's already-measured body + chrome result. body-fidelity GATES (text-
- *  anchored, reliable); chrome element-fidelity is ADVISORY (structurally-different chrome can't reliably reach
- *  85% element-style coverage — see AuditCheck.advisory — so it's reported to steer the agent, not gated). */
+/** VISUAL leg — fold in fidelity_check's already-measured body + chrome result. BOTH are ADVISORY (see
+ *  AuditCheck.advisory): computed-style COVERAGE is blind to casing / divider rules / plain-vs-badged icons /
+ *  sub-band colour / section height / repeated-item count, so a green coverage number routinely coexists with a
+ *  visibly-wrong page. They are REPORTED to steer the agent (fonts, gradients, skew), never gated. The real
+ *  visual terminator is the agent-judged `visual_audit` side-by-side, driven region-by-region to zero
+ *  blocker+major — NOT this number. Optimising coverage to 100% proves nothing about visual fidelity. */
 export function visualChecks(fid: { body?: { pass?: boolean; coverage?: number; score?: number }; chrome?: { pass?: boolean; coverage?: number; styleOff?: number; metaOff?: number } } | null): AuditCheck[] {
   const b = fid?.body, c = fid?.chrome;
   return [
-    { leg: 'visual', id: 'body-fidelity', label: 'body computed-style fidelity vs original', pass: b?.pass === true, detail: b ? `coverage ${((b.coverage ?? 0) * 100).toFixed(0)}%, score ${(b.score ?? 1).toFixed(3)}` : 'no fidelity result' },
-    { leg: 'visual', id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original', pass: c?.pass === true, advisory: true, detail: c ? `coverage ${((c.coverage ?? 0) * 100).toFixed(0)}%, styleOff ${c.styleOff ?? '?'}, metaOff ${c.metaOff ?? '?'} — use compare_regions to close remaining chrome gaps` : 'no fidelity result' },
+    { leg: 'visual', id: 'body-fidelity', label: 'body computed-style fidelity vs original (ADVISORY — the agent-judged visual_audit side-by-side is the real visual gate)', pass: b?.pass === true, advisory: true, detail: b ? `coverage ${((b.coverage ?? 0) * 100).toFixed(0)}%, score ${(b.score ?? 1).toFixed(3)} — coverage is BLIND to casing/dividers/icon-style/section-height; judge visual_audit, don't chase this number` : 'no fidelity result' },
+    { leg: 'visual', id: 'chrome-fidelity', label: 'chrome computed-style fidelity vs original (ADVISORY)', pass: c?.pass === true, advisory: true, detail: c ? `coverage ${((c.coverage ?? 0) * 100).toFixed(0)}%, styleOff ${c.styleOff ?? '?'}, metaOff ${c.metaOff ?? '?'} — use compare_regions to close remaining chrome gaps` : 'no fidelity result' },
   ];
 }
 

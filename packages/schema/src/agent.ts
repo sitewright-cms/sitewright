@@ -702,8 +702,16 @@ its config dataset (slug "hero"). To POPULATE it programmatically, create ONE \`
 the widget renders the entry whose id = page.data.hero_config, else the first) with these fields:
   • slides — a LIST; each item = { image (media url), caption (richtext; blank caption → no pill) }
   • autoplay (boolean), interval (number, ms), kenburns (boolean), show_arrows (boolean), show_indicators (boolean)
-So a cloned hero carousel = put the slide images/captions as a \`hero\` entry's \`slides\` list + set the toggles;
-you do NOT hand-author the carousel markup.
+  • full_bleed (boolean) — TRUE for the common site hero: full-viewport-height, SQUARE corners, edge-to-edge.
+    FALSE (default) is a CONTAINED rounded box with a height cap. MATCH THE ORIGINAL: a hero that fills the
+    viewport width/height → full_bleed:true; a hero shown inside a padded rounded card → leave it false.
+  • caption_light (boolean) — TRUE = a WHITE caption box with dark text; FALSE (default) = a dark translucent
+    box with white text + backdrop blur. Set it to whichever the original's caption uses (a white-boxed
+    caption over the photo → caption_light:true).
+So a cloned hero carousel = put the slide images/captions as a \`hero\` entry's \`slides\` list + set the toggles
+(incl. full_bleed / caption_light to MATCH the original's frame + caption look); you do NOT hand-author the
+carousel markup. Also set \`interval\` to the original's real slide duration and match its height via full_bleed
+— a contained rounded box where the original is a full-bleed hero is a MAJOR fidelity miss.
 The other built-in widget is {{> logo-marquee}} — a CSS-only auto-scrolling logo strip; its \`marquee\` dataset
 entry has { speed (select: Normal/Slow/Fast), logos (LIST of { image, alt, link }), or a \`folder\` name to
 pull every image in a media folder }. Same pattern: include the partial, populate the dataset, no markup.
@@ -1007,9 +1015,20 @@ hold a GENERIC data-driven nav/footer (the extractor's native default), NOT the 
 AUTHOR the faithful design yourself. Use the ORIGINAL as the reference: compare_regions (crisp 2× header/
 footer crops of BUILD vs ORIGINAL) + a rendered screenshot to read the exact bar height, tab shape/skew,
 colours, and the logo; then build it data-driven ({{#each nav.header}}) with the signature CSS in criticalCss.
-VERIFY THE CHROME with the gate, not a thumbnail: fidelity_check scores the chrome too (skew, weight,
-letter-spacing, radius, shadow, gradient, fixed-position, ripple, modal triggers) — iterate until its chrome
-score passes; use compare_regions to SEE what's still off. That objective pass is when the chrome is done.
+VERIFY THE CHROME with compare_regions — NOT the full-page visual_audit. CRITICAL CAVEAT: the full-page
+visual_audit shot can MIS-RENDER a position:FIXED / sticky header — a fixed nav bar frequently comes out as
+LOGO-ONLY (the nav links + social row DROPPED) in the full-page image, even though they're really there. If
+you judge the header from that shot you'll wrongly conclude "the original has no desktop menu" and clone a
+bare logo + hamburger — a MAJOR miss. ALWAYS confirm the header + footer against compare_regions(pageId) (2×
+CLIPPED crops that render fixed chrome correctly); treat compare_regions as the source of truth for the nav.
+The DESKTOP header is a horizontal nav BAR (its links laid out in a row) unless compare_regions proves
+otherwise — NEVER collapse it to a hamburger at desktop width; the hamburger drawer is the MOBILE presentation
+only. Drive every header/footer blocker+major to zero against compare_regions — the chrome is done when it
+MATCHES there, NOT when a computed-style number passes. Watch the treatments coverage is BLIND to: the nav
+ACTIVE item (a full-bleed/full-height block vs a small rounded pill — copy the original's), SOCIAL ICONS (plain
+monochrome glyphs vs filled/badged — match the original's, don't default to badged), item SPACING, and any
+leading nav icon. fidelity_check + the clone_audit chrome leg are ADVISORY — use them to SEE fine treatments
+(skew, weight, gradient stops), never as the done signal.
 
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
 (website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
@@ -1018,13 +1037,19 @@ self-hosted .js/.css media). The page is NOT done until the media library is als
 leftover \`imported/\` UUID dump. Re-render and confirm nothing regressed.
 
 RE-ENABLE SITE-WIDE FEATURES THE IMPORT STRIPPED (it removes foreign JS — the import diagnostics name what
-was dropped; turn each back on with the PLATFORM equivalent, in the settings entity): a loading PRELOADER
-("preloader-removed") -> theme.preloaderEffect (get_guide("effects")); a sticky/shrinking header -> website.
-effects.stickyHeader; a back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded
-side widget ("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin =
-a consent-gated <iframe>, see get_guide("consent")); a foreign off-canvas mobile-nav drawer ("mobile-nav-removed")
--> nothing to rebuild, the platform's mainNav skeleton is already responsive (its own hamburger drawer). Footer/
-nav LISTS: a <ul> needs list-none pl-0 or items sit indented.
+was dropped; turn each back on with the PLATFORM equivalent, in the settings entity). A FOUNDATION import now
+AUTO-DETECTS several dynamic behaviours a static screenshot can't show and PRE-SETS them (diagnostic
+"effects-mapped") — a scroll-shrink / fixed header -> website.effects.stickyHeader, a Materialize/Material
+button ripple ("waves-effect") -> website.effects.buttonEffect, a loading PRELOADER ("preloader-removed") ->
+website.effects.preloaderEffect, and per-element AOS scroll-motion (data-aos) -> a data-sw-animation attribute
+(+ data-sw-duration/-delay) on the element. VERIFY each pre-set value against the ORIGINAL in the side-by-side
+and ADJUST it (the detection is a best-effort heuristic — the shrink-vs-pinned mode, the exact preloader style,
+the closest ripple/animation may need a tweak) rather than assuming the feature is off. Still MANUAL: a
+back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded side widget
+("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin = a consent-gated
+<iframe>, see get_guide("consent")); a foreign off-canvas mobile-nav drawer ("mobile-nav-removed") -> nothing
+to rebuild, the platform's mainNav skeleton is already responsive (its own hamburger drawer). Footer/nav
+LISTS: a <ul> needs list-none pl-0 or items sit indented.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
@@ -1048,9 +1073,41 @@ against this list BEFORE you publish it:
   you ever set status:"draft" the row is INVISIBLE on the published site (it still shows in the drafts-included
   preview — so a section that looks full in preview renders EMPTY once published). After building a dataset,
   confirm its entries are published before you rely on the loop.
-- SLIDERS COME FROM DATA, never hard-coded slides. A hero slideshow = the \`{{> hero-slider}}\` widget + a
-  \`hero\` dataset (its \`slides\` list); a logo/partner strip = \`{{> logo-marquee}}\` + a media-folder loop.
-  Pasting N literal slide blocks into the source is wrong — not editable, and it bloats the page.
+- SLIDERS COME FROM DATA, never hard-coded slides. A HERO slideshow = the \`{{> hero-slider}}\` WIDGET + a
+  \`hero\` dataset (its \`slides\` list) — use the widget, NOT a hand-rolled \`data-sw-component="carousel"\`; the
+  widget is the canonical, editable hero (get_components / the snippet library show its shape). A logo/partner
+  strip = \`{{> logo-marquee}}\` + a media-folder loop. Pasting N literal slide blocks is wrong (not editable,
+  bloats the page).
+- PAGE / SECTION BACKGROUND + OVERLAY. If the original shows a background IMAGE behind the page or a section
+  (a faint watermark, a photo band) — often WITH a translucent colour OVERLAY for legibility — reproduce it:
+  the importer self-hosts the source's page background image (it lands in website.criticalCss \`body{…}\`, or
+  reference the hosted \`/media\` asset). Set it on the right scope (\`body\` for a page-wide wash, else a
+  \`data-sw-part="bg"\`/section wrapper) and layer the overlay as a semi-transparent \`::before\` or a
+  \`bg-black/30\`-style scrim — don't leave the generic noise texture where the original has a real image.
+- MODALS: PORT THE REAL CONTENT. The original's modal/dialog bodies (contact / FAQ / company-profile / gallery)
+  are captured into the imported page as HIDDEN blocks the crawler keeps (a display:none \`<div class="modal">\`
+  or a \`#…-modal\` target) — FIND them in the page \`source\` and port their ACTUAL heading / prose / fields /
+  list into the native \`<dialog data-sw-component="modal">\`, don't author a generic placeholder. Repeated modal
+  content (an FAQ list) is a DATASET + {{#each}}. A modal whose body is only JS-INJECTED on trigger may be
+  ABSENT from the capture — if a trigger has no matching content, reconstruct from its link/label text and say
+  so, rather than inventing. A PDF the original embedded in a modal (a company-profile / brochure) is
+  SELF-HOSTED in the media library and the platform serves it INLINE + frameable — so it DISPLAYS in a
+  lazy \`<iframe>\` (the importer already keeps a captured modal PDF as one). To author/replicate it by hand,
+  put a lazy iframe pointing at the hosted PDF inside the native \`<dialog data-sw-component="modal">\` (find
+  the asset with list_media): \`<iframe src="/media/…​.pdf" title="Company Profile" loading="lazy"
+  class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>\` — loading="lazy" + \`.skeleton\`
+  \`.loading\` (the platform-required loading placeholder for every iframe) + a min-height so the frame has
+  size before it paints. A NON-PDF document (doc/xls/…) can't render inline → present it as a LINK/BUTTON
+  instead: \`<a href="/media/…​.docx" target="_blank" rel="noopener" class="btn btn-primary">{{sw-icon
+  "file-text"}} View document</a>\`.
+- LAZY-LOAD + LOADING PLACEHOLDERS (platform rule — apply everywhere). EVERY \`<iframe>\` you author (maps,
+  video, PDF, embeds) MUST carry \`loading="lazy"\` + BOTH \`skeleton\` AND \`loading\` classes
+  (\`class="skeleton loading …"\`) — \`.skeleton\` is the shimmer placeholder shown until the frame paints, and
+  the platform NEUTRALISES \`.loading\`'s collapsing-spinner behaviour on media (iframe/img/video/embed/object)
+  so the two compose safely; the importer already adds them to kept embeds. EVERY LARGE / below-the-fold
+  \`<img>\`, video, or off-screen media element MUST carry \`loading="lazy"\` + \`class="skeleton loading …"\` too
+  (small above-the-fold logos / nav icons stay eager and need no placeholder). A blank grey box where the
+  original shows a map / video / image = a missing lazy placeholder.
 - FONTS LIVE IN CI SETTINGS (identity.typography.heading/body), NOT in criticalCss. The importer already
   self-hosts the brand fonts and wires identity.typography — do NOT re-declare \`@font-face\` /
   \`font-family:…!important\` in criticalCss. The duplicate fights the platform typography and drifts the
@@ -1076,6 +1133,13 @@ against this list BEFORE you publish it:
   behind a click AND adds a cookie banner the original never had). Reserve consent for real 3rd-party
   TRACKERS. A source map is often LAZY (blank in a static capture) — reproduce it from the source MARKUP,
   not from what a screenshot shows.
+- KEEP THE FOOTER MAP. Many sites embed a Google Map in the FOOTER (or a contact strip). The importer
+  captures it into \`company.mapUrl\` and the starting \`website.footer\` slot already contains
+  \`<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" class="skeleton loading …​ border-0">\`.
+  When you RE-AUTHOR the footer, do NOT drop that map — re-add the same iframe (lazy + \`.skeleton .loading\`)
+  if the original's footer shows one. If \`company.mapUrl\` is empty but the original clearly has a footer map,
+  author the map iframe from the source's own embed URL (an allow-listed maps host). A footer that silently
+  loses the map is a common miss — verify it against compare_regions(pageId)'s FOOTER crop.
 - STICKY / SHRINK HEADER without overlap: when the original's header is fixed/shrinking, set
   website.effects.stickyHeader AND give each page's FIRST section \`.sw-top-padding\` (plus a \`--sw-header-h\`
   matching the real header height) so content isn't hidden under the fixed bar. Don't just leave it off
@@ -1110,6 +1174,13 @@ sample the original's real values, don't approximate to the nearest token):
   section band that is GREY (or black, or any NON-brand colour) in the original STAYS that colour — do NOT
   swap it to \`btn-primary\`/the brand red just because it's a button. A near-black bar (#000) is not the
   same as a token navy — use the source's measured hex (\`bg-[#hex]\`) when it isn't a theme colour.
+- MATCH ELEVATION / SHADOWS — don't ship a FLAT clone of a shadowed original (a very common miss). If the
+  original's cards, buttons, header bar, images, badges, hero caption, or overlay panels cast a VISIBLE drop
+  shadow, author it — and match its DEPTH, don't under-shoot with a faint \`shadow-sm\`. A soft card =
+  \`shadow-md\`/\`shadow-lg\`; a pronounced floating panel / dropdown / sticky header = \`shadow-xl\`/\`shadow-2xl\`;
+  a very strong bespoke shadow = a measured custom \`style="box-shadow:0 20px 50px rgba(0,0,0,.35)"\`. Look at
+  the original at 100% — a shadow you can clearly see must be clearly visible in the clone too. (Buttons keep
+  their shadow via the SW button axes / face effect — see BUTTONS above — not a hand-rolled box-shadow.)
 - PRESERVE PER-ENTRY / INLINE ACCENTS. A single coloured word or suffix — a red "(MD / Chairman)" beside
   ONE name, a two-tone banner where one word ("Hiring!") is a different colour — is authored with a
   \`<span style="color:…">\` (or a per-row dataset FIELD carrying the colour), NOT flattened to one colour
@@ -1170,24 +1241,33 @@ VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after au
   font-WEIGHT, letter-spacing, radius, shadow, solid-vs-gradient, fixed-position, ripple, modals). It catches
   the exact treatments a screenshot glance misses (e.g. a 15° skew that should be 25°, bold that should be 400,
   a gradient added where the original is flat, a missing fixed header / ripple / nav modal).
-fidelity_check proves computed-style treatments, but it (and clone_audit's computed-style VISUAL leg) is
-BLIND to layout, images, section design, and modals — a hollow bare-text page can score green. So a page has
-TWO terminating gates and is DONE only when BOTH pass:
-- clone_audit(pageId) — STRUCTURE + BEHAVIOUR + computed-style visual. STRUCTURE (datasets deduped + named,
-  media out of imported/, content editable via data-sw-*), BEHAVIOUR (a live render: sliders enhance, modals
-  present when the original has them, heading+body fonts truly LOAD, mobile menu reachable at phone width).
-- visual_audit(pageId) — the RELIABLE VISUAL gate. It renders your build AND the LIVE original full-page
-  (desktop + mobile) and returns them SIDE-BY-SIDE plus a defect RUBRIC — and YOU judge the pixels against
-  it (there is no server AI; it works with or without a project AI provider). Compare REGION BY REGION and
-  tag every divergence: category (layout|spacing|typography|color|image|component|content|chrome|responsive)
-  + severity (blocker|major|minor). It SEES what the computed-style scorers miss: wrong/missing images and
-  illustrations, wrong layout, missing sections, dead/empty components, wrong per-element fonts (a computed
-  font-family reads the requested NAME even when the file never loaded — it LIES; you see the real glyphs).
-  The page is faithful only at ZERO blocker + major defects. Fix EVERY blocker + major you find.
-A page is DONE only when clone_audit passes ✓ AND you have driven visual_audit to zero blocker+major — NEVER
-from fidelity_check alone, a screenshot, or your first render (you are optimistically biased about your own
-work, so judge against the side-by-sides). Fix every FAIL/defect (compare_regions to SEE fine chrome), then
-re-check. Work ONE page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
+THE VISUAL SIDE-BY-SIDE IS THE TERMINATOR — the computed-style scorers are ADVISORY. fidelity_check and
+clone_audit's computed-style leg MEASURE styles (font/gradient/skew/weight/coverage). That number is BLIND to
+the defects that actually make a clone look wrong: letter-CASING (UPPERCASE labels rendered Title Case), missing
+DIVIDER rules between columns, PLAIN-vs-BADGED icons, a wrong sub-band COLOUR, a wrong section HEIGHT, a wrong
+REPEATED-ITEM COUNT (rendering all 4 rows where the original features 1) — the words, fonts and colours all
+match, so coverage reads ~90% while the page is visibly off. Do NOT optimise the coverage/fidelity number: a
+green number with visible differences is STILL A FAIL. Coverage is blind to these; your eyes are not.
+
+Each page has ONE visual terminator + one objective prerequisite:
+- visual_audit(pageId) — THE visual gate. It renders your build AND the LIVE original full-page (desktop +
+  mobile) SIDE-BY-SIDE plus a defect RUBRIC — YOU judge the pixels (no server AI; works with or without a
+  project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list — header,
+  hero, EACH body section, footer — and for each divergence tag category (layout|spacing|typography|color|
+  image|component|content|chrome|responsive) + severity (blocker|major|minor). Do NOT summarise as "looks
+  close" — ENUMERATE. You may NOT declare the page done while ANY blocker or major is open. It SEES what the
+  scorers miss: wrong/missing images, wrong layout, missing sections, dead/empty components, wrong per-element
+  fonts (a computed font-family reads the requested NAME even when the file never loaded — it LIES; you see the
+  real glyphs). Fix EVERY blocker + major, re-capture, re-list; the list must reach ZERO before done.
+- clone_audit(pageId) — the OBJECTIVE prerequisite (never a screenshot's job, never gameable by coverage):
+  STRUCTURE (datasets deduped + named, media out of imported/, content editable via data-sw-*) + BEHAVIOUR (a
+  live render: sliders enhance, modals present when the original has them, heading+body fonts truly LOAD, mobile
+  menu reachable at phone width). Its computed-style visual leg is ADVISORY — reported to steer, never gated.
+A page is DONE only when clone_audit passes ✓ AND your written region-by-region visual_audit list has ZERO
+blocker+major — NEVER from fidelity_check/coverage, a screenshot, or your first render (you are optimistically
+biased about your own work, so judge against the side-by-sides). fidelity_check + compare_regions are for
+SEEING fine chrome treatments (skew, weight, gradient stops) while you fix — not for deciding done. Work ONE
+page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
 
 The STRUCTURE + BEHAVIOUR facts clone_audit gates (self-verify these while authoring — they never show in a
 screenshot): header + footer menus DATA-DRIVEN ({{#each nav.*}} over nav-membership + link-placeholders), NOT
@@ -1289,9 +1369,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
-  { name: 'fidelity_check', description: "The VISUAL fidelity gate: measures computed styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals), returns a PASS/FAIL number. Use it to prove the LOOK matches — but a clone is DONE only when clone_audit passes (fidelity_check can't see dropped modals / dead sliders / unloaded fonts / dup datasets / missing mobile menu).", capability: 'content:read' },
-  { name: 'clone_audit', description: "The COMPREHENSIVE acceptance GATE — the ONE check that terminates the clone/nativize loop. All three legs: STRUCTURE (datasets deduped+named, media out of imported/, content editable), BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable), VISUAL (body computed-style fidelity gates; chrome element-fidelity is ADVISORY — reported to keep improving with compare_regions, not gated). A clone is DONE only when this returns pass:true — never fidelity_check alone or a screenshot.", capability: 'content:read' },
-  { name: 'visual_audit', description: "The VISUAL acceptance gate for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE and returns them + a defect RUBRIC for YOU to judge (no server AI — works with or without a project AI provider). Tag divergences region by region (category layout|spacing|typography|color|image|component|content|chrome|responsive; severity blocker|major|minor); faithful = zero blocker + major. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. The FINAL visual check — fix every blocker/major before done, never from your own render alone.", capability: 'content:read' },
+  { name: 'fidelity_check', description: "ADVISORY computed-style probe (NOT a done-gate): measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
+  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
+  { name: 'visual_audit', description: "THE visual acceptance TERMINATOR for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },

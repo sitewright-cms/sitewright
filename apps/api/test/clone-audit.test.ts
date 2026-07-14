@@ -54,31 +54,31 @@ describe('behaviouralChecks', () => {
 });
 
 describe('visualChecks + assembleAudit', () => {
-  it('folds in fidelity_check body + chrome pass', () => {
+  it('marks BOTH computed-style visual legs advisory (never gating)', () => {
     const v = visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: false, coverage: 0.3, styleOff: 5, metaOff: 2 } });
-    expect(v.find((c) => c.id === 'body-fidelity')!.pass).toBe(true);
-    // chrome-fidelity reflects the measured pass BUT is marked advisory (does not gate the audit)
-    expect(v.find((c) => c.id === 'chrome-fidelity')!.pass).toBe(false);
+    // body-fidelity + chrome-fidelity are BOTH advisory: computed-style coverage is blind to casing/dividers/
+    // icon-style/section-height, so it steers the agent but never terminates the loop — visual_audit does.
+    expect(v.find((c) => c.id === 'body-fidelity')!.advisory).toBe(true);
     expect(v.find((c) => c.id === 'chrome-fidelity')!.advisory).toBe(true);
-    expect(v.find((c) => c.id === 'body-fidelity')!.advisory).toBeUndefined();
   });
 
-  it('gates on non-advisory checks: a clone whose ONLY failure is chrome-fidelity is still GREEN', () => {
+  it('gates ONLY on structure/behaviour: a clone whose only failures are computed-style is still GREEN', () => {
     const green = assembleAudit([
       structuralChecks({ datasets: [{ id: 'team', name: 'Team' }], media: [{ folder: 'Brand' }], pageSource: '<h1 data-sw-text="t">T</h1>' }),
       behaviouralChecks(behaviour()),
-      // body passes, chrome FAILS — chrome is advisory, so the audit is still GREEN
-      visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: false, coverage: 0.3, styleOff: 8, metaOff: 2 } }),
+      // structure + behaviour pass; BOTH computed-style legs FAIL — both advisory, so the audit is still GREEN
+      visualChecks({ body: { pass: false, coverage: 0.5, score: 0.3 }, chrome: { pass: false, coverage: 0.3, styleOff: 8, metaOff: 2 } }),
     ]);
     expect(green.pass).toBe(true);
-    expect(green.passed).toBe(green.total); // advisory chrome excluded from the count
-    expect(green.checks.some((c) => c.id === 'chrome-fidelity' && !c.pass && c.advisory)).toBe(true); // still reported
+    expect(green.passed).toBe(green.total); // advisory visual legs excluded from the count
+    expect(green.checks.some((c) => c.id === 'body-fidelity' && !c.pass && c.advisory)).toBe(true); // still reported
+    expect(green.checks.some((c) => c.id === 'chrome-fidelity' && !c.pass && c.advisory)).toBe(true);
 
-    // a GATING failure (structure/behaviour/body) is still RED
+    // RED comes purely from structure/behaviour now — computed-style visual all green can't rescue it.
     const red = assembleAudit([
       structuralChecks({ datasets: [{ id: 'items', name: 'List' }], media: [], pageSource: '<div>plain</div>' }),
       behaviouralChecks(behaviour({ carouselsEnhanced: 0 })),
-      visualChecks({ body: { pass: false, coverage: 0.5, score: 0.3 }, chrome: { pass: false } }),
+      visualChecks({ body: { pass: true, coverage: 0.9, score: 0 }, chrome: { pass: true } }),
     ]);
     expect(red.pass).toBe(false);
     expect(red.passed).toBeLessThan(red.total);

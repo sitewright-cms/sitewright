@@ -311,6 +311,31 @@ async function copyMedia(
  * The site is built into a sibling temp dir and swapped in via `rename`, so a
  * mid-build failure leaves the previously-published site intact.
  */
+
+/**
+ * PREVIEW-ONLY: replace a self-hosted PDF `<iframe>` with a static placeholder card. Chromium refuses to
+ * instantiate its built-in PDF viewer inside the sandboxed (`sandbox allow-scripts`) preview frame
+ * (`ERR_BLOCKED_BY_CLIENT`), so the real iframe would show the browser's "blocked" page in the editor
+ * preview + every screenshot tool. The PUBLISHED/deployed site (a real, non-sandboxed origin) keeps the
+ * working inline viewer, so this swap is gated on `previewMode` only. No script — pure static markup.
+ */
+export function replacePreviewPdfEmbeds(html: string): string {
+  return html.replace(/<iframe\b[^>]*\.pdf\b[^>]*>\s*<\/iframe>/gi, (tag) => {
+    // `title`/`style` come from the ALREADY-serialized page HTML (dom-serializer entity-escaped the attrs
+    // + escaped `>` so `[^>]*` above stays tag-bounded), so the captured value is safe to re-emit verbatim
+    // in both the aria-label attribute and the <strong> text — re-escaping would double-encode it.
+    const t = /\btitle="([^"]*)"/i.exec(tag)?.[1] || 'PDF document';
+    const style = /\bstyle="([^"]*)"/i.exec(tag)?.[1] || 'min-height:80vh';
+    return (
+      `<div role="img" aria-label="${t} (PDF)" style="${style};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;text-align:center;padding:2rem;box-sizing:border-box;background:var(--color-base-200,#f3f4f6);color:var(--color-base-content,#4b5563);border:1px dashed var(--color-base-300,#d1d5db);border-radius:var(--radius-box,1rem)">` +
+      `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg>` +
+      `<strong style="font-weight:600">${t}</strong>` +
+      `<span style="font-size:.8125rem;opacity:.8;max-width:34ch">Inline PDF preview isn't available in the editor — the browser blocks its PDF viewer inside the sandboxed preview. It renders on the published site.</span>` +
+      `</div>`
+    );
+  });
+}
+
 export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest> {
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
@@ -967,7 +992,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
-        const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
+        const relativized = relativizeInternalLinks(mediaRebased, siteRoot);
+        // PREVIEW only: a self-hosted PDF <iframe> can't render in the sandboxed preview frame (Chromium
+        // blocks its PDF viewer there) — swap it for a static placeholder. Publish keeps the real viewer.
+        const portableHtml = previewMode ? replacePreviewPdfEmbeds(relativized) : relativized;
         // When the consent manager is enabled, HOLD every cross-origin author `<iframe>` (move its `src`
         // to `data-sw-consent-src`) so nothing third-party loads until consent — the consent runtime then
         // hydrates it (placeholder Allow once / Always allow). Consent off → iframes load normally (their

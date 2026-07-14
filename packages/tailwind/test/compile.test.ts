@@ -4,6 +4,17 @@ import { brandToTailwindTheme } from '../src/theme.js';
 import type { Brand } from '@sitewright/schema';
 
 describe('compileUtilityCss', () => {
+  it('strips pointer-events:none from daisyUI .loading so a media skeleton stays interactive', async () => {
+    const css = await compileUtilityCss(
+      ['<iframe class="skeleton loading w-full"></iframe><span class="loading loading-spinner"></span>'],
+      {},
+      { minify: false },
+    );
+    const loadingRules = css.match(/\.loading\s*\{[^}]*\}/g) ?? [];
+    expect(loadingRules.length).toBeGreaterThan(0); // the rule is emitted
+    expect(loadingRules.some((r) => /pointer-events\s*:\s*none/.test(r))).toBe(false);
+  });
+
   it('emits only the utilities actually used in the HTML', async () => {
     const css = await compileUtilityCss(
       ['<div class="flex gap-4"><span class="underline">hi</span></div>'],

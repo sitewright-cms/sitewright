@@ -56,6 +56,21 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       ],
       fidelity: { sourceUrl: 'https://orig.test/', route: '', pass: false, body: { pass: true, coverage: 0.9, matched: 9, orig: 10, fontMiss: 0, gradFail: 0, score: 0.05 }, chrome: { pass: false, coverage: 0.3, matched: 3, orig: 10, posOff: 0, sizeOff: 0, styleOff: 5, metaOff: 2 }, diffs: { body: [], chrome: [], meta: [] } },
     })),
+    visualAudit: vi.fn(async () => ({
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      rubric: 'For each region (header, hero, each section, footer) tag category + severity.',
+      categories: ['layout', 'spacing', 'typography', 'color', 'image', 'component', 'content', 'chrome', 'responsive'],
+      severities: ['blocker', 'major', 'minor'],
+      source: {
+        desktop: { base64: 'U1JDRA', mimeType: 'image/jpeg' as const, width: 1280, height: 900 },
+        mobile: { base64: 'U1JDTQ', mimeType: 'image/jpeg' as const, width: 390, height: 844 },
+      },
+      build: {
+        desktop: { base64: 'QkxERA', mimeType: 'image/jpeg' as const, width: 1280, height: 900 },
+        mobile: { base64: 'QkxETQ', mimeType: 'image/jpeg' as const, width: 390, height: 844 },
+      },
+    })),
     compareRegions: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
@@ -396,6 +411,61 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(imgs).toHaveLength(4); // header build+source, footer build+source
     expect(imgs.every((b) => b.mimeType === 'image/webp')).toBe(true);
     expect(text(res)).toMatch(/HIGH-RES chrome compare/);
+  });
+
+  it('visual_audit returns the rubric + side-by-side ORIGINAL/CLONE screenshots (content:read)', async () => {
+    const res = await (await connect(fakeClient(), readScope)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    const blocks = res.content as Array<{ type: string; text?: string; mimeType?: string }>;
+    const imgs = blocks.filter((b) => b.type === 'image');
+    expect(imgs).toHaveLength(4); // desktop + mobile, each ORIGINAL then CLONE
+    expect(imgs.every((b) => b.mimeType === 'image/jpeg')).toBe(true);
+    expect(text(res)).toMatch(/VISUAL AUDIT/);
+    expect(blocks.some((b) => b.text?.includes('ORIGINAL'))).toBe(true);
+    expect(blocks.some((b) => b.text?.includes('YOUR CLONE'))).toBe(true);
+  });
+
+  it('visual_audit reports when no screenshots could be captured', async () => {
+    const emptyC = fakeClient({ visualAudit: vi.fn(async () => ({ sourceUrl: 'x', route: '', rubric: 'r', categories: [], severities: [], source: {}, build: {} })) });
+    const res = await (await connect(emptyC, readScope)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    expect((res.content as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+    expect(JSON.stringify(res.content)).toMatch(/No screenshots could be captured/);
+  });
+
+  it('visual_audit: gates on login + content:read, and surfaces client errors', async () => {
+    expect((await (await connect(fakeClient(), null)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } })).isError).toBe(true);
+    const noRead = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: ['publish'] });
+    const noReadRes = await noRead.callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
+    expect(noReadRes.isError).toBe(true);
+    expect(text(noReadRes)).toMatch(/content:read/);
+    const apiErr = fakeClient({ visualAudit: vi.fn(async () => { throw new SitewrightApiError(404, 'no import source'); }) });
+    const r2 = await (await connect(apiErr, readScope)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
+    expect(r2.isError).toBe(true);
+    expect(text(r2)).toMatch(/no import source/);
+    const genErr = fakeClient({ visualAudit: vi.fn(async () => { throw new Error('render crashed'); }) });
+    const r3 = await (await connect(genErr, readScope)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
+    expect(r3.isError).toBe(true);
+    expect(text(r3)).toMatch(/render crashed/);
+  });
+
+  it('clone_audit + compare_regions surface client errors', async () => {
+    const caErr = fakeClient({ cloneAudit: vi.fn(async () => { throw new SitewrightApiError(400, 'no source'); }) });
+    const r1 = await (await connect(caErr, readScope)).callTool({ name: 'clone_audit', arguments: { pageId: 'home' } });
+    expect(r1.isError).toBe(true);
+    expect(text(r1)).toMatch(/no source/);
+    const crErr = fakeClient({ compareRegions: vi.fn(async () => { throw new Error('crop failed'); }) });
+    const r2 = await (await connect(crErr, readScope)).callTool({ name: 'compare_regions', arguments: { pageId: 'home' } });
+    expect(r2.isError).toBe(true);
+    expect(text(r2)).toMatch(/crop failed/);
+  });
+
+  it('exposes the clone_site workflow as a pre-defined prompt', async () => {
+    const mcp = await connect(fakeClient(), readScope);
+    const list = await mcp.listPrompts();
+    expect(list.prompts.some((p) => p.name === 'clone_site')).toBe(true);
+    const got = await mcp.getPrompt({ name: 'clone_site' });
+    expect(JSON.stringify(got.messages)).toMatch(/Clone this imported website/);
   });
 
   it('compare_regions: gates on login + content:read, empty regions note, and client errors', async () => {

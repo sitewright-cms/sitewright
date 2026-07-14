@@ -37,6 +37,10 @@ export const SVG_MEDIA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img
 // `frame-ancestors 'self'` is the load-bearing part (only a same-origin page may frame the PDF, and it
 // suppresses the onSend hook's default `frame-ancestors 'none'`). `default-src 'none'` locks the rest down.
 // (No `object-src` — it governs what a DOCUMENT loads, and a PDF has no HTML parser, so it'd be a no-op.)
+// PREVIEW CAVEAT: `frame-ancestors 'self'` is satisfied only on the PUBLISHED site (real same-origin). The
+// editor's WYSIWYG iframe and the MCP screenshot tools (preview_page / compare_to_source / visual_audit)
+// render under `sandbox allow-scripts` (an OPAQUE origin that never matches 'self'), so an embedded PDF
+// shows BLANK there — expected, not a bug. Verify PDF-in-modal on the deployed page, not the preview shot.
 export const PDF_MEDIA_CSP = "default-src 'none'; frame-ancestors 'self'";
 
 // Inline-servable DOCUMENT types (rendered in the browser's own viewer, inert on this origin). PDF only —

@@ -175,6 +175,15 @@ describe('transformBody', () => {
     expect(diagnostics.some((d) => d.code === 'document-embed-linked')).toBe(true);
   });
 
+  it('keeps the hosted href when a NON-PDF document iframe is converted under a SUBPATH crawl (no fall-through corruption)', () => {
+    // Regression: the doc→link conversion must terminate like the PDF branch. Under a subpath crawl the
+    // fall-through attr loop would re-resolve the already-hosted /media href and rewrite it to "/".
+    const subCtx: TransformCtx = { ...ctx, siteBase: 'https://ex.com/sub/', assetMap: new Map([['https://ex.com/sub/brochure.docx', '/media/p/a/file/brochure.docx']]) };
+    const { source } = transformBody(parse('<html><body><iframe src="/sub/brochure.docx" title="Brochure"></iframe></body></html>'), subCtx);
+    expect(source).toContain('href="/media/p/a/file/brochure.docx"');
+    expect(source).not.toContain('href="/"');
+  });
+
   it('trims oversized pages to the source byte cap', () => {
     const big = '<section>x</section>'.repeat(400);
     const tiny: TransformCtx = { ...ctx, limits: { ...DEFAULT_LIMITS, maxSourceBytes: 500 } };

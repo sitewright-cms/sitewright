@@ -278,6 +278,8 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
       text.parent = el;
       el.children = [text];
       diags.push({ code: 'document-embed-linked', message: `a document embed (non-PDF) was self-hosted and converted to a download link — office/other docs are served download-only and can't be iframed: ${truncate(hostedDoc)}`, page: ctx.pageUrl });
+      return; // fully rewritten to an <a href=/media/…> — skip the attr loop (mirrors the PDF branch), else
+      //        it would re-resolve the already-hosted href and (for a subpath crawl) corrupt it to "/".
     }
   }
   // Map foreign AOS scroll-motion (data-aos="fade-up" …) to the native data-sw-animation primitives, then

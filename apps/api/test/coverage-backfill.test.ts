@@ -14,6 +14,9 @@ import { MediaStorage } from '../src/media/storage.js';
 import { globalTemplateMap } from '../src/repo/global-library.js';
 import { AgentGrantsRepository } from '../src/repo/agent-grants.js';
 import { InstanceSettingsRepository } from '../src/repo/instance-settings.js';
+import { resolveRp, registrationOptions, authenticationOptions } from '../src/auth/webauthn.js';
+import { pinnedFetch } from '../src/import/pinned-fetch.js';
+import { verifyPassword } from '../src/auth/password.js';
 
 // Targeted coverage for handlers/utilities the broader suites don't exercise (authoring preview
 // routes, admin read routes, and a few repo/storage units) — keeps the api coverage gate green.
@@ -117,6 +120,15 @@ describe('coverage backfill', () => {
       expect(await repo.getHcaptchaSecret()).toBe('hc-secret');
       expect(await repo.getStockKey('unsplash')).toBe('uk');
       expect(await repo.getStockKey('pexels')).toBe('pk');
+      // exercise the remaining read-side getters (statement coverage)
+      expect(await repo.getAgentSessionMs()).toBeGreaterThan(0);
+      expect(await repo.getAuthMaxFailures()).toBeGreaterThan(0);
+      expect(await repo.getRevisionPolicy()).toBeTruthy();
+      expect(await repo.getPlatformName()).toBe('Cov');
+      expect(await repo.getLogo()).toBeNull();
+      expect(await repo.getAiConfig()).toBeNull();
+      expect(await repo.getSmtpPassword()).toBeNull();
+      expect((await repo.getStoredWithUpdatedAt()).updatedAtMs).toBeGreaterThan(0);
     });
   });
 
@@ -138,12 +150,13 @@ describe('coverage backfill', () => {
       const [u] = await db.select({ id: users.id }).from(users).where(eq(users.email, 'grant@cov.test'));
       const userId = u!.id;
 
-      // exercise two more owner/project route handlers while we hold a project + owner cookie
+      // exercise more owner/project route handlers while we hold a project + owner cookie
       const patch = await app.inject({ method: 'PATCH', url: `/projects/${projectId}`, cookies: { sw_session: t }, payload: { name: 'Renamed' } });
       expect(patch.statusCode).toBe(200);
       const glob = await app.inject({ method: 'GET', url: '/global/snippet', cookies: { sw_session: t } });
       expect(glob.statusCode).toBe(200);
 
+      // repo-level grant lifecycle (before any route creates a grant)
       const repo = new AgentGrantsRepository(db);
       expect(await repo.get(userId, projectId)).toBeNull();
       await repo.upsert(userId, projectId, { capabilities: ['content:read'], autonomy: 'ask' });
@@ -152,6 +165,37 @@ describe('coverage backfill', () => {
       expect((await repo.get(userId, projectId))?.autonomy).toBe('full');
       await repo.revoke(userId, projectId);
       expect(await repo.get(userId, projectId)).toBeNull();
+
+      // AI-assistant consent/status routes (no AI provider needed — they read grants / report "not configured")
+      const grantGet = await app.inject({ method: 'GET', url: `/projects/${projectId}/agent/grant`, cookies: { sw_session: t } });
+      expect(grantGet.statusCode).toBe(200);
+      expect((grantGet.json() as { configured: boolean }).configured).toBe(false);
+      const grantPut = await app.inject({ method: 'PUT', url: `/projects/${projectId}/agent/grant`, cookies: { sw_session: t }, payload: { capabilities: ['content:read'], autonomy: 'ask' } });
+      expect(grantPut.statusCode).toBe(200);
+      const status = await app.inject({ method: 'GET', url: `/projects/${projectId}/agent/status`, cookies: { sw_session: t } });
+      expect(status.statusCode).toBe(200);
+    });
+  });
+
+  describe('auth + import pure units', () => {
+    it('webauthn registration/authentication options enumerate known credentials', async () => {
+      const rp = resolveRp('example.com', 'https');
+      const reg = await registrationOptions({ rp, userId: 'u1', userName: 'user@x.test', existing: [{ id: 'Y3JlZDE', transports: ['usb'] }] });
+      expect(reg.excludeCredentials).toHaveLength(1);
+      const auth = await authenticationOptions({ rp, allow: [{ id: 'Y3JlZDE', transports: ['internal'] }] });
+      expect(auth.allowCredentials).toHaveLength(1);
+    });
+
+    it('pinnedFetch resolves via the default DNS resolver and rejects a private (localhost) host', async () => {
+      // No resolve/_fetchOnce override → the real defaultResolve runs; localhost → 127.0.0.1 is private,
+      // so the SSRF guard returns null (no network egress).
+      expect(await pinnedFetch('https://localhost/never')).toBeNull();
+      // non-https is rejected before any resolution
+      expect(await pinnedFetch('http://example.com/x')).toBeNull();
+    });
+
+    it('verifyPassword rejects a null stored hash (OIDC-provisioned account) with timing parity', async () => {
+      expect(await verifyPassword('anything', null)).toBe(false);
     });
   });
 });

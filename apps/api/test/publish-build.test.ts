@@ -641,7 +641,7 @@ describe('buildSite', () => {
     expect(home).toContain('--sw-color-primary-content:');
   });
 
-  it('does NOT emit the brand content tokens when there is no custom effect code (byte-identical)', async () => {
+  it('emits the derived brand content tokens even with no custom effect code (button legibility)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -654,7 +654,10 @@ describe('buildSite', () => {
         pages: [{ id: 'home', path: '', title: 'Home', source: '<p>Hi</p>' }],
       }),
     });
-    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('--sw-color-primary-content:');
+    // A themes-off site now DECLARES the derived text-on-brand tokens UNCONDITIONALLY (not only when a
+    // custom effect fork needs them): without them a purged `.btn-<role>` label falls through to a
+    // hardcoded dark fallback → dark-on-dark. (See blocks/render.ts.)
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('--sw-color-primary-content:');
   });
 
   it('ships the nav-effects runtime for a PER-ELEMENT JS scheme even when the site-wide picker is unset', async () => {

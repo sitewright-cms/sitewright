@@ -321,10 +321,11 @@ async function copyMedia(
  */
 export function replacePreviewPdfEmbeds(html: string): string {
   return html.replace(/<iframe\b[^>]*\.pdf\b[^>]*>\s*<\/iframe>/gi, (tag) => {
-    // `title`/`style` come from the ALREADY-serialized page HTML (dom-serializer entity-escaped the attrs
-    // + escaped `>` so `[^>]*` above stays tag-bounded), so the captured value is safe to re-emit verbatim
-    // in both the aria-label attribute and the <strong> text — re-escaping would double-encode it.
-    const t = /\btitle="([^"]*)"/i.exec(tag)?.[1] || 'PDF document';
+    // `title`/`style` come from the ALREADY-serialized page HTML, where the serializer entity-escaped `&`
+    // and `"`. It may leave `<`/`>` raw in an attribute value, so escape ONLY those before re-emitting into
+    // the <strong> text / aria-label (closes the injection vector) — NOT `&`, which is already encoded
+    // (re-escaping it would double-encode `&amp;` → `&amp;amp;`).
+    const t = (/\btitle="([^"]*)"/i.exec(tag)?.[1] || 'PDF document').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const style = /\bstyle="([^"]*)"/i.exec(tag)?.[1] || 'min-height:80vh';
     return (
       `<div role="img" aria-label="${t} (PDF)" style="${style};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;text-align:center;padding:2rem;box-sizing:border-box;background:var(--color-base-200,#f3f4f6);color:var(--color-base-content,#4b5563);border:1px dashed var(--color-base-300,#d1d5db);border-radius:var(--radius-box,1rem)">` +

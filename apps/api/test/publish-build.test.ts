@@ -1530,10 +1530,14 @@ describe('replacePreviewPdfEmbeds', () => {
     expect(replacePreviewPdfEmbeds(yt)).toBe(yt);
   });
 
-  it('carries the already-escaped title through verbatim (no double-encoding)', () => {
-    // The title comes from the serialized page HTML, where dom-serializer has already entity-escaped it.
+  it('carries the already-escaped title through without double-encoding, but escapes a raw < / >', () => {
+    // The title comes from the serialized page HTML where `&`/`"` are already entity-escaped.
     const out = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="A &amp; B &lt;c&gt;"></iframe>');
     expect(out).toContain('A &amp; B &lt;c&gt;'); // preserved, NOT re-escaped to &amp;amp;
     expect(out).not.toContain('&amp;amp;');
+    // A raw `<` (if the serializer left one) is escaped so it can't inject into the placeholder markup.
+    const inj = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="a<b onerror=x"></iframe>');
+    expect(inj).toContain('a&lt;b onerror=x');
+    expect(inj).not.toContain('<b onerror');
   });
 });

@@ -32,7 +32,7 @@ export const SVG_MEDIA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img
 // `nosniff`) can never be reinterpreted as HTML/script even if its bytes were forged. So it's safe to
 // serve INLINE (not download-only) so a cloned "company profile" modal `<iframe>` shows the document
 // instead of a blank frame. `frame-ancestors 'self'` lets ONLY the same-origin published page frame it
-// (the page + the `_assets/…​.pdf` asset share an origin, path-form OR subdomain); this CSP also makes the
+// (the page + the `_assets/….pdf` asset share an origin, path-form OR subdomain); this CSP also makes the
 // onSend hook skip its default `frame-ancestors 'none'`, which would otherwise block the embed.
 // `frame-ancestors 'self'` is the load-bearing part (only a same-origin page may frame the PDF, and it
 // suppresses the onSend hook's default `frame-ancestors 'none'`). `default-src 'none'` locks the rest down.

@@ -98,7 +98,7 @@ describe('PublishStore HTML serving', () => {
     await writeFile(join(dir, '_assets', 'doc1', 'file', 'company_profile.pdf'), '%PDF-1.4 fake');
     const pdf = await store.readBinary('site', '/_assets/doc1/file/company_profile.pdf');
     expect(pdf?.contentType).toBe('application/pdf');
-    expect(pdf?.attachment).toBe(false); // inline, so a cloned modal <iframe src=…​.pdf> renders it
+    expect(pdf?.attachment).toBe(false); // inline, so a cloned modal <iframe src=….pdf> renders it
     // frame-ancestors 'self' lets ONLY the same-origin published page frame it (also skips onSend's DENY)
     expect(pdf?.csp).toMatch(/frame-ancestors 'self'/);
   });

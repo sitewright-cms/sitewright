@@ -1094,11 +1094,11 @@ against this list BEFORE you publish it:
   SELF-HOSTED in the media library and the platform serves it INLINE + frameable — so it DISPLAYS in a
   lazy \`<iframe>\` (the importer already keeps a captured modal PDF as one). To author/replicate it by hand,
   put a lazy iframe pointing at the hosted PDF inside the native \`<dialog data-sw-component="modal">\` (find
-  the asset with list_media): \`<iframe src="/media/…​.pdf" title="Company Profile" loading="lazy"
+  the asset with list_media): \`<iframe src="/media/….pdf" title="Company Profile" loading="lazy"
   class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>\` — loading="lazy" + \`.skeleton\`
   \`.loading\` (the platform-required loading placeholder for every iframe) + a min-height so the frame has
   size before it paints. A NON-PDF document (doc/xls/…) can't render inline → present it as a LINK/BUTTON
-  instead: \`<a href="/media/…​.docx" target="_blank" rel="noopener" class="btn btn-primary">{{sw-icon
+  instead: \`<a href="/media/….docx" target="_blank" rel="noopener" class="btn btn-primary">{{sw-icon
   "file-text"}} View document</a>\`.
 - LAZY-LOAD + LOADING PLACEHOLDERS (platform rule — apply everywhere). EVERY \`<iframe>\` you author (maps,
   video, PDF, embeds) MUST carry \`loading="lazy"\` + BOTH \`skeleton\` AND \`loading\` classes
@@ -1135,7 +1135,7 @@ against this list BEFORE you publish it:
   not from what a screenshot shows.
 - KEEP THE FOOTER MAP. Many sites embed a Google Map in the FOOTER (or a contact strip). The importer
   captures it into \`company.mapUrl\` and the starting \`website.footer\` slot already contains
-  \`<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" class="skeleton loading …​ border-0">\`.
+  \`<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" class="skeleton loading … border-0">\`.
   When you RE-AUTHOR the footer, do NOT drop that map — re-add the same iframe (lazy + \`.skeleton .loading\`)
   if the original's footer shows one. If \`company.mapUrl\` is empty but the original clearly has a footer map,
   author the map iframe from the source's own embed URL (an allow-listed maps host). A footer that silently

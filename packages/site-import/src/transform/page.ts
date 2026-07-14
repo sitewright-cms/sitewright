@@ -257,7 +257,7 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
       el.name = 'iframe';
       (el as { tagName?: string }).tagName = 'iframe';
       for (const k of Object.keys(el.attribs)) delete el.attribs[k];
-      el.attribs.src = hostedDoc; // same-origin /media ref; publish rebases it to _assets/…​.pdf
+      el.attribs.src = hostedDoc; // same-origin /media ref; publish rebases it to _assets/….pdf
       el.attribs.title = title;
       el.attribs.loading = 'lazy';
       el.attribs.class = 'skeleton loading w-full border-0';

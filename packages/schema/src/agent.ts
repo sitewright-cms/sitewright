@@ -1139,7 +1139,11 @@ against this list BEFORE you publish it:
   When you RE-AUTHOR the footer, do NOT drop that map — re-add the same iframe (lazy + \`.skeleton .loading\`)
   if the original's footer shows one. If \`company.mapUrl\` is empty but the original clearly has a footer map,
   author the map iframe from the source's own embed URL (an allow-listed maps host). A footer that silently
-  loses the map is a common miss — verify it against compare_regions(pageId)'s FOOTER crop.
+  loses the map is a common miss — verify it against compare_regions(pageId)'s FOOTER crop. DETECTION: the map
+  is frequently a FULL-WIDTH band at the very BOTTOM of <main> (right above the footer), NOT literally inside
+  <footer>, and — being lazy + referrer-locked — it renders GRAY/blank in EVERY screenshot. So NEVER dismiss a
+  gray/empty pre-footer band as "empty" from pixels: inspect the settled original DOM for an <iframe> whose src
+  is a maps/embed host, and reproduce that band site-wide (add it to the footer slot).
 - STICKY / SHRINK HEADER without overlap: when the original's header is fixed/shrinking, set
   website.effects.stickyHeader AND give each page's FIRST section \`.sw-top-padding\` (plus a \`--sw-header-h\`
   matching the real header height) so content isn't hidden under the fixed bar. Don't just leave it off

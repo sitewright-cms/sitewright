@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import { WIDGET_MANIFESTS } from '@sitewright/core';
-import { buildSite } from '../src/publish/build.js';
+import { buildSite, replacePreviewPdfEmbeds } from '../src/publish/build.js';
 import { renderTrustedSvgToPng } from '@sitewright/image-pipeline';
 
 let outDir: string;
@@ -1510,5 +1510,39 @@ describe('buildSite', () => {
     await buildSite({ ...opts, bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }) });
     await expect(readFile(join(outDir, 'gone', 'index.html'), 'utf8')).rejects.toBeTruthy();
     await expect(readFile(join(outDir, 'index.html'), 'utf8')).resolves.toBeTruthy();
+  });
+});
+
+describe('replacePreviewPdfEmbeds', () => {
+  const pdf = '<iframe src="_assets/a1/file/brochure.pdf" title="Company Profile" loading="lazy" class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>';
+
+  it('swaps a self-hosted PDF iframe for a static placeholder card (preserving the title, dropping the iframe)', () => {
+    const out = replacePreviewPdfEmbeds(`<section>${pdf}</section>`);
+    expect(out).not.toContain('<iframe');
+    expect(out).toContain("Inline PDF preview isn't available");
+    expect(out).toContain('Company Profile'); // title carried onto the placeholder
+    expect(out).toContain('role="img"');
+    expect(out).toContain('min-height:80vh'); // keeps the reserved space
+  });
+
+  it('leaves a non-PDF iframe untouched — matches the SRC, not a ".pdf" mention in another attribute', () => {
+    const yt = '<iframe src="https://www.youtube.com/embed/x" title="v"></iframe>';
+    expect(replacePreviewPdfEmbeds(yt)).toBe(yt);
+    // a real video embed whose TITLE merely says ".pdf" must NOT be swapped
+    const vimeo = '<iframe src="https://player.vimeo.com/video/123" title="Download brochure.pdf here"></iframe>';
+    expect(replacePreviewPdfEmbeds(vimeo)).toBe(vimeo);
+    // a query/hash after .pdf still qualifies
+    expect(replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf?v=2"></iframe>')).toContain("Inline PDF preview isn't available");
+  });
+
+  it('carries the already-escaped title through without double-encoding, but escapes a raw < / >', () => {
+    // The title comes from the serialized page HTML where `&`/`"` are already entity-escaped.
+    const out = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="A &amp; B &lt;c&gt;"></iframe>');
+    expect(out).toContain('A &amp; B &lt;c&gt;'); // preserved, NOT re-escaped to &amp;amp;
+    expect(out).not.toContain('&amp;amp;');
+    // A raw `<` (if the serializer left one) is escaped so it can't inject into the placeholder markup.
+    const inj = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="a<b onerror=x"></iframe>');
+    expect(inj).toContain('a&lt;b onerror=x');
+    expect(inj).not.toContain('<b onerror');
   });
 });

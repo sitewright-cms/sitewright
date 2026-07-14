@@ -37,10 +37,12 @@ export const SVG_MEDIA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img
 // `frame-ancestors 'self'` is the load-bearing part (only a same-origin page may frame the PDF, and it
 // suppresses the onSend hook's default `frame-ancestors 'none'`). `default-src 'none'` locks the rest down.
 // (No `object-src` — it governs what a DOCUMENT loads, and a PDF has no HTML parser, so it'd be a no-op.)
-// PREVIEW CAVEAT: `frame-ancestors 'self'` is satisfied only on the PUBLISHED site (real same-origin). The
-// editor's WYSIWYG iframe and the MCP screenshot tools (preview_page / compare_to_source / visual_audit)
-// render under `sandbox allow-scripts` (an OPAQUE origin that never matches 'self'), so an embedded PDF
-// shows BLANK there — expected, not a bug. Verify PDF-in-modal on the deployed page, not the preview shot.
+// PREVIEW NOTE: Chromium refuses to instantiate its built-in PDF viewer inside the sandboxed
+// (`sandbox allow-scripts`) preview frame — the PDF request fails with `ERR_BLOCKED_BY_CLIENT` regardless
+// of this CSP (verified: removing frame-ancestors/XFO or adding allow-same-origin does NOT help; it's the
+// sandbox, not the headers). So the DRAFT preview build swaps a self-hosted PDF <iframe> for a static
+// placeholder card (see build.ts `replacePreviewPdfEmbeds`); the PUBLISHED site keeps the real inline
+// viewer, and that's where PDF-in-modal is verified.
 export const PDF_MEDIA_CSP = "default-src 'none'; frame-ancestors 'self'";
 
 // Inline-servable DOCUMENT types (rendered in the browser's own viewer, inert on this origin). PDF only —

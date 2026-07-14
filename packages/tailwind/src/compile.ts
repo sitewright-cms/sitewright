@@ -64,5 +64,10 @@ export async function compileUtilityCss(
   const compiler = await compile(input, { base, onDependency: () => {} });
 
   const css = compiler.build(candidates);
-  return minify ? optimize(css, { minify: true }).code : css;
+  // daisyUI's `.loading` spinner utility hard-sets `pointer-events:none`. On a REPLACED media element
+  // (the importer uses `.loading` as a lazy-media skeleton on a self-hosted PDF/video <iframe>) that class
+  // persists after load and makes the embedded viewer un-scrollable / un-clickable. Drop it from the
+  // standalone `.loading{…}` rule only — a real spinner has nothing to click anyway.
+  const deSpun = css.replace(/(\.loading\s*\{[^}]*?)pointer-events\s*:\s*none\s*;?/g, '$1');
+  return minify ? optimize(deSpun, { minify: true }).code : deSpun;
 }

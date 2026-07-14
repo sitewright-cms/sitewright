@@ -1525,9 +1525,14 @@ describe('replacePreviewPdfEmbeds', () => {
     expect(out).toContain('min-height:80vh'); // keeps the reserved space
   });
 
-  it('leaves a non-PDF iframe (e.g. a video embed) untouched', () => {
+  it('leaves a non-PDF iframe untouched — matches the SRC, not a ".pdf" mention in another attribute', () => {
     const yt = '<iframe src="https://www.youtube.com/embed/x" title="v"></iframe>';
     expect(replacePreviewPdfEmbeds(yt)).toBe(yt);
+    // a real video embed whose TITLE merely says ".pdf" must NOT be swapped
+    const vimeo = '<iframe src="https://player.vimeo.com/video/123" title="Download brochure.pdf here"></iframe>';
+    expect(replacePreviewPdfEmbeds(vimeo)).toBe(vimeo);
+    // a query/hash after .pdf still qualifies
+    expect(replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf?v=2"></iframe>')).toContain("Inline PDF preview isn't available");
   });
 
   it('carries the already-escaped title through without double-encoding, but escapes a raw < / >', () => {

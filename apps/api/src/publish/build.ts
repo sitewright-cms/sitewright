@@ -320,7 +320,11 @@ async function copyMedia(
  * working inline viewer, so this swap is gated on `previewMode` only. No script — pure static markup.
  */
 export function replacePreviewPdfEmbeds(html: string): string {
-  return html.replace(/<iframe\b[^>]*\.pdf\b[^>]*>\s*<\/iframe>/gi, (tag) => {
+  return html.replace(/<iframe\b[^>]*>\s*<\/iframe>/gi, (tag) => {
+    // Match the SRC specifically (not the whole tag) — a non-PDF embed whose title/attr merely mentions a
+    // ".pdf" must not be swapped. Only a self-hosted PDF file src qualifies.
+    const src = /\bsrc="([^"]*)"/i.exec(tag)?.[1] ?? '';
+    if (!/\.pdf(?:[?#]|$)/i.test(src)) return tag;
     // `title`/`style` come from the ALREADY-serialized page HTML, where the serializer entity-escaped `&`
     // and `"`. It may leave `<`/`>` raw in an attribute value, so escape ONLY those before re-emitting into
     // the <strong> text / aria-label (closes the injection vector) — NOT `&`, which is already encoded

@@ -9,7 +9,7 @@ function emptySite(assets = new Map()): CapturedSite {
 }
 
 describe('collectImageRefs', () => {
-  it('collects images from img/srcset, source, video poster, og:image, icon and background-image', () => {
+  it('collects images (prefers the srcset LARGEST over the placeholder src), source, video poster, og:image, icon, bg', () => {
     const html = `<html><head>
       <meta property="og:image" content="https://ex.com/og.jpg">
       <link rel="icon" href="/favicon.png">
@@ -21,13 +21,20 @@ describe('collectImageRefs', () => {
       </body></html>`;
     const refs = collectImageRefs([{ url: 'https://ex.com/p', doc: parse(html) }], emptySite());
     const keys = [...refs.keys()].sort();
-    expect(keys).toContain('https://ex.com/a.png');
+    // <img src="/a.png" srcset="/a.png 1x, /a-2x.png 2x"> → ONLY the largest (a-2x) is collected; the src/1x
+    // thumbnail is NOT double-captured (that clutters imported/<folder> with thumbnail+original pairs).
     expect(keys).toContain('https://ex.com/a-2x.png');
+    expect(keys).not.toContain('https://ex.com/a.png');
     expect(keys).toContain('https://ex.com/b.webp');
     expect(keys).toContain('https://ex.com/poster.jpg');
     expect(keys).toContain('https://ex.com/og.jpg');
     expect(keys).toContain('https://ex.com/favicon.png');
     expect(keys).toContain('https://ex.com/bg.jpg');
+  });
+
+  it('collects the plain src when there is NO srcset (no dedup to apply)', () => {
+    const refs = collectImageRefs([{ url: 'https://ex.com/p', doc: parse('<img src="/only.png">') }], emptySite());
+    expect([...refs.keys()]).toContain('https://ex.com/only.png');
   });
 
   it('prefers a captured asset (with bytes) over a synthesized remote ref', () => {
@@ -53,6 +60,23 @@ describe('collectDocumentRefs', () => {
     expect(keys.some((k) => k.includes('report.docx'))).toBe(true);
     expect(keys.some((k) => k.includes('/about'))).toBe(false);
     expect([...refs.values()].every((a) => a.kind === 'other')).toBe(true);
+  });
+
+  it('also collects PDF/doc EMBEDS — iframe (incl. lazy data-src), embed, object — so a modal PDF is self-hosted', () => {
+    const html = `<html><body>
+      <iframe src="/_data/company_profile.pdf"></iframe>
+      <iframe data-src="https://ex.com/lazy.pdf"></iframe>
+      <embed src="/spec.pdf">
+      <object data="/report.docx"></object>
+      <iframe src="https://youtube.com/embed/x"></iframe>
+    </body></html>`;
+    const refs = collectDocumentRefs([{ url: 'https://ex.com/', doc: parse(html) }]);
+    const keys = [...refs.keys()];
+    expect(keys.some((k) => k.includes('company_profile.pdf'))).toBe(true);
+    expect(keys.some((k) => k.includes('lazy.pdf'))).toBe(true);
+    expect(keys.some((k) => k.includes('spec.pdf'))).toBe(true);
+    expect(keys.some((k) => k.includes('report.docx'))).toBe(true);
+    expect(keys.some((k) => k.includes('youtube'))).toBe(false); // a video embed is NOT a document
   });
 });
 

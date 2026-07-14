@@ -343,8 +343,16 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(out).toContain('fill="currentColor"'); // brand logos fill (theme via text color), not stroke
     expect(out).toContain('<path d="'); // the brand path, emitted raw (SafeString)
     expect(out).not.toContain('stroke="currentColor"');
-    // Unknown brand slug → nothing.
+    // Unknown brand slug that is ALSO not a Lucide name → nothing.
     expect(renderTemplate('[{{sw-icon "brand:nope"}}]', ctx)).toBe('[]');
+  });
+
+  it('{{sw-icon "brand:<slug>"}} falls back to the Lucide glyph when the brand set lacks the slug (e.g. linkedin)', () => {
+    // simple-icons dropped the LinkedIn logo; without a fallback the icon would be an invisible 0×0 gap.
+    const out = renderTemplate('{{sw-icon "brand:linkedin" "size-7"}}', ctx);
+    expect(out).toContain('<svg class="size-7"');
+    expect(out).toContain('stroke="currentColor"'); // rendered as the Lucide (stroke) fallback
+    expect(out).not.toBe('');
   });
 
   it('{{sw-flag}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {

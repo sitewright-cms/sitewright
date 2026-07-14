@@ -284,12 +284,15 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   // `.sw-top-padding` spacer). Emitted here so the offset is correct at FIRST PAINT (no layout shift);
   // '' when the site keeps a static header, so a default site is byte-identical.
   const stickyHeaderStyles = stickyHeaderCss(stickyHeader);
+  // Brand `--sw-color-*-content` (text-on-brand) tokens. Themes-on emits them via the dark block; for a
+  // themes-OFF site emit the derived LIGHT tokens UNCONDITIONALLY. They are purge-proof (inline `:root`,
+  // not the Tailwind `@theme`) and the `.btn-<role>` base rules PREFER them — without them, `.btn-accent`/
+  // `.btn-secondary` fall through to a hardcoded dark fallback whenever Tailwind purges the matching
+  // `--color-<role>-content` (which it does unless a `text-<role>-content` utility keeps it alive), giving
+  // dark-on-dark button labels. (`emitBrandContentTokens` is now implied — kept only for API compatibility.)
+  void emitBrandContentTokens;
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
-    theme?.enabled
-      ? `\n${themeCss(brand.colors)}`
-      : emitBrandContentTokens
-        ? `\n${lightContentTokensCss(brand.colors)}`
-        : ''
+    theme?.enabled ? `\n${themeCss(brand.colors)}` : `\n${lightContentTokensCss(brand.colors)}`
   }${containerCss}${previewScrollCss}${stickyHeaderStyles ? `\n${stickyHeaderStyles}` : ''}`;
   // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).

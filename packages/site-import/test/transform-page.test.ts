@@ -40,6 +40,15 @@ describe('transformBody', () => {
     expect(() => validateTemplate(source)).not.toThrow();
   });
 
+  it('maps foreign AOS scroll-motion (data-aos) to native data-sw-animation and drops the AOS attrs', () => {
+    const { source } = run('<div data-aos="fade-up" data-aos-duration="800" data-aos-delay="150" class="hero">h</div>');
+    expect(source).toContain('data-sw-animation="fade-up"');
+    expect(source).toContain('data-sw-duration="800"');
+    expect(source).toContain('data-sw-delay="150"');
+    expect(source).not.toMatch(/data-aos/);
+    expect(() => validateTemplate(source)).not.toThrow();
+  });
+
   it('promotes lazy-loaded images (data-src) to a real, self-hosted src and drops the lazy attrs', () => {
     const { source } = run('<img src="data:image/gif;base64,placeholder" data-src="/logo.png" alt="logo" loading="lazy">');
     expect(source).toContain('src="/media/p/a/logo.jpg"'); // data-src promoted + self-hosted
@@ -101,9 +110,12 @@ describe('transformBody', () => {
     expect(source).not.toContain('javascript:');
   });
 
-  it('rewrites images to hosted refs, keeps https hotlinks, collapses srcset', () => {
-    const { source } = run('<img src="/logo.png" srcset="/logo.png 1x, /logo@2x.png 2x"><img src="https://ex.com/missing.png">');
-    expect(source).toContain('/media/p/a/logo.jpg');
+  it('promotes the srcset LARGEST variant to the hosted src (not the thumbnail), keeps https hotlinks, collapses srcset', () => {
+    // src is a thumbnail; srcset's 2x is the full-size. The largest wins → only the full-size is hosted +
+    // shown (no thumbnail+original double-capture). collectImageRefs collects the same single largest asset.
+    const ctx2: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/logo@2x.png', '/media/p/a/logo@2x.jpg']]) };
+    const { source } = transformBody(parse('<html><body><img src="/logo.png" srcset="/logo.png 1x, /logo@2x.png 2x"><img src="https://ex.com/missing.png"></body></html>'), ctx2);
+    expect(source).toContain('/media/p/a/logo@2x.jpg'); // the LARGEST variant, hosted
     expect(source).not.toContain('srcset');
     expect(source).toContain('https://ex.com/missing.png');
   });
@@ -133,11 +145,43 @@ describe('transformBody', () => {
     expect(diagnostics.some((d) => d.code === 'form-inerted')).toBe(true);
   });
 
-  it('drops a non-https iframe and a non-allowlisted https iframe; keeps an allowlisted embed', () => {
+  it('drops a non-https iframe and a non-allowlisted https iframe; keeps an allowlisted embed (lazy + .skeleton)', () => {
     const { source } = run('<iframe src="http://insecure/x"></iframe><iframe src="https://random.example/y"></iframe><iframe src="https://player.vimeo.com/video/123"></iframe>');
     expect(source).not.toContain('http://insecure');
     expect(source).not.toContain('random.example'); // https but not an allowlisted embed host → dropped
     expect(source).toContain('https://player.vimeo.com/video/123');
+    expect(source).toMatch(/loading="lazy"/); // kept embed gets the loading state
+    expect(source).toMatch(/class="[^"]*skeleton/); // + the .skeleton shimmer placeholder
+  });
+
+  it('keeps a self-hosted PDF iframe (a modal PDF) as a lazy inline iframe — PDFs are served frameable', () => {
+    const pdfCtx: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/company_profile.pdf', '/media/p/a/file/company_profile.pdf']]) };
+    const { source, diagnostics } = transformBody(parse('<html><body><iframe src="/company_profile.pdf" title="Company Profile"></iframe></body></html>'), pdfCtx);
+    expect(source).toContain('<iframe'); // KEPT as an iframe — the platform serves PDFs inline + frameable
+    expect(source).toContain('src="/media/p/a/file/company_profile.pdf"');
+    expect(source).toMatch(/loading="lazy"/); // lazy-loaded
+    expect(source).toMatch(/class="[^"]*skeleton[^"]*loading/); // + .skeleton .loading placeholder
+    expect(source).toContain('Company Profile'); // the title is preserved
+    expect(source).not.toContain('target="_blank"'); // NOT a download link
+    expect(diagnostics.some((d) => d.code === 'document-embed-framed')).toBe(true);
+  });
+
+  it('converts a self-hosted NON-PDF document iframe (a .docx) to a download LINK — office docs cannot be iframed', () => {
+    const docCtx: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/brochure.docx', '/media/p/a/file/brochure.docx']]) };
+    const { source, diagnostics } = transformBody(parse('<html><body><iframe src="/brochure.docx" title="Brochure"></iframe></body></html>'), docCtx);
+    expect(source).not.toContain('<iframe'); // NOT an iframe (a browser can't render .docx inline)
+    expect(source).toContain('href="/media/p/a/file/brochure.docx"');
+    expect(source).toContain('target="_blank"');
+    expect(diagnostics.some((d) => d.code === 'document-embed-linked')).toBe(true);
+  });
+
+  it('keeps the hosted href when a NON-PDF document iframe is converted under a SUBPATH crawl (no fall-through corruption)', () => {
+    // Regression: the doc→link conversion must terminate like the PDF branch. Under a subpath crawl the
+    // fall-through attr loop would re-resolve the already-hosted /media href and rewrite it to "/".
+    const subCtx: TransformCtx = { ...ctx, siteBase: 'https://ex.com/sub/', assetMap: new Map([['https://ex.com/sub/brochure.docx', '/media/p/a/file/brochure.docx']]) };
+    const { source } = transformBody(parse('<html><body><iframe src="/sub/brochure.docx" title="Brochure"></iframe></body></html>'), subCtx);
+    expect(source).toContain('href="/media/p/a/file/brochure.docx"');
+    expect(source).not.toContain('href="/"');
   });
 
   it('trims oversized pages to the source byte cap', () => {
@@ -174,12 +218,13 @@ describe('transformBody', () => {
     expect(source).toContain('https://ex.com/v.webm');
   });
 
-  it('keeps empty/anchor hrefs and does not let srcset override an existing src', () => {
-    const { source } = run('<a href="">e</a><a href="#x">x</a><img src="/logo.png" srcset="/big.png 2x">');
+  it('keeps empty/anchor hrefs; promotes the srcset largest to src (dedup: the thumbnail src is dropped)', () => {
+    const ctx2: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/big.png', '/media/p/a/big.jpg']]) };
+    const { source } = transformBody(parse('<html><body><a href="">e</a><a href="#x">x</a><img src="/logo.png" srcset="/big.png 2x"></body></html>'), ctx2);
     expect(source).toContain('href="#x"');
-    expect(source).toContain('/media/p/a/logo.jpg');
+    expect(source).toContain('/media/p/a/big.jpg'); // the srcset's largest (/big.png) is promoted to src + hosted
     expect(source).not.toContain('srcset');
-    expect(source).not.toContain('/big.png');
+    expect(source).not.toContain('/media/p/a/logo.jpg'); // the thumbnail /logo.png is NOT hosted/shown
   });
 
   it('strips a foreign back-to-top button + the wrapper it leaves empty (platform injects its own)', () => {

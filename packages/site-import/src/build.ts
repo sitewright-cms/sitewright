@@ -349,6 +349,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       pages: routeRes.pages,
       hostedFonts: collectHostedFonts(refs, assetMap),
       assetMap,
+      preloaderRemoved: diagnostics.some((d) => d.code === 'preloader-removed'),
     });
     bundleIdentity = fnd.identity;
     website = fnd.website;

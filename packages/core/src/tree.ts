@@ -90,13 +90,16 @@ export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLAS
   // argument as the svg's class attribute at RENDER time. A source-level scan must read it
   // here too, or icon utility classes (the catalog's own `{{sw-icon "chevron-left" "size-6"}}`
   // pattern) never reach the compiled sheet and icons render unsized.
+  // The FIRST arg may be a quoted literal ("mail") OR a BARE VARIABLE/PATH (`icon`, `this.icon`) — the
+  // latter is the common `{{#each company.social}} … {{sw-icon icon "size-7"}}` case, whose class arg
+  // would otherwise be missed (the footer social icons then render 0×0). The class is the second string.
   // (Helpers with `class="…"` HASH args — sw-form, sw-add-to-cart — are already caught by
   // attrRe's plain text scan. KNOWN GAP: classes inside pre-rendered DATA values, e.g. nav
   // labelHtml from decorateNav, are invisible to any source scan; nav icons use stock
   // classes referenced elsewhere, so this has no practical effect today.)
   // The two loops run sequentially under ONE shared token cap — a cap-saturating page keeps
   // the existing attr-first priority; the cap bounds compiler work, not completeness.
-  const helperRe = /\{\{\s*sw-(?:icon|flag)\s+(?:"[^"]*"|'[^']*')\s+(?:"([^"]*)"|'([^']*)')/g;
+  const helperRe = /\{\{\s*sw-(?:icon|flag)\s+(?:"[^"]*"|'[^']*'|[^\s"'{}]+)\s+(?:"([^"]*)"|'([^']*)')/g;
   const tokens = new Set<string>();
   const full = (value: string): boolean => {
     for (const token of value.replace(/\{\{[^}]*\}\}/g, ' ').split(/\s+/)) {

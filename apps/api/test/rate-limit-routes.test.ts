@@ -47,7 +47,7 @@ describe('login failed-attempt throttle', () => {
     const codes = await fireBurst(app, '/auth/login', { email: 'nobody@example.com', password: 'whatever' }, LOGIN_FAIL_CAP + 1);
     expect(codes.slice(0, LOGIN_FAIL_CAP).every((c) => c === 401)).toBe(true);
     expect(codes[LOGIN_FAIL_CAP]).toBe(429);
-  });
+  }, 20_000); // burst of credential checks; slow under coverage instrumentation
 
   it('a SUCCESSFUL login never consumes the budget (can log in many times past the cap)', async () => {
     // Seed the account directly (the register route is invite-only) so we can burst-login it.
@@ -55,7 +55,7 @@ describe('login failed-attempt throttle', () => {
     await registerAccount(db, email, 'Pw-secret-1');
     const codes = await fireBurst(app, '/auth/login', { email, password: 'Pw-secret-1' }, LOGIN_FAIL_CAP + 5);
     expect(codes.every((c) => c === 200)).toBe(true); // never 429 — successes don't count
-  });
+  }, 20_000); // 15 sequential SUCCESSFUL logins = 15 real password verifications; slow under coverage instrumentation
 
   it('exhausting the login throttle does NOT block /auth/register (register is not on the throttle)', async () => {
     // Mint a pending invite so the email may register at all (registration is invite-only); the point
@@ -68,7 +68,7 @@ describe('login failed-attempt throttle', () => {
     expect(loginCodes[LOGIN_FAIL_CAP]).toBe(429);
     const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: invitedEmail, password: 'Pw-secret-1' } });
     expect(reg.statusCode).toBe(201); // not 429 — register only sees the global 200/min limiter
-  });
+  }, 20_000); // burst of credential checks; slow under coverage instrumentation
 
   it('respects the admin authMaxFailures setting (lowering it tightens the throttle, no restart)', async () => {
     const adb = await makeTestDb();

@@ -124,6 +124,9 @@ export type DiagnosticCode =
   | 'sidebar-discarded'
   | 'footer-map-embedded'
   | 'header-decor-captured'
+  | 'effects-mapped'
+  | 'document-embed-linked'
+  | 'document-embed-framed'
   | 'widget-consent-registered'
   | 'bundle-invalid';
 

@@ -174,7 +174,7 @@ describe('svg-studio-helpers', () => {
       expect(re.querySelector('text')!.textContent).toBe('Keep  spaces'); // double space intact
       expect(re.querySelector('use')!.getAttribute('xlink:href')).toBe('#p');
       // <text>/<style> stay on a single line (not reformatted)
-      expect(pretty).toMatch(/<text x="5" y="20">Keep  spaces<\/text>/);
+      expect(pretty).toMatch(/<text x="5" y="20">Keep {2}spaces<\/text>/);
       expect(pretty).toMatch(/<style>\.brand\{fill:url\(#grad\)\}<\/style>/);
     });
 

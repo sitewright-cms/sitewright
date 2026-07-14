@@ -23,10 +23,12 @@ export interface ClonePageTask {
 
 /**
  * The result of the authoritative per-page gate. It is DETERMINISTIC — no server-side AI. It combines
- * clone_audit's non-advisory STRUCTURE / BEHAVIOUR / computed-style-visual checks with an anti-lie MARKER
- * check on the stored source. The full VISUAL fidelity (layout/images/sections vs the live original) is the
- * driving agent's own job: it self-judges the deterministic `visual_audit` side-by-sides while authoring —
- * the platform never runs a second AI judgement (keeps the CLI + on-platform lanes separate).
+ * clone_audit's non-advisory STRUCTURE / BEHAVIOUR checks (its computed-style visual legs are ADVISORY —
+ * coverage is blind to casing/dividers/icon-style/section-height, so it can't terminate the loop) with an
+ * anti-lie MARKER check on the stored source. The VISUAL fidelity (layout/images/sections vs the live
+ * original) is the driving agent's own job: it self-judges the deterministic `visual_audit` side-by-sides
+ * region-by-region while authoring — the platform never runs a second AI judgement (CLI + on-platform lanes
+ * stay separate).
  */
 export interface CloneGateResult {
   pass: boolean;
@@ -94,9 +96,9 @@ export function buildAuthorPrompt(task: ClonePageTask): string {
     `2. Call compare_to_source("${task.pageId}") to SEE the original vs your current build.`,
     '3. Map every element to a REAL platform primitive first (get_components / get_reference / widgets / website.effects) — only hand-write HTML when no primitive fits. Use Tailwind utilities for layout, CSS vars for the correct per-element fonts, {{#each dataset.x}} for repeated lists, real <dialog data-sw-component="modal"> for modals, and make text editable with data-sw-* / {{sw-control}}.',
     `4. put_page the native source.`,
-    `5. Run visual_audit("${task.pageId}") — it returns the ORIGINAL vs your CLONE side-by-side (desktop + mobile) plus a defect rubric. JUDGE the pixels yourself against the rubric and FIX every blocker + major (wrong/missing images, wrong layout, dead components, wrong fonts/colors). Also run clone_audit("${task.pageId}") for the measured structure/behaviour checks.`,
+    `5. Run visual_audit("${task.pageId}") — the ORIGINAL vs your CLONE side-by-side (desktop + mobile) + a defect rubric. This is THE visual terminator: WRITE OUT an explicit region-by-region difference list (header, hero, EACH body section, footer), each divergence tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor). Do NOT summarise as "looks close" — ENUMERATE. Then FIX every blocker + major (wrong/missing images, wrong layout, a wrong REPEATED-ITEM COUNT — render what the original shows, not all rows, wrong CASING, missing DIVIDER rules, plain-vs-badged icons, wrong section height/colour, dead components, wrong fonts). Re-capture and re-list until ZERO blocker+major remain. Also run clone_audit("${task.pageId}") for the objective structure/behaviour checks.`,
     '',
-    'Do NOT declare the page done from your own render alone — judge against the visual_audit side-by-sides, and the server re-runs the deterministic acceptance gate (structure/behaviour + a raw-import marker check) after your turn and hands you back any remaining failures. Keep going until both are clean.',
+    'Do NOT declare the page done from your own render, a screenshot, or a coverage/fidelity number — coverage is BLIND to casing/dividers/icon-style/section-height, so a green number with visible differences is STILL a fail. The done bar is: your written visual_audit region list at zero blocker+major AND clone_audit clean. The server re-runs the deterministic acceptance gate (structure/behaviour + a raw-import marker check) after your turn and hands back any remaining failures.',
   ].join('\n');
 }
 
@@ -111,7 +113,7 @@ export function buildGateFeedback(gate: CloneGateResult): string {
   for (const f of gate.structuralFails) lines.push(`- ${f}`);
   lines.push(
     '',
-    'Also re-run visual_audit and fix any blocker/major VISUAL defect you can see in the side-by-side (wrong/missing images, wrong layout, dead components, wrong fonts) — the server gate above does not judge those, YOU must.',
+    'Also re-run visual_audit and, before anything else, WRITE OUT a region-by-region difference list (header, hero, each section, footer) tagging each divergence with category + severity — the server gate above does NOT judge pixels, YOU must, and you may not declare done while any blocker/major is open. Fix every blocker/major (wrong/missing images, wrong layout, a wrong repeated-item COUNT — match what the original shows, wrong CASING, missing DIVIDER rules, plain-vs-badged icons, wrong section height/colour, dead components, wrong fonts). Do NOT chase the coverage number — it is blind to those.',
     'Then put_page the corrected source; it will be re-checked automatically.',
   );
   return lines.join('\n');

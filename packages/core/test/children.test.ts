@@ -216,6 +216,13 @@ describe('extractClassNames', () => {
     expect(extractClassNames('{{sw-icon "x"}}')).toHaveLength(0);
   });
 
+  it('extracts the class arg when the icon NAME is a bare variable/path (the {{#each}} loop case)', () => {
+    // {{#each company.social}} … {{sw-icon icon "size-7"}} — first arg is a variable, not a quoted literal;
+    // the class arg must still be extracted or the looped icons render 0×0.
+    expect(extractClassNames('{{sw-icon icon "size-7"}}')).toEqual(expect.arrayContaining(['size-7']));
+    expect(extractClassNames('{{sw-icon this.icon "size-6 shrink-0"}}')).toEqual(expect.arrayContaining(['size-6', 'shrink-0']));
+  });
+
   it('handles mixed quote styles across the two helper arguments', () => {
     expect(extractClassNames('{{sw-icon \'menu\' "size-5 shrink-0"}}')).toEqual(
       expect.arrayContaining(['size-5', 'shrink-0']),

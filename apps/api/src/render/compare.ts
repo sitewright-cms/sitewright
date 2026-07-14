@@ -9,7 +9,7 @@
 import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
 import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta } from '@sitewright/site-import/fidelity';
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
-import { getBrowser, withRenderSlot, type Shot, type ViewportName } from './screenshot.js';
+import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
@@ -67,8 +67,9 @@ export function compareTargets(opts: {
 // like renderViaBrowser. The SSRF guard it relies on (pinnedFetch) IS unit-tested.
 /* v8 ignore start */
 // Shared page setup for a capture in the given `mode`: new context, the SSRF-pinned network routing for an
-// external source, navigate, and scroll-settle lazy content. Both the screenshot capture (shootOne) and the
-// element capture (captureUrlElements) build on this, so the pinned routing lives in exactly ONE place.
+// external source, and navigate. The scroll/fonts/embed/animation SETTLE is a separate shared step
+// (`settlePage`, screenshot.ts) each caller runs next — with `freeze:false` for the behaviour probe. The
+// pinned routing lives in exactly ONE place.
 async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal, deviceScaleFactor = 1): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
@@ -90,28 +91,6 @@ async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (t
     });
   }
   await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {});
-  // Trigger scroll-reveal/lazy content, then release any preloader scroll-lock so fullPage isn't clipped.
-  await page
-    .evaluate(async () => {
-      const g = globalThis as unknown as {
-        innerHeight: number; scrollBy: (x: number, y: number) => void; scrollTo: (x: number, y: number) => void;
-        setInterval: (fn: () => void, ms: number) => number; clearInterval: (id: number) => void;
-        setTimeout: (fn: () => void, ms: number) => void;
-        document: { documentElement: { scrollHeight: number; style: { setProperty(p: string, v: string, prio?: string): void } }; body: { style: { setProperty(p: string, v: string, prio?: string): void } } };
-      };
-      await new Promise<void>((resolve) => {
-        let y = 0, steps = 0; const step = Math.max(200, g.innerHeight);
-        const tick = g.setInterval(() => {
-          g.scrollBy(0, step); y += step;
-          if (y >= g.document.documentElement.scrollHeight || ++steps > 60) { g.clearInterval(tick); g.scrollTo(0, 0); g.setTimeout(resolve, 150); }
-        }, 50);
-      });
-      for (const el of [g.document.documentElement, g.document.body]) {
-        el.style.setProperty('overflow', 'visible', 'important');
-        el.style.setProperty('height', 'auto', 'important');
-      }
-    })
-    .catch(() => {});
   return { context, page };
   } catch (e) {
     // Close the context if setup threw before we could hand it back (else the caller's finally never runs
@@ -124,14 +103,8 @@ async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (t
 async function shootOne(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal): Promise<Shot> {
   const { context, page } = await prepPage(browser, url, mode, vp, signal);
   try {
-    await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
-    // Lazy cross-origin embeds (Google Maps, video) fetch tiles/players AFTER networkidle and never
-    // re-settle it, so a fullPage shot catches them mid-load (a grey box). Give a page that has any
-    // iframe a short extra beat to paint before capture. Skipped entirely for iframe-free pages.
-    const hasEmbed = await page
-      .evaluate(() => (globalThis as unknown as { document: { querySelector(s: string): unknown } }).document.querySelector('iframe') != null)
-      .catch(() => false);
-    if (hasEmbed) await page.waitForTimeout(1800).catch(() => {});
+    // Scroll-load + fonts + iframe/embed paint + animation freeze (shared, identical for build + original).
+    await settlePage(page, { freeze: true });
     const fullHeight = await page
       .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
       .catch(() => vp.height);
@@ -186,21 +159,11 @@ export async function captureUrlElements(
   return withRenderSlot(async () => {
     const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
     try {
-      await page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
-      // Stabilise animations before extracting so an auto-rotating slider / scroll-reveal doesn't change which
-      // elements are present/visible run-to-run — which drifts the ORIGINAL's element count (the coverage
-      // denominator). PAUSE CSS animations (animation-play-state, NOT `animation:none` — the latter drops
-      // animation-fill-mode:forwards and would snap a finished reveal back to its hidden base) and settle
-      // transitions; finish WAAPI animations to their end-state. Applied identically to BOTH sides, so the
-      // comparison stays fair AND stable across runs.
-      await page.evaluate(() => {
-        const g = globalThis as unknown as { document: { getAnimations?: () => Array<{ finish: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } } };
-        try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { /* running/infinite */ } }); } catch { /* not supported */ }
-        const s = g.document.createElement('style');
-        s.textContent = '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}';
-        g.document.head?.appendChild(s);
-      }).catch(() => {});
-      await page.waitForTimeout(400).catch(() => {}); // browser repaint settle after the animation freeze + WAAPI finish() so transform/opacity read settled
+      // Scroll-load + fonts + iframe/embed paint, then FREEZE animations to a stable end-state — so an
+      // auto-rotating slider / scroll-reveal doesn't change which elements are present/visible run-to-run
+      // (which would drift the ORIGINAL's element count, the coverage denominator). Applied identically to
+      // BOTH sides via the shared settle, so the comparison stays fair AND stable across runs.
+      await settlePage(page, { freeze: true });
       // NOTE: unlike the CLI gate we do NOT run a mouse-hover pass here, so ChromeEl.hover is undefined both
       // sides — scoreChrome guards on `if (o.hover)`, so hover:MISSING? is simply never surfaced (the CLI
       // marks it "reported, not gated" anyway, so PASS/FAIL is unaffected).
@@ -235,8 +198,9 @@ export async function captureBehaviour(
     const dp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.fullhd, opts.signal);
     let desktop = desktopFallback;
     try {
-      await dp.page.evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } }).catch(() => {});
-      await dp.page.waitForTimeout(500).catch(() => {});
+      // freeze:false — the probe needs live runtimes (a slider must actually enhance, fonts must load) to
+      // detect them; the shared settle still scrolls/loads + waits fonts + waits embeds.
+      await settlePage(dp.page, { freeze: false });
       desktop = ((await dp.page.evaluate(BEHAVIOUR_PROBE as () => unknown).catch(() => null)) as typeof desktopFallback | null) ?? desktopFallback;
     } finally {
       await dp.context.close().catch(() => {});
@@ -245,6 +209,7 @@ export async function captureBehaviour(
     const mp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.mobile, opts.signal);
     let navReachableMobile = 0;
     try {
+      await settlePage(mp.page, { freeze: false });
       navReachableMobile = ((await mp.page.evaluate(NAV_COUNT as () => unknown).catch(() => 0)) as number) || 0;
       if (navReachableMobile < opts.navExpected) {
         const opened = ((await mp.page.evaluate(NAV_TOGGLE as () => unknown).catch(() => false)) as boolean);
@@ -280,6 +245,8 @@ export async function captureUrlRegions(
     const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal, 2); // 2× = high-res
     const out: Record<string, RegionShot> = {};
     try {
+      // Scroll-load + fonts + iframe/embed paint + animation freeze before the high-res chrome crops.
+      await settlePage(page, { freeze: true });
       for (const [name, sel] of Object.entries(regions)) {
         const box = (await page.evaluate(REGION_BOX as (s: string) => { x: number; y: number; w: number; h: number } | null, sel).catch(() => null));
         if (!box || box.w < 4 || box.h < 4) continue;

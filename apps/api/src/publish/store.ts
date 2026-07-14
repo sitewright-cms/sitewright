@@ -27,6 +27,27 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
 // the SVG's own <style>/@keyframes animation working; `img-src data:` keeps embedded data: rasters.
 export const SVG_MEDIA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
 
+// PDF is the one document type a browser renders in its OWN sandboxed viewer (PDFium/PDF.js) — it can't
+// reach the embedding page's DOM, cookies, or origin, and (with the explicit `application/pdf` type +
+// `nosniff`) can never be reinterpreted as HTML/script even if its bytes were forged. So it's safe to
+// serve INLINE (not download-only) so a cloned "company profile" modal `<iframe>` shows the document
+// instead of a blank frame. `frame-ancestors 'self'` lets ONLY the same-origin published page frame it
+// (the page + the `_assets/….pdf` asset share an origin, path-form OR subdomain); this CSP also makes the
+// onSend hook skip its default `frame-ancestors 'none'`, which would otherwise block the embed.
+// `frame-ancestors 'self'` is the load-bearing part (only a same-origin page may frame the PDF, and it
+// suppresses the onSend hook's default `frame-ancestors 'none'`). `default-src 'none'` locks the rest down.
+// (No `object-src` — it governs what a DOCUMENT loads, and a PDF has no HTML parser, so it'd be a no-op.)
+// PREVIEW CAVEAT: `frame-ancestors 'self'` is satisfied only on the PUBLISHED site (real same-origin). The
+// editor's WYSIWYG iframe and the MCP screenshot tools (preview_page / compare_to_source / visual_audit)
+// render under `sandbox allow-scripts` (an OPAQUE origin that never matches 'self'), so an embedded PDF
+// shows BLANK there — expected, not a bug. Verify PDF-in-modal on the deployed page, not the preview shot.
+export const PDF_MEDIA_CSP = "default-src 'none'; frame-ancestors 'self'";
+
+// Inline-servable DOCUMENT types (rendered in the browser's own viewer, inert on this origin). PDF only —
+// office docs / arbitrary uploads stay download-only. Keyed by extension; served with the mapped type +
+// PDF_MEDIA_CSP so a same-origin page can frame them.
+const PUBLISHED_DOC_TYPES = new Map<string, string>([['.pdf', 'application/pdf']]);
+
 // Inline-servable types for the bundled `_assets/` binaries. Anything NOT in this map (raw uploads,
 // .html, .js, …) is served download-only (octet-stream + attachment), so an uploaded file can never
 // render/execute on this cookie-bearing origin. SVG is handled separately (inline + a locked-down CSP,
@@ -172,6 +193,9 @@ export class PublishStore {
     if (ext === '.svg') return { body, contentType: 'image/svg+xml; charset=utf-8', attachment: false, csp: SVG_MEDIA_CSP };
     const imageType = PUBLISHED_IMAGE_TYPES.get(ext);
     if (imageType) return { body, contentType: imageType, attachment: false };
+    // PDF: inline + same-origin-frameable (see PDF_MEDIA_CSP) so a cloned modal iframe renders the doc.
+    const docType = PUBLISHED_DOC_TYPES.get(ext);
+    if (docType) return { body, contentType: docType, attachment: false, csp: PDF_MEDIA_CSP };
     // Sandboxed-preview ONLY (opt-in, cross-site script load): run an imported `.js` in the opaque
     // origin. Never set by the same-origin `/sites/` route, so local hosting stays inert.
     if (opts?.executableScripts && ext === '.js') {

@@ -134,7 +134,7 @@ const CAROUSEL_CSS = [
   // hero used to need in criticalCss. The hero-slider Widget uses exactly these hooks.
   '@keyframes sw-kb-a{0%{transform:scale3d(1.18,1.18,1) translate3d(-2.2%,1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
   '@keyframes sw-kb-b{0%{transform:scale3d(1.18,1.18,1) translate3d(2.2%,-1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
-  '@keyframes sw-cap-in{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}',
+  '@keyframes sw-cap-in{from{opacity:0;transform:translateY(70px)}to{opacity:1;transform:none}}',
   // The bg layer fills its slide and is the Ken Burns target; the slide clips it AND is the
   // positioning context for the absolute .sw-kenburns/.sw-caption (so authors needn't add
   // `relative` themselves — without it inset:0 would resolve to the carousel root and stack).
@@ -148,6 +148,11 @@ const CAROUSEL_CSS = [
   // (the Widget's Ken-Burns toggle) — so a static hero still gets the cover layout + caption motion.
   '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="slide"]{overflow:hidden;position:relative}',
   '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;object-fit:cover}',
+  // Hero-slider polish: a STRONG caption drop-shadow, a frosted (backdrop-blurred) pill behind the dots, and
+  // thicker (4px) dot glyph strokes — scoped to the hero (data-kenburns) so a plain carousel is unaffected.
+  '[data-sw-block="Carousel"][data-kenburns] .sw-caption{box-shadow:0 30px 80px rgba(0,0,0,.85),0 12px 28px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.5)}',
+  '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="dots"]{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
+  '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="dots"] button svg{stroke-width:4px}',
   '@media (prefers-reduced-motion: no-preference){' +
     '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
     '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +

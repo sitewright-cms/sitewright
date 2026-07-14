@@ -55,9 +55,13 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
 
   for (const { url, doc } of docs) {
     for (const img of allByName(doc.children, 'img')) {
-      add(effectiveSrc(img.attribs), url); // lazy-load data-src wins over a placeholder src
+      // PREFER the srcset's largest variant; collect the plain `src` ONLY when there's no srcset. Collecting
+      // both hosts the tiny placeholder `src` (a thumbnail) AND the full-size srcset image as two separate
+      // assets — the double-capture that clutters imported/<folder> — and leaves the clone showing the low-res
+      // one. The transform (page.ts) mirrors this: it promotes the largest srcset variant to `src`.
       const srcset = effectiveSrcset(img.attribs);
       if (srcset) add(pickFromSrcset(srcset), url);
+      else add(effectiveSrc(img.attribs), url); // lazy-load data-src wins over a placeholder src
     }
     for (const source of allByName(doc.children, 'source')) {
       const srcset = effectiveSrcset(source.attribs);
@@ -89,17 +93,24 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
 // becomes a dead route or a hotlink to the source server). Stored download-only via the file-asset path.
 const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|rtf|odt|ods|odp|zip)(?:[?#]|$)/i;
 
-/** Every same-or-cross-origin document `<a href>` (PDF/doc/…), keyed canonically (kind 'other'). */
+/** Every same-or-cross-origin document reference — `<a href>` downloads AND `<iframe|embed src>` /
+ *  `<object data>` EMBEDS (a PDF viewer in a modal) — keyed canonically (kind 'other'). Self-hosting the
+ *  embed lets the transform keep the frame pointing at `/media` instead of dropping it as a non-allowlisted
+ *  cross-origin iframe (the original's "Company Profile" modal is a lazy PDF `<iframe>`). */
 export function collectDocumentRefs(docs: ParsedDoc[]): Map<string, CapturedAsset> {
   const refs = new Map<string, CapturedAsset>();
+  const add = (raw: string | undefined, base: string): void => {
+    const ref = raw?.trim();
+    if (!ref || ref.toLowerCase().startsWith('data:') || !DOC_EXT.test(ref)) return;
+    const key = assetKey(ref, base);
+    if (!key || refs.has(key)) return;
+    refs.set(key, { sourceRef: key, kind: 'other', remoteUrl: key });
+  };
   for (const { url, doc } of docs) {
-    for (const a of allByName(doc.children, 'a')) {
-      const href = a.attribs.href?.trim();
-      if (!href || href.toLowerCase().startsWith('data:') || !DOC_EXT.test(href)) continue;
-      const key = assetKey(href, url);
-      if (!key || refs.has(key)) continue;
-      refs.set(key, { sourceRef: key, kind: 'other', remoteUrl: key });
-    }
+    for (const a of allByName(doc.children, 'a')) add(a.attribs.href, url);
+    for (const f of allByName(doc.children, 'iframe')) add(f.attribs.src ?? f.attribs['data-src'], url); // lazy PDF embed
+    for (const e of allByName(doc.children, 'embed')) add(e.attribs.src, url);
+    for (const o of allByName(doc.children, 'object')) add(o.attribs.data, url);
   }
   return refs;
 }

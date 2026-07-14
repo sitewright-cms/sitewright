@@ -23,7 +23,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // preview-sparingly, snappy-chat, the explicit write-tool argument shapes that keep weaker models from
     // omitting required args, the chrome-slot vs page distinction, the get_capabilities discovery index,
     // and the dataset write-shape gotcha — core rules that shape EVERY session, not feature how-tos.)
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(18_500);
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(18_800);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

@@ -458,6 +458,17 @@ iframe { border: 0; max-width: 100%; }
 @media (prefers-reduced-motion: no-preference) { .btn .sw-btn-ripple { animation: sw-btn-ripple .6s ease-out forwards; } }
 @keyframes sw-btn-ripple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
+/* MEDIA LOADING STATE — platform rule: iframes + large off-screen images/media carry loading="lazy" plus a
+   .skeleton shimmer placeholder (shown until the content paints over it). daisyUI .loading is a fixed 1.5rem
+   SPINNER meant for inline/button use — on a REPLACED media element it would collapse the box and apply a
+   spinner mask, so here we neutralise those spinner-specific props on media and let .loading act as a
+   full-width loading placeholder (the shimmer comes from .skeleton). The element's own height (height attr /
+   h-* class) is preserved (we only reset aspect-ratio, not height). */
+:is(iframe, img, video, embed, object).loading {
+  width: 100%; aspect-ratio: auto; -webkit-mask: none !important; mask: none !important;
+  animation-name: skeleton; background-color: var(--color-base-300, #d1d5db);
+}
+
 /* Solid scrollbars (NO transparency anywhere): a solid track in the page
    background colour (so it blends with the page) and a solid brand-primary thumb
    that darkens while grabbed; no stepper arrows. WebKit/Blink (Chrome/Safari/Edge)

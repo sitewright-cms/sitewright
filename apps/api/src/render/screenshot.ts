@@ -1,7 +1,7 @@
 // Server-side screenshots of a preview document, so an MCP agent can SEE its rendered page (not just
 // read the HTML). We render the exact HTML the preview endpoint already builds, in a headless Chromium
 // bundled into the API image. Best-effort: any failure leaves the caller to return HTML without images.
-import { chromium, type Browser, type Route, type Request as PwRequest } from 'playwright-core';
+import { chromium, type Browser, type Route, type Request as PwRequest, type Page } from 'playwright-core';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import {
@@ -212,6 +212,76 @@ export async function withRenderSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+const EMBED_SETTLE_MS = 2200;
+
+/**
+ * Bring a freshly-navigated page to a STABLE, fully-loaded state before a screenshot / element extract, so a
+ * capture is never corrupted by lazy content or a mid-animation frame. Applied IDENTICALLY to the BUILD and
+ * the LIVE ORIGINAL so the side-by-side stays fair. Order matters:
+ *  1. scroll top→bottom (triggers scroll-reveal + lazy `<img>`/IntersectionObserver content + lazy iframes),
+ *     back to top, and release any preloader scroll-lock so a fullPage shot isn't clipped.
+ *  2. re-settle the network after the lazy fetches the scroll kicked off.
+ *  3. wait for web fonts (a computed font-family LIES — reports the requested name even if the file never
+ *     loaded; the shot must show the REAL glyphs).
+ *  4. IFRAME/EMBED settle — the fix for "maps read as a slider": cross-origin embeds (Google-Maps tiles, video
+ *     players) fetch AFTER networkidle and never re-settle it, so a fullPage shot catches them mid-load as a
+ *     grey/loading box. Wait each child frame's own `load`, THEN a fixed beat for tiles to paint. Only when the
+ *     page actually has an iframe (free for the rest).
+ *  5. freeze animations LAST — AFTER embeds had time to paint — so a loading spinner is caught SETTLED, not
+ *     mid-spin: finish WAAPI to its end-state + pause CSS animations/transitions. `freeze:false` for the live
+ *     behaviour probe, which must keep runtimes running.
+ */
+export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promise<void> {
+  // 1 — scroll to trigger lazy-load, back to top, release scroll-lock (API tsconfig has no DOM lib → globalThis).
+  await page
+    .evaluate(async () => {
+      const g = globalThis as unknown as {
+        innerHeight: number; scrollBy: (x: number, y: number) => void; scrollTo: (x: number, y: number) => void;
+        setInterval: (fn: () => void, ms: number) => number; clearInterval: (id: number) => void; setTimeout: (fn: () => void, ms: number) => void;
+        document: { documentElement: { scrollHeight: number; style: { setProperty(p: string, v: string, prio?: string): void } }; body: { style: { setProperty(p: string, v: string, prio?: string): void } } };
+      };
+      await new Promise<void>((resolve) => {
+        let y = 0, steps = 0; const step = Math.max(200, g.innerHeight);
+        const tick = g.setInterval(() => {
+          g.scrollBy(0, step); y += step;
+          if (y >= g.document.documentElement.scrollHeight || ++steps > 60) { g.clearInterval(tick); g.scrollTo(0, 0); g.setTimeout(resolve, 150); }
+        }, 50);
+      });
+      for (const el of [g.document.documentElement, g.document.body]) {
+        el.style.setProperty('overflow', 'visible', 'important');
+        el.style.setProperty('height', 'auto', 'important');
+      }
+    })
+    .catch(() => {});
+  // 2 — network settle after the scroll's lazy fetches
+  await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
+  // 3 — fonts ready
+  await page
+    .evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } })
+    .catch(() => {});
+  // 4 — iframe/embed paint (maps tiles, video players): wait each child frame's load, then a tile-paint beat.
+  const hasEmbed = await page
+    .evaluate(() => (globalThis as unknown as { document: { querySelector(s: string): unknown } }).document.querySelector('iframe') != null)
+    .catch(() => false);
+  if (hasEmbed) {
+    await Promise.all(page.frames().map((f) => f.waitForLoadState('load', { timeout: 3000 }).catch(() => {}))).catch(() => {});
+    await page.waitForTimeout(EMBED_SETTLE_MS).catch(() => {});
+  }
+  // 5 — freeze animations to a settled end-state (unless a live probe needs them running).
+  if (opts?.freeze !== false) {
+    await page
+      .evaluate(() => {
+        const g = globalThis as unknown as { document: { getAnimations?: () => Array<{ finish: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } } };
+        try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { /* running/infinite */ } }); } catch { /* not supported */ }
+        const s = g.document.createElement('style');
+        s.textContent = '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}';
+        g.document.head?.appendChild(s);
+      })
+      .catch(() => {});
+    await page.waitForTimeout(400).catch(() => {});
+  }
+}
+
 /**
  * Capture `viewports` of the given preview HTML. Returns one Shot per viewport that rendered; throws
  * only if the browser itself is unavailable (the caller treats screenshots as best-effort).
@@ -254,38 +324,9 @@ export async function captureScreenshots(
         else await route.abort('blockedbyclient');
       });
       await page.setContent(doc, { waitUntil: 'load', timeout });
-      // Scroll through the page to trigger scroll-reveal + lazy-load runtimes, then return to top.
-      // (Runs in the browser; the API tsconfig has no DOM lib, so reach the globals via globalThis.)
-      await page
-        .evaluate(async () => {
-          const g = globalThis as unknown as {
-            innerHeight: number;
-            scrollBy: (x: number, y: number) => void;
-            scrollTo: (x: number, y: number) => void;
-            setInterval: (fn: () => void, ms: number) => number;
-            clearInterval: (id: number) => void;
-            setTimeout: (fn: () => void, ms: number) => void;
-            document: { documentElement: { scrollHeight: number } };
-          };
-          await new Promise<void>((resolve) => {
-            let y = 0;
-            let steps = 0;
-            const step = Math.max(200, g.innerHeight);
-            const tick = g.setInterval(() => {
-              g.scrollBy(0, step);
-              y += step;
-              // documentElement.scrollHeight matches the final clip height; cap iterations as a backstop
-              // against a page that grows its height on every scroll (infinite-scroll DoS).
-              if (y >= g.document.documentElement.scrollHeight || ++steps > 60) {
-                g.clearInterval(tick);
-                g.scrollTo(0, 0);
-                g.setTimeout(resolve, 150);
-              }
-            }, 50);
-          });
-        })
-        .catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
+      // Scroll-load + fonts + iframe/embed paint + animation freeze — shared with compare.ts so the agent's
+      // own preview and the fidelity side-by-sides settle identically (maps paint, lower sections load).
+      await settlePage(page, { freeze: true });
       const fullHeight = await page
         .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
         .catch(() => vp.height);

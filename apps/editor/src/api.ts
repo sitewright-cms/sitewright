@@ -546,18 +546,32 @@ export interface UpdateDeployTargetConfig {
 }
 
 /** A streamed deploy progress event. FTP/SFTP report per-file (`connecting`/`uploading` + index/total);
- *  git reports coarse phases (`preparing`/`committing`/`pushing`) with no file count. */
+ *  git reports coarse phases (`preparing`/`committing`/`pushing`) with no file count. FTP/SFTP also
+ *  report the transfer diagnostics — `strategy` (tar fast-path vs per-file), `bytes`, `elapsedMs`
+ *  (for throughput), and `skipped` (unchanged files served from the manifest). */
 export interface DeployProgressEvent {
   phase: 'connecting' | 'uploading' | 'preparing' | 'committing' | 'pushing' | 'done';
   total?: number;
   index?: number;
   file?: string;
+  skipped?: number;
+  removed?: number;
+  strategy?: 'tar' | 'files';
+  bytes?: number;
+  elapsedMs?: number;
 }
 
-/** The `done` payload of a streamed deploy — FTP/SFTP report `files`; git reports `branch`/`commit`. */
+/** The `done` payload of a streamed deploy — FTP/SFTP report `files` + transfer diagnostics
+ *  (`uploaded`/`skipped`/`removed`/`strategy`/`bytes`/`elapsedMs`); git reports `branch`/`commit`. */
 export interface StreamDoneResult {
   protocol: string;
   files?: number;
+  uploaded?: number;
+  skipped?: number;
+  removed?: number;
+  strategy?: 'tar' | 'files';
+  bytes?: number;
+  elapsedMs?: number;
   branch?: string;
   commit?: string;
 }

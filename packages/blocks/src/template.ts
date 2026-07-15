@@ -212,7 +212,7 @@ export function validateTemplate(source: string): void {
 
   // Classify the current context for an output mustache, throwing if it is unsafe.
   function checkOutput(inner: string): void {
-    if (mode === 'comment' || mode === 'rawtext') reject(`an interpolation in a ${mode === 'rawtext' ? '<style>' : 'comment'} block`);
+    if (mode === 'comment' || mode === 'rawtext') reject(`an interpolation in a ${mode === 'comment' ? 'comment' : rawCloser === '</script' ? '<script>' : '<style>'} block`);
     if (mode === 'tag') {
       if (sub !== 'value') reject('an interpolation in an unquoted attribute or tag structure');
       if (quote === '') reject('an interpolation in an unquoted attribute value');
@@ -271,9 +271,11 @@ export function validateTemplate(source: string): void {
         if (m) {
           const name = (m[1] as string).toLowerCase();
           const isClose = source[i + 1] === '/';
-          // No tenant JS: a <script> element is rejected wherever it appears (including
-          // inside an {{#*inline}} partial body, which the scanner walks as literal text).
-          if (!isClose && name === 'script') reject('a <script> element');
+          // Author JS is allowed: a <script> element's body is scanned as RAWTEXT (like <style>, see
+          // pendingRaw below) so its `<`/tags don't confuse the parser, and an {{interpolation}} inside
+          // it is rejected (no Handlebars-into-JS injection — author JS reads server data from data-*
+          // attributes). Author scripts run only on the ISOLATED published origin (the user's own server
+          // / the <slug> subdomain / the sandboxed preview) — never the cookie-bearing app origin.
           // Skeleton-owned landmark elements (<nav>/<main>/<footer>/<aside>) are declared once by
           // the platform with a unique id around each slot/the page body — author content must not
           // repeat them. The message names the element + the reserved id(s) and suggests the fix.
@@ -285,7 +287,7 @@ export function validateTemplate(source: string): void {
           sub = 'preAttr';
           attrName = '';
           quote = '';
-          pendingRaw = !isClose && name === 'style' ? 'style' : '';
+          pendingRaw = !isClose && (name === 'style' || name === 'script') ? name : '';
           i += m[0].length;
           continue;
         }

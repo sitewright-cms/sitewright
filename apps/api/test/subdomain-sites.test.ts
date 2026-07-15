@@ -90,6 +90,9 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     const r = await client.inject({ method: 'GET', url: '/sites/evil.com%2Fx/y', headers: { host: DOMAIN } });
     expect(r.statusCode).not.toBe(301);
     if (r.headers.location) expect(r.headers.location).not.toContain('evil.com');
+    // A rejected slug whose tail looks like an asset must 404 cleanly (readAsset's dirFor throw is swallowed).
+    const asset = await client.inject({ method: 'GET', url: '/sites/evil.com%2Fx/styles.css', headers: { host: DOMAIN } });
+    expect(asset.statusCode).toBe(404);
   });
 
   it('publishStatus returns the PATH-form url as the preview link even when sitesDomain is set', async () => {

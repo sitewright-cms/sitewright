@@ -4391,7 +4391,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
           return reply.type(binary.contentType).send(binary.body);
         }
-        const asset = await store.readAsset(slug, path);
+        // Mirror the `readBinary` call above: a malformed slug makes `dirFor` throw — swallow it and fall
+        // through to the 404 below (a rejected-slug asset path returns 404, not an opaque 500).
+        let asset = null;
+        try {
+          asset = await store.readAsset(slug, path);
+        } catch {
+          /* invalid slug → fall through to 404 */
+        }
         if (asset !== null) {
           // Cache hard ONLY when the URL carries the per-publish `?v=` token (styles.css / consent.js / …,
           // referenced that way from the page) — a republish then changes the URL. Unversioned root files

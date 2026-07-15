@@ -124,14 +124,26 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain('if(duration>0)el.style.transitionDuration=duration');
   });
 
-  it('REPLAYS by default (unobserves only for data-sw-once="true"); resets on a FULL exit', () => {
+  it('REPLAYS by default via a SEPARATE full-viewport RESET observer (exitIo); resets only on a FULL exit, either direction', () => {
     // Default = replay: the element is only unobserved when the author opts into play-once.
     expect(ANIMATION_JS).toContain("getAttribute('data-sw-once')==='true'");
     expect(ANIMATION_JS).not.toContain("getAttribute('data-sw-once')!=='false'"); // old play-once default is gone
     expect(ANIMATION_JS).toContain('io.unobserve(el)');
-    // Reset (replay enabler) fires ONLY on a full exit — never while any part is still on screen.
-    expect(ANIMATION_JS).toContain('entry.intersectionRatio===0');
-    expect(ANIMATION_JS).toContain("classList.remove('sw-animation-active')");
+    // The reset lives in a DEDICATED full-viewport observer (rootMargin 0, threshold [0]) whose ratio===0
+    // fires EXACTLY when no part is on screen — top OR bottom. So (a) content resting in view (incl. the -20%
+    // observer's bottom-margin band) is never reset while visible, and (b) an element scrolled fully off the
+    // BOTTOM still resets — which a single -20% observer can't see (it reads ratio 0 at the -20% line and
+    // never fires again below it), which is what broke bottom-exit replay.
+    expect(ANIMATION_JS).toContain('var exitIo=new IntersectionObserver(');
+    expect(ANIMATION_JS).toMatch(/exitIo=new IntersectionObserver\([\s\S]*?\},\{threshold:\[0\],root:scrollRoot\}\)/);
+    expect(ANIMATION_JS).toContain("entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active')");
+    expect(ANIMATION_JS).toContain("entry.target.classList.remove('sw-animation-active')");
+    // Every armed element is observed by BOTH the reveal observer and the reset observer.
+    expect(ANIMATION_JS).toContain('io.observe(el)');
+    expect(ANIMATION_JS).toContain('exitIo.observe(el)');
+    // The old single-observer reset machinery (WeakSet gate + boundingClientRect off-screen probe) is GONE.
+    expect(ANIMATION_JS).not.toContain('new WeakSet()');
+    expect(ANIMATION_JS).not.toContain('r.top>=vp');
   });
 
   it('reveals when MEANINGFULLY in view — per-element data-sw-threshold (default 0.2), later than an edge-touch', () => {
@@ -144,10 +156,23 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("thrSet[swRatio(el,'data-sw-threshold',0.2)]=1");
     expect(ANIMATION_JS).toContain('threshold:THRESHOLDS');
     expect(ANIMATION_JS).toMatch(/rootMargin:'0px 0px -\d+% 0px'/);
+    // The observer root is PINNED to the body when it is the scroll container (whole-site preview's
+    // body-scroll), else null — so a percentage rootMargin resolves against the real scrollport on every
+    // engine, not just Chromium. The primary observer passes root:scrollRoot alongside its -20% margin.
+    expect(ANIMATION_JS).toContain("if(getComputedStyle(document.body).overflowY==='auto')scrollRoot=document.body");
+    expect(ANIMATION_JS).toContain("rootMargin:'0px 0px -20% 0px',root:scrollRoot");
     // swRatio parses + CLAMPS the threshold to [0,1] (never injects — compared only as a number).
     expect(ANIMATION_JS).toContain('function swRatio(el,attr,def){var v=parseFloat(el.getAttribute(attr));return isNaN(v)?def:Math.max(0,Math.min(v,1));}');
-    // Guarded against a redundant re-add while already shown.
-    expect(ANIMATION_JS).toContain("!el.classList.contains('sw-animation-active')");
+  });
+
+  it('data-sw-once reveals once and stops BOTH observers (reveal + reset) watching it, so it can never re-hide', () => {
+    // Reveal goes through the shared swReveal(el) helper: add the class, then for data-sw-once="true" detach
+    // the element from the reveal observer AND the reset observer — otherwise the reset observer would still
+    // hide the once-element when it later scrolls fully off. No `!contains(active)` guard (add is idempotent).
+    expect(ANIMATION_JS).not.toContain("if(!el.classList.contains('sw-animation-active'))");
+    expect(ANIMATION_JS).toContain('function swReveal(el){');
+    expect(ANIMATION_JS).toContain("el.classList.add('sw-animation-active')");
+    expect(ANIMATION_JS).toContain("if(el.getAttribute('data-sw-once')==='true'){io.unobserve(el);exitIo.unobserve(el);}");
   });
 
   it('gates the reveal on the page-ready signal (starts after preloader clear / load, not behind it)', () => {
@@ -157,6 +182,28 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain('swWhenReady(function(){');
     // observation happens inside the ready callback, not eagerly in the setup loop.
     expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*io\.observe\(el\)/);
+  });
+
+  it('reveals ON LOAD via a SECOND full-viewport observer (loadIo) — no -20% margin, so on-screen content animates in without a scroll', () => {
+    // The primary observer's negative bottom rootMargin is a SCROLL-reveal nicety, but at LOAD it would trap
+    // on-screen content hidden — a section right under a tall hero is only a sliver past the shrink line, and
+    // a card pinned to the bottom edge sits entirely below it, so both stay blank until the visitor scrolls.
+    // A SECOND observer over the FULL viewport (default rootMargin) reveals them at load; being an observer it
+    // also catches a near-fold element a late lazy image shifts into view AFTER ready.
+    expect(ANIMATION_JS).toContain('var loadIo=new IntersectionObserver(');
+    // loadIo has NO negative rootMargin (full viewport) — that is the whole point. The only observer that
+    // carries the -20% bottom margin is the primary `io`. Both share the resolved scroll `root`.
+    expect(ANIMATION_JS).toMatch(/loadIo=new IntersectionObserver\([\s\S]*?\},\{threshold:THRESHOLDS,root:scrollRoot\}\)/);
+    // It only reveals (via swReveal — no reset branch) …
+    expect(ANIMATION_JS).toContain('swReveal(entry.target)');
+    expect(ANIMATION_JS).toContain('loadIo.observe(el)');
+    // … and disconnects at the FIRST scroll so the primary -20% observer owns reveal-as-you-scroll after that.
+    // capture:true also catches an inner-container scroll (scroll doesn't bubble) so loadIo never lingers.
+    expect(ANIMATION_JS).toMatch(/addEventListener\('scroll',function\(\)\{loadIo\.disconnect\(\);\},\{once:true,capture:true,passive:true\}\)/);
+    // The disconnect is ARMED only after loadIo's first async delivery (loadArmed flag) — an early scroll
+    // before loadIo has ever revealed must NOT be able to disconnect it (else the blank band returns).
+    expect(ANIMATION_JS).toContain('var loadArmed=false');
+    expect(ANIMATION_JS).toContain('if(!loadArmed){loadArmed=true;addEventListener(');
   });
 
   it('cannot break out of a <script> block', () => {

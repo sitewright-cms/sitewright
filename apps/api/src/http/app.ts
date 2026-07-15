@@ -1014,12 +1014,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (label.length > 63 || !/^[a-z0-9-]+$/.test(label) || label === 'www') return null;
     return label;
   };
-  /** The preview / "View live" URL for a locally-hosted site. Always the path form `/sites/<slug>/`:
-   *  it works on the app origin with no extra DNS, so it's the dependable default link. Subdomain
-   *  hosting (`<slug>.<sitesDomain>`) still SERVES the site (see `rewriteUrl` below) for anyone who has
-   *  wildcard `*.<sitesDomain>` DNS, but we don't advertise it as the link — it 404s in the browser
-   *  wherever that wildcard isn't resolvable (e.g. a bare `dind.local` host). */
-  const servedSiteUrl = (slug: string): string => `/sites/${slug}/`;
+  /** The canonical "View live" URL for a locally-hosted site. When a sites domain is configured the site
+   *  RUNS on its isolated `<slug>.<sitesDomain>` subdomain (author JS included) and the `/sites/<slug>/`
+   *  path form only 301-redirects there — so the advertised link is the subdomain itself. Scheme + any
+   *  non-standard port come from `SW_PUBLIC_URL` (the app's public origin); with no public URL set we emit
+   *  a protocol-relative link (inherits the editor's scheme). No sites domain → the path form fallback. */
+  const servedSiteUrl = (slug: string): string => {
+    if (!sitesDomain) return `/sites/${slug}/`;
+    if (opts.publicUrl) {
+      const u = new URL(opts.publicUrl);
+      return `${u.protocol}//${slug}.${sitesDomain}${u.port ? `:${u.port}` : ''}/`;
+    }
+    return `//${slug}.${sitesDomain}/`;
+  };
 
   const app = Fastify({
     // A `<slug>.<sitesDomain>` request is rewritten (BEFORE routing) into the existing path-based

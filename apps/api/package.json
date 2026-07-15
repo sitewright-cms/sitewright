@@ -39,6 +39,7 @@
     "playwright-core": "1.60.0",
     "secure-json-parse": "^4",
     "ssh2-sftp-client": "^11",
+    "tar-stream": "^3.1.7",
     "zod": "^3.24.1",
     "isomorphic-git": "^1.27.1"
   },
@@ -48,6 +49,7 @@
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^8.0.0",
     "@types/ssh2-sftp-client": "^9.0.6",
+    "@types/tar-stream": "^3.1.4",
     "@vitest/coverage-v8": "^4.1.8",
     "drizzle-kit": "^0.31",
     "jose": "^6.2.3",

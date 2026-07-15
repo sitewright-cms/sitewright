@@ -9,8 +9,12 @@ import {
   collectSiteFiles,
   deploySite,
   type DeployConfig,
+  type DeployManifest,
+  type DeployStrategy,
   type DeployTransport,
+  type SiteFile,
 } from '../src/publish/adapters.js';
+import { remoteJoin } from '../src/publish/deploy/plan.js';
 
 /**
  * Depth coverage for the publish ADAPTERS (zip archive + transport orchestration
@@ -108,40 +112,33 @@ describe('archiveSite — zip fidelity (depth)', () => {
   });
 });
 
-describe('deploySite — per-file upload paths via a recording fake transport', () => {
+describe('deploySite — per-file upload paths via a recording transport', () => {
   /**
-   * The real adapter's DeployTransport.uploadDir uploads a whole local dir to a
-   * remote dir in one call (basic-ftp/ssh2 walk the tree internally). To assert
-   * that EVERY file lands at `remoteDir + relativePath` with nested dirs preserved,
-   * this recording fake expands the local dir the same way the real transports
-   * would, recording one upload entry per file.
+   * The DeployTransport model hands the orchestrator a single upload() call carrying the CHANGED
+   * files; the transport maps each to `remoteDir + relativePath` internally. This recording fake
+   * derives the same remote paths via the pure remoteJoin helper, so we can assert every file —
+   * nested dirs preserved — lands where it should on a first (full) deploy.
    */
-  function makeRecordingTransport(): {
-    transport: DeployTransport;
-    lifecycle: string[];
-    uploads: Array<{ remotePath: string }>;
-    connectCount: () => number;
-  } {
+  function makeRecordingTransport(prev: DeployManifest | null = null) {
     const lifecycle: string[] = [];
-    const uploads: Array<{ remotePath: string }> = [];
+    const uploads: Array<{ remotePath: string; strategy: DeployStrategy }> = [];
     let connects = 0;
     const transport: DeployTransport = {
       connect: async () => {
         connects += 1;
         lifecycle.push('connect');
       },
-      uploadDir: async (localDir, remoteDir) => {
-        lifecycle.push('uploadDir');
-        const files = await collectSiteFiles(localDir);
-        const base = remoteDir.endsWith('/') ? remoteDir.slice(0, -1) : remoteDir;
+      capabilities: () => ({ tar: false }),
+      readManifest: async () => prev,
+      writeManifest: async () => void lifecycle.push('write'),
+      upload: async (remoteDir, files: ReadonlyArray<SiteFile>, strategy) => {
+        lifecycle.push('upload');
         for (const f of files) {
-          const relPosix = f.rel.split(/[\\/]/).join('/');
-          uploads.push({ remotePath: `${base}/${relPosix}` });
+          uploads.push({ remotePath: remoteJoin(remoteDir, f.rel.split(/[\\/]/).join('/')), strategy });
         }
       },
-      close: async () => {
-        lifecycle.push('close');
-      },
+      remove: async () => {},
+      close: async () => void lifecycle.push('close'),
     };
     return { transport, lifecycle, uploads, connectCount: () => connects };
   }
@@ -151,20 +148,21 @@ describe('deploySite — per-file upload paths via a recording fake transport', 
     const result = await deploySite(siteDir, makeConfig({ remoteDir: '/var/www' }), () => rec.transport);
 
     expect(rec.connectCount()).toBe(1);
-    // connect happens before any upload, close happens last.
-    expect(rec.lifecycle).toEqual(['connect', 'uploadDir', 'close']);
+    // connect → upload the changed set → write the manifest → close (best-effort, last).
+    expect(rec.lifecycle).toEqual(['connect', 'upload', 'write', 'close']);
 
     const collected = await collectSiteFiles(siteDir);
-    const expectedRemotePaths = collected
-      .map((f) => `/var/www/${f.rel.split(/[\\/]/).join('/')}`)
-      .sort();
+    const expectedRemotePaths = collected.map((f) => `/var/www/${f.rel.split(/[\\/]/).join('/')}`).sort();
     expect(rec.uploads.map((u) => u.remotePath).sort()).toEqual(expectedRemotePaths);
 
     // Nested dirs preserved explicitly.
     expect(rec.uploads.map((u) => u.remotePath)).toContain('/var/www/media/abc123/x.jpg');
     expect(rec.uploads.map((u) => u.remotePath)).toContain('/var/www/about/index.html');
 
-    expect(result).toEqual({ protocol: 'sftp', files: collected.length });
+    expect(result.protocol).toBe('sftp');
+    expect(result.files).toBe(collected.length);
+    expect(result.uploaded).toBe(collected.length);
+    expect(result.skipped).toBe(0);
   });
 
   it('reports the same file count via the returned summary as on disk', async () => {
@@ -184,10 +182,14 @@ describe('deploySite — per-file upload paths via a recording fake transport', 
         lifecycle.push('connect');
         throw new Error('connection refused');
       },
-      uploadDir: async () => {
+      capabilities: () => ({ tar: false }),
+      readManifest: async () => null,
+      writeManifest: async () => {},
+      upload: async () => {
         uploadCalled = true;
-        lifecycle.push('uploadDir');
+        lifecycle.push('upload');
       },
+      remove: async () => {},
       close: async () => {
         lifecycle.push('close');
       },
@@ -202,7 +204,11 @@ describe('deploySite — per-file upload paths via a recording fake transport', 
   it('does not let a close() failure mask a successful upload (best-effort close is swallowed)', async () => {
     const fake: DeployTransport = {
       connect: async () => {},
-      uploadDir: async () => {},
+      capabilities: () => ({ tar: false }),
+      readManifest: async () => null,
+      writeManifest: async () => {},
+      upload: async () => {},
+      remove: async () => {},
       close: async () => {
         throw new Error('close blew up');
       },
@@ -308,7 +314,11 @@ describe('SFTP hostFingerprint pinning (verify-on-mismatch)', () => {
     const seen: Array<string | undefined> = [];
     const fake: DeployTransport = {
       connect: async () => {},
-      uploadDir: async () => {},
+      capabilities: () => ({ tar: false }),
+      readManifest: async () => null,
+      writeManifest: async () => {},
+      upload: async () => {},
+      remove: async () => {},
       close: async () => {},
     };
     await deploySite(siteDir, makeConfig({ hostFingerprint: 'AB:cd:EF' }), (cfg) => {

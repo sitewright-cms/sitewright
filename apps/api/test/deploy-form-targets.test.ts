@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, cp } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, cp, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import type { Form, Page } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
@@ -66,11 +66,20 @@ afterEach(async () => {
 function capturing(dest: string): (cfg: DeployConfig) => DeployTransport {
   return () => ({
     async connect() {},
-    // Structural typing lets us omit the interface's `remoteDir`/`onFile` params — the fake captures
-    // the uploaded bytes, it doesn't model the remote-path layout.
-    async uploadDir(localDir: string) {
-      await cp(localDir, dest, { recursive: true });
+    capabilities: () => ({ tar: false }),
+    async readManifest() {
+      return null; // no prior manifest → deploySite uploads every file (a full capture)
     },
+    async writeManifest() {},
+    // The fake captures the uploaded bytes at their relative paths; it doesn't model remote layout.
+    async upload(_remoteDir, files) {
+      for (const file of files) {
+        const target = join(dest, file.rel);
+        await mkdir(dirname(target), { recursive: true });
+        await cp(file.abs, target);
+      }
+    },
+    async remove() {},
     async close() {},
   });
 }

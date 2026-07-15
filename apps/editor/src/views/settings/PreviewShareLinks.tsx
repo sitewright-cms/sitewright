@@ -26,7 +26,8 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
       .catch(() => {});
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-load only when the project changes; `load` is stable for a given projectId. (This project's
+    // eslint config does not register react-hooks/exhaustive-deps, so no disable directive is used.)
   }, [projectId]);
 
   const fullUrl = (u: string) => `${window.location.origin}${u}`;

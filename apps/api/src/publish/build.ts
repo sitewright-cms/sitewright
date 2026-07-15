@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
@@ -66,7 +65,6 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
-  neutralizeInlineScript,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';

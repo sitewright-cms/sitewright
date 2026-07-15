@@ -213,6 +213,59 @@ describe('preview-site API (signed path)', () => {
     expect(bad.statusCode).toBe(404);
   });
 
+  it('revocable share links: create → list → serve the draft to an UNAUTHENTICATED client → revoke (404)', async () => {
+    const { t, projectId } = await setup('sh@acme.test');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+
+    // CREATE a stable share link (owner, content:write).
+    const created = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview-shares`,
+      cookies,
+      payload: { label: 'Client review' },
+    });
+    expect(created.statusCode).toBe(200);
+    const share = created.json() as { id: string; label: string; createdAt: number; url: string };
+    expect(share.label).toBe('Client review');
+    expect(share.url.startsWith(`/preview-site/${projectId}/`)).toBe(true);
+    expect(share.url).toContain('~'); // signShare token shape: <shareId>~<hmac>
+
+    // A SECOND share so the list has >1 row (exercises the newest-first sort comparator).
+    const created2 = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview-shares`,
+      cookies,
+      payload: { label: 'Second reviewer' },
+    });
+    expect(created2.statusCode).toBe(200);
+    const share2 = created2.json() as { id: string; url: string };
+
+    // LIST reflects both.
+    const listed = await app.inject({ method: 'GET', url: `/projects/${projectId}/preview-shares`, cookies });
+    expect(listed.statusCode).toBe(200);
+    const items = (listed.json() as { items: Array<{ id: string; label: string; url: string }> }).items;
+    expect(items.map((i) => i.id).sort()).toEqual([share.id, share2.id].sort());
+
+    // SERVE the draft at the share URL with NO session cookie — the (non-revoked) share token is the auth.
+    const served = await app.inject({ method: 'GET', url: share.url });
+    expect(served.statusCode).toBe(200);
+    expect(served.body).toContain('Shared Draft');
+    expect(served.headers['content-security-policy']).toContain('sandbox');
+
+    // REVOKE is IDEMPOTENT: deleting an unknown id is a clean 200 (the remove NotFoundError is swallowed).
+    const delMissing = await app.inject({ method: 'DELETE', url: `/projects/${projectId}/preview-shares/does-not-exist`, cookies });
+    expect(delMissing.statusCode).toBe(200);
+    expect(delMissing.json()).toEqual({ ok: true });
+
+    // REVOKE share #1 → its URL now fails closed (404); share #2 still serves.
+    const del = await app.inject({ method: 'DELETE', url: `/projects/${projectId}/preview-shares/${share.id}`, cookies });
+    expect(del.statusCode).toBe(200);
+    expect(del.json()).toEqual({ ok: true });
+    expect((await app.inject({ method: 'GET', url: share.url })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: share2.url })).statusCode).toBe(200);
+  });
+
   it('rebuilds on the next request after content changes', async () => {
     const { t, projectId } = await setup('rb@acme.test');
     const api = `/projects/${projectId}`;

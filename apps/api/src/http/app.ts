@@ -4690,7 +4690,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // sandboxed to an opaque origin, so a shared link can never touch the cookie-bearing session).
     app.get<{ Params: { projectId: string } }>('/projects/:projectId/preview-shares', { config: rl(120) }, async (req) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
-      const rows = (await contentRepo.list(ctx, 'preview_share').catch(() => [])) as Array<{ id: string; label: string; createdAt: number }>;
+      // An unexpected store error propagates to the app's global handler (clean 500), rather than being
+      // swallowed here into a misleading "no share links" — the same reason the count read below isn't
+      // swallowed (that would fail the max-25 limit OPEN).
+      const rows = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; label: string; createdAt: number }>;
       return {
         items: rows
           .slice()
@@ -4700,7 +4703,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
     app.post<{ Params: { projectId: string }; Body: { label?: string } }>('/projects/:projectId/preview-shares', { config: rl(30) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
-      const existing = await contentRepo.list(ctx, 'preview_share').catch(() => []);
+      const existing = await contentRepo.list(ctx, 'preview_share');
       if (existing.length >= 25) return reply.code(400).send({ error: 'too many share links (max 25) — revoke some first' });
       const id = newId();
       const row = { id, label: String(req.body?.label ?? '').slice(0, 120), createdAt: Date.now(), createdBy: ctx.userId };
@@ -4986,9 +4989,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // — OR a valid, NON-revoked SHARE token the owner created to hand the draft to an UNAUTHENTICATED
         // client. Check the cheap default sig first (no DB read); only load the share handles when it fails.
         if (!verifyPreview(projectId, sig, currentCookieSecret)) {
-          const shareRows = await contentRepo
-            .list({ userId: 'system', projectId, role: 'owner' as const }, 'preview_share')
-            .catch(() => [] as unknown[]);
+          const shareRows = await contentRepo.list(
+            { userId: 'system', projectId, role: 'owner' as const },
+            'preview_share',
+          );
           const shareIds = new Set(shareRows.map((s) => (s as { id: string }).id));
           if (!verifyShare(projectId, sig, currentCookieSecret, shareIds)) return reply.code(404).send();
         }

@@ -4350,7 +4350,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // request to the subdomain. Without one, the path form still serves (edge case: self-host with no
         // wildcard DNS) but SCRIPT-INERT — the CSP below strips `'unsafe-inline'` so author JS can't run
         // on the app origin. The subdomain rewrite lands here as `viaSubdomain` → no redirect (no loop).
-        if (!viaSubdomain && sitesDomain) {
+        // The redirect embeds `slug` in the target's AUTHORITY, and find-my-way percent-DECODES the path
+        // param AFTER matching — so `/sites/evil.com%2Fx/…` would arrive as slug `evil.com/x` and the `/`
+        // would terminate the authority → an OPEN REDIRECT off the trusted app origin. Only ever redirect a
+        // slug shaped like a real project slug; anything else falls through to the normal 404 project lookup.
+        if (!viaSubdomain && sitesDomain && /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) {
           const fwdProto = firstForwardedValue(req.headers['x-forwarded-proto']);
           const proto = fwdProto === 'http' || fwdProto === 'https' ? fwdProto : req.protocol;
           const q = req.url.indexOf('?');
@@ -4493,11 +4497,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('x-frame-options', 'DENY');
         } else if (metaCsp) {
           // Path-form fallback on the cookie-bearing app origin (only reached when no sites domain is
-          // configured — else we 301'd to the subdomain above): keep the embed frame-src origins but STRIP
-          // script `'unsafe-inline'` so author inline JS can never run on the app origin. (A plain page has
-          // no meta and falls through to the strict `default-src 'self'` onSend default → inline blocked.)
+          // configured — else we 301'd to the subdomain above). `metaCsp` derives ONLY from the PLATFORM's
+          // baked meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via website.head, which
+          // lands after <title>), so we can safely KEEP the consented frame-src/script-src origins while
+          // STRIPPING script `'unsafe-inline'` — author inline JS can never run on the app origin. The
+          // platform meta's script-src is always the literal `script-src 'self' 'unsafe-inline'[ <origins>]`.
           reply
             .header('content-security-policy', metaCsp.replace("script-src 'self' 'unsafe-inline'", "script-src 'self'"))
+            .header('x-frame-options', 'DENY');
+        } else {
+          // A plain page (no platform meta). A FIXED, server-controlled strict CSP: as a RESPONSE HEADER it
+          // is the enforced FLOOR (browsers apply header ∩ meta), so an author-injected `<meta>` in the body
+          // can never relax it — inline JS stays blocked and the page isn't framable.
+          reply
+            .header(
+              'content-security-policy',
+              "default-src 'self'; script-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            )
             .header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
         }
         // The PAGE always revalidates (it references the `?v=`-versioned assets above + changes per

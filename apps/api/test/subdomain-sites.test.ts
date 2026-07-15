@@ -83,6 +83,15 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(r.headers.location).toBe(`http://${slug}.${DOMAIN}/`);
   });
 
+  it('the retirement redirect does NOT open-redirect on a non-slug-shaped path param (%2F smuggling)', async () => {
+    // find-my-way percent-decodes :slug AFTER matching, so `%2F` could smuggle a `/` into the redirect
+    // AUTHORITY (`evil.com/x.<DOMAIN>` → browser sees host `evil.com`). A value that isn't a real project
+    // slug must never produce an off-origin 301 — it falls through to the normal (404) project lookup.
+    const r = await client.inject({ method: 'GET', url: '/sites/evil.com%2Fx/y', headers: { host: DOMAIN } });
+    expect(r.statusCode).not.toBe(301);
+    if (r.headers.location) expect(r.headers.location).not.toContain('evil.com');
+  });
+
   it('publishStatus returns the PATH-form url as the preview link even when sitesDomain is set', async () => {
     // The "View live" link must be the dependable `/sites/<slug>/` path form — it works on the app
     // origin with no wildcard DNS. The subdomain still SERVES the site (asserted above), but advertising
@@ -153,5 +162,49 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     const cookie = entry.cookies.find((c) => c.name === `sw_site_${slug}`);
     expect(cookie?.path).toBe('/'); // root-scoped (not /sites/<slug>/)
     expect((await site('/', { [`sw_site_${slug}`]: 'tok_abcdefgh12345678' })).statusCode).toBe(200);
+  });
+});
+
+describe('app-origin /sites/ fallback CSP (no sites domain configured)', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  const slug = 'example';
+  let publishRoot: string;
+  let mediaRoot: string;
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-fallback-'));
+    mediaRoot = await mkdtemp(join(tmpdir(), 'sw-fallback-media-'));
+    harness = await makeHarness({ publishRoot, mediaRoot }); // NO sitesDomain → path form serves (no redirect)
+    client = await harness.signup();
+    projectId = await client.createProject('Example', slug, { localHosting: false });
+  });
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+    await rm(mediaRoot, { recursive: true, force: true });
+  });
+
+  it('serves the path form with a FIXED strict CSP — an author-spoofed <meta> cannot re-enable inline JS', async () => {
+    const proj = client.project(projectId);
+    // website.head is an UNFILTERED author sink: inject a spoofed CSP meta that dodges a literal string-strip
+    // (reordered tokens). The served RESPONSE HEADER must still pin script-src to 'self' (no unsafe-inline).
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Example', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+      website: { head: `<meta http-equiv="Content-Security-Policy" content="script-src 'unsafe-inline' 'self'">` },
+    });
+    await proj.putContent('page', 'home', home);
+    await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local' });
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+
+    const r = await client.inject({ method: 'GET', url: `/sites/${slug}/` });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain("script-src 'unsafe-inline' 'self'"); // the spoofed meta IS in the HTML body…
+    const csp = r.headers['content-security-policy'] as string;
+    const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'));
+    expect(scriptSrc).toBe("script-src 'self'"); // …but the enforced RESPONSE-HEADER floor blocks inline JS
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 });

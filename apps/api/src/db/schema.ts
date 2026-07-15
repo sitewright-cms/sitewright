@@ -471,7 +471,7 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config', 'preview_share'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -516,7 +516,7 @@ export const contentRevisions = sqliteTable(
     // Mirrors content.kind (same text enum, no SQL CHECK). Recording is gated to the user-editable
     // subset in code (REVISIONED_KINDS) — credentials + media binaries are never snapshotted.
     kind: text('kind', {
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config'],
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config', 'preview_share'],
     }).notNull(),
     entityId: text('entity_id').notNull(),
     /** Uniqueness scope mirroring `content.scope` (dataset slug for `entry`, else `''`) so an entry's
@@ -614,4 +614,5 @@ export type ContentKind =
   | 'deploy_target'
   | 'form'
   | 'project_smtp'
-  | 'ai_config';
+  | 'ai_config'
+  | 'preview_share';

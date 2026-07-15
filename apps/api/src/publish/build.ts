@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
@@ -66,7 +65,6 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
-  neutralizeInlineScript,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
@@ -350,17 +348,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // its clear runs on the iframe's own `window.load` (same-context, reliable) and has an 8s failsafe
   // in PRELOADER_JS, so it can never stay stuck covering the page. The published site is unaffected.
   const previewMode = opts.previewRuntime !== undefined;
-  // The preview injects `opts.previewRuntime` as an INLINE <script>. On a page that also bakes a consent
-  // meta CSP (any site with an embed / gated script), `script-src 'self'` would silently block it — killing
-  // the editor↔iframe bridge + the body→window scroll shim (so shrink-header/parallax/scrollspy freeze in
-  // preview). Feed the runtime's own sha256 into that meta's script-src so the one audited platform script
-  // runs while the strict publish-parity CSP is otherwise untouched. Hash the EXACT bytes renderDocument
-  // inlines — it neutralizes `</script`, so run the runtime through the SAME transform first or the hash
-  // (over the pre-transform string) would silently miss when the runtime ever contains that sequence.
-  const previewRuntimeCspHash =
-    previewMode && opts.previewRuntime
-      ? `'sha256-${createHash('sha256').update(neutralizeInlineScript(opts.previewRuntime), 'utf8').digest('base64')}'`
-      : undefined;
+  // The preview injects `opts.previewRuntime` as an INLINE <script>. It runs via the published script-src's
+  // `'unsafe-inline'` (which the meta now always carries for the OWNER's authored JS). We DELIBERATELY no
+  // longer feed a per-runtime sha256 hash into the meta: per the CSP spec, a hash in the source list makes
+  // `'unsafe-inline'` be ignored, which would then block the author's own inline scripts in the (sandboxed,
+  // opaque, safe) preview. The sandbox — not a hash allow-list — is the preview's security boundary.
   // Per-publish cache-bust token (the publish timestamp's digits) appended as `?v=` to the fixed-name
   // runtime assets (styles.css / consent.js / components.js / …). A republish writes fresh assets AND a new
   // token → the browser cache busts instantly, while the assets are served `immutable` between publishes.
@@ -948,11 +940,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           head: website?.head,
           // Baked CSP for static-export parity (a strict external host then allows the consented
           // third-party origins). Platform-local serving ALSO sets it as a response header. Omit = none.
-          metaCsp: buildConsentMetaCsp(
-            website?.consent,
-            authorCspOrigins,
-            previewRuntimeCspHash ? [previewRuntimeCspHash] : [],
-          ),
+          // NOTE: we no longer feed the preview-runtime HASH here. The published script-src now carries
+          // `'unsafe-inline'` (for the OWNER's authored JS) — and per the CSP spec a hash in the source
+          // list makes `'unsafe-inline'` be IGNORED, which would block author inline scripts in the
+          // (sandboxed, opaque, safe) preview. The runtime runs via `'unsafe-inline'` instead.
+          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

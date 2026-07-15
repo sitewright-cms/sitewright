@@ -74,20 +74,34 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(www.body).not.toContain('Hello world');
   });
 
-  it('the /sites/<slug>/ PATH form still works (coexists)', async () => {
+  it('the /sites/<slug>/ PATH form 301-redirects to the isolated subdomain (retired on the app origin)', async () => {
     await seedAndPublish();
+    // The app-origin path form is RETIRED: a published page now carries the owner's inline JS, which must
+    // run only on the isolated subdomain — so the path form redirects there instead of serving it.
     const r = await client.inject({ method: 'GET', url: `/sites/${slug}/`, headers: { host: DOMAIN } });
-    expect(r.statusCode).toBe(200);
-    expect(r.body).toContain('Hello world');
+    expect(r.statusCode).toBe(301);
+    expect(r.headers.location).toBe(`http://${slug}.${DOMAIN}/`);
   });
 
-  it('publishStatus returns the PATH-form url as the preview link even when sitesDomain is set', async () => {
-    // The "View live" link must be the dependable `/sites/<slug>/` path form — it works on the app
-    // origin with no wildcard DNS. The subdomain still SERVES the site (asserted above), but advertising
-    // `<slug>.<DOMAIN>` as the link 404s wherever `*.<DOMAIN>` isn't resolvable.
+  it('the retirement redirect does NOT open-redirect on a non-slug-shaped path param (%2F smuggling)', async () => {
+    // find-my-way percent-decodes :slug AFTER matching, so `%2F` could smuggle a `/` into the redirect
+    // AUTHORITY (`evil.com/x.<DOMAIN>` → browser sees host `evil.com`). A value that isn't a real project
+    // slug must never produce an off-origin 301 — it falls through to the normal (404) project lookup.
+    const r = await client.inject({ method: 'GET', url: '/sites/evil.com%2Fx/y', headers: { host: DOMAIN } });
+    expect(r.statusCode).not.toBe(301);
+    if (r.headers.location) expect(r.headers.location).not.toContain('evil.com');
+    // A rejected slug whose tail looks like an asset must 404 cleanly (readAsset's dirFor throw is swallowed).
+    const asset = await client.inject({ method: 'GET', url: '/sites/evil.com%2Fx/styles.css', headers: { host: DOMAIN } });
+    expect(asset.statusCode).toBe(404);
+  });
+
+  it('publishStatus advertises the SUBDOMAIN as the "View live" url when sitesDomain is set', async () => {
+    // The path form is retired (it 301s to the subdomain), so the canonical live link is the subdomain
+    // itself — the origin where the site actually runs (author JS included). No SW_PUBLIC_URL in this
+    // harness → a protocol-relative link (inherits the editor's scheme).
     await seedAndPublish();
     const st = await client.get(`/projects/${projectId}/publish`);
-    expect((st.json() as { url: string }).url).toBe(`/sites/${slug}/`);
+    expect((st.json() as { url: string }).url).toBe(`//${slug}.${DOMAIN}/`);
   });
 
   it('runs a bundled .js on the isolated subdomain origin, but keeps it download-only on the path form', async () => {
@@ -106,12 +120,12 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     // Content-type depends on Host under an immutable cache → must vary on Host.
     expect(viaSub.headers['vary']).toBe('Host');
 
-    // Via the app-origin `/sites/<slug>/` PATH form (no sitesDomain host) it stays download-only +
-    // inert — the platform origin is cookie-bearing, so foreign JS must never execute there.
-    const viaPath = await client.inject({ method: 'GET', url: `/sites/${slug}/_assets/imp/file/app.js` });
-    expect(viaPath.statusCode).toBe(200);
-    expect(viaPath.headers['content-type']).toContain('application/octet-stream');
-    expect(viaPath.headers['content-disposition']).toContain('attachment');
+    // Via the app-origin `/sites/<slug>/` PATH form: RETIRED → the whole request 301-redirects to the
+    // isolated subdomain. The app origin never serves the published tree (page OR asset), so foreign JS
+    // can never execute on the cookie-bearing origin — the redirect is the boundary.
+    const viaPath = await client.inject({ method: 'GET', url: `/sites/${slug}/_assets/imp/file/app.js`, headers: { host: DOMAIN } });
+    expect(viaPath.statusCode).toBe(301);
+    expect(viaPath.headers.location).toBe(`http://${slug}.${DOMAIN}/_assets/imp/file/app.js`);
   });
 
   it('routes a form post to the platform /f/ endpoint even when reached via the subdomain host', async () => {
@@ -151,5 +165,49 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     const cookie = entry.cookies.find((c) => c.name === `sw_site_${slug}`);
     expect(cookie?.path).toBe('/'); // root-scoped (not /sites/<slug>/)
     expect((await site('/', { [`sw_site_${slug}`]: 'tok_abcdefgh12345678' })).statusCode).toBe(200);
+  });
+});
+
+describe('app-origin /sites/ fallback CSP (no sites domain configured)', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  const slug = 'example';
+  let publishRoot: string;
+  let mediaRoot: string;
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-fallback-'));
+    mediaRoot = await mkdtemp(join(tmpdir(), 'sw-fallback-media-'));
+    harness = await makeHarness({ publishRoot, mediaRoot }); // NO sitesDomain → path form serves (no redirect)
+    client = await harness.signup();
+    projectId = await client.createProject('Example', slug, { localHosting: false });
+  });
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+    await rm(mediaRoot, { recursive: true, force: true });
+  });
+
+  it('serves the path form with a FIXED strict CSP — an author-spoofed <meta> cannot re-enable inline JS', async () => {
+    const proj = client.project(projectId);
+    // website.head is an UNFILTERED author sink: inject a spoofed CSP meta that dodges a literal string-strip
+    // (reordered tokens). The served RESPONSE HEADER must still pin script-src to 'self' (no unsafe-inline).
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Example', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+      website: { head: `<meta http-equiv="Content-Security-Policy" content="script-src 'unsafe-inline' 'self'">` },
+    });
+    await proj.putContent('page', 'home', home);
+    await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local' });
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+
+    const r = await client.inject({ method: 'GET', url: `/sites/${slug}/` });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain("script-src 'unsafe-inline' 'self'"); // the spoofed meta IS in the HTML body…
+    const csp = r.headers['content-security-policy'] as string;
+    const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'));
+    expect(scriptSrc).toBe("script-src 'self'"); // …but the enforced RESPONSE-HEADER floor blocks inline JS
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 });

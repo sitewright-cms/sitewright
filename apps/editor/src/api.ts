@@ -929,6 +929,13 @@ export const api = {
     request<{ path: string | null }>('GET', `/projects/${projectId}/preview-locate?entity=${encodeURIComponent(entity)}`),
   /** The SIGNED, share-able preview base (`/preview/<id>/<sig>/`) — members-only to mint. */
   previewBase: (projectId: string) => request<{ base: string }>('GET', `/projects/${projectId}/preview-url`),
+  /** Revocable, stable SHARE links for the draft preview (viewable by UNAUTHENTICATED clients). */
+  listPreviewShares: (projectId: string) =>
+    request<{ items: Array<{ id: string; label: string; createdAt: number; url: string }> }>('GET', `/projects/${projectId}/preview-shares`),
+  createPreviewShare: (projectId: string, label: string) =>
+    request<{ id: string; label: string; createdAt: number; url: string }>('POST', `/projects/${projectId}/preview-shares`, { label }),
+  deletePreviewShare: (projectId: string, shareId: string) =>
+    request<{ ok: boolean }>('DELETE', `/projects/${projectId}/preview-shares/${shareId}`),
   /** Member-safe agent presence COUNT for the preview surface's pill (no connection details). */
   agentPresence: (projectId: string) =>
     request<{ connected: number }>('GET', `/projects/${projectId}/agent-presence`),

@@ -170,7 +170,7 @@ import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore, PDF_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
-import { signPreview, verifyPreview } from './preview-token.js';
+import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
@@ -1014,12 +1014,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (label.length > 63 || !/^[a-z0-9-]+$/.test(label) || label === 'www') return null;
     return label;
   };
-  /** The preview / "View live" URL for a locally-hosted site. Always the path form `/sites/<slug>/`:
-   *  it works on the app origin with no extra DNS, so it's the dependable default link. Subdomain
-   *  hosting (`<slug>.<sitesDomain>`) still SERVES the site (see `rewriteUrl` below) for anyone who has
-   *  wildcard `*.<sitesDomain>` DNS, but we don't advertise it as the link — it 404s in the browser
-   *  wherever that wildcard isn't resolvable (e.g. a bare `dind.local` host). */
-  const servedSiteUrl = (slug: string): string => `/sites/${slug}/`;
+  /** The canonical "View live" URL for a locally-hosted site. When a sites domain is configured the site
+   *  RUNS on its isolated `<slug>.<sitesDomain>` subdomain (author JS included) and the `/sites/<slug>/`
+   *  path form only 301-redirects there — so the advertised link is the subdomain itself. Scheme + any
+   *  non-standard port come from `SW_PUBLIC_URL` (the app's public origin); with no public URL set we emit
+   *  a protocol-relative link (inherits the editor's scheme). No sites domain → the path form fallback. */
+  const servedSiteUrl = (slug: string): string => {
+    if (!sitesDomain) return `/sites/${slug}/`;
+    if (opts.publicUrl) {
+      const u = new URL(opts.publicUrl);
+      return `${u.protocol}//${slug}.${sitesDomain}${u.port ? `:${u.port}` : ''}/`;
+    }
+    return `//${slug}.${sitesDomain}/`;
+  };
 
   const app = Fastify({
     // A `<slug>.<sitesDomain>` request is rewritten (BEFORE routing) into the existing path-based
@@ -4343,6 +4350,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // is never sent to it — so it's safe to RUN the imported site's own JS there. The `/sites/<slug>/`
         // PATH form shares the cookie-bearing app origin, so it stays script-inert (download-only).
         const viaSubdomain = siteSubdomainSlug(req.headers.host) === slug;
+        // RETIRE the app-origin `/sites/<slug>/` PATH form. A published page now carries the OWNER's
+        // authored inline JS (permissive published CSP), which must run ONLY on the ISOLATED
+        // `<slug>.<sitesDomain>` subdomain (the host-only session cookie is never sent there) — never on
+        // the cookie-bearing app origin. When a sites domain is configured, 301 the whole path-form
+        // request to the subdomain. Without one, the path form still serves (edge case: self-host with no
+        // wildcard DNS) but SCRIPT-INERT — the CSP below strips `'unsafe-inline'` so author JS can't run
+        // on the app origin. The subdomain rewrite lands here as `viaSubdomain` → no redirect (no loop).
+        // The redirect embeds `slug` in the target's AUTHORITY, and find-my-way percent-DECODES the path
+        // param AFTER matching — so `/sites/evil.com%2Fx/…` would arrive as slug `evil.com/x` and the `/`
+        // would terminate the authority → an OPEN REDIRECT off the trusted app origin. Only ever redirect a
+        // slug shaped like a real project slug; anything else falls through to the normal 404 project lookup.
+        if (!viaSubdomain && sitesDomain && /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) {
+          const fwdProto = firstForwardedValue(req.headers['x-forwarded-proto']);
+          const proto = fwdProto === 'http' || fwdProto === 'https' ? fwdProto : req.protocol;
+          const q = req.url.indexOf('?');
+          const query = q === -1 ? '' : req.url.slice(q);
+          const safePath = path.replace(/[\r\n\0]/g, '');
+          // Preserve a non-standard port from the current host (`dind.local:2003` → `:2003`); sitesDomain
+          // itself carries no port. Standard-port prod hosts (sitewright.buchweitz.house) have none.
+          const fwdHost = firstForwardedValue(req.headers['x-forwarded-host']) ?? req.headers.host ?? '';
+          const port = /:(\d+)$/.exec(fwdHost)?.[0] ?? '';
+          return reply.redirect(`${proto}://${slug}.${sitesDomain}${port}/${safePath}${query}`, 301);
+        }
         const siteBase = viaSubdomain ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the
         // isolated subdomain origin — never on the app origin; everything else download-only).
@@ -4368,7 +4398,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
           return reply.type(binary.contentType).send(binary.body);
         }
-        const asset = await store.readAsset(slug, path);
+        // Mirror the `readBinary` call above: a malformed slug makes `dirFor` throw — swallow it and fall
+        // through to the 404 below (a rejected-slug asset path returns 404, not an opaque 500).
+        let asset = null;
+        try {
+          asset = await store.readAsset(slug, path);
+        } catch {
+          /* invalid slug → fall through to 404 */
+        }
         if (asset !== null) {
           // Cache hard ONLY when the URL carries the per-publish `?v=` token (styles.css / consent.js / …,
           // referenced that way from the page) — a republish then changes the URL. Unversioned root files
@@ -4461,8 +4498,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // guaranteed consistent with the served HTML. It RELAXES the strict `default-src 'self'` default to
         // EXACTLY the registered origins for BOTH the subdomain and the path form (they share this handler);
         // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
-        const siteCsp = siteCspHeaderFromHtml(html);
-        if (siteCsp) reply.header('content-security-policy', siteCsp).header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
+        const metaCsp = siteCspHeaderFromHtml(html);
+        if (viaSubdomain) {
+          // Isolated subdomain origin: the OWNER's authored inline JS RUNS. An embed page carries the
+          // permissive CSP in its meta; a plain page has none → apply the base permissive published CSP.
+          reply
+            .header(
+              'content-security-policy',
+              metaCsp ??
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            )
+            .header('x-frame-options', 'DENY');
+        } else if (metaCsp) {
+          // Path-form fallback on the cookie-bearing app origin (only reached when no sites domain is
+          // configured — else we 301'd to the subdomain above). `metaCsp` derives ONLY from the PLATFORM's
+          // baked meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via website.head, which
+          // lands after <title>), so we can safely KEEP the consented frame-src/script-src origins while
+          // STRIPPING script `'unsafe-inline'` — author inline JS can never run on the app origin. The
+          // platform meta's script-src is always the literal `script-src 'self' 'unsafe-inline'[ <origins>]`.
+          reply
+            .header('content-security-policy', metaCsp.replace("script-src 'self' 'unsafe-inline'", "script-src 'self'"))
+            .header('x-frame-options', 'DENY');
+        } else {
+          // A plain page (no platform meta). A FIXED, server-controlled strict CSP: as a RESPONSE HEADER it
+          // is the enforced FLOOR (browsers apply header ∩ meta), so an author-injected `<meta>` in the body
+          // can never relax it — inline JS stays blocked and the page isn't framable.
+          reply
+            .header(
+              'content-security-policy',
+              "default-src 'self'; script-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            )
+            .header('x-frame-options', 'DENY'); // DENY: the onSend default is skipped once we set our own CSP
+        }
         // The PAGE always revalidates (it references the `?v=`-versioned assets above + changes per
         // republish), so a redeploy/republish is picked up immediately while its assets stay hard-cached.
         return reply.header('cache-control', 'no-cache').type('text/html').send(html);
@@ -4612,6 +4679,42 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/` });
       },
     );
+
+    // ── Revocable SHARE links for the DRAFT preview ──────────────────────────────────────────────────
+    // The DEFAULT preview URL (above) is member-minted + time-bucketed → it EXPIRES, so the default
+    // preview is effectively logged-in-only. To hand a live draft to an UNAUTHENTICATED client, an
+    // owner/member creates a STABLE share link here; DELETING it REVOKES the link. The token is
+    // HMAC-derived (preview-token.ts) so nothing sensitive is stored — the row is just the revocation
+    // handle + label. Share links are per-project and never expose any other project. The returned `url`
+    // is app-origin-relative; the editor makes it absolute (the preview is served from the app origin,
+    // sandboxed to an opaque origin, so a shared link can never touch the cookie-bearing session).
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/preview-shares', { config: rl(120) }, async (req) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      // An unexpected store error propagates to the app's global handler (clean 500), rather than being
+      // swallowed here into a misleading "no share links" — the same reason the count read below isn't
+      // swallowed (that would fail the max-25 limit OPEN).
+      const rows = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; label: string; createdAt: number }>;
+      return {
+        items: rows
+          .slice()
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .map((r) => ({ id: r.id, label: r.label, createdAt: r.createdAt, url: `/preview-site/${project.id}/${signShare(project.id, r.id, currentCookieSecret)}/` })),
+      };
+    });
+    app.post<{ Params: { projectId: string }; Body: { label?: string } }>('/projects/:projectId/preview-shares', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      const existing = await contentRepo.list(ctx, 'preview_share');
+      if (existing.length >= 25) return reply.code(400).send({ error: 'too many share links (max 25) — revoke some first' });
+      const id = newId();
+      const row = { id, label: String(req.body?.label ?? '').slice(0, 120), createdAt: Date.now(), createdBy: ctx.userId };
+      await contentRepo.put(ctx, 'preview_share', id, row);
+      return reply.send({ id, label: row.label, createdAt: row.createdAt, url: `/preview-site/${project.id}/${signShare(project.id, id, currentCookieSecret)}/` });
+    });
+    app.delete<{ Params: { projectId: string; shareId: string } }>('/projects/:projectId/preview-shares/:shareId', { config: rl(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      await contentRepo.remove(ctx, 'preview_share', req.params.shareId).catch(() => {});
+      return reply.send({ ok: true });
+    });
 
     // compare-to-source: screenshot the page's BUILD (its loopback preview) AND its imported SOURCE at the
     // same viewports, so an agent gets both side-by-side and self-corrects against the real site. The SOURCE
@@ -4881,7 +4984,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       { config: rl(PREVIEW_SITE_RL_MAX) },
       async (req, reply) => {
         const { projectId, sig } = req.params;
-        if (!verifyPreview(projectId, sig, currentCookieSecret)) return reply.code(404).send();
+        // Access: a valid (unexpired) DEFAULT signature — member-minted + time-bucketed, so the default
+        // preview is effectively logged-in-only (a random visitor can't mint one and a leaked URL expires)
+        // — OR a valid, NON-revoked SHARE token the owner created to hand the draft to an UNAUTHENTICATED
+        // client. Check the cheap default sig first (no DB read); only load the share handles when it fails.
+        if (!verifyPreview(projectId, sig, currentCookieSecret)) {
+          const shareRows = await contentRepo.list(
+            { userId: 'system', projectId, role: 'owner' as const },
+            'preview_share',
+          );
+          const shareIds = new Set(shareRows.map((s) => (s as { id: string }).id));
+          if (!verifyShare(projectId, sig, currentCookieSecret, shareIds)) return reply.code(404).send();
+        }
         const project = await projects.get(projectId).catch(() => null);
         // A soft-deleted project's draft preview goes offline too, even for a previously-minted signed
         // URL — otherwise a held link would keep serving the (now-deleted) draft site.

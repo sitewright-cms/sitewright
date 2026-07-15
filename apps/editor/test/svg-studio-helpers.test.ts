@@ -196,19 +196,24 @@ describe('svg-studio-helpers', () => {
       expect(re.querySelector('style')!.textContent).toContain('.cls-1{fill:#4f46e5}');
     });
 
+    // Deep-nesting stress tests: parsing thousands of nested nodes + pretty-printing is heavy on a slow CI
+    // runner, so compute prettySvg ONCE (not twice) and allow a generous timeout — the point is the
+    // ITERATIVE path not overflowing, not speed.
     it('does not overflow on deep container nesting (iterative block path)', () => {
       const depth = 3000;
       const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">${'<g>'.repeat(depth)}<rect id="leaf" width="1" height="1"/>${'</g>'.repeat(depth)}</svg>`)!;
-      expect(() => prettySvg(svg)).not.toThrow();
-      expect(prettySvg(svg)).toContain('<rect id="leaf"');
-    });
+      let pretty = '';
+      expect(() => { pretty = prettySvg(svg); }).not.toThrow();
+      expect(pretty).toContain('<rect id="leaf"');
+    }, 20000);
 
     it('does not overflow on deep inline (tspan) nesting (iterative inline path)', () => {
       const depth = 2000;
       const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>${'<tspan>'.repeat(depth)}x${'</tspan>'.repeat(depth)}</text></svg>`)!;
-      expect(() => prettySvg(svg)).not.toThrow();
-      expect(prettySvg(svg)).toContain('x');
-    });
+      let pretty = '';
+      expect(() => { pretty = prettySvg(svg); }).not.toThrow();
+      expect(pretty).toContain('x');
+    }, 20000);
   });
 
   describe('isSvgUpload', () => {

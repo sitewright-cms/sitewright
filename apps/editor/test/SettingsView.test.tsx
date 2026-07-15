@@ -23,6 +23,10 @@ vi.mock('../src/api', () => ({
     listMedia: () => Promise.resolve({ items: [] }),
     // WebsiteSection loads the "fork existing effect" snippets on mount.
     listEffectForks: () => Promise.resolve({ nav: [], button: [], preloader: [] }),
+    // WebsiteSection's PreviewShareLinks panel loads existing share links on mount.
+    listPreviewShares: () => Promise.resolve({ items: [] }),
+    createPreviewShare: () => Promise.resolve({ id: 's1', url: '/preview-site/p/s1~sig/' }),
+    deletePreviewShare: () => Promise.resolve({}),
   },
 }));
 

@@ -159,25 +159,40 @@ export const ANIMATION_JS = `(function(){
   var thrSet={};thrSet['0']=1;
   Array.prototype.forEach.call(els,function(el){thrSet[swRatio(el,'data-sw-threshold',${REVEAL_RATIO})]=1;});
   var THRESHOLDS=[];for(var tk in thrSet)THRESHOLDS.push(parseFloat(tk));
+  // Scroll ROOT for both observers. In the whole-site PREVIEW the page scrolls on <body> (the renderer sets
+  // html{overflow:hidden} body{overflow-y:auto} for a styled scrollbar in the sandboxed frame) — a NON-ROOT
+  // scroll container. With root:null, Chromium resolves the implicit root + a PERCENTAGE rootMargin against
+  // that body scrollport correctly, but WebKit/Gecko can resolve them against the (never-scrolling) layout
+  // viewport instead, so the -20% line drifts and the reveal fires far too late. Pin the root to the actual
+  // scroll container whenever the body is it; a normally-scrolling published page has body overflowY
+  // 'visible' → root stays null (the layout viewport), unchanged.
+  var scrollRoot=null;try{if(getComputedStyle(document.body).overflowY==='auto')scrollRoot=document.body;}catch(e){}
+  // RESET (replay) observer — SEPARATE from the reveal observer, over the FULL viewport (rootMargin 0). Its
+  // intersectionRatio===0 fires EXACTLY when NO part of the element is on screen, whether it left past the
+  // TOP or past the BOTTOM. Re-arm the replay only then. This is what lets replay work in BOTH directions
+  // while never blinking visible content: (a) a revealed element resting anywhere in view — including the
+  // reveal observer's bottom-20% margin band — keeps ratio>0 here, so it's never yanked back hidden; (b) an
+  // element scrolled fully off the BOTTOM still resets — which the -20% reveal observer CANNOT detect (it
+  // reads ratio 0 already at the -20% line and never fires again as the element continues off-screen).
+  var exitIo=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active'))entry.target.classList.remove('sw-animation-active');
+    });
+  },{threshold:[0],root:scrollRoot});
+  // Reveal an element once. data-sw-once="true" then stops BOTH observers watching it → it can never reset.
+  function swReveal(el){
+    el.classList.add('sw-animation-active');
+    if(el.getAttribute('${SW_TIMING_ATTRS.once}')==='true'){io.unobserve(el);exitIo.unobserve(el);}
+  }
+  // SCROLL-REVEAL observer: -20% bottom margin → REVEAL fires only once the element is MEANINGFULLY in view
+  // (intersectionRatio past data-sw-threshold / REVEAL_RATIO, past the line 20% up from the bottom) — later /
+  // more in view than a bare edge-touch. Reveal only; exitIo above owns the reset (replay).
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
       var el=entry.target;
-      // REVEAL only once the element is MEANINGFULLY in view (its intersectionRatio past data-sw-threshold /
-      // REVEAL_RATIO, and past the rootMargin line 20% up from the bottom) — later / more in view than a
-      // bare edge-touch.
-      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO})){
-        if(!el.classList.contains('sw-animation-active')){
-          el.classList.add('sw-animation-active');
-          // DEFAULT keeps observing so the reveal REPLAYS on re-entry; data-sw-once="true" plays once.
-          if(el.getAttribute('${SW_TIMING_ATTRS.once}')==='true')io.unobserve(el);
-        }
-      }else if(entry.intersectionRatio===0){
-        // FULLY out of view → reset so the reveal replays on re-entry from ANY scroll direction. Resetting
-        // ONLY on a full exit (not on partial) means the reveal never reverses while any part is on screen.
-        el.classList.remove('sw-animation-active');
-      }
+      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO}))swReveal(el);
     });
-  },{threshold:THRESHOLDS,rootMargin:'0px 0px -20% 0px'});
+  },{threshold:THRESHOLDS,rootMargin:'0px 0px -20% 0px',root:scrollRoot});
   // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
   // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){
@@ -194,8 +209,31 @@ export const ANIMATION_JS = `(function(){
       if(duration>0)el.style.transitionDuration=duration+'ms';
       var easing=EASINGS[el.getAttribute('${SW_TIMING_ATTRS.easing}')||''];
       if(easing)el.style.transitionTimingFunction=easing;
-      io.observe(el);
+      io.observe(el);      // reveal (-20% "clearly in view")
+      exitIo.observe(el);  // reset (replay) when FULLY off the viewport
     });
+    // ON-LOAD entrance: a THIRD observer against the FULL viewport (NO -20% bottom margin) reveals whatever
+    // is already MEANINGFULLY in view at load — an above-the-fold entrance (a section under a tall hero, whose
+    // fade-up transform also pushes it lower; or a card pinned to the bottom edge) animates in immediately
+    // instead of waiting for a scroll. Being an OBSERVER, not a one-shot read, it also catches a near-fold
+    // element that a late-loading lazy image shifts INTO view AFTER ready. It only reveals (never resets); the
+    // exitIo reset never fires while an element is in view, so an on-load reveal is never yanked back. At the
+    // FIRST user scroll it disconnects → the -20% observer owns reveal-as-you-scroll from then on (so scroll
+    // reveals still fire "clearly on screen", not at the bottom edge).
+    var loadArmed=false;
+    var loadIo=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(entry.target,'data-sw-threshold',${REVEAL_RATIO}))swReveal(entry.target);
+      });
+      // (loadIo shares the same scroll root as the primary observer — see scrollRoot above.)
+      // Arm the hand-off ONLY after loadIo has actually DELIVERED its first batch (IO callbacks are async —
+      // never synchronous with observe()). Otherwise an early scroll — a carried-over wheel/touch gesture, or
+      // another script's scrollTo()/scroll-restoration on load — could disconnect loadIo before it ever
+      // reveals, silently reintroducing the blank band. capture:true also catches a scroll of an INNER
+      // container (scroll events don't bubble) so loadIo never lingers past the first user scroll.
+      if(!loadArmed){loadArmed=true;addEventListener('scroll',function(){loadIo.disconnect();},{once:true,capture:true,passive:true});}
+    },{threshold:THRESHOLDS,root:scrollRoot});
+    Array.prototype.forEach.call(els,function(el){loadIo.observe(el);});
   });
 })();`;
 

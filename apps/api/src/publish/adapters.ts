@@ -28,9 +28,11 @@ const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100 MiB cap on a built site arch
  *  ssh2 multiplexes SFTP handles over one transport, so parallel puts overlap the round-trip
  *  latency; kept modest so a strict server's max-open-handles / channel limits aren't tripped. */
 const SFTP_UPLOAD_CONCURRENCY = 8;
-/** Budget for the connect-time capability probe (exec `command -v tar`). A locked-down SFTP-only
- *  target rejects exec almost immediately; the timeout only bounds a silently-hanging server. */
-const CAP_PROBE_TIMEOUT_MS = 5_000;
+/** Budget for the capability probe (exec `command -v tar`). A locked-down SFTP-only target rejects
+ *  exec almost immediately, and a tar-capable one resolves the moment its marker arrives — so this
+ *  only bounds a silently-hanging server. The probe runs concurrently with the manifest read, so
+ *  its latency is normally hidden. */
+const CAP_PROBE_TIMEOUT_MS = 3_000;
 /** Backstop for the tar fast-path exec channel: if the remote neither closes nor errors within
  *  this window (a stalled/hostile server), we abort + destroy the channel. On abort `upload()`
  *  gracefully falls back to per-file fastPut, so a false trip only costs a slower deploy. Generous
@@ -114,8 +116,9 @@ export interface TransportCaps {
  */
 export interface DeployTransport {
   connect(): Promise<void>;
-  /** Transfer capabilities, valid after connect(). FTP/FTPS are always `{ tar: false }`. */
-  capabilities(): TransportCaps;
+  /** Transfer capabilities, resolved after connect(). Async so the (SFTP) probe can run concurrently
+   *  with the manifest read instead of blocking connect. FTP/FTPS are always `{ tar: false }`. */
+  capabilities(): Promise<TransportCaps>;
   /** Reads the previously-deployed manifest from remoteDir, or null when absent/unreadable. */
   readManifest(remoteDir: string): Promise<DeployManifest | null>;
   /** Writes the manifest into remoteDir — called last, after the uploads + prune succeed. */
@@ -131,7 +134,7 @@ export interface DeployTransport {
 /** A deploy progress event streamed to the UI. `index`/`total` drive a determinate bar; `bytes` +
  *  `elapsedMs` let the UI show throughput; `strategy` names the transfer mode. */
 export interface DeployProgress {
-  phase: 'connecting' | 'uploading' | 'done';
+  phase: 'connecting' | 'checking' | 'uploading' | 'done';
   total: number;
   index: number;
   file?: string;
@@ -237,7 +240,7 @@ class FtpTransport implements DeployTransport {
       secure: this.cfg.protocol === 'ftps', // explicit FTPS
     });
   }
-  capabilities(): TransportCaps {
+  async capabilities(): Promise<TransportCaps> {
     return { tar: false }; // FTP has no exec channel — always the per-file path
   }
   async readManifest(remoteDir: string): Promise<DeployManifest | null> {
@@ -296,6 +299,7 @@ class FtpTransport implements DeployTransport {
 class SftpTransport implements DeployTransport {
   private readonly client = new SftpClientImpl();
   private caps: TransportCaps = { tar: false };
+  private capsPromise?: Promise<TransportCaps>;
   constructor(private readonly cfg: DeployConfig) {}
   async connect(): Promise<void> {
     const opts: Parameters<SftpClientImpl['connect']>[0] = {
@@ -316,10 +320,17 @@ class SftpTransport implements DeployTransport {
     // declines. Not surfaced in @types/ssh2-sftp-client's ConnectOptions, but ssh2 reads it.
     (opts as { compress?: boolean }).compress = true;
     await this.client.connect(opts);
-    this.caps = { tar: await this.probeTar() };
   }
-  capabilities(): TransportCaps {
-    return this.caps;
+  /** Lazily probe for tar (memoized). Kicked off by the orchestrator right after connect so it runs
+   *  concurrently with the manifest read over the multiplexed connection — its latency is hidden. */
+  async capabilities(): Promise<TransportCaps> {
+    if (!this.capsPromise) {
+      this.capsPromise = this.probeTar().then((tar) => {
+        this.caps = { tar }; // cached so upload()'s tar-branch guard can read it synchronously
+        return this.caps;
+      });
+    }
+    return this.capsPromise;
   }
   /** Opens an exec channel and checks for `tar`. Any failure (exec refused by an SFTP-only jail,
    *  tar absent, timeout) resolves false → the per-file fastPut path is used instead. */
@@ -349,8 +360,11 @@ class SftpTransport implements DeployTransport {
           let out = '';
           ch.on('data', (chunk: Buffer) => {
             if (out.length < MAX_EXEC_CAPTURE_BYTES) out += chunk.toString();
+            // Resolve as soon as the marker lands — no need to wait for the channel to close (some
+            // servers delay 'close' by seconds after the command has already produced its output).
+            if (/SW_TAR_OK/.test(out)) finish(true);
           });
-          ch.on('close', () => finish(/SW_TAR_OK/.test(out)));
+          ch.on('close', () => finish(/SW_TAR_OK/.test(out))); // no marker → tar absent
           ch.on('error', () => finish(false));
         });
       } catch {
@@ -535,12 +549,18 @@ export async function deploySite(
     onProgress?.({ phase: 'connecting', total, index });
     await transport.connect();
 
-    const prev = incremental ? await transport.readManifest(config.remoteDir) : null;
+    // Probe the target's transfer capabilities AND read the prior manifest concurrently — both run
+    // over the one (multiplexed) connection, so the probe's latency hides behind the manifest read.
+    onProgress?.({ phase: 'checking', total, index });
+    const [caps, prev] = await Promise.all([
+      transport.capabilities(),
+      incremental ? transport.readManifest(config.remoteDir) : Promise.resolve(null),
+    ]);
     const { upload, remove } = diffManifests(prev, nextManifest);
     const uploadSet = new Set(upload);
     const changed = files.filter((f) => uploadSet.has(toPosixRel(f.rel)));
     const skipped = total - changed.length;
-    const strategy = chooseStrategy(transport.capabilities(), changed.length);
+    const strategy = chooseStrategy(caps, changed.length);
 
     // Unchanged files are already on the target — count them as done so the bar starts partly filled.
     index = skipped;

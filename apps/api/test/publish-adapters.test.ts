@@ -99,7 +99,7 @@ function makeFake(opts: { caps?: TransportCaps; prev?: DeployManifest | null } =
   const written: DeployManifest[] = [];
   const transport: DeployTransport = {
     connect: async () => void calls.push('connect'),
-    capabilities: () => opts.caps ?? { tar: false },
+    capabilities: async () => opts.caps ?? { tar: false },
     readManifest: async () => {
       calls.push('read');
       return opts.prev ?? null;
@@ -190,11 +190,11 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     expect(result.skipped).toBe(0);
   });
 
-  it('streams connecting → uploading (with strategy/skipped/bytes) → done progress', async () => {
+  it('streams connecting → checking → uploading (with strategy/skipped/bytes) → done progress', async () => {
     const events: DeployProgress[] = [];
     const fake = makeFake({ prev: null });
     await deploySite(siteDir, cfg, () => fake.transport, (e) => events.push(e));
-    expect(events.map((e) => e.phase)).toEqual(['connecting', 'uploading', 'uploading', 'uploading', 'done']);
+    expect(events.map((e) => e.phase)).toEqual(['connecting', 'checking', 'uploading', 'uploading', 'uploading', 'done']);
     const done = events.at(-1)!;
     expect(done.index).toBe(done.total);
     expect(done.strategy).toBe('files');
@@ -222,7 +222,7 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     let closed = false;
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: () => ({ tar: false }),
+      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {

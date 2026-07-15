@@ -128,7 +128,7 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
         connects += 1;
         lifecycle.push('connect');
       },
-      capabilities: () => ({ tar: false }),
+      capabilities: async () => ({ tar: false }),
       readManifest: async () => prev,
       writeManifest: async () => void lifecycle.push('write'),
       upload: async (remoteDir, files: ReadonlyArray<SiteFile>, strategy) => {
@@ -182,7 +182,7 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
         lifecycle.push('connect');
         throw new Error('connection refused');
       },
-      capabilities: () => ({ tar: false }),
+      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {
@@ -204,7 +204,7 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
   it('does not let a close() failure mask a successful upload (best-effort close is swallowed)', async () => {
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: () => ({ tar: false }),
+      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {},
@@ -314,7 +314,7 @@ describe('SFTP hostFingerprint pinning (verify-on-mismatch)', () => {
     const seen: Array<string | undefined> = [];
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: () => ({ tar: false }),
+      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {},

@@ -26,10 +26,12 @@ describe('decorateNav', () => {
     expect(rich).toContain('<strong>Book</strong>'); // basic inline HTML passes through
   });
 
-  it('falls back to the escaped label when a rich label fails validation (e.g. a <script>)', () => {
-    const out = decorateNav(nav([{ label: '<script>alert(1)</script>', path: '#x', rich: true }]));
-    expect(out.header[0]!.labelHtml).not.toContain('<script');
-    expect(out.header[0]!.labelHtml).toContain('&lt;script&gt;');
+  it('falls back to the escaped label when a rich label fails validation (e.g. an inline on* handler)', () => {
+    // NOTE: a bare <script> is now VALID author content (it runs only on the isolated published origin),
+    // so it is no longer the rejection example here — an inline event-handler attribute still is.
+    const out = decorateNav(nav([{ label: '<span onclick="alert(1)">x</span>', path: '#x', rich: true }]));
+    expect(out.header[0]!.labelHtml).not.toContain('<span onclick'); // no LIVE handler element
+    expect(out.header[0]!.labelHtml).toContain('&lt;span'); // fell back to the escaped label
   });
 
   it('decorates nested children too', () => {

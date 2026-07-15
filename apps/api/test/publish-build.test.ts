@@ -1093,12 +1093,12 @@ describe('buildSite', () => {
       buildSite({
         publishedAt: '2026-05-29T00:00:00.000Z',
         outDir,
-        snippets: { evil: '<div>{{x}}</div><script>steal()</script>' },
+        snippets: { evil: '<div onclick="steal()">{{x}}</div>' },
         bundle: bundle({
           pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> evil}}</div>' }],
         }),
       }),
-    ).rejects.toThrow(/page "home" template error.*script/i); // pins the cause: the validator rejects <script>
+    ).rejects.toThrow(/page "home" template error.*handler/i); // pins the cause: the validator rejects <script>
   });
 
   it('decodes the publish-time JSON snapshot into {{ website.json_data }} (source page + slot)', async () => {
@@ -1196,7 +1196,7 @@ describe('buildSite', () => {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: { primary: '#0a7' } },
             settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { bottom: '<div>{{website.json}}</div><script>x()</script>' },
+            website: { bottom: '<div onclick="x()">{{website.json}}</div>' },
           },
           pages: [{ id: 'home', path: '', title: 'Home', source: '<div>h</div>' }],
         }),
@@ -1322,7 +1322,7 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { mainNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><script>x()</script>' },
+            website: { mainNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><b onclick="x()">x</b>' },
           },
           pages: [{ id: 'home', path: '', title: 'Home', source: '<div>x</div>' }],
         }),
@@ -1355,7 +1355,7 @@ describe('buildSite', () => {
         publishedAt: '2026-05-29T00:00:00.000Z',
         outDir,
         bundle: bundle({
-          pages: [{ id: 'bad', path: '', title: 'Bad', source: '<script>x()</script>' }],
+          pages: [{ id: 'bad', path: '', title: 'Bad', source: '<div onclick="x()">x</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "bad"/);

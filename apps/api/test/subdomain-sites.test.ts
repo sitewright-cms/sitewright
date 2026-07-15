@@ -74,11 +74,13 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(www.body).not.toContain('Hello world');
   });
 
-  it('the /sites/<slug>/ PATH form still works (coexists)', async () => {
+  it('the /sites/<slug>/ PATH form 301-redirects to the isolated subdomain (retired on the app origin)', async () => {
     await seedAndPublish();
+    // The app-origin path form is RETIRED: a published page now carries the owner's inline JS, which must
+    // run only on the isolated subdomain — so the path form redirects there instead of serving it.
     const r = await client.inject({ method: 'GET', url: `/sites/${slug}/`, headers: { host: DOMAIN } });
-    expect(r.statusCode).toBe(200);
-    expect(r.body).toContain('Hello world');
+    expect(r.statusCode).toBe(301);
+    expect(r.headers.location).toBe(`http://${slug}.${DOMAIN}/`);
   });
 
   it('publishStatus returns the PATH-form url as the preview link even when sitesDomain is set', async () => {
@@ -106,12 +108,12 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     // Content-type depends on Host under an immutable cache → must vary on Host.
     expect(viaSub.headers['vary']).toBe('Host');
 
-    // Via the app-origin `/sites/<slug>/` PATH form (no sitesDomain host) it stays download-only +
-    // inert — the platform origin is cookie-bearing, so foreign JS must never execute there.
-    const viaPath = await client.inject({ method: 'GET', url: `/sites/${slug}/_assets/imp/file/app.js` });
-    expect(viaPath.statusCode).toBe(200);
-    expect(viaPath.headers['content-type']).toContain('application/octet-stream');
-    expect(viaPath.headers['content-disposition']).toContain('attachment');
+    // Via the app-origin `/sites/<slug>/` PATH form: RETIRED → the whole request 301-redirects to the
+    // isolated subdomain. The app origin never serves the published tree (page OR asset), so foreign JS
+    // can never execute on the cookie-bearing origin — the redirect is the boundary.
+    const viaPath = await client.inject({ method: 'GET', url: `/sites/${slug}/_assets/imp/file/app.js`, headers: { host: DOMAIN } });
+    expect(viaPath.statusCode).toBe(301);
+    expect(viaPath.headers.location).toBe(`http://${slug}.${DOMAIN}/_assets/imp/file/app.js`);
   });
 
   it('routes a form post to the platform /f/ endpoint even when reached via the subdomain host', async () => {

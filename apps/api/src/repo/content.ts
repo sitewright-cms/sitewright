@@ -58,8 +58,19 @@ export const SettingsSchema = z.preprocess(
 export type Settings = z.infer<typeof SettingsSchema>;
 
 /** Per-kind validation schema. Map (not object index) to avoid dynamic-key access. */
+// A REVOCABLE preview SHARE handle. The token itself is HMAC-derived (preview-token.ts) — not stored;
+// this row is just the id + label the link is bound to, so deleting it revokes the share. Managed via
+// the dedicated /preview-shares routes; excluded from export/import (it's a per-instance access grant).
+const PreviewShareSchema = z.object({
+  id: z.string().max(40),
+  label: z.string().max(120).default(''),
+  createdAt: z.number().int(),
+  createdBy: z.string().max(200).optional(),
+});
+
 const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['settings', SettingsSchema],
+  ['preview_share', PreviewShareSchema],
   ['page', PageSchema],
   ['template', TemplateSchema],
   // Code-first reusable Handlebars fragment (the templating pivot's partial), included

@@ -435,7 +435,7 @@ describe('preview API — code-first source page', () => {
   it('rejects a STATICALLY-unsafe slot at save, and preview still skips a RENDER-failing slot', async () => {
     const { t, projectId } = await setup('broken@acme.test', poolApp);
     const base = `/projects/${projectId}`;
-    // A <script> in a chrome slot is caught by the static validator NOW at SAVE (400, slot named) — it no
+    // An inline on* handler in a chrome slot is caught by the static validator NOW at SAVE (400, slot named) — it no
     // longer saves silently and blanks/409s only at publish (which made compare_to_source serve a stale build).
     const rejected = await poolApp.inject({
       method: 'PUT',
@@ -443,7 +443,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         identity: { name: 'Acme', colors: {} },
-        website: { mainNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
+        website: { mainNav: '<div onclick="x()">x</div>', footer: '<div class="footer">ok</div>' },
         settings: {},
       },
     });

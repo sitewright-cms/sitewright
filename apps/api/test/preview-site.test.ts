@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +9,6 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { PREVIEW_SITE_RUNTIME_JS } from '../src/http/preview-site-runtime.js';
-import { neutralizeInlineScript } from '@sitewright/blocks';
 import { buildSite } from '../src/publish/build.js';
 
 // ---------------------------------------------------------------------------
@@ -69,41 +67,38 @@ describe('buildSite preview options', () => {
     expect(home).toContain('window.__SW_PREVIEW_MARKER__=1;');
   });
 
-  it('preview runtime hash is added to a page that bakes a consent meta CSP (so the inline runtime is not CSP-blocked)', async () => {
-    // A cross-origin author <iframe> (e.g. a Maps embed) bakes a `<meta http-equiv=CSP>` with
-    // `script-src 'self'`. The whole-site preview is served sandboxed and the browser intersects header ∩
-    // meta, so a bare `'self'` silently blocks the inline runtime. The build must feed the runtime's own
-    // sha256 into that meta's script-src. (Regression: droombos' Maps embed → dead preview.)
+  it('an embed page bakes script-src with unsafe-inline so owner + preview-runtime inline JS runs (no hash)', async () => {
+    // A cross-origin author <iframe> (e.g. a Maps embed) bakes a `<meta http-equiv=CSP>`. Its script-src now
+    // carries `'unsafe-inline'` so the OWNER's authored inline JS runs on the isolated published origins,
+    // and the sandboxed preview runtime runs too. We deliberately DON'T add a per-runtime sha256 hash: a
+    // hash makes `'unsafe-inline'` be IGNORED (blocking author scripts). So the meta is now IDENTICAL
+    // between the preview and the published build.
     const embedPage = [
       { id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1><iframe src="https://www.google.com/maps/embed?pb=1" title="map"></iframe>' },
     ] as unknown as ProjectBundle['pages'];
-    const hash = createHash('sha256').update(PREVIEW_SITE_RUNTIME_JS, 'utf8').digest('base64');
-
     // The meta `content` is attribute-escaped (`'` → `&#39;`); decode it back to inspect directives.
     const metaCsp = (html: string): string | null => {
       const m = html.match(/http-equiv="Content-Security-Policy" content="([^"]*)"/);
       return m ? m[1]!.replace(/&#39;/g, "'") : null;
     };
-
-    // Preview build → meta CSP carries the runtime hash on script-src.
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: PREVIEW_SITE_RUNTIME_JS, bundle: bundle(embedPage) });
     const preview = metaCsp(await readFile(join(outDir, 'index.html'), 'utf8'));
     expect(preview, 'preview page must bake a consent meta CSP for the embed').not.toBeNull();
     const scriptSrc = preview!.split('; ').find((d) => d.split(' ')[0] === 'script-src')!;
-    expect(scriptSrc).toBe(`script-src 'self' 'sha256-${hash}'`); // hash appended, nothing else touched
+    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'"); // author + runtime inline JS; no hash
+    expect(preview!).not.toContain('sha256-');
     expect(preview!).toContain("frame-src 'self' https://www.google.com"); // embed origin preserved
 
-    // Published build (no previewRuntime) → identical meta MINUS the hash: no leak into shipped HTML.
+    // Published build (no previewRuntime) → BYTE-IDENTICAL meta now (no preview-only hash to differ).
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(embedPage) });
     const published = metaCsp(await readFile(join(outDir, 'index.html'), 'utf8'))!;
-    expect(published).not.toContain('sha256-');
-    expect(published).toBe(preview!.replace(` 'sha256-${hash}'`, '')); // byte-identical apart from the hash
+    expect(published).toBe(preview!);
   });
 
-  it('the runtime CSP hash tracks the NEUTRALIZED inlined bytes (safe if the runtime ever holds </script)', async () => {
-    // renderDocument neutralizes `</script` → `<\/script` when it inlines a script. A runtime carrying that
-    // sequence would otherwise hash differently from the bytes the browser sees. The build must hash the
-    // post-neutralization form (via the SHARED neutralizeInlineScript helper), so the two never drift.
+  it('the inlined preview runtime neutralizes a </script in its bytes (no early tag close)', async () => {
+    // renderDocument neutralizes `</script` → `<\/script` when it inlines a script, so a runtime carrying
+    // that sequence can't close its own <script> tag early. (No CSP hash is involved anymore — the runtime
+    // runs via the meta's `'unsafe-inline'`.)
     const runtime = 'window.__x="</script>";';
     const embedPage = [
       { id: 'home', path: '', title: 'Home', source: '<iframe src="https://www.google.com/maps/embed?pb=1" title="map"></iframe>' },
@@ -111,9 +106,6 @@ describe('buildSite preview options', () => {
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: runtime, bundle: bundle(embedPage) });
     const html = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(html).toContain('window.__x="<\\/script>"'); // emitted bytes are neutralized
-    const expected = createHash('sha256').update(neutralizeInlineScript(runtime), 'utf8').digest('base64');
-    const meta = html.match(/http-equiv="Content-Security-Policy" content="([^"]*)"/)![1]!.replace(/&#39;/g, "'");
-    expect(meta).toContain(`sha256-${expected}`);
   });
 
   it('a preview build scrolls on <body> (real sub-frame scrollbar); a published build scrolls the viewport', async () => {

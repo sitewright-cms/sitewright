@@ -124,7 +124,7 @@ describe('render-template API (isolated worker)', () => {
       projectId,
       kind: 'snippet',
       entityId: 'evil',
-      data: { id: 'evil', name: 'evil', source: '<script>steal()</script>' },
+      data: { id: 'evil', name: 'evil', source: '<div onclick="steal()">x</div>' },
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -135,7 +135,7 @@ describe('render-template API (isolated worker)', () => {
       payload: { template: '<div>{{> evil}}</div>' },
     });
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/script/i);
+    expect((res.json() as { error: string }).error).toMatch(/handler|onclick/i);
   });
 
   it('renders a STORED source-page by pageId (the page = template model)', async () => {

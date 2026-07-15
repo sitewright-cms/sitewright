@@ -550,7 +550,7 @@ export interface UpdateDeployTargetConfig {
  *  report the transfer diagnostics — `strategy` (tar fast-path vs per-file), `bytes`, `elapsedMs`
  *  (for throughput), and `skipped` (unchanged files served from the manifest). */
 export interface DeployProgressEvent {
-  phase: 'connecting' | 'uploading' | 'preparing' | 'committing' | 'pushing' | 'done';
+  phase: 'connecting' | 'checking' | 'uploading' | 'preparing' | 'committing' | 'pushing' | 'done';
   total?: number;
   index?: number;
   file?: string;

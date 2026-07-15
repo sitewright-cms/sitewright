@@ -66,7 +66,7 @@ afterEach(async () => {
 function capturing(dest: string): (cfg: DeployConfig) => DeployTransport {
   return () => ({
     async connect() {},
-    capabilities: () => ({ tar: false }),
+    capabilities: async () => ({ tar: false }),
     async readManifest() {
       return null; // no prior manifest → deploySite uploads every file (a full capture)
     },

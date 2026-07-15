@@ -15,6 +15,8 @@ function phaseLabel(s: Extract<Status, { kind: 'running' }>, target: DeployTarge
   switch (s.phase) {
     case 'connecting':
       return 'Connecting…';
+    case 'checking':
+      return 'Checking target & changes…';
     case 'preparing':
       return 'Preparing the build…';
     case 'committing':
@@ -131,8 +133,9 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
   }, [project.id, target.id]);
 
   const running = status.kind === 'running';
-  // Determinate only when a per-file total is known (FTP/SFTP); git phases stay indeterminate.
-  const pct = running && status.total > 0 ? Math.round((status.index / status.total) * 100) : undefined;
+  // Determinate only once we're actually uploading with a known total; connecting/checking and git
+  // phases show an indeterminate (animated) bar rather than a stuck-at-zero one.
+  const pct = running && status.phase === 'uploading' && status.total > 0 ? Math.round((status.index / status.total) * 100) : undefined;
   const showRunningDiag = running && !isGit && (!!status.strategy || (status.bytes ?? 0) > 0);
   const showDoneDiag = status.kind === 'done' && status.protocol !== 'git' && (!!status.strategy || (status.bytes ?? 0) > 0);
 

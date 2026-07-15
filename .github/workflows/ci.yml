@@ -63,7 +63,20 @@ jobs:
       #   targets, so a blanket override is NOT viable; re-check on vite bumps.
       #   (Our own gen-vendor esbuild is already >=0.28.1.)
       - name: Audit dependencies
-        run: pnpm audit --audit-level high
+        # `pnpm audit` (pnpm 9) calls npm's quick-audit endpoint, which npm RETIRED
+        # (HTTP 410 -> ERR_PNPM_AUDIT_BAD_RESPONSE). That is an npm-side infra change,
+        # not a vulnerability, and there is nothing to act on until pnpm ships support
+        # for the bulk advisory endpoint. Treat ONLY that specific transport error as a
+        # (warned) skip; a real high/critical advisory still fails the build.
+        run: |
+          set +e
+          out="$(pnpm audit --audit-level high 2>&1)"; code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ] && printf '%s' "$out" | grep -q 'ERR_PNPM_AUDIT_BAD_RESPONSE'; then
+            echo "::warning::pnpm audit skipped — npm retired the audit endpoint (410); re-enable when pnpm uses the bulk advisory endpoint"
+            exit 0
+          fi
+          exit $code
 
       # Guard against hand-edits / upstream drift of the generated brand-icons set.
       - name: Check generated brand icons are up to date

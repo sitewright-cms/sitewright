@@ -279,9 +279,16 @@ const https = (hosts: string[]): string => hosts.map((h) => `https://${h}`).join
 export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): string | undefined {
   const o = consentCspOrigins(consent, extraOrigins);
   if (!hasAny(o)) return undefined;
+  // `script-src` includes `'unsafe-inline'` so the OWNER'S authored JS (inline `<script>` in a page body or
+  // website.head/scripts) runs on the sites the user actually ships to — their own server (export), the
+  // isolated `<slug>.<sitesDomain>` subdomain, and the sandboxed preview. It is SAFE there: those are
+  // isolated origins (the app's session cookie is host-only → never sent to the subdomain; the preview is an
+  // opaque sandbox; export is the user's own domain). The cookie-bearing app origin no longer serves the
+  // published site (the `/sites/<slug>/` path is retired → redirects to the subdomain), so author JS can
+  // never run on it. `'self'` still blocks arbitrary 3rd-party script ORIGINS unless consent-allow-listed.
   const parts = [
     "default-src 'self'",
-    `script-src 'self'${o.script.length ? ' ' + https(o.script) : ''}`,
+    `script-src 'self' 'unsafe-inline'${o.script.length ? ' ' + https(o.script) : ''}`,
     'img-src \'self\' data: https:',
     `style-src 'self' 'unsafe-inline'${o.style.length ? ' ' + https(o.style) : ''}`,
     `font-src 'self'${o.font.length ? ' ' + https(o.font) : ''}`,

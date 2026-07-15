@@ -115,14 +115,14 @@ describe('consent CSP — author origins + integration frameOrigins', () => {
 
   it('routes a custom integration frameOrigins into frame-src (SDK widget iframe)', () => {
     const csp = buildSiteCspHeader(consent([{ id: 'chat', name: 'Chat', category: 'functional', preset: 'custom', src: 'https://w.example.com/c.js', frameOrigins: ['*.intercom.io'] }]))!;
-    expect(csp).toContain("script-src 'self' https://w.example.com");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' https://w.example.com");
     expect(csp).toContain('frame-src');
     expect(csp).toContain('https://*.intercom.io');
   });
 
   it('combines registry script-src AND author frame-src in one CSP', () => {
     const csp = buildSiteCspHeader(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]), { frame: ['www.google.com'] })!;
-    expect(csp).toContain("script-src 'self' https://www.googletagmanager.com");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' https://www.googletagmanager.com");
     expect(csp).toContain("frame-src 'self' https://www.google.com");
   });
 
@@ -146,7 +146,7 @@ describe('consent CSP — author origins + integration frameOrigins', () => {
     const hash = "'sha256-DD5Sdxwuoqmw0fFyY5jbAInFyoIfiX0GX6GxtgKP0qU='";
     const meta = buildConsentMetaCsp(undefined, { frame: ['www.google.com'] }, [hash])!;
     const scriptSrc = meta.split('; ').find((d) => d.startsWith('script-src'))!;
-    expect(scriptSrc).toBe(`script-src 'self' ${hash}`); // hash lands on script-src
+    expect(scriptSrc).toBe(`script-src 'self' 'unsafe-inline' ${hash}`); // hash lands on script-src
     expect(meta.split('; ').find((d) => d.startsWith('frame-src'))).toContain('https://www.google.com'); // frame-src untouched
     // Without the extra arg (the publish path), the meta is byte-identical — no hash leaks into published HTML.
     expect(buildConsentMetaCsp(undefined, { frame: ['www.google.com'] })).toBe(meta.replace(` ${hash}`, ''));
@@ -246,16 +246,18 @@ describe('CSP derivation (the security boundary)', () => {
     expect(o.connect).toContain('*.intercom.io');
   });
 
-  it('builds a header CSP that adds ONLY specific https origins — never unsafe-inline/eval/*', () => {
+  it('allows author inline JS (unsafe-inline) + only specific https origins — never unsafe-eval/*', () => {
     const csp = buildSiteCspHeader(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]))!;
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("script-src 'self' https://www.googletagmanager.com");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' https://www.googletagmanager.com");
     expect(csp).toContain('connect-src');
     expect(csp).toContain('https://www.google-analytics.com');
     expect(csp).toContain("frame-ancestors 'none'");
-    // The SCRIPT-src must never relax inline/eval/wildcard (style-src keeps 'unsafe-inline', the platform default).
+    // script-src now allows the OWNER's inline JS ('unsafe-inline') — safe on the isolated published origins
+    // (subdomain/export/sandboxed preview; the app origin no longer serves published pages). It must STILL
+    // never relax eval or a bare wildcard, and only consent-allow-listed 3rd-party origins are added.
     const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'))!;
-    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).toContain("'unsafe-inline'");
     expect(scriptSrc).not.toContain("'unsafe-eval'");
     expect(scriptSrc).not.toMatch(/\*(?!\.)/); // no bare wildcard (a `*.host` wildcard is allowed)
   });
@@ -270,7 +272,7 @@ describe('CSP derivation (the security boundary)', () => {
   it('the meta CSP matches the header minus frame-ancestors (meta ignores it)', () => {
     const c = consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]);
     const meta = buildConsentMetaCsp(c)!;
-    expect(meta).toContain("script-src 'self' https://www.googletagmanager.com");
+    expect(meta).toContain("script-src 'self' 'unsafe-inline' https://www.googletagmanager.com");
     expect(meta).not.toContain('frame-ancestors');
     expect(buildConsentMetaCsp({ enabled: true } as Consent)).toBeUndefined();
   });

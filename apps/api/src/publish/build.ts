@@ -1,4 +1,5 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
 import type { SizeToken } from '@sitewright/image-pipeline';
@@ -353,10 +354,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // longer feed a per-runtime sha256 hash into the meta: per the CSP spec, a hash in the source list makes
   // `'unsafe-inline'` be ignored, which would then block the author's own inline scripts in the (sandboxed,
   // opaque, safe) preview. The sandbox — not a hash allow-list — is the preview's security boundary.
-  // Per-publish cache-bust token (the publish timestamp's digits) appended as `?v=` to the fixed-name
-  // runtime assets (styles.css / consent.js / components.js / …). A republish writes fresh assets AND a new
-  // token → the browser cache busts instantly, while the assets are served `immutable` between publishes.
-  const assetVer = publishedAt.replace(/\D/g, '') || '0';
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -530,6 +527,27 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // consumes — so preview + deploy can NEVER ship a different set (the drift that motivated this). Every
     // entry is pure only-used-ships via its marker, EXCEPT consent (its settings-aware gate above).
     const usedBodyEffects = BODY_EFFECT_RUNTIMES.filter((r) => (r.key === 'consent' ? usesConsentRuntime : usesMarker(r.uses)));
+    // Cache-bust token (`?v=`) for the shared, fixed-name runtime assets. Derived from the CONTENT
+    // that determines those assets — the utility classes + brand theme (→ styles.css), and the
+    // component bundle + used effect runtimes + standalone runtime scripts (→ the platform *.js) —
+    // rather than the publish TIME. So a rebuild whose runtime assets are byte-identical keeps the
+    // same token → byte-identical page heads → an incremental deploy re-uploads only the pages whose
+    // OWN body changed, not every page on every publish. It still busts the instant any of these
+    // inputs changes (a class added, a brand tweak, a platform runtime upgrade), and the assets stay
+    // served `immutable` between publishes. KEEP IN SYNC: a new `?v=`-versioned runtime asset must add
+    // its source to this digest, or its cache won't bust when the platform changes it.
+    const assetVer = createHash('sha256')
+      .update(classNames.join(' '))
+      .update('\x00')
+      .update(JSON.stringify(brand ?? null))
+      .update('\x00')
+      .update(components.js ?? '')
+      .update('\x00')
+      .update(usedBodyEffects.map((r) => r.js ?? '').join('\x00'))
+      .update('\x00')
+      .update([THEME_TOGGLE_JS, NAV_LINK_JS, PRELOADER_JS, BACK_TO_TOP_JS, STICKY_HEADER_JS, SCROLLSPY_JS, NAV_EFFECTS_JS, BUTTON_EFFECTS_JS].join('\x00'))
+      .digest('hex')
+      .slice(0, 16);
     // No-JS un-hide for any used runtime that hides content from first paint (svg-anim's no-FOUC rule +
     // the entrance-animation first-paint hide): one `<noscript><style>` at body-end so a scripting-off
     // visitor — whom the runtime can never reveal — still sees the content (keeps the PE-first "never hide

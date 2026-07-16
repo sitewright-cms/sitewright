@@ -55,9 +55,40 @@ describe('buildSite', () => {
     expect(home).toContain('<body><main id="page-content"><div class="grid"><h1>Acme</h1></div></main>');
     expect(home).not.toContain('<section data-sw-block="Section"');
     // The source's literal Tailwind class is compiled into the shared, root-linked sheet, with a
-    // cache-bust `?v=` token = the publish timestamp's digits (so a republish busts the browser cache).
-    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=20260529000000000"');
+    // content-hash cache-bust `?v=` token (busts iff the runtime assets change; stable otherwise).
+    expect(home).toMatch(/<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]{16}"/);
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+  });
+
+  it('cache-bust token is content-derived: same content across publishes → byte-identical pages (incremental-deploy friendly)', async () => {
+    const homeSrc = '<div class="grid"><h1>{{ company.name }}</h1></div>';
+    const pages = [{ id: 'home', path: '', title: 'Home', source: homeSrc }];
+    const outB = await mkdtemp(join(tmpdir(), 'sw-publish-b-'));
+    const outC = await mkdtemp(join(tmpdir(), 'sw-publish-c-'));
+    try {
+      // Two publishes of the SAME content, at DIFFERENT times.
+      await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle({ pages }) });
+      await buildSite({ publishedAt: '2027-11-11T11:11:11.111Z', outDir: outB, bundle: bundle({ pages }) });
+      const a = await readFile(join(outDir, 'index.html'), 'utf8');
+      const b = await readFile(join(outB, 'index.html'), 'utf8');
+      // Byte-identical → an incremental deploy re-uploads nothing (the old publish-timestamp token
+      // re-busted every page on every publish, forcing a full HTML re-upload each time).
+      expect(a).toBe(b);
+      const token = a.match(/styles\.css\?v=([0-9a-f]{16})/)?.[1];
+      expect(token).toBeTruthy();
+
+      // A content change that adds a utility class → styles.css changes → the token busts.
+      await buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir: outC,
+        bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', source: '<div class="grid flex"><h1>{{ company.name }}</h1></div>' }] }),
+      });
+      const c = await readFile(join(outC, 'index.html'), 'utf8');
+      expect(c.match(/styles\.css\?v=([0-9a-f]{16})/)?.[1]).not.toBe(token);
+    } finally {
+      await rm(outB, { recursive: true, force: true });
+      await rm(outC, { recursive: true, force: true });
+    }
   });
 
   it('resolves the `pages` namespace — cross-page data by slug path — at publish', async () => {

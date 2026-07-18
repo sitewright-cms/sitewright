@@ -105,9 +105,18 @@ export const DeployTargetSchema = z
     name: z.string().min(1).max(120),
     protocol: DeployProtocolSchema,
     // ── Remote-transport fields (FTP/FTPS/SFTP) — absent on a `local`/`git` target ──
-    host: z.string().min(1).max(255).optional(),
+    // host is passed to the `ssh` CLI as a positional (rsync path), so restrict it to a real
+    // hostname/IP charset and forbid a leading `-` — otherwise a value like `-oProxyCommand=…` would
+    // be parsed by ssh's own getopt as an option (local command execution). Parity with RepoUrlSchema.
+    host: z
+      .string()
+      .min(1)
+      .max(255)
+      .regex(/^[A-Za-z0-9]([A-Za-z0-9.:_-]*[A-Za-z0-9])?\.?$/, 'host must be a valid hostname or IP address')
+      .optional(),
     port: z.number().int().min(1).max(65535).optional(),
-    user: z.string().min(1).max(255).optional(),
+    // user reaches ssh as the `-l` value (opaque), but forbid a leading `-` for defense in depth.
+    user: z.string().min(1).max(255).refine((v) => !v.startsWith('-'), 'user must not start with "-"').optional(),
     remoteDir: z
       .string()
       .min(1)
@@ -132,6 +141,9 @@ export const DeployTargetSchema = z
     previewToken: PreviewTokenSchema.optional(),
     /** Minify each page's HTML at build (collapse whitespace, drop comments). Off by default. */
     minifyHtml: z.boolean().optional(),
+    /** Transfer with rsync-over-SSH (delta + compression, one connection) instead of per-file SFTP —
+     *  for a hardened SFTP server that refuses exec but permits rsync. SFTP-only; off by default. */
+    useRsync: z.boolean().optional(),
     // ── git fields (only meaningful on a `git` target) ──
     /** The remote repository — http(s) (token auth) or ssh (key auth). */
     repoUrl: RepoUrlSchema.optional(),
@@ -152,6 +164,23 @@ export const DeployTargetSchema = z
   .refine((t) => t.protocol !== 'local' || (!t.host && !t.user && !t.secret && !t.repoUrl && !t.branch), {
     message: 'a local hosting target has no host, credentials or repository',
     path: ['protocol'],
+  })
+  // rsync rides SSH, so it's only meaningful for an SFTP target.
+  .refine((t) => !t.useRsync || t.protocol === 'sftp', {
+    message: 'rsync transfer is only available for an SFTP target',
+    path: ['useRsync'],
+  })
+  // rsync's --delete prunes EVERYTHING under remoteDir not in the build (unlike the manifest-scoped
+  // SFTP prune), so demand an explicit non-root remote directory — never risk wiping the server root.
+  .refine((t) => !t.useRsync || (!!t.remoteDir && t.remoteDir !== '/' && t.remoteDir.split('/').some((s) => s.length > 0)), {
+    message: 'rsync requires an explicit non-root remote directory (it deletes remote files absent from the build)',
+    path: ['remoteDir'],
+  })
+  // rsync host-key pinning needs a full known_hosts LINE (has whitespace); a SHA-256 fingerprint can't
+  // be enforced via ssh, so reject that pairing rather than silently downgrading a pinned target to TOFU.
+  .refine((t) => !t.useRsync || !t.hostFingerprint || /\s/.test(t.hostFingerprint), {
+    message: 'rsync host-key pinning needs a known_hosts line ("host keytype key"), not a SHA-256 fingerprint — clear it to trust on first use',
+    path: ['hostFingerprint'],
   });
 export type DeployTarget = z.infer<typeof DeployTargetSchema>;
 

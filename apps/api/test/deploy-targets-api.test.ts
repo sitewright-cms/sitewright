@@ -74,6 +74,32 @@ describe('saved deploy targets', () => {
     expect(list.body).not.toContain('super-secret');
   });
 
+  it('persists useRsync through create + edit (and refuses it with a root remoteDir)', async () => {
+    const { t, projectId } = await setup('rsync@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    // A root remoteDir is refused for rsync (its --delete must never target the server root).
+    const bad = await app.inject({ method: 'POST', url: `${base}/deploy-targets`, cookies, payload: { ...target, remoteDir: '/', useRsync: true } });
+    expect(bad.statusCode).toBe(400);
+
+    // Create with rsync on → the flag round-trips through the store (this was silently dropped before).
+    const create = await app.inject({ method: 'POST', url: `${base}/deploy-targets`, cookies, payload: { ...target, useRsync: true } });
+    expect(create.statusCode).toBe(201);
+    const id = (create.json() as { target: { id: string } }).target.id;
+    const read = () => app.inject({ method: 'GET', url: `${base}/deploy-targets`, cookies }).then((r) => (r.json() as { items: Array<{ id: string; useRsync?: boolean }> }).items.find((x) => x.id === id));
+    expect((await read())?.useRsync).toBe(true);
+
+    // Editing an unrelated field keeps rsync enabled.
+    const rename = await app.inject({ method: 'PUT', url: `${base}/deploy-targets/${id}`, cookies, payload: { name: 'Renamed' } });
+    expect(rename.statusCode).toBe(200);
+    expect((await read())?.useRsync).toBe(true);
+
+    // Explicitly toggling it off is honoured.
+    await app.inject({ method: 'PUT', url: `${base}/deploy-targets/${id}`, cookies, payload: { useRsync: false } });
+    expect((await read())?.useRsync).toBeFalsy();
+  });
+
   it('rejects a target whose host is not allow-listed (SSRF guard)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({

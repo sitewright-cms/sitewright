@@ -80,6 +80,34 @@ describe('DeployConfigSchema', () => {
   it('requires at least a password or a private key', () => {
     expect(() => DeployConfigSchema.parse({ protocol: 'sftp', host: 'h', user: 'u' })).toThrow(/password or a private key/i);
   });
+  it('accepts useRsync for sftp (with a non-root remoteDir) and rejects it for a non-SSH protocol', () => {
+    expect(DeployConfigSchema.parse({ protocol: 'sftp', host: 'h', user: 'u', password: 'p', useRsync: true, remoteDir: '/web' }).useRsync).toBe(true);
+    expect(() => DeployConfigSchema.parse({ protocol: 'ftp', host: 'h', user: 'u', password: 'p', useRsync: true, remoteDir: '/web' })).toThrow(/rsync.*SFTP/i);
+  });
+
+  it('hardens host + user against ssh argument injection (leading "-", metachars, whitespace)', () => {
+    const ok = { protocol: 'sftp' as const, user: 'u', password: 'p' };
+    expect(() => DeployConfigSchema.parse({ ...ok, host: '-oProxyCommand=touch /tmp/x' })).toThrow(/host/i);
+    expect(() => DeployConfigSchema.parse({ ...ok, host: 'evil.com/../x' })).toThrow(/host/i);
+    expect(() => DeployConfigSchema.parse({ ...ok, host: 'a b' })).toThrow(/host/i);
+    expect(() => DeployConfigSchema.parse({ protocol: 'sftp', host: 'h', user: '-oProxyCommand=x', password: 'p' })).toThrow(/user/i);
+    // Real hostnames / IPv4 / IPv6 still pass.
+    for (const host of ['files.staging.phoenix-host.net', '10.0.0.5', '2001:db8::1', 'h']) {
+      expect(DeployConfigSchema.parse({ ...ok, host }).host).toBe(host);
+    }
+  });
+
+  it('rsync demands a non-root remoteDir and a known_hosts pin (not a SHA-256 fingerprint)', () => {
+    const base = { protocol: 'sftp' as const, host: 'h', user: 'u', password: 'p', useRsync: true };
+    // remoteDir defaults to '/', and '/' is explicitly refused — rsync --delete must never target root.
+    expect(() => DeployConfigSchema.parse(base)).toThrow(/remote directory/i);
+    expect(() => DeployConfigSchema.parse({ ...base, remoteDir: '/' })).toThrow(/remote directory/i);
+    expect(DeployConfigSchema.parse({ ...base, remoteDir: '/var/www/site' }).useRsync).toBe(true);
+    // A SHA-256 fingerprint can't be enforced by ssh → rejected (no silent TOFU downgrade).
+    expect(() => DeployConfigSchema.parse({ ...base, remoteDir: '/web', hostFingerprint: 'aa:bb:cc:dd' })).toThrow(/known_hosts/i);
+    // A real known_hosts line (has whitespace) is accepted.
+    expect(DeployConfigSchema.parse({ ...base, remoteDir: '/web', hostFingerprint: 'h ssh-ed25519 AAAAC3Nza' }).useRsync).toBe(true);
+  });
 });
 
 describe('defaultTransport', () => {

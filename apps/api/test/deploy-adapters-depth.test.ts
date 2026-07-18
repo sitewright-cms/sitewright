@@ -283,7 +283,7 @@ describe('DeployConfigSchema — edge cases (depth)', () => {
     ).toThrow();
   });
 
-  it('treats hostFingerprint as optional and bounds it (1..256) when present', () => {
+  it('treats hostFingerprint as optional and bounds it (1..1024 — also holds a known_hosts line for rsync pinning)', () => {
     expect(DeployConfigSchema.parse({ ...base, protocol: 'sftp' }).hostFingerprint).toBeUndefined();
     const fp = 'aa:bb:cc:dd';
     expect(DeployConfigSchema.parse({ ...base, protocol: 'sftp', hostFingerprint: fp }).hostFingerprint).toBe(
@@ -291,7 +291,7 @@ describe('DeployConfigSchema — edge cases (depth)', () => {
     );
     expect(() => DeployConfigSchema.parse({ ...base, protocol: 'sftp', hostFingerprint: '' })).toThrow();
     expect(() =>
-      DeployConfigSchema.parse({ ...base, protocol: 'sftp', hostFingerprint: 'a'.repeat(257) }),
+      DeployConfigSchema.parse({ ...base, protocol: 'sftp', hostFingerprint: 'a'.repeat(1025) }),
     ).toThrow();
   });
 

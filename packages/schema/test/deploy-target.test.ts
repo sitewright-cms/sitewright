@@ -32,3 +32,33 @@ describe('DeployTargetSchema — git targets', () => {
     expect(DeployTargetSchema.safeParse({ ...base, repoUrl: 'ssh://git@github.com/a/b.git', secret }).success).toBe(true);
   });
 });
+
+describe('DeployTargetSchema — SFTP host hardening + rsync guards', () => {
+  const secret = { iv: 'a'.repeat(24), ct: 'b'.repeat(24), tag: 'c'.repeat(24) };
+  const sftp = { id: 'tgt_bbbbbbbbbbbb', name: 'Web', protocol: 'sftp' as const, user: 'deploy', secret, remoteDir: '/var/www' };
+
+  it('restricts host to a hostname/IP and forbids ssh-option injection', () => {
+    for (const host of ['files.staging.phoenix-host.net', '10.0.0.5', '2001:db8::1', 'example.com.']) {
+      expect(DeployTargetSchema.safeParse({ ...sftp, host }).success).toBe(true);
+    }
+    for (const host of ['-oProxyCommand=touch /tmp/x', 'a b', 'evil.com/../x', 'has=eq']) {
+      expect(DeployTargetSchema.safeParse({ ...sftp, host }).success).toBe(false);
+    }
+  });
+
+  it('forbids a leading "-" on user', () => {
+    expect(DeployTargetSchema.safeParse({ ...sftp, host: 'h', user: '-oProxyCommand=x' }).success).toBe(false);
+  });
+
+  it('rsync requires a non-root remoteDir and a known_hosts pin (not a SHA-256 fingerprint)', () => {
+    const base = { ...sftp, host: 'h', useRsync: true };
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/var/www' }).success).toBe(true);
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/' }).success).toBe(false);
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: undefined }).success).toBe(false);
+    // rsync on a non-SFTP protocol is rejected.
+    expect(DeployTargetSchema.safeParse({ ...base, protocol: 'ftp', remoteDir: '/var/www' }).success).toBe(false);
+    // A SHA-256 fingerprint can't be enforced via ssh → rejected; a known_hosts line is accepted.
+    expect(DeployTargetSchema.safeParse({ ...base, hostFingerprint: 'aa:bb:cc:dd' }).success).toBe(false);
+    expect(DeployTargetSchema.safeParse({ ...base, hostFingerprint: 'h ssh-ed25519 AAAAC3Nza' }).success).toBe(true);
+  });
+});

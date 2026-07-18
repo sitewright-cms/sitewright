@@ -3,7 +3,7 @@ import { Check, ExternalLink } from 'lucide-react';
 import { api, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
 
-type Strategy = 'tar' | 'files';
+type Strategy = 'tar' | 'files' | 'rsync';
 
 type Status =
   | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number }
@@ -58,7 +58,8 @@ function formatRate(bytes: number, ms: number): string | null {
 function transferMode(protocol: string, strategy?: Strategy): string {
   const proto = protocol.toUpperCase();
   if (!strategy) return proto;
-  return `${proto} · ${strategy === 'tar' ? 'tar stream' : 'per-file'}`;
+  const label = strategy === 'rsync' ? 'rsync' : strategy === 'tar' ? 'tar stream' : 'per-file';
+  return `${proto} · ${label}`;
 }
 
 /** The success headline for an FTP/SFTP deploy — uploaded vs total + skipped/removed counts. */

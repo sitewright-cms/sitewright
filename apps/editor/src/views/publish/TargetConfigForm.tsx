@@ -90,6 +90,8 @@ export function TargetConfigForm({
   const [privateKey, setPrivateKey] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [fingerprint, setFingerprint] = useState(editing?.hostFingerprint ?? '');
+  // SFTP-only: rsync-over-SSH transfer (delta + compression) for servers that permit it.
+  const [useRsync, setUseRsync] = useState(!!editing?.useRsync);
   // git
   const [repoUrl, setRepoUrl] = useState(editing?.repoUrl ?? '');
   const [branch, setBranch] = useState(editing?.branch ?? 'gh-pages');
@@ -194,6 +196,7 @@ export function TargetConfigForm({
         minifyHtml: minify,
         ...(portNum !== undefined ? { port: portNum } : {}),
         ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
+        ...(protocol === 'sftp' ? { useRsync } : {}),
         ...(useKey && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
         ...(!useKey && password ? { password } : {}),
       };
@@ -213,6 +216,7 @@ export function TargetConfigForm({
       remoteDir: remoteDir || '/',
       ...(portNum !== undefined ? { port: portNum } : {}),
       ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
+      ...(protocol === 'sftp' && useRsync ? { useRsync: true } : {}),
       ...(minify ? { minifyHtml: true } : {}),
     };
     await api.createDeployTarget(project.id, cfg);
@@ -285,6 +289,12 @@ export function TargetConfigForm({
           )}
           <Field label="Remote directory" value={remoteDir} onChange={setRemoteDir} placeholder="/" />
           <Field label="Host fingerprint (SHA-256, optional)" value={fingerprint} onChange={setFingerprint} placeholder="leave blank to trust on first use" />
+          <Toggle
+            label="Transfer with rsync"
+            checked={useRsync}
+            onChange={setUseRsync}
+            hint="Delta + compression over SSH in one connection — much faster for large or repeat deploys. Enable only if your SFTP server permits rsync. Prunes remote files not in the build."
+          />
         </>
       )}
 

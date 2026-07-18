@@ -174,6 +174,7 @@ import { signPreview, verifyPreview, signShare, verifyShare } from './preview-to
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
+import { deployRsync } from '../publish/rsync-deploy.js';
 import { assertRemoteFormEndpointsReachable } from '../publish/form-guard.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
@@ -4318,7 +4319,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           throw err;
         }
         try {
-          const result = await deploySite(dir, config);
+          const result = config.useRsync ? await deployRsync(dir, config) : await deploySite(dir, config);
           return reply.send({ deployed: result });
         } catch (err) {
           // Connection/auth/transfer failure against the operator's target server.

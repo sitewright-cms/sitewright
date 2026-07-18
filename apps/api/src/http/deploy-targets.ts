@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { DeployTargetSchema, isSshRepoUrl, gitRepoHost, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
 import { deploySite, type DeployConfig } from '../publish/adapters.js';
+import { deployRsync } from '../publish/rsync-deploy.js';
 import { deployGit, type GitDeployConfig } from '../publish/git-deploy.js';
 import { deployGitSsh, type GitSshDeployConfig } from '../publish/git-ssh-deploy.js';
 import { PublishError } from '../publish/build.js';
@@ -27,6 +28,7 @@ const CreateDeployTargetBody = z
     remoteDir: z.string().min(1).max(1024).optional(),
     // SFTP host-key fingerprint, OR a git-SSH `known_hosts` host-key line (for pinning).
     hostFingerprint: z.string().min(1).max(1024).optional(),
+    useRsync: z.boolean().optional(), // SFTP-only: rsync-over-SSH transfer
     // ── Local Hosting serve options ──
     previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
     minifyHtml: z.boolean().optional(),
@@ -78,6 +80,7 @@ const UpdateDeployTargetBody = z.object({
   previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
   clearPreviewToken: z.boolean().optional(),
   minifyHtml: z.boolean().optional(),
+  useRsync: z.boolean().optional(),
   repoUrl: z.string().min(1).max(2048).optional(),
   branch: z.string().min(1).max(255).optional(),
   token: z.string().min(1).max(1024).optional(),
@@ -296,6 +299,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               user: body.user,
               remoteDir: body.remoteDir ?? '/',
               ...(body.minifyHtml ? { minifyHtml: true } : {}),
+              ...(body.useRsync ? { useRsync: true } : {}),
               ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
               secret: encodeCreds(
                 {
@@ -406,6 +410,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         const port = body.port ?? existing.port;
         const remoteDir = body.remoteDir ?? existing.remoteDir ?? '/';
         const hostFingerprint = body.hostFingerprint ?? existing.hostFingerprint;
+        const useRsync = body.useRsync ?? existing.useRsync; // explicit false (toggled off) survives — `??` only fills null/undefined
         target = {
           id: existing.id,
           name,
@@ -415,6 +420,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           user: body.user ?? existing.user,
           remoteDir,
           ...(minifyHtml ? { minifyHtml: true } : {}),
+          ...(useRsync ? { useRsync: true } : {}),
           ...(hostFingerprint ? { hostFingerprint } : {}),
           secret: encodeCreds(merged, encryptionKey),
         };
@@ -483,7 +489,9 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               ? isSshRepoUrl(target.repoUrl!)
                 ? await deployGitSsh(dir, targetToGitSshConfig(target, encryptionKey))
                 : await deployGit(dir, targetToGitConfig(target, encryptionKey))
-              : await deploySite(dir, targetToConfig(target, encryptionKey));
+              : target.useRsync
+                ? await deployRsync(dir, targetToConfig(target, encryptionKey))
+                : await deploySite(dir, targetToConfig(target, encryptionKey));
           return reply.send({ deployed: result });
         } catch (err) {
           app.log.error(
@@ -536,7 +544,9 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             ? isSshRepoUrl(target.repoUrl!)
               ? (onProgress: (e: unknown) => void) => deployGitSsh(dir, targetToGitSshConfig(target, encryptionKey), (p) => onProgress(p))
               : (onProgress: (e: unknown) => void) => deployGit(dir, targetToGitConfig(target, encryptionKey), (p) => onProgress(p))
-            : (onProgress: (e: unknown) => void) => deploySite(dir, targetToConfig(target, encryptionKey), undefined, (p) => onProgress(p));
+            : target.useRsync
+              ? (onProgress: (e: unknown) => void) => deployRsync(dir, targetToConfig(target, encryptionKey), (p) => onProgress(p))
+              : (onProgress: (e: unknown) => void) => deploySite(dir, targetToConfig(target, encryptionKey), undefined, (p) => onProgress(p));
         try {
           // All checks passed → hijack + stream to completion (lock held until the stream ends).
           await streamDeploy(reply, run, { host: deployHostOf(target), protocol: target.protocol }, app.log);

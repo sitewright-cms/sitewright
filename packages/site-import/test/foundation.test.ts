@@ -418,6 +418,27 @@ describe('configurePageNav', () => {
     expect(byId.agri!.order).toBe(0); // first (only) child of services
   });
 
+  it("treats home's DIRECT children as top-level (the importer's home-rooted tree)", () => {
+    // The importer now parents top-level pages to home; the header menu must be identical to the old
+    // parentless structure — home first (no dropdown), its children as header items, their own children
+    // nested (no flat nav object).
+    const pages = [
+      page('home', '', 'Home page'),
+      page('about', 'about', 'About', 'home'),
+      page('services', 'services', 'Our Services', 'home'),
+      page('profile', 'about/profile', 'The Company', 'about'),
+      page('agri', 'services/agri', 'Agri', 'services'),
+    ];
+    configurePageNav(pages);
+    const byId = Object.fromEntries(pages.map((p) => [p.id, p])) as Record<string, Page>;
+    expect(byId.home!.nav).toMatchObject({ slots: ['header'], order: 0, title: 'Home' });
+    expect(byId.home!.nav).not.toHaveProperty('dropdown'); // home's "children" ARE the menu, not a dropdown under it
+    expect(byId.about!.nav).toMatchObject({ slots: ['header'], dropdown: true });
+    expect(byId.services!.nav).toMatchObject({ slots: ['header'], dropdown: true });
+    expect(byId.profile!.nav).toBeUndefined(); // deeper child nests via parent
+    expect(byId.agri!.nav).toBeUndefined();
+  });
+
   it('sets a clean per-page nav LABEL (strips the site-name suffix) — R13b', () => {
     const pages = [
       page('home', '', 'eTaxi Worldwide'),

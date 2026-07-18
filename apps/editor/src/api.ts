@@ -503,10 +503,12 @@ export interface DeployConfig {
   privateKey?: string;
   passphrase?: string;
   remoteDir?: string;
-  /** Optional SFTP host-key fingerprint (SHA-256) to pin the server. */
+  /** Optional SFTP host-key fingerprint (SHA-256), OR a `known_hosts` line to pin the server. */
   hostFingerprint?: string;
   /** Minify each page's HTML at build — a serve option available for EVERY target type. */
   minifyHtml?: boolean;
+  /** SFTP-only: transfer with rsync-over-SSH (delta + compression) instead of per-file SFTP. */
+  useRsync?: boolean;
 }
 
 /** Config for saving a `git` deploy target (commit the built site to a branch). HTTPS remote → a
@@ -540,6 +542,7 @@ export interface UpdateDeployTargetConfig {
   previewToken?: string;
   clearPreviewToken?: boolean;
   minifyHtml?: boolean;
+  useRsync?: boolean;
   repoUrl?: string;
   branch?: string;
   token?: string;
@@ -556,7 +559,7 @@ export interface DeployProgressEvent {
   file?: string;
   skipped?: number;
   removed?: number;
-  strategy?: 'tar' | 'files';
+  strategy?: 'tar' | 'files' | 'rsync';
   bytes?: number;
   elapsedMs?: number;
 }
@@ -569,7 +572,7 @@ export interface StreamDoneResult {
   uploaded?: number;
   skipped?: number;
   removed?: number;
-  strategy?: 'tar' | 'files';
+  strategy?: 'tar' | 'files' | 'rsync';
   bytes?: number;
   elapsedMs?: number;
   branch?: string;

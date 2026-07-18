@@ -59,9 +59,15 @@ function hasControlChars(value: string): boolean {
 export const DeployConfigSchema = z
   .object({
     protocol: z.enum(['ftp', 'ftps', 'sftp']),
-    host: z.string().min(1).max(255),
+    // host reaches the `ssh` CLI as a positional on the rsync path — restrict it to a hostname/IP
+    // charset with no leading `-`, else `-oProxyCommand=…` would be read as an ssh option.
+    host: z
+      .string()
+      .min(1)
+      .max(255)
+      .regex(/^[A-Za-z0-9]([A-Za-z0-9.:_-]*[A-Za-z0-9])?\.?$/, 'host must be a valid hostname or IP address'),
     port: z.number().int().min(1).max(65535).optional(),
-    user: z.string().min(1).max(255),
+    user: z.string().min(1).max(255).refine((v) => !v.startsWith('-'), 'user must not start with "-"'),
     // Password auth (required for FTP/FTPS; optional for SFTP when a key is supplied).
     password: z.string().min(1).max(1024).optional(),
     // SFTP key auth: the PRIVATE KEY CONTENTS (PEM/OpenSSH) + an optional passphrase.
@@ -80,7 +86,16 @@ export const DeployConfigSchema = z
      * the server's host key is verified against it (MITM protection). When omitted,
      * the host key is trusted on first use — set this to pin a known server.
      */
-    hostFingerprint: z.string().min(1).max(256).optional(),
+    hostFingerprint: z
+      .string()
+      .min(1)
+      .max(1024)
+      // No control chars / newlines — on the rsync path this is written verbatim into a known_hosts
+      // file when it carries a key line, so a newline could inject extra pre-trusted hosts.
+      .refine((v) => !hasControlChars(v), 'hostFingerprint must not contain control characters')
+      .optional(),
+    // Transfer with rsync-over-SSH instead of the per-file SFTP transport (SFTP-only).
+    useRsync: z.boolean().optional(),
   })
   .refine((c) => c.password !== undefined || c.privateKey !== undefined, {
     message: 'a password or a private key is required',
@@ -90,6 +105,22 @@ export const DeployConfigSchema = z
   .refine((c) => c.privateKey === undefined || c.protocol === 'sftp', {
     message: 'a private key requires the SFTP protocol',
     path: ['privateKey'],
+  })
+  // rsync rides SSH — only meaningful for an SFTP target.
+  .refine((c) => !c.useRsync || c.protocol === 'sftp', {
+    message: 'rsync transfer is only available for the SFTP protocol',
+    path: ['useRsync'],
+  })
+  // rsync's --delete prunes everything under remoteDir not in the build → require a non-root dir.
+  .refine((c) => !c.useRsync || (c.remoteDir !== '/' && c.remoteDir.split('/').some((s) => s.length > 0)), {
+    message: 'rsync requires an explicit non-root remote directory (it deletes remote files absent from the build)',
+    path: ['remoteDir'],
+  })
+  // rsync host-key pinning needs a known_hosts LINE (whitespace); reject a SHA-256 fingerprint rather
+  // than silently falling back to trust-on-first-use.
+  .refine((c) => !c.useRsync || !c.hostFingerprint || /\s/.test(c.hostFingerprint), {
+    message: 'rsync host-key pinning needs a known_hosts line, not a SHA-256 fingerprint — clear it to trust on first use',
+    path: ['hostFingerprint'],
   });
 export type DeployConfig = z.infer<typeof DeployConfigSchema>;
 
@@ -99,8 +130,10 @@ export interface SiteFile {
   abs: string;
 }
 
-/** The bulk-upload strategy actually used for a deploy (surfaced to the UI as the transfer mode). */
-export type DeployStrategy = 'tar' | 'files';
+/** The bulk-upload strategy actually used for a deploy (surfaced to the UI as the transfer mode).
+ *  'rsync' is the standalone rsync-over-SSH path (see rsync-deploy.ts); 'tar'/'files' are the
+ *  SFTP transport's own fast/fallback paths. */
+export type DeployStrategy = 'tar' | 'files' | 'rsync';
 
 /** What a transport can do — drives the strategy choice. Valid after connect(). */
 export interface TransportCaps {

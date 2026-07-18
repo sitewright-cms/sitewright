@@ -36,10 +36,11 @@ COPY --chown=node:node node_modules ./node_modules
 # Drop this whole layer (+ the dep above) if screenshots aren't needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # `git` + `openssh-client` are the transport for SSH-key git deploy targets (the pure-JS isomorphic-git
-# path handles HTTPS-token targets; SSH needs the real binaries). Installed in the same cached heavy
-# layer as Chromium so code-only deploys don't re-fetch them.
+# path handles HTTPS-token targets; SSH needs the real binaries). `rsync` is the opt-in delta+compress
+# transfer for SFTP targets that permit it (rsync-over-SSH). Installed in the same cached heavy layer
+# as Chromium so code-only deploys don't re-fetch them.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git openssh-client \
+    && apt-get install -y --no-install-recommends git openssh-client rsync \
     && node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell \
     && apt-get purge -y --auto-remove libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*

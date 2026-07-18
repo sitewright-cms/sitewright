@@ -136,6 +136,38 @@ export interface RegionCompareResult {
   regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
 }
 
+/** Lighthouse category scores, 0–100 (null when a category could not be scored). */
+export interface PagespeedScores {
+  performance: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+  seo: number | null;
+}
+/** One actionable, non-passing audit the author can fix. */
+export interface PagespeedFinding {
+  id: string;
+  title: string;
+  category: keyof PagespeedScores;
+  score: number | null;
+  displayValue?: string;
+}
+/** Lighthouse page-speed + SEO audit (GET /projects/:id/pagespeed-audit/:pageId). Lab-only; no CrUX field data. */
+export interface PagespeedAuditResult {
+  url: string;
+  formFactor: 'mobile' | 'desktop';
+  scores: PagespeedScores;
+  metrics: {
+    firstContentfulPaintMs?: number;
+    largestContentfulPaintMs?: number;
+    totalBlockingTimeMs?: number;
+    cumulativeLayoutShift?: number;
+    speedIndexMs?: number;
+  };
+  findings: PagespeedFinding[];
+  lighthouseVersion: string;
+  fetchedAt: string;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -337,6 +369,12 @@ export class SitewrightClient {
   async compareRegions(pageId: string, regions?: string): Promise<RegionCompareResult> {
     const suffix = regions ? `?regions=${encodeURIComponent(regions)}` : '';
     return this.request('GET', this.projectPath(`/compare-regions/${encodeURIComponent(pageId)}${suffix}`));
+  }
+
+  /** Lighthouse page-speed + SEO audit of a page (deploy-equivalent build). `formFactor` defaults to mobile. */
+  async pagespeedAudit(pageId: string, formFactor?: 'mobile' | 'desktop'): Promise<PagespeedAuditResult> {
+    const suffix = formFactor ? `?formFactor=${formFactor}` : '';
+    return this.request('GET', this.projectPath(`/pagespeed-audit/${encodeURIComponent(pageId)}${suffix}`));
   }
 
   async publish(): Promise<unknown> {

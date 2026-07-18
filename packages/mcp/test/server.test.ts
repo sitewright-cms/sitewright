@@ -71,6 +71,18 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
         mobile: { base64: 'QkxETQ', mimeType: 'image/jpeg' as const, width: 390, height: 844 },
       },
     })),
+    pagespeedAudit: vi.fn(async () => ({
+      url: 'http://127.0.0.1/',
+      formFactor: 'mobile' as const,
+      scores: { performance: 73, accessibility: 95, bestPractices: 100, seo: 100 },
+      metrics: { firstContentfulPaintMs: 3304, largestContentfulPaintMs: 5427, totalBlockingTimeMs: 0, cumulativeLayoutShift: 0.05, speedIndexMs: 3000 },
+      findings: [
+        { id: 'render-blocking', title: 'Eliminate render-blocking resources', category: 'performance' as const, score: 0.2, displayValue: 'Est savings of 750 ms' },
+        { id: 'color-contrast', title: 'Contrast ratio is too low', category: 'accessibility' as const, score: 0 },
+      ],
+      lighthouseVersion: '13.4.0',
+      fetchedAt: '2026-07-18T21:00:00.000Z',
+    })),
     compareRegions: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
@@ -646,6 +658,48 @@ describe('createSitewrightMcpServer — lazy auth', () => {
     const res = await (await connect(fakeClient(), writeScope, fakeAuth({ interactive: false }))).callTool({ name: 'login', arguments: {} });
     expect(res.isError).toBe(true);
     expect(text(res)).toMatch(/fixed token/i);
+  });
+});
+
+describe('pagespeed_audit tool', () => {
+  it('renders a readable score + findings report (content:read)', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const res = await r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'mobile' } });
+    expect(res.isError).toBeFalsy();
+    const out = text(res);
+    expect(out).toMatch(/PAGE-SPEED \+ SEO AUDIT/);
+    expect(out).toContain('Performance    73');
+    expect(out).toContain('SEO            100');
+    // A finding WITH a displayValue and one WITHOUT both render.
+    expect(out).toContain('Eliminate render-blocking resources — Est savings of 750 ms');
+    expect(out).toContain('Contrast ratio is too low');
+    expect(callsOf(reader).pagespeedAudit).toHaveBeenCalledWith('home', 'mobile');
+  });
+
+  it('renders the all-clear line when there are no failing audits', async () => {
+    const clean = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        url: 'http://127.0.0.1/',
+        formFactor: 'desktop' as const,
+        scores: { performance: 100, accessibility: 100, bestPractices: 100, seo: 100 },
+        metrics: {},
+        findings: [],
+        lighthouseVersion: '13.4.0',
+        fetchedAt: '2026-07-18T21:00:00.000Z',
+      })),
+    });
+    const out = text(await (await connect(clean, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
+    expect(out).toMatch(/No failing audits/);
+  });
+
+  it('is gated: rejects when disconnected and when the content:read capability is missing', async () => {
+    const disconnected = await connect(fakeClient(), null);
+    expect((await disconnected.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } })).isError).toBe(true);
+    const noCap = await connect(fakeClient(), { projectId: 'p', role: 'member', capabilities: [] });
+    const res = await noCap.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/content:read/);
   });
 });
 

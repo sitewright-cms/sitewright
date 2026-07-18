@@ -604,6 +604,49 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'pagespeed_audit',
+    {
+      description:
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. `formFactor` defaults to mobile; pass 'desktop' for the desktop profile.",
+      inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop']).optional() },
+    },
+    async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const r = await client.pagespeedAudit(pageId, formFactor);
+        const pct = (n: number | null): string => (n === null ? '—' : String(n));
+        const ms = (n?: number): string => (n === undefined ? '—' : `${Math.round(n)} ms`);
+        const lines = [
+          `PAGE-SPEED + SEO AUDIT — page “${pageId}” · ${r.formFactor} · Lighthouse ${r.lighthouseVersion}`,
+          '',
+          `  Performance    ${pct(r.scores.performance)}`,
+          `  Accessibility  ${pct(r.scores.accessibility)}`,
+          `  Best Practices ${pct(r.scores.bestPractices)}`,
+          `  SEO            ${pct(r.scores.seo)}`,
+          '',
+          `  Metrics: FCP ${ms(r.metrics.firstContentfulPaintMs)} · LCP ${ms(r.metrics.largestContentfulPaintMs)} · TBT ${ms(r.metrics.totalBlockingTimeMs)} · CLS ${(r.metrics.cumulativeLayoutShift ?? 0).toFixed(3)} · Speed Index ${ms(r.metrics.speedIndexMs)}`,
+        ];
+        if (r.findings.length === 0) {
+          lines.push('', 'No failing audits — every scored check passed. ✓');
+        } else {
+          lines.push('', `Actionable findings (${r.findings.length}), worst first:`);
+          for (const f of r.findings) {
+            lines.push(`  [${f.category}] ${f.title}${f.displayValue ? ` — ${f.displayValue}` : ''}`);
+          }
+        }
+        lines.push('', 'Note: performance is a throttled LAB score (directional); SEO / accessibility / best-practices are deterministic. No real-user field data.');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'pagespeed audit failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'visual_audit',
     {
       description:

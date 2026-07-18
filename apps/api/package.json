@@ -29,10 +29,13 @@
     "@sitewright/site-import": "workspace:*",
     "@sitewright/tailwind": "workspace:*",
     "basic-ftp": "^5",
+    "chrome-launcher": "^1.2.1",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5",
     "html-minifier-terser": "^7",
+    "isomorphic-git": "^1.27.1",
     "jszip": "^3",
+    "lighthouse": "^13.4.0",
     "nodemailer": "^8.0.10",
     "openid-client": "^6.8.4",
     "otplib": "^12.0.1",
@@ -40,8 +43,7 @@
     "secure-json-parse": "^4",
     "ssh2-sftp-client": "^11",
     "tar-stream": "^3.1.7",
-    "zod": "^3.24.1",
-    "isomorphic-git": "^1.27.1"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.49",

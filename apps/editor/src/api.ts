@@ -633,6 +633,38 @@ export interface EffectForks {
   preloader: EffectFork[];
 }
 
+/** Lighthouse category scores 0–100 (null when a category could not be scored). */
+export interface PagespeedScores {
+  performance: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+  seo: number | null;
+}
+/** One actionable, non-passing audit the author can fix. */
+export interface PagespeedFinding {
+  id: string;
+  title: string;
+  category: keyof PagespeedScores;
+  score: number | null;
+  displayValue?: string;
+}
+/** Lighthouse page-speed + SEO audit of a page (GET /projects/:id/pagespeed-audit/:pageId). Lab-only. */
+export interface PagespeedAuditResult {
+  url: string;
+  formFactor: 'mobile' | 'desktop';
+  scores: PagespeedScores;
+  metrics: {
+    firstContentfulPaintMs?: number;
+    largestContentfulPaintMs?: number;
+    totalBlockingTimeMs?: number;
+    cumulativeLayoutShift?: number;
+    speedIndexMs?: number;
+  };
+  findings: PagespeedFinding[];
+  lighthouseVersion: string;
+  fetchedAt: string;
+}
+
 export const api = {
   register: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/register', { email, password }),
@@ -750,6 +782,12 @@ export const api = {
   reapAllDeletedProjects: () => request<{ reaped: number }>('DELETE', '/admin/deleted-projects'),
   listPages: (projectId: string) =>
     request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
+  /** Run a Lighthouse page-speed + SEO audit of one page (deploy-equivalent build). Defaults to mobile. */
+  pagespeedAudit: (projectId: string, pageId: string, formFactor?: 'mobile' | 'desktop') =>
+    request<PagespeedAuditResult>(
+      'GET',
+      `/projects/${projectId}/pagespeed-audit/${encodeURIComponent(pageId)}${formFactor ? `?formFactor=${formFactor}` : ''}`,
+    ),
   getPage: (projectId: string, id: string) =>
     request<{ item: Page }>('GET', `/projects/${projectId}/content/page/${encodeURIComponent(id)}`),
   putPage: (projectId: string, page: Page) =>

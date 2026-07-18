@@ -212,7 +212,11 @@ export async function withRenderSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-const EMBED_SETTLE_MS = 2200;
+// Fixed beat AFTER a child frame's own `load` for its async content to actually PAINT — Google-Maps tiles,
+// a video poster, etc. fetch/render via JS well after `load` fires, so a shorter beat catches them as a grey
+// box (the recurring "the map is empty" miss). 5s is deliberately generous: fidelity of a lazy embed beats a
+// couple of saved seconds, and it's ONLY paid when the page actually HAS an iframe (embed-free pages skip it).
+const EMBED_SETTLE_MS = 5000;
 
 /**
  * Bring a freshly-navigated page to a STABLE, fully-loaded state before a screenshot / element extract, so a
@@ -223,10 +227,13 @@ const EMBED_SETTLE_MS = 2200;
  *  2. re-settle the network after the lazy fetches the scroll kicked off.
  *  3. wait for web fonts (a computed font-family LIES — reports the requested name even if the file never
  *     loaded; the shot must show the REAL glyphs).
- *  4. IFRAME/EMBED settle — the fix for "maps read as a slider": cross-origin embeds (Google-Maps tiles, video
- *     players) fetch AFTER networkidle and never re-settle it, so a fullPage shot catches them mid-load as a
- *     grey/loading box. Wait each child frame's own `load`, THEN a fixed beat for tiles to paint. Only when the
- *     page actually has an iframe (free for the rest).
+ *  4. IFRAME/EMBED settle — the fix for "the map is empty / maps read as a slider": cross-origin embeds
+ *     (Google-Maps tiles, video players) are LAZY and fetch/paint AFTER networkidle via their own JS, never
+ *     re-settling it, so a shot catches them as a grey/loading box (and the clone then drops the "empty" band).
+ *     Step 1's scroll-through triggers the lazy loaders (incl. below-the-fold ones); here we wait each child
+ *     frame's own `load`, then bring each VISIBLE embed INTO VIEW and dwell ~5s so its tiles actually paint
+ *     (they defer while off-screen, so a wait taken from the top leaves them grey — the recurring miss). Only
+ *     when the page has an iframe (the embed-free majority skip this entirely).
  *  5. freeze animations LAST — AFTER embeds had time to paint — so a loading spinner is caught SETTLED, not
  *     mid-spin: finish WAAPI to its end-state + pause CSS animations/transitions. `freeze:false` for the live
  *     behaviour probe, which must keep runtimes running.
@@ -264,8 +271,31 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
     .evaluate(() => (globalThis as unknown as { document: { querySelector(s: string): unknown } }).document.querySelector('iframe') != null)
     .catch(() => false);
   if (hasEmbed) {
-    await Promise.all(page.frames().map((f) => f.waitForLoadState('load', { timeout: 3000 }).catch(() => {}))).catch(() => {});
-    await page.waitForTimeout(EMBED_SETTLE_MS).catch(() => {});
+    await Promise.all(page.frames().map((f) => f.waitForLoadState('load', { timeout: 5000 }).catch(() => {}))).catch(() => {});
+    // A lazy embed (Google-Maps tiles, a video player) only PAINTS while ~on-screen and DEFERS while off-screen,
+    // so a fullPage shot taken from the top catches it as a grey box (the "the map is empty" miss). Bring each
+    // VISIBLE iframe INTO VIEW and dwell so its tiles actually paint — they persist once loaded — then restore
+    // the scroll for the shot. Only rendered (non-hidden, sized) iframes count, and it's capped, so a hidden
+    // modal-PDF or a page full of embeds can't stall the render.
+    const visibleEmbeds = await page
+      .evaluate(() => {
+        const g = globalThis as unknown as { document: { querySelectorAll(s: string): ArrayLike<{ getBoundingClientRect(): { width: number; height: number } }> } };
+        const out: number[] = [];
+        const list = g.document.querySelectorAll('iframe');
+        for (let i = 0; i < list.length; i++) { const el = list[i]; if (!el) continue; const r = el.getBoundingClientRect(); if (r.height > 40 && r.width > 40) out.push(i); }
+        return out;
+      })
+      .catch(() => [] as number[]);
+    for (const idx of visibleEmbeds.slice(0, 3)) {
+      await page
+        .evaluate((i) => {
+          const list = (globalThis as unknown as { document: { querySelectorAll(s: string): ArrayLike<{ scrollIntoView(o: { block: string }): void }> } }).document.querySelectorAll('iframe');
+          list[i]?.scrollIntoView({ block: 'center' });
+        }, idx)
+        .catch(() => {});
+      await page.waitForTimeout(EMBED_SETTLE_MS).catch(() => {});
+    }
+    await page.evaluate(() => (globalThis as unknown as { scrollTo(x: number, y: number): void }).scrollTo(0, 0)).catch(() => {});
   }
   // 5 — freeze animations to a settled end-state (unless a live probe needs them running).
   if (opts?.freeze !== false) {

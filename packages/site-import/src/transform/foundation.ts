@@ -504,11 +504,17 @@ export function cleanNavLabel(title: string, siteName?: string): string {
 export function configurePageNav(pages: Page[], siteName?: string): void {
   const childParentIds = new Set(pages.filter((p) => p.parent).map((p) => p.parent));
   const isHome = (p: Page): boolean => !p.path || p.path === '' || p.path === '/';
-  const topLevel = pages.filter((p) => !p.parent && !p.collection).sort((a, b) => {
+  const home = pages.find((p) => isHome(p) && !p.parent);
+  // TOP-LEVEL = home + the pages that render at `/<slug>`: home's direct children (the importer now
+  // parents top-level pages to home) OR a parentless root sibling (the older structure) — handle both so
+  // the header menu is identical either way. A top-level page's OWN children become its dropdown items.
+  const isTopLevel = (p: Page): boolean => !p.collection && (isHome(p) || p.parent === home?.id || !p.parent);
+  const topLevel = pages.filter(isTopLevel).sort((a, b) => {
     if (isHome(a)) return -1;
     if (isHome(b)) return 1;
     return (a.order ?? a.nav?.order ?? 0) - (b.order ?? b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
   });
+  const topIds = new Set(topLevel.map((p) => p.id));
   let order = 0;
   for (const p of topLevel) {
     const o = order++;
@@ -516,14 +522,16 @@ export function configurePageNav(pages: Page[], siteName?: string): void {
     p.nav = {
       slots: ['header'],
       order: o,
-      ...(childParentIds.has(p.id) ? { dropdown: true } : {}),
+      // A dropdown only when this top-level page has children of its OWN — home never does (its
+      // "children" ARE the top-level pages, i.e. the menu itself, not a dropdown under it).
+      ...(!isHome(p) && childParentIds.has(p.id) ? { dropdown: true } : {}),
       title: isHome(p) ? 'Home' : cleanNavLabel(p.title, siteName),
     };
   }
-  // Children: order within their sibling group; remove any (empty-slots) nav object so the PUT validates
-  // and so they nest under the dropdown parent rather than appearing flat.
+  // Deeper children (NOT themselves a top-level nav item): order within their sibling group; remove any
+  // (empty-slots) nav object so the PUT validates and they nest under the dropdown parent, not flat.
   const byParent = new Map<string, Page[]>();
-  for (const p of pages) if (p.parent) (byParent.get(p.parent) ?? byParent.set(p.parent, []).get(p.parent)!).push(p);
+  for (const p of pages) if (p.parent && !topIds.has(p.id)) (byParent.get(p.parent) ?? byParent.set(p.parent, []).get(p.parent)!).push(p);
   for (const kids of byParent.values()) {
     kids.sort((a, b) => (a.order ?? a.nav?.order ?? 0) - (b.order ?? b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en'));
     kids.forEach((kid, i) => {

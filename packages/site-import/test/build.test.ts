@@ -223,7 +223,8 @@ describe('buildImportBundle (integration)', () => {
   it('caps the number of pages and reports the truncation', async () => {
     const pages = Array.from({ length: 5 }, (_, i) => ({ sourceUrl: `https://ex.com/p${i}`, html: page(`P${i}`, `<p>${i}</p>`) }));
     const result = await buildImportBundle(site(pages), { media: stubMedia(), limits: { maxPages: 3 } });
-    expect(result.bundles[0]!.pages.length).toBeLessThanOrEqual(3);
+    // The cap is on CAPTURED pages (3 of 5); a synthesized home (the root they now nest under) may be added.
+    expect(result.bundles[0]!.pages.filter((p) => p.path !== '').length).toBeLessThanOrEqual(3);
     expect(result.diagnostics.some((d) => d.code === 'page-skipped')).toBe(true);
   });
 });

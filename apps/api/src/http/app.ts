@@ -266,10 +266,12 @@ import {
   type ProjectContext,
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
-import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
+import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
+import { runPagespeedAudit, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
+import { serveBuiltSite } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
@@ -4925,6 +4927,70 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           build,
           source,
         });
+      },
+    );
+
+    // PAGE-SPEED + SEO audit (Lighthouse). Builds a DEPLOY-EQUIVALENT static output (minified exactly like
+    // the project's real publish) into a temp dir and serves it on an ephemeral loopback origin with
+    // deploy-equivalent cache headers, then runs Lighthouse against the target page. We deliberately do NOT
+    // audit the always-on draft build (`/preview-site/…`): that serves `cache-control: no-store`, a `sandbox`
+    // CSP, and injects the preview-runtime bridge JS — all of which would make the performance number
+    // non-representative of what a visitor actually gets. Returns category scores (performance / accessibility
+    // / best-practices / seo), core lab metrics, and a ranked list of actionable findings. Lab-only (no CrUX
+    // field data): perf is directional; SEO / a11y / best-practices are deterministic. `?formFactor=` picks
+    // the emulated device (default mobile). content:read.
+    app.get<{ Params: { projectId: string; pageId: string }; Querystring: { formFactor?: string } }>(
+      '/projects/:projectId/pagespeed-audit/:pageId',
+      { config: rl(3) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        if (!targetPage) throw new NotFoundError('page not found');
+        if (isLinkPage(targetPage) || targetPage.collection) {
+          return reply.code(400).send({ error: 'this page has no rendered route to audit' });
+        }
+        const formFactor: FormFactor = req.query.formFactor === 'desktop' ? 'desktop' : 'mobile';
+        const route = pathToSlug(pagePath(targetPage, byId)) ?? '';
+        const publicPath = route ? `/${route}/` : '/';
+
+        // Build the deploy-equivalent output once, serve it, audit the page, then tear both down. Minify
+        // follows the project's local deploy target so the audited bytes match what Publish produces.
+        const local = await findLocalTarget(ctx);
+        const dir = await mkdtemp(join(tmpdir(), 'sw-pagespeed-'));
+        let served: Awaited<ReturnType<typeof serveBuiltSite>> | undefined;
+        // Note when the client goes away (panel closed / navigated) so we don't reply to a dead socket.
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        try {
+          // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
+          // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion.
+          const result = await withRenderSlot(async () => {
+            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
+            served = await serveBuiltSite(dir);
+            const audit = await runPagespeedAudit(`${served.url}${route ? `${route}/` : ''}`, { formFactor });
+            // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
+            return { ...audit, url: publicPath };
+          });
+          if (abort.signal.aborted) return reply; // client disconnected mid-run — the response is moot
+          return reply.send(result);
+        } catch (err) {
+          // Author-correctable build failures (bad route graph / bad json_data URL) surface as 409, like publish.
+          if (err instanceof PublishError || err instanceof JsonDataError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          // No launchable headless browser (e.g. a browserless environment) → 503, not an opaque 500. Log the
+          // underlying detail server-side but don't leak internal paths in the client-facing message.
+          if (err instanceof PagespeedUnavailableError) {
+            req.log.warn({ err }, 'pagespeed audit: no headless browser available');
+            return reply.code(503).send({ error: 'page-speed audit is unavailable: no headless browser could be launched' });
+          }
+          throw err;
+        } finally {
+          await served?.close();
+          await rm(dir, { recursive: true, force: true });
+        }
       },
     );
 

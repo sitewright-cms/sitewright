@@ -28,7 +28,12 @@ function bearerOf(req: FastifyRequest): string | undefined {
  */
 export function registerMcpRoutes(
   app: FastifyInstance,
-  opts: { rl: (max: number) => { rateLimit: { max: number; timeWindow: string } } },
+  opts: {
+    rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+    /** The instance's public origin (`SW_PUBLIC_URL`); used to build the OAuth challenge's
+     *  resource-metadata URL correctly behind a TLS-terminating proxy. See `issuerOf`. */
+    publicUrl?: string;
+  },
 ): void {
   // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token.
   const injectClient = (token: string): SitewrightClient => {
@@ -51,13 +56,14 @@ export function registerMcpRoutes(
   };
 
   const handle = async (req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
-    // issuerOf derives from the Host header — same self-hosted single-origin assumption the OAuth
-    // routes already make (behind a proxy, pin Host + trustProxy). Only used to point the host at
-    // our (same-origin) metadata; the real auth boundary is the in-process token validation below.
+    // issuerOf prefers SW_PUBLIC_URL, else derives from the request — same single-origin assumption
+    // the OAuth routes make (behind a TLS proxy set SW_PUBLIC_URL or TRUST_PROXY so this isn't
+    // `http://…`). Only used to point the host at our (same-origin) protected-resource metadata; the
+    // real auth boundary is the in-process token validation below.
     const challenge = (): FastifyReply =>
       reply
         .code(401)
-        .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req)}/.well-known/oauth-protected-resource"`)
+        .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req, opts.publicUrl)}/.well-known/oauth-protected-resource"`)
         .send({ error: 'unauthorized', error_description: 'Authenticate via OAuth to use the Sitewright MCP endpoint.' });
 
     const token = bearerOf(req);
@@ -89,7 +95,7 @@ export function registerMcpRoutes(
         if (typeof v === 'string') headers.set(k, v);
         else if (Array.isArray(v)) headers.set(k, v.join(', '));
       }
-      const webReq = new Request(`${issuerOf(req)}${req.url}`, { method: req.method, headers });
+      const webReq = new Request(`${issuerOf(req, opts.publicUrl)}${req.url}`, { method: req.method, headers });
       const webRes = await transport.handleRequest(webReq, { parsedBody: req.body });
       reply.code(webRes.status);
       webRes.headers.forEach((value, key) => reply.header(key, value));

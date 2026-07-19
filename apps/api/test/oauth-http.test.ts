@@ -379,3 +379,69 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     expect((tok.json() as { access_token: string }).access_token).toMatch(/^swk_/);
   });
 });
+
+// Regression: behind a TLS-terminating reverse proxy the app-facing hop is plain HTTP with an
+// internal Host, so request-derived metadata is `http://internal…` — which MCP/OAuth clients reject
+// ("Protected resource http://… does not match expected https://…"). SW_PUBLIC_URL must override it.
+describe('issuer/resource honor SW_PUBLIC_URL (proxy-correct metadata)', () => {
+  const PUBLIC = 'https://sitewright.example';
+  // Simulate the proxy→app hop: a plain-HTTP request with an internal Host that must NOT leak out.
+  const proxied = { host: 'sitewright-api:3000' };
+  let pubApp: FastifyInstance;
+  let pubRoot: string;
+
+  beforeEach(async () => {
+    pubRoot = await mkdtemp(join(tmpdir(), 'sw-oauth-pub-'));
+    pubApp = await createApp({ db: await makeTestDb(), publishRoot: pubRoot, encryptionKey: randomBytes(32), publicUrl: PUBLIC });
+    await pubApp.ready();
+  });
+  afterEach(async () => {
+    await pubApp.close();
+    await rm(pubRoot, { recursive: true, force: true });
+  });
+
+  it('advertises the configured public origin in OAuth discovery, ignoring the request Host/scheme', async () => {
+    const as = (await pubApp.inject({ method: 'GET', url: '/.well-known/oauth-authorization-server', headers: proxied })).json();
+    expect(as.issuer).toBe(PUBLIC);
+    expect(as.authorization_endpoint).toBe(`${PUBLIC}/oauth/authorize`);
+    expect(as.token_endpoint).toBe(`${PUBLIC}/oauth/token`);
+
+    const pr = (await pubApp.inject({ method: 'GET', url: '/.well-known/oauth-protected-resource', headers: proxied })).json();
+    expect(pr.resource).toBe(PUBLIC);
+    expect(pr.authorization_servers).toEqual([PUBLIC]);
+  });
+
+  it('points the MCP 401 challenge at the public-origin resource metadata', async () => {
+    const res = await pubApp.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: { ...proxied, 'content-type': 'application/json' },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers['www-authenticate']).toBe(`Bearer resource_metadata="${PUBLIC}/.well-known/oauth-protected-resource"`);
+  });
+
+  it('strips a trailing slash from SW_PUBLIC_URL so built URLs have no double slash', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sw-oauth-slash-'));
+    const slashApp = await createApp({ db: await makeTestDb(), publishRoot: root, encryptionKey: randomBytes(32), publicUrl: `${PUBLIC}/` });
+    await slashApp.ready();
+    try {
+      const as = (await slashApp.inject({ method: 'GET', url: '/.well-known/oauth-authorization-server' })).json();
+      expect(as.issuer).toBe(PUBLIC);
+      expect(as.authorization_endpoint).toBe(`${PUBLIC}/oauth/authorize`); // not `${PUBLIC}//oauth/authorize`
+    } finally {
+      await slashApp.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// Without SW_PUBLIC_URL, metadata falls back to the request origin (unchanged behavior).
+describe('issuer/resource fall back to the request when SW_PUBLIC_URL is unset', () => {
+  it('derives resource from the request Host/scheme', async () => {
+    const pr = (await app.inject({ method: 'GET', url: '/.well-known/oauth-protected-resource', headers: { host: 'derived.example' } })).json();
+    expect(pr.resource).toBe('http://derived.example');
+    expect(pr.authorization_servers).toEqual(['http://derived.example']);
+  });
+});

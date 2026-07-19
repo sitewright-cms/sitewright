@@ -97,6 +97,10 @@ const ImportWebsiteBody = z.object({
   maxDepth: z.number().int().min(0).max(IMPORT_DEPTH_CEIL).optional(),
 });
 
+// Agent-callable import: same body + an explicit `foundation` toggle (ON by default — a clone wants the
+// native foundation scaffold, not a raw-CSS literal import).
+const AgentImportBody = ImportWebsiteBody.extend({ foundation: z.boolean().optional() });
+
 /** Website slots that are RAW (unsanitized) or validated — all must be script-free after import. */
 const SCRIPTABLE_SLOTS = ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
 /** Raw HTML code slots nested under `website.effects` (the engine never writes these, but assert anyway). */
@@ -475,6 +479,51 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         { projectId: project.id },
         log,
       );
+    } finally {
+      releaseSlot(project.id);
+    }
+  });
+
+  // ──────────── agent-callable crawl import (non-streaming) ────────────
+  // The SSE route above is owner-session-only + streams progress; an MCP/AI agent can't consume it. This
+  // is the same crawl→foundation import run to COMPLETION with a JSON report, so an agent (the on-page
+  // assistant OR an external MCP client via `import_website`) can trigger the import itself — making
+  // "clone this URL" one agent-driven flow: import → the swImport scaffold appears → nativize → publish.
+  // A bearer `swk_` token with content:write passes (like the other agent routes). Foundation ON by default.
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/import-website', { config: rl(5) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:write');
+    if (ctx.role !== 'owner') return reply.code(403).send({ error: 'only the project owner can import a website' });
+
+    const parsed = AgentImportBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
+    const { url } = parsed.data;
+    if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) return reply.code(400).send({ error: 'only public https URLs can be imported' });
+
+    if (!acquireSlot(reply, project.id)) return; // sends 409/429
+    const foundation = parsed.data.foundation ?? true;
+    const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
+    const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
+    const abort = new AbortController();
+    req.raw.on('close', () => abort.abort());
+
+    try {
+      const noop = (): void => {};
+      const fetcher = makeFetcher(abort.signal);
+      const media = makeMediaPort(ctx, project.slug, fetcher);
+      const crawlResult = await crawl(
+        url,
+        { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
+        {
+          fetchResource: fetcher,
+          isAllowed: async (u) => !targetsPrivateHost(u),
+          ...(render ? { render } : {}),
+          onProgress: noop,
+          signal: abort.signal,
+        },
+      );
+      if (crawlResult.site.pages.length === 0) return reply.code(422).send({ error: 'no pages could be crawled from the URL' });
+      const report = await convertAndImport(ctx, project, crawlResult.site, media, noop, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
+      return reply.send({ ok: true, ...report });
     } finally {
       releaseSlot(project.id);
     }

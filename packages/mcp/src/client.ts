@@ -189,6 +189,16 @@ export interface CloneRunResult {
   passed: number;
 }
 
+/** The result of the agent-callable website import (`import_website`). */
+export interface ImportWebsiteResult {
+  ok: boolean;
+  pagesImported?: number;
+  pagesFound?: number;
+  mediaSelfHosted?: number;
+  warnings?: string[];
+  [k: string]: unknown;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -447,6 +457,14 @@ export class SitewrightClient {
   }
 
   /** Import a PUBLIC https image by URL: the server downloads, optimizes, and self-hosts it. */
+  /** Crawl + import a public website URL into the connected project (the first step of a clone). */
+  async importWebsite(url: string, foundation?: boolean): Promise<ImportWebsiteResult> {
+    return this.request('POST', this.projectPath('/agent/import-website'), {
+      url,
+      ...(foundation !== undefined ? { foundation } : {}),
+    });
+  }
+
   async importImageUrl(url: string, folder?: string): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'POST',

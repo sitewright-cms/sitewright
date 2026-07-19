@@ -51,9 +51,11 @@ skeleton (a real landing page is 6-9 composed sections, not a hero + three cards
 authoring vocabulary — every \`{{sw-*}}\` helper, \`data-sw-*\` directive, binding namespace, and
 loop variable — is in the \`get_reference\` tool (don't guess helper names). If a page carries a
 \`data.swImport\` marker it was IMPORTED from an external site as a raw scaffold — call
-\`get_guide("import")\` and rewrite it into native idioms. To clone a whole imported site, run the
-pre-defined \`clone_site\` PROMPT (it lays out the exact per-page workflow: author → visual_audit +
-clone_audit → green → publish); if a task is "clone/nativize this site", follow that workflow.
+\`get_guide("import")\` and rewrite it into native idioms. To clone/nativize a site FROM A URL: if the
+project has no \`swImport\` pages yet, call \`import_website(url)\` FIRST (the server fetches + renders the
+live page for you and creates the scaffold) — NEVER say you can't fetch a URL or ask the user to paste
+HTML. Then run the pre-defined \`clone_site\` PROMPT (per-page: author → visual_audit + clone_audit →
+green → publish); if a task is "clone/nativize this site/URL", follow that workflow end-to-end.
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
@@ -817,8 +819,11 @@ INNER markup of the Main Navigation / Footer slots.
     title: "Nativize an imported website — a faithful port to native primitives",
     summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport + draft) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS and tidy the media folders",
     body: `
-IMPORTED PAGES. When an external site is imported (the OWNER does this in the editor — you don't trigger
-it), each page lands as a FAITHFUL replica: literal HTML in \`source\` (no Handlebars), the foreign CSS
+IMPORTED PAGES. An external site is imported either by the owner in the editor OR by YOU calling
+\`import_website(url)\` (the first step when asked to clone a URL — the server crawls, renders the live
+page, follows an embed/preview wrapper to the real site, self-hosts images + fonts, and creates the
+scaffold; do NOT ask the user to paste HTML). Each page then lands as a FAITHFUL replica: literal HTML in
+\`source\` (no Handlebars), the foreign CSS
 folded into the website criticalCss/head slots, the shared header/footer hoisted into the mainNav/footer
 slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
 and \`status:"draft"\`.
@@ -1421,6 +1426,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
+  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },

@@ -20,6 +20,9 @@ export interface OAuthDeps {
   currentUserId: (req: FastifyRequest) => Promise<string | null>;
   /** Supplies the admin-configurable agent-session (refresh) cap applied to newly-issued tokens. */
   instanceSettings: { getAgentSessionMs(): Promise<number> };
+  /** The instance's public origin (`SW_PUBLIC_URL`). When set, it is the OAuth issuer / `resource`
+   *  regardless of proxy headers — the fix for `http://` metadata behind a TLS-terminating proxy. */
+  publicUrl?: string;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -49,10 +52,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// Self-hosted single-origin: derive the issuer from the request. Behind a reverse
-// proxy, enable trustProxy + a fixed Host so this isn't attacker-controllable; the
-// actual security boundary is the loopback redirect allowlist, not the issuer URL.
-export function issuerOf(req: FastifyRequest): string {
+// The public origin the browser reaches us on — used to build the OAuth/MCP discovery metadata,
+// authorize/token URLs, and the `resource` identifier. Prefer the operator-configured public URL
+// (`SW_PUBLIC_URL`): it is deterministic and correct behind a TLS-terminating reverse proxy that the
+// app otherwise can't see through. Fall back to the request, where `req.protocol`/`Host` only reflect
+// the real browser origin when trustProxy is enabled — otherwise a proxied HTTPS request looks like
+// `http://…` here, and MCP/OAuth clients reject the resulting `http://` metadata (set SW_PUBLIC_URL or
+// TRUST_PROXY). The security boundary is the loopback/exact redirect allowlist, not this URL.
+export function issuerOf(req: FastifyRequest, publicUrl?: string): string {
+  if (publicUrl) return publicUrl.replace(/\/$/, '');
   const host = req.headers.host ?? 'localhost';
   return `${req.protocol}://${host}`;
 }
@@ -93,7 +101,7 @@ function redirectWith(redirectUri: string, params: Record<string, string>): stri
  * rest of the API validates.
  */
 export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void {
-  const { oauth, clients, db, projects, currentUserId, instanceSettings, rl } = deps;
+  const { oauth, clients, db, projects, currentUserId, instanceSettings, publicUrl, rl } = deps;
   /** Absolute refresh-token expiry for a NEWLY-issued grant = now + the admin's agent-session cap. */
   const sessionExpiry = async (): Promise<Date> => new Date(Date.now() + (await instanceSettings.getAgentSessionMs()));
 
@@ -118,7 +126,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
 
   // ---- Discovery (RFC 8414 + RFC 9728) ----
   app.get('/.well-known/oauth-authorization-server', async (req, reply) => {
-    const issuer = issuerOf(req);
+    const issuer = issuerOf(req, publicUrl);
     return reply.send({
       issuer,
       authorization_endpoint: `${issuer}/oauth/authorize`,
@@ -138,7 +146,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
   });
 
   app.get('/.well-known/oauth-protected-resource', async (req, reply) => {
-    const issuer = issuerOf(req);
+    const issuer = issuerOf(req, publicUrl);
     return reply.send({ resource: issuer, authorization_servers: [issuer] });
   });
 
@@ -311,7 +319,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       }
       const scope = parseScope(b.scope);
       if (scope.length === 0) return reply.code(400).send({ error: 'invalid_scope' });
-      const issuer = issuerOf(req);
+      const issuer = issuerOf(req, publicUrl);
       const { deviceCode, userCode, expiresAt, interval } = await oauth.startDeviceAuthorization({ clientId, scope });
       return reply.send({
         device_code: deviceCode,

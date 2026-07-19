@@ -879,9 +879,11 @@ export interface AppOptions {
   /** Stock-image search/import service. Defaults to the live providers; tests inject a fake. */
   stockService?: StockServiceLike;
   /**
-   * The platform's public base URL (e.g. `https://cms.agency.com`). Baked into
-   * exported `Form` blocks so the static site posts submissions back here. Unset
-   * → same-origin `/f/…` (works only when the platform serves the export).
+   * The platform's public ORIGIN (e.g. `https://cms.agency.com`; origin-only, no path). Sourced from
+   * `SW_PUBLIC_URL`. Uses: baked into exported `Form` blocks so the static site posts submissions back
+   * here; the OIDC redirect base; and — when set — the canonical OAuth/MCP issuer + `resource` (see
+   * `issuerOf`), which is how self-hosters behind a TLS-terminating proxy avoid `http://` metadata.
+   * Unset → derived per-request (same-origin `/f/…`; request-derived issuer).
    */
   publicUrl?: string;
   /**
@@ -2565,10 +2567,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
-  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, rl });
+  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, publicUrl: opts.publicUrl, rl });
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
-  registerMcpRoutes(app, { rl });
+  registerMcpRoutes(app, { rl, publicUrl: opts.publicUrl });
 
   app.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/export',

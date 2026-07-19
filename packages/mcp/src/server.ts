@@ -25,7 +25,7 @@ import {
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
-import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult } from './client.js';
+import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -173,6 +173,18 @@ async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
 
 function toolError(text: string): ToolResult {
   return { content: [{ type: 'text', text }], isError: true };
+}
+
+/** Render the website-import report as a readable next-step summary (the `import_website` tool result). */
+function summarizeImport(r: ImportWebsiteResult): string {
+  const warnings = Array.isArray(r.warnings) ? r.warnings : [];
+  return [
+    `WEBSITE IMPORTED ✓ — ${r.pagesImported ?? 0} page(s) imported (${r.mediaSelfHosted ?? 0} media asset(s) self-hosted).`,
+    'These are RAW imported scaffolds (each page carries `data.swImport`). NOW NATIVIZE them: read get_guide("import") once, then rebuild each page with native primitives, judging against visual_audit region-by-region, and publish_project when clone_audit + visual_audit pass. Do NOT ask the user to paste HTML — the import already captured the live page.',
+    warnings.length ? `Importer notes (${warnings.length}): ${warnings.slice(0, 8).join(' | ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** Render the autonomous clone run's verdict as a readable per-page summary (the `ai_clone` tool result). */
@@ -885,6 +897,16 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'import_website',
+    {
+      description:
+        'Crawl + IMPORT a public https website URL into THIS project — the FIRST step of cloning/nativizing a site. The server fetches and RENDERS the live page(s) itself (executing JS, following an embed/preview wrapper to the real framed site), self-hosts the images + fonts, and creates the imported `swImport` scaffold pages. Call this FIRST whenever you are asked to clone/nativize/reproduce a URL and the project has no imported pages yet; then nativize (get_guide("import") → author → visual_audit → publish_project). NEVER tell the user you cannot fetch websites or ask them to paste HTML — this tool imports the live page for you. Foundation (native scaffold) is on by default.',
+      inputSchema: { url: z.string().url().max(2048), foundation: z.boolean().optional() },
+    },
+    gate('content:write', ({ url, foundation }) => client.importWebsite(url, foundation).then(summarizeImport)),
+  );
+
+  server.registerTool(
     'import_image',
     {
       description:
@@ -1001,7 +1023,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
  *  MCP client (or a human) can run the exact same steps without a hand-written brief. */
 export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages. Run this WHOLE flow END-TO-END YOURSELF — import → author EVERY page → judge visual_audit region-by-region to zero blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → publish_project — WITHOUT stopping to ask the user for approval between pages or before publishing. Only pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes and the site is published.
 
-1. Call list_pages. Every page whose data carries \`swImport\` is an imported RAW scaffold (foreign Materialize/Bootstrap/FontAwesome markup) that must be rebuilt in native primitives. Read the full rules ONCE: get_guide("import").
+1. If you were given a URL to clone and list_pages shows NO \`swImport\` pages (an un-imported/blank project), call import_website(url) FIRST — the server crawls + RENDERS the live site (following an embed/preview wrapper to the real page) and creates the scaffold. NEVER say you can't fetch the URL or ask the user to paste HTML. Then call list_pages: every page whose data carries \`swImport\` is an imported RAW scaffold (foreign Materialize/Bootstrap/FontAwesome markup) that must be rebuilt in native primitives. Read the full rules ONCE: get_guide("import").
 2. Work ONE page at a time, home first, so theme tokens / datasets / chrome carry across the site. For each imported page:
    a. compare_to_source(pageId) — SEE the original vs your current build.
    b. Author the body with REAL platform primitives first (get_components / get_reference / widgets / website.effects); only hand-write HTML when nothing fits. Tailwind utilities for layout, correct per-element fonts via CSS vars, {{#each dataset.x}} for repeated lists (named datasets, not "items"), real <dialog data-sw-component="modal"> for modals, a working mobile drawer, and data-sw-* / {{sw-control}} so text stays editable. Do NOT leave the imported foreign markup.

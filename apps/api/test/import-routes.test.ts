@@ -170,6 +170,45 @@ describe('assertNoScripts', () => {
   });
 });
 
+describe('POST /projects/:id/agent/import-website (non-streaming, agent-callable)', () => {
+  const okBundle = () => ({
+    bundles: [{ project: { identity: { name: 'X', colors: {} } as never, settings: { defaultLocale: 'en', locales: ['en'] } }, pages: [{ id: 'h', path: '', title: 'H', source: '<p>ok</p>', data: { swImport: { sourceUrl: 'https://ex.com/', rewritten: false } } }], templates: [], datasets: [], entries: [] }],
+    diagnostics: [] as [],
+    stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
+  });
+
+  it('imports a crawled site to completion and returns JSON (owner), foundation ON by default', async () => {
+    const seen: Array<{ foundation?: boolean }> = [];
+    const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen.push(opts); return okBundle(); }) as never;
+    const { app, importBundle } = track(makeApp({ buildBundle }));
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload).ok).toBe(true);
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    expect(seen[0]?.foundation).toBe(true); // default ON — no ?foundation query needed
+  });
+
+  it('honours foundation:false in the body', async () => {
+    const seen: Array<{ foundation?: boolean }> = [];
+    const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen.push(opts); return okBundle(); }) as never;
+    const { app } = track(makeApp({ buildBundle }));
+    await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', foundation: false } });
+    expect(seen[0]?.foundation).toBeUndefined();
+  });
+
+  it('rejects a non-https url with 400', async () => {
+    const { app } = track(makeApp());
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'http://ex.com/' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a non-owner with 403', async () => {
+    const { app } = track(makeApp({ role: 'member' }));
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
 describe('POST /projects/:id/import/website/stream', () => {
   it('imports a crawled site and streams done (owner)', async () => {
     const { app, importBundle } = track(makeApp());

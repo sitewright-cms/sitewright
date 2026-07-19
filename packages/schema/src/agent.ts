@@ -823,6 +823,17 @@ folded into the website criticalCss/head slots, the shared header/footer hoisted
 slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
 and \`status:"draft"\`.
 
+EMBED-WRAPPER URLS: if the imported URL was a preview/embed HOST that FRAMES the real site behind an embed
+guard (an Arena-style wrapper), the importer now FOLLOWS the dominant \`<iframe>\` and imports the FRAMED SPA —
+so the pages you got ARE the real site, not the wrapper shell. If an import looks "thin", that is NOT a failed
+follow: treat the framed content as the source of truth and author it.
+
+RUN THE WHOLE CLONE AUTONOMOUSLY — import → author each page → judge visual_audit region-by-region to zero
+blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → next page → publish_project is ONE end-to-end job you
+drive to completion WITHOUT stopping to ask the user for approval between pages or before publishing. Only
+pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes
+and the site is published.
+
 NATIVIZE = A FAITHFUL PORT, NOT A REDESIGN. Your job is to REPLICATE the existing layout and look using
 native primitives — keep the SAME sections, structure, order, and visual design; swap only the
 IMPLEMENTATION. Do NOT apply get_guide("design") here — that flagship section toolkit is for NET-NEW pages.
@@ -914,10 +925,12 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    preview, not the static whole-site preview; and put data-sw-text/html on the fields so the inner text is
    editable too. If a row is FULLY covered by editable leaves, click the row's teal entry badge (or any
    non-text chrome / use the Regions panel) to open the full item editor.
-7. IMAGES: keep the self-hosted images the import found (same src) — including SVG logos/illustrations,
-   which are now self-hosted too (kept as sanitized, still-animated VECTORS, not rasterized). Only fill
-   genuine GAPS with import_image (from a URL) or search_stock_images (an oversize image may have been
-   dropped). An SVG renders as a plain <img>/{{sw-image}} — it needs no size variants (it scales natively).
+7. IMAGES: the importer now RELIABLY self-hosts ALL external images (retrying across multiple IPs + a real
+   browser UA), so every imported \`<img>\` ALREADY points at a self-hosted \`/media/...\` URL — including SVG
+   logos/illustrations (kept as sanitized, still-animated VECTORS, not rasterized). Keep those src values as
+   they are; NEVER hotlink an external URL. Only fill a genuine GAP the import missed with import_image (from a
+   public https URL — it downloads + self-hosts) or import_stock_image / search_stock_images (an oversize image
+   may have been dropped). An SVG renders as a plain <img>/{{sw-image}} — it needs no size variants (it scales natively).
 8. ASSET FOLDERS: the import dumps every self-hosted file into a TRANSIENT \`imported/\` tree — REORGANIZE it
    into a clean, human-readable library. Group by the page/role that uses each file (a dedicated folder when
    a page has a cluster of ~3+, e.g. \`Management Team\`; a shared role folder for once-per-page assets like
@@ -1108,11 +1121,17 @@ against this list BEFORE you publish it:
   \`<img>\`, video, or off-screen media element MUST carry \`loading="lazy"\` + \`class="skeleton loading …"\` too
   (small above-the-fold logos / nav icons stay eager and need no placeholder). A blank grey box where the
   original shows a map / video / image = a missing lazy placeholder.
-- FONTS LIVE IN CI SETTINGS (identity.typography.heading/body), NOT in criticalCss. The importer already
-  self-hosts the brand fonts and wires identity.typography — do NOT re-declare \`@font-face\` /
-  \`font-family:…!important\` in criticalCss. The duplicate fights the platform typography and drifts the
-  heading WEIGHT/SIZE (a very common "fonts look off" miss). Use criticalCss only for a genuine per-element
-  override the CI settings can't express (e.g. a script font on ONE brand title).
+- FONTS ARE SELF-HOSTED + LIVE IN CI SETTINGS (identity.typography.heading/body), NOT in criticalCss. The
+  importer now LOCALLY hosts the page's Google Fonts (and any @font-face fonts) automatically and wires
+  identity.typography.heading/body — asset-backed slots that drive \`--sw-font-heading\`/\`--sw-font-body\` and
+  the \`.font-heading\`/\`.font-body\` (+ Tailwind \`font-heading\`/\`font-body\`) utilities. So: do NOT add a
+  Google-Fonts \`<link>\` or \`@import\` in criticalCss/head (it is stripped/blocked AND unnecessary — the font
+  is already local), and do NOT re-declare \`@font-face\` / \`font-family:…!important\` or a \`body{font-family:…}\`
+  rule in criticalCss to "fix" a font (the duplicate fights the platform typography and drifts the heading
+  WEIGHT/SIZE — a very common "fonts look off" miss). To CHANGE a font, set identity.typography (a font slot =
+  { source, family, weight, assetId? } — source, family AND weight are ALL required) or use the platform font
+  picker, NEVER an external stylesheet. Use criticalCss only for a genuine per-element override the CI settings
+  can't express (e.g. a script font on ONE brand title, via var(--sw-font-*)).
 - USE CI VARIABLES EVERYWHERE — chrome included. The company name, slogan, phone, email, address, and social
   links in the header/footer and page bodies are \`{{company.name}}\` / \`{{company.slogan}}\` / \`{{company.*}}\`,
   NEVER a hard-coded "Acme Ltd" literal. For a copyright YEAR use \`{{sw-date "now" "YYYY"}}\` (always the
@@ -1125,6 +1144,10 @@ against this list BEFORE you publish it:
   for rich copy) — not just dataset fields. A page of bare, unmarked <p>/<h2> is not done.
 - MATCH TEXT-TRANSFORM. If the original's buttons / labels / table actions are UPPERCASE, render them
   uppercase (author the caps or add \`uppercase\`) — don't emit Title Case.
+- LINK UNDERLINES — OPT IN, don't blanket-remove. Body \`<a>\` links have NO underline by default now
+  (platform-wide, matching modern designs), so do NOT sprinkle \`no-underline\` across the page (it is
+  redundant). Add an underline ONLY where the original actually has one — the \`underline\` utility (or DaisyUI
+  \`.link\` / \`.link-primary\`) on those specific links — and match its hover behaviour.
 - FORMS: match the original's field LAYOUT (inline label-left/input-right vs labels stacked above), keep its
   required indicators, and do NOT invent placeholder text the original lacks. Match the submit button's look
   (colour + any icon).
@@ -1216,11 +1239,15 @@ sample the original's real values, don't approximate to the nearest token):
 - FIXED SOCIAL RAIL with hover-reveal → \`website.sidebarLeft\`/\`sidebarRight\`. If the original has a fixed
   edge rail of social icons that slides/reveals on hover, reproduce it (a fixed column + \`translate-x\` at
   rest → \`hover:translate-x-0\`), on the SAME breakpoints as the original (keep it on DESKTOP if it's there).
-- MATCH ICON STYLE — solid vs outline. \`{{sw-icon}}\` is Lucide (OUTLINE stroke); the original's icons are
-  often SOLID (FontAwesome). For a SOCIAL icon use the BRAND glyph (\`{{sw-icon "brand:facebook"}}\`,
-  \`brand:x-twitter\` / the classic bird, \`brand:whatsapp\`, …) inside the original's solid circle badge if it
-  has one; for a filled UI glyph pick the closest filled treatment — don't ship thin outline icons where the
-  original is solid+filled.
+- ICONS ARE AUTO-MAPPED — then MATCH ICON STYLE (solid vs outline). The importer now MAPS foreign icons
+  (FontAwesome / Material / etc.) to the platform \`{{sw-icon}}\` (Lucide) or \`brand:\` icons automatically
+  where a match exists, so an imported page's icons ALREADY render as \`{{sw-icon}}\` calls — PREFER the mapped
+  icon; only re-pick one when the auto-map was wrong or had no match. When you DO pick: \`{{sw-icon}}\` is Lucide
+  (OUTLINE stroke) and the original's icons are often SOLID (FontAwesome) — match the solid-vs-outline
+  treatment. For a SOCIAL / brand logo use the BRAND glyph (\`{{sw-icon "brand:facebook"}}\`, \`brand:x-twitter\`
+  / the classic bird, \`brand:whatsapp\`, …) inside the original's solid circle badge if it has one; for a
+  filled UI glyph pick the closest filled treatment — don't ship thin outline icons where the original is
+  solid+filled.
 - ENTRANCE / MOTION animations: the import strips the foreign JS (foreign animation libraries etc.), so fade/slide-in-on-scroll and
   entrance animations are LOST. Re-add them with the platform animation directives (get_guide("effects") /
   data-sw-animation) where the original animates — e.g. the nav's fade-in-down, section reveals.
@@ -1401,6 +1428,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
+  { name: 'ai_clone', description: "Autonomously clone/nativize EVERY imported page to the acceptance gate (server-side import→author→gate→iterate→publish). Requires a configured AI provider; a generic MCP agent can instead run the clone_site workflow itself.", capability: 'publish' },
 ];
 
 /**

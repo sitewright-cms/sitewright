@@ -3,7 +3,7 @@
 // checks only run inside a mustache). So we only have to obey the structural rules: no <script>, none
 // of the four skeleton landmarks (<nav>/<main>/<footer>/<aside>), no on* handlers, and no stray `{{`.
 import { validateTemplate } from '@sitewright/blocks';
-import { removeElement, textContent } from 'domutils';
+import { removeElement, replaceElement, textContent } from 'domutils';
 import { isComment, Text } from 'domhandler';
 import {
   elements,
@@ -19,6 +19,7 @@ import {
 import { assetKey, pickFromSrcset, resolveUrl, rewriteHref, SYNTHETIC_HOST } from '../url-util.js';
 import { LAZY_ATTRS, effectiveBg, effectiveSrc, effectiveSrcset } from './assets.js';
 import { mapAosAnimation, AOS_ATTRS } from './effects.js';
+import { mapIconClass, mapMaterialLigature, mapFlagClass, type IconMapping } from './icon-map.js';
 import { isAllowedEmbed } from '../embeds.js';
 import type { ImportDiagnostic, ImportLimits } from '../types.js';
 
@@ -143,10 +144,125 @@ function rewriteStyleUrls(style: string, ctx: TransformCtx): string {
   });
 }
 
+/** Material Icons carry their glyph as LIGATURE TEXT (`<i class="material-icons">home</i>`), so the icon
+ *  name is the element's text, not a class — detect the marker class family to route those to the ligature. */
+const MATERIAL_ICON_RE = /\bmaterial-(?:icons|symbols)\b/;
+/** FA sizing keyword (`fa-2x` … `fa-10x`) → a Tailwind box size the `{{sw-icon}}` svg honors (foreign FA CSS
+ *  is dropped on import, so the numeric size must be carried over as a class or the icon renders tiny). */
+const FA_SIZE: Readonly<Record<string, string>> = {
+  '1': 'h-4 w-4', '2': 'h-8 w-8', '3': 'h-12 w-12', '4': 'h-16 w-16', '5': 'h-20 w-20',
+  '6': 'h-24 w-24', '7': 'h-28 w-28', '8': 'h-32 w-32', '9': 'h-36 w-36', '10': 'h-40 w-40',
+};
+/** Tailwind font-size token → a box size (an icon sized by `text-2xl` on a webfont must become an explicit
+ *  svg box; `text-white`/`text-center` and other non-size `text-*` are kept verbatim as color/alignment). */
+const TEXT_SIZE_BOX: Readonly<Record<string, string>> = {
+  xs: 'h-3 w-3', sm: 'h-4 w-4', base: 'h-4 w-4', lg: 'h-5 w-5', xl: 'h-6 w-6',
+  '2xl': 'h-8 w-8', '3xl': 'h-10 w-10', '4xl': 'h-12 w-12', '5xl': 'h-16 w-16', '6xl': 'h-20 w-20',
+};
+const BOX_CLASS_RE = /^(?:w|h|size|min-w|min-h|max-w|max-h)-/;
+
+/**
+ * The size/spacing classes worth carrying onto the mapped `{{sw-icon}}` svg: explicit box dimensions
+ * (`w-*`/`h-*`/`size-*`), font-size and FA sizing translated to a box, and margin utilities for spacing.
+ * Anything else (colors, layout) is dropped — the platform icon themes with `currentColor`. Always yields a
+ * concrete box size (defaulting to `h-5 w-5`), since we pass an explicit class arg to the helper.
+ */
+function preserveIconSizeClasses(classStr: string, defaultBox = 'h-5 w-5'): string {
+  const kept: string[] = [];
+  const add = (...cs: string[]): void => { for (const c of cs) if (c && !kept.includes(c)) kept.push(c); };
+  for (const t of classStr.split(/\s+/).filter(Boolean)) {
+    let m: RegExpMatchArray | null;
+    if (BOX_CLASS_RE.test(t)) add(t); // an explicit box dimension — keep as-is
+    else if ((m = t.match(/^text-(\S+)$/))) add(...(TEXT_SIZE_BOX[m[1] ?? ''] ?? t).split(' '));
+    else if ((m = t.match(/^fa-(\d{1,2})x$/))) add(...(FA_SIZE[m[1] ?? ''] ?? '').split(' ').filter(Boolean));
+    else if (/^m[trblxyse]?-\S+$/.test(t)) add(t); // margin/spacing
+  }
+  if (!kept.some((c) => BOX_CLASS_RE.test(c))) add(...defaultBox.split(' '));
+  return kept.join(' ');
+}
+
+/** A resolved icon → its `{{sw-icon}}` name (`brand:<slug>` for a brand logo, else the bare Lucide name). */
+function iconName(mapping: IconMapping): string {
+  return 'brand' in mapping ? `brand:${mapping.brand}` : mapping.icon;
+}
+
+/** Resolve an inline `<svg>` to a platform icon ONLY when it carries a clear name hint — a `lucide-<name>`
+ *  class, a `data-lucide`/`data-icon`/`data-feather` attr, or a single-word `aria-label`. A nameless svg is
+ *  already a clean vector icon (its own paths survive import) and is left untouched. */
+function svgIconMapping(el: Element): IconMapping | null {
+  const byClass = mapIconClass(el.attribs.class);
+  if (byClass) return byClass;
+  const hint = el.attribs['data-lucide'] ?? el.attribs['data-icon'] ?? el.attribs['data-feather'] ?? el.attribs['aria-label'];
+  return hint ? mapMaterialLigature(hint) : null; // mapMaterialLigature also resolves a bare hyphenated name
+}
+
+/**
+ * Replace foreign ICON-FONT / sprite markup with the platform's `{{sw-icon}}` helper so imported icons keep
+ * rendering after their webfont + stylesheet are dropped. Matches leaf `<i>`/`<span>` whose class is a known
+ * icon set (FontAwesome/Bootstrap/Ionicons/Feather/Glyphicons — via {@link mapIconClass}), Material Icons
+ * (whose glyph is the ligature TEXT), and hinted inline `<svg>`s. Anything without a platform equivalent is
+ * LEFT UNCHANGED. Returns the emitted mustache text nodes so the caller's mustache-neutralizing pass skips
+ * them (they are the one intentional `{{ }}` in an otherwise literal-HTML source).
+ */
+function mapForeignIcons(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagnostic[]): Set<{ data: string }> {
+  const emitted = new Set<{ data: string }>();
+  for (const el of elements(nodes)) {
+    if (!el.parent) continue; // detached by an earlier replacement in this same pass → skip
+    const cls = el.attribs.class ?? '';
+    let mustache = '';
+    let label = '';
+    let target = '';
+    if (el.name === 'i' || el.name === 'span') {
+      if (el.children.some(isTag)) continue; // a wrapper holding real elements is not a bare icon carrier
+      const flag = mapFlagClass(cls); // a country flag uses the SEPARATE {{sw-flag}} helper (own default size)
+      if (flag) {
+        target = `flag:${flag.flag}`;
+        mustache = `{{sw-flag "${flag.flag}" "${preserveIconSizeClasses(cls, 'h-4')}"}}`;
+        label = iconSourceLabel(cls);
+      } else {
+        let mapping: IconMapping | null;
+        if (MATERIAL_ICON_RE.test(cls)) {
+          const ligature = textContent([el]).trim();
+          mapping = mapMaterialLigature(ligature);
+          label = `material:${ligature}`;
+        } else {
+          mapping = mapIconClass(cls);
+          label = iconSourceLabel(cls);
+        }
+        if (!mapping) continue;
+        target = iconName(mapping);
+        mustache = `{{sw-icon "${target}" "${preserveIconSizeClasses(cls)}"}}`;
+      }
+    } else if (el.name === 'svg') {
+      const mapping = svgIconMapping(el);
+      if (!mapping) continue;
+      target = iconName(mapping);
+      mustache = `{{sw-icon "${target}" "${preserveIconSizeClasses(cls)}"}}`;
+      label = `<svg> ${iconSourceLabel(cls) || (el.attribs['data-lucide'] ?? el.attribs['data-icon'] ?? el.attribs['aria-label'] ?? '')}`.trim();
+    } else {
+      continue;
+    }
+    const node = new Text(mustache);
+    replaceElement(el, node);
+    emitted.add(node);
+    diags.push({ code: 'icon-mapped', message: `${label} → ${target}`, page: ctx.pageUrl });
+  }
+  return emitted;
+}
+
+/** The foreign icon-class token to name in a diagnostic (`fa-facebook`, `bi-telephone`, …), else the first class. */
+function iconSourceLabel(cls: string): string {
+  for (const t of cls.split(/\s+/).filter(Boolean)) {
+    if (/^(?:fa|bi|ion|feather|glyphicon|lucide|flag-icon|flag|fi)-/.test(t)) return t;
+  }
+  return cls.trim().split(/\s+/)[0] ?? 'icon';
+}
+
 /**
  * Mutate a set of nodes (and their descendants) into source-safe literal HTML: rename landmarks, drop
  * forbidden elements, strip on* and data-sw-* attributes, rewrite URLs (links → routes, images → hosted
- * refs), and neutralize stray `{{`. Pushes diagnostics for anything dropped/changed materially.
+ * refs), map foreign icons to `{{sw-icon}}`, and neutralize stray `{{`. Pushes diagnostics for anything
+ * dropped/changed materially.
  */
 export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagnostic[]): void {
   // Strip HTML comments — pure dead weight in an EDITABLE source. A foreign page routinely carries
@@ -189,6 +305,10 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
       parent = grandparent;
     }
   }
+  // Map foreign icon-font / sprite markup to the platform's `{{sw-icon}}` helper (before the survivor loop,
+  // so its attr-rewrite skips the icons we've already turned into text). The returned nodes are the ONLY
+  // intentional mustaches in the source, so the neutralize pass below leaves them intact.
+  const iconMustaches = mapForeignIcons(nodes, ctx, diags);
   // Then rewrite the survivors.
   for (const el of elements(nodes)) {
     if (LANDMARK_TAGS.has(el.name)) {
@@ -202,9 +322,11 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
     }
     rewriteElementAttrs(el, ctx, diags);
   }
-  // Finally neutralize braces in every surviving TEXT node so no literal {{ remains. (Comments were
-  // stripped above, so eachTextLike's comment branch is inert here — text nodes are what's left.)
+  // Finally neutralize braces in every surviving TEXT node so no literal {{ remains — EXCEPT the
+  // `{{sw-icon}}` mustaches we emitted above (neutralizing them would insert a zero-width space and break
+  // the helper). Comments were stripped above, so eachTextLike's comment branch is inert here.
   eachTextLike(nodes, (n) => {
+    if (iconMustaches.has(n)) return;
     n.data = neutralizeMustaches(n.data);
   });
 }

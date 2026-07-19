@@ -25,7 +25,7 @@ import {
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
-import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult } from './client.js';
+import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -173,6 +173,24 @@ async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
 
 function toolError(text: string): ToolResult {
   return { content: [{ type: 'text', text }], isError: true };
+}
+
+/** Render the autonomous clone run's verdict as a readable per-page summary (the `ai_clone` tool result). */
+function summarizeCloneRun(r: CloneRunResult): string {
+  const lines = [
+    `AI CLONE ${r.ok ? 'COMPLETE ✓' : 'FINISHED ✗'} — ${r.passed}/${r.total} imported pages passed the acceptance gate (model: ${r.model}).`,
+    '',
+  ];
+  for (const p of r.pages) {
+    lines.push(`  ${p.passed ? '✓' : '✗'}  ${p.label} (page ${p.pageId}) — ${p.passed ? 'passed' : 'NOT passed'} in ${p.rounds} round(s)`);
+  }
+  lines.push(
+    '',
+    r.ok
+      ? 'Every imported page passed and the site was published.'
+      : 'Some pages did not reach the gate within their round budget — re-run ai_clone, or open each failing page and drive its remaining defects to zero with visual_audit + clone_audit.',
+  );
+  return lines.join('\n');
 }
 
 /**
@@ -949,6 +967,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('publish', () => client.publish()),
   );
 
+  // The AUTONOMOUS whole-site clone: kicks off the SERVER-SIDE orchestrator (import → author each page →
+  // authoritative gate → iterate → publish) and returns the per-page verdict once it finishes. Requires the
+  // project to have an AI provider configured (else the route 501s). A generic MCP agent that IS the model
+  // doesn't need this — it can run the `clone_site` prompt workflow itself; this hands the whole loop to the
+  // platform's own agent instead.
+  server.registerTool(
+    'ai_clone',
+    {
+      description:
+        'Autonomously clone/nativize EVERY imported page to the acceptance gate (server-side import→author→gate→iterate→publish). Requires a configured AI provider; a generic MCP agent can instead run the clone_site workflow itself.',
+    },
+    gate('publish', () => client.cloneSite().then(summarizeCloneRun)),
+  );
+
   // A PRE-DEFINED clone workflow, surfaced to the client as an invokable prompt (a slash-command in
   // Claude Code, a prompt in the picker elsewhere) — so a human doesn't paste a long brief and EVERY MCP
   // agent runs the same steps. Self-contained: it drives the deterministic gates (visual_audit that the
@@ -967,7 +999,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
 /** The canonical clone workflow — the pre-defined `clone_site` prompt body. Kept self-contained so any
  *  MCP client (or a human) can run the exact same steps without a hand-written brief. */
-export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages.
+export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages. Run this WHOLE flow END-TO-END YOURSELF — import → author EVERY page → judge visual_audit region-by-region to zero blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → publish_project — WITHOUT stopping to ask the user for approval between pages or before publishing. Only pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes and the site is published.
 
 1. Call list_pages. Every page whose data carries \`swImport\` is an imported RAW scaffold (foreign Materialize/Bootstrap/FontAwesome markup) that must be rebuilt in native primitives. Read the full rules ONCE: get_guide("import").
 2. Work ONE page at a time, home first, so theme tokens / datasets / chrome carry across the site. For each imported page:

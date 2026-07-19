@@ -98,6 +98,14 @@ export interface TransformOptions {
    * See docs/nativize/pipeline.md + transform/foundation.ts.
    */
   foundation?: boolean;
+  /**
+   * Server-side downloader for a webfont family referenced via a Google-Fonts `<link>`/`@import` (a page
+   * that loads its fonts from a CDN, with NO `@font-face` in its own CSS). Given a family + weights it
+   * returns the woff2 bytes per weight; the engine self-hosts them (same pass as `@font-face` fonts) and
+   * the foundation extractor matches them into `identity.typography` — so the clone renders its real fonts
+   * locally, never from a font CDN. Omitted → Google-Fonts `<link>`s are left unhosted (the safe default).
+   */
+  fetchWebfont?: (family: string, weights: number[]) => Promise<Array<{ weight: number; bytes: Uint8Array }>>;
   onProgress?: (e: ImportProgress) => void;
 }
 
@@ -125,6 +133,8 @@ export type DiagnosticCode =
   | 'footer-map-embedded'
   | 'header-decor-captured'
   | 'effects-mapped'
+  | 'icon-mapped'
+  | 'webfonts-hosted'
   | 'document-embed-linked'
   | 'document-embed-framed'
   | 'widget-consent-registered'

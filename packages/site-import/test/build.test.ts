@@ -297,6 +297,40 @@ describe('buildImportBundle — foundation mode (opt-in)', () => {
     expect(fonts).not.toContain('FontAwesome'); // icon font skipped
   });
 
+  it('self-hosts Google Fonts referenced via a <link> (no @font-face) + matches them into identity.typography', async () => {
+    const hostedFonts: string[] = [];
+    const media: MediaPort = {
+      hostAsset: async (a) => {
+        if (a.kind === 'font') hostedFonts.push(`${a.font?.family}@${a.font?.weight}`);
+        return { ref: a.kind === 'font' ? `/media/test/gf${hostedFonts.length}/font.woff2` : '/media/test/i.jpg' };
+      },
+    };
+    const GF_HEAD =
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;700&family=Inter:wght@400;500&display=swap">' +
+      '<style>body{font-family:"Inter",sans-serif}h1{font-family:"Sora",serif}</style>';
+    const fetched: string[] = [];
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Welcome</h1>', HOME_HEAD + GF_HEAD) }]),
+      {
+        media,
+        foundation: true,
+        fetchWebfont: async (family, weights) => {
+          fetched.push(family);
+          return weights.map((weight) => ({ weight, bytes: new Uint8Array([1, 2, 3]) }));
+        },
+      },
+    );
+    // The <link> families were downloaded + self-hosted (never left to the CDN).
+    expect(fetched).toEqual(expect.arrayContaining(['Sora', 'Inter']));
+    expect(hostedFonts.some((f) => f.startsWith('Sora@'))).toBe(true);
+    expect(hostedFonts.some((f) => f.startsWith('Inter@'))).toBe(true);
+    expect(result.diagnostics.some((d) => d.code === 'webfonts-hosted')).toBe(true);
+    // …and matched into identity.typography as asset-backed slots (→ --sw-font-* vars + local @font-face).
+    const id = result.bundles[0]!.project.identity;
+    expect(id.typography?.heading).toMatchObject({ source: 'asset', family: 'Sora' });
+    expect(id.typography?.body).toMatchObject({ source: 'asset', family: 'Inter' });
+  });
+
   it('is opt-in: without the flag, no foundation is applied', async () => {
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Hi</h1>', HOME_HEAD + STYLE) }]),

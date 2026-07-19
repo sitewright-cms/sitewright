@@ -80,17 +80,23 @@ async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (t
   try {
   const page = await context.newPage();
   page.setDefaultTimeout(NAV_TIMEOUT_MS);
+  // Referer of the page's own origin — forwarded on the top nav so an embed-guarded source (which 302s a
+  // referer-less request to its wrapper) renders the real site. Only meaningful for the pinned source path.
+  let originRef: string | undefined;
   if (mode === 'pinned') {
+    try { originRef = new URL(url).origin + '/'; } catch { originRef = undefined; }
     // Route the whole external page through the pinned fetcher (no browser DNS) — renderViaBrowser pattern.
     await page.routeWebSocket(/.*/, (ws) => ws.close());
     await page.route('**/*', async (route, request) => {
       if (request.method() !== 'GET' || request.headers()['upgrade']) return route.abort('blockedbyclient');
-      const r = await pinnedFetch(request.url(), { timeoutMs: 10_000, maxBytes: SUBRESOURCE_MAX_BYTES, signal }).catch(() => null);
+      // Forward the browser's Referer (top nav + subframes/subresources) so embed guards resolve.
+      const referer = request.headers()['referer'];
+      const r = await pinnedFetch(request.url(), { timeoutMs: 10_000, maxBytes: SUBRESOURCE_MAX_BYTES, signal, ...(referer ? { headers: { referer } } : {}) }).catch(() => null);
       if (!r) return route.abort('blockedbyclient');
       await route.fulfill({ status: r.status, headers: { 'content-type': r.contentType }, body: Buffer.from(r.bytes) }).catch(() => {});
     });
   }
-  await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {});
+  await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS, ...(originRef ? { referer: originRef } : {}) }).catch(() => {});
   return { context, page };
   } catch (e) {
     // Close the context if setup threw before we could hand it back (else the caller's finally never runs

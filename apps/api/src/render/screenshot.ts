@@ -304,7 +304,15 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
         const g = globalThis as unknown as { document: { getAnimations?: () => Array<{ finish: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } } };
         try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { /* running/infinite */ } }); } catch { /* not supported */ }
         const s = g.document.createElement('style');
-        s.textContent = '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}';
+        // Pause CSS/WAAPI animations AND force scroll-reveal libraries to their VISIBLE end-state — a
+        // JS-driven reveal (Framer-Motion whileInView sets inline opacity/translate; AOS `[data-aos]`;
+        // Locomotive `[data-scroll]`; the platform's own `[data-sw-animation]`) leaves a section at
+        // opacity:0 once it scrolls out of view, which a full-page composite would capture as BLANK.
+        // Targeted (inline-reveal + known reveal hooks) so normal layout/transforms are untouched.
+        s.textContent =
+          '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}' +
+          '[style*="opacity"],[data-aos],[data-sw-animation],[data-scroll]{opacity:1 !important;visibility:visible !important}' +
+          '[style*="translate"],[data-aos],[data-sw-animation]{transform:none !important}';
         g.document.head?.appendChild(s);
       })
       .catch(() => {});

@@ -12,7 +12,11 @@ const SHARP_OPTIONS = { limitInputPixels: MAX_INPUT_PIXELS } as const;
 
 // Raster formats only. SVG is intentionally excluded: librsvg resolves remote references inside
 // SVG, which is an SSRF vector for untrusted input.
-const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp', 'avif', 'gif', 'tiff']);
+// `heif` is how sharp/libvips report an AVIF (and HEIC) source — modern CDNs (e.g. images.pexels.com) serve
+// AVIF whenever the request's Accept lists it, so accepting `heif` is required for the importer to self-host
+// those images at all. It's never stored verbatim (browser support is ambiguous: AVIF yes, HEIC no) — the
+// store transcodes every `heif` source to WebP below.
+const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp', 'avif', 'heif', 'gif', 'tiff']);
 
 // Quality for the re-encoded WebP when the importer caps an oversized original. High, because this
 // becomes the retained source-of-truth from which every thumbnail is derived.
@@ -126,21 +130,23 @@ export async function storeOriginal(
   await mkdir(outDir, { recursive: true, mode: 0o750 });
 
   const capApplies = options.cap !== undefined && sourceWidth > options.cap;
+  // A HEIF source (AVIF/HEIC) is always transcoded to WebP — it can't be stored verbatim with a reliably
+  // servable extension. A capped source is also downscaled + transcoded. Everything else is stored verbatim.
+  const transcodeToWebp = capApplies || metadata.format === 'heif';
 
   let storedName: string;
   let format: string;
   let width: number;
   let height: number;
 
-  if (capApplies) {
-    // Downscale + re-encode to WebP (preserving alpha/animation). This becomes the retained source.
-    const cap = options.cap!;
+  if (transcodeToWebp) {
+    // Re-encode to WebP (preserving alpha/animation), downscaling first only when the cap bites. This
+    // becomes the retained source.
     const quality = options.cappedQuality ?? CAPPED_WEBP_QUALITY;
     storedName = replaceExt(options.storedName, 'webp');
-    const { data, info } = await sharp(input, { ...SHARP_OPTIONS, animated })
-      .resize({ width: cap, withoutEnlargement: true })
-      .webp({ quality })
-      .toBuffer({ resolveWithObject: true });
+    let pipeline = sharp(input, { ...SHARP_OPTIONS, animated });
+    if (capApplies) pipeline = pipeline.resize({ width: options.cap!, withoutEnlargement: true });
+    const { data, info } = await pipeline.webp({ quality }).toBuffer({ resolveWithObject: true });
     await writeFile(join(outDir, storedName), data);
     format = 'webp';
     width = info.width;

@@ -19,9 +19,13 @@ function startOfMonthUTC(now: Date): Date {
 
 /** Capabilities an on-page agent may ever hold (never `deploy` — there is no deploy tool). */
 const AGENT_MAX_CAPS: readonly ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish'];
-/** Tools never offered to the agent regardless of capability. Empty now that media deletes are
- *  recoverable (soft-delete → 90-day Recycle Bin), so `delete_media` is safe behind `content:delete`. */
-const WITHHELD_TOOLS = new Set<string>();
+/** Tools never offered to a SERVER-SIDE agent loop regardless of capability. `delete_media` is safe
+ *  behind `content:delete` now that deletes are recoverable (soft-delete → 90-day Recycle Bin). But
+ *  `ai_clone` is withheld here: it triggers THIS same server-side clone orchestrator, so handing it to an
+ *  authoring/assistant loop (which holds `publish`) would let a run recursively kick off another whole
+ *  clone. External MCP clients (the `packages/mcp` bridge) connect straight to `/mcp` and are unaffected —
+ *  the `ai_clone` tool stays available to them (its intended primary caller). */
+const WITHHELD_TOOLS = new Set<string>(['ai_clone']);
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
 const AGENT_TOKEN_TTL_MS = 15 * 60_000;
 // A full landing page built incrementally (get_page + put_page per section, plus previews) can take
@@ -449,6 +453,107 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
         await revokeAgentToken(deps.db, cloneKeyId).catch(() => {});
         if (raw.writable) raw.end();
       }
+    });
+
+    // ── The SAME autonomous clone orchestrator, exposed NON-STREAMING + BEARER-accepting so an MCP agent
+    // (the `ai_clone` tool) — or a session owner — can drive the whole server-side loop with one call and
+    // get a JSON verdict back. `resolveProject(req,'publish')` accepts a `swk_` agent token with the publish
+    // capability OR a session writer (the SSE route above is session-only, so no MCP tool could reach it).
+    // We consume the generator to COMPLETION (no hijack/stream), collect each page's gate outcome, and reply
+    // once every page has been driven to (or past its round budget short of) the acceptance gate.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/clone', { config: deps.rl(3) }, async (req, reply) => {
+      const { ctx } = await deps.resolveProject(req, 'publish');
+      if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const resolved = await deps.resolveAgent(ctx);
+      if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
+      const userIsAdmin = await deps.isAdmin(ctx.userId);
+      const since = startOfMonthUTC(new Date());
+      if (await overQuota(ctx, userIsAdmin, since, resolved)) return reply.code(429).send({ error: 'AI quota exhausted for this month' });
+      const pages = await clone.listPages(ctx);
+      if (pages.length === 0) return reply.code(400).send({ error: 'no imported pages to author — import a site with ?foundation=1 first' });
+
+      // The orchestration path below drives a real AI provider + the browser gate — integration-only, so
+      // it's excluded from coverage (like runCloneOrchestration itself). The auth/quota/pages gate above
+      // IS unit-tested (session + swk_ token accepted, content:read rejected).
+      /* v8 ignore start */
+      // Full (non-deploy) capability set — same as the SSE clone: it authors, prunes junk, and publishes.
+      const capabilities = [...AGENT_MAX_CAPS];
+      const abort = new AbortController();
+      let minted: { token: string; keyId: string } | undefined;
+      let bridge: McpToolBridge;
+      let tools;
+      try {
+        minted = await mintAgentToken(deps.db, {
+          projectId: ctx.projectId,
+          userId: ctx.userId,
+          role: ctx.role === 'owner' ? 'owner' : 'member',
+          capabilities,
+          ttlMs: CLONE_TOKEN_TTL_MS,
+        });
+        bridge = new McpToolBridge(app, minted.token);
+        tools = await bridge.listTools(new Set(capabilities), WITHHELD_TOOLS);
+      } catch {
+        if (minted) {
+          clearAgentTokenActive(minted.token);
+          await revokeAgentToken(deps.db, minted.keyId).catch(() => {});
+        }
+        return reply.code(502).send({ error: 'failed to start the clone' });
+      }
+      const cloneToken = minted.token;
+      const cloneKeyId = minted.keyId;
+
+      // Cancel the run if the client disconnects before we've replied (guarded so the normal
+      // post-response socket close never aborts a completed run).
+      let settled = false;
+      req.raw.on('close', () => {
+        if (!settled) abort.abort();
+      });
+
+      const meter = async (usage: { inputTokens: number; outputTokens: number }): Promise<void> => {
+        await deps.aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, usage);
+        if (await overQuota(ctx, userIsAdmin, since, resolved)) throw new Error('AI quota exhausted for this month');
+      };
+      const system = await deps.getAgentInstructions();
+      // pageId → human label (title, else slug, else "home") for the JSON summary.
+      const labels = new Map(pages.map((p) => [p.pageId, p.title || p.slug || 'home']));
+      const results: { pageId: string; label: string; passed: boolean; rounds: number }[] = [];
+      let total = pages.length;
+      let passedCount = 0;
+      try {
+        const gen = runCloneOrchestration({
+          provider: resolved.provider,
+          bridge,
+          system,
+          tools,
+          pages,
+          runGate: (pageId) => clone.runGate(cloneToken, ctx, pageId),
+          maxIterations: MAX_ITERATIONS,
+          maxTokens: resolved.maxOutputTokens ?? DEFAULT_AGENT_MAX_OUTPUT_TOKENS,
+          maxRounds: CLONE_MAX_ROUNDS,
+          signal: abort.signal,
+          onUsage: meter,
+        });
+        let next = await gen.next();
+        while (!next.done) {
+          const ev = next.value;
+          if (ev.type === 'page-done') {
+            results.push({ pageId: ev.pageId, label: labels.get(ev.pageId) ?? ev.pageId, passed: ev.pass, rounds: ev.rounds });
+          } else if (ev.type === 'done') {
+            total = ev.total;
+            passedCount = ev.passed;
+          }
+          next = await gen.next();
+        }
+        settled = true;
+        return reply.send({ ok: passedCount === total, model: resolved.provider.model, pages: results, total, passed: passedCount });
+      } catch (err) {
+        settled = true;
+        return reply.code(500).send({ error: err instanceof Error ? err.message : 'clone error' });
+      } finally {
+        clearAgentTokenActive(cloneToken);
+        await revokeAgentToken(deps.db, cloneKeyId).catch(() => {});
+      }
+      /* v8 ignore stop */
     });
   }
 }

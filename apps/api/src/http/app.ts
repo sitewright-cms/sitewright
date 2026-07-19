@@ -4914,16 +4914,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         req.raw.on('close', () => abort.abort());
         const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
         // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
-        const [build, source] = await Promise.all([
+        const [build, liveSource] = await Promise.all([
           captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
           captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: vps, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>),
         ]);
+        // A live re-fetch of the original can come back BLOCKED (empty) or BLANK — an embed-guarded/expired
+        // source, or a near-uniform white capture. In that case fall back to the ground-truth screenshots
+        // cached at import time so the agent still has a real original to judge against (goal: an offline
+        // visual gate). A GOOD live capture refreshes that cache. A blank JPEG compresses tiny regardless of
+        // page height, so a small byte size is a reliable near-uniform signal.
+        let source = liveSource;
+        let sourceFrom: 'live' | 'cache' = 'live';
+        /* v8 ignore start */ // browser-capture cache fallback — exercised by the deploy-time e2e check.
+        const isBlankShot = (s: Shot | undefined): boolean => !s || Buffer.from(s.base64, 'base64').length < 8000;
+        if (sourceRefStore) {
+          const liveOk = vps.some((n) => !isBlankShot(liveSource[n]));
+          if (liveOk) {
+            await sourceRefStore.put(project.slug, req.params.pageId, { sourceUrl: target.sourceUrl, capturedAt: Date.now(), shots: liveSource }).catch(() => {});
+          } else {
+            const cached = await sourceRefStore.get(project.slug, req.params.pageId).catch(() => null);
+            if (cached && vps.some((n) => cached.shots[n])) {
+              source = Object.fromEntries(vps.filter((n) => cached.shots[n]).map((n) => [n, cached.shots[n]!]));
+              sourceFrom = 'cache';
+            }
+          }
+        }
+        /* v8 ignore stop */
         return reply.send({
           sourceUrl: target.sourceUrl,
           route: target.route,
           rubric: VISUAL_AUDIT_RUBRIC,
           categories: VISUAL_DEFECT_CATEGORIES,
           severities: VISUAL_DEFECT_SEVERITIES,
+          sourceFrom,
           build,
           source,
         });

@@ -23,6 +23,20 @@ afterAll(async () => {
 });
 
 describe('storeOriginal', () => {
+  it('transcodes an AVIF/HEIF source to WebP (sharp reports it as `heif`; not servable verbatim)', async () => {
+    // Modern CDNs serve AVIF when the request Accept lists it — the importer must still self-host it.
+    const src = join(workDir, 'photo.avif');
+    await sharp({ create: { width: 1000, height: 700, channels: 3, background: { r: 20, g: 120, b: 200 } } }).avif().toFile(src);
+    const out = join(workDir, 'out-avif');
+    const r = await storeOriginal(src, out, { storedName: 'photo.avif' });
+    expect(r.format).toBe('webp');
+    expect(r.storedName).toBe('photo.webp'); // extension normalised to the transcoded format
+    expect(r.width).toBe(1000);
+    expect(r.height).toBe(700);
+    expect(existsSync(join(out, 'photo.webp'))).toBe(true);
+    expect((await sharp(await readFile(join(out, 'photo.webp'))).metadata()).format).toBe('webp');
+  });
+
   it('stores the original VERBATIM in its own format when uncapped (no eager variants)', async () => {
     const src = await writePng('hero.png', 1600, 900);
     const out = join(workDir, 'out-hero');

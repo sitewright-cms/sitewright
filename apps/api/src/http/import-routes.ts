@@ -12,6 +12,8 @@ import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
 import { renderViaBrowser } from '../import/render.js';
+import { downloadGoogleFont } from '../fonts/service.js';
+import { isGoogleFamily } from '@sitewright/blocks/google-fonts-catalog';
 import type { ReferencePage, CaptureRefsResult } from '../render/source-ref.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
@@ -30,7 +32,24 @@ const MAX_RESOURCE_BYTES = 15 * 1024 * 1024; // per fetched page/asset
 const MAX_CRAWL_BYTES = 200 * 1024 * 1024;
 const MAX_STYLESHEETS = 40;
 const IMPORT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // compressed upload cap (uncompressed bounded in upload.ts)
-const IMPORT_UA = 'SitewrightImporter/1.0 (+website import)';
+
+/**
+ * The engine's webfont downloader (TransformOptions.fetchWebfont): a page that pulls a Google-Fonts family
+ * via a `<link>`/`@import` (no `@font-face` of its own) gets its woff2 downloaded server-side + self-hosted
+ * by the import engine — so the clone renders its real fonts locally, never from a font CDN. Non-Google
+ * families (unknown to the catalog) and any download failure yield [] (fall back to platform defaults).
+ */
+/* v8 ignore start */ // network downloader — exercised by the deploy-time end-to-end import check.
+async function fetchWebfontFaces(family: string, weights: number[]): Promise<Array<{ weight: number; bytes: Uint8Array }>> {
+  if (!isGoogleFamily(family)) return [];
+  try {
+    const dl = await downloadGoogleFont(family, weights.length ? weights : [400]);
+    return dl.faces.map((f) => ({ weight: f.weight, bytes: f.bytes }));
+  } catch {
+    return [];
+  }
+}
+/* v8 ignore stop */
 
 // Framework/noise path segments that don't make a useful media folder name.
 const FOLDER_NOISE = new Set(['wp-content', 'wp-includes', 'assets', 'static', 'cdn', 'public', 'dist', 'build', 'sites', 'default', 'content', 'themes', 'plugins', 'i', 'image', 'images', 'img']);
@@ -233,12 +252,13 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
   /**
    * The outbound fetcher for the crawl + media. It is `pinnedFetch`: resolve once, reject any private
    * IP, then connect to the PINNED IP — so there is no DNS-rebinding TOCTOU window (this fetcher stores
-   * response bytes, unlike the pixels-only screenshot renderer). https-only, redirect-refusing, size +
-   * timeout bounded. The guard lives in the fetcher so no call path can bypass it.
+   * response bytes, unlike the pixels-only screenshot renderer). https-only, follows redirects (each hop
+   * re-pinned + re-guarded), size + timeout bounded. The guard lives in the fetcher so no call path can
+   * bypass it. Uses pinnedFetch's default browser UA + Accept so image CDNs don't 403 a bot request.
    */
   function makeFetcher(signal: AbortSignal): (url: string) => Promise<FetchedResource | null> {
     return async (url) => {
-      const r = await fetchPinned(url, { timeoutMs: IMPORT_FETCH_TIMEOUT_MS, maxBytes: MAX_RESOURCE_BYTES, headers: { 'user-agent': IMPORT_UA }, signal });
+      const r = await fetchPinned(url, { timeoutMs: IMPORT_FETCH_TIMEOUT_MS, maxBytes: MAX_RESOURCE_BYTES, signal });
       return r ? { url, status: r.status, contentType: r.contentType, bytes: r.bytes } : null;
     };
   }
@@ -367,6 +387,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
       media,
       onProgress,
       importedAt: new Date().toISOString(),
+      fetchWebfont: fetchWebfontFaces,
       ...(foundation ? { foundation: true } : {}),
     });
     const bundle = result.bundles[0];

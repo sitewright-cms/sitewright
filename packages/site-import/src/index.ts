@@ -22,7 +22,7 @@ export {
 } from './transform/foundation.js';
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
 export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl, UPLOAD_BASE } from './url-util.js';
-export { looksClientRendered } from './spa-detect.js';
+export { looksClientRendered, embedWrapperFrame } from './spa-detect.js';
 export type {
   AssetKind,
   CapturedAsset,

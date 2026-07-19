@@ -4,7 +4,7 @@
 // images stay as remote refs for the engine's MediaPort to fetch + optimize. A page that looks
 // client-rendered (SPA shell) is re-rendered via the injected `render` (headless browser) so its
 // runtime-built content + links are captured.
-import { looksClientRendered, normalizePageUrl, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
+import { looksClientRendered, embedWrapperFrame, normalizePageUrl, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
 
 /** A fetched resource the crawler received (already SSRF-checked + size-bounded by the fetcher). */
 export interface FetchedResource {
@@ -149,9 +149,10 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
       let html = '';
       if (HTML_RE.test(res.contentType)) {
         html = decoder.decode(res.bytes);
-        // A client-rendered shell has no real content when fetched — re-render it (headless) so its
-        // runtime-built DOM + links are captured.
-        if (deps.render && looksClientRendered(html)) {
+        // A client-rendered shell (SPA) OR a bare embed WRAPPER (a page whose real content is a single
+        // dominant <iframe>, e.g. an Arena/preview host) has no real content when fetched — re-render it
+        // headless so its runtime-built DOM is captured and the wrapper's framed document is followed.
+        if (deps.render && (looksClientRendered(html) || embedWrapperFrame(html))) {
           const rendered = await deps.render(res.url, { signal: deps.signal });
           if (rendered) html = rendered;
         }

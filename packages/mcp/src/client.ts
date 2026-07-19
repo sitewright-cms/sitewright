@@ -168,6 +168,27 @@ export interface PagespeedAuditResult {
   fetchedAt: string;
 }
 
+/** One page's outcome from an autonomous server-side clone run. */
+export interface CloneRunPage {
+  pageId: string;
+  label: string;
+  passed: boolean;
+  rounds: number;
+}
+/** The autonomous clone orchestrator's final verdict (POST /projects/:id/agent/clone) — it runs the whole
+ *  import→author→gate→iterate→publish loop server-side and returns once every page has been driven to (or
+ *  past its round budget short of) the acceptance gate. */
+export interface CloneRunResult {
+  ok: boolean;
+  /** The model the server-side authoring agent ran on. */
+  model: string;
+  pages: CloneRunPage[];
+  /** Total imported pages processed. */
+  total: number;
+  /** How many of them passed the acceptance gate. */
+  passed: number;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -379,6 +400,13 @@ export class SitewrightClient {
 
   async publish(): Promise<unknown> {
     return this.request('POST', this.projectPath('/publish'));
+  }
+
+  /** Kick off the AUTONOMOUS server-side clone orchestrator and run it to completion (non-streaming):
+   *  the server authors every imported page, gates each authoritatively, iterates to green, then returns
+   *  the per-page verdict. Requires a configured AI provider (else 501). */
+  async cloneSite(): Promise<CloneRunResult> {
+    return this.request('POST', this.projectPath('/agent/clone'));
   }
 
   async publishStatus(): Promise<unknown> {

@@ -79,10 +79,12 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(bleedIdx).toBeGreaterThan(layerOpen);
     });
 
-    it('links inherit colour (never UA blue); nav / menu / button links also drop the underline', () => {
-      // global colour inherit — the universal default; utilities (text-*) still win
-      expect(css).toContain('a { color: inherit; }');
-      expect(css).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
+    it('links inherit colour (never UA blue) AND carry no underline by default', () => {
+      // global colour inherit + no underline — the universal default for a code-first CMS
+      // and what modern designs ship; utilities (text-*, underline) still win per element.
+      expect(css).toContain('a { color: inherit; text-decoration: none; }');
+      // the old nav/menu/btn-only underline-drop is gone (now global) — must NOT reappear.
+      expect(css).not.toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
     });
 
     it('keeps the link rules INSIDE the weak sw-normalize layer (regression: unlayered a{color:inherit} beat daisyUI .btn)', () => {
@@ -92,14 +94,18 @@ describe('baseStyles — platform base stylesheet', () => {
       const platform = css.slice(css.indexOf('/* Foundational box model'));
       const layerIdx = platform.indexOf('@layer sw-normalize {');
       expect(layerIdx).toBeGreaterThan(-1);
-      expect(platform.indexOf('a { color: inherit; }')).toBeGreaterThan(layerIdx);
-      const layerBlockEnd = platform.indexOf('}', platform.indexOf(':is(nav, [role="navigation"])'));
-      expect(platform.slice(layerIdx, layerBlockEnd)).toContain('a { color: inherit; }');
+      const aRule = 'a { color: inherit; text-decoration: none; }';
+      expect(platform.indexOf(aRule)).toBeGreaterThan(layerIdx);
+      const layerBlockEnd = platform.indexOf('}', platform.indexOf(aRule));
+      expect(platform.slice(layerIdx, layerBlockEnd + 1)).toContain(aRule);
     });
 
-    it('leaves body-copy links alone (no global text-decoration:none)', () => {
-      // we must NOT kill underlines globally — only in nav/buttons
-      expect(css).not.toMatch(/(^|\s)a\s*{[^}]*text-decoration:\s*none/);
+    it('removes the link underline globally by default (opt IN per element)', () => {
+      // modern designs (the common clone target) ship no link underlines; the default is
+      // no-underline, and components that WANT one (.btn-link, .sw-consent-link) re-add it
+      // via unlayered / higher-specificity rules that outrank this weak layer.
+      expect(css).toMatch(/(^|\s)a\s*{[^}]*text-decoration:\s*none/);
+      expect(css).toContain('.btn-link'); // still carries its explicit underline
     });
 
     it('makes media responsive without forcing display on icons', () => {

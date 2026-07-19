@@ -139,19 +139,19 @@ const PLATFORM_DEFAULTS = `
 /* Foundational box model (kept unlayered so it always wins). */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Links inherit their surrounding text colour (never the unbranded UA blue) — a
-   universal default for a code-first/agent CMS: opt into a colour per element with
-   a utility class (\`text-primary\`, daisyUI \`.link-primary\`) or CSS. (Colour is not
-   a safe link affordance anyway — the underline is.) Separately, links inside
-   navigation landmarks, daisyUI menus and buttons drop the underline (their shape
-   already signals interactivity); body-copy links keep the default underline,
-   removable per element with a no-underline utility.
-   MUST live in the weak sw-normalize layer: an UNLAYERED \`a{color:inherit}\` outranks
-   every layered rule in the cascade — it would silently override any layered colour on a
-   link (e.g. a themed anchor button). Layered author rules still beat the UA's link blue. */
+/* Links inherit their surrounding text colour (never the unbranded UA blue) AND carry
+   NO underline by default — the universal default for a code-first/agent CMS, and what
+   modern designs (Tailwind/component-lib sites, the common clone target) actually ship:
+   nav/menu/button/card links, CTAs and icon links must not be underlined. Opt IN to an
+   underline per element with a utility (\`underline\`, daisyUI \`.link\`) or a component
+   class (\`.btn-link\`, \`.sw-consent-link\` — both keep their explicit underline because
+   they're unlayered / higher-specificity and outrank this weak layer). Opt into a colour
+   the same way (\`text-primary\`, \`.link-primary\`).
+   MUST live in the weak sw-normalize layer: an UNLAYERED \`a{…}\` outranks every layered
+   rule in the cascade — it would silently override any layered colour/decoration on a
+   link (e.g. a themed anchor button). Layered author rules still beat these defaults. */
 @layer sw-normalize {
-  a { color: inherit; }
-  :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
+  a { color: inherit; text-decoration: none; }
 }
 
 /* Site-wide CONTENT CONTAINER — one knob (\`--sw-container\`, from the Website "Content width" setting)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { looksClientRendered } from '../src/spa-detect.js';
+import { looksClientRendered, embedWrapperFrame } from '../src/spa-detect.js';
 
 describe('looksClientRendered', () => {
   it('flags an empty-body SPA shell with a mount node + bundle', () => {
@@ -23,5 +23,29 @@ describe('looksClientRendered', () => {
   it('handles empty/non-string input', () => {
     expect(looksClientRendered('')).toBe(false);
     expect(looksClientRendered(undefined as unknown as string)).toBe(false);
+  });
+});
+
+describe('embedWrapperFrame', () => {
+  it('returns the framed URL for a bare wrapper dominated by one iframe (Arena-style)', () => {
+    const html = `<html><body><div class="banner">Report</div><div class="iframe-container"><iframe id="preview" src="https://abc123.arena.site/?embed=true" sandbox="allow-scripts"></iframe></div></body></html>`;
+    expect(embedWrapperFrame(html)).toBe('https://abc123.arena.site/?embed=true');
+  });
+
+  it('does NOT flag a real content page that merely embeds a widget (map/video)', () => {
+    const html = `<html><body><header>Acme Plumbing</header><main><h1>Contact us</h1><p>${'Visit our Windhoek office for a quote. '.repeat(20)}</p><iframe src="https://www.google.com/maps/embed?pb=1"></iframe></main></body></html>`;
+    expect(embedWrapperFrame(html)).toBeNull();
+  });
+
+  it('ignores inline <script>/<style> bodies when measuring the wrapper text (analytics snippet ≠ prose)', () => {
+    const bigScript = `!function(t,e){${'var x=1;'.repeat(400)}}(document,window);`;
+    const html = `<html><head><style>.a{color:red}${'.x{}'.repeat(200)}</style></head><body><div class="banner">Report content</div><script>${bigScript}</script><div class="iframe-container"><iframe src="https://abc.arena.site/?embed=true"></iframe></div></body></html>`;
+    expect(embedWrapperFrame(html)).toBe('https://abc.arena.site/?embed=true');
+  });
+
+  it('returns null when there is no https iframe', () => {
+    expect(embedWrapperFrame('<html><body><div id="root"></div></body></html>')).toBeNull();
+    expect(embedWrapperFrame('<html><body><iframe src="/local/frame"></iframe></body></html>')).toBeNull();
+    expect(embedWrapperFrame('')).toBeNull();
   });
 });

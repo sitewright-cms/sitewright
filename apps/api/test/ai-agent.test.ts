@@ -423,6 +423,35 @@ describe('POST /projects/:id/agent/messages (end-to-end)', () => {
       await capped.close();
     }
   });
+
+  // The NON-streaming, bearer-accepting clone entry point the `ai_clone` MCP tool drives.
+  it('POST /agent/clone accepts a session owner AND a swk_ publish token, gated on the publish capability', async () => {
+    const { cookie, projectId } = await ownerSession();
+    const url = `/projects/${projectId}/agent/clone`;
+    const mintKey = (capabilities: string[]) =>
+      app.inject({
+        method: 'POST',
+        url: `/projects/${projectId}/api-keys`,
+        cookies: { sw_session: cookie },
+        payload: { name: 'k', role: 'owner', expiresInDays: 30, capabilities },
+      });
+
+    // Session owner reaches the route (provider IS configured) → 400 for no imported pages (not 501/403).
+    const sess = await app.inject({ method: 'POST', url, cookies: { sw_session: cookie } });
+    expect(sess.statusCode).toBe(400);
+    expect((sess.json() as { error: string }).error).toMatch(/no imported pages/);
+
+    // A swk_ agent token WITH publish is ACCEPTED (the whole point — an MCP tool could not reach the
+    // session-only /ai-clone route) → same 400 for no imported pages, never 401/403.
+    const token = ((await mintKey(['content:read', 'content:write', 'publish'])).json() as { token: string }).token;
+    const withPublish = await app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${token}` } });
+    expect(withPublish.statusCode).toBe(400);
+
+    // A swk_ token LACKING publish is rejected by resolveProject(req,'publish') → 403.
+    const roToken = ((await mintKey(['content:read'])).json() as { token: string }).token;
+    const noPublish = await app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${roToken}` } });
+    expect(noPublish.statusCode).toBe(403);
+  });
 });
 
 describe('adapter translation + error branches', () => {

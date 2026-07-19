@@ -23,6 +23,7 @@ import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/c
 import { collectAndHostScripts } from './transform/scripts.js';
 import { collectWidgetIntegrations } from './widgets.js';
 import { collectFontFaces } from './transform/fonts.js';
+import { parseGoogleFontRefs } from './transform/webfonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
@@ -164,6 +165,24 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   for (const [key, asset] of collectFontFaces(cssCollection.cssText)) {
     if (opts.foundation && isIconFont(asset.font?.family)) continue;
     if (!refs.has(key)) refs.set(key, asset);
+  }
+  // Self-host Google-Fonts families referenced via a `<link>`/`@import` (a page that loads its fonts from
+  // the CDN, with NO `@font-face` of its own) — download the woff2 server-side (route-provided hook) and
+  // add each weight as a captured font asset, so the clone renders its real fonts locally (never a CDN)
+  // and the foundation extractor matches them into identity.typography.
+  if (opts.fetchWebfont) {
+    const pageHtml = cappedPages.map((p) => p.html).join('\n');
+    const webfonts = parseGoogleFontRefs(pageHtml).filter((r) => !(opts.foundation && isIconFont(r.family)));
+    const hosted: string[] = [];
+    for (const ref of webfonts) {
+      const faces = await opts.fetchWebfont(ref.family, ref.weights).catch(() => []);
+      for (const face of faces) {
+        const key = `googlefont:${ref.family.toLowerCase()}:${face.weight}`;
+        if (!refs.has(key)) refs.set(key, { sourceRef: key, kind: 'font', bytes: face.bytes, font: { family: ref.family, weight: face.weight, style: 'normal' } });
+      }
+      if (faces.length) hosted.push(ref.family);
+    }
+    if (hosted.length) diagnostics.push({ code: 'webfonts-hosted', message: `self-hosted Google Fonts: ${hosted.join(', ')}` });
   }
   // Self-host linked documents (PDFs/docs) too, so a `<a href="brochure.pdf">` keeps working off /media.
   for (const [key, asset] of collectDocumentRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })))) if (!refs.has(key)) refs.set(key, asset);

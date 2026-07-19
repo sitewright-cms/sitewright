@@ -211,7 +211,9 @@ describe('OAuth full authorization-code + PKCE flow', () => {
         response_type: 'code',
         code_challenge: CHALLENGE,
         code_challenge_method: 'S256',
-        scope: 'content:read content:write',
+        // Consent form checks capabilities as per-field checkboxes (scope_<cap>=1), not a `scope` field.
+        'scope_content:read': '1',
+        'scope_content:write': '1',
         state: 'xyz-state',
         project,
         decision: 'approve',
@@ -318,7 +320,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
         response_type: 'code',
         code_challenge: CHALLENGE,
         code_challenge_method: 'S256',
-        scope: 'content:read',
+        'scope_content:read': '1',
         state: 's',
         project: projectId,
         decision: 'approve',
@@ -443,5 +445,66 @@ describe('issuer/resource fall back to the request when SW_PUBLIC_URL is unset',
     const pr = (await app.inject({ method: 'GET', url: '/.well-known/oauth-protected-resource', headers: { host: 'derived.example' } })).json();
     expect(pr.resource).toBe('http://derived.example');
     expect(pr.authorization_servers).toEqual(['http://derived.example']);
+  });
+});
+
+// The consent page presents every capability as an editable checkbox; a generic MCP client that
+// requests no scope no longer dead-ends at invalid_scope — it gets all caps pre-selected and the
+// USER decides what to grant.
+describe('consent-page scope selection', () => {
+  const ALL_CAPS = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
+  const authzGet = (session: string, extra: Record<string, string> = {}) =>
+    app.inject({
+      method: 'GET',
+      cookies: { sw_session: session },
+      url: `/oauth/authorize?${new URLSearchParams({ client_id: CLIENT, redirect_uri: REDIRECT, response_type: 'code', code_challenge: CHALLENGE, code_challenge_method: 'S256', state: 's', ...extra })}`,
+    });
+
+  it('pre-checks ALL capabilities when the client requests no scope', async () => {
+    const { session } = await setup();
+    const page = await authzGet(session);
+    expect(page.statusCode).toBe(200);
+    for (const cap of ALL_CAPS) expect(page.body).toContain(`name="scope_${cap}" value="1" checked`);
+    // The two destructive/externally-visible caps (content:delete, deploy) are flagged as elevated.
+    expect(page.body.match(/class="scope-warn"/g) ?? []).toHaveLength(2);
+  });
+
+  it('honors a specific requested scope by pre-checking only those (others unchecked)', async () => {
+    const { session } = await setup();
+    const page = await authzGet(session, { scope: 'content:read' });
+    expect(page.body).toContain(`name="scope_content:read" value="1" checked`);
+    expect(page.body).toContain(`name="scope_content:write" value="1">`); // present…
+    expect(page.body).not.toContain(`name="scope_content:write" value="1" checked`); // …but not checked
+  });
+
+  it('grants only the capabilities the user leaves checked (token scope reflects the selection)', async () => {
+    const { session, projectId } = await setup();
+    const consent = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      // The user keeps read + publish, unchecks the rest.
+      ...form({ client_id: CLIENT, redirect_uri: REDIRECT, response_type: 'code', code_challenge: CHALLENGE, code_challenge_method: 'S256', 'scope_content:read': '1', 'scope_publish': '1', state: 's', project: projectId, decision: 'approve' }),
+    });
+    expect(consent.statusCode).toBe(302);
+    const code = new URL(consent.headers.location as string).searchParams.get('code');
+    const tok = (await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'authorization_code', code: code!, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
+    })).json() as { scope: string };
+    expect(tok.scope.split(' ').sort()).toEqual(['content:read', 'publish']);
+  });
+
+  it('rejects approval with no capability checked — cannot mint an empty-scope token', async () => {
+    const { session, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      ...form({ client_id: CLIENT, redirect_uri: REDIRECT, response_type: 'code', code_challenge: CHALLENGE, code_challenge_method: 'S256', state: 's', project: projectId, decision: 'approve' }),
+    });
+    expect(res.statusCode).toBe(302);
+    expect(new URL(res.headers.location as string).searchParams.get('error')).toBe('invalid_scope');
   });
 });

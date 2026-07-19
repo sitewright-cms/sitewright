@@ -72,13 +72,49 @@ function parseScope(raw: string | undefined): ApiKeyCapability[] {
   return API_KEY_CAPABILITIES.filter((c) => requested.includes(c));
 }
 
+/** The scope to PRE-SELECT on the consent page: the client's requested capabilities if it named any
+ *  known ones, else ALL capabilities. A generic MCP/OAuth client (e.g. Claude Code) commonly requests
+ *  no Sitewright-specific scope — rather than dead-end at `invalid_scope`, we present everything
+ *  pre-checked and let the user UNCHECK what they don't want to grant. */
+function resolveScope(raw: string | undefined): ApiKeyCapability[] {
+  const parsed = parseScope(raw);
+  return parsed.length > 0 ? parsed : [...API_KEY_CAPABILITIES];
+}
+
+/** Capabilities CHECKED on the consent form, in canonical order. Each capability is its OWN checkbox
+ *  field (`scope_<cap>`) rather than a repeated `scope` field: the app's flat urlencoded parser is
+ *  last-value-wins on repeated keys, so distinct field names are what let every checked box survive.
+ *  Presence of the field (checkbox on) = granted. */
+function selectedScope(body: Record<string, unknown>): ApiKeyCapability[] {
+  return API_KEY_CAPABILITIES.filter((c) => body[`scope_${c}`] != null);
+}
+
+/** Capabilities whose grant is destructive or externally visible — flagged on the consent page so a
+ *  quick "Approve" doesn't hand them over unnoticed. They are still pre-checked (per the all-caps
+ *  default); the user can uncheck them. */
+const ELEVATED_SCOPES: readonly ApiKeyCapability[] = ['content:delete', 'deploy'];
+
+/** Renders the editable per-capability checkboxes for a consent form; `selected` are pre-checked. */
+function scopeCheckboxes(selected: readonly ApiKeyCapability[]): string {
+  return API_KEY_CAPABILITIES.map((c) => {
+    const warn = ELEVATED_SCOPES.includes(c) ? ' <span class="scope-warn">elevated</span>' : '';
+    return `<label class="scope-opt"><input type="checkbox" name="scope_${escapeHtml(c)}" value="1"${
+      selected.includes(c) ? ' checked' : ''
+    }> <code>${escapeHtml(c)}</code>${warn}</label>`;
+  }).join('');
+}
+
 function htmlPage(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
     body{font:15px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1.5rem;color:#0f172a}
     h1{font-size:1.25rem}.card{border:1px solid #e2e8f0;border-radius:.75rem;padding:1.25rem;margin-top:1rem}
     label{display:block;font-size:.8rem;color:#475569;margin:.75rem 0 .25rem}
     select{width:100%;padding:.5rem;border:1px solid #cbd5e1;border-radius:.5rem;font:inherit}
-    .scopes{font-size:.85rem;color:#334155;background:#f8fafc;border-radius:.5rem;padding:.5rem .75rem}
+    fieldset.scopes{border:1px solid #e2e8f0;border-radius:.5rem;padding:.5rem .85rem}
+    fieldset.scopes legend{font-size:.8rem;color:#475569;padding:0 .35rem}
+    label.scope-opt{display:flex;align-items:center;gap:.45rem;margin:.2rem 0;font-size:.85rem;color:#334155;font-weight:400}
+    label.scope-opt input{margin:0}
+    .scope-warn{font-size:.66rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:.25rem;padding:.02rem .3rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
     .row{display:flex;gap:.5rem;margin-top:1.25rem}
     button{font:inherit;padding:.5rem 1rem;border-radius:.5rem;border:1px solid #cbd5e1;cursor:pointer}
     button.primary{background:#0f172a;color:#fff;border-color:#0f172a;font-weight:600}
@@ -205,8 +241,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       if (q.code_challenge_method !== 'S256' || !q.code_challenge || !isValidS256Challenge(q.code_challenge)) {
         return fail('invalid_request');
       }
-      const scope = parseScope(q.scope);
-      if (scope.length === 0) return fail('invalid_scope');
+      const scope = resolveScope(q.scope);
 
       const userId = await currentUserId(req);
       if (!userId) {
@@ -230,22 +265,20 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const optionsHtml = options
         .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
         .join('');
-      const scopeHtml = scope.map((s) => `<code>${escapeHtml(s)}</code>`).join(' ');
-
       return reply.code(200).type('text/html').send(
         htmlPage(
           'Authorize access',
           `<h1>Authorize <strong>${escapeHtml(client.name)}</strong></h1>
-           <p>It will be able to act on the selected project with these permissions:</p>
+           <p>Choose the project and the permissions to grant — everything is pre-selected; uncheck anything you want to withhold.</p>
            <div class="card">
              <form method="post" action="/oauth/authorize">
                ${hidden('client_id', clientId)}${hidden('redirect_uri', redirectUri)}
                ${hidden('response_type', 'code')}${hidden('code_challenge', q.code_challenge)}
-               ${hidden('code_challenge_method', 'S256')}${hidden('scope', scope.join(' '))}
+               ${hidden('code_challenge_method', 'S256')}
                ${q.state ? hidden('state', q.state) : ''}
                <label for="project">Project</label>
                <select id="project" name="project" required>${optionsHtml}</select>
-               <div class="scopes" style="margin-top:.75rem">Permissions: ${scopeHtml}</div>
+               <fieldset class="scopes" style="margin-top:.75rem"><legend>Permissions</legend>${scopeCheckboxes(scope)}</fieldset>
                <div class="row">
                  <button class="primary" type="submit" name="decision" value="approve">Approve</button>
                  <button type="submit" name="decision" value="deny">Deny</button>
@@ -284,7 +317,9 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       if (b.response_type !== 'code') return back({ error: 'unsupported_response_type' });
       if (b.code_challenge_method !== 'S256') return back({ error: 'invalid_request' });
       if (!b.code_challenge || !isValidS256Challenge(b.code_challenge)) return back({ error: 'invalid_request' });
-      const scope = parseScope(b.scope);
+      // The granted scope is what the user CHECKED on the consent page (not the client's request);
+      // withholding everything can't mint an empty-capability token.
+      const scope = selectedScope(b);
       if (scope.length === 0) return back({ error: 'invalid_scope' });
 
       const projectId = b.project ?? '';
@@ -317,6 +352,10 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       if (clientId !== CLI_CLIENT_ID && !(await clients.get(clientId))) {
         return reply.code(400).send({ error: 'invalid_client' });
       }
+      // Intentionally strict (unlike the interactive authorize flow, no all-caps fallback): the device
+      // grant is driven by the `sitewright` CLI, which requests explicit scopes, and its approval page
+      // has no scope UI to narrow an over-broad default. Generic clients get scope selection via the
+      // authorization-code consent page instead.
       const scope = parseScope(b.scope);
       if (scope.length === 0) return reply.code(400).send({ error: 'invalid_scope' });
       const issuer = issuerOf(req, publicUrl);

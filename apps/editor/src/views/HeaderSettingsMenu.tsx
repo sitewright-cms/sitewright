@@ -36,7 +36,8 @@ interface HeaderSettingsMenuProps {
 
 /**
  * The header's far-right SETTINGS menu (gear icon → dropdown). Unifies what used to be the ⋮
- * "Publish & deploy options", the Admin tab (Clients/Team/Access), and the admin "System Settings".
+ * "Publish & deploy options", the Admin tab (Project Members/Administrators/Access), and the admin
+ * "System Settings". Items are split into PROJECT and ADMINISTRATION groups (admins only).
  * Each item is shown only in its valid context; every target opens as a modal. Account actions
  * (Account Settings + Logout) live under the adjacent user/person icon ({@link UserDropdown}); this
  * menu renders nothing when it has no items for the current context.
@@ -81,34 +82,47 @@ export function HeaderSettingsMenu({
   }, [open]);
 
   const owner = inProject && !isClient;
-  // Publish & Deploy is available to ANY project member (invited clients publish their own site).
-  // Owner/agency-only: Clone a website with AI + CLIENT MANAGEMENT (the "Clients" panel = invite/manage other
-  // users). System Settings + Team are instance-admin-only. Account actions (Account Settings + Logout)
+  // Two groups: PROJECT (project-scoped actions, any qualifying member) and ADMINISTRATION (instance-admin
+  // only: System Settings + the platform "Administrators" panel). Publish & Deploy is available to ANY
+  // project member (invited clients publish their own site). Owner/agency-only: Clone a website with AI +
+  // PROJECT MEMBERS (invite/manage other users on the project). Account actions (Account Settings + Logout)
   // live under the adjacent user icon (UserDropdown).
-  const items: { label: string; onClick: () => void; dividerBefore?: boolean; danger?: boolean }[] = (
-    [
-      { label: 'Project Settings', onClick: onProjectSettings ?? (() => {}), show: owner && !!onProjectSettings },
-      { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
-      { label: 'Export project (.zip)', onClick: onExportProject ?? (() => {}), show: inProject && !!onExportProject },
-      { label: 'Duplicate project', onClick: onDuplicateProject ?? (() => {}), show: inProject && !!onDuplicateProject },
-      { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
-      { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
-      { label: 'Clients', onClick: onClients, show: owner },
-      // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.
-      { label: 'Team', onClick: onTeam, show: isInstanceAdmin },
-      // Destructive, owner-only, set apart at the bottom: SOFT-delete the whole project (type-to-confirm).
-      {
-        label: 'Delete Project',
-        onClick: onDeleteProject ?? (() => {}),
-        show: owner && !!onDeleteProject,
-        dividerBefore: true,
-        danger: true,
-      },
-    ] as { label: string; onClick: () => void; show: boolean; dividerBefore?: boolean; danger?: boolean }[]
-  )
-    .filter((i) => i.show)
-    .map(({ label, onClick, dividerBefore, danger }) => ({ label, onClick, dividerBefore, danger }));
-  const all = items;
+  type MenuItem = { label: string; onClick: () => void; danger?: boolean };
+  type Row = { kind: 'header'; label: string } | { kind: 'divider' } | { kind: 'item'; item: MenuItem };
+
+  const projectItems: MenuItem[] = [];
+  if (owner && onProjectSettings) projectItems.push({ label: 'Project Settings', onClick: onProjectSettings });
+  if (inProject) projectItems.push({ label: 'Publish & Deploy Options', onClick: onPublishDeploy });
+  if (inProject && onExportProject) projectItems.push({ label: 'Export project (.zip)', onClick: onExportProject });
+  if (inProject && onDuplicateProject) projectItems.push({ label: 'Duplicate project', onClick: onDuplicateProject });
+  if (owner && onImportWebsite) projectItems.push({ label: 'Clone a website with AI', onClick: onImportWebsite });
+  if (owner) projectItems.push({ label: 'Project Members', onClick: onClients });
+
+  const adminItems: MenuItem[] = [];
+  if (isInstanceAdmin) {
+    adminItems.push({ label: 'System Settings', onClick: onSystemSettings });
+    // The platform "Administrators" panel manages instance-wide staff via admin-only APIs (/admin/users).
+    adminItems.push({ label: 'Administrators', onClick: onTeam });
+  }
+
+  // Destructive, owner-only, set apart at the very bottom regardless of grouping.
+  const deleteItem: MenuItem | null = owner && onDeleteProject ? { label: 'Delete Project', onClick: onDeleteProject, danger: true } : null;
+
+  // Only label the groups when the ADMINISTRATION group is present — the split is only meaningful to an
+  // admin (a non-admin never sees admin items, so a lone "PROJECT" header would just be noise).
+  const showGroups = adminItems.length > 0;
+  const rows: Row[] = [];
+  if (showGroups && projectItems.length) rows.push({ kind: 'header', label: 'Project' });
+  for (const item of projectItems) rows.push({ kind: 'item', item });
+  if (showGroups && adminItems.length) rows.push({ kind: 'header', label: 'Administration' });
+  for (const item of adminItems) rows.push({ kind: 'item', item });
+  if (deleteItem) {
+    if (rows.length) rows.push({ kind: 'divider' });
+    rows.push({ kind: 'item', item: deleteItem });
+  }
+
+  // Interactive items only (for roving focus + refs); headers/dividers are skipped.
+  const all = rows.flatMap((r) => (r.kind === 'item' ? [r.item] : []));
 
   const pick = (fn: () => void) => () => {
     setOpen(false);
@@ -160,31 +174,43 @@ export function HeaderSettingsMenu({
           onKeyDown={onMenuKey}
           className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
         >
-          {all.map((it, i) => (
-            // Fragment (no DOM node) keeps each menuitem a DIRECT child of role="menu".
-            <Fragment key={it.label}>
-              {it.dividerBefore && <div role="separator" className="my-1 border-t border-slate-100" />}
-              <button
-                role="menuitem"
-                tabIndex={-1}
-                ref={(el) => {
-                  // eslint-disable-next-line security/detect-object-injection -- i is the map index
-                  itemRefs.current[i] = el;
-                }}
-                onClick={pick(it.onClick)}
-                // Usual hover (gradient) + ripple on click. focus-VISIBLE (keyboard only) so the
-                // first item isn't highlighted when the menu is opened by mouse (programmatic focus).
-                // A `danger` item (Delete Project) is rose, set apart from the neutral items.
-                className={
-                  it.danger
-                    ? 'waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:bg-rose-50 focus-visible:outline-none'
-                    : `waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`
-                }
-              >
-                {it.label}
-              </button>
-            </Fragment>
-          ))}
+          {rows.map((row, ri) => {
+            if (row.kind === 'divider') return <div key={`div-${ri}`} role="separator" className="my-1 border-t border-slate-100" />;
+            if (row.kind === 'header') {
+              // A non-interactive group label (matches the Deploy menu's section-header style).
+              return (
+                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  {row.label}
+                </p>
+              );
+            }
+            const it = row.item;
+            const i = all.indexOf(it); // interactive index for roving focus / refs
+            return (
+              // Fragment (no DOM node) keeps each menuitem a DIRECT child of role="menu".
+              <Fragment key={`item-${it.label}`}>
+                <button
+                  role="menuitem"
+                  tabIndex={-1}
+                  ref={(el) => {
+                    // eslint-disable-next-line security/detect-object-injection -- i is the interactive index
+                    itemRefs.current[i] = el;
+                  }}
+                  onClick={pick(it.onClick)}
+                  // Usual hover (gradient) + ripple on click. focus-VISIBLE (keyboard only) so the
+                  // first item isn't highlighted when the menu is opened by mouse (programmatic focus).
+                  // A `danger` item (Delete Project) is rose, set apart from the neutral items.
+                  className={
+                    it.danger
+                      ? 'waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:bg-rose-50 focus-visible:outline-none'
+                      : `waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`
+                  }
+                >
+                  {it.label}
+                </button>
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </div>

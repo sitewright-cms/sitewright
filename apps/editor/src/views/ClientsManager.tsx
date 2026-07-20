@@ -27,7 +27,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
       setMembers(m.members);
       setInvites(inv.invites);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load clients');
+      setError(err instanceof Error ? err.message : 'failed to load project members');
     }
   }
 
@@ -36,9 +36,9 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   }, [project.id]);
 
   async function remove(userId: string) {
-    const email = members.find((m) => m.userId === userId)?.email ?? 'this client';
+    const email = members.find((m) => m.userId === userId)?.email ?? 'this member';
     const ok = await confirm({
-      title: 'Remove client',
+      title: 'Remove project member',
       message: `Remove ${email} from ${project.name}? They lose access to edit this project.`,
       confirmLabel: 'Remove',
     });
@@ -48,7 +48,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
       await api.removeProjectMember(project.id, userId);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to remove client');
+      setError(err instanceof Error ? err.message : 'failed to remove project member');
     }
   }
 
@@ -58,7 +58,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
 
   return (
     <div className="max-w-2xl">
-      <h3 className="mb-1 text-lg font-bold">Clients</h3>
+      <h3 className="mb-1 text-lg font-bold">Project Members</h3>
       <p className="mb-4 text-sm text-slate-500">
         People you’ve invited to edit <strong>{project.name}</strong> — full editing of this one
         project (they can’t delete it or invite others).
@@ -80,7 +80,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
             </button>
           </li>
         ))}
-        {clients.length === 0 && <li className="text-sm text-slate-400">No clients yet.</li>}
+        {clients.length === 0 && <li className="text-sm text-slate-400">No project members yet.</li>}
       </ul>
 
       <InvitePanel

@@ -34,7 +34,7 @@ export function SettingsModalHost({
   if (!project) return null;
   if (view === 'clients') {
     return (
-      <Modal title="Clients" size="lg" onClose={onClose}>
+      <Modal title="Project Members" size="lg" onClose={onClose}>
         <div className="p-5">
           {/* Keyed so the data + state reset if the project changes while open. */}
           <ClientsManager key={project.id} project={project} />
@@ -44,7 +44,7 @@ export function SettingsModalHost({
   }
   if (view === 'team') {
     return (
-      <Modal title="Team" size="lg" onClose={onClose}>
+      <Modal title="Administrators" size="lg" onClose={onClose}>
         <div className="p-5">
           <TeamManager />
         </div>

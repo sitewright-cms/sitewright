@@ -5,8 +5,8 @@ import { useDialogs } from './ui/Dialogs';
 import { glassPanel, dangerButton } from '../theme';
 
 /**
- * Platform-staff surface: list the instance's staff and invite a DEVELOPER via a
- * one-time link. Clients are invited per-project from the project's Clients tab, not here.
+ * Platform-staff surface ("Administrators"): list the instance's staff and invite a DEVELOPER via a
+ * one-time link. Project members are invited per-project from the project's Project Members panel, not here.
  */
 export function TeamManager() {
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -21,7 +21,7 @@ export function TeamManager() {
       // Only platform-staff (developer) invites belong on this tab.
       setInvites(inv.invites.filter((i) => i.projectId === null));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load team');
+      setError(err instanceof Error ? err.message : 'failed to load administrators');
     }
   }
 
@@ -32,7 +32,7 @@ export function TeamManager() {
   async function remove(userId: string) {
     const email = members.find((m) => m.userId === userId)?.email ?? 'this member';
     const ok = await confirm({
-      title: 'Remove team member',
+      title: 'Remove administrator',
       message: `Remove ${email} from this instance? They lose access to every project.`,
       confirmLabel: 'Remove',
     });
@@ -48,7 +48,7 @@ export function TeamManager() {
 
   return (
     <div className="max-w-2xl">
-      <h3 className="mb-1 text-lg font-bold">Team</h3>
+      <h3 className="mb-1 text-lg font-bold">Administrators</h3>
       <p className="mb-4 text-sm text-slate-500">
         Your platform staff. Invite a <strong>developer</strong> to give them full access to every
         project on this instance.
@@ -77,7 +77,7 @@ export function TeamManager() {
             )}
           </li>
         ))}
-        {members.length === 0 && <li className="text-sm text-slate-400">No team members yet.</li>}
+        {members.length === 0 && <li className="text-sm text-slate-400">No administrators yet.</li>}
       </ul>
 
       <InvitePanel

@@ -9,11 +9,13 @@ import { SectionHelp } from '../ui/SectionHelp';
 export function GlassCard({ title, icon, tooltip, children, wide = false }: { title: string; icon: ReactNode; tooltip?: string; children: ReactNode; wide?: boolean }) {
   return (
     <motion.section variants={cardVariants} whileHover={cardHover} className={`${glassCard} p-5 ${wide ? 'sm:col-span-2' : ''}`}>
-      <header className="mb-4 flex items-center gap-3">
+      {/* Full-bleed grey header bar (negative margins cancel the card's p-5) so every section title
+          reads as a distinct, emphasized band: light-grey background + uppercase tracked title. */}
+      <header className="-mx-5 -mt-5 mb-4 flex items-center gap-3 rounded-t-2xl border-b border-slate-200/70 bg-slate-100/70 px-5 py-3">
         <span className={accentChip} aria-hidden>
           {icon}
         </span>
-        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{title}</h3>
         {tooltip && <SectionHelp tip={tooltip} />}
       </header>
       {children}

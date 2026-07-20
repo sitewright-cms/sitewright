@@ -75,7 +75,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
     }
   }
 
-  const noun = kind === 'developer' ? 'developer' : 'client';
+  const noun = kind === 'developer' ? 'developer' : 'project member';
 
   return (
     <div>
@@ -128,16 +128,16 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
       <form onSubmit={invite} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">
           <label className={fieldLabel} htmlFor={`invite-email-${kind}`}>
-            {kind === 'developer' ? 'Developer email' : 'Client email'}
+            {kind === 'developer' ? 'Developer email' : 'Project member email'}
           </label>
           <input
             id={`invite-email-${kind}`}
-            aria-label={kind === 'developer' ? 'Developer email' : 'Client email'}
+            aria-label={kind === 'developer' ? 'Developer email' : 'Project member email'}
             type="email"
             className={glassInput}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={kind === 'developer' ? 'dev@agency.com' : 'client@example.com'}
+            placeholder={kind === 'developer' ? 'dev@agency.com' : 'member@example.com'}
             required
           />
         </div>

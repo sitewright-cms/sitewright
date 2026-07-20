@@ -42,7 +42,7 @@ export function DeleteProjectModal({ project, onClose, onDeleted }: DeleteProjec
           <p className="font-semibold">This deletes the entire “{project.name}” project.</p>
           <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-rose-700">
             <li>Its pages, content, datasets, media and deploy targets</li>
-            <li>Its invited clients’ access (your agency staff are unaffected)</li>
+            <li>Its invited project members’ access (your agency staff are unaffected)</li>
             <li>Its published site goes offline immediately</li>
           </ul>
           <p className="mt-2">

@@ -100,6 +100,16 @@ export const DEFAULT_HSTS: Readonly<Hsts> = Object.freeze({
   applyToServedSites: false,
 });
 
+/** Server log verbosity — the pino levels, most-verbose last. Admin-settable; live-applied. */
+export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
+export const LogLevelSchema = z.enum(LOG_LEVELS);
+export type LogLevel = (typeof LOG_LEVELS)[number];
+/** Built-in log level when neither the admin setting nor a LOG_LEVEL env is set. */
+export const DEFAULT_LOG_LEVEL: LogLevel = 'info';
+
+/** How many pre-migration DB snapshots to retain by default (oldest pruned). */
+export const DEFAULT_BACKUP_RETENTION = 2;
+
 // Non-secret SMTP fields shared by the stored and input shapes. host/fromName
 // reject control characters: once the Phase 3 mailer consumes them they flow into
 // SMTP commands / the From: header, where a CRLF would enable injection. fromEmail
@@ -235,6 +245,10 @@ export const InstanceSettingsStoredSchema = z.object({
   defaultImageFormat: z.enum(['webp', 'avif']).optional(),
   /** HTTP Strict-Transport-Security policy (admin opt-in; unset → OFF). See {@link HstsSchema}. */
   hsts: HstsSchema.optional(),
+  /** How many pre-migration DB snapshots to keep (oldest pruned). Unset → DEFAULT_BACKUP_RETENTION (2). */
+  backupRetention: z.number().int().min(1).max(100).optional(),
+  /** Server log verbosity (pino level). Unset → the LOG_LEVEL env, else 'info'. Applied live on save. */
+  logLevel: LogLevelSchema.optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -353,6 +367,10 @@ export const InstanceSettingsInputSchema = z.object({
   // HSTS policy: an object sets it (all fields defaulted), `null` clears it (revert to OFF), and an
   // absent (undefined) value leaves the stored one unchanged.
   hsts: HstsSchema.nullable().optional(),
+  // Pre-migration DB snapshot retention: a number sets it, `null` reverts to the default (2), undefined leaves it.
+  backupRetention: z.number().int().min(1).max(100).nullable().optional(),
+  // Log verbosity: a level sets it, `null` reverts to the env/'info' default, undefined leaves it.
+  logLevel: LogLevelSchema.nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -437,6 +455,10 @@ export interface InstanceSettingsPublic {
   defaultImageFormat?: 'webp' | 'avif';
   /** HSTS policy (not a secret), or absent when unset (HSTS off). */
   hsts?: Hsts;
+  /** Pre-migration DB snapshot retention, or absent when using the default (2). */
+  backupRetention?: number;
+  /** Server log verbosity (pino level), or absent when using the env/'info' default. */
+  logLevel?: LogLevel;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -484,5 +506,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.platformLogo !== undefined) result.hasLogo = true;
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
+  if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
+  if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;
   return result;
 }

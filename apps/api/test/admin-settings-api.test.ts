@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
-import type { Database } from '../src/db/client.js';
+import { createDb, runMigrations, type Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 
@@ -192,6 +195,21 @@ describe('admin settings API', () => {
       expect((cleared.json() as { settings: { hsts?: unknown } }).settings.hsts).toBeUndefined();
     });
 
+    it('round-trips logLevel + backupRetention', async () => {
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/admin/settings',
+        cookies,
+        payload: { logLevel: 'warn', backupRetention: 5 },
+      });
+      expect(put.statusCode).toBe(200);
+      const s = (put.json() as { settings: { logLevel?: string; backupRetention?: number } }).settings;
+      expect(s.logLevel).toBe('warn');
+      expect(s.backupRetention).toBe(5);
+    });
+
     it('forbids the bearer (API-key) path entirely on admin routes', async () => {
       // A made-up bearer must be rejected as session-only (403), not 401: the route
       // refuses the bearer path before any key lookup, so no admin account is needed.
@@ -295,6 +313,54 @@ describe('admin settings API', () => {
       expect((me.json() as { isInstanceAdmin: boolean }).isInstanceAdmin).toBe(false);
       const get = await app.inject({ method: 'GET', url: '/admin/settings', cookies: { sw_session: user.t } });
       expect(get.statusCode).toBe(403);
+    });
+  });
+
+  describe('storage + backups purge routes', () => {
+    it('reports DB + snapshot sizes and purges snapshots (admin-only)', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'sw-storage-'));
+      const dbFile = join(dir, 'sitewright.db');
+      const handle = await createDb(`file:${dbFile}`);
+      await runMigrations(handle.db);
+      db = handle.db; // registerAdmin() seeds via the module `db`
+      const app = await createApp({
+        db,
+        dataDir: dir,
+        databaseUrl: `file:${dbFile}`,
+        encryptionKey: Buffer.from(ENC_KEY, 'base64'),
+      });
+      await app.ready();
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      try {
+        // No snapshots yet — the DB has a size; backups are empty.
+        const s0 = await app.inject({ method: 'GET', url: '/admin/storage', cookies });
+        expect(s0.statusCode).toBe(200);
+        const j0 = s0.json() as { dbBytes: number; backups: { count: number; bytes: number } };
+        expect(j0.dbBytes).toBeGreaterThan(0);
+        expect(j0.backups).toEqual({ count: 0, bytes: 0 });
+
+        // Drop in three fake snapshots (3 bytes each).
+        await mkdir(join(dir, 'backups'), { recursive: true });
+        for (const stamp of ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z']) {
+          await writeFile(join(dir, 'backups', `sitewright-${stamp}-aaa.pre-migration.bak`), 'xyz');
+        }
+        const s1 = (await app.inject({ method: 'GET', url: '/admin/storage', cookies })).json() as typeof j0;
+        expect(s1.backups).toEqual({ count: 3, bytes: 9 });
+
+        // Purge, keeping the newest 1.
+        const purge = await app.inject({ method: 'POST', url: '/admin/backups/purge', cookies, payload: { keepLast: 1 } });
+        expect(purge.statusCode).toBe(200);
+        expect(purge.json()).toMatchObject({ removed: 2, count: 1 });
+
+        // Anonymous is refused.
+        const anon = await app.inject({ method: 'GET', url: '/admin/storage' });
+        expect([401, 403]).toContain(anon.statusCode);
+      } finally {
+        await app.close();
+        handle.client.close();
+        await rm(dir, { recursive: true, force: true });
+      }
     });
   });
 });

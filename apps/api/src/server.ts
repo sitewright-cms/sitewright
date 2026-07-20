@@ -7,6 +7,7 @@ import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { backupBeforeMigrations } from './db/backup.js';
+import { InstanceSettingsRepository } from './repo/instance-settings.js';
 import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
@@ -134,6 +135,17 @@ const renderPool = new RenderPool({
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(cfg.dataDir, { recursive: true });
 const { db, client } = await createDb(cfg.databaseUrl);
+// Admin ops settings boot needs: the snapshot RETENTION (prune keep) + the LOG LEVEL. Best-effort — on a
+// brand-new DB the instance_settings table doesn't exist yet, so fall back to the config/built-in defaults.
+const bootSettings = new InstanceSettingsRepository(db, cfg.encryptionKey);
+let backupKeep: number | undefined;
+let logLevel = cfg.logLevel;
+try {
+  backupKeep = await bootSettings.getBackupRetention();
+  logLevel = await bootSettings.getLogLevel(cfg.logLevel);
+} catch {
+  /* fresh DB / no settings row — defaults apply */
+}
 // Safety net before a schema change: snapshot the DB (WAL-safe, DB-only) IFF migrations are pending, so a
 // bad migration can be rolled back. Best-effort — a snapshot failure is logged but must not block boot
 // (the migrations themselves are forward-only + data-preserving; the snapshot is defense-in-depth).
@@ -143,6 +155,7 @@ try {
     databaseUrl: cfg.databaseUrl,
     dataDir: cfg.dataDir,
     now: new Date(),
+    keep: backupKeep,
     log: (m) => process.stderr.write(`[sitewright/backup] ${m}\n`),
   });
 } catch (err) {
@@ -163,6 +176,11 @@ await mkdir(cfg.sourceRefRoot, { recursive: true });
 
 const app = await createApp({
   db,
+  // Storage introspection (DB + backups sizes, purge action) needs the data dir + DB URL.
+  dataDir: cfg.dataDir,
+  databaseUrl: cfg.databaseUrl,
+  // Initial log verbosity (admin `logLevel` setting, else LOG_LEVEL env, else 'info'); live-updated on save.
+  logLevel,
   cookieSecret: cfg.cookieSecret,
   // Secure cookies + `__Host-` prefix are ON automatically for an https SW_PUBLIC_URL (or an explicit
   // COOKIE_SECURE=true); OFF over plain HTTP so the HTTP DinD preview keeps working. (HSTS is a SEPARATE

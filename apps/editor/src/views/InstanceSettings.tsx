@@ -10,6 +10,10 @@ import {
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
   DEFAULT_HSTS,
+  DEFAULT_BACKUP_RETENTION,
+  DEFAULT_LOG_LEVEL,
+  LOG_LEVELS,
+  type LogLevel,
   LOGO_MIME_TYPES,
   MAX_LOGO_BASE64_LEN,
   MCP_TOOL_CATALOG,
@@ -45,6 +49,15 @@ const clampRetentionDays = (n: number): number => Math.max(1, Math.min(3650, Mat
 const DEFAULT_COALESCE_SECONDS = DEFAULT_REVISION_COALESCE_MS / 1000;
 // HSTS max-age shown/entered in seconds; server caps at 2 years. 0 clears the policy.
 const clampHstsMaxAge = (n: number): number => Math.max(0, Math.min(63_072_000, Math.round(n) || 0));
+/** Human-readable byte size (e.g. "1.4 MB"). */
+const formatBytes = (n: number): string => {
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+  const k = 1024;
+  if (n < k) return `${n} B`;
+  if (n < k * k) return `${(n / k).toFixed(1)} KB`;
+  if (n < k * k * k) return `${(n / (k * k)).toFixed(1)} MB`;
+  return `${(n / (k * k * k)).toFixed(1)} GB`;
+};
 
 /**
  * Instance admin → settings: the global mail transport, hCaptcha keys, and which
@@ -122,6 +135,43 @@ export function InstanceSettings() {
   const [hstsIncludeSub, setHstsIncludeSub] = useState(false);
   const [hstsPreload, setHstsPreload] = useState(false);
   const [hstsApplySites, setHstsApplySites] = useState(false);
+
+  // Ops: server log verbosity + DB backup management (retention + live storage usage + purge).
+  const [logLevel, setLogLevel] = useState<LogLevel>(DEFAULT_LOG_LEVEL);
+  const [backupRetention, setBackupRetention] = useState(DEFAULT_BACKUP_RETENTION);
+  const [storage, setStorage] = useState<{ dbBytes: number; backups: { count: number; bytes: number } } | null>(null);
+  const [purgeKeep, setPurgeKeep] = useState(1);
+  const [purging, setPurging] = useState(false);
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      try {
+        setStorage(await api.getStorage());
+      } catch {
+        /* non-fatal — the panel just shows nothing */
+      }
+    })();
+  }, []);
+  async function reloadStorage() {
+    try {
+      setStorage(await api.getStorage());
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function purgeOldBackups() {
+    setPurging(true);
+    setPurgeMsg(null);
+    try {
+      const r = await api.purgeBackups(Math.max(1, Math.round(purgeKeep) || 1));
+      await reloadStorage();
+      setPurgeMsg(`Removed ${r.removed} snapshot${r.removed === 1 ? '' : 's'} — ${r.count} kept.`);
+    } catch (e) {
+      setPurgeMsg(e instanceof Error ? e.message : 'purge failed');
+    } finally {
+      setPurging(false);
+    }
+  }
 
   async function testAi() {
     setAiTesting(true);
@@ -261,6 +311,8 @@ export function InstanceSettings() {
     setHstsIncludeSub(s.hsts?.includeSubDomains ?? false);
     setHstsPreload(s.hsts?.preload ?? false);
     setHstsApplySites(s.hsts?.applyToServedSites ?? false);
+    setLogLevel(s.logLevel ?? DEFAULT_LOG_LEVEL);
+    setBackupRetention(s.backupRetention ?? DEFAULT_BACKUP_RETENTION);
     // Trim on hydrate so the "changed?" guard compares like-for-like (the save sends the trimmed value);
     // otherwise a stored name with stray whitespace would look dirty on an untouched save.
     const name = (s.platformName ?? DEFAULT_PLATFORM_NAME).trim();
@@ -353,6 +405,8 @@ export function InstanceSettings() {
       preload: hstsPreload && hstsIncludeSub && hstsMaxAgeClamped >= 31_536_000,
       applyToServedSites: hstsApplySites,
     };
+    input.logLevel = logLevel;
+    input.backupRetention = Math.max(1, Math.min(100, Math.round(backupRetention) || DEFAULT_BACKUP_RETENTION));
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
     // must leave the stored override alone. When edited: store an override unless it's empty or equals
     // the default (then send null → revert), so we never persist the whole default as an override.
@@ -1058,6 +1112,93 @@ export function InstanceSettings() {
             </label>
           </div>
         )}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Logging
+          <SectionHelp tip="Server log verbosity. Logs go to the container's stdout — retention/rotation is your container runtime's job, not an app setting. A change takes effect immediately (no restart). In development the logger is off entirely." />
+        </legend>
+        <label className="block text-sm">
+          <span className="font-medium">Log level</span>
+          <span className="mb-1 block text-xs text-slate-500">
+            debug/trace are useful for diagnosis but noisy — keep it at info in normal operation.
+          </span>
+          <select
+            className={`${glassInput} w-40`}
+            aria-label="Log level"
+            value={logLevel}
+            onChange={(e) => setLogLevel(e.target.value as LogLevel)}
+          >
+            {LOG_LEVELS.map((lvl) => (
+              <option key={lvl} value={lvl}>
+                {lvl}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Storage &amp; backups
+          <SectionHelp tip="Before applying a pending schema migration on startup, the app writes a WAL-safe snapshot of the DATABASE only (media isn't touched by migrations) so a bad migration can be rolled back. Restore: stop the app, copy a .bak over sitewright.db, remove the -wal/-shm sidecars, restart." />
+        </legend>
+        <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <dt className="text-slate-500">Database size</dt>
+          <dd className="text-right font-medium">{storage ? formatBytes(storage.dbBytes) : '—'}</dd>
+          <dt className="text-slate-500">Pre-migration snapshots</dt>
+          <dd className="text-right font-medium">
+            {storage ? `${storage.backups.count} · ${formatBytes(storage.backups.bytes)}` : '—'}
+          </dd>
+        </dl>
+        <label className="block text-sm">
+          <span className="font-medium">Snapshots to keep automatically</span>
+          <span className="mb-1 block text-xs text-slate-500">
+            How many pre-migration snapshots to retain; older ones are pruned after each new one. Default {DEFAULT_BACKUP_RETENTION}.
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            className={`${glassInput} w-28`}
+            aria-label="Snapshots to keep automatically"
+            value={backupRetention}
+            onChange={(e) => {
+              const n = e.target.valueAsNumber;
+              if (!Number.isNaN(n)) setBackupRetention(n);
+            }}
+            onBlur={() => setBackupRetention((v) => Math.max(1, Math.min(100, Math.round(v) || DEFAULT_BACKUP_RETENTION)))}
+          />
+          <span className="ml-2 text-xs text-slate-400">(saved with “Save settings”)</span>
+        </label>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-slate-500">Purge now — keep newest</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              className={`${glassInput} w-24`}
+              aria-label="Keep newest snapshots on purge"
+              value={purgeKeep}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isNaN(n)) setPurgeKeep(n);
+              }}
+              onBlur={() => setPurgeKeep((v) => Math.max(1, Math.min(100, Math.round(v) || 1)))}
+            />
+          </label>
+          <button
+            type="button"
+            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50`}
+            disabled={purging || storage?.backups.count === 0}
+            onClick={() => void purgeOldBackups()}
+          >
+            {purging ? 'Purging…' : 'Purge snapshots'}
+          </button>
+          {purgeMsg && <span className="text-sm text-slate-600">{purgeMsg}</span>}
+        </div>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

@@ -10,8 +10,11 @@ import {
   DEFAULT_AUTH_MAX_FAILURES,
   DEFAULT_FORM_MODES,
   DEFAULT_HSTS,
+  DEFAULT_BACKUP_RETENTION,
+  DEFAULT_LOG_LEVEL,
   DEFAULT_PLATFORM_NAME,
   type Hsts,
+  type LogLevel,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
   type InstanceSettingsPublic,
@@ -114,6 +117,16 @@ export class InstanceSettingsRepository {
   /** The effective HSTS policy (admin setting or the OFF default) — read by the security-headers hook. */
   async getHstsPolicy(): Promise<Hsts> {
     return (await this.getStored()).hsts ?? { ...DEFAULT_HSTS };
+  }
+
+  /** How many pre-migration DB snapshots to keep — the admin setting or the built-in default (2). */
+  async getBackupRetention(): Promise<number> {
+    return (await this.getStored()).backupRetention ?? DEFAULT_BACKUP_RETENTION;
+  }
+
+  /** The effective log level: the admin setting, else the caller's env fallback, else 'info'. */
+  async getLogLevel(envFallback?: LogLevel): Promise<LogLevel> {
+    return (await this.getStored()).logLevel ?? envFallback ?? DEFAULT_LOG_LEVEL;
   }
 
   /** The configured platform name, or the built-in default — for TOTP/passkey prompts + the chrome. */
@@ -360,6 +373,8 @@ export class InstanceSettingsRepository {
     mergeNullable(input.platformLogo, current.platformLogo, (v) => { next.platformLogo = v; });
     // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined keeps.
     mergeNullable(input.defaultImageFormat, current.defaultImageFormat, (v) => { next.defaultImageFormat = v; });
+    mergeNullable(input.backupRetention, current.backupRetention, (v) => { next.backupRetention = v; });
+    mergeNullable(input.logLevel, current.logLevel, (v) => { next.logLevel = v; });
 
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);

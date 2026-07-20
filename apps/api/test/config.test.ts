@@ -128,4 +128,10 @@ describe('resolveRuntimeConfig — validation + misc parsing', () => {
     expect(cfg.version).toBe('1.4.0');
     expect(cfg.disableUpdateCheck).toBe(true);
   });
+
+  it('reads a valid LOG_LEVEL env and ignores an invalid/absent one', () => {
+    expect(resolveRuntimeConfig({ LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+    expect(resolveRuntimeConfig({ LOG_LEVEL: 'nonsense' }).logLevel).toBeUndefined();
+    expect(resolveRuntimeConfig({}).logLevel).toBeUndefined();
+  });
 });

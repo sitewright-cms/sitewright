@@ -6,6 +6,7 @@ import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
+import { backupBeforeMigrations } from './db/backup.js';
 import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
@@ -132,7 +133,24 @@ const renderPool = new RenderPool({
 // the data dir). All roots are derived from SW_DATA_DIR — mount a single volume there to persist.
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(cfg.dataDir, { recursive: true });
-const { db } = await createDb(cfg.databaseUrl);
+const { db, client } = await createDb(cfg.databaseUrl);
+// Safety net before a schema change: snapshot the DB (WAL-safe, DB-only) IFF migrations are pending, so a
+// bad migration can be rolled back. Best-effort — a snapshot failure is logged but must not block boot
+// (the migrations themselves are forward-only + data-preserving; the snapshot is defense-in-depth).
+try {
+  await backupBeforeMigrations({
+    client,
+    databaseUrl: cfg.databaseUrl,
+    dataDir: cfg.dataDir,
+    now: new Date(),
+    log: (m) => process.stderr.write(`[sitewright/backup] ${m}\n`),
+  });
+} catch (err) {
+  process.stderr.write(
+    `[sitewright/backup] WARNING: pre-migration DB snapshot failed — ${err instanceof Error ? err.message : String(err)}\n` +
+      '[sitewright/backup] proceeding with migrations WITHOUT a fresh snapshot.\n',
+  );
+}
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(cfg.mediaRoot, { recursive: true });

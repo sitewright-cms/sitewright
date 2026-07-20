@@ -64,6 +64,9 @@ ENV EDITOR_DIST=/app/editor
 # the DB to <SW_DATA_DIR>/sitewright.db (SW_DATA_DIR defaults to ./data → /app/data, since WORKDIR=/app).
 # WAL note: the DB dir also holds `sitewright.db-wal`/`-shm`. BACKUP: a bare `cp sitewright.db` (missing
 # the -wal) can be CORRUPT — use `sqlite3 sitewright.db ".backup out.db"` or `PRAGMA wal_checkpoint(TRUNCATE)`.
+# On each start, before applying any PENDING schema migration, the app auto-writes a WAL-safe DB snapshot to
+# <SW_DATA_DIR>/backups/*.pre-migration.bak (VACUUM INTO; DB only — media isn't touched by migrations).
+# RESTORE (app stopped): copy the chosen .bak over sitewright.db, remove the -wal/-shm sidecars, restart.
 ENV SW_DATA_DIR=/app/data
 
 # Run as the non-root `node` user (present in the base image). Own the data dir AND the /app dir itself

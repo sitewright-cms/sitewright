@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/site-import",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Pure, deterministic engine that turns a captured external website (crawled HTML or an uploaded bundle) into a Sitewright import bundle: faithful literal-HTML page sources, self-hosted media (via an injected port), extracted brand identity, and a route/nav tree that passes validateTemplate + validateProject.",
   "license": "Apache-2.0",
   "type": "module",

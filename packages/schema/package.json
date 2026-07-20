@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/schema",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Zod schemas for the Sitewright project format: blocks, pages, partials, datasets, and brand tokens.",
   "license": "Apache-2.0",
   "type": "module",

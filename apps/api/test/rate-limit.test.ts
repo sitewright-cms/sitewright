@@ -33,10 +33,24 @@ describe('rate limiting', () => {
   });
 
   it('sets rate-limit headers on a normal response', async () => {
-    const res = await app.inject({ method: 'GET', url: '/health' });
+    // A route under the GLOBAL limiter carries the headers. (/health is deliberately rate-limit-EXEMPT —
+    // a zero-cost liveness probe from an LB/orchestrator must never be throttled into a false "down".)
+    const res = await app.inject({ method: 'GET', url: '/version' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['x-ratelimit-limit']).toBeDefined();
     expect(res.headers['x-ratelimit-remaining']).toBeDefined();
+  });
+
+  it('exempts /health but gives /ready its own generous bucket (not the global one, not fully exempt)', async () => {
+    // /health: zero-cost literal ⇒ fully exempt (no limiter headers).
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    expect(health.statusCode).toBe(200);
+    expect(health.headers['x-ratelimit-limit']).toBeUndefined();
+
+    // /ready: does real DB I/O ⇒ a dedicated 60/min bucket so it can't be an unauthenticated DB amplifier.
+    const ready = await app.inject({ method: 'GET', url: '/ready' });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.headers['x-ratelimit-limit']).toBe('60');
   });
 
   // A preview page view fans out into MANY asset sub-requests. If the static-asset + signed-preview routes

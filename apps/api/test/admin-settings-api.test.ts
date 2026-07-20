@@ -150,6 +150,48 @@ describe('admin settings API', () => {
       expect((s2.json() as { item: { settings: { defaultLocale: string } } }).item.settings.defaultLocale).toBe('en');
     });
 
+    it('round-trips the HSTS policy (schema defaults applied; null clears)', async () => {
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+
+      // Default read: no HSTS section.
+      const initial = await app.inject({ method: 'GET', url: '/admin/settings', cookies });
+      expect((initial.json() as { settings: { hsts?: unknown } }).settings.hsts).toBeUndefined();
+
+      // A partial input is completed by the schema defaults (only `enabled`+`includeSubDomains` sent).
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/admin/settings',
+        cookies,
+        payload: { hsts: { enabled: true, includeSubDomains: true } },
+      });
+      expect(put.statusCode).toBe(200);
+      const hsts = (
+        put.json() as {
+          settings: {
+            hsts?: {
+              enabled: boolean;
+              maxAgeSeconds: number;
+              includeSubDomains: boolean;
+              preload: boolean;
+              applyToServedSites: boolean;
+            };
+          };
+        }
+      ).settings.hsts;
+      expect(hsts).toEqual({
+        enabled: true,
+        maxAgeSeconds: 31_536_000,
+        includeSubDomains: true,
+        preload: false,
+        applyToServedSites: false,
+      });
+
+      // Clearing it (null) removes the section entirely.
+      const cleared = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { hsts: null } });
+      expect((cleared.json() as { settings: { hsts?: unknown } }).settings.hsts).toBeUndefined();
+    });
+
     it('forbids the bearer (API-key) path entirely on admin routes', async () => {
       // A made-up bearer must be rejected as session-only (403), not 401: the route
       // refuses the bearer path before any key lookup, so no admin account is needed.

@@ -9,7 +9,9 @@ import {
   DEFAULT_REVISION_RETENTION_DAYS,
   DEFAULT_AUTH_MAX_FAILURES,
   DEFAULT_FORM_MODES,
+  DEFAULT_HSTS,
   DEFAULT_PLATFORM_NAME,
+  type Hsts,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
   type InstanceSettingsPublic,
@@ -107,6 +109,11 @@ export class InstanceSettingsRepository {
   /** Max FAILED login/2FA attempts per IP per minute before throttling — the admin setting or default 10. */
   async getAuthMaxFailures(): Promise<number> {
     return (await this.getStored()).authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
+  }
+
+  /** The effective HSTS policy (admin setting or the OFF default) — read by the security-headers hook. */
+  async getHstsPolicy(): Promise<Hsts> {
+    return (await this.getStored()).hsts ?? { ...DEFAULT_HSTS };
   }
 
   /** The configured platform name, or the built-in default — for TOTP/passkey prompts + the chrome. */
@@ -255,6 +262,16 @@ export class InstanceSettingsRepository {
         ...(input.ai.maxOutputTokens !== undefined ? { maxOutputTokens: input.ai.maxOutputTokens } : {}),
       };
       next.ai = ai;
+    }
+
+    // HSTS policy (non-secret object): an object sets it (all fields already defaulted by the schema),
+    // `null` clears it (revert to OFF), and undefined keeps whatever was stored.
+    if (input.hsts === null) {
+      // cleared — leave next.hsts undefined
+    } else if (input.hsts === undefined) {
+      if (current.hsts) next.hsts = current.hsts;
+    } else {
+      next.hsts = input.hsts;
     }
 
     // Agent instructions: a string sets the override, `null` clears it (revert to default),

@@ -74,4 +74,11 @@ RUN mkdir -p /app/data && chown node:node /app /app/data
 USER node
 
 EXPOSE 80
+
+# Container readiness: /ready confirms the DB is reachable + migrated (not just that the process is up).
+# `start-period` covers first-boot migrations + the example-project seed. Uses Node's global fetch (Node
+# 22) so no curl/wget is added to the slim image; honors the runtime PORT.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||80)+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
 CMD ["node", "dist/server.js"]

@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId } from '../id.js';
+import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -24,6 +25,7 @@ import {
   PageSchema,
   InstanceSettingsInputSchema,
   maskInstanceSettings,
+  DEFAULT_HSTS,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -305,6 +307,11 @@ const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous expo
 const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
 const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
+// Cap the time to RECEIVE a full request (headers + body) — a slow-loris mitigation. This bounds the
+// request side only; it does NOT limit how long a handler runs, so streaming responses (AI assistant,
+// import SSE) and large-but-steady uploads (project zips) are unaffected. Generous so a genuinely slow
+// upload still completes.
+const REQUEST_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
 /** Font metadata accompanying an upload (query params) — sensible defaults for a generic drop. */
@@ -922,6 +929,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // is a hashed token row, so the secret can't forge a session even if leaked.
   const cookieSecretPinned = opts.cookieSecret !== undefined;
   let currentCookieSecret = opts.cookieSecret ?? (await instanceSettingsRepo.getOrCreateCookieSecret());
+  // Current HSTS policy (admin instance setting; OFF by default). Cached in a mutable ref — loaded once
+  // at boot and refreshed after a settings PUT — so the per-response security hook doesn't hit the DB and
+  // an admin change still takes effect without a restart.
+  let hstsPolicy = await instanceSettingsRepo.getHstsPolicy();
   // Custom HMAC sign/verify for the session cookie (NOT @fastify/cookie's `signed`, whose secret is
   // fixed at plugin-registration time) so a runtime rotation of `currentCookieSecret` applies live.
   const signSession = (token: string): string =>
@@ -1096,6 +1107,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // is the real client IP instead of the proxy's (which would collapse all
     // clients to one bucket).
     trustProxy: opts.trustProxy ?? false,
+    // Slow-loris mitigation: abort a connection that hasn't delivered a full request within this window.
+    // Request-side only — long-running RESPONSES (streaming/SSE) are unaffected. See REQUEST_TIMEOUT_MS.
+    requestTimeout: REQUEST_TIMEOUT_MS,
   });
 
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
@@ -1142,11 +1156,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Baseline security headers (the API also serves the SPA in single-container mode).
-  app.addHook('onSend', async (_req, reply) => {
+  app.addHook('onSend', async (req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
+    // HSTS is admin OPT-IN (OFF by default — the `hsts` instance setting). It's sticky and dangerous, so
+    // the operator turns it on only when the origin is reliably on TLS. A served client site
+    // (`<slug>.<sitesDomain>` or `/sites/…`) is EXCLUDED unless `applyToServedSites`, because those hosts
+    // have independent (often plain-HTTP / non-app-cert) TLS and pinning them to HTTPS would hard-break them.
+    if (hstsPolicy.enabled && !reply.hasHeader('strict-transport-security')) {
+      const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
+      if (!servedSite || hstsPolicy.applyToServedSites) {
+        let value = `max-age=${hstsPolicy.maxAgeSeconds}`;
+        if (hstsPolicy.includeSubDomains) value += '; includeSubDomains';
+        if (hstsPolicy.preload) value += '; preload';
+        reply.header('strict-transport-security', value);
+      }
+    }
     // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,
     // which needs `sandbox allow-scripts` + to be framable by the editor). When it
     // does, don't override its CSP — and skip the default DENY framing too, since
@@ -1875,6 +1902,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const input = InstanceSettingsInputSchema.parse(req.body);
     try {
       const settings = await instanceSettingsRepo.put(input);
+      // Refresh the cached HSTS policy from the just-written settings (non-secret, surfaced as-is) so the
+      // security-headers hook reflects the change on the next request — no second DB read. NOTE: this is a
+      // single-process cache (like currentCookieSecret / the render pool / preview store — this app is
+      // single-container by design); a multi-replica deployment would need cross-replica invalidation.
+      hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       // Audit trail for an instance-wide config change (userId only — no PII).
       app.log.info({ userId }, 'instance settings updated');
       return reply.send({ settings });
@@ -5433,7 +5465,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   });
 
-  app.get('/health', async () => ({ ok: true }));
+  // Liveness: the process is up and serving. A pure ping — no DB, no dependencies — so an orchestrator
+  // never restarts a healthy pod just because the DB is briefly busy. FULLY rate-limit-exempt: it's a
+  // zero-cost literal, and probes from the LB/orchestrator (often a shared source IP) must never be
+  // throttled into a false "down".
+  app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
+
+  // Readiness: the instance can actually serve requests — the DB is reachable + migrated. A load balancer
+  // / orchestrator holds traffic until this returns 200; a briefly-unreachable DB yields 503 (drain, not
+  // restart). Unlike /health it does real per-request DB I/O, so it gets its OWN generous bucket (60/min —
+  // far above any probe cadence) rather than full exemption, so it can't be an unauthenticated DB amplifier.
+  app.get('/ready', { config: rl(60) }, async (req, reply) => {
+    try {
+      await db.run(sql`select 1`);
+      return { ok: true };
+    } catch (err) {
+      req.log.error({ err }, 'readiness check failed: database unreachable');
+      return reply.code(503).send({ ok: false });
+    }
+  });
 
   // The machine-readable authoring contracts of the first-party interactive components
   // (data-sw-component): markers, part roles, config attributes, and markup skeletons.

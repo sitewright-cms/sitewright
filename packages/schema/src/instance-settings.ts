@@ -73,6 +73,33 @@ export const DEFAULT_FORM_MODES: Readonly<FormModes> = Object.freeze({
   thirdParty: false,
 });
 
+/**
+ * HTTP Strict-Transport-Security policy for the PLATFORM origin. OFF by default and admin opt-in: HSTS is
+ * sticky (once a browser sees it over HTTPS it refuses plain HTTP for `maxAgeSeconds`), so an operator
+ * enables it only when the origin is reliably on TLS. `includeSubDomains`/`preload` are extra-dangerous —
+ * they pin EVERY subdomain (and `preload` is effectively irreversible) — so leave them off unless every
+ * subdomain is HTTPS. `applyToServedSites` additionally emits HSTS on locally-hosted client sites
+ * (`<slug>.<sitesDomain>` / `/sites/…`), which are otherwise EXCLUDED because their TLS is independent and
+ * often plain-HTTP; only enable it once those subdomains have a valid (e.g. wildcard) certificate.
+ */
+export const HstsSchema = z.object({
+  enabled: z.boolean().default(false),
+  maxAgeSeconds: z.number().int().min(0).max(63_072_000).default(31_536_000), // cap = 2 years
+  includeSubDomains: z.boolean().default(false),
+  preload: z.boolean().default(false),
+  applyToServedSites: z.boolean().default(false),
+});
+export type Hsts = z.infer<typeof HstsSchema>;
+
+/** HSTS disabled — the safe default before an admin opts in (frozen). */
+export const DEFAULT_HSTS: Readonly<Hsts> = Object.freeze({
+  enabled: false,
+  maxAgeSeconds: 31_536_000,
+  includeSubDomains: false,
+  preload: false,
+  applyToServedSites: false,
+});
+
 // Non-secret SMTP fields shared by the stored and input shapes. host/fromName
 // reject control characters: once the Phase 3 mailer consumes them they flow into
 // SMTP commands / the From: header, where a CRLF would enable injection. fromEmail
@@ -206,6 +233,8 @@ export const InstanceSettingsStoredSchema = z.object({
   /** Site-wide default image DELIVERY format for {{sw-image}} ('webp' → single <img>; 'avif' → a
    *  <picture> with an AVIF tier). A project's website.imageDelivery overrides it. Unset → 'webp'. */
   defaultImageFormat: z.enum(['webp', 'avif']).optional(),
+  /** HTTP Strict-Transport-Security policy (admin opt-in; unset → OFF). See {@link HstsSchema}. */
+  hsts: HstsSchema.optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -321,6 +350,9 @@ export const InstanceSettingsInputSchema = z.object({
   platformLogo: PlatformLogoSchema.nullable().optional(),
   // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined leaves it.
   defaultImageFormat: z.enum(['webp', 'avif']).nullable().optional(),
+  // HSTS policy: an object sets it (all fields defaulted), `null` clears it (revert to OFF), and an
+  // absent (undefined) value leaves the stored one unchanged.
+  hsts: HstsSchema.nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -403,6 +435,8 @@ export interface InstanceSettingsPublic {
   hasLogo?: boolean;
   /** Site-wide default image delivery format ('webp' | 'avif'), or absent when using 'webp'. */
   defaultImageFormat?: 'webp' | 'avif';
+  /** HSTS policy (not a secret), or absent when unset (HSTS off). */
+  hsts?: Hsts;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -449,5 +483,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.brandSecondary !== undefined) result.brandSecondary = stored.brandSecondary;
   if (stored.platformLogo !== undefined) result.hasLogo = true;
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
+  if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
   return result;
 }

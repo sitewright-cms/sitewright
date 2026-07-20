@@ -1,15 +1,13 @@
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
 import { createApp } from './http/app.js';
-import { seedInstance, DEFAULT_ADMIN_EMAIL } from './seed.js';
+import { seedInstance } from './seed.js';
 import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
-import { parseKey } from './crypto/secret.js';
-import { parseTrustProxy } from './trust-proxy.js';
+import { resolveRuntimeConfig } from './config.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
 import { AnthropicProvider } from './ai/provider.js';
 import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
@@ -17,97 +15,45 @@ import { OpenAiAgentProvider } from './ai/openai-agent.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
-// ONE data directory holds everything persistent — the SQLite DB, media, published sites, and the
-// ephemeral preview builds. Mount a single volume at this path to persist an instance. Each path keeps
-// an optional individual override, but the common case needs no env at all (defaults to ./data).
-const dataDir = resolve(process.env.SW_DATA_DIR ?? './data');
-const url = process.env.DATABASE_URL ?? `file:${join(dataDir, 'sitewright.db')}`;
-const port = Number(process.env.PORT ?? 2002);
-const cookieSecret = process.env.COOKIE_SECRET;
-const isProduction = process.env.NODE_ENV === 'production';
-const mediaRoot = resolve(process.env.MEDIA_ROOT ?? join(dataDir, 'media'));
-const publishRoot = resolve(process.env.PUBLISH_ROOT ?? join(dataDir, 'sites'));
-// Ephemeral live-preview draft builds (members-only, rebuilt on change). Kept apart from the
-// published artifact so a draft can never collide with a deployable build.
-const previewRoot = resolve(process.env.PREVIEW_ROOT ?? join(dataDir, 'preview'));
-// Cached source-reference screenshots captured at import time (for compare_to_source).
-const sourceRefRoot = resolve(process.env.SOURCE_REF_ROOT ?? join(dataDir, 'source-refs'));
+// ONE place reads the environment: resolveRuntimeConfig validates + derives everything (see config.ts).
+// The common case needs almost no env — SW_DATA_DIR (where data lives) and SW_PUBLIC_URL (where the
+// instance is reached) drive the rest. A malformed SW_PUBLIC_URL / SW_ENCRYPTION_KEY throws here → the
+// server fails fast at boot rather than misbehaving later.
+const cfg = resolveRuntimeConfig(process.env);
 
-// COOKIE_SECRET is OPTIONAL now: when set it PINS the session-signing key (e.g. to share across
-// replicas); when unset, createApp auto-generates + persists one on first boot and lets an admin rotate
-// it from System Settings. So there is no fail-fast here anymore.
-if (isProduction && process.env.COOKIE_SECURE !== 'true') {
-  process.stderr.write('[sitewright/api] WARNING: COOKIE_SECURE is not true in production\n');
-}
-// TRUST_PROXY=true (or a CIDR/comma list) when running behind a reverse proxy, so
-// rate limiting keys on the real client IP. Warn if likely misconfigured.
-const trustProxyEnv = process.env.TRUST_PROXY;
-// `true`/`false`, or a comma list of IPs/CIDRs — see parseTrustProxy. Resolved value keys the rate limiter
-// on the real client IP behind a proxy; without it, all clients share one bucket keyed on the proxy IP.
-const trustProxy = parseTrustProxy(trustProxyEnv);
-if (isProduction && trustProxy === false) {
+// Surface the resolved trust-proxy mode at boot so an operator can confirm the rate-limit key (req.ip)
+// reflects the real client rather than the proxy.
+process.stdout.write(
+  `[sitewright/api] TRUST_PROXY=${process.env.TRUST_PROXY ?? '(unset)'} → ${
+    cfg.trustProxy === true
+      ? 'trusting all proxies'
+      : cfg.trustProxy === false
+        ? 'no proxy trusted (direct socket IP)'
+        : `trusting [${cfg.trustProxy.join(', ')}]`
+  }\n`,
+);
+// TRUST_PROXY=true (or a CIDR/comma list) when running behind a reverse proxy, so per-IP rate limits key
+// on the real client IP instead of collapsing every client onto the proxy's IP.
+if (cfg.isProduction && cfg.trustProxy === false) {
   process.stderr.write(
     '[sitewright/api] WARNING: TRUST_PROXY is not set; behind a proxy, per-IP rate limits key on the proxy IP\n',
   );
 }
-// Surface the resolved trust-proxy mode at boot so an operator can confirm the rate-limit key (req.ip)
-// reflects the real client rather than the proxy.
-process.stdout.write(
-  `[sitewright/api] TRUST_PROXY=${trustProxyEnv ?? '(unset)'} → ${
-    trustProxy === true
-      ? 'trusting all proxies'
-      : trustProxy === false
-        ? 'no proxy trusted (direct socket IP)'
-        : `trusting [${trustProxy.join(', ')}]`
-  }\n`,
-);
-// In development the forced default-password change is OFF (admin@sitewright.example / 123456 just works);
-// say so loudly so a dev instance is never left internet-reachable on the default credentials.
-if (!isProduction) {
+// Secure cookies are ON automatically for an https SW_PUBLIC_URL. If a production instance is served over
+// plain HTTP (no https public URL, COOKIE_SECURE not forced), session cookies lack the Secure flag — warn.
+if (cfg.isProduction && !cfg.secureCookies) {
   process.stderr.write(
-    '[sitewright/api] NOTE: development mode (NODE_ENV != production) — the forced default-password ' +
-      'change is DISABLED; do not expose this instance publicly on the default credentials.\n',
+    '[sitewright/api] WARNING: session cookies are NOT Secure — set SW_PUBLIC_URL to your https URL ' +
+      '(or COOKIE_SECURE=true) when serving behind TLS\n',
   );
 }
-
-// Optional secret-encryption key (enables saved deploy targets) + deploy SSRF allow-list.
-const encryptionKey = process.env.SW_ENCRYPTION_KEY
-  ? parseKey(process.env.SW_ENCRYPTION_KEY)
-  : undefined;
-const deployAllowedHosts = process.env.SW_DEPLOY_ALLOWED_HOSTS
-  ? process.env.SW_DEPLOY_ALLOWED_HOSTS.split(',')
-      .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
-      .filter(Boolean)
-  : undefined;
-// Optional SSRF allowlist for per-project SMTP hosts (multi-tenant SaaS).
-const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
-  ? process.env.SW_SMTP_ALLOWED_HOSTS.split(',')
-      .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
-      .filter(Boolean)
-  : undefined;
-
-// Instance admin: a persisted user role (`platform_role='admin'`), NOT an env allowlist. The first
-// admin is seeded on first boot (below); further admins are granted in-app via a platform invite.
-// SW_ADMIN_EMAIL only overrides the seeded admin's identity (optional first-boot convenience).
-const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL;
-
-// Registration is unconditionally INVITE-ONLY (a seeded admin + invited users only); there is no
-// public self-signup and no runtime toggle.
-
-// The platform's public base URL, baked into exported forms as the absolute
-// submission endpoint. A malformed value would silently misdirect every form's
-// submissions, so validate it as an http(s) URL at startup and refuse to boot.
-const publicUrl = process.env.SW_PUBLIC_URL;
-if (publicUrl) {
-  let parsedPublicUrl: URL | undefined;
-  try {
-    parsedPublicUrl = new URL(publicUrl);
-  } catch {
-    throw new Error(`SW_PUBLIC_URL="${publicUrl}" is not a valid URL`);
-  }
-  if (parsedPublicUrl.protocol !== 'https:' && parsedPublicUrl.protocol !== 'http:') {
-    throw new Error(`SW_PUBLIC_URL must be an http(s) URL; got "${publicUrl}"`);
-  }
+// In development the forced default-password change is OFF (admin@sitewright.example / 123456 just works);
+// say so loudly so a dev instance is never left internet-reachable on the default credentials.
+if (!cfg.isProduction) {
+  process.stderr.write(
+    `[sitewright/api] NOTE: NODE_ENV=${cfg.nodeEnv} (not production) — the forced default-password ` +
+      'change is DISABLED; do not expose this instance publicly on the default credentials.\n',
+  );
 }
 
 // Opt-in isolated build worker (multi-tenant SaaS / once builds run untrusted
@@ -182,61 +128,59 @@ const renderPool = new RenderPool({
   maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
 });
 
-// Ensure the data directory exists before opening the DB (the DB file lives directly in it).
+// Ensure the data directory + its sub-roots exist before opening the DB (the DB file lives directly in
+// the data dir). All roots are derived from SW_DATA_DIR — mount a single volume there to persist.
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-await mkdir(dataDir, { recursive: true });
-const { db } = await createDb(url);
+await mkdir(cfg.dataDir, { recursive: true });
+const { db } = await createDb(cfg.databaseUrl);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-await mkdir(mediaRoot, { recursive: true });
+await mkdir(cfg.mediaRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-await mkdir(publishRoot, { recursive: true });
+await mkdir(cfg.publishRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-await mkdir(previewRoot, { recursive: true });
+await mkdir(cfg.previewRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-await mkdir(sourceRefRoot, { recursive: true });
+await mkdir(cfg.sourceRefRoot, { recursive: true });
 
 const app = await createApp({
   db,
-  cookieSecret,
-  // Secure cookies require HTTPS; gate on an explicit flag (not NODE_ENV) so the
-  // HTTP DinD preview works. Set COOKIE_SECURE=true when served behind TLS.
-  secureCookies: process.env.COOKIE_SECURE === 'true',
-  mediaRoot,
-  publishRoot,
-  previewRoot,
-  sourceRefRoot,
-  trustProxy,
-  encryptionKey,
-  // WebAuthn RP overrides for deployments behind a proxy (default: derived from the request host).
-  webauthnRpId: process.env.SW_WEBAUTHN_RP_ID,
-  webauthnOrigin: process.env.SW_WEBAUTHN_ORIGIN,
-  deployAllowedHosts,
-  smtpAllowedHosts,
-  // Force the seeded default-password admin to change it ONLY in production. A local dev run
-  // (NODE_ENV !== 'production') skips the gate so admin@sitewright.example / 123456 just works.
-  forcePasswordChange: isProduction,
+  cookieSecret: cfg.cookieSecret,
+  // Secure cookies + HSTS are ON automatically for an https SW_PUBLIC_URL (or an explicit
+  // COOKIE_SECURE=true); OFF over plain HTTP so the HTTP DinD preview keeps working.
+  secureCookies: cfg.secureCookies,
+  mediaRoot: cfg.mediaRoot,
+  publishRoot: cfg.publishRoot,
+  previewRoot: cfg.previewRoot,
+  sourceRefRoot: cfg.sourceRefRoot,
+  trustProxy: cfg.trustProxy,
+  encryptionKey: cfg.encryptionKey,
+  // WebAuthn RP: derived from SW_PUBLIC_URL when set (else the request host); SW_WEBAUTHN_* override.
+  webauthnRpId: cfg.webauthnRpId,
+  webauthnOrigin: cfg.webauthnOrigin,
+  deployAllowedHosts: cfg.deployAllowedHosts,
+  smtpAllowedHosts: cfg.smtpAllowedHosts,
+  // Force the seeded default-password admin to change it in production (NODE_ENV defaults to production).
+  // A local dev run (NODE_ENV=development/test) skips the gate so admin@sitewright.example / 123456 works.
+  forcePasswordChange: cfg.isProduction,
   // Brute-force protection is a per-IP FAILED-login throttle (admin setting `authMaxFailures`, default
   // 10), not an env var. Flood protection for all routes is the global 200/min limiter.
   renderPool,
   // Public base URL baked into exported forms (so static sites post submissions
-  // back to this platform). Validated above; trailing slash normalized at build time.
-  publicUrl,
+  // back to this platform). Validated in config.ts; trailing slash normalized.
+  publicUrl: cfg.publicUrl,
   // Subdomain routing for locally-hosted sites: `<slug>.<SW_SITES_DOMAIN>` serves that site at root
   // (needs wildcard DNS `*.<domain>` → this host). Unset → off; the `/sites/<slug>/` path form always works.
-  sitesDomain: process.env.SW_SITES_DOMAIN,
+  sitesDomain: cfg.sitesDomain,
   buildRunner,
   aiProvider,
   agentProvider,
   aiQuota,
-  version: process.env.SW_VERSION ?? '0.0.0',
+  version: cfg.version,
   // Pull-based release check (disable for air-gapped installs).
-  latestVersion:
-    process.env.SW_DISABLE_UPDATE_CHECK === 'true'
-      ? undefined
-      : createReleaseChecker({ repo: RELEASE_REPO }),
+  latestVersion: cfg.disableUpdateCheck ? undefined : createReleaseChecker({ repo: RELEASE_REPO }),
   releaseUrl: `https://github.com/${RELEASE_REPO}/releases/latest`,
-  logger: isProduction,
+  logger: cfg.isProduction,
   // Only enable SPA serving if the dist actually exists (avoids a startup crash
   // for API-only deployments that don't bake in the editor).
   editorDist:
@@ -255,10 +199,10 @@ const app = await createApp({
 try {
   await seedInstance({
     db,
-    adminEmail: seedAdminEmail,
-    adminPassword: process.env.SW_ADMIN_PASSWORD,
+    adminEmail: cfg.seedAdminEmail,
+    adminPassword: cfg.seedAdminPassword,
     // Generate the demo's local imagery into the same media root the app serves from.
-    mediaRoot,
+    mediaRoot: cfg.mediaRoot,
     // Self-host the demo's Google heading font into the same font cache the app serves from.
     // Bootstrap notices are operational diagnostics. Emit on stderr so log pipelines
     // treat them as diagnostics (not indexed app output).
@@ -292,8 +236,8 @@ if (anyUser.length === 0) {
   );
 }
 
-await app.listen({ host: '0.0.0.0', port });
-process.stdout.write(`[sitewright/api] listening on :${port}\n`);
+await app.listen({ host: '0.0.0.0', port: cfg.port });
+process.stdout.write(`[sitewright/api] listening on :${cfg.port}\n`);
 
 // Graceful shutdown for k8s: on SIGTERM/SIGINT, close Fastify (which drains + terminates
 // the render workers via the onClose hook), then exit.

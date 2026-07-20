@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId } from '../id.js';
+import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -305,6 +306,11 @@ const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous expo
 const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
 const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
+// Cap the time to RECEIVE a full request (headers + body) — a slow-loris mitigation. This bounds the
+// request side only; it does NOT limit how long a handler runs, so streaming responses (AI assistant,
+// import SSE) and large-but-steady uploads (project zips) are unaffected. Generous so a genuinely slow
+// upload still completes.
+const REQUEST_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
 /** Font metadata accompanying an upload (query params) — sensible defaults for a generic drop. */
@@ -1094,6 +1100,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // is the real client IP instead of the proxy's (which would collapse all
     // clients to one bucket).
     trustProxy: opts.trustProxy ?? false,
+    // Slow-loris mitigation: abort a connection that hasn't delivered a full request within this window.
+    // Request-side only — long-running RESPONSES (streaming/SSE) are unaffected. See REQUEST_TIMEOUT_MS.
+    requestTimeout: REQUEST_TIMEOUT_MS,
   });
 
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
@@ -1145,6 +1154,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
+    // HSTS only when the instance is served over TLS (secureCookies tracks that). Omit
+    // `includeSubDomains` so hosting client sites on plain-HTTP subdomains isn't force-upgraded to HTTPS.
+    if (opts.secureCookies && !reply.hasHeader('strict-transport-security')) {
+      reply.header('strict-transport-security', 'max-age=31536000');
+    }
     // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,
     // which needs `sandbox allow-scripts` + to be framable by the editor). When it
     // does, don't override its CSP — and skip the default DENY framing too, since
@@ -5431,7 +5445,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   });
 
-  app.get('/health', async () => ({ ok: true }));
+  // Liveness: the process is up and serving. A pure ping — no DB, no dependencies — so an orchestrator
+  // never restarts a healthy pod just because the DB is briefly busy. FULLY rate-limit-exempt: it's a
+  // zero-cost literal, and probes from the LB/orchestrator (often a shared source IP) must never be
+  // throttled into a false "down".
+  app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
+
+  // Readiness: the instance can actually serve requests — the DB is reachable + migrated. A load balancer
+  // / orchestrator holds traffic until this returns 200; a briefly-unreachable DB yields 503 (drain, not
+  // restart). Unlike /health it does real per-request DB I/O, so it gets its OWN generous bucket (60/min —
+  // far above any probe cadence) rather than full exemption, so it can't be an unauthenticated DB amplifier.
+  app.get('/ready', { config: rl(60) }, async (req, reply) => {
+    try {
+      await db.run(sql`select 1`);
+      return { ok: true };
+    } catch (err) {
+      req.log.error({ err }, 'readiness check failed: database unreachable');
+      return reply.code(503).send({ ok: false });
+    }
+  });
 
   // The machine-readable authoring contracts of the first-party interactive components
   // (data-sw-component): markers, part roles, config attributes, and markup skeletons.

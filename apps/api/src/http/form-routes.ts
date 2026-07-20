@@ -8,6 +8,7 @@ import {
   HCAPTCHA_RESPONSE_FIELD,
   MIN_SUBMIT_ELAPSED_MS,
   MAX_SUBMISSIONS_PER_FORM,
+  validateFormSubmission,
   type Form,
   type FormModes,
 } from '@sitewright/schema';
@@ -176,6 +177,18 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       const elapsed = parsed.elapsed ?? 0;
       if (parsed.honeypotFilled || elapsed < MIN_SUBMIT_ELAPSED_MS) {
         return reply.send({ ok: true });
+      }
+
+      // Definition-aware validation — the SERVER backstop for the browser's native validation. A direct or
+      // scripted POST bypasses the client, so re-check required fields + typed formats (email/url/number) +
+      // single-select option membership here and REJECT an incomplete/malformed lead rather than storing +
+      // emailing it. Runs after the bot traps (a honeypot bot still gets the silent drop) and before the
+      // network hCaptcha verify (don't spend a verify on an already-invalid submission).
+      const invalidFields = validateFormSubmission(form.fields, parsed.fields);
+      if (invalidFields.length > 0) {
+        // Distinct from the structural `invalid submission` 400 above so a consumer can react to a
+        // definition-validation failure (the offending field names are in `fields`) specifically.
+        return reply.code(400).send({ error: 'invalid fields', fields: invalidFields });
       }
 
       // hCaptcha: enforced when the form requires it. Fail-CLOSED — if the instance

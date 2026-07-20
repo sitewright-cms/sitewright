@@ -4,10 +4,17 @@ import {
   FormSchema,
   FormSubmissionSchema,
   toPublicForm,
+  validateFormSubmission,
   HONEYPOT_FIELD,
   TIMETRAP_FIELD,
   type Form,
+  type FormField,
 } from '../src/form.js';
+
+/** Parse a partial field spec through the schema so defaults (type/required) match production. */
+function field(spec: Partial<FormField> & { name: string; label: string }): FormField {
+  return FormFieldSchema.parse(spec);
+}
 
 describe('FormFieldSchema', () => {
   it('defaults type to text and required to false', () => {
@@ -159,5 +166,98 @@ describe('honeypot/time-trap field names', () => {
   it('are stable constants', () => {
     expect(HONEYPOT_FIELD).toBe('_hpt');
     expect(TIMETRAP_FIELD).toBe('_elapsed');
+  });
+});
+
+describe('validateFormSubmission', () => {
+  it('accepts a complete, well-formed submission', () => {
+    const fields = [
+      field({ name: 'email', label: 'Email', type: 'email', required: true }),
+      field({ name: 'note', label: 'Note', type: 'textarea' }),
+    ];
+    expect(validateFormSubmission(fields, { email: 'a@b.co', note: 'hi' })).toEqual([]);
+  });
+
+  it('flags a missing required field (absent or blank/whitespace-only)', () => {
+    const fields = [field({ name: 'email', label: 'Email', type: 'email', required: true })];
+    expect(validateFormSubmission(fields, {})).toEqual(['email']);
+    expect(validateFormSubmission(fields, { email: '' })).toEqual(['email']);
+    expect(validateFormSubmission(fields, { email: '   ' })).toEqual(['email']);
+  });
+
+  it('lets an optional field stay empty (no format check on blank)', () => {
+    const fields = [field({ name: 'website', label: 'Website', type: 'url' })];
+    expect(validateFormSubmission(fields, {})).toEqual([]);
+    expect(validateFormSubmission(fields, { website: '' })).toEqual([]);
+  });
+
+  it('validates email / url / number formats when a value is present', () => {
+    const fields = [
+      field({ name: 'email', label: 'Email', type: 'email' }),
+      field({ name: 'site', label: 'Site', type: 'url' }),
+      field({ name: 'qty', label: 'Qty', type: 'number' }),
+    ];
+    expect(validateFormSubmission(fields, { email: 'nope', site: 'not a url', qty: 'ten' })).toEqual([
+      'email',
+      'site',
+      'qty',
+    ]);
+    expect(
+      validateFormSubmission(fields, { email: 'a@b.co', site: 'https://x.io', qty: '-3.5' }),
+    ).toEqual([]);
+  });
+
+  it('accepts only http(s) urls (rejects javascript:/data:/mailto:)', () => {
+    const fields = [field({ name: 'site', label: 'Site', type: 'url' })];
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'mailto:a@b.co', 'ftp://h/x']) {
+      expect(validateFormSubmission(fields, { site: bad })).toEqual(['site']);
+    }
+    expect(validateFormSubmission(fields, { site: 'http://x.io' })).toEqual([]);
+    expect(validateFormSubmission(fields, { site: 'https://x.io/p?q=1' })).toEqual([]);
+  });
+
+  it('accepts only decimal/exponent number literals (rejects hex/octal a native input never sends)', () => {
+    const fields = [field({ name: 'qty', label: 'Qty', type: 'number' })];
+    for (const bad of ['0x1F', '0b101', '1,000', 'Infinity', 'NaN']) {
+      expect(validateFormSubmission(fields, { qty: bad })).toEqual(['qty']);
+    }
+    for (const good of ['0', '42', '-3.5', '.5', '1e5']) {
+      expect(validateFormSubmission(fields, { qty: good })).toEqual([]);
+    }
+  });
+
+  it('enforces single-select option membership for select and radio', () => {
+    const fields = [
+      field({ name: 'plan', label: 'Plan', type: 'select', options: ['free', 'pro'] }),
+      field({ name: 'size', label: 'Size', type: 'radio', options: ['s', 'm', 'l'] }),
+    ];
+    expect(validateFormSubmission(fields, { plan: 'enterprise', size: 'm' })).toEqual(['plan']);
+    expect(validateFormSubmission(fields, { plan: 'pro', size: 'xl' })).toEqual(['size']);
+    expect(validateFormSubmission(fields, { plan: 'free', size: 'l' })).toEqual([]);
+  });
+
+  it('matches a select option authored with incidental surrounding whitespace', () => {
+    // The submitted value is trimmed; the option must be trimmed too, or its own value would be rejected.
+    const fields = [field({ name: 'plan', label: 'Plan', type: 'select', options: ['  pro  ', 'free'] })];
+    expect(validateFormSubmission(fields, { plan: 'pro' })).toEqual([]);
+    expect(validateFormSubmission(fields, { plan: 'enterprise' })).toEqual(['plan']);
+  });
+
+  it('checks presence of a required checkbox GROUP via its joined value', () => {
+    // A checkbox group submits as one joined "A, B" string; presence is all the server can assert.
+    const fields = [field({ name: 'topics', label: 'Topics', type: 'checkbox', required: true, options: ['a', 'b'] })];
+    expect(validateFormSubmission(fields, {})).toEqual(['topics']);
+    expect(validateFormSubmission(fields, { topics: 'a, b' })).toEqual([]);
+  });
+
+  it('ignores submitted keys with no matching field (extras are stored, not rejected)', () => {
+    const fields = [field({ name: 'email', label: 'Email', type: 'email', required: true })];
+    expect(validateFormSubmission(fields, { email: 'a@b.co', extra: 'kept' })).toEqual([]);
+  });
+
+  it('never reads inherited prototype members off the submission map', () => {
+    const fields = [field({ name: 'toString', label: 'To String', type: 'text', required: true })];
+    // `toString` exists on the prototype but not as an own property → treated as missing → flagged.
+    expect(validateFormSubmission(fields, {})).toEqual(['toString']);
   });
 });

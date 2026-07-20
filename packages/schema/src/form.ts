@@ -165,6 +165,53 @@ export function toPublicForm(form: Form): FormPublic {
   return pub;
 }
 
+// Reused per call (zod's string().email()/url() would otherwise rebuild a schema each time).
+const emailFormat = z.string().email();
+const urlFormat = z.string().url();
+/** A `url` field must be a web address — require http(s) so `javascript:`/`data:`/`mailto:` are rejected
+ *  (bare `.url()` is scheme-agnostic; mirrors the `thirdPartyUrl` https-only guard above). */
+const HTTP_URL_SCHEME = /^https?:\/\//i;
+/** A native `<input type="number">` never submits a hex/octal/binary literal, but `Number()` would coerce
+ *  one ("0x1F" → 31, "0b101" → 5); reject those prefixes so the number check mirrors the client. Kept as a
+ *  trivial anchored prefix (no nested quantifiers) — a decimal/exponent literal is validated via Number(). */
+const NON_DECIMAL_PREFIX = /^0[xob]/i;
+
+/**
+ * Validates a submitted values map against a form's field definitions — the SERVER backstop for the
+ * browser's native validation (a direct or scripted POST bypasses the client, so required/format are
+ * re-checked here). Returns the names of the fields that failed (empty array = valid).
+ *
+ * `values` is the flat, already-normalized submission map — a checkbox GROUP arrives as one joined
+ * "A, B" string — so this checks presence, scalar format (email / http(s) url / numeric literal), and
+ * SINGLE-select option membership (select/radio), NOT per-option membership of a checkbox group.
+ */
+export function validateFormSubmission(fields: FormField[], values: Record<string, string>): string[] {
+  const invalid: string[] = [];
+  for (const field of fields) {
+    // Own-property only: a field could legitimately be named `toString` etc. (only __proto__/constructor/
+    // prototype are refused), so never read an inherited prototype member off the plain submission object.
+    const raw = Object.prototype.hasOwnProperty.call(values, field.name) ? values[field.name] : '';
+    const value = String(raw ?? '').trim();
+
+    if (value === '') {
+      if (field.required) invalid.push(field.name);
+      continue; // an optional, empty field skips the format checks below
+    }
+    if (field.type === 'email') {
+      if (!emailFormat.safeParse(value).success) invalid.push(field.name);
+    } else if (field.type === 'url') {
+      if (!HTTP_URL_SCHEME.test(value) || !urlFormat.safeParse(value).success) invalid.push(field.name);
+    } else if (field.type === 'number') {
+      if (NON_DECIMAL_PREFIX.test(value) || !Number.isFinite(Number(value))) invalid.push(field.name);
+    } else if ((field.type === 'select' || field.type === 'radio') && (field.options?.length ?? 0) > 0) {
+      // Compare against trimmed options: an option authored with incidental surrounding whitespace must
+      // still match its own submitted value (the submitted `value` is already trimmed above).
+      if (!field.options!.some((opt) => opt.trim() === value)) invalid.push(field.name);
+    }
+  }
+  return invalid;
+}
+
 // ---- Submissions (stored text-only) ----
 
 /** The honeypot + time-trap field names the renderer emits and the endpoint strips. */

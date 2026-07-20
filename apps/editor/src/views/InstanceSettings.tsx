@@ -344,11 +344,13 @@ export function InstanceSettings() {
       : null; // disabling clears the platform assistant (and its key)
     // HSTS: send the full policy (no secrets). enabled=false stores an OFF policy (preserves the other
     // fields for when it's re-enabled) rather than clearing the section.
+    const hstsMaxAgeClamped = clampHstsMaxAge(hstsMaxAge);
     input.hsts = {
       enabled: hstsEnabled,
-      maxAgeSeconds: clampHstsMaxAge(hstsMaxAge),
+      maxAgeSeconds: hstsMaxAgeClamped,
       includeSubDomains: hstsIncludeSub,
-      preload: hstsPreload,
+      // `preload` is only valid with includeSubDomains + a 1-year+ max-age — never store an invalid combo.
+      preload: hstsPreload && hstsIncludeSub && hstsMaxAgeClamped >= 31_536_000,
       applyToServedSites: hstsApplySites,
     };
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
@@ -998,7 +1000,7 @@ export function InstanceSettings() {
             <label className="block text-sm">
               <span className="font-medium">max-age (seconds)</span>
               <span className="mb-1 block text-xs text-slate-500">
-                How long browsers keep enforcing HTTPS after each visit. Common: 31536000 (1 year). 0 clears the policy.
+                How long browsers keep enforcing HTTPS after each visit. Common: 31536000 (1 year). 0 tells browsers to forget the policy.
               </span>
               <input
                 type="number"
@@ -1032,12 +1034,13 @@ export function InstanceSettings() {
                 type="checkbox"
                 className={toggleInput}
                 aria-label="preload"
-                checked={hstsPreload}
+                disabled={!(hstsIncludeSub && hstsMaxAge >= 31_536_000)}
+                checked={hstsPreload && hstsIncludeSub && hstsMaxAge >= 31_536_000}
                 onChange={(e) => setHstsPreload(e.target.checked)}
               />
-              <span>
+              <span className={hstsIncludeSub && hstsMaxAge >= 31_536_000 ? '' : 'opacity-50'}>
                 preload
-                <span className="ml-2 text-xs text-amber-600">near-irreversible; needs includeSubDomains + a 1-year+ max-age</span>
+                <span className="ml-2 text-xs text-amber-600">near-irreversible; requires includeSubDomains + a 1-year+ max-age</span>
               </span>
             </label>
             <label className="flex items-center gap-2 text-sm">

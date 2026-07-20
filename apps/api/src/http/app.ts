@@ -25,6 +25,7 @@ import {
   PageSchema,
   InstanceSettingsInputSchema,
   maskInstanceSettings,
+  DEFAULT_HSTS,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -1899,8 +1900,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const input = InstanceSettingsInputSchema.parse(req.body);
     try {
       const settings = await instanceSettingsRepo.put(input);
-      // Refresh the cached HSTS policy so the security-headers hook reflects the change on the next request.
-      hstsPolicy = await instanceSettingsRepo.getHstsPolicy();
+      // Refresh the cached HSTS policy from the just-written settings (non-secret, surfaced as-is) so the
+      // security-headers hook reflects the change on the next request — no second DB read. NOTE: this is a
+      // single-process cache (like currentCookieSecret / the render pool / preview store — this app is
+      // single-container by design); a multi-replica deployment would need cross-replica invalidation.
+      hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       // Audit trail for an instance-wide config change (userId only — no PII).
       app.log.info({ userId }, 'instance settings updated');
       return reply.send({ settings });

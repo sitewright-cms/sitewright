@@ -57,6 +57,10 @@ COPY --chown=node:node package.json ./
 
 ENV NODE_ENV=production
 ENV PORT=80
+# Baked at release time (release.yml passes `--build-arg SW_VERSION=<tag>`); reported at GET /version so an
+# operator can see exactly which release is running. Defaults to 0.0.0 for local/dev builds.
+ARG SW_VERSION=0.0.0
+ENV SW_VERSION=$SW_VERSION
 # The editor SPA is copied into the deploy context as ./editor (see deploy step).
 ENV EDITOR_DIST=/app/editor
 # ONE persistent data dir holds the SQLite DB, media, published sites + preview builds — mount a single

@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Sitewright MCP stdio bridge: exposes a project's content operations as MCP tools to local coding agents, authenticated by a project-scoped API key.",
   "license": "Apache-2.0",
   "type": "module",

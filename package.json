@@ -1,5 +1,6 @@
 {
   "name": "sitewright-monorepo",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Sitewright — OSS website development platform for web-development agencies.",
@@ -13,6 +14,7 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
+    "set-version": "node scripts/set-version.mjs",
     "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test"
   },
   "devDependencies": {

@@ -181,6 +181,8 @@ const app = await createApp({
   databaseUrl: cfg.databaseUrl,
   // Initial log verbosity (admin `logLevel` setting, else LOG_LEVEL env, else 'info'); live-updated on save.
   logLevel,
+  // The raw LOG_LEVEL env — the fallback when an admin CLEARS the logLevel setting live (reverts there).
+  envLogLevel: cfg.logLevel,
   cookieSecret: cfg.cookieSecret,
   // Secure cookies + `__Host-` prefix are ON automatically for an https SW_PUBLIC_URL (or an explicit
   // COOKIE_SECURE=true); OFF over plain HTTP so the HTTP DinD preview keeps working. (HSTS is a SEPARATE

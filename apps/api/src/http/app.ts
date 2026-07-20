@@ -808,8 +808,10 @@ export interface AppOptions {
   cookieSecret?: string;
   secureCookies?: boolean;
   logger?: boolean;
-  /** Initial pino log level (the admin `logLevel` setting overrides it live). Only applies when logger is on. */
+  /** Initial pino log level at boot (the admin `logLevel` setting, else env, else 'info'). Logger-on only. */
   logLevel?: LogLevel;
+  /** The RAW LOG_LEVEL env (no stored setting baked in) — the fallback when an admin CLEARS logLevel live. */
+  envLogLevel?: LogLevel;
   /** Data directory + DB URL — for storage introspection (DB / backups sizes) and the backup-purge action. */
   dataDir?: string;
   databaseUrl?: string;
@@ -1916,8 +1918,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // single-container by design); a multi-replica deployment would need cross-replica invalidation.
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
-      // restart. Only meaningful when the logger is active (production). Same single-process caveat as HSTS.
-      if (opts.logger) app.log.level = settings.logLevel ?? opts.logLevel ?? 'info';
+      // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
+      // which has any prior stored value baked in at boot). Only meaningful when the logger is active.
+      if (opts.logger) app.log.level = settings.logLevel ?? opts.envLogLevel ?? 'info';
       // Audit trail for an instance-wide config change (userId only — no PII).
       app.log.info({ userId }, 'instance settings updated');
       return reply.send({ settings });

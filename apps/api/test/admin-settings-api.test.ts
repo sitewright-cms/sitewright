@@ -363,4 +363,25 @@ describe('admin settings API', () => {
       }
     });
   });
+
+  describe('live log level', () => {
+    it('applies a set level live and reverts to the ENV fallback (not the stale boot value) on clear', async () => {
+      db = await makeTestDb();
+      // Simulate a restart where a prior admin had stored 'trace': opts.logLevel is the boot-effective value,
+      // envLogLevel is the RAW env ('debug' here). Clearing must revert to envLogLevel, never the boot 'trace'.
+      const app = await createApp({ db, logger: true, logLevel: 'trace', envLogLevel: 'debug' });
+      await app.ready();
+      expect(app.log.level).toBe('trace'); // initial = boot-effective
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      try {
+        await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { logLevel: 'warn' } });
+        expect(app.log.level).toBe('warn'); // explicit set applies live
+        await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { logLevel: null } });
+        expect(app.log.level).toBe('debug'); // reverts to the env fallback, NOT the stale boot 'trace'
+      } finally {
+        await app.close();
+      }
+    });
+  });
 });

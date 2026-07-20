@@ -83,7 +83,10 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
   const form = formsOf(pub())['contact']!;
   const html = renderFormMarkup('contact', form);
   it('emits the FORM_CSS/FORM_JS wrapper contract with the reference and NO endpoint', () => {
-    expect(html).toContain('<form data-sw-block="Form" data-sw-component="form" data-sw-form="contact" novalidate>');
+    // Native constraint validation is ON (no `novalidate`) so a click on an incomplete form fires the
+    // browser's own "please fill this in" prompt on the first invalid field.
+    expect(html).toContain('<form data-sw-block="Form" data-sw-component="form" data-sw-form="contact">');
+    expect(html).not.toContain('novalidate');
     expect(html).not.toContain('data-sw-endpoint');
     expect(html).not.toContain('action=');
   });
@@ -100,13 +103,21 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
     expect(out).toContain('<label class="sw-form-opt"><input type="radio" name="plan" value="Basic" required /><span>Basic</span></label>');
     expect(out).toContain('<input type="radio" name="plan" value="Pro" required />');
   });
-  it('renders a checkbox GROUP (options) — same name, NOT required per-box (no "at least one" HTML rule)', () => {
+  it('renders a REQUIRED checkbox GROUP — same name, no per-box HTML required, fieldset carries data-sw-required', () => {
     const f = formsOf(pub({ fields: [{ name: 'features', label: 'Features', type: 'checkbox', required: true, options: ['SEO', 'Analytics'] }] }))['contact']!;
     const out = renderFormMarkup('contact', f);
-    expect(out).toContain('<fieldset data-sw-part="field"><legend data-sw-part="label">Features</legend>');
+    // HTML has no "at least one checkbox" rule, so the group carries `data-sw-required` — FORM_JS enforces it
+    // via setCustomValidity so the browser still blocks + focuses the group on submit.
+    expect(out).toContain('<fieldset data-sw-part="field" data-sw-required><legend data-sw-part="label">Features</legend>');
     expect(out).toContain('<input type="checkbox" name="features" value="SEO" /><span>SEO</span>');
     expect(out).toContain('<input type="checkbox" name="features" value="Analytics" />');
     expect(out).not.toContain('value="SEO" required'); // a checkbox group box is never HTML-required
+  });
+  it('an OPTIONAL checkbox group carries no data-sw-required marker', () => {
+    const f = formsOf(pub({ fields: [{ name: 'features', label: 'Features', type: 'checkbox', required: false, options: ['SEO', 'Analytics'] }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain('<fieldset data-sw-part="field"><legend data-sw-part="label">Features</legend>');
+    expect(out).not.toContain('data-sw-required');
   });
   it('renders a single (option-less) checkbox as an inline box + label, honouring required', () => {
     const f = formsOf(pub({ fields: [{ name: 'agree', label: 'I agree to the terms', type: 'checkbox', required: true }] }))['contact']!;

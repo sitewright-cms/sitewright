@@ -116,16 +116,17 @@ function renderFormField(field: FormPublic['fields'][number]): string {
   const options = field.options ?? [];
 
   // A radio group, or a checkbox GROUP (a checkbox WITH options) → a <fieldset> of option rows. A radio
-  // group carries `required` on its inputs as a SEMANTIC / a11y signal only (the form is `novalidate`, so
-  // — like every other field — nothing actually blocks an empty submit; see renderFormMarkup). A checkbox
-  // group has no native "at least one" rule at all, so it carries no `required`. Each checked box submits
-  // under the same name and the endpoint joins the values.
+  // group carries native `required` on its inputs (the browser enforces "exactly one selected"). A checkbox
+  // group has no native "at least one" rule, so a REQUIRED checkbox group instead carries `data-sw-required`
+  // on the fieldset and FORM_JS enforces it via `setCustomValidity` (see components.ts) so the browser still
+  // blocks + focuses it. Each checked box submits under the same name and the endpoint joins the values.
   if (field.type === 'radio' || (field.type === 'checkbox' && options.length > 0)) {
     const req = field.type === 'radio' ? required : '';
+    const groupReq = field.type === 'checkbox' && field.required ? ' data-sw-required' : '';
     const rows = options
       .map((o) => `<label class="sw-form-opt"><input type="${field.type}" name="${name}" value="${escapeAttr(o)}"${req} /><span>${escapeHtml(o)}</span></label>`)
       .join('');
-    return `<fieldset data-sw-part="field"><legend data-sw-part="label">${labelHtml}</legend>${rows}</fieldset>`;
+    return `<fieldset data-sw-part="field"${groupReq}><legend data-sw-part="label">${labelHtml}</legend>${rows}</fieldset>`;
   }
 
   // A single (boolean) checkbox — no options → the label sits beside the box; submits "Yes" when checked.
@@ -150,15 +151,17 @@ function renderFormField(field: FormPublic['fields'][number]): string {
  * `data-sw-form` reference and NO endpoint/redirect/honeypot: those are injected by
  * `resolveFormEmbeds` (one resolution code path for helper-emitted and hand-authored markup
  * alike). There is deliberately no `action=` — submission is JS-only (no JS → cannot submit).
- * The hCaptcha PLACEHOLDER is positioned before the submit button; the pass upgrades it with the
- * sitekey only when the instance has one configured.
+ * Native constraint validation is ON (no `novalidate`): clicking submit with a required field empty
+ * fires the browser's own "please fill this in" prompt on the first invalid field and blocks the submit
+ * (the JS runtime's `submit` handler only runs once the form is valid). The hCaptcha PLACEHOLDER is
+ * positioned before the submit button; the pass upgrades it with the sitekey only when configured.
  */
 export function renderFormMarkup(resolvedId: string, form: RenderForm, opts: { class?: string } = {}): string {
   const cls = opts.class ? ` class="${escapeAttr(opts.class)}"` : '';
   const fields = form.fields.map(renderFormField).join('');
   const captcha = form.hcaptcha && isSwRouted(form) ? '<div data-sw-part="hcaptcha"></div>' : '';
   return (
-    `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-form="${escapeAttr(resolvedId)}" novalidate>` +
+    `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-form="${escapeAttr(resolvedId)}">` +
     `<div data-sw-part="fields">${fields}</div>` +
     captcha +
     `<button type="submit" data-sw-part="submit" class="btn btn-primary">${escapeHtml(form.submitLabel)}</button>` +

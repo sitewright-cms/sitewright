@@ -9,8 +9,9 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
-Staged for the first tagged release (`0.1.0`) — the production-readiness work. When cutting the release,
-move these under a `## [0.1.0] — <date>` heading (see RELEASING.md).
+## [0.1.0] — 2026-07-20
+
+First tagged release + the production-readiness work.
 
 ### Added
 
@@ -34,4 +35,5 @@ move these under a `## [0.1.0] — <date>` heading (see RELEASING.md).
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/commits/main
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sitewright-cms/sitewright/releases/tag/v0.1.0

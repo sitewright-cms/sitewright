@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId } from '../id.js';
 import { sql } from 'drizzle-orm';
+import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -26,6 +27,7 @@ import {
   InstanceSettingsInputSchema,
   maskInstanceSettings,
   DEFAULT_HSTS,
+  type LogLevel,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -806,6 +808,13 @@ export interface AppOptions {
   cookieSecret?: string;
   secureCookies?: boolean;
   logger?: boolean;
+  /** Initial pino log level at boot (the admin `logLevel` setting, else env, else 'info'). Logger-on only. */
+  logLevel?: LogLevel;
+  /** The RAW LOG_LEVEL env (no stored setting baked in) — the fallback when an admin CLEARS logLevel live. */
+  envLogLevel?: LogLevel;
+  /** Data directory + DB URL — for storage introspection (DB / backups sizes) and the backup-purge action. */
+  dataDir?: string;
+  databaseUrl?: string;
   /** Isolated template render pool (child-process workers). Absent → /render-template 503s. */
   renderPool?: RenderPool;
   /** Absolute path to the built editor SPA to serve at `/` (single-container mode). */
@@ -1072,6 +1081,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // guard against any future body logging).
     logger: opts.logger
       ? {
+          level: opts.logLevel ?? 'info',
           redact: [
             // Bearer tokens (incl. the short-lived agent token used for in-process /mcp injects) — never
             // log them, even if a future plugin serializes request headers.
@@ -1907,6 +1917,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // single-process cache (like currentCookieSecret / the render pool / preview store — this app is
       // single-container by design); a multi-replica deployment would need cross-replica invalidation.
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
+      // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
+      // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
+      // which has any prior stored value baked in at boot). Only meaningful when the logger is active.
+      if (opts.logger) app.log.level = settings.logLevel ?? opts.envLogLevel ?? 'info';
       // Audit trail for an instance-wide config change (userId only — no PII).
       app.log.info({ userId }, 'instance settings updated');
       return reply.send({ settings });
@@ -1919,6 +1933,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       throw err;
     }
+  });
+
+  // Storage introspection for the System-Settings "Storage & backups" panel: the live DB size (incl. its
+  // WAL sidecars) + the pre-migration snapshot count/size. Admin-only.
+  app.get('/admin/storage', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const dbBytes = await dbSizeBytes(opts.databaseUrl ? dbFilePath(opts.databaseUrl) : null);
+    const backups = opts.dataDir ? await backupsSummary(backupsDir(opts.dataDir)) : { count: 0, bytes: 0 };
+    return reply.send({ dbBytes, backups });
+  });
+
+  // Reap pre-migration snapshots on demand, keeping the newest `keepLast` (default 1). Admin-only; the DB
+  // itself is NEVER touched — only the *.pre-migration.bak files under <dataDir>/backups.
+  const PurgeBackupsBody = z.object({ keepLast: z.number().int().min(1).max(100).default(1) });
+  app.post('/admin/backups/purge', { config: rl(10) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    const { keepLast } = PurgeBackupsBody.parse(req.body ?? {});
+    if (!opts.dataDir) return reply.send({ removed: 0, count: 0, bytes: 0 });
+    const result = await purgeBackups(backupsDir(opts.dataDir), keepLast, (m) => app.log.info({ userId }, m));
+    app.log.info({ userId, removed: result.removed, keepLast }, 'backups purged');
+    return reply.send(result);
   });
 
   // Verify the platform AI provider — connectivity + model. Tests the just-typed key if present, else

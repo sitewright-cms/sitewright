@@ -1,4 +1,5 @@
 import { resolve, join } from 'node:path';
+import { LOG_LEVELS, type LogLevel } from '@sitewright/schema';
 import { parseKey } from './crypto/secret.js';
 import { parseTrustProxy } from './trust-proxy.js';
 import { DEFAULT_ADMIN_EMAIL } from './seed.js';
@@ -49,6 +50,8 @@ export interface RuntimeConfig {
 
   readonly version: string;
   readonly disableUpdateCheck: boolean;
+  /** Initial log verbosity from the LOG_LEVEL env (the admin `logLevel` setting overrides live). */
+  readonly logLevel?: LogLevel;
 }
 
 type Env = Record<string, string | undefined>;
@@ -137,5 +140,9 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
 
     version: env.SW_VERSION ?? '0.0.0',
     disableUpdateCheck: env.SW_DISABLE_UPDATE_CHECK === 'true',
+    // A valid LOG_LEVEL env is the initial verbosity; an unknown value is ignored (falls back to 'info').
+    logLevel: (LOG_LEVELS as readonly string[]).includes(env.LOG_LEVEL ?? '')
+      ? (env.LOG_LEVEL as LogLevel)
+      : undefined,
   };
 }

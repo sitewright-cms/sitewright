@@ -66,6 +66,26 @@ describe('InstanceSettingsRepository', () => {
     expect((await repo.getPublic()).hsts).toBeUndefined();
   });
 
+  it('backup retention: defaults to 2, round-trips a value (+ masked view), null reverts', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    expect(await repo.getBackupRetention()).toBe(2);
+    await repo.put({ backupRetention: 7 });
+    expect(await repo.getBackupRetention()).toBe(7);
+    expect((await repo.getPublic()).backupRetention).toBe(7);
+    await repo.put({ backupRetention: null });
+    expect(await repo.getBackupRetention()).toBe(2);
+  });
+
+  it('log level: setting > env fallback > info; round-trips + null reverts', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    expect(await repo.getLogLevel()).toBe('info'); // built-in default
+    expect(await repo.getLogLevel('warn')).toBe('warn'); // env fallback when unset
+    await repo.put({ logLevel: 'debug' });
+    expect(await repo.getLogLevel('warn')).toBe('debug'); // the setting wins over the env
+    await repo.put({ logLevel: null });
+    expect(await repo.getLogLevel('warn')).toBe('warn'); // cleared → back to the env fallback
+  });
+
   it('round-trips the agent-instructions override (set → keep → clear → effective)', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     const builtinDefault = await repo.getEffectiveAgentInstructions(); // no override yet → the default

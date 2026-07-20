@@ -11,6 +11,9 @@ import {
   journalMigrationCount,
   pruneBackups,
   backupBeforeMigrations,
+  dbSizeBytes,
+  backupsSummary,
+  purgeBackups,
   PRE_MIGRATION_BACKUP_KEEP,
 } from '../src/db/backup.js';
 
@@ -129,5 +132,38 @@ describe('pruneBackups', () => {
     expect((await readdir(dir)).length).toBe(2);
     await pruneBackups(dir, 0); // disabled → keep all
     expect((await readdir(dir)).length).toBe(2);
+  });
+});
+
+describe('storage introspection + purge', () => {
+  it('dbSizeBytes sums the DB (+ WAL sidecars); 0 for a remote/absent DB', async () => {
+    const { dir } = await makeFileDb(true);
+    expect(await dbSizeBytes(join(dir, 'sitewright.db'))).toBeGreaterThan(0);
+    expect(await dbSizeBytes(null)).toBe(0);
+    expect(await dbSizeBytes(join(dir, 'nope.db'))).toBe(0);
+  });
+
+  it('backupsSummary counts + sizes only *.pre-migration.bak files', async () => {
+    const d = await mkdtemp(join(tmpdir(), 'sw-sum-'));
+    cleanups.push(() => rm(d, { recursive: true, force: true }));
+    await writeFile(join(d, 'sitewright-20260101T000000Z.pre-migration.bak'), 'abc'); // 3 bytes
+    await writeFile(join(d, 'sitewright-20260201T000000Z.pre-migration.bak'), 'de'); // 2 bytes
+    await writeFile(join(d, 'unrelated.txt'), 'ignored');
+    expect(await backupsSummary(d)).toEqual({ count: 2, bytes: 5 });
+    expect(await backupsSummary(join(d, 'missing'))).toEqual({ count: 0, bytes: 0 });
+  });
+
+  it('purgeBackups keeps the newest keepLast, reports removed + summary, and never wipes all', async () => {
+    const d = await mkdtemp(join(tmpdir(), 'sw-purge-'));
+    cleanups.push(() => rm(d, { recursive: true, force: true }));
+    for (const s of ['20260101T000000Z', '20260201T000000Z', '20260301T000000Z']) {
+      await writeFile(join(d, `sitewright-${s}.pre-migration.bak`), 'x');
+    }
+    const r = await purgeBackups(d, 1);
+    expect(r.removed).toBe(2);
+    expect(r.count).toBe(1);
+    expect(await readdir(d)).toEqual(['sitewright-20260301T000000Z.pre-migration.bak']); // newest kept
+    // keepLast is clamped to ≥1 — a 0 can't wipe everything.
+    expect((await purgeBackups(d, 0)).count).toBe(1);
   });
 });

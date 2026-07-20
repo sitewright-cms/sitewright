@@ -1,16 +1,22 @@
 import { randomBytes } from 'node:crypto';
-import { readFile, readdir, mkdir, unlink } from 'node:fs/promises';
+import { readFile, readdir, mkdir, unlink, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Client } from '@libsql/client';
+import { DEFAULT_BACKUP_RETENTION } from '@sitewright/schema';
 
 // The same drizzle folder runMigrations reads (SQL files + meta/_journal.json).
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
 
-/** How many pre-migration snapshots to retain (oldest pruned). Migrations are rare, so this is years. */
-export const PRE_MIGRATION_BACKUP_KEEP = 10;
+/** Fallback retention when a caller passes none — the admin `backupRetention` setting overrides this. */
+export const PRE_MIGRATION_BACKUP_KEEP = DEFAULT_BACKUP_RETENTION;
 
 const BACKUP_SUFFIX = '.pre-migration.bak';
+
+/** The pre-migration snapshot directory under the data dir. */
+export function backupsDir(dataDir: string): string {
+  return join(dataDir, 'backups');
+}
 
 /**
  * Non-null iff `databaseUrl` is a LOCAL `file:` DB (remote `libsql://` → null). The returned path is
@@ -57,26 +63,79 @@ function backupStamp(now: Date): string {
  * Deletes the oldest pre-migration snapshots in `backupDir`, keeping the newest `keep`. Best-effort:
  * a failure to remove one file never throws. `keep <= 0` keeps everything (pruning disabled).
  */
-export async function pruneBackups(backupDir: string, keep: number, log: (m: string) => void = () => {}): Promise<void> {
-  if (keep <= 0) return;
+export async function pruneBackups(backupDir: string, keep: number, log: (m: string) => void = () => {}): Promise<number> {
+  if (keep <= 0) return 0;
   let names: string[];
   try {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
     names = (await readdir(backupDir)).filter((n) => n.endsWith(BACKUP_SUFFIX));
   } catch {
-    return; // no backup dir yet
+    return 0; // no backup dir yet
   }
-  if (names.length <= keep) return;
+  if (names.length <= keep) return 0;
   names.sort(); // sortable timestamps → lexical == chronological
+  let removed = 0;
   for (const name of names.slice(0, names.length - keep)) {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
       await unlink(join(backupDir, name));
+      removed += 1;
       log(`pruned old snapshot ${name}`);
     } catch {
       /* best-effort */
     }
   }
+  return removed;
+}
+
+/** On-disk size of the SQLite DB incl. its `-wal`/`-shm` sidecars (bytes); 0 for a remote/absent DB. */
+export async function dbSizeBytes(dbFile: string | null): Promise<number> {
+  if (!dbFile) return 0;
+  let total = 0;
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted db path
+      total += (await stat(`${dbFile}${suffix}`)).size;
+    } catch {
+      /* sidecar absent */
+    }
+  }
+  return total;
+}
+
+/** Count + total bytes of the pre-migration snapshots in `backupDir`. */
+export async function backupsSummary(backupDir: string): Promise<{ count: number; bytes: number }> {
+  let names: string[];
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
+    names = (await readdir(backupDir)).filter((n) => n.endsWith(BACKUP_SUFFIX));
+  } catch {
+    return { count: 0, bytes: 0 };
+  }
+  let bytes = 0;
+  for (const name of names) {
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
+      bytes += (await stat(join(backupDir, name))).size;
+    } catch {
+      /* raced away */
+    }
+  }
+  return { count: names.length, bytes };
+}
+
+/**
+ * Operator-triggered purge: keep only the newest `keepLast` (≥1) snapshots and delete the rest. Returns
+ * how many were removed plus the post-purge summary.
+ */
+export async function purgeBackups(
+  backupDir: string,
+  keepLast: number,
+  log: (m: string) => void = () => {},
+): Promise<{ removed: number; count: number; bytes: number }> {
+  const removed = await pruneBackups(backupDir, Math.max(1, Math.floor(keepLast)), log);
+  const summary = await backupsSummary(backupDir);
+  return { removed, ...summary };
 }
 
 /**
@@ -116,7 +175,7 @@ export async function backupBeforeMigrations(opts: {
   // Fresh DB (no tracking table) → nothing to protect. Up-to-date (applied >= journal) → no pending work.
   if (applied < 0 || applied >= journal) return null;
 
-  const backupDir = join(dataDir, 'backups');
+  const backupDir = backupsDir(dataDir);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
   await mkdir(backupDir, { recursive: true });
   // A short random suffix disambiguates two snapshots taken in the same wall-clock second (e.g. a fast

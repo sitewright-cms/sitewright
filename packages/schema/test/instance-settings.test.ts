@@ -80,6 +80,20 @@ describe('InstanceSettingsInputSchema', () => {
     });
     expect(InstanceSettingsInputSchema.parse({ hsts: null })).toEqual({ hsts: null });
   });
+
+  it('validates logLevel + backupRetention (accepts valid, rejects out-of-range/unknown)', () => {
+    expect(InstanceSettingsInputSchema.parse({ logLevel: 'debug', backupRetention: 5 })).toEqual({
+      logLevel: 'debug',
+      backupRetention: 5,
+    });
+    expect(InstanceSettingsInputSchema.parse({ logLevel: null, backupRetention: null })).toEqual({
+      logLevel: null,
+      backupRetention: null,
+    });
+    expect(() => InstanceSettingsInputSchema.parse({ logLevel: 'chatty' })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ backupRetention: 0 })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ backupRetention: 101 })).toThrow();
+  });
 });
 
 describe('InstanceSettingsStoredSchema', () => {
@@ -164,6 +178,15 @@ describe('maskInstanceSettings', () => {
     };
     expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, hsts }).hsts).toEqual(hsts);
     expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES }).hsts).toBeUndefined();
+  });
+
+  it('surfaces logLevel + backupRetention as-is (non-secret) and omits them when absent', () => {
+    const masked = maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, logLevel: 'warn', backupRetention: 5 });
+    expect(masked.logLevel).toBe('warn');
+    expect(masked.backupRetention).toBe(5);
+    const bare = maskInstanceSettings({ formModes: DEFAULT_FORM_MODES });
+    expect(bare.logLevel).toBeUndefined();
+    expect(bare.backupRetention).toBeUndefined();
   });
 });
 

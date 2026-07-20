@@ -1239,6 +1239,12 @@ export const api = {
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),
+  /** Live storage usage: the DB size (incl. WAL sidecars) + pre-migration snapshot count/size. */
+  getStorage: () =>
+    request<{ dbBytes: number; backups: { count: number; bytes: number } }>('GET', '/admin/storage'),
+  /** Reap pre-migration DB snapshots, keeping the newest `keepLast` (≥1). Never touches the DB itself. */
+  purgeBackups: (keepLast: number) =>
+    request<{ removed: number; count: number; bytes: number }>('POST', '/admin/backups/purge', { keepLast }),
 
   // --- web forms (definitions live as `form` content) ---
   listForms: (projectId: string) =>

@@ -124,7 +124,7 @@ function MainApp({
   // preview-token link stays current after the options are saved.
   const [publishModalTab, setPublishModalTab] = useState<'publish' | 'deploy' | null>(null);
   const [publishRefresh, setPublishRefresh] = useState(0);
-  // The header gear menu's settings surfaces (System Settings / Clients / Team / Access), each a modal.
+  // The header gear menu's settings surfaces (System Settings / Project Members / Administrators / Access), each a modal.
   const [settingsView, setSettingsView] = useState<SettingsView | null>(null);
   // The owner-only "Delete Project" type-to-confirm modal (the project being deleted, or null).
   const [deleteFor, setDeleteFor] = useState<Project | null>(null);
@@ -328,7 +328,7 @@ function MainApp({
             refreshSignal={publishRefresh}
           />
         )}
-        {/* The gear menu unifies Publish & Deploy Options, System Settings, Clients/Team/Access,
+        {/* The gear menu unifies Publish & Deploy Options, System Settings, Project Members/Administrators/Access,
             and Sign out. Always present when signed in (so Sign out + System Settings never vanish
             with no project open); each item is gated to its valid context inside the menu. */}
         <HeaderSettingsMenu
@@ -466,7 +466,7 @@ function MainApp({
           onSaved={() => setPublishRefresh((n) => n + 1)}
         />
       )}
-      {/* System Settings / Clients / Team — opened (as modals) from the header gear menu. */}
+      {/* System Settings / Project Members / Administrators — opened (as modals) from the header gear menu. */}
       {settingsView && (
         <SettingsModalHost view={settingsView} project={inProject} onClose={() => setSettingsView(null)} />
       )}

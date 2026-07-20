@@ -36,7 +36,8 @@ interface HeaderSettingsMenuProps {
 
 /**
  * The header's far-right SETTINGS menu (gear icon → dropdown). Unifies what used to be the ⋮
- * "Publish & deploy options", the Admin tab (Clients/Team/Access), and the admin "System Settings".
+ * "Publish & deploy options", the Admin tab (Project Members/Administrators/Access), and the admin
+ * "System Settings". Items are split into PROJECT and ADMINISTRATION groups (admins only).
  * Each item is shown only in its valid context; every target opens as a modal. Account actions
  * (Account Settings + Logout) live under the adjacent user/person icon ({@link UserDropdown}); this
  * menu renders nothing when it has no items for the current context.
@@ -178,7 +179,7 @@ export function HeaderSettingsMenu({
             if (row.kind === 'header') {
               // A non-interactive group label (matches the Deploy menu's section-header style).
               return (
-                <p key={`hdr-${row.label}`} className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                   {row.label}
                 </p>
               );

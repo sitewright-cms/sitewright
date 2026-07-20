@@ -407,6 +407,13 @@ export function FormsManager({ project }: { project: Project }) {
     );
   }
 
+  // Open a form in the editor draft — cloned (incl. each field) so editing never aliases the list row.
+  // Shared by the whole-row click and the name button so the two can't diverge.
+  const openForm = (f: (typeof forms)[number]) => {
+    setSaved(false);
+    setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {dialog}
@@ -428,18 +435,13 @@ export function FormsManager({ project }: { project: Project }) {
                   action buttons stopPropagation so they don't also open the editor. */}
               <div
                 className={`group flex cursor-pointer items-center gap-3 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition`}
-                onClick={() => {
-                  setSaved(false);
-                  // Clone (incl. each field) so editing the draft never aliases the list row.
-                  setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
-                }}
+                onClick={() => openForm(f)}
               >
                 <button
                   className="text-left font-medium group-hover:text-white"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSaved(false);
-                    setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
+                    openForm(f);
                   }}
                 >
                   {f.name}

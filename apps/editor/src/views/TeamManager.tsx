@@ -5,8 +5,8 @@ import { useDialogs } from './ui/Dialogs';
 import { glassPanel, dangerButton } from '../theme';
 
 /**
- * Platform-staff surface: list the instance's staff and invite a DEVELOPER via a
- * one-time link. Clients are invited per-project from the project's Clients tab, not here.
+ * Platform-staff surface ("Administrators"): list the instance's staff and invite a DEVELOPER via a
+ * one-time link. Project members are invited per-project from the project's Project Members panel, not here.
  */
 export function TeamManager() {
   const [members, setMembers] = useState<OrgMember[]>([]);

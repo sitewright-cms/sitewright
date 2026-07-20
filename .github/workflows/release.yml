@@ -68,37 +68,57 @@ jobs:
           rm -rf /tmp/deploy/editor
           cp -r apps/editor/dist /tmp/deploy/editor
 
+      # Build ONLY (no push yet — see the smoke gate below). SECURITY: tag-derived values are passed via
+      # `env:` and referenced as shell vars, NEVER spliced into the script as `${{ }}` — a tag name is
+      # attacker-controllable (anyone with write access), and `${{ }}` in a `run:` body is executed as code.
+      - name: Build image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          tags=(-t "$IMAGE:$VERSION")
+          [[ "$PRERELEASE" == "false" ]] && tags+=(-t "$IMAGE:latest")
+          docker build \
+            --build-arg SW_VERSION="$VERSION" \
+            --label "org.opencontainers.image.source=$SOURCE_URL" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            "${tags[@]}" \
+            -f apps/api/Dockerfile /tmp/deploy
+
+      # Smoke the freshly-built image BEFORE publishing: prove the slimmed Chromium still renders
+      # (Latin+CJK+emoji). A failure here aborts the release with NOTHING pushed to GHCR.
+      - name: Smoke the image (render inside it)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          docker run --rm --workdir /app -v "$PWD/apps/api/scripts:/smoke:ro" \
+            --entrypoint node "$IMAGE:$VERSION" /smoke/snapshot-smoke.mjs
+
+      # Only reached if the smoke passed — now publish.
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Build + push image
+      - name: Push image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
         run: |
-          version="${{ steps.meta.outputs.version }}"
-          image="${{ steps.meta.outputs.image }}"
-          tags=(-t "$image:$version")
-          [[ "${{ steps.meta.outputs.prerelease }}" == "false" ]] && tags+=(-t "$image:latest")
-          docker build \
-            --build-arg SW_VERSION="$version" \
-            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            --label "org.opencontainers.image.version=$version" \
-            "${tags[@]}" \
-            -f apps/api/Dockerfile /tmp/deploy
-          docker push "$image:$version"
-          if [[ "${{ steps.meta.outputs.prerelease }}" == "false" ]]; then
-            docker push "$image:latest"
+          docker push "$IMAGE:$VERSION"
+          if [[ "$PRERELEASE" == "false" ]]; then
+            docker push "$IMAGE:latest"
           fi
-
-      # Smoke the freshly-built, versioned image: prove the slimmed Chromium still renders (Latin+CJK+emoji).
-      - name: Smoke the image (render inside it)
-        run: |
-          docker run --rm --workdir /app -v "$PWD/apps/api/scripts:/smoke:ro" \
-            --entrypoint node "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}" /smoke/snapshot-smoke.mjs
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
         run: |
           flags=(--generate-notes --title "$GITHUB_REF_NAME")
-          [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]] && flags+=(--prerelease)
+          [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease)
           gh release create "$GITHUB_REF_NAME" "${flags[@]}"

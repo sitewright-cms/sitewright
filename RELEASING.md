@@ -33,6 +33,10 @@ record**, reported at `GET /version`.
 **Pre-releases:** tag `vX.Y.Z-rc1` — the workflow marks the GitHub Release as a pre-release and does **not**
 move `:latest`.
 
+> **One-time, after the FIRST release:** GHCR creates a new package as **private** by default, so anonymous
+> `docker pull` returns `unauthorized` until a maintainer flips it. Once, go to the repo → **Packages** →
+> `sitewright` → **Package settings** → set visibility to **Public** and link it to the repository.
+
 ## Deploying a released image
 
 ```bash

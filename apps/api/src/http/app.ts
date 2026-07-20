@@ -1149,14 +1149,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Baseline security headers (the API also serves the SPA in single-container mode).
-  app.addHook('onSend', async (_req, reply) => {
+  app.addHook('onSend', async (req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
-    // HSTS only when the instance is served over TLS (secureCookies tracks that). Omit
-    // `includeSubDomains` so hosting client sites on plain-HTTP subdomains isn't force-upgraded to HTTPS.
-    if (opts.secureCookies && !reply.hasHeader('strict-transport-security')) {
+    // HSTS is a PLATFORM-ORIGIN concern: assert it only when the app origin is served over TLS
+    // (secureCookies tracks that), and NEVER on a served client site. Those run on `<slug>.<sitesDomain>`
+    // subdomains (or the `/sites/<slug>/` path) whose TLS is independent — they may be plain-HTTP or not
+    // covered by the app's cert, so asserting HSTS on such a response would pin that host to HTTPS and
+    // hard-break it. (Omitting `includeSubDomains` already stops the apex policy from cascading to
+    // subdomains; this also stops the app from emitting HSTS *on the subdomain's own response*.)
+    const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
+    if (opts.secureCookies && !servedSite && !reply.hasHeader('strict-transport-security')) {
       reply.header('strict-transport-security', 'max-age=31536000');
     }
     // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,

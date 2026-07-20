@@ -60,4 +60,22 @@ describe('HSTS header follows the secure-cookie (TLS) posture', () => {
     const res = await harness.app.inject({ method: 'GET', url: '/health' });
     expect(res.headers['strict-transport-security']).toBeUndefined();
   });
+
+  it('NEVER emits HSTS on a served client site — subdomain host (independent/plain-HTTP TLS)', async () => {
+    // A `<slug>.<sitesDomain>` request must not get HSTS even with secureCookies on: that subdomain's TLS
+    // is independent (may be plain-HTTP / not covered by the app cert) and pinning it would hard-break it.
+    harness = await makeHarness({ secureCookies: true, sitesDomain: 'example.test' });
+    const res = await harness.app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { host: 'shopco.example.test' },
+    });
+    expect(res.headers['strict-transport-security']).toBeUndefined();
+  });
+
+  it('NEVER emits HSTS on a served client site — /sites/<slug>/ path form', async () => {
+    harness = await makeHarness({ secureCookies: true });
+    const res = await harness.app.inject({ method: 'GET', url: '/sites/shopco/' });
+    expect(res.headers['strict-transport-security']).toBeUndefined();
+  });
 });

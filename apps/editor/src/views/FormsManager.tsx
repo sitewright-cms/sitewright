@@ -8,7 +8,7 @@ import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
-import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput } from '../theme';
+import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput, gradientHover } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox'];
 /** Field types whose entries come from an options list (select/radio, and a checkbox GROUP). */
@@ -420,41 +420,61 @@ export function FormsManager({ project }: { project: Project }) {
           return (
             <li
               key={f.id}
-              className={`sw-stack-in flex flex-col gap-3 ${glassCard} px-4 py-3 text-sm`}
+              className="sw-stack-in flex flex-col gap-2"
               style={{ animationDelay: `${Math.min(i, 24) * 35}ms` }}
             >
-              <div className="flex items-center gap-3">
+              {/* The whole row opens the editor (wrapper onClick + gradient-lift hover + ripple, matching
+                  the Datasets/Pages rows); the name stays a real keyboard-accessible button and the
+                  action buttons stopPropagation so they don't also open the editor. */}
+              <div
+                className={`group flex cursor-pointer items-center gap-3 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition`}
+                onClick={() => {
+                  setSaved(false);
+                  // Clone (incl. each field) so editing the draft never aliases the list row.
+                  setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
+                }}
+              >
                 <button
-                  className="text-left font-medium hover:underline"
-                  onClick={() => {
+                  className="text-left font-medium group-hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setSaved(false);
-                    // Clone (incl. each field) so editing the draft never aliases the list row.
                     setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
                   }}
                 >
                   {f.name}
                 </button>
-                <code className="text-xs text-slate-400">{f.id}</code>
-                <span className="text-xs text-slate-500">{f.fields.length} fields</span>
-                {f.hcaptcha && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase">hCaptcha</span>}
+                <code className="text-xs text-slate-400 group-hover:text-white/80">{f.id}</code>
+                <span className="text-xs text-slate-500 group-hover:text-white/90">{f.fields.length} fields</span>
+                {f.hcaptcha && (
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
+                    hCaptcha
+                  </span>
+                )}
                 <button
                   aria-label={`${showing ? 'Hide' : 'Show'} submissions for ${f.id}`}
                   aria-expanded={showing}
                   className={`${ghostButton} ml-auto text-xs`}
-                  onClick={() => setSubmissionsFor(showing ? null : f.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSubmissionsFor(showing ? null : f.id);
+                  }}
                 >
                   {showing ? 'Hide submissions' : 'Show submissions'}
                 </button>
                 <button
                   aria-label={`Delete form ${f.id}`}
-                  className={dangerButton}
-                  onClick={() => remove(f.id)}
+                  className={`${dangerButton} group-hover:text-white`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(f.id);
+                  }}
                 >
                   Delete
                 </button>
               </div>
               {showing && (
-                <div className="border-t border-slate-100 pt-3">
+                <div className={`${glassCard} px-4 py-3`}>
                   <SubmissionsInbox key={f.id} project={project} formId={f.id} />
                 </div>
               )}

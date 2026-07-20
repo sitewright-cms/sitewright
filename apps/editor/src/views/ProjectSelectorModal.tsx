@@ -89,7 +89,7 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
                         : 'bg-indigo-100/80 text-indigo-700 group-hover:bg-white/20 group-hover:text-white'
                     }`}
                   >
-                    client
+                    member
                   </span>
                 )}
               </button>

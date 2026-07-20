@@ -137,6 +137,32 @@ describe('public form submission endpoint', () => {
     expect(mailer.sent).toHaveLength(0);
   });
 
+  it('rejects a submission missing a required field (server backstop, not stored/emailed)', async () => {
+    // Passes the bot traps (_elapsed) but omits the required `email` — the client would have blocked
+    // this, but a direct POST bypasses it, so the server must reject with the offending field names.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { message: 'no email supplied', _elapsed: '5000' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
+    expect(mailer.sent).toHaveLength(0);
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    expect((list.json() as { total: number }).total).toBe(0);
+  });
+
+  it('rejects a malformed value for a typed field (email format)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'not-an-email', _elapsed: '5000' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
+    expect(mailer.sent).toHaveLength(0);
+  });
+
   it('404s an unknown form and 400s a non-text (nested) value', async () => {
     expect((await app.inject({ method: 'POST', url: `/f/${projectId}/nope`, payload: { a: '1' } })).statusCode).toBe(404);
     const nested = await app.inject({

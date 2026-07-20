@@ -260,9 +260,10 @@ input:not([type]):invalid, textarea:invalid {
 
 /* While a form is INCOMPLETE (form:invalid — any required control unfilled / invalid) its submit reads
    as disabled: dimmed, desaturated, not-allowed cursor, no hover lift. It stays CLICKABLE on purpose, so
-   a click on a natively-validated form still fires the browser's "please fill this in" prompt (on the
-   platform Form component, which is novalidate + JS-submitted, this is a purely visual cue and the form
-   runtime governs the actual submit). UNLAYERED like the .btn rules — an unlayered rule beats any layer
+   a click on a natively-validated form still fires the browser's "please fill this in" prompt on the first
+   invalid field (the platform Form component now uses native validation — no novalidate attribute — so this
+   dim is a persistent cue and the browser blocks the submit; the JS runtime only submits a valid form).
+   UNLAYERED like the .btn rules — an unlayered rule beats any layer
    regardless of specificity, so a layered version would lose to .btn cursor:pointer; as an unlayered
    (0,2,1) selector it still outranks .btn / .btn:hover. Covers button/input type=submit. */
 form:invalid [type="submit"] {

@@ -685,6 +685,23 @@ const FORM_JS = `(function(){
     var success=form.querySelector('[data-sw-part="success"]');
     var error=form.querySelector('[data-sw-part="error"]');
     var submit=form.querySelector('[data-sw-part="submit"]');
+    // A required checkbox GROUP has no native "at least one" rule — enforce it via constraint validation so
+    // the browser blocks + focuses the group on submit (custom validity on the first box in each group).
+    var groupSyncs=[];
+    Array.prototype.forEach.call(form.querySelectorAll('fieldset[data-sw-required]'),function(fs){
+      var boxes=fs.querySelectorAll('input[type="checkbox"]');
+      if(!boxes.length)return;
+      function sync(){
+        var any=false;Array.prototype.forEach.call(boxes,function(b){if(b.checked)any=true;});
+        boxes[0].setCustomValidity(any?'':'Please select at least one option.');
+      }
+      Array.prototype.forEach.call(boxes,function(b){b.addEventListener('change',sync);});
+      groupSyncs.push(sync);sync();
+    });
+    // form.reset() (the no-redirect success path) + any reset button unchecks boxes WITHOUT firing 'change',
+    // so re-sync AFTER the reset default action (setTimeout, since 'reset' fires BEFORE controls clear) — else
+    // a group that was valid at submit stays "valid" with nothing checked on the next submit.
+    if(groupSyncs.length){form.addEventListener('reset',function(){setTimeout(function(){for(var i=0;i<groupSyncs.length;i++){groupSyncs[i]();}},0);});}
     form.addEventListener('submit',function(e){
       e.preventDefault();
       if(error)error.hidden=true;

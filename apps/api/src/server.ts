@@ -8,6 +8,7 @@ import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { backupBeforeMigrations } from './db/backup.js';
 import { InstanceSettingsRepository } from './repo/instance-settings.js';
+import { runShutdown } from './shutdown.js';
 import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
@@ -278,10 +279,18 @@ if (anyUser.length === 0) {
 await app.listen({ host: '0.0.0.0', port: cfg.port });
 process.stdout.write(`[sitewright/api] listening on :${cfg.port}\n`);
 
-// Graceful shutdown for k8s: on SIGTERM/SIGINT, close Fastify (which drains + terminates
-// the render workers via the onClose hook), then exit.
+// Graceful shutdown for k8s: on SIGTERM/SIGINT drain Fastify (which terminates the render workers via its
+// onClose hooks), close the DB, then exit — with a force-exit failsafe if close() hangs (so the container
+// never waits for the orchestrator's SIGKILL). 10s < the usual 30s termination grace.
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
-    void app.close().then(() => process.exit(0));
+    void runShutdown({
+      close: () => app.close(),
+      closeDb: () => client.close(),
+      timeoutMs: SHUTDOWN_TIMEOUT_MS,
+      log: (m) => process.stderr.write(`[sitewright/api] ${m}\n`),
+      exit: (code) => process.exit(code),
+    });
   });
 }

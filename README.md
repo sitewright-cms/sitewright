@@ -14,40 +14,63 @@ pipeline. Self-hostable in a single container.
 
 </div>
 
-> **Status: early development (Phase 0 — foundations).** APIs and formats are not yet stable.
+> **Status:** actively developed and self-hostable today. Pre-1.0 — APIs and on-disk formats may still change
+> between minor versions; see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Why Sitewright
 
 Agencies juggle many client sites, each with its own brand, content, and release cadence.
 Sitewright is one platform for the whole lifecycle:
 
-- 🎨 **Corporate identity per project** — design tokens (color, type, spacing, logo) compiled to
-  a theme; locked for clients, editable by developers.
-- 🧱 **Block-based editor** — a visual canvas over a typed block tree, with an HTML/code escape
-  hatch for power users. **Reusable partials** keep shared components in sync.
-- 🗂️ **CMS / datasets per project** — define collections, bind them to blocks, generate
-  collection pages — all resolved at build time so output stays static.
-- 🤖 **Integrated AI** — online via the platform API and offline via the `sitewright` CLI,
-  Claude-first behind a provider interface.
-- ⚡ **Fast publishing** — incremental Astro builds, AVIF/WebP image pipeline, atomic deploys,
-  instant rollback. Pluggable publish targets (static/CDN, Kubernetes, ssh/rsync, git).
-- 🪶 **Low footprint, high Lighthouse** — static-first output, near-zero runtime cost, single
-  container to self-host.
+- 🎨 **Corporate identity per project** — design tokens (color, type, spacing, logo) compiled to a theme;
+  locked for clients, editable by developers.
+- 🧱 **Code-first, with a live visual editor** — author in HTML/code with a live preview and in-place editing
+  of content regions. **Reusable partials, snippets, and components** keep shared building blocks in sync.
+- 🗂️ **CMS / datasets per project** — define collections, bind them into pages, generate collection pages —
+  all resolved at build time so the output stays static.
+- 🤖 **Integrated AI + agents** — an in-editor AI assistant, plus an **MCP** endpoint so local coding agents
+  (e.g. Claude Code) can edit a project's content over a project-scoped key.
+- ⚡ **Fast publishing** — incremental Astro builds, an AVIF/WebP image pipeline, atomic deploys, and instant
+  rollback. Pluggable publish targets (local/CDN static, SSH/rsync, git).
+- 🔎 **Import an existing site** — crawl or upload a site and turn it into an editable Sitewright project.
+- 🪶 **Low footprint, high Lighthouse** — static-first output, near-zero runtime cost, one container to host.
 
-See **[docs/architecture.md](./docs/architecture.md)** for the decision log and
-**[docs/project-format.md](./docs/project-format.md)** for the on-disk project format.
+## Deploy
+
+Published images are on the GitHub Container Registry:
+
+```bash
+docker run -d -p 127.0.0.1:8080:80 -v sw-data:/app/data \
+  -e SW_PUBLIC_URL=https://sites.example.com -e TRUST_PROXY=true \
+  -e SW_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  ghcr.io/sitewright-cms/sitewright:latest
+```
+
+Put a TLS-terminating reverse proxy in front. See **[docs/deployment.md](./docs/deployment.md)** for the full
+guide (compose, reverse proxy, first-run, upgrades, backups) and **[docs/environment.md](./docs/environment.md)**
+for every configuration variable.
 
 ## Monorepo
 
-| Package | Status | Purpose |
-|---------|--------|---------|
-| [`@sitewright/schema`](./packages/schema) | 🟢 Phase 0 | Zod schemas for the project format (blocks, pages, partials, datasets, brand) |
-| `@sitewright/core` | ⚪ planned | Pure domain logic: tree ops, partial + binding resolution |
-| `@sitewright/renderer` | ⚪ planned | Project → Astro → optimized static output |
-| `@sitewright/ai` | ⚪ planned | `AIProvider` interface + Claude provider |
-| `@sitewright/publish` | ⚪ planned | Publish adapters |
-| `@sitewright/cli` | ⚪ planned | Offline `sitewright` CLI |
-| `apps/api`, `apps/editor` | ⚪ planned | Backend + visual editor |
+pnpm + Turborepo. The whole product ships as `apps/api`'s container; the packages are internal (not published
+to npm).
+
+| Package | Purpose |
+|---|---|
+| [`apps/api`](./apps/api) | Fastify backend — REST API, serves the editor SPA, the render/build/publish pipeline, and the MCP endpoint. |
+| [`apps/editor`](./apps/editor) | The React visual + code editor (single-page app). |
+| [`@sitewright/schema`](./packages/schema) | Zod schemas + authoring contracts for the project format (pages, partials, datasets, brand tokens, instance settings). |
+| [`@sitewright/core`](./packages/core) | Pure domain logic — immutable content-tree operations, partial + binding resolution, project validation. |
+| [`@sitewright/blocks`](./packages/blocks) | Framework-free component/renderer library — an XSS-safe HTML renderer that mirrors the published Astro output; shared by the editor + live-preview. |
+| [`@sitewright/image-pipeline`](./packages/image-pipeline) | Build-time image optimization — responsive AVIF/WebP variants, LQIP placeholders, srcset manifests (sharp). |
+| [`@sitewright/tailwind`](./packages/tailwind) | Publish-time Tailwind compiler — scans rendered HTML, emits a minimal brand-mapped stylesheet. |
+| [`@sitewright/site-import`](./packages/site-import) | Turns a captured external website (crawl or upload) into an editable Sitewright import bundle. |
+| [`@sitewright/mcp`](./packages/mcp) | MCP stdio bridge — exposes a project's content operations as agent tools, authenticated by a project-scoped key. |
+| [`@sitewright/cli`](./packages/cli) | The `sitewright` CLI — OAuth login + `sitewright mcp` to run the bridge from stored credentials. |
+
+More design detail: **[docs/architecture.md](./docs/architecture.md)** (decision log),
+**[docs/authoring-model.md](./docs/authoring-model.md)** (the building blocks),
+**[docs/project-format.md](./docs/project-format.md)** (on-disk format).
 
 ## Development
 
@@ -58,7 +81,8 @@ pnpm verify          # typecheck + lint + test + build
 ```
 
 Contributions follow a strict quality bar (TDD, full code + security review, E2E). See
-**[CONTRIBUTING.md](./CONTRIBUTING.md)**.
+**[CONTRIBUTING.md](./CONTRIBUTING.md)**. To cut a release, see **[RELEASING.md](./RELEASING.md)**; to report a
+vulnerability, see **[SECURITY.md](./SECURITY.md)**.
 
 ## License
 

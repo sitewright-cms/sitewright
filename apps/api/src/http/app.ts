@@ -926,6 +926,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // is a hashed token row, so the secret can't forge a session even if leaked.
   const cookieSecretPinned = opts.cookieSecret !== undefined;
   let currentCookieSecret = opts.cookieSecret ?? (await instanceSettingsRepo.getOrCreateCookieSecret());
+  // Current HSTS policy (admin instance setting; OFF by default). Cached in a mutable ref — loaded once
+  // at boot and refreshed after a settings PUT — so the per-response security hook doesn't hit the DB and
+  // an admin change still takes effect without a restart.
+  let hstsPolicy = await instanceSettingsRepo.getHstsPolicy();
   // Custom HMAC sign/verify for the session cookie (NOT @fastify/cookie's `signed`, whose secret is
   // fixed at plugin-registration time) so a runtime rotation of `currentCookieSecret` applies live.
   const signSession = (token: string): string =>
@@ -1154,15 +1158,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
-    // HSTS is a PLATFORM-ORIGIN concern: assert it only when the app origin is served over TLS
-    // (secureCookies tracks that), and NEVER on a served client site. Those run on `<slug>.<sitesDomain>`
-    // subdomains (or the `/sites/<slug>/` path) whose TLS is independent — they may be plain-HTTP or not
-    // covered by the app's cert, so asserting HSTS on such a response would pin that host to HTTPS and
-    // hard-break it. (Omitting `includeSubDomains` already stops the apex policy from cascading to
-    // subdomains; this also stops the app from emitting HSTS *on the subdomain's own response*.)
-    const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
-    if (opts.secureCookies && !servedSite && !reply.hasHeader('strict-transport-security')) {
-      reply.header('strict-transport-security', 'max-age=31536000');
+    // HSTS is admin OPT-IN (OFF by default — the `hsts` instance setting). It's sticky and dangerous, so
+    // the operator turns it on only when the origin is reliably on TLS. A served client site
+    // (`<slug>.<sitesDomain>` or `/sites/…`) is EXCLUDED unless `applyToServedSites`, because those hosts
+    // have independent (often plain-HTTP / non-app-cert) TLS and pinning them to HTTPS would hard-break them.
+    if (hstsPolicy.enabled && !reply.hasHeader('strict-transport-security')) {
+      const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
+      if (!servedSite || hstsPolicy.applyToServedSites) {
+        let value = `max-age=${hstsPolicy.maxAgeSeconds}`;
+        if (hstsPolicy.includeSubDomains) value += '; includeSubDomains';
+        if (hstsPolicy.preload) value += '; preload';
+        reply.header('strict-transport-security', value);
+      }
     }
     // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,
     // which needs `sandbox allow-scripts` + to be framable by the editor). When it
@@ -1892,6 +1899,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const input = InstanceSettingsInputSchema.parse(req.body);
     try {
       const settings = await instanceSettingsRepo.put(input);
+      // Refresh the cached HSTS policy so the security-headers hook reflects the change on the next request.
+      hstsPolicy = await instanceSettingsRepo.getHstsPolicy();
       // Audit trail for an instance-wide config change (userId only — no PII).
       app.log.info({ userId }, 'instance settings updated');
       return reply.send({ settings });

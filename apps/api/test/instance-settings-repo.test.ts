@@ -48,6 +48,24 @@ describe('InstanceSettingsRepository', () => {
     expect((await repo.getPublic()).revisionCoalesceMs).toBeUndefined();
   });
 
+  it('HSTS policy: defaults to OFF, round-trips a set value (+ masked view), null reverts', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    const OFF = { enabled: false, maxAgeSeconds: 31_536_000, includeSubDomains: false, preload: false, applyToServedSites: false };
+    expect(await repo.getHstsPolicy()).toEqual(OFF); // built-in default
+
+    const on = { enabled: true, maxAgeSeconds: 63_072_000, includeSubDomains: true, preload: true, applyToServedSites: true };
+    await repo.put({ hsts: on });
+    expect(await repo.getHstsPolicy()).toEqual(on);
+    expect((await repo.getPublic()).hsts?.enabled).toBe(true);
+
+    await repo.put({ formModes: { userSmtp: true } }); // unrelated update keeps it
+    expect((await repo.getHstsPolicy()).enabled).toBe(true);
+
+    await repo.put({ hsts: null }); // clears → back to the OFF default
+    expect(await repo.getHstsPolicy()).toEqual(OFF);
+    expect((await repo.getPublic()).hsts).toBeUndefined();
+  });
+
   it('round-trips the agent-instructions override (set → keep → clear → effective)', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     const builtinDefault = await repo.getEffectiveAgentInstructions(); // no override yet → the default

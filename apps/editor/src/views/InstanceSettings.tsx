@@ -9,6 +9,7 @@ import {
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
+  DEFAULT_HSTS,
   LOGO_MIME_TYPES,
   MAX_LOGO_BASE64_LEN,
   MCP_TOOL_CATALOG,
@@ -42,6 +43,8 @@ const clampSessionHours = (n: number): number => Math.max(1, Math.min(720, Math.
 const clampCoalesceSeconds = (n: number): number => Math.max(0, Math.min(86_400, Math.round(n)));
 const clampRetentionDays = (n: number): number => Math.max(1, Math.min(3650, Math.round(n)));
 const DEFAULT_COALESCE_SECONDS = DEFAULT_REVISION_COALESCE_MS / 1000;
+// HSTS max-age shown/entered in seconds; server caps at 2 years. 0 clears the policy.
+const clampHstsMaxAge = (n: number): number => Math.max(0, Math.min(63_072_000, Math.round(n) || 0));
 
 /**
  * Instance admin → settings: the global mail transport, hCaptcha keys, and which
@@ -112,6 +115,13 @@ export function InstanceSettings() {
   const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
+
+  // HSTS (HTTP Strict-Transport-Security) — admin opt-in, OFF by default (sticky + dangerous, so gated).
+  const [hstsEnabled, setHstsEnabled] = useState(false);
+  const [hstsMaxAge, setHstsMaxAge] = useState(DEFAULT_HSTS.maxAgeSeconds);
+  const [hstsIncludeSub, setHstsIncludeSub] = useState(false);
+  const [hstsPreload, setHstsPreload] = useState(false);
+  const [hstsApplySites, setHstsApplySites] = useState(false);
 
   async function testAi() {
     setAiTesting(true);
@@ -246,6 +256,11 @@ export function InstanceSettings() {
     setNewProjectLocale(locale);
     initialLocaleRef.current = locale;
     setDefaultImageFormat(s.defaultImageFormat ?? 'webp');
+    setHstsEnabled(s.hsts?.enabled ?? false);
+    setHstsMaxAge(s.hsts?.maxAgeSeconds ?? DEFAULT_HSTS.maxAgeSeconds);
+    setHstsIncludeSub(s.hsts?.includeSubDomains ?? false);
+    setHstsPreload(s.hsts?.preload ?? false);
+    setHstsApplySites(s.hsts?.applyToServedSites ?? false);
     // Trim on hydrate so the "changed?" guard compares like-for-like (the save sends the trimmed value);
     // otherwise a stored name with stray whitespace would look dirty on an untouched save.
     const name = (s.platformName ?? DEFAULT_PLATFORM_NAME).trim();
@@ -327,6 +342,15 @@ export function InstanceSettings() {
           ...(aiMaxTokens.trim() !== '' ? { maxOutputTokens: Number(aiMaxTokens) } : {}),
         }
       : null; // disabling clears the platform assistant (and its key)
+    // HSTS: send the full policy (no secrets). enabled=false stores an OFF policy (preserves the other
+    // fields for when it's re-enabled) rather than clearing the section.
+    input.hsts = {
+      enabled: hstsEnabled,
+      maxAgeSeconds: clampHstsMaxAge(hstsMaxAge),
+      includeSubDomains: hstsIncludeSub,
+      preload: hstsPreload,
+      applyToServedSites: hstsApplySites,
+    };
     // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
     // must leave the stored override alone. When edited: store an override unless it's empty or equals
     // the default (then send null → revert), so we never persist the whole default as an override.
@@ -946,6 +970,91 @@ export function InstanceSettings() {
           </button>
         </div>
         {rotateMsg && <p className="mt-2 text-sm text-rose-600">{rotateMsg}</p>}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          HTTP Strict Transport Security (HSTS)
+          <SectionHelp tip="Tells browsers to only ever reach this platform origin over HTTPS. Only has effect when the instance is actually served over TLS. HSTS is STICKY — once a browser has seen it, it refuses plain HTTP for the whole max-age — so enable it only when you're sure the origin stays on HTTPS." />
+        </legend>
+        <p className="mb-3 text-xs text-slate-500">
+          Off by default. Sends the{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">Strict-Transport-Security</code> header on platform
+          responses. Locally-hosted client sites (<code className="rounded bg-slate-100 px-1 py-0.5">&lt;slug&gt;.your-domain</code>{' '}
+          / <code className="rounded bg-slate-100 px-1 py-0.5">/sites/…</code>) are excluded unless you opt in below.
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Enable HSTS"
+            checked={hstsEnabled}
+            onChange={(e) => setHstsEnabled(e.target.checked)}
+          />
+          <span className="font-medium">Send Strict-Transport-Security on platform responses</span>
+        </label>
+        {hstsEnabled && (
+          <div className="mt-3 flex flex-col gap-3">
+            <label className="block text-sm">
+              <span className="font-medium">max-age (seconds)</span>
+              <span className="mb-1 block text-xs text-slate-500">
+                How long browsers keep enforcing HTTPS after each visit. Common: 31536000 (1 year). 0 clears the policy.
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={63_072_000}
+                className={`${glassInput} w-40`}
+                aria-label="HSTS max-age seconds"
+                value={hstsMaxAge}
+                onChange={(e) => {
+                  const n = e.target.valueAsNumber;
+                  if (!Number.isNaN(n)) setHstsMaxAge(n);
+                }}
+                onBlur={() => setHstsMaxAge((v) => clampHstsMaxAge(v))}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="includeSubDomains"
+                checked={hstsIncludeSub}
+                onChange={(e) => setHstsIncludeSub(e.target.checked)}
+              />
+              <span>
+                includeSubDomains
+                <span className="ml-2 text-xs text-amber-600">only if EVERY subdomain is served over HTTPS</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="preload"
+                checked={hstsPreload}
+                onChange={(e) => setHstsPreload(e.target.checked)}
+              />
+              <span>
+                preload
+                <span className="ml-2 text-xs text-amber-600">near-irreversible; needs includeSubDomains + a 1-year+ max-age</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Apply to served client sites"
+                checked={hstsApplySites}
+                onChange={(e) => setHstsApplySites(e.target.checked)}
+              />
+              <span>
+                Also apply to served client sites
+                <span className="ml-2 text-xs text-amber-600">only with a valid (e.g. wildcard) cert for your site subdomains</span>
+              </span>
+            </label>
+          </div>
+        )}
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

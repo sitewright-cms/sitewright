@@ -146,8 +146,9 @@ await mkdir(cfg.sourceRefRoot, { recursive: true });
 const app = await createApp({
   db,
   cookieSecret: cfg.cookieSecret,
-  // Secure cookies + HSTS are ON automatically for an https SW_PUBLIC_URL (or an explicit
-  // COOKIE_SECURE=true); OFF over plain HTTP so the HTTP DinD preview keeps working.
+  // Secure cookies + `__Host-` prefix are ON automatically for an https SW_PUBLIC_URL (or an explicit
+  // COOKIE_SECURE=true); OFF over plain HTTP so the HTTP DinD preview keeps working. (HSTS is a SEPARATE
+  // admin opt-in — the `hsts` instance setting, default off — not derived from this.)
   secureCookies: cfg.secureCookies,
   mediaRoot: cfg.mediaRoot,
   publishRoot: cfg.publishRoot,

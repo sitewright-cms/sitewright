@@ -69,6 +69,17 @@ describe('InstanceSettingsInputSchema', () => {
       formModes: { globalSmtp: true },
     });
   });
+
+  it('fills HSTS defaults from a partial object and passes null through', () => {
+    expect(InstanceSettingsInputSchema.parse({ hsts: { enabled: true } }).hsts).toEqual({
+      enabled: true,
+      maxAgeSeconds: 31_536_000,
+      includeSubDomains: false,
+      preload: false,
+      applyToServedSites: false,
+    });
+    expect(InstanceSettingsInputSchema.parse({ hsts: null })).toEqual({ hsts: null });
+  });
 });
 
 describe('InstanceSettingsStoredSchema', () => {
@@ -141,6 +152,18 @@ describe('maskInstanceSettings', () => {
     expect(masked.smtp).toBeUndefined();
     expect(masked.hcaptcha).toBeUndefined();
     expect(masked.formModes).toEqual(DEFAULT_FORM_MODES);
+  });
+
+  it('surfaces the HSTS policy as-is (non-secret) and omits it when absent', () => {
+    const hsts = {
+      enabled: true,
+      maxAgeSeconds: 15_552_000,
+      includeSubDomains: true,
+      preload: false,
+      applyToServedSites: false,
+    };
+    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, hsts }).hsts).toEqual(hsts);
+    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES }).hsts).toBeUndefined();
   });
 });
 

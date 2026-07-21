@@ -92,12 +92,9 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
           ]}
         />
       </div>
-      {tab === 'ai' ? (
-        <div className="p-5">
-          <AiConfig projectId={project.id} flat />
-        </div>
-      ) : (
-      <div className="flex flex-col gap-3 p-5">
+      {/* Both panels stay MOUNTED (toggled with `hidden`) — switching tabs must not unmount AiConfig and
+          silently discard its in-progress fields (e.g. a just-pasted API key). */}
+      <div className={`flex flex-col gap-3 p-5 ${tab === 'general' ? '' : 'hidden'}`}>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500">Project name</span>
           <input aria-label="Project name" className={glassInput} value={name} onChange={(e) => setName(e.target.value)} />
@@ -144,7 +141,9 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
 
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
-      )}
+      <div className={`p-5 ${tab === 'ai' ? '' : 'hidden'}`}>
+        <AiConfig projectId={project.id} flat />
+      </div>
       {dialog}
     </Modal>
   );

@@ -937,16 +937,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </section>
         )}
 
-        {/* Row 2 — the preview (or the Page Audit tab), at the simulated device width. AUDIT mode
-            replaces the preview + device rail entirely with the Lighthouse report for this page. */}
-        {mode === 'audit' ? (
-          <PageAuditPanel
-            projectId={project.id}
-            pageId={page.id}
-            seo={{ title: settings.title, path: settings.path, description: settings.description ?? '', image: settings.image ?? '' }}
-          />
-        ) : (
-        <div className="relative min-h-0 flex-1">
+        {/* Row 2 — the preview (source/content) and the Page Audit tab. BOTH stay MOUNTED, toggled with
+            `hidden`, so returning to the preview never reloads the iframe and a run's audit result +
+            device choice survive leaving/returning to the Page Audit tab. */}
+        <div className={`relative min-h-0 flex-1 ${mode === 'audit' ? 'hidden' : ''}`}>
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
           </DevicePreview>
@@ -972,7 +966,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             ))}
           </div>
         </div>
-        )}
+        <div className={mode === 'audit' ? 'flex min-h-0 flex-1' : 'hidden'}>
+          <PageAuditPanel
+            projectId={project.id}
+            pageId={page.id}
+            auditable={!page.collection}
+            dirty={dirty}
+            seo={{ title: settings.title, path: settings.path, description: settings.description ?? '', image: settings.image ?? '' }}
+          />
+        </div>
       </div>
 
       {/* Raw-HTML editor for a rich (data-sw-html) region: opened by the toolbar's </> button. Saving

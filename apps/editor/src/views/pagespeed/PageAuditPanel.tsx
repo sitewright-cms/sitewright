@@ -229,7 +229,21 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
  * list of failing audits (color-coded category tags + actionable-advice tooltips). The audit runs
  * server-side against a deploy-equivalent build (see the pagespeed-audit route).
  */
-export function PageAuditPanel({ projectId, pageId, seo }: { projectId: string; pageId: string; seo: PageSeo }) {
+export function PageAuditPanel({
+  projectId,
+  pageId,
+  seo,
+  auditable = true,
+  dirty = false,
+}: {
+  projectId: string;
+  pageId: string;
+  seo: PageSeo;
+  /** False for page types the server refuses to audit (collection / dataset-template pages). */
+  auditable?: boolean;
+  /** The page has unsaved edits — the audit scores the last SAVED version, so warn about the mismatch. */
+  dirty?: boolean;
+}) {
   const [formFactor, setFormFactor] = useState<FormFactor>('mobile');
   const [result, setResult] = useState<PagespeedAuditResult | null>(null);
   const [running, setRunning] = useState(false);
@@ -301,37 +315,55 @@ export function PageAuditPanel({ projectId, pageId, seo }: { projectId: string; 
           </div>
         </section>
 
-        {/* Controls: device toggle (styled like the Code/Content switch) + run button. */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div
-            role="group"
-            aria-label="Audit device"
-            className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-xl"
-          >
-            {deviceToggle('mobile', Smartphone, 'Mobile')}
-            {deviceToggle('desktop', Monitor, 'Desktop')}
-          </div>
-          <button type="button" className={primaryButton} onClick={() => void runAudit()} disabled={running}>
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {running ? 'Running Lighthouse…' : 'Run Lighthouse audit'}
-          </button>
-        </div>
-
-        {error ? (
-          <p className="flex items-center gap-1.5 text-sm text-rose-500">
-            <AlertCircle className="h-4 w-4 shrink-0" /> {error}
-          </p>
-        ) : null}
-
-        {running ? (
-          <AuditSkeleton />
-        ) : result ? (
-          <AuditReport result={result} />
-        ) : !error ? (
+        {!auditable ? (
           <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-400 dark:border-white/15">
-            Run a Lighthouse speed + SEO audit of this page against a deploy-equivalent build.
+            This page can’t be audited — collection / dataset-template pages have no standalone rendered route to score.
           </p>
-        ) : null}
+        ) : (
+          <>
+            {dirty ? (
+              <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  You have unsaved changes. The audit runs against the last <strong>saved</strong> version — save
+                  first to score your latest edits.
+                </span>
+              </p>
+            ) : null}
+
+            {/* Controls: device toggle (styled like the Code/Content switch) + run button. */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div
+                role="group"
+                aria-label="Audit device"
+                className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-xl"
+              >
+                {deviceToggle('mobile', Smartphone, 'Mobile')}
+                {deviceToggle('desktop', Monitor, 'Desktop')}
+              </div>
+              <button type="button" className={primaryButton} onClick={() => void runAudit()} disabled={running}>
+                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {running ? 'Running Lighthouse…' : 'Run Lighthouse audit'}
+              </button>
+            </div>
+
+            {error ? (
+              <p className="flex items-center gap-1.5 text-sm text-rose-500">
+                <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+              </p>
+            ) : null}
+
+            {running ? (
+              <AuditSkeleton />
+            ) : result ? (
+              <AuditReport result={result} />
+            ) : !error ? (
+              <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-400 dark:border-white/15">
+                Run a Lighthouse speed + SEO audit of this page against a deploy-equivalent build.
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

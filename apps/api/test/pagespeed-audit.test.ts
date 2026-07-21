@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { RunnerResult } from 'lighthouse';
-import { summarize } from '../src/render/pagespeed-audit.js';
+import { summarize, redactOrigin } from '../src/render/pagespeed-audit.js';
 
 /**
  * Pure reduction of a Lighthouse result → our compact score/metrics/findings shape. The browser-driven
@@ -93,5 +93,36 @@ describe('summarize', () => {
     (lhr.categories.performance as { score: number | null }).score = null;
     const out = summarize('http://x/', 'desktop', { lhr } as unknown as RunnerResult);
     expect(out.scores.performance).toBeNull();
+  });
+
+  it('omits run warnings + benchmark index when Lighthouse reported none', () => {
+    expect(r.runWarnings).toBeUndefined();
+    expect(r.benchmarkIndex).toBeUndefined();
+  });
+
+  it('surfaces run warnings (dropping empty/non-string entries) and the host benchmark index', () => {
+    const lhr = fakeLhr() as Record<string, unknown>;
+    lhr.runWarnings = ['The tested device appears to have a slower CPU than Lighthouse expects.', '', 42];
+    lhr.environment = { benchmarkIndex: 512 };
+    const out = summarize('http://x/', 'mobile', { lhr } as unknown as RunnerResult);
+    expect(out.runWarnings).toEqual(['The tested device appears to have a slower CPU than Lighthouse expects.']);
+    expect(out.benchmarkIndex).toBe(512);
+  });
+});
+
+describe('redactOrigin', () => {
+  it('strips the internal loopback origin from run-warnings (never leak the ephemeral host:port)', () => {
+    expect(
+      redactOrigin(['test URL (http://127.0.0.1:54321/about/) was redirected to http://127.0.0.1:54321/x/'], 'http://127.0.0.1:54321'),
+    ).toEqual(['test URL (/about/) was redirected to /x/']);
+  });
+
+  it('passes a warning through unchanged when it contains no loopback origin', () => {
+    expect(redactOrigin(['slower CPU than expected'], 'http://127.0.0.1:9')).toEqual(['slower CPU than expected']);
+  });
+
+  it('returns undefined for undefined input, and is a no-op for an empty origin', () => {
+    expect(redactOrigin(undefined, 'http://127.0.0.1:9')).toBeUndefined();
+    expect(redactOrigin(['x'], '')).toEqual(['x']);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Brand, Page } from '@sitewright/schema';
+import type { Brand, MediaAsset, Page } from '@sitewright/schema';
 import { renderDocument } from '../src/render.js';
 
 // Minimal code-first page (the block tree was retired in #250; `root` stays a
@@ -38,6 +38,41 @@ describe('renderDocument — document shell', () => {
     const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
     expect(doc).not.toContain('data-sw-preloader');
     expect(doc).not.toContain('noscript');
+  });
+
+  describe('self-hosted font preload', () => {
+    const fontAsset = {
+      kind: 'font',
+      id: 'inter',
+      filename: 'Inter',
+      folder: '',
+      bytes: 1,
+      family: 'Inter',
+      fallback: 'sans-serif',
+      source: 'local',
+      files: [{ weight: 400, style: 'normal', format: 'woff2', file: 'r.woff2' }],
+      url: '/media/p/inter/r.woff2',
+    } as unknown as MediaAsset;
+    const themed = {
+      ...brand,
+      typography: { fontFamilies: {}, body: { source: 'asset', family: 'Inter', weight: 400, assetId: 'inter' } },
+    } as Brand;
+    const mediaUrl = (a: MediaAsset, f: string) => `/media/p/${a.id}/${f}`;
+
+    it('preloads the self-hosted body face high in <head>, with crossorigin, before the CSS', () => {
+      const doc = renderDocument(page, { brand: themed, bodyHtml: '<h1>Hi</h1>', media: [fontAsset], mediaUrl });
+      expect(doc).toContain('<link rel="preload" as="font" type="font/woff2" href="/media/p/inter/r.woff2" crossorigin />');
+      expect(doc.indexOf('rel="preload"')).toBeLessThan(doc.indexOf('<style>')); // races the render-blocking CSS
+    });
+
+    it('emits no preload for a system-font slot', () => {
+      expect(renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' })).not.toContain('rel="preload"');
+    });
+
+    it('emits no preload under rawFidelity (the replica brings its own head)', () => {
+      const doc = renderDocument(page, { brand: themed, bodyHtml: '<h1>Hi</h1>', media: [fontAsset], mediaUrl, rawFidelity: true });
+      expect(doc).not.toContain('rel="preload"');
+    });
   });
 
   it('rawFidelity omits the platform base + typography CSS but keeps the page body/head', () => {

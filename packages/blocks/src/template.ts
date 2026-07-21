@@ -938,12 +938,14 @@ function createInstance(): typeof Handlebars {
     return new Handlebars.SafeString(`<span ${attrs}>⚙ ${escapeHtml(label)}: ${escapeHtml(current || '—')}</span>`);
   });
 
-  // {{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif]}}
+  // {{sw-image url [alt=] [sizes=] [class=] [loading=eager] [fetchpriority=high] [format=avif]}}
   // Responsive image for a PROJECT image (a delivery `/media/<slug>/<id>/<name>` url, or a
   // {{#sw-folder}}/dataset item's `url`): emits an <img> with a WebP srcset + intrinsic width/height
   // (no CLS) + a blur-up LQIP + loading=lazy. `format=avif` (or the project's AVIF delivery setting)
-  // emits a <picture> with an AVIF source above the WebP one. An external/unknown url degrades to a
-  // plain lazy <img>. The server serves each ?size on demand; publish materializes referenced files.
+  // emits a <picture> with an AVIF source above the WebP one. `loading=eager` marks an above-the-fold
+  // hero — it also gets fetchpriority=high (LCP hint) unless `fetchpriority=` overrides it. An
+  // external/unknown url degrades to a plain lazy <img>. The server serves each ?size on demand; publish
+  // materializes referenced files.
   hb.registerHelper('sw-image', function swImage(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const hash = (options.hash ?? {}) as Record<string, unknown>;
@@ -962,6 +964,9 @@ function createInstance(): typeof Handlebars {
       ...(typeof hash.class === 'string' ? { className: hash.class } : {}),
       ...(typeof hash.sizes === 'string' ? { sizes: hash.sizes } : {}),
       loading: hash.loading === 'eager' ? 'eager' : 'lazy',
+      ...(hash.fetchpriority === 'high' || hash.fetchpriority === 'low' || hash.fetchpriority === 'auto'
+        ? { fetchpriority: hash.fetchpriority }
+        : {}),
       format: hash.format === 'avif' || root.imageAvif === true ? 'avif' : 'webp',
     });
     return new Handlebars.SafeString(html);

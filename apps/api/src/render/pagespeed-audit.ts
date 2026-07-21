@@ -54,6 +54,18 @@ export interface PagespeedAuditResult {
   metrics: PagespeedMetrics;
   /** Non-passing, non-informational audits, worst-first — the fix list. */
   findings: PagespeedFinding[];
+  /**
+   * Lighthouse's own run warnings (e.g. "the tested device appears to have a slower CPU"). Surfaced so a
+   * low LAB score can be understood as an environment constraint, not mistaken for a page defect. Absent
+   * when Lighthouse raised none.
+   */
+  runWarnings?: string[];
+  /**
+   * Chrome's CPU/perf benchmark for the audit HOST (Lighthouse `environment.benchmarkIndex`). A low value
+   * means the container CPU throttled the lab run — the perf score is host-limited and would be higher on a
+   * faster machine / a real device. Absent when Lighthouse did not report one.
+   */
+  benchmarkIndex?: number;
   lighthouseVersion: string;
   fetchedAt: string;
 }
@@ -112,6 +124,21 @@ function toPercent(score: number | null | undefined): number | null {
   return score == null ? null : Math.round(score * 100);
 }
 
+/**
+ * Scrub the internal loopback origin (`http://127.0.0.1:<port>`) out of Lighthouse run-warnings before
+ * they leave the server. Lighthouse interpolates the navigated URL into some warnings (e.g. its redirect
+ * notice), and the audit navigates the ephemeral loopback server — so a warning can carry the internal
+ * host:port. The route already reports the LOGICAL page path for `url`; this keeps the same "never leak
+ * the ephemeral URL" invariant for warnings. Pure — unit-tested.
+ */
+export function redactOrigin(
+  warnings: readonly string[] | undefined,
+  origin: string,
+): string[] | undefined {
+  if (!warnings) return undefined;
+  return warnings.map((w) => (origin ? w.split(origin).join('') : w));
+}
+
 /** Thrown when no headless browser could be launched — lets the route degrade to a clean 503. */
 export class PagespeedUnavailableError extends Error {
   constructor(message: string) {
@@ -149,6 +176,13 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
   }
   findings.sort((a, b) => (a.score ?? 1) - (b.score ?? 1));
 
+  // Transparency: Lighthouse's environment notices explain a host-constrained lab number (slow CPU /
+  // heavy throttling) so the reader doesn't chase a "problem" the page can't fix.
+  const runWarnings = Array.isArray(lhr.runWarnings)
+    ? lhr.runWarnings.filter((w): w is string => typeof w === 'string' && w.length > 0)
+    : [];
+  const benchmarkIndex = lhr.environment?.benchmarkIndex;
+
   return {
     url,
     formFactor,
@@ -166,6 +200,8 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
       speedIndexMs: num('speed-index'),
     },
     findings,
+    ...(runWarnings.length ? { runWarnings } : {}),
+    ...(typeof benchmarkIndex === 'number' ? { benchmarkIndex } : {}),
     lighthouseVersion: lhr.lighthouseVersion,
     fetchedAt: lhr.fetchTime,
   };
@@ -173,6 +209,23 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
 
 /** Chromium flags matching the rest of the render pipeline (non-root container, no /dev/shm, CPU render). */
 const CHROME_FLAGS = ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
+
+/**
+ * Lighthouse's standard DESKTOP throttling preset (`desktopDense4G`): a fast link and — crucially — NO
+ * CPU slowdown (multiplier 1). It MUST be set explicitly: passing only `formFactor`/`screenEmulation`
+ * leaves throttling at Lighthouse's default, which is the MOBILE "Slow 4G" profile (RTT 150ms, ~1.6Mbps,
+ * 4× CPU). Without this, a `formFactor:'desktop'` run gets a desktop-sized viewport but a phone's network
+ * AND a 4× CPU penalty — badly (and misleadingly) under-scoring desktop performance. Uses the default
+ * `throttlingMethod: 'simulate'` (Lantern), for which only rtt / throughput / cpuSlowdownMultiplier apply.
+ */
+const DESKTOP_THROTTLING = {
+  rttMs: 40,
+  throughputKbps: 10 * 1024,
+  cpuSlowdownMultiplier: 1,
+  requestLatencyMs: 0,
+  downloadThroughputKbps: 0,
+  uploadThroughputKbps: 0,
+} as const;
 
 /**
  * Run Lighthouse against an already-served URL. Concurrency is NOT bounded here — the caller (the route)
@@ -208,6 +261,9 @@ export async function runPagespeedAudit(
         formFactor === 'desktop'
           ? { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }
           : { mobile: true, width: 412, height: 823, deviceScaleFactor: 1.75, disabled: false },
+      // Desktop overrides the mobile-Slow-4G default (see DESKTOP_THROTTLING). Mobile keeps the
+      // Lighthouse default (mobile Slow 4G + 4× CPU), which is the correct, representative mobile profile.
+      ...(formFactor === 'desktop' ? { throttling: DESKTOP_THROTTLING } : {}),
     };
     const result = await lighthouse(url, flags);
     if (!result) throw new Error('lighthouse returned no result');

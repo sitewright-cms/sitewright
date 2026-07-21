@@ -275,7 +275,7 @@ import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type Viewpo
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
-import { runPagespeedAudit, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
+import { runPagespeedAudit, redactOrigin, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
 import { serveBuiltSite } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
@@ -5239,8 +5239,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
             served = await serveBuiltSite(dir);
             const audit = await runPagespeedAudit(`${served.url}${route ? `${route}/` : ''}`, { formFactor });
-            // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
-            return { ...audit, url: publicPath };
+            // Report the LOGICAL page path, never the internal ephemeral loopback URL/port — and the same
+            // for any Lighthouse run-warning (e.g. a redirect warning interpolates the navigated URL), so
+            // scrub the loopback origin out of every warning before it leaves the server.
+            const runWarnings = redactOrigin(audit.runWarnings, new URL(served.url).origin);
+            return { ...audit, url: publicPath, ...(runWarnings ? { runWarnings } : {}) };
           });
           if (abort.signal.aborted) return reply; // client disconnected mid-run — the response is moot
           return reply.send(result);

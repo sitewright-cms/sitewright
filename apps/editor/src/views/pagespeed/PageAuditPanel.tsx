@@ -180,7 +180,11 @@ function AuditSkeleton() {
 }
 
 function AuditReport({ result }: { result: PagespeedAuditResult }) {
-  const { scores, metrics, findings } = result;
+  const { scores, metrics, findings, runWarnings } = result;
+  // Surface Lighthouse's own environment notices (e.g. its slow-CPU warning — emitted whenever the host
+  // benchmark ≤ 1000) so a host-constrained lab score is understood, not mistaken for a page defect. We
+  // defer to Lighthouse's wording + threshold rather than synthesize a second, near-duplicate line.
+  const notices = runWarnings ?? [];
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-4 gap-2 rounded-xl bg-slate-900/5 py-4 dark:bg-white/5">
@@ -211,6 +215,17 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
           </ul>
         )}
       </div>
+
+      {notices.length > 0 ? (
+        <div className="flex flex-col gap-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+          {notices.map((n, i) => (
+            <p key={i} className="flex items-start gap-1.5">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{n}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       <p className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">
         Lab audit (Lighthouse {result.lighthouseVersion}) on a deploy-equivalent build. Performance is a throttled

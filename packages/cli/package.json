@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The `sitewright` CLI: OAuth login (loopback PKCE) + credential store, and `sitewright mcp` to run the MCP bridge from stored credentials.",
   "license": "Apache-2.0",
   "type": "module",

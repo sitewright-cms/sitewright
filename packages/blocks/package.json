@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/blocks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-free block library for Sitewright: block descriptors (palette + prop-field metadata) and a pure, XSS-safe HTML renderer that mirrors the published Astro output. Shared by the editor and the live-preview endpoint.",
   "license": "Apache-2.0",
   "type": "module",

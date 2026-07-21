@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import { WIDGET_MANIFESTS } from '@sitewright/core';
 import { buildSite, replacePreviewPdfEmbeds } from '../src/publish/build.js';
+import { assetAlias } from '../src/publish/asset-alias.js';
 import { renderTrustedSvgToPng } from '@sitewright/image-pipeline';
 
 let outDir: string;
@@ -371,16 +372,17 @@ describe('buildSite', () => {
       }),
     });
     // Head IMAGE urls now resolve to a MATERIALIZED thumbnail (og:image → `lg` WebP; the fallback
-    // favicon → `sm` WebP), bundled under _assets/<id>/ (slug segment dropped), page-relative.
+    // favicon → `sm` WebP), bundled FLAT as `_assets/<alias>-…` (slug + folder dropped), page-relative.
+    const ic = assetAlias('ic'), og = assetAlias('og');
     // Depth 0:
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain('<link rel="icon" href="_assets/ic/ic-64-sm.webp" />');
-    expect(home).toContain('content="_assets/og/og-1200-lg.webp"');
+    expect(home).toContain(`<link rel="icon" href="_assets/${ic}-ic-64-sm.webp" />`);
+    expect(home).toContain(`content="_assets/${og}-og-1200-lg.webp"`);
     expect(home).not.toContain('/media/acme/');
     // Depth 1: rebased onto '../' — never a bare /media path or a malformed dotted path.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('<link rel="icon" href="../_assets/ic/ic-64-sm.webp" />');
-    expect(about).toContain('content="../_assets/og/og-1200-lg.webp"');
+    expect(about).toContain(`<link rel="icon" href="../_assets/${ic}-ic-64-sm.webp" />`);
+    expect(about).toContain(`content="../_assets/${og}-og-1200-lg.webp"`);
     expect(about).not.toContain('/media/acme/');
   });
 
@@ -407,24 +409,25 @@ describe('buildSite', () => {
       }),
     });
     // Home: og:image is absolutized to the SITE-ROOT _assets path (assets are shared, not per-dir).
+    const og = assetAlias('og');
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(home).toContain(`property="og:image" content="https://acme.example/_assets/${og}-og-1200-lg.webp"`);
     expect(home).toContain('property="og:url" content="https://acme.example/"');
     expect(home).toContain('rel="canonical" href="https://acme.example/"');
     expect(home).toContain('property="og:site_name" content="Acme Inc"');
     expect(home).toContain('property="og:locale" content="en"');
-    expect(home).toContain('name="twitter:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(home).toContain(`name="twitter:image" content="https://acme.example/_assets/${og}-og-1200-lg.webp"`);
     expect(home).not.toContain('/media/acme/');
     // Nested page (depth 1): the page-relative '../_assets/…' resolves to the SAME site-root asset —
     // NOT a broken '/about/_assets/…'. This is the bug the absolutize-against-page-URL approach avoids.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(about).toContain(`property="og:image" content="https://acme.example/_assets/${og}-og-1200-lg.webp"`);
     expect(about).toContain('property="og:url" content="https://acme.example/about/"');
     expect(about).toContain('rel="canonical" href="https://acme.example/about/"');
     expect(about).not.toContain('/about/_assets/');
     // Depth 2 (services/web): '../../_assets/…' must still back all the way up to the site root.
     const web = await readFile(join(outDir, 'services', 'web', 'index.html'), 'utf8');
-    expect(web).toContain('property="og:image" content="https://acme.example/_assets/og/og-1200-lg.webp"');
+    expect(web).toContain(`property="og:image" content="https://acme.example/_assets/${og}-og-1200-lg.webp"`);
     expect(web).toContain('property="og:url" content="https://acme.example/services/web/"');
     expect(web).not.toContain('/services/web/_assets/');
   });
@@ -781,14 +784,15 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    const lg1 = assetAlias('lg1');
     // The preloader <img> points at the MATERIALIZED lg thumbnail — never the bare original.
-    expect(home).toContain('class="pl-logo-img" src="_assets/lg1/logo-lg.webp"');
-    expect(home).not.toContain('src="_assets/lg1/logo.png"');
+    expect(home).toContain(`class="pl-logo-img" src="_assets/${lg1}-logo-lg.webp"`);
+    expect(home).not.toContain(`src="_assets/${lg1}-logo.png"`);
     // And that thumbnail actually exists on disk in the export (not a dangling reference).
-    await expect(readFile(join(outDir, '_assets', 'lg1', 'logo-lg.webp'))).resolves.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', `${lg1}-logo-lg.webp`))).resolves.toBeTruthy();
     // At depth 1 the src is rebased onto '../' and still resolves to the same materialized file.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('class="pl-logo-img" src="../_assets/lg1/logo-lg.webp"');
+    expect(about).toContain(`class="pl-logo-img" src="../_assets/${lg1}-logo-lg.webp"`);
   });
 
   it('ships the back-to-top button + CSS + runtime BY DEFAULT (no setting needed)', async () => {
@@ -1436,7 +1440,7 @@ describe('buildSite', () => {
     });
     expect(manifest.routes).toBe(1);
     // The missing original → the referenced thumbnail is skipped, not a build failure.
-    await expect(readFile(join(outDir, '_assets', 'a2', 'x-lg.webp'), 'utf8')).rejects.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', `${assetAlias('a2')}-x-lg.webp`), 'utf8')).rejects.toBeTruthy();
   });
 
   it('fails the build on a non-missing media read error (no partial artifact)', async () => {
@@ -1472,7 +1476,7 @@ describe('buildSite', () => {
       media: [asset], // no readMedia
       bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }),
     });
-    await expect(readFile(join(outDir, '_assets', 'a3', 'x.png'), 'utf8')).rejects.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', `${assetAlias('a3')}-x.png`), 'utf8')).rejects.toBeTruthy();
   });
 
   it('bundles a kind:font asset via copyMedia + emits @font-face at the media path (never Google)', async () => {
@@ -1517,14 +1521,15 @@ describe('buildSite', () => {
       }),
     });
 
-    // The font's face is bundled flat under _assets/<assetId>/ (like an image), via copyMedia.
-    expect(reads).toContain('fa-boombox/400.ttf');
-    expect((await readFile(join(outDir, '_assets', 'fa-boombox', '400.ttf'))).toString()).toBe('TTFBYT');
+    // The font's face is bundled flat as _assets/<alias>-<face> (like an image), via copyMedia.
+    const fa = assetAlias('fa-boombox');
+    expect(reads).toContain('fa-boombox/400.ttf'); // readMedia is keyed by the ORIGINAL asset id
+    expect((await readFile(join(outDir, '_assets', `${fa}-400.ttf`))).toString()).toBe('TTFBYT');
 
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     // The inline @font-face points at the bundled media path, page-relative — never Google — ttf format.
     expect(home).toContain('@font-face');
-    expect(home).toContain('src:url(_assets/fa-boombox/400.ttf) format("truetype")');
+    expect(home).toContain(`src:url(_assets/${fa}-400.ttf) format("truetype")`);
     expect(home).toContain('--sw-font-heading:"Boombox", sans-serif');
     expect(home).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
@@ -1545,7 +1550,7 @@ describe('buildSite', () => {
 });
 
 describe('replacePreviewPdfEmbeds', () => {
-  const pdf = '<iframe src="_assets/a1/file/brochure.pdf" title="Company Profile" loading="lazy" class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>';
+  const pdf = '<iframe src="_assets/a1-brochure.pdf" title="Company Profile" loading="lazy" class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>';
 
   it('swaps a self-hosted PDF iframe for a static placeholder card (preserving the title, dropping the iframe)', () => {
     const out = replacePreviewPdfEmbeds(`<section>${pdf}</section>`);
@@ -1563,16 +1568,16 @@ describe('replacePreviewPdfEmbeds', () => {
     const vimeo = '<iframe src="https://player.vimeo.com/video/123" title="Download brochure.pdf here"></iframe>';
     expect(replacePreviewPdfEmbeds(vimeo)).toBe(vimeo);
     // a query/hash after .pdf still qualifies
-    expect(replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf?v=2"></iframe>')).toContain("Inline PDF preview isn't available");
+    expect(replacePreviewPdfEmbeds('<iframe src="_assets/a-x.pdf?v=2"></iframe>')).toContain("Inline PDF preview isn't available");
   });
 
   it('carries the already-escaped title through without double-encoding, but escapes a raw < / >', () => {
     // The title comes from the serialized page HTML where `&`/`"` are already entity-escaped.
-    const out = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="A &amp; B &lt;c&gt;"></iframe>');
+    const out = replacePreviewPdfEmbeds('<iframe src="_assets/a-x.pdf" title="A &amp; B &lt;c&gt;"></iframe>');
     expect(out).toContain('A &amp; B &lt;c&gt;'); // preserved, NOT re-escaped to &amp;amp;
     expect(out).not.toContain('&amp;amp;');
     // A raw `<` (if the serializer left one) is escaped so it can't inject into the placeholder markup.
-    const inj = replacePreviewPdfEmbeds('<iframe src="_assets/a/file/x.pdf" title="a<b onerror=x"></iframe>');
+    const inj = replacePreviewPdfEmbeds('<iframe src="_assets/a-x.pdf" title="a<b onerror=x"></iframe>');
     expect(inj).toContain('a&lt;b onerror=x');
     expect(inj).not.toContain('<b onerror');
   });

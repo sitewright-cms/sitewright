@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { renderTrustedSvgToPng } from '@sitewright/image-pipeline';
 import type { ProjectBundle } from '@sitewright/core';
 import { runWorker, type WorkerJob } from '../src/publish/build-worker.js';
+import { assetAlias } from '../src/publish/asset-alias.js';
 
 /** True if `buf` is a RIFF/WEBP-container image (magic bytes) — avoids a direct sharp dep in the api test. */
 function isWebp(buf: Buffer): boolean {
@@ -45,7 +46,7 @@ describe('runWorker', () => {
 
   it('materializes referenced thumbnails from the inlined ORIGINAL and bundles them into the artifact', async () => {
     // The retained original (a real PNG) is inlined; the worker generates on demand exactly the
-    // thumbnail the page references (`?size=sm` → `h-sm.webp`) into `_assets/<id>/`.
+    // thumbnail the page references (`?size=sm` → `h-sm.webp`) FLAT into `_assets/<alias>-…`.
     const originalPng = await renderTrustedSvgToPng('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><rect width="80" height="60" fill="#0a7"/></svg>', 80, 60);
     const asset = {
       kind: 'image' as const, folder: '',
@@ -57,20 +58,21 @@ describe('runWorker', () => {
       media: [{ asset, files: { 'h.png': originalPng.toString('base64') } }],
       bundle: bundle({
         // Code-first: the page references the media via the editor DELIVERY URL with an explicit
-        // size; publish rewrites it to the static thumbnail name + rebases to `_assets/<id>/`.
+        // size; publish rewrites it to the static thumbnail name + rebases FLAT to `_assets/<alias>-…`.
         pages: [{ id: 'home', path: '', title: 'Home', source: '<section><img src="/media/acme/a1/h.png?size=sm" alt="H" /></section>' }],
       }),
     };
     const result = await runWorker(job);
     const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
+    const a1 = assetAlias('a1');
     // The referenced thumbnail was generated into the artifact and is a valid WebP.
-    const thumb = Buffer.from(result.files['_assets/a1/h-sm.webp'] ?? '', 'base64');
+    const thumb = Buffer.from(result.files[`_assets/${a1}-h-sm.webp`] ?? '', 'base64');
     expect(thumb.length).toBeGreaterThan(0);
     expect(isWebp(thumb)).toBe(true);
     // The unreferenced original was NOT copied (minimal export).
-    expect(result.files['_assets/a1/h.png']).toBeUndefined();
+    expect(result.files[`_assets/${a1}-h.png`]).toBeUndefined();
     // …and the rendered <img> references the bundled thumbnail, not the editor /media URL.
-    expect(home).toContain('_assets/a1/h-sm.webp');
+    expect(home).toContain(`_assets/${a1}-h-sm.webp`);
     expect(home).not.toContain('/media/acme/');
   });
 });

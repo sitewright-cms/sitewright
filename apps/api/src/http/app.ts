@@ -1211,10 +1211,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Gzip served-site TEXT responses (local-hosting `/sites/…` + the `<slug>.<sitesDomain>` subdomain) so
   // deployed-on-platform pages transfer like a real compressing host — the biggest byte win for HTML/CSS/
-  // JS. SCOPED by the served-site check so it never touches API JSON or the SSE `/events` stream (those
-  // are app-origin, not served-site). Binary assets (images/fonts, already compressed) and streamed or
-  // already-encoded responses are skipped, as are tiny bodies where a gzip frame wouldn't pay off.
+  // JS. SCOPED strictly on the rewritten `/sites/` URL prefix: `rewriteUrl` (above) rewrites EVERY genuine
+  // served-site subdomain request to `/sites/<slug>/…` before routing, and deliberately does NOT rewrite
+  // the public `POST /f/…` form endpoint — so a URL-prefix check (not a Host check) compresses exactly the
+  // served-site responses and never an app-origin API/JSON body. The SSE `/events` stream is additionally
+  // immune (it `reply.hijack()`s, bypassing all onSend hooks). Binary assets (images/fonts, already
+  // compressed) and streamed / already-encoded / tiny / pathologically-large bodies are skipped.
   const gzip = promisify(gzipCb);
+  const GZIP_MIN_BYTES = 1024; // a gzip header/trailer isn't worth it below this
+  const GZIP_MAX_BYTES = 4 * 1024 * 1024; // don't burn CPU per-request gzipping a huge (rare) asset
   const SITE_COMPRESSIBLE = new Set([
     'text/html',
     'text/css',
@@ -1226,8 +1231,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     'text/plain',
   ]);
   app.addHook('onSend', async (req, reply, payload) => {
-    const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
-    if (!servedSite || reply.hasHeader('content-encoding')) return payload;
+    if (!(req.url ?? '').startsWith('/sites/') || reply.hasHeader('content-encoding')) return payload;
     // Only compress a materialized string/Buffer body — never a stream or null.
     if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) return payload;
     const ct = String(reply.getHeader('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
@@ -1236,7 +1240,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const acceptStr = Array.isArray(accept) ? accept.join(',') : (accept ?? '');
     if (!/\bgzip\b/.test(acceptStr)) return payload;
     const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
-    if (raw.length < 1024) return payload; // a gzip header/trailer isn't worth it for tiny bodies
+    if (raw.length < GZIP_MIN_BYTES || raw.length > GZIP_MAX_BYTES) return payload;
     const gz = await gzip(raw);
     reply.header('content-encoding', 'gzip');
     reply.header('content-length', gz.length);

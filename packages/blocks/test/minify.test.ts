@@ -16,6 +16,11 @@ describe('minifyJs', () => {
     expect(out).toContain('function greet');
   });
 
+  it('PRESERVES /*! … */ license banners (MIT attribution must survive minification)', () => {
+    const out = minifyJs('/*! Sitewright runtime. embla-carousel@8.6.0 (MIT) */\n(function(){var x=1;})();');
+    expect(out).toContain('/*! Sitewright runtime. embla-carousel@8.6.0 (MIT) */');
+  });
+
   it('is a no-op for empty input', () => {
     expect(minifyJs('')).toBe('');
   });
@@ -42,6 +47,11 @@ describe('minifyCss', () => {
     const out = minifyCss('@layer sw-normalize {\n  *{box-sizing:border-box}\n}\n[x]{display:none !important}');
     expect(out).toContain('@layer sw-normalize{');
     expect(out).toContain('!important');
+  });
+
+  it('PRESERVES /*! … */ license banners (e.g. modern-normalize MIT attribution)', () => {
+    const out = minifyCss('/*! modern-normalize v3.0.1 | MIT License */\n*{box-sizing:border-box}');
+    expect(out).toContain('/*! modern-normalize v3.0.1 | MIT License */');
   });
 
   it('is a no-op for empty input', () => {

@@ -353,8 +353,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (jsonLd ? `${jsonLd}\n` : '') +
     (head ? `${head}\n` : '') +
     // RAW-FIDELITY replicas omit the platform's own base CSS so it can't fight the imported stylesheet.
-    (rawFidelity ? '' : `<style>${mc(css)}</style>\n`) +
-    (criticalCss ? `<style>${mc(criticalCss)}</style>\n` : '') +
+    // Neutralize any `</style` in the (platform + owner-set critical) CSS too — defense-in-depth symmetry
+    // with `inlineStyles` below, now that these also pass through the esbuild minify transform.
+    (rawFidelity ? '' : `<style>${mc(css).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`) +
+    (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
     // (defense-in-depth; mirrors the inlineScripts guard below). Minify BEFORE the neutralize so the
     // escaped `<\/style` sentinel is never fed to the CSS parser.

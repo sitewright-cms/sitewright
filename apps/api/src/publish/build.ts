@@ -75,6 +75,7 @@ import {
   mediaForRender,
   minifyJs,
   minifyCss,
+  MINIFIER_VERSION,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
@@ -544,8 +545,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // OWN body changed, not every page on every publish. It still busts the instant any of these
     // inputs changes (a class added, a brand tweak, a platform runtime upgrade), and the assets stay
     // served `immutable` between publishes. KEEP IN SYNC: a new `?v=`-versioned runtime asset must add
-    // its source to this digest, or its cache won't bust when the platform changes it.
+    // its source to this digest, or its cache won't bust when the platform changes it. The MINIFIER
+    // version is folded in too: the served bytes are minified, so a minifier/esbuild bump changes them
+    // for an unchanged source — hashing its version re-busts `?v=` instead of overwriting an immutable URL.
     const assetVer = createHash('sha256')
+      .update(MINIFIER_VERSION)
+      .update('\x00')
       .update(classNames.join(' '))
       .update('\x00')
       .update(JSON.stringify(brand ?? null))

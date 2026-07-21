@@ -279,12 +279,17 @@ describe('cart channel order fields (whatsapp/mailto)', () => {
     expect(CART_JS).toContain('ch.intro');
   });
 
-  it('renders a collapsible input form for a fielded channel and validates required fields before sending', () => {
+  it('renders a collapsible input form for a fielded channel with native required-field validation', () => {
     expect(CART_JS).toContain('function buildChannelForm(ch,toggleBtn)');
     expect(CART_JS).toContain("'channel-form'");
     expect(CART_JS).toContain("'channel-submit'");
     expect(CART_JS).toContain("'channel-status'");
-    expect(CART_JS).toContain('Please fill in: ');
+    // Native (in-browser) validation: required fields are marked `required` and the form is NOT
+    // `novalidate`, so the browser blocks + flags an empty required field on submit (consistent with
+    // the Form component). No manual "Please fill in" pre-check any more.
+    expect(CART_JS).toContain('inp.required=true');
+    expect(CART_JS).not.toContain("setAttribute('novalidate'");
+    expect(CART_JS).not.toContain('Please fill in: ');
     // the toggle exposes its state for a11y
     expect(CART_JS).toContain("setAttribute('aria-expanded'");
     // values reach the link via input .value — never innerHTML

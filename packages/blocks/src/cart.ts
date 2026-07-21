@@ -433,7 +433,7 @@ export const CART_JS = `(function(){
     function buildChannelForm(ch,toggleBtn){
       var fields=(ch&&ch.fields&&ch.fields.length)?ch.fields:null;
       if(!fields){return null;}
-      var form=part('form','channel-form');form.setAttribute('novalidate','');form.hidden=true;
+      var form=part('form','channel-form');form.hidden=true;
       var inputs=[];
       for(var i=0;i<fields.length;i++){
         (function(f){
@@ -454,13 +454,13 @@ export const CART_JS = `(function(){
       form.addEventListener('submit',function(e){
         e.preventDefault();
         if(!items.length){status.textContent='Your cart is empty.';return;}
-        var values=[];var missing=[];
+        // Native (in-browser) validation governs required fields now (no novalidate): a required-but-empty
+        // field blocks submit before this handler runs, so here we just collect the non-empty values.
+        var values=[];
         for(var i=0;i<inputs.length;i++){
           var v=(inputs[i].inp.value||'').trim();
-          if(inputs[i].req&&!v){missing.push(inputs[i].label);continue;}
           if(v){values.push({label:inputs[i].label,value:v});}
         }
-        if(missing.length){status.textContent='Please fill in: '+missing.join(', ');return;}
         runChannel(ch,items,cfg,values);
         // Collapse + re-sync the toggle's a11y state so it doesn't report "expanded" over a hidden form.
         form.hidden=true;status.textContent='';toggleBtn.setAttribute('aria-expanded','false');
@@ -472,7 +472,7 @@ export const CART_JS = `(function(){
     // cart_text + cart_json to the resolved /f endpoint — reusing the spam-guarded submission pipeline
     // (honeypot _hpt empty, _elapsed time-trap). No new sink: values go through value/JSON, never HTML.
     function buildOrderForm(ch){
-      var form=part('form','order');form.setAttribute('novalidate','');
+      var form=part('form','order');
       function field(name,label,type,required){
         var wrap=part('label','order-field');wrap.appendChild(mk('span',null,label));
         var inp=type==='textarea'?document.createElement('textarea'):document.createElement('input');
@@ -489,7 +489,7 @@ export const CART_JS = `(function(){
       form.addEventListener('submit',function(e){
         e.preventDefault();
         if(!items.length){return;}
-        if(!nameI.value||!emailI.value){status.textContent='Please enter your name and email.';return;}
+        // Native validation already enforced the required name + email (+ email format) before submit.
         var payload={_hpt:'',_elapsed:String(Date.now()-started),name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
         submit.disabled=true;status.textContent='Sending\\u2026';
         fetch(ch.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){

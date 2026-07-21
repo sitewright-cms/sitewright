@@ -3,10 +3,12 @@ import { mkdir } from 'node:fs/promises';
 import { createApp } from './http/app.js';
 import { seedInstance } from './seed.js';
 import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
+import { migrateMediaToFlatShortId } from './media/migrate-media.js';
+import { MediaStorage } from './media/storage.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
-import { backupBeforeMigrations } from './db/backup.js';
+import { backupBeforeMigrations, snapshotDatabase } from './db/backup.js';
 import { InstanceSettingsRepository } from './repo/instance-settings.js';
 import { runShutdown } from './shutdown.js';
 import { createReleaseChecker } from './version/checker.js';
@@ -262,6 +264,29 @@ try {
   await migrateDatasetSlugsToUnderscore(db, (m) => process.stderr.write(`[sitewright/migrate] ${m}\n`));
 } catch (err) {
   process.stderr.write(`[sitewright/migrate] WARNING: dataset-slug migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
+}
+
+// Idempotent DATA migration: convert EXISTING media assets to the flat short-id scheme (single-folder
+// `/media/<slug>/<id>-<name>`), rewriting every reference across live content + revision history and
+// moving on-disk binaries. A no-op once migrated. Snapshots the DB before its first rewrite so a bad
+// run is recoverable. Never blocks boot if it fails (the dual-support serve path keeps legacy assets
+// working, so a failed migration degrades to "not yet migrated", not "broken").
+try {
+  await migrateMediaToFlatShortId(db, new MediaStorage(cfg.mediaRoot), {
+    snapshot: async () => {
+      await snapshotDatabase({
+        client,
+        databaseUrl: cfg.databaseUrl,
+        dataDir: cfg.dataDir,
+        now: new Date(),
+        keep: backupKeep, // honour the operator's configured retention (the shared backups/ dir is pruned)
+        log: (m) => process.stderr.write(`[sitewright/backup] ${m}\n`),
+      });
+    },
+    log: (m) => process.stderr.write(`[sitewright/migrate] ${m}\n`),
+  });
+} catch (err) {
+  process.stderr.write(`[sitewright/migrate] WARNING: media-flat migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
 // Refuse to boot into a permanently-locked state: registration is CLOSED by default (self-signup is an

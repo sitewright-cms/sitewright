@@ -160,12 +160,10 @@ export async function backupBeforeMigrations(opts: {
   migrationsFolder?: string;
   log?: (m: string) => void;
 }): Promise<string | null> {
-  const { client, databaseUrl, dataDir, now } = opts;
-  const keep = opts.keep ?? PRE_MIGRATION_BACKUP_KEEP;
+  const { client, databaseUrl } = opts;
   const log = opts.log ?? (() => {});
 
-  const filePath = dbFilePath(databaseUrl);
-  if (!filePath) {
+  if (!dbFilePath(databaseUrl)) {
     log('remote database — skipping pre-migration snapshot (provider-managed)');
     return null;
   }
@@ -175,6 +173,29 @@ export async function backupBeforeMigrations(opts: {
   // Fresh DB (no tracking table) → nothing to protect. Up-to-date (applied >= journal) → no pending work.
   if (applied < 0 || applied >= journal) return null;
 
+  log(`pending migration detected (${applied}/${journal} applied)`);
+  return snapshotDatabase(opts);
+}
+
+/**
+ * Unconditionally snapshots a local `file:` SQLite DB into `<dataDir>/backups/` via `VACUUM INTO` (a
+ * WAL-safe, consistent single-file copy). Returns the snapshot path, or null for a remote (provider-
+ * managed) DB. Shared by the pre-schema-migration guard AND one-off DATA migrations (e.g. the media
+ * re-key) that want a rollback point before rewriting rows. Prunes old snapshots to `keep`.
+ */
+export async function snapshotDatabase(opts: {
+  client: Client;
+  databaseUrl: string;
+  dataDir: string;
+  now: Date;
+  keep?: number;
+  log?: (m: string) => void;
+}): Promise<string | null> {
+  const { client, databaseUrl, dataDir, now } = opts;
+  const keep = opts.keep ?? PRE_MIGRATION_BACKUP_KEEP;
+  const log = opts.log ?? (() => {});
+  if (!dbFilePath(databaseUrl)) return null;
+
   const backupDir = backupsDir(dataDir);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted data-dir path
   await mkdir(backupDir, { recursive: true });
@@ -182,11 +203,11 @@ export async function backupBeforeMigrations(opts: {
   // restart loop while a migration stays broken), so `VACUUM INTO` never fails on an existing target.
   const target = join(backupDir, `sitewright-${backupStamp(now)}-${randomBytes(3).toString('hex')}${BACKUP_SUFFIX}`);
 
-  log(`pending migration detected (${applied}/${journal} applied) — snapshotting DB → ${target}`);
+  log(`snapshotting DB → ${target}`);
   // VACUUM INTO accepts an SQL expression for the filename, so bind the path as a parameter (avoids any
   // quoting issue) and get a consistent single-file copy.
   await client.execute({ sql: 'VACUUM INTO ?', args: [target] });
-  log(`pre-migration snapshot complete → ${target}`);
+  log(`snapshot complete → ${target}`);
 
   await pruneBackups(backupDir, keep, log);
   return target;

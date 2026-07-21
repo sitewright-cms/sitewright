@@ -4033,6 +4033,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       { config: rl(MEDIA_ASSET_RL_MAX) },
       async (req, reply) => {
         const { projectSlug, assetId, file } = req.params;
+        // A SHORT id is a FLAT asset — it must be served by the kind-dispatching flat route above, never
+        // by this extension-dispatching legacy route (which would serve a raw upload inline by extension).
+        if (isShortAssetId(assetId)) return reply.code(404).send({ error: 'not found' });
         const ext = (file.split('.').pop() ?? '').toLowerCase();
         // A `kind:'font'` face is served INLINE (font/* + nosniff + CORS) so a sandboxed (opaque-
         // origin) preview iframe can load it via `@font-face`; fonts are public, immutable binaries.
@@ -4174,6 +4177,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       { config: rl(MEDIA_ASSET_RL_MAX) },
       async (req, reply) => {
         const { projectSlug, assetId, file } = req.params;
+        // A SHORT id is a FLAT asset served by the flat route (kind-dispatched), never this legacy path.
+        if (isShortAssetId(assetId)) return reply.code(404).send({ error: 'not found' });
         let bytes: Buffer;
         try {
           bytes = await storage.readStored(projectSlug, assetId, file);

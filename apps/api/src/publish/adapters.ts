@@ -1,12 +1,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
-import { createGzip } from 'node:zlib';
 import { Readable, Writable } from 'node:stream';
 import { z } from 'zod';
 import JSZip from 'jszip';
 import { Client as FtpClientImpl } from 'basic-ftp';
 import SftpClientImpl from 'ssh2-sftp-client';
-import { pack as tarPack } from 'tar-stream';
 import {
   type DeployManifest,
   MANIFEST_FILENAME,
@@ -17,34 +15,28 @@ import {
   serializeManifest,
   toPosixRel,
 } from './deploy/manifest.js';
-import { chooseStrategy, planLeafDirs, remoteJoin, shellSingleQuote } from './deploy/plan.js';
+import { planLeafDirs, remoteJoin } from './deploy/plan.js';
 
 // Re-exported so deploy consumers + tests get the manifest type from the adapters barrel.
 export type { DeployManifest } from './deploy/manifest.js';
 
-const CONNECT_TIMEOUT_MS = 15_000;
+/** SSH/SFTP handshake timeout (ssh2 `readyTimeout` — bounds ONLY the initial connect). Generous so a
+ *  slow or distant SFTP server that takes a while to complete the handshake isn't dropped before the
+ *  transfer begins. */
+const SFTP_CONNECT_TIMEOUT_MS = 60_000;
+/** FTP/FTPS control-socket timeout. basic-ftp applies this per TASK (login, mkdir, each upload), not
+ *  just the initial connect, so it's kept tighter than the SFTP handshake timeout to bound the
+ *  worst-case per-operation hold against a stalled control connection. */
+const FTP_TIMEOUT_MS = 15_000;
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100 MiB cap on a built site archive
-/** Concurrent fastPut operations over the single SSH connection (SFTP per-file fallback path).
+/** Concurrent fastPut operations over the single SSH connection (SFTP upload path).
  *  ssh2 multiplexes SFTP handles over one transport, so parallel puts overlap the round-trip
  *  latency; kept modest so a strict server's max-open-handles / channel limits aren't tripped. */
 const SFTP_UPLOAD_CONCURRENCY = 8;
-/** Budget for the capability probe (exec `command -v tar`). A locked-down SFTP-only target rejects
- *  exec almost immediately, and a tar-capable one resolves the moment its marker arrives — so this
- *  only bounds a silently-hanging server. The probe runs concurrently with the manifest read, so
- *  its latency is normally hidden. */
-const CAP_PROBE_TIMEOUT_MS = 3_000;
-/** Backstop for the tar fast-path exec channel: if the remote neither closes nor errors within
- *  this window (a stalled/hostile server), we abort + destroy the channel. On abort `upload()`
- *  gracefully falls back to per-file fastPut, so a false trip only costs a slower deploy. Generous
- *  — the fast path is compressed + incremental, so a real transfer is far quicker. */
-const TAR_STREAM_TIMEOUT_MS = 10 * 60 * 1_000;
 /** Cap on the untrusted remote manifest we download + JSON.parse. A manifest is path→{size,hash};
  *  even tens of thousands of files stay well under this. Anything larger (a compromised/MITM'd
  *  target returning a giant payload) is treated as unreadable → a first-deploy full upload. */
 const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
-/** Cap on bytes retained from an exec channel's stdout/stderr — bounds memory if a hostile server
- *  streams without end; we only need a short marker / a truncated error snippet. */
-const MAX_EXEC_CAPTURE_BYTES = 4_096;
 
 /** True if the string contains an ASCII control character (0x00–0x1f or 0x7f). */
 function hasControlChars(value: string): boolean {
@@ -130,35 +122,25 @@ export interface SiteFile {
   abs: string;
 }
 
-/** The bulk-upload strategy actually used for a deploy (surfaced to the UI as the transfer mode).
- *  'rsync' is the standalone rsync-over-SSH path (see rsync-deploy.ts); 'tar'/'files' are the
- *  SFTP transport's own fast/fallback paths. */
-export type DeployStrategy = 'tar' | 'files' | 'rsync';
-
-/** What a transport can do — drives the strategy choice. Valid after connect(). */
-export interface TransportCaps {
-  /** The target grants an SSH exec channel AND has `tar` — enables the single-stream fast path. */
-  tar: boolean;
-}
+/** The bulk-upload strategy used for a deploy (surfaced to the UI as the transfer mode).
+ *  'rsync' is the standalone rsync-over-SSH path (see rsync-deploy.ts); 'files' is the per-file
+ *  path the SFTP/FTP transports use (concurrent fastPut on SFTP, sequential on FTP). */
+export type DeployStrategy = 'files' | 'rsync';
 
 /**
  * A pluggable upload transport (FTP/FTPS/SFTP), injectable for testing. The orchestrator
- * (`deploySite`) drives it: read the prior manifest, upload the changed files with the chosen
- * strategy, prune the removed ones, then write the new manifest. `onFile` ticks once per uploaded
- * file (its POSIX rel path) so a deploy can report live progress.
+ * (`deploySite`) drives it: read the prior manifest, upload the changed files, prune the removed
+ * ones, then write the new manifest. `onFile` ticks once per uploaded file (its POSIX rel path) so a
+ * deploy can report live progress.
  */
 export interface DeployTransport {
   connect(): Promise<void>;
-  /** Transfer capabilities, resolved after connect(). Async so the (SFTP) probe can run concurrently
-   *  with the manifest read instead of blocking connect. FTP/FTPS are always `{ tar: false }`. */
-  capabilities(): Promise<TransportCaps>;
   /** Reads the previously-deployed manifest from remoteDir, or null when absent/unreadable. */
   readManifest(remoteDir: string): Promise<DeployManifest | null>;
   /** Writes the manifest into remoteDir — called last, after the uploads + prune succeed. */
   writeManifest(remoteDir: string, manifest: DeployManifest): Promise<void>;
-  /** Uploads `files` (already filtered to the changed set) under remoteDir using `strategy`
-   *  ('tar' is only passed when capabilities().tar). onFile ticks once per uploaded file. */
-  upload(remoteDir: string, files: ReadonlyArray<SiteFile>, strategy: DeployStrategy, onFile?: (rel: string) => void): Promise<void>;
+  /** Uploads `files` (already filtered to the changed set) under remoteDir. onFile ticks once per file. */
+  upload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void>;
   /** Deletes the given safe relative paths under remoteDir (best-effort per file). */
   remove(remoteDir: string, rels: ReadonlyArray<string>): Promise<void>;
   close(): Promise<void>;
@@ -244,25 +226,12 @@ function makeHostVerifier(fingerprint?: string): (hashedKey: string) => boolean 
   };
 }
 
-/* v8 ignore start -- thin I/O shims over basic-ftp / ssh2 / tar-stream; exercised by manual
+/* v8 ignore start -- thin I/O shims over basic-ftp / ssh2-sftp-client; exercised by manual
    integration against real servers, not unit-testable without live infra. The orchestration
    (deploySite) and the pure helpers (manifest.ts / plan.ts) ARE unit-tested. */
 
-/** Minimal shape of an ssh2 exec channel (a Duplex whose stdin is the remote command's stdin). */
-interface SshExecChannel extends NodeJS.ReadWriteStream {
-  stderr: NodeJS.ReadableStream;
-  destroy?(error?: Error): void;
-}
-/** The raw ssh2 Client that ssh2-sftp-client holds internally (exposed as `.client`). NOTE: this is
- *  ssh2-sftp-client's own field (stable across the pinned ^11 range), not a documented public API —
- *  both call sites are try/catch-guarded so a future rename degrades to the per-file path, never a
- *  crash. */
-interface RawSshClient {
-  exec(command: string, cb: (err: Error | undefined, channel: SshExecChannel) => void): boolean;
-}
-
 class FtpTransport implements DeployTransport {
-  private readonly client = new FtpClientImpl(CONNECT_TIMEOUT_MS);
+  private readonly client = new FtpClientImpl(FTP_TIMEOUT_MS);
   constructor(private readonly cfg: DeployConfig) {}
   async connect(): Promise<void> {
     await this.client.access({
@@ -272,9 +241,6 @@ class FtpTransport implements DeployTransport {
       password: this.cfg.password ?? '', // FTP/FTPS always carry a password (schema-enforced)
       secure: this.cfg.protocol === 'ftps', // explicit FTPS
     });
-  }
-  async capabilities(): Promise<TransportCaps> {
-    return { tar: false }; // FTP has no exec channel — always the per-file path
   }
   async readManifest(remoteDir: string): Promise<DeployManifest | null> {
     const chunks: Buffer[] = [];
@@ -299,7 +265,7 @@ class FtpTransport implements DeployTransport {
     await this.client.ensureDir(remoteDir); // creates remoteDir + cds into it
     await this.client.uploadFrom(Readable.from(serializeManifest(manifest)), MANIFEST_FILENAME);
   }
-  async upload(remoteDir: string, files: ReadonlyArray<SiteFile>, _strategy: DeployStrategy, onFile?: (rel: string) => void): Promise<void> {
+  async upload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
     // basic-ftp is single-connection + sequential; the incremental manifest already keeps this to the
     // CHANGED files only. ensureDir cds into each dir once (files arrive sorted, so grouped by dir).
     let currentDir = '';
@@ -331,8 +297,6 @@ class FtpTransport implements DeployTransport {
 
 class SftpTransport implements DeployTransport {
   private readonly client = new SftpClientImpl();
-  private caps: TransportCaps = { tar: false };
-  private capsPromise?: Promise<TransportCaps>;
   constructor(private readonly cfg: DeployConfig) {}
   async connect(): Promise<void> {
     const opts: Parameters<SftpClientImpl['connect']>[0] = {
@@ -344,7 +308,7 @@ class SftpTransport implements DeployTransport {
       ...(this.cfg.privateKey
         ? { privateKey: this.cfg.privateKey, ...(this.cfg.passphrase ? { passphrase: this.cfg.passphrase } : {}) }
         : {}),
-      readyTimeout: CONNECT_TIMEOUT_MS,
+      readyTimeout: SFTP_CONNECT_TIMEOUT_MS,
       hostHash: 'sha256',
       hostVerifier: makeHostVerifier(this.cfg.hostFingerprint),
     };
@@ -353,57 +317,6 @@ class SftpTransport implements DeployTransport {
     // declines. Not surfaced in @types/ssh2-sftp-client's ConnectOptions, but ssh2 reads it.
     (opts as { compress?: boolean }).compress = true;
     await this.client.connect(opts);
-  }
-  /** Lazily probe for tar (memoized). Kicked off by the orchestrator right after connect so it runs
-   *  concurrently with the manifest read over the multiplexed connection — its latency is hidden. */
-  async capabilities(): Promise<TransportCaps> {
-    if (!this.capsPromise) {
-      this.capsPromise = this.probeTar().then((tar) => {
-        this.caps = { tar }; // cached so upload()'s tar-branch guard can read it synchronously
-        return this.caps;
-      });
-    }
-    return this.capsPromise;
-  }
-  /** Opens an exec channel and checks for `tar`. Any failure (exec refused by an SFTP-only jail,
-   *  tar absent, timeout) resolves false → the per-file fastPut path is used instead. */
-  private probeTar(): Promise<boolean> {
-    const raw = (this.client as unknown as { client: RawSshClient }).client;
-    return new Promise<boolean>((resolvePromise) => {
-      let settled = false;
-      let channel: SshExecChannel | undefined;
-      const finish = (value: boolean): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        // Destroy the channel so a server that keeps streaming after we've decided can't leak the
-        // listener / grow memory past the cap below.
-        try {
-          channel?.destroy?.();
-        } catch {
-          /* already gone */
-        }
-        resolvePromise(value);
-      };
-      const timer = setTimeout(() => finish(false), CAP_PROBE_TIMEOUT_MS);
-      try {
-        raw.exec('command -v tar >/dev/null 2>&1 && echo SW_TAR_OK', (err, ch) => {
-          if (err || !ch) return finish(false);
-          channel = ch;
-          let out = '';
-          ch.on('data', (chunk: Buffer) => {
-            if (out.length < MAX_EXEC_CAPTURE_BYTES) out += chunk.toString();
-            // Resolve as soon as the marker lands — no need to wait for the channel to close (some
-            // servers delay 'close' by seconds after the command has already produced its output).
-            if (/SW_TAR_OK/.test(out)) finish(true);
-          });
-          ch.on('close', () => finish(/SW_TAR_OK/.test(out))); // no marker → tar absent
-          ch.on('error', () => finish(false));
-        });
-      } catch {
-        finish(false);
-      }
-    });
   }
   async readManifest(remoteDir: string): Promise<DeployManifest | null> {
     const path = remoteJoin(remoteDir, MANIFEST_FILENAME);
@@ -424,30 +337,13 @@ class SftpTransport implements DeployTransport {
     });
     await this.client.put(Buffer.from(serializeManifest(manifest), 'utf8'), remoteJoin(remoteDir, MANIFEST_FILENAME));
   }
-  async upload(remoteDir: string, files: ReadonlyArray<SiteFile>, strategy: DeployStrategy, onFile?: (rel: string) => void): Promise<void> {
-    // Tick each rel at most once — if the tar path fails after packing some files and we fall back
-    // to fastPut with the SAME file list, this stops those files being counted twice (which would
-    // inflate the progress index + the reported byte/throughput total).
-    const ticked = new Set<string>();
-    const tick = onFile
-      ? (rel: string): void => {
-          if (ticked.has(rel)) return;
-          ticked.add(rel);
-          onFile(rel);
-        }
-      : undefined;
-    if (strategy === 'tar' && this.caps.tar) {
-      try {
-        await this.tarUpload(remoteDir, files, tick);
-        return;
-      } catch {
-        // Fall through to the per-file path if the tar stream fails mid-flight (rare) — fastPut is
-        // idempotent, so re-sending is safe; `tick` dedupes the already-counted files.
-      }
-    }
-    await this.putFiles(remoteDir, files, tick);
+  async upload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
+    await this.putFiles(remoteDir, files, onFile);
   }
-  /** Per-file path: pre-create the leaf dirs, then fastPut through a bounded concurrency pool. */
+  /** Pre-create the leaf dirs, then fastPut through a bounded concurrency pool. With the flat
+   *  `_assets/` layout there are far fewer leaf dirs, so the per-file path is fast without a tar
+   *  fast-path or an SSH capability probe (both removed — they added a round trip and could hang on
+   *  odd servers for a benefit the flat layout erased). */
   private async putFiles(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
     const rels = files.map((f) => toPosixRel(f.rel));
     for (const dir of planLeafDirs(remoteDir, rels)) {
@@ -473,71 +369,6 @@ class SftpTransport implements DeployTransport {
       }
     };
     await Promise.all(Array.from({ length: Math.min(SFTP_UPLOAD_CONCURRENCY, files.length) }, () => worker()));
-  }
-  /** Fast path: stream one gzip'd tar of the changed files over an exec channel and extract it
-   *  remotely — collapsing every per-file round trip into a single compressed transfer. */
-  private async tarUpload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
-    await this.client.mkdir(remoteDir, true).catch(() => {
-      /* tar -C needs the base dir to exist; subdirs are created by extraction */
-    });
-    const raw = (this.client as unknown as { client: RawSshClient }).client;
-    const command = `tar -xzf - -C ${shellSingleQuote(remoteDir)}`;
-    await new Promise<void>((resolvePromise, reject) => {
-      let settled = false;
-      let channel: SshExecChannel | undefined;
-      const done = (err?: Error): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (err) {
-          try {
-            channel?.destroy?.(); // tear down a stalled/errored channel so it can't leak
-          } catch {
-            /* already gone */
-          }
-          reject(err);
-        } else resolvePromise();
-      };
-      // Backstop against a remote that neither closes nor errors (stall/hostile). On trip, upload()
-      // falls back to per-file fastPut, so this only ever costs a slower deploy, never a hang.
-      const timer = setTimeout(() => done(new Error('remote tar timed out')), TAR_STREAM_TIMEOUT_MS);
-      raw.exec(command, (err, ch) => {
-        if (err || !ch) return done(err ?? new Error('remote exec failed'));
-        channel = ch;
-        let exitCode: number | null = null;
-        let stderr = '';
-        ch.on('data', () => {
-          /* drain remote stdout (tar -x emits none) so the channel keeps flowing */
-        });
-        ch.stderr.on('data', (chunk: Buffer) => {
-          if (stderr.length < MAX_EXEC_CAPTURE_BYTES) stderr += chunk.toString();
-        });
-        ch.on('exit', (code: number | null) => {
-          exitCode = code;
-        });
-        ch.on('close', () => done(exitCode && exitCode !== 0 ? new Error(`remote tar exited ${exitCode}: ${stderr.slice(0, 300)}`) : undefined));
-        ch.on('error', (e: Error) => done(e));
-
-        const pack = tarPack();
-        pack.on('error', done);
-        pack.pipe(createGzip()).pipe(ch); // gzip end → channel.end() → remote tar sees EOF
-        void (async () => {
-          try {
-            for (const file of files) {
-              const rel = toPosixRel(file.rel);
-              // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs confined by collectSiteFiles
-              const data = await readFile(file.abs);
-              await new Promise<void>((res, rej) => pack.entry({ name: rel, size: data.length }, data, (e) => (e ? rej(e) : res())));
-              onFile?.(rel);
-            }
-            pack.finalize();
-          } catch (e) {
-            pack.destroy(e as Error);
-            done(e as Error);
-          }
-        })();
-      });
-    });
   }
   async remove(remoteDir: string, rels: ReadonlyArray<string>): Promise<void> {
     for (const rel of rels) {
@@ -582,18 +413,15 @@ export async function deploySite(
     onProgress?.({ phase: 'connecting', total, index });
     await transport.connect();
 
-    // Probe the target's transfer capabilities AND read the prior manifest concurrently — both run
-    // over the one (multiplexed) connection, so the probe's latency hides behind the manifest read.
+    // Read the prior manifest to diff against (skipped on a forced full re-upload).
     onProgress?.({ phase: 'checking', total, index });
-    const [caps, prev] = await Promise.all([
-      transport.capabilities(),
-      incremental ? transport.readManifest(config.remoteDir) : Promise.resolve(null),
-    ]);
+    const prev = incremental ? await transport.readManifest(config.remoteDir) : null;
     const { upload, remove } = diffManifests(prev, nextManifest);
     const uploadSet = new Set(upload);
     const changed = files.filter((f) => uploadSet.has(toPosixRel(f.rel)));
     const skipped = total - changed.length;
-    const strategy = chooseStrategy(caps, changed.length);
+    // SFTP/FTP both use the per-file path (concurrent fastPut on SFTP); rsync is a separate deployer.
+    const strategy: DeployStrategy = 'files';
 
     // Unchanged files are already on the target — count them as done so the bar starts partly filled.
     index = skipped;
@@ -602,7 +430,7 @@ export async function deploySite(
     onProgress?.({ phase: 'uploading', total, index, skipped, strategy, bytes, elapsedMs: 0 });
 
     if (changed.length > 0) {
-      await transport.upload(config.remoteDir, changed, strategy, (rel) => {
+      await transport.upload(config.remoteDir, changed, (rel) => {
         index += 1;
         bytes += nextManifest[rel]?.size ?? 0;
         onProgress?.({ phase: 'uploading', total, index, file: rel, skipped, strategy, bytes, elapsedMs: Date.now() - startedAt });

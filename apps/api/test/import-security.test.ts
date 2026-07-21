@@ -21,21 +21,33 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+const LEGACY = 'legacy-asset-1'; // not a 6-char base62 id → per-asset folder (with `file/` nesting)
+const SHORT = 'a1B2c3'; // 6-char base62 id → flat `<slug>/<id>-<name>` (single segment, no nesting)
+
 describe('MediaStorage.importAssetFile (zip-slip defense)', () => {
-  it('writes a valid top-level + nested file, confined to the asset dir', async () => {
-    await storage.importAssetFile('site', 'asset1', 'original-800.webp', Buffer.from('a'));
-    await storage.importAssetFile('site', 'asset1', 'file/doc.pdf', Buffer.from('b'));
-    expect(existsSync(join(root, 'site', 'asset1', 'original-800.webp'))).toBe(true);
-    expect(await readFile(join(root, 'site', 'asset1', 'file', 'doc.pdf'), 'utf8')).toBe('b');
+  it('LEGACY id: writes a valid top-level + nested `file/` entry, confined to the asset dir', async () => {
+    await storage.importAssetFile('site', LEGACY, 'original-800.webp', Buffer.from('a'));
+    await storage.importAssetFile('site', LEGACY, 'file/doc.pdf', Buffer.from('b'));
+    expect(existsSync(join(root, 'site', LEGACY, 'original-800.webp'))).toBe(true);
+    expect(await readFile(join(root, 'site', LEGACY, 'file', 'doc.pdf'), 'utf8')).toBe('b');
   });
 
-  it('rejects traversal / absolute / backslash / dotfiles / bad segments', async () => {
-    for (const rel of ['../evil', 'a/../../evil', '/etc/passwd', 'a\\b', '.', 'a/./b', 'a b/c', 'x/y/z/w', '.htaccess', '.env', 'file/.env']) {
-      await expect(storage.importAssetFile('site', 'asset1', rel, Buffer.from('x'))).rejects.toThrow();
+  it('SHORT id: writes a single logical entry FLAT (`<slug>/<id>-<name>`), rejecting any nesting', async () => {
+    await storage.importAssetFile('site', SHORT, 'photo.png', Buffer.from('a'));
+    expect(existsSync(join(root, 'site', `${SHORT}-photo.png`))).toBe(true);
+    expect(existsSync(join(root, 'site', SHORT))).toBe(false); // no per-asset folder
+    await expect(storage.importAssetFile('site', SHORT, 'file/doc.pdf', Buffer.from('b'))).rejects.toThrow();
+  });
+
+  it('rejects traversal / absolute / backslash / dotfiles / bad segments (both layouts)', async () => {
+    for (const id of [LEGACY, SHORT]) {
+      for (const rel of ['../evil', 'a/../../evil', '/etc/passwd', 'a\\b', '.', 'a/./b', 'a b/c', 'x/y/z/w', '.htaccess', '.env', 'file/.env']) {
+        await expect(storage.importAssetFile('site', id, rel, Buffer.from('x'))).rejects.toThrow();
+      }
     }
     // Nothing escaped the project's media dir; no dotfile landed inside it either.
     expect(existsSync(join(root, 'evil'))).toBe(false);
-    expect(existsSync(join(root, 'site', 'asset1', '.htaccess'))).toBe(false);
+    expect(existsSync(join(root, 'site', LEGACY, '.htaccess'))).toBe(false);
   });
 
   it('rejects an invalid asset id / slug before touching disk', async () => {
@@ -44,18 +56,20 @@ describe('MediaStorage.importAssetFile (zip-slip defense)', () => {
 });
 
 describe('extractProjectMedia', () => {
-  it('extracts valid media entries and SKIPS traversal entry names', async () => {
+  it('extracts valid media entries (legacy foldered + flat) and SKIPS traversal entry names', async () => {
     const zip = new JSZip();
-    zip.file('media/asset1/original-800.webp', 'img');
-    zip.file('media/asset1/file/doc.pdf', 'doc');
+    zip.file(`media/${LEGACY}/original-800.webp`, 'img');
+    zip.file(`media/${LEGACY}/file/doc.pdf`, 'doc');
+    zip.file(`media/${SHORT}/photo.png`, 'flat'); // a flat (short-id) asset → <slug>/<id>-photo.png
     zip.file('media/../evil.txt', 'nope'); // traversal → normalizeZipPath drops it
     zip.file('bundle.json', '{}'); // non-media entry ignored
     const buf = await zip.generateAsync({ type: 'nodebuffer' });
     const loaded = await JSZip.loadAsync(buf);
 
     const count = await extractProjectMedia(loaded, storage, 'site');
-    expect(count).toBe(2);
-    expect(existsSync(join(root, 'site', 'asset1', 'original-800.webp'))).toBe(true);
+    expect(count).toBe(3);
+    expect(existsSync(join(root, 'site', LEGACY, 'original-800.webp'))).toBe(true);
+    expect(existsSync(join(root, 'site', `${SHORT}-photo.png`))).toBe(true);
     expect(existsSync(join(root, 'site', 'evil.txt'))).toBe(false);
     expect(existsSync(join(root, 'evil.txt'))).toBe(false);
   });

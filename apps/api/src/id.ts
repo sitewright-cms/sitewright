@@ -33,3 +33,29 @@ export function newId(len: number = DEFAULT_LEN): string {
   }
   return out;
 }
+
+/** The length of a media asset id — a SHORT base62 id (see `newAssetId`). */
+export const ASSET_ID_LEN = 6;
+
+/**
+ * A short id for a media ASSET — 6 base62 chars (~35.7 bits). Unlike other public ids, a media asset
+ * id was historically a full `randomUUID()` so the public `/media/<slug>/<id>-<name>` URL was
+ * unguessable (it stops enumeration of a project's not-yet-published media). This shorter scheme is a
+ * DELIBERATE product tradeoff: the id is now a compact, human-scannable per-project key at the cost of
+ * that unguessability. Uniqueness only has to hold WITHIN a project (the id is a per-project content
+ * key and the slug namespaces the URL), so 6 base62 chars is ample; callers still retry on the rare
+ * within-project collision. Six chars also lets the deployed-artifact alias (`publish/asset-alias.ts`)
+ * use the id verbatim, so ids and export filenames agree.
+ */
+export function newAssetId(): string {
+  return newId(ASSET_ID_LEN);
+}
+
+/**
+ * True if `id` is a SHORT (6-char base62) media asset id — the flat-layout id. Distinguishes new flat
+ * assets from legacy `randomUUID()` assets (36 chars, with hyphens) so the storage layer and the
+ * delivery route can pick the right on-disk layout / URL shape during the migration window.
+ */
+export function isShortAssetId(id: string): boolean {
+  return id.length === ASSET_ID_LEN && /^[0-9A-Za-z]+$/.test(id);
+}

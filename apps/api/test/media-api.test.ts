@@ -80,11 +80,12 @@ describe('media API', () => {
     expect(up.statusCode).toBe(201);
     const asset = (up.json() as { item: { id: string; url: string; original: string } }).item;
     expect(typeof asset.original).toBe('string'); // the retained original (no eager variants)
-    // The public URL is keyed by the project's SLUG (not its UUID) + the asset id + the original name.
-    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
-    expect(asset.url.startsWith(`/media/${slug}/${asset.id}/`)).toBe(true);
-    // …and the on-disk mount mirrors that URL exactly: `<mediaRoot>/<slug>/<assetId>/` (NOT the UUID).
-    expect(existsSync(join(mediaRoot, slug, asset.id))).toBe(true);
+    // The public URL is the FLAT shape: project SLUG + `<assetId>-<originalName>` (one segment).
+    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
+    expect(asset.url.startsWith(`/media/${slug}/${asset.id}-`)).toBe(true);
+    // …and the on-disk mount mirrors that URL: `<mediaRoot>/<slug>/<assetId>-<name>` (flat, NOT a folder).
+    expect(existsSync(join(mediaRoot, slug, `${asset.id}-${asset.original}`))).toBe(true);
+    expect(existsSync(join(mediaRoot, slug, asset.id))).toBe(false); // no per-asset folder
     expect(existsSync(join(mediaRoot, projectId))).toBe(false);
 
     const list = await app.inject({ method: 'GET', url: `${base}/media`, cookies });
@@ -143,7 +144,7 @@ describe('media API', () => {
     const asset = (up.json() as { item: { kind: string; url: string; storedName: string; contentType: string; bytes: number } }).item;
     expect(asset.kind).toBe('file');
     expect(asset.contentType).toBe('text/plain');
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/file\/notes\.txt$/);
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+-notes\.txt$/);
 
     // Served download-only: octet-stream + attachment + nosniff (never inline on this origin).
     const served = await app.inject({ method: 'GET', url: asset.url });

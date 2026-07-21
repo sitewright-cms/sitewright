@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSwImage, resolveRenderImage } from '../src/image-helper.js';
+import { buildSwImage, resolveRenderImage, mediaAssetId } from '../src/image-helper.js';
 import { renderTemplate } from '../src/template.js';
 import type { RenderMedia } from '../src/folder.js';
 
@@ -15,12 +15,36 @@ const img: RenderMedia = {
   placeholder: 'data:image/webp;base64,AAAA',
 };
 
+describe('mediaAssetId', () => {
+  it('extracts the id from the legacy 3-segment shape (full segment, hyphenated uuids included)', () => {
+    expect(mediaAssetId('/media/acme/a1/photo.jpg')).toBe('a1');
+    expect(mediaAssetId('/media/acme/a1/photo.jpg?size=lg')).toBe('a1');
+    expect(mediaAssetId('/media/acme/3f8a1c2e-9b4d-4e6a/photo.jpg')).toBe('3f8a1c2e-9b4d-4e6a'); // legacy uuid
+    expect(mediaAssetId('/media/acme/uuid/file/report.pdf')).toBe('uuid'); // legacy /file/ variant
+  });
+  it('extracts the id from the flat shape (run before the first hyphen), even with a hyphenated name', () => {
+    expect(mediaAssetId('/media/acme/aB3xY9-photo.jpg')).toBe('aB3xY9');
+    expect(mediaAssetId('/media/acme/aB3xY9-my-report.jpg')).toBe('aB3xY9'); // hyphen in the logical name
+    expect(mediaAssetId('/media/acme/aB3xY9-Inter-400.woff2?size=lg')).toBe('aB3xY9'); // query ignored
+  });
+  it('returns undefined for a non-media / malformed url', () => {
+    expect(mediaAssetId('https://cdn.example/x.jpg')).toBeUndefined();
+    expect(mediaAssetId('/media/acme')).toBeUndefined(); // no file segment
+    expect(mediaAssetId('/media/acme/nodash.jpg')).toBeUndefined(); // flat needs a hyphen
+  });
+});
+
 describe('resolveRenderImage', () => {
-  it('resolves by exact url and by the id segment', () => {
+  it('resolves by exact url and by the id segment (legacy shape)', () => {
     expect(resolveRenderImage('/media/acme/a1/photo.jpg', [img])?.id).toBe('a1');
     // a delivery url with a size query still resolves via the id segment
     expect(resolveRenderImage('/media/acme/a1/photo.jpg?size=lg', [img])?.id).toBe('a1');
     expect(resolveRenderImage('/media/acme/unknown/x.jpg', [img])).toBeUndefined();
+  });
+  it('resolves a FLAT delivery url by exact match and by the id (with a size query)', () => {
+    const flat: RenderMedia = { ...img, id: 'aB3xY9', url: '/media/acme/aB3xY9-photo.jpg' };
+    expect(resolveRenderImage('/media/acme/aB3xY9-photo.jpg', [flat])?.id).toBe('aB3xY9');
+    expect(resolveRenderImage('/media/acme/aB3xY9-photo.jpg?size=lg', [flat])?.id).toBe('aB3xY9');
   });
 });
 

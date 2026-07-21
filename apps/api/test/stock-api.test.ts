@@ -156,7 +156,7 @@ describe('stock API — injected fake service', () => {
     expect(typeof asset.original).toBe('string'); // the retained original (no eager variants)
     // The imported image is self-hosted (served locally, not hotlinked). The delivery URL ends in the
     // stored original name (imports are capped at 2400px → .webp when the cap bites, else the source ext).
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\.(jpg|jpeg|png|webp|avif|gif)$/);
     const served = await app.inject({ method: 'GET', url: asset.url });
     expect(served.statusCode).toBe(200);
     // The bare delivery URL serves the compressed `xl` thumbnail (WebP) by default.

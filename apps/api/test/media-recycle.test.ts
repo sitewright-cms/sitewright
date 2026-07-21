@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -52,6 +52,15 @@ async function upload(base: string, c: string): Promise<string> {
   const up = await app.inject({ method: 'POST', url: `${base}/media`, cookies: { sw_session: c }, ...multipart(PNG_1X1) });
   return (up.json() as { item: { id: string } }).item.id;
 }
+// A new asset stores FLAT as `<mediaRoot>/<slug>/<id>-<name>` (no per-asset folder), so a binary is
+// present iff some file in the project dir starts with `<id>-`.
+function hasBinary(mediaRoot: string, slug: string, id: string): boolean {
+  try {
+    return readdirSync(join(mediaRoot, slug)).some((f) => f.startsWith(`${id}-`));
+  } catch {
+    return false;
+  }
+}
 
 describe('media recycle bin', () => {
   it('soft-delete hides from the list + shows in the bin; restore brings it back', async () => {
@@ -77,13 +86,13 @@ describe('media recycle bin', () => {
     const { c, base, slug } = await setup();
     const cookies = { sw_session: c };
     const id = await upload(base, c);
-    expect(existsSync(join(mediaRoot, slug, id))).toBe(true);
+    expect(hasBinary(mediaRoot, slug, id)).toBe(true);
 
     await app.inject({ method: 'DELETE', url: `${base}/media/${id}`, cookies }); // soft-delete first
     expect((await app.inject({ method: 'DELETE', url: `${base}/media/${id}/purge`, cookies })).statusCode).toBe(204);
     // gone from the bin AND the disk binary removed.
     expect((((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: unknown[] }).items).toHaveLength(0);
-    expect(existsSync(join(mediaRoot, slug, id))).toBe(false);
+    expect(hasBinary(mediaRoot, slug, id)).toBe(false);
   });
 
   it('purge refuses a LIVE (never-binned) asset — the bin + recovery window cannot be skipped', async () => {
@@ -94,7 +103,7 @@ describe('media recycle bin', () => {
     // Purging without first soft-deleting must 404 and leave the row + binary intact.
     expect((await app.inject({ method: 'DELETE', url: `${base}/media/${id}/purge`, cookies })).statusCode).toBe(404);
     expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: Array<{ id: string }> }).items.some((a) => a.id === id)).toBe(true);
-    expect(existsSync(join(mediaRoot, slug, id))).toBe(true);
+    expect(hasBinary(mediaRoot, slug, id)).toBe(true);
   });
 
   it('a binned asset cannot be renamed or copied (only restored)', async () => {
@@ -122,7 +131,7 @@ describe('media recycle bin', () => {
     expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: unknown[] }).items).toHaveLength(0);
     const binned = ((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: Array<{ id: string }> };
     expect(binned.items.some((a) => a.id === id)).toBe(true);
-    expect(existsSync(join(mediaRoot, slug, id))).toBe(true); // binary retained → recoverable
+    expect(hasBinary(mediaRoot, slug, id)).toBe(true); // binary retained → recoverable
 
     // restore → back in the live library, re-materialized under its original folder path.
     expect((await app.inject({ method: 'POST', url: `${base}/media/${id}/restore`, cookies })).statusCode).toBe(204);
@@ -146,6 +155,6 @@ describe('media recycle bin', () => {
     const id2 = await upload(base, c);
     await reapDeletedMedia(db, { remove: async () => {} }, new Date(), -1);
     expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: Array<{ id: string }> }).items.some((a) => a.id === id2)).toBe(true);
-    expect(existsSync(join(mediaRoot, slug, id2))).toBe(true);
+    expect(hasBinary(mediaRoot, slug, id2)).toBe(true);
   });
 });

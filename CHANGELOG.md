@@ -11,6 +11,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Short media IDs + single-folder `/media` layout** — a newly-uploaded media asset now gets a short
+  6-character id and is stored/served FLAT: `/media/<slug>/<id>-<name>` in the URL and
+  `<slug>/<id>-<name>` on disk, so all of a project's assets share one folder instead of one folder per
+  asset, and IDs are compact. Existing (long-id) assets keep working in their current per-asset-folder
+  shape — both are supported side-by-side, dispatched by id shape. Raw non-image uploads (a `.js`,
+  `.svg`, `.html`, etc.) are still served download-only; only genuine imported scripts/stylesheets/SVGs
+  serve inline (the delivery route now dispatches on the asset's stored kind, not its file extension).
 - **Flat exported media layout** — a published/deployed site now bundles every media asset into a
   single flat `_assets/` directory (`_assets/<alias>-<name>-<size>.<ext>`) instead of one folder per
   asset (`_assets/<id>/…`). SFTP/FTP deploys create one directory instead of one-per-asset, which

@@ -647,6 +647,8 @@ export interface PagespeedFinding {
   category: keyof PagespeedScores;
   score: number | null;
   displayValue?: string;
+  /** Lighthouse's what-it-means + how-to-fix text (markdown; shown as the finding's advice tooltip). */
+  description?: string;
 }
 /** Lighthouse page-speed + SEO audit of a page (GET /projects/:id/pagespeed-audit/:pageId). Lab-only. */
 export interface PagespeedAuditResult {

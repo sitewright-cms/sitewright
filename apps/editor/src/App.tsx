@@ -10,7 +10,6 @@ import { LibraryPanel } from './views/library/LibraryPanel';
 import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { WidgetsPanel } from './views/widgets/WidgetsPanel';
 import { DataPanel } from './views/datasets/DataPanel';
-import { PagespeedPanel } from './views/pagespeed/PagespeedPanel';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
@@ -509,7 +508,6 @@ function MainApp({
           <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
           <WidgetsPanel key={`wg-${inProject.id}`} projectId={inProject.id} />
           <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
-          <PagespeedPanel key={`ps-${inProject.id}`} projectId={inProject.id} />
         </>
       )}
     </div>

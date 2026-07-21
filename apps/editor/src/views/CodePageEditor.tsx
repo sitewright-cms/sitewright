@@ -38,12 +38,13 @@ import {
   pageDataSet,
 } from '../lib/page-data';
 import { primaryButton, gradientSurface } from '../theme';
+import { PageAuditPanel } from './pagespeed/PageAuditPanel';
 
-export type EditMode = 'source' | 'content';
+export type EditMode = 'source' | 'content' | 'audit';
 
-/** Human label for a mode-switcher tab (the enum values stay `source`/`content`). */
+/** Human label for a mode-switcher tab (the enum values stay `source`/`content`/`audit`). */
 function editModeLabel(mode: EditMode): string {
-  return mode === 'content' ? 'Content Editor' : 'Code Editor';
+  return mode === 'content' ? 'Content Editor' : mode === 'audit' ? 'Page Audit' : 'Code Editor';
 }
 
 /** A valid translation-catalog key — a flat identifier OR a dotted scope path; mirrors @sitewright/schema
@@ -510,8 +511,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
-  // Push edit-mode toggles to the live preview without a reload.
+  // Push edit-mode toggles to the live preview without a reload. 'audit' is not a preview mode (the
+  // preview iframe is unmounted while the Page Audit tab is shown), so it's never sent to the bridge.
   useEffect(() => {
+    if (mode === 'audit') return;
     iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
   }, [mode]);
 
@@ -765,7 +768,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       aria-label="Edit mode"
       className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
     >
-      {(['source', 'content'] as const).map((m) => (
+      {(['source', 'content', 'audit'] as const).map((m) => (
         <button
           key={m}
           type="button"
@@ -934,9 +937,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </section>
         )}
 
-        {/* Row 2 — the preview, at the simulated device width, with the device rail
-            floating on the right edge (contentbase-style). */}
-        <div className="relative min-h-0 flex-1">
+        {/* Row 2 — the preview (source/content) and the Page Audit tab. BOTH stay MOUNTED, toggled with
+            `hidden`, so returning to the preview never reloads the iframe and a run's audit result +
+            device choice survive leaving/returning to the Page Audit tab. */}
+        <div className={`relative min-h-0 flex-1 ${mode === 'audit' ? 'hidden' : ''}`}>
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
           </DevicePreview>
@@ -961,6 +965,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               </Tooltip>
             ))}
           </div>
+        </div>
+        <div className={mode === 'audit' ? 'flex min-h-0 flex-1' : 'hidden'}>
+          <PageAuditPanel
+            projectId={project.id}
+            pageId={page.id}
+            auditable={!page.collection}
+            dirty={dirty}
+            seo={{ title: settings.title, path: settings.path, description: settings.description ?? '', image: settings.image ?? '' }}
+          />
         </div>
       </div>
 

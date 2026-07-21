@@ -24,6 +24,7 @@ function fakeLhr() {
         score: 0.2,
         scoreDisplayMode: 'numeric',
         displayValue: 'Est savings of 750 ms',
+        description: 'Resources are blocking the first paint of your page. [Learn more](https://x.test).',
       },
       'lcp-info': {
         id: 'lcp-info',
@@ -76,6 +77,8 @@ describe('summarize', () => {
     expect(r.findings[0]?.id).toBe('color-contrast'); // score 0 sorts before 0.2
     expect(r.findings.find((f) => f.id === 'render-blocking')?.category).toBe('performance');
     expect(r.findings.find((f) => f.id === 'render-blocking')?.displayValue).toBe('Est savings of 750 ms');
+    // The audit description (actionable advice) is surfaced for the finding's tooltip.
+    expect(r.findings.find((f) => f.id === 'render-blocking')?.description).toContain('blocking the first paint');
   });
 
   it('carries the version, timestamp, url and form factor through', () => {

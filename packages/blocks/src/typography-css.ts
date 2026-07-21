@@ -21,6 +21,16 @@ const FORMAT_HINT: Record<FontFile['format'], string> = {
   otf: 'opentype',
 };
 
+/** MIME type per stored container format — for a `<link rel="preload" as="font" type>` hint. */
+const FONT_MIME: Record<FontFile['format'], string> = {
+  woff2: 'font/woff2',
+  woff: 'font/woff',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+};
+/** Prefer woff2 (near-universal, smallest) when a slot's weight is stored in several containers. */
+const FORMAT_RANK: Record<FontFile['format'], number> = { woff2: 0, woff: 1, ttf: 2, otf: 3 };
+
 /** Curated stacks for the generic SYSTEM families a slot can pick. */
 const SYSTEM_STACKS: Record<string, string> = {
   serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif",
@@ -107,4 +117,48 @@ export function typographyCss(
     'body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}',
     'h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}',
   ].join('');
+}
+
+/** A self-hosted font face to preload — its resolved URL + MIME type. */
+export interface FontPreload {
+  href: string;
+  type: string;
+}
+
+/**
+ * The self-hosted font faces to `<link rel="preload">` — ONLY the BODY and HEADING slots, and only the
+ * single file that actually renders each (exact weight, `normal` style, preferring woff2). Those two
+ * faces style `body` + `h1`–`h6` on every page, so the browser needs them regardless; preloading starts
+ * their fetch in parallel with the render-blocking CSS instead of after it, cutting LCP for a heading/text
+ * LCP and avoiding a late `font-display:swap` flash. Deliberately conservative (≤2 links, deduped): we
+ * never preload a weight/style that isn't the default-rendered one, so a preload is never wasted. Returns
+ * `[]` without a `fontUrl` resolver, for system-font slots, or when the exact face isn't in the library.
+ */
+export function fontPreloads(
+  typography: Typography | undefined,
+  fonts: readonly FontAsset[] = [],
+  opts: TypographyCssOptions = {},
+): FontPreload[] {
+  if (!opts.fontUrl) return [];
+  const fontUrl = opts.fontUrl;
+  const heading = typography?.heading ?? DEFAULT_HEADING;
+  const body = typography?.body ?? DEFAULT_BODY;
+  const fontsById = new Map(fonts.map((f) => [f.id, f] as const));
+  const out: FontPreload[] = [];
+  const seen = new Set<string>();
+  for (const slot of [body, heading]) {
+    if (slot.source !== 'asset' || !slot.assetId) continue;
+    const font = fontsById.get(slot.assetId);
+    if (!font) continue;
+    // The single file that renders this slot: exact weight + upright, best container first (woff2).
+    const file = font.files
+      .filter((f) => f.weight === slot.weight && f.style === 'normal')
+      .sort((a, b) => FORMAT_RANK[a.format] - FORMAT_RANK[b.format])[0];
+    if (!file) continue;
+    const href = fontUrl(font.id, file.file);
+    if (!href || seen.has(href)) continue;
+    seen.add(href);
+    out.push({ href, type: FONT_MIME[file.format] });
+  }
+  return out;
 }

@@ -10,7 +10,7 @@ import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
 import { themeCss, themeHtmlAttr, lightContentTokensCss, type ThemeMode } from './theme-mode.js';
 import { previewStyles } from './preview-css.js';
-import { typographyCss, type FontAsset } from './typography-css.js';
+import { typographyCss, fontPreloads, type FontAsset } from './typography-css.js';
 import { stickyHeaderCss } from './sticky-header.js';
 import type { StickyHeaderMode } from '@sitewright/schema';
 
@@ -306,6 +306,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
         return a ? ctx.mediaUrl!(a, file) : '';
       }
     : undefined;
+  // Preload the self-hosted body + heading faces (the always-rendered ones) so their fetch starts in
+  // parallel with the render-blocking CSS — cutting LCP for text/heading LCP and the swap flash. Skipped
+  // for raw-fidelity replicas (they bring their own <head>) and when no self-hosted face resolves.
+  const fontPreloadLinks = rawFidelity ? [] : fontPreloads(brand?.typography, fontAssets, { fontUrl });
   // The page title IS the document/og title (there is no separate SEO title).
   const title = page.title;
   const meta = metaTags({ ...seo, title });
@@ -316,6 +320,12 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
+    // Self-hosted font preloads, high in <head> so the fetch races the render-blocking CSS. `crossorigin`
+    // is REQUIRED even same-origin (fonts fetch in CORS mode) — without it the browser double-fetches.
+    // `fontPreloadLinks` is already [] under rawFidelity (computed above), so this is inert for replicas.
+    fontPreloadLinks
+      .map((f) => `<link rel="preload" as="font" type="${escapeAttr(f.type)}" href="${escapeAttr(f.href)}" crossorigin />\n`)
+      .join('') +
     // Consent-derived CSP for static-export parity (so a strict external host allows the consented
     // third-party origins); platform-local serving ALSO sets it as a response header. Omitted when no
     // consent integrations are configured, so a consent-off site is byte-identical.

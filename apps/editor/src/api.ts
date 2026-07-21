@@ -663,6 +663,10 @@ export interface PagespeedAuditResult {
     speedIndexMs?: number;
   };
   findings: PagespeedFinding[];
+  /** Lighthouse environment notices (e.g. a slow-CPU warning) — explain a host-constrained lab score. */
+  runWarnings?: string[];
+  /** Chrome's CPU benchmark for the audit host; a low value means the container CPU throttled the run. */
+  benchmarkIndex?: number;
   lighthouseVersion: string;
   fetchedAt: string;
 }

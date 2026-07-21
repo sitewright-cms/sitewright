@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { typographyCss, type FontAsset } from '../src/typography-css.js';
+import { typographyCss, fontPreloads, type FontAsset } from '../src/typography-css.js';
 
 type Face = { weight: number; style?: 'normal' | 'italic'; format: 'woff2' | 'woff' | 'ttf' | 'otf'; file: string };
 /** Build a `kind:'font'` library asset for fixtures. */
@@ -133,5 +133,72 @@ describe('typographyCss', () => {
     expect(css).toMatch(/--sw-font-accent:[^;]*monospace;--sw-font-accent-weight:500;/);
     expect(css).toContain('format("opentype")');
     expect(css).not.toContain('.font-boombox');
+  });
+});
+
+describe('fontPreloads', () => {
+  it('preloads the body + heading self-hosted faces (exact weight, woff2), body first', () => {
+    const inter = font('inter', 'Inter', 'sans-serif', 'local', woff2([400, 700]));
+    const out = fontPreloads(
+      {
+        fontFamilies: {},
+        heading: { source: 'asset', family: 'Inter', weight: 700, assetId: 'inter' },
+        body: { source: 'asset', family: 'Inter', weight: 400, assetId: 'inter' },
+      },
+      [inter],
+      { fontUrl: url },
+    );
+    expect(out).toEqual([
+      { href: '/media/p1/inter/400.woff2', type: 'font/woff2' },
+      { href: '/media/p1/inter/700.woff2', type: 'font/woff2' },
+    ]);
+  });
+
+  it('dedups when body + heading resolve to the same face', () => {
+    const inter = font('inter', 'Inter', 'sans-serif', 'local', woff2([400]));
+    const out = fontPreloads(
+      {
+        fontFamilies: {},
+        heading: { source: 'asset', family: 'Inter', weight: 400, assetId: 'inter' },
+        body: { source: 'asset', family: 'Inter', weight: 400, assetId: 'inter' },
+      },
+      [inter],
+      { fontUrl: url },
+    );
+    expect(out).toEqual([{ href: '/media/p1/inter/400.woff2', type: 'font/woff2' }]);
+  });
+
+  it('returns [] for system-font slots', () => {
+    expect(fontPreloads(undefined, [], { fontUrl: url })).toEqual([]);
+  });
+
+  it('returns [] without a fontUrl resolver', () => {
+    const inter = font('inter', 'Inter', 'sans-serif', 'local', woff2([400]));
+    expect(
+      fontPreloads({ fontFamilies: {}, body: { source: 'asset', family: 'Inter', weight: 400, assetId: 'inter' } }, [inter]),
+    ).toEqual([]);
+  });
+
+  it('skips a slot whose exact weight is not in the library (never a wasted preload)', () => {
+    const inter = font('inter', 'Inter', 'sans-serif', 'local', woff2([400, 700]));
+    const out = fontPreloads(
+      { fontFamilies: {}, body: { source: 'asset', family: 'Inter', weight: 500, assetId: 'inter' } },
+      [inter],
+      { fontUrl: url },
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('prefers woff2 when a weight is stored in several containers', () => {
+    const mix = font('mix', 'Mix', 'serif', 'local', [
+      { weight: 400, format: 'woff', file: '400.woff' },
+      { weight: 400, format: 'woff2', file: '400.woff2' },
+    ]);
+    const out = fontPreloads(
+      { fontFamilies: {}, body: { source: 'asset', family: 'Mix', weight: 400, assetId: 'mix' } },
+      [mix],
+      { fontUrl: url },
+    );
+    expect(out).toEqual([{ href: '/media/p1/mix/400.woff2', type: 'font/woff2' }]);
   });
 });

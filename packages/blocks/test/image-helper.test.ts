@@ -93,6 +93,24 @@ describe('buildSwImage', () => {
     expect(html).toContain('loading="eager"');
   });
 
+  it('marks an eager image high priority by default (LCP hint)', () => {
+    const html = buildSwImage(img.url, [img], { loading: 'eager' });
+    expect(html).toContain('loading="eager"');
+    expect(html).toContain('fetchpriority="high"');
+  });
+
+  it('gives a lazy image no fetchpriority', () => {
+    expect(buildSwImage(img.url, [img])).not.toContain('fetchpriority');
+  });
+
+  it('lets an explicit fetchpriority override the eager default', () => {
+    expect(buildSwImage(img.url, [img], { loading: 'eager', fetchpriority: 'low' })).toContain('fetchpriority="low"');
+  });
+
+  it('emits nothing for fetchpriority="auto" (browser default)', () => {
+    expect(buildSwImage(img.url, [img], { loading: 'eager', fetchpriority: 'auto' })).not.toContain('fetchpriority');
+  });
+
   it('degrades an external/unresolved url to a plain lazy <img> (no srcset/dims)', () => {
     const html = buildSwImage('https://cdn.example.com/x.jpg', [img], { alt: 'ext' });
     expect(html).toBe('<img src="https://cdn.example.com/x.jpg" alt="ext" loading="lazy" decoding="async">');

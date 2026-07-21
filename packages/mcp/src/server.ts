@@ -667,6 +667,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             lines.push(`  [${f.category}] ${f.title}${f.displayValue ? ` — ${f.displayValue}` : ''}`);
           }
         }
+        if (r.runWarnings && r.runWarnings.length > 0) {
+          lines.push('', 'Lighthouse environment notices (may explain a host-constrained score):');
+          for (const w of r.runWarnings) lines.push(`  • ${w}`);
+        }
         lines.push('', 'Note: performance is a throttled LAB score (directional); SEO / accessibility / best-practices are deterministic. No real-user field data.');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {

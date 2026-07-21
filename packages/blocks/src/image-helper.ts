@@ -23,6 +23,12 @@ export interface SwImageOptions {
   /** The `sizes` attribute (how wide the image renders per breakpoint). Default `100vw`. */
   sizes?: string;
   loading?: 'lazy' | 'eager';
+  /**
+   * Resource priority hint. Left unset it defaults to `high` for an EAGER image (the author's
+   * above-the-fold hero — the likely LCP element, so the browser should fetch it first) and is omitted
+   * for a lazy image. Pass explicitly to override (e.g. `low`, or `auto` to emit nothing).
+   */
+  fetchpriority?: 'high' | 'low' | 'auto';
   /** 'webp' (default: single <img>) or 'avif' (a <picture> with an AVIF source above the WebP one). */
   format?: 'webp' | 'avif';
 }
@@ -63,17 +69,21 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   const alt = escapeAttr(opts.alt ?? asset?.alt ?? '');
   const cls = opts.className ? ` class="${escapeAttr(opts.className)}"` : '';
   const loading = opts.loading === 'eager' ? 'eager' : 'lazy';
+  // An eager image is the author's above-the-fold hero → hint the browser it's the LCP candidate (fetch
+  // it first), unless the caller overrode the priority. `auto` is the browser default, so emit nothing.
+  const priority = opts.fetchpriority ?? (loading === 'eager' ? 'high' : undefined);
+  const fp = priority && priority !== 'auto' ? ` fetchpriority="${priority}"` : '';
 
   // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
   // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).
   if (/\.svg(?:$|\?)/i.test(src)) {
     const svgDims = asset && asset.kind === 'image' && asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : '';
-    return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${cls}>`;
+    return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${fp}${cls}>`;
   }
 
   // Unresolved / external / dimensionless → a plain lazy <img> (no srcset/dims/LQIP available).
   if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) {
-    return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${cls}>`;
+    return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${fp}${cls}>`;
   }
 
   const { width, height } = asset as { width: number; height: number };
@@ -105,12 +115,12 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
       '<picture>' +
       `<source type="image/avif" srcset="${avifSrcset}" sizes="${sizesAttr}">` +
       `<source type="image/webp" srcset="${webpSrcset}" sizes="${sizesAttr}">` +
-      `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${cls}${lqip}>` +
+      `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${cls}${lqip}>` +
       '</picture>'
     );
   }
   return (
     `<img src="${imgSrc}" srcset="${webpSrcset}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
-    `loading="${loading}" decoding="async"${cls}${lqip}>`
+    `loading="${loading}" decoding="async"${fp}${cls}${lqip}>`
   );
 }

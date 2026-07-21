@@ -114,7 +114,7 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
           role="menu"
           aria-label="Account"
           onKeyDown={onMenuKey}
-          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-900"
+          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-800"
         >
           {/* Appearance switcher — a 3-way radio group (light / dark / auto) at the TOP of the menu.
               The radios are `menuitemradio`s in the roving-focus set (see onMenuKey), so the arrow keys

@@ -172,7 +172,7 @@ export function HeaderSettingsMenu({
           role="menu"
           aria-label="Settings"
           onKeyDown={onMenuKey}
-          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-900"
+          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-800"
         >
           {rows.map((row, ri) => {
             if (row.kind === 'divider') return <div key={`div-${ri}`} role="separator" className="my-1 border-t border-slate-100 dark:border-white/10" />;

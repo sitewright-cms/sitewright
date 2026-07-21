@@ -3,7 +3,14 @@ import { createHash } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
 import type { SizeToken } from '@sitewright/image-pipeline';
-import { materializeImageThumbs, rewriteMediaThumbUrls, resolveThumbForHead, type ThumbRefs } from './media-thumbs.js';
+import {
+  materializeImageThumbs,
+  rewriteMediaUrlsFlat,
+  resolveThumbForHead,
+  rebaseMediaHeadUrl,
+  type ThumbRefs,
+} from './media-thumbs.js';
+import { buildAliasMap, aliasResolver, flatMediaName } from './asset-alias.js';
 import {
   allRoutes,
   buildNav,
@@ -251,36 +258,36 @@ async function minifyPageHtml(html: string): Promise<string> {
 }
 
 /**
- * Copies every NON-image media asset's files into `<base>/_assets/<assetId>/` (path-safe). A font's
- * face files + an inline stylesheet/script land flat in the asset dir (their URL has no `/file/`);
- * a RAW (non-image) blob goes under a `file/` segment — mirroring the editor URL
- * (`/media/<projectId>/<assetId>/file/<name>`). IMAGES are intentionally NOT copied here: their
- * responsive thumbnails are generated from the retained original by `materializeImageThumbs` once
- * the referenced sizes are known (after the page loop), so the export ships only referenced sizes.
+ * Copies every NON-image media asset's files FLAT into `<base>/_assets/` as `<alias>-<file>`
+ * (path-safe). Fonts (each face), inline stylesheet/script, AND raw (non-image) blobs all land in the
+ * single flat dir — the `<alias>-` prefix keeps two same-named files apart, and the raw `/file/`
+ * segment the editor URL used is dropped. IMAGES are intentionally NOT copied here: their responsive
+ * thumbnails are generated from the retained original by `materializeImageThumbs` once the referenced
+ * sizes are known (after the page loop), so the export ships only referenced sizes.
  */
 async function copyMedia(
   base: string,
   media: readonly MediaAsset[],
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
+  alias: (id: string) => string,
 ): Promise<void> {
+  const dir = join(base, ASSET_DIR);
+  /* v8 ignore next -- defensive: constant `_assets` can't escape base */
+  if (!resolve(dir).startsWith(base + sep)) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant `_assets` under base
+  await mkdir(dir, { recursive: true });
   for (const asset of media) {
     // Images are materialized separately (on-demand thumbnails); skip them here.
     if (asset.kind === 'image') continue;
     const files = asset.kind === 'font' ? asset.files.map((f) => f.file) : [asset.storedName];
-    const dir = join(base, ASSET_DIR, asset.id);
-    const writeDir = asset.kind === 'file' ? join(dir, 'file') : dir;
-    // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
-    /* v8 ignore next -- defensive: validated id can't escape */
-    if (!resolve(dir).startsWith(base + sep)) continue;
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
-    await mkdir(writeDir, { recursive: true });
+    const a = alias(asset.id); // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
     for (const file of files) {
-      const target = resolve(writeDir, file);
-      /* v8 ignore next -- defensive: validated file name can't escape */
-      if (!target.startsWith(resolve(writeDir) + sep)) continue;
+      const target = resolve(dir, flatMediaName(a, file));
+      /* v8 ignore next -- defensive: validated id + file name can't escape */
+      if (!target.startsWith(resolve(dir) + sep)) continue;
       try {
         const data = await readMedia(asset.id, file);
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/<id>
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
         await writeFile(target, data);
       } catch (err) {
         // A missing variant is tolerable; any other I/O error (disk full,
@@ -619,12 +626,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Referenced-thumbnail accumulator — filled as each page's media URLs are rewritten, then
     // materialized (from originals) into `_assets/` after the loop. Only referenced sizes ship.
     const thumbRefs: ThumbRefs = new Map();
+    // Stable, collision-free short alias per asset — the flat file's `<alias>-` prefix. Computed once
+    // so every emit site (copyMedia, the body/head URL rewrites, the font url callback, and
+    // materializeImageThumbs) agrees on the same name for a given asset.
+    const alias = aliasResolver(buildAliasMap(media));
 
-    // Bundle media into the artifact so the export is self-contained + portable.
-    // copyMedia handles every kind — images, raw files, AND `kind:'font'` (a font's faces are
-    // bundled flat under `_assets/<id>/`, so its `@font-face` media url resolves in the export).
+    // Bundle media into the artifact so the export is self-contained + portable. copyMedia handles
+    // every NON-image kind — raw files, stylesheet/script, AND `kind:'font'` (a font's faces are
+    // bundled flat as `_assets/<alias>-<face>`, so its `@font-face` media url resolves in the export).
     if (media.length > 0 && opts.readMedia) {
-      await copyMedia(tmp, media, opts.readMedia);
+      await copyMedia(tmp, media, opts.readMedia, alias);
     }
 
     // Favicon / PWA icon set + Web App Manifest, derived ONCE from the single Corporate-Identity
@@ -683,17 +694,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // `rel()` must do the SAME media→_assets rebase, else a relativised `/media/…` no longer
         // matches that body pass and ships broken (a 404 favicon/og at every page depth).
         const mediaPrefix = `/media/${bundle.project.slug}/`;
+        const assetRoot = `${siteRoot}${ASSET_DIR}/`;
         const rel = (src: string | undefined): string | undefined =>
           !src
             ? undefined
-            : src.startsWith(mediaPrefix)
-              ? `${siteRoot}${ASSET_DIR}/${src.slice(mediaPrefix.length)}`
-              : resolveInternalUrl(src, siteRoot);
+            : (rebaseMediaHeadUrl(src, mediaPrefix, assetRoot, thumbRefs, alias) ?? resolveInternalUrl(src, siteRoot));
         // Head/SEO IMAGE urls (og:image, org logo/image, fallback favicon) resolve to a MATERIALIZED
         // thumbnail at a fixed size (recorded for build-time generation) — never the uncapped original.
         // A non-media url falls back to the generic `rel` rebase.
         const relImage = (src: string | undefined, size: SizeToken): string | undefined =>
-          !src ? undefined : (resolveThumbForHead(src, mediaPrefix, `${siteRoot}${ASSET_DIR}/`, size, 'webp', thumbRefs) ?? rel(src));
+          !src ? undefined : (resolveThumbForHead(src, mediaPrefix, assetRoot, size, 'webp', thumbRefs, alias) ?? rel(src));
         const organization = baseOrg
           ? { ...baseOrg, logo: relImage(baseOrg.logo, 'lg'), image: relImage(baseOrg.image, 'lg') }
           : undefined;
@@ -925,8 +935,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           media,
           lang: pageLocale,
           // Images AND fonts resolve through ONE page-relative resolver (a font's @font-face uses
-          // this too) so the export is portable + self-hosted (never a font CDN).
-          mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,
+          // this too) so the export is portable + self-hosted (never a font CDN). Flat: `<alias>-<file>`.
+          mediaUrl: (asset, file) => `${assetRoot}${flatMediaName(alias(asset.id), file)}`,
           seo: {
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
@@ -986,23 +996,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // window scroll to the body so scroll-linked JS keeps working.
           previewScroll: previewMode,
         });
-        // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
-        // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,
+        // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative FLAT
+        // bundled path (`<siteRoot>_assets/<alias>-<name…>`) — across ANY attribute (src, data-src,
         // srcset, href, meta), so raw `<img>`/dataset-driven images resolve in both the
-        // `/sites/<slug>/` preview and a deployed copy. The project-slug segment is dropped
-        // because the bundle namespaces by asset id only. Done BEFORE relativize so the result
-        // is already relative (and not re-touched).
+        // `/sites/<slug>/` preview and a deployed copy. The project-slug + per-asset folder are dropped:
+        // the bundle is a single flat dir keyed by `<alias>-`. Done BEFORE relativize so the result is
+        // already relative (and not re-touched).
         //
-        // Deliberately a flat string replace (not attribute-anchored) so it also catches
-        // `data-bg`/`data-src`/`srcset` that `relativizeInternalLinks` misses. The prefix is a
-        // slug-scoped literal, so a stray match in body text/an operator `<script>` string would
-        // only be a reference to THIS project's own media — i.e. one we want rebased anyway.
-        // (`mediaPrefix` is defined above, shared with the SEO/head `rel()` rebase.)
-        // FIRST rewrite image DELIVERY urls (`…/<name>?size=&format=` ⇒ static `<name>-<size>.<fmt>`),
-        // recording the referenced (asset,size,format) set for build-time generation. THEN the flat
-        // prefix rebase (`/media/<slug>/` ⇒ `_assets/`) below fires on the now-static file names.
-        const thumbRewritten = rewriteMediaThumbUrls(html, bundle.project.slug, thumbRefs);
-        const mediaRebased = thumbRewritten.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
+        // ONE pass both maps image DELIVERY urls (`…/<name>?size=&format=` ⇒ static
+        // `<alias>-<name>-<size>.<fmt>`, recording the referenced (asset,size,format) set for build-time
+        // generation) AND rebases every other `/media/<slug>/…` ref (svg, raw `/file/` downloads,
+        // directly-linked font/css/js) to its flat name. It catches `data-bg`/`data-src`/`srcset` that
+        // `relativizeInternalLinks` misses. It matches the `<id>/[file/]<name>` shape, so a stray bare
+        // `/media/<slug>/` string (already broken) is left untouched rather than blindly rebased.
+        const mediaRebased = rewriteMediaUrlsFlat(html, bundle.project.slug, siteRoot, thumbRefs, alias);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
@@ -1033,7 +1040,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
     // AND MINIMAL (only referenced sizes of referenced assets), independent of any preview traffic.
     if (opts.readMedia && thumbRefs.size > 0) {
-      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia);
+      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias);
     }
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),

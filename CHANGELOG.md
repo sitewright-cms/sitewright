@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Flat exported media layout** — a published/deployed site now bundles every media asset into a
+  single flat `_assets/` directory (`_assets/<alias>-<name>-<size>.<ext>`) instead of one folder per
+  asset (`_assets/<id>/…`). SFTP/FTP deploys create one directory instead of one-per-asset, which
+  removes a per-asset `mkdir`/`ensureDir` round-trip and speeds up uploads. The `<alias>` is a short,
+  stable prefix derived from the asset id, so incremental deploys stay stable after the first publish.
+  **Note:** the first publish/deploy after upgrading re-uploads every media file once (their paths
+  change) and prunes the old `_assets/<id>/…` files; subsequent deploys are incremental again.
+
 ## [0.2.0] — 2026-07-21
 
 An editor UX + authoring-polish pass across the settings, forms, and page-editing surfaces.

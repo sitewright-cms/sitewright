@@ -11,10 +11,8 @@ import {
   deploySite,
   type DeployManifest,
   type DeployProgress,
-  type DeployStrategy,
   type DeployTransport,
   type SiteFile,
-  type TransportCaps,
 } from '../src/publish/adapters.js';
 import { computeManifest } from '../src/publish/deploy/manifest.js';
 
@@ -120,14 +118,13 @@ describe('defaultTransport', () => {
 });
 
 /** A recording fake transport for the orchestration tests. */
-function makeFake(opts: { caps?: TransportCaps; prev?: DeployManifest | null } = {}) {
+function makeFake(opts: { prev?: DeployManifest | null } = {}) {
   const calls: string[] = [];
-  const uploads: Array<{ rels: string[]; strategy: DeployStrategy }> = [];
+  const uploads: Array<{ rels: string[] }> = [];
   let removed: string[] = [];
   const written: DeployManifest[] = [];
   const transport: DeployTransport = {
     connect: async () => void calls.push('connect'),
-    capabilities: async () => opts.caps ?? { tar: false },
     readManifest: async () => {
       calls.push('read');
       return opts.prev ?? null;
@@ -136,10 +133,10 @@ function makeFake(opts: { caps?: TransportCaps; prev?: DeployManifest | null } =
       calls.push('write');
       written.push(manifest);
     },
-    upload: async (_remote, files: ReadonlyArray<SiteFile>, strategy, onFile) => {
+    upload: async (_remote, files: ReadonlyArray<SiteFile>, onFile) => {
       calls.push('upload');
       const rels = files.map((f) => f.rel.split(/[\\/]/).join('/'));
-      uploads.push({ rels, strategy });
+      uploads.push({ rels });
       rels.forEach((r) => onFile?.(r));
     },
     remove: async (_remote, rels) => {
@@ -159,7 +156,6 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     const result = await deploySite(siteDir, cfg, () => fake.transport);
     expect(fake.calls).toEqual(['connect', 'read', 'upload', 'write', 'close']);
     expect(fake.uploads[0]!.rels).toEqual(['about/index.html', 'index.html']);
-    expect(fake.uploads[0]!.strategy).toBe('files'); // caps.tar=false
     expect(result.uploaded).toBe(2);
     expect(result.skipped).toBe(0);
     expect(result.removed).toBe(0);
@@ -197,15 +193,6 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     expect(fake.getRemoved()).toEqual(['gone.html']);
     expect(result.removed).toBe(1);
     expect(fake.calls).toContain('remove');
-  });
-
-  it('uses the tar strategy when the transport supports it and there are enough files', async () => {
-    // 4 files → meets the tar threshold.
-    await writeFile(join(siteDir, 'a.html'), 'a');
-    await writeFile(join(siteDir, 'b.html'), 'b');
-    const fake = makeFake({ caps: { tar: true }, prev: null });
-    await deploySite(siteDir, cfg, () => fake.transport);
-    expect(fake.uploads[0]!.strategy).toBe('tar');
   });
 
   it('opts.incremental=false forces a full re-upload even with a matching manifest', async () => {
@@ -250,7 +237,6 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     let closed = false;
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {

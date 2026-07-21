@@ -18,6 +18,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   stable prefix derived from the asset id, so incremental deploys stay stable after the first publish.
   **Note:** the first publish/deploy after upgrading re-uploads every media file once (their paths
   change) and prunes the old `_assets/<id>/…` files; subsequent deploys are incremental again.
+- **Simpler, more robust SFTP deploys** — the SFTP uploader now always uses the direct per-file path
+  (concurrent `fastPut`). The SSH capability probe and the tar-over-SSH fast path were removed: the
+  flat `_assets/` layout erased the per-directory savings the tar path existed for, and the probe
+  added a round trip and could hang on servers that mis-advertise SSH exec. The connection handshake
+  timeout was also raised (15s → 60s) so a slow or distant server isn't dropped before the transfer
+  starts.
 
 ## [0.2.0] — 2026-07-21
 

@@ -10,7 +10,6 @@ import {
   deploySite,
   type DeployConfig,
   type DeployManifest,
-  type DeployStrategy,
   type DeployTransport,
   type SiteFile,
 } from '../src/publish/adapters.js';
@@ -121,20 +120,19 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
    */
   function makeRecordingTransport(prev: DeployManifest | null = null) {
     const lifecycle: string[] = [];
-    const uploads: Array<{ remotePath: string; strategy: DeployStrategy }> = [];
+    const uploads: Array<{ remotePath: string }> = [];
     let connects = 0;
     const transport: DeployTransport = {
       connect: async () => {
         connects += 1;
         lifecycle.push('connect');
       },
-      capabilities: async () => ({ tar: false }),
       readManifest: async () => prev,
       writeManifest: async () => void lifecycle.push('write'),
-      upload: async (remoteDir, files: ReadonlyArray<SiteFile>, strategy) => {
+      upload: async (remoteDir, files: ReadonlyArray<SiteFile>) => {
         lifecycle.push('upload');
         for (const f of files) {
-          uploads.push({ remotePath: remoteJoin(remoteDir, f.rel.split(/[\\/]/).join('/')), strategy });
+          uploads.push({ remotePath: remoteJoin(remoteDir, f.rel.split(/[\\/]/).join('/')) });
         }
       },
       remove: async () => {},
@@ -182,7 +180,6 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
         lifecycle.push('connect');
         throw new Error('connection refused');
       },
-      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {
@@ -204,7 +201,6 @@ describe('deploySite — per-file upload paths via a recording transport', () =>
   it('does not let a close() failure mask a successful upload (best-effort close is swallowed)', async () => {
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {},
@@ -314,7 +310,6 @@ describe('SFTP hostFingerprint pinning (verify-on-mismatch)', () => {
     const seen: Array<string | undefined> = [];
     const fake: DeployTransport = {
       connect: async () => {},
-      capabilities: async () => ({ tar: false }),
       readManifest: async () => null,
       writeManifest: async () => {},
       upload: async () => {},

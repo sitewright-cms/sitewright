@@ -3,7 +3,7 @@ import { Check, ExternalLink } from 'lucide-react';
 import { api, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
 
-type Strategy = 'tar' | 'files' | 'rsync';
+type Strategy = 'files' | 'rsync';
 
 type Status =
   | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number }
@@ -58,7 +58,7 @@ function formatRate(bytes: number, ms: number): string | null {
 function transferMode(protocol: string, strategy?: Strategy): string {
   const proto = protocol.toUpperCase();
   if (!strategy) return proto;
-  const label = strategy === 'rsync' ? 'rsync' : strategy === 'tar' ? 'tar stream' : 'per-file';
+  const label = strategy === 'rsync' ? 'rsync' : 'per-file';
   return `${proto} · ${label}`;
 }
 
@@ -83,10 +83,9 @@ function diagnosticsLine(protocol: string, strategy: Strategy | undefined, bytes
 
 /**
  * Streams a deploy of a SAVED target, showing live progress, transfer diagnostics (mode + speed),
- * the final result, and errors. FTP/SFTP show a determinate per-file bar plus the transfer mode
- * (tar fast-path vs per-file) and throughput; a `git` target shows its coarse phases (prepare →
- * commit → push) and, on success, the pushed branch. On success it links to the configured
- * production URL.
+ * the final result, and errors. FTP/SFTP show a determinate per-file bar plus throughput; a `git`
+ * target shows its coarse phases (prepare → commit → push) and, on success, the pushed branch. On
+ * success it links to the configured production URL.
  */
 export function DeployModal({ project, target, onClose }: { project: Project; target: DeployTargetView; onClose: () => void }) {
   const [status, setStatus] = useState<Status>({ kind: 'running', phase: target.protocol === 'git' ? 'preparing' : 'connecting', index: 0, total: 0 });

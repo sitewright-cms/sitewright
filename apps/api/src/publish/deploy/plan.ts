@@ -1,7 +1,6 @@
 /**
- * Pure planning helpers for the deploy uploaders — remote path math, mkdir planning, bulk-strategy
- * selection, and safe shell quoting. Kept separate from the I/O transports so the decision logic is
- * unit-testable without a live server.
+ * Pure planning helpers for the deploy uploaders — remote path math and mkdir planning. Kept
+ * separate from the I/O transports so the decision logic is unit-testable without a live server.
  */
 
 /** POSIX-joins a validated remote base dir with a POSIX relative path, collapsing duplicate
@@ -41,22 +40,4 @@ export function planDirs(base: string, rels: readonly string[]): string[] {
 export function planLeafDirs(base: string, rels: readonly string[]): string[] {
   const all = planDirs(base, rels);
   return all.filter((dir) => !all.some((other) => other !== dir && other.startsWith(`${dir}/`)));
-}
-
-/**
- * Picks the bulk-upload strategy: the single-stream tar path when the target supports it AND there
- * are enough files to amortise spinning up remote `tar` (a couple of files go faster as direct
- * puts); otherwise the per-file path (concurrent fastPut on SFTP, sequential on FTP).
- */
-export function chooseStrategy(caps: { tar: boolean }, uploadCount: number, tarMinFiles = 4): 'tar' | 'files' {
-  return caps.tar && uploadCount >= tarMinFiles ? 'tar' : 'files';
-}
-
-/**
- * Single-quotes a string for safe use as ONE argument in a POSIX shell command (wrap in single
- * quotes, escape embedded single quotes). Used for the remote dir in the tar-extract exec command —
- * DeployConfig.remoteDir forbids control chars but may still contain shell metacharacters.
- */
-export function shellSingleQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

@@ -27,12 +27,27 @@ export interface SwImageOptions {
   format?: 'webp' | 'avif';
 }
 
+/**
+ * The asset id inside a `/media/…` delivery url, or undefined. Handles BOTH the flat
+ * `/media/<slug>/<id>-<name>` shape (id = the run before the first hyphen of the single file segment)
+ * and the legacy `/media/<slug>/<id>/<file…>` shape (id = the whole 2nd segment, which may contain the
+ * hyphens of an old uuid). A `?query` is ignored.
+ */
+export function mediaAssetId(ref: string): string | undefined {
+  const path = ref.split('?')[0] ?? ref;
+  const parts = path.split('/'); // ['', 'media', slug, seg, file?, …]
+  if (parts[1] !== 'media' || parts.length < 4) return undefined;
+  if (parts.length >= 5) return parts[3] || undefined; // legacy: a full <id> segment
+  const seg = parts[3] ?? '';
+  const dash = seg.indexOf('-'); // flat: <id>-<name>
+  return dash > 0 ? seg.slice(0, dash) : undefined;
+}
+
 /** Resolve a delivery url (or the id inside it) to its project RenderMedia record, if any. */
 export function resolveRenderImage(ref: string, media: readonly RenderMedia[]): RenderMedia | undefined {
   const byUrl = media.find((m) => m.url === ref);
   if (byUrl) return byUrl;
-  const m = /^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+)\//.exec(ref);
-  const id = m?.[1];
+  const id = mediaAssetId(ref);
   return id ? media.find((a) => a.id === id) : undefined;
 }
 

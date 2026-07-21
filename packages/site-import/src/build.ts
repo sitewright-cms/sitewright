@@ -97,17 +97,31 @@ function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): We
 }
 
 /**
+ * The asset id inside a hosted `/media/…` url — the flat `/media/<slug>/<id>-<name>` shape (id = the
+ * run before the first hyphen of the file segment) or the legacy `/media/<slug>/<id>/<file>` shape (id
+ * = the whole 2nd segment, hyphenated old uuids included).
+ */
+function hostedAssetId(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const parts = (url.split('?')[0] ?? '').split('/'); // ['', 'media', slug, seg, file?, …]
+  if (parts[1] !== 'media' || parts.length < 4) return undefined;
+  if (parts.length >= 5) return parts[3] || undefined; // legacy: a full <id> segment
+  const seg = parts[3] ?? '';
+  const dash = seg.indexOf('-'); // flat: <id>-<name>
+  return dash > 0 ? seg.slice(0, dash) : undefined;
+}
+
+/**
  * The self-hosted web fonts as `{ family, assetId, weight, style }` — the foundation extractor matches
  * the page's heading/body families against these to wire native typography. The `assetId` is parsed from
- * the hosted media path (`/media/<slug>/<assetId>/<file>`), deduped per asset+weight.
+ * the hosted media path, deduped per asset+weight.
  */
 function collectHostedFonts(refs: ReadonlyMap<string, CapturedAsset>, assetMap: ReadonlyMap<string, string>): HostedFont[] {
   const out: HostedFont[] = [];
   const seen = new Set<string>();
   for (const [key, asset] of refs) {
     if (asset.kind !== 'font' || !asset.font) continue;
-    const media = assetMap.get(key);
-    const id = media?.match(/^\/media\/[^/]+\/([^/]+)\//)?.[1];
+    const id = hostedAssetId(assetMap.get(key));
     if (!id) continue;
     const dedupe = `${id}|${asset.font.weight}`;
     if (seen.has(dedupe)) continue;

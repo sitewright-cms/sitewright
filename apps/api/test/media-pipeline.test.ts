@@ -165,7 +165,7 @@ describe('media pipeline (HTTP layer)', () => {
 
     // The delivery URL is the id-bearing route ending in the ORIGINAL name (bare ⇒ xl thumbnail).
     const projId = asset.url.split('/')[2];
-    expect(asset.url).toBe(`/media/${projId}/${asset.id}/banner.png`);
+    expect(asset.url).toBe(`/media/${projId}/${asset.id}-banner.png`);
 
     // Bare delivery URL ⇒ compressed `xl` WebP (default), generated on demand.
     const xl = await app.inject({ method: 'GET', url: asset.url });

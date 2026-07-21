@@ -53,8 +53,8 @@ describe('website import — JS hosting (end to end through the app)', () => {
     // The bundle's website.scripts links the self-hosted script…
     const exp = await app.inject({ method: 'GET', url: `/projects/${projectId}/export`, cookies: { sw_session: t } });
     const scripts: string = ((exp.json() as { project: { website?: { scripts?: string } } }).project.website?.scripts) ?? '';
-    const url = scripts.match(/\/media\/[\w-]+\/[\w-]+\/script\.js/)?.[0];
-    expect(url).toBeTruthy(); // a self-hosted /media/.../script.js ref
+    const url = scripts.match(/\/media\/[\w-]+\/[\w-]+-script\.js/)?.[0];
+    expect(url).toBeTruthy(); // a self-hosted flat /media/<slug>/<id>-script.js ref
 
     // …and that URL serves the inline JS inline as text/javascript (so the page's <script src> runs).
     const js = await app.inject({ method: 'GET', url: url!, cookies: { sw_session: t } });

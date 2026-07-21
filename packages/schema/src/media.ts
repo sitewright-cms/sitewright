@@ -87,12 +87,13 @@ export const ImageAssetSchema = z.object({
   /** Root-relative DELIVERY URL — id-bearing, ends in the stored original's (image) name; a bare fetch
    *  defaults to the `xl` thumbnail. The extension is a raster image type (storeOriginal normalizes the
    *  stored name to the detected format) — OR `svg` for a vector image, served inline as-is (never
-   *  rasterized/thumbnailed). Never an arbitrary/executable one. */
+   *  rasterized/thumbnailed). Never an arbitrary/executable one. Accepts the flat `/media/<slug>/<id>-<name>`
+   *  shape and the legacy `/media/<slug>/<id>/<name>` (optional middle segment) during the migration. */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg|jpeg|png|gif|tiff|svg)$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.(avif|webp|jpg|jpeg|png|gif|tiff|svg)$/),
 });
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 
@@ -108,12 +109,13 @@ export const FileAssetSchema = z.object({
   contentType: z.string().min(1).max(150),
   /** On-disk stored file name (sanitized base + original extension). */
   storedName: StoredFileNameSchema,
-  /** Root-relative download URL (routed through the attachment-only `/file/` handler). */
+  /** Root-relative download URL. Flat `/media/<slug>/<id>-<name>` (served download-only by kind) or the
+   *  legacy attachment-only `/media/<slug>/<id>/file/<name>` (optional middle segment) during migration. */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/file\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+\/file\/)?[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/),
 });
 export type FileAsset = z.infer<typeof FileAssetSchema>;
 
@@ -121,7 +123,7 @@ export type FileAsset = z.infer<typeof FileAssetSchema>;
  * A self-hosted **font** family (kind `font`): the family name, a generic CSS `fallback`, its
  * `source` (downloaded Google family or a local upload), and the stored `files` (one per weight×
  * style). Served INLINE (`font/*` + nosniff + CORS) so `@font-face` can load it; bundled like any
- * media into `_assets/<id>/<file>`. Typography slots reference a font asset by `id` + a weight.
+ * media into a flat `_assets/` dir. Typography slots reference a font asset by `id` + a weight.
  */
 export const FontAssetSchema = z.object({
   kind: z.literal('font'),
@@ -134,31 +136,32 @@ export const FontAssetSchema = z.object({
     .min(1)
     .max(18)
     .refine((fs) => new Set(fs.map((x) => `${x.weight}-${x.style}-${x.format}`)).size === fs.length, 'duplicate font file'),
-  /** Root-relative URL of a representative file (the manager's download link). */
+  /** Root-relative URL of a representative face file. Flat `/media/<slug>/<id>-<face>` or legacy
+   *  `/media/<slug>/<id>/<face>` (optional middle segment) during migration. */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[a-z0-9][a-z0-9-]{0,150}\.(woff2|woff|ttf|otf)$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.(woff2|woff|ttf|otf)$/),
 });
 export type FontAsset = z.infer<typeof FontAssetSchema>;
 
 /**
  * A self-hosted **stylesheet** (kind `stylesheet`): an imported site's CSS, stored as one `.css` file
  * and served INLINE (`text/css` + nosniff + CORS) so a page can `<link>` it — keeping the bulk CSS OUT
- * of the page `source` (which stays editable HTML). Bundled into `_assets/<id>/<file>` like other media.
+ * of the page `source` (which stays editable HTML). Bundled into a flat `_assets/` dir like other media.
  */
 export const StylesheetAssetSchema = z.object({
   kind: z.literal('stylesheet'),
   ...baseShape,
   /** On-disk stored file name (e.g. `styles.css`). */
   storedName: StoredFileNameSchema,
-  /** Root-relative URL of the inline-served stylesheet. */
+  /** Root-relative URL of the inline-served stylesheet (flat `<id>-<name>` or legacy `<id>/<name>`). */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.css$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.css$/),
 });
 export type StylesheetAsset = z.infer<typeof StylesheetAssetSchema>;
 
@@ -167,19 +170,19 @@ export type StylesheetAsset = z.infer<typeof StylesheetAssetSchema>;
  * inline-served as `text/javascript` and `<script src>`-linked from `website.scripts` so the imported
  * site stays interactive. @security Foreign script execution is a deliberate, owner-only import choice
  * (the cornerstone "no foreign scripts" rule is relaxed ONLY for these self-hosted refs); preview runs
- * sandboxed and the published site is the owner's own origin. Bundled into `_assets/<id>/<file>`.
+ * sandboxed and the published site is the owner's own origin. Bundled into a flat `_assets/` dir.
  */
 export const ScriptAssetSchema = z.object({
   kind: z.literal('script'),
   ...baseShape,
   /** On-disk stored file name (e.g. `script.js`). */
   storedName: StoredFileNameSchema,
-  /** Root-relative URL of the inline-served script. */
+  /** Root-relative URL of the inline-served script (flat `<id>-<name>` or legacy `<id>/<name>`). */
   url: z
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.js$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.js$/),
 });
 export type ScriptAsset = z.infer<typeof ScriptAssetSchema>;
 

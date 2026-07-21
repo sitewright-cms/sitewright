@@ -59,12 +59,12 @@ describe('fonts as media assets', () => {
     const item = res.json().item;
     expect(item).toMatchObject({ kind: 'font', family: 'Boombox', fallback: 'serif', source: 'local', folder: 'Brand' });
     expect(item.files).toEqual([{ weight: 700, style: 'italic', format: 'woff2', file: 'boombox-700-italic.woff2' }]);
-    expect(item.url).toBe(`/media/${slug}/${item.id}/boombox-700-italic.woff2`);
+    expect(item.url).toBe(`/media/${slug}/${item.id}-boombox-700-italic.woff2`);
 
     // It appears in the media library (filterable to fonts) + serves INLINE with CORS.
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } });
     expect((list.json().items as Array<{ kind: string }>).some((a) => a.kind === 'font')).toBe(true);
-    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}/boombox-700-italic.woff2` });
+    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}-boombox-700-italic.woff2` });
     expect(serve.statusCode).toBe(200);
     expect(serve.headers['content-type']).toBe('font/woff2');
     expect(serve.headers['x-content-type-options']).toBe('nosniff');
@@ -92,7 +92,7 @@ describe('fonts as media assets', () => {
     const item = res.json().item;
     expect(item).toMatchObject({ kind: 'font', family: 'Inter', source: 'google', files: [{ weight: 400, format: 'woff2', file: 'inter-400.woff2' }] });
     // The downloaded woff2 is self-hosted: serve it from the media route.
-    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}/inter-400.woff2` });
+    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}-inter-400.woff2` });
     expect(serve.statusCode).toBe(200);
     expect(serve.rawPayload.toString()).toBe('INTER400');
   });

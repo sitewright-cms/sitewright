@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { FontAssetSchema, type FontAsset } from '@sitewright/schema';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
 import type { MediaStorage } from '../media/storage.js';
+import { mintAssetId } from '../media/mint-id.js';
 import { FONT_EXT, type FontFormat } from './upload.js';
 
 /** Slugify a font family for the stored filename: `Playfair Display` → `playfair-display`. */
@@ -29,8 +29,8 @@ export interface CreateFontAssetInput {
 }
 
 /**
- * Stores a self-hosted font family as a `kind:'font'` media asset: each face under
- * `<projectSlug>/<assetId>/<family-slug>-<weight>[-italic].<ext>`, plus the asset record. Shared by
+ * Stores a self-hosted font family as a `kind:'font'` media asset: each face stored flat as
+ * `<projectSlug>/<assetId>-<family-slug>-<weight>[-italic].<ext>`, plus the asset record. Shared by
  * the upload + Google-select routes and the demo seed. Served INLINE so `@font-face` can load it;
  * bundled into the published artifact like any media (zero font-CDN references).
  */
@@ -41,7 +41,7 @@ export async function createFontAsset(
   projectSlug: string,
   input: CreateFontAssetInput,
 ): Promise<FontAsset> {
-  const assetId = randomUUID();
+  const assetId = await mintAssetId(contentRepo, ctx);
   const slug = familySlug(input.family);
   try {
     const files: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
@@ -62,7 +62,7 @@ export async function createFontAsset(
       fallback: input.fallback,
       source: input.source,
       files,
-      url: `/media/${projectSlug}/${assetId}/${files[0]!.file}`,
+      url: `/media/${projectSlug}/${assetId}-${files[0]!.file}`,
     });
     return (await contentRepo.put(ctx, 'media', assetId, asset)) as FontAsset;
   } catch (err) {

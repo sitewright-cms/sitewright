@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { ASSET_ID_LEN, isShortAssetId } from '../id.js';
+
+export { isShortAssetId };
 
 /**
  * Build-time FLAT asset aliasing for the published artifact.
@@ -19,13 +22,8 @@ import { createHash } from 'node:crypto';
  */
 
 const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-/** The default alias length. Astronomically collision-safe within a single project's asset set. */
-export const ALIAS_LEN = 6;
-
-/** True if `id` is already a short flat asset id (a migrated / natively-short id) — used verbatim. */
-export function isShortAssetId(id: string): boolean {
-  return id.length === ALIAS_LEN && /^[0-9A-Za-z]+$/.test(id);
-}
+/** The alias length — the same 6 chars as a short asset id (`ASSET_ID_LEN`), so a migrated id is used verbatim. */
+export const ALIAS_LEN = ASSET_ID_LEN;
 
 /** The first `len` base62 chars of `sha256(id)`. Deterministic; not a security token (bias is fine). */
 function hashAlias(id: string, len: number): string {

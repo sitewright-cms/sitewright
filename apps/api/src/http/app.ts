@@ -1,9 +1,10 @@
-import { randomUUID, timingSafeEqual, createHmac, createHash } from 'node:crypto';
+import { timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { newId } from '../id.js';
+import { newId, isShortAssetId } from '../id.js';
+import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
 import { sql } from 'drizzle-orm';
 import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
@@ -613,7 +614,12 @@ interface PreviewShell {
  *  system fonts). Pure — the caller loads media via its in-scope `contentRepo`. The url is root-absolute so
  *  it resolves inside the opaque-origin sandboxed preview iframe. */
 function fontMediaShell(media: readonly MediaAsset[], slug: string): Pick<PreviewShell, 'media' | 'mediaUrl'> {
-  return { media: media.filter((m) => m.kind === 'font'), mediaUrl: (a, f) => `/media/${slug}/${a.id}/${f}` };
+  // Per-face url in the shape matching the asset's id: flat `<id>-<face>` for short (new) ids, legacy
+  // `<id>/<face>` for un-migrated uuid fonts — so it survives the legacy routes' removal in the migration.
+  return {
+    media: media.filter((m) => m.kind === 'font'),
+    mediaUrl: (a, f) => (isShortAssetId(a.id) ? `/media/${slug}/${a.id}-${f}` : `/media/${slug}/${a.id}/${f}`),
+  };
 }
 
 /**
@@ -3240,6 +3246,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (mediaStorage) {
     const storage = mediaStorage;
 
+    // Mint a fresh SHORT (flat-layout) media asset id, unique within the project (see mint-id.ts).
+    const mintAssetId = (ctx: ProjectContext): Promise<string> => mintUniqueAssetId(contentRepo, ctx);
+
+    // Strip the on-disk `<id>-` prefix off a stored name back to its LOGICAL form (what the DB
+    // `original`/`storedName` records; the serve route re-adds the prefix for the flat layout).
+    const logicalStoredName = (storedName: string, assetId: string): string =>
+      storedName.startsWith(`${assetId}-`) ? storedName.slice(assetId.length + 1) : storedName;
+
+    // Public media-record resolver for the FLAT delivery route (`/media/<slug>/<id>-<name>`): maps
+    // (slug, short id) → the asset record so the route dispatches on its AUTHORITATIVE `kind` — an
+    // imported `kind:'script'` .js serves inline, but a raw-uploaded (`kind:'file'`) .js of the same
+    // extension serves download-only. A bounded, short-TTL cache keeps the public serve path off a DB
+    // round trip per request; a stale entry after a delete degrades to a 404 (the file is gone too),
+    // and an SVG overwrite keeps the same kind/name so the cached record stays valid.
+    const MEDIA_RECORD_TTL_MS = 60_000;
+    const MEDIA_RECORD_CACHE_MAX = 4000;
+    const MEDIA_SERVE_USER = '__media_serve__';
+    const mediaRecordCache = new Map<string, { at: number; asset: MediaAsset | null }>();
+    const resolvePublicMediaAsset = async (projectSlug: string, assetId: string): Promise<MediaAsset | null> => {
+      const key = `${projectSlug}/${assetId}`;
+      const hit = mediaRecordCache.get(key);
+      if (hit && Date.now() - hit.at < MEDIA_RECORD_TTL_MS) return hit.asset;
+      let asset: MediaAsset | null = null;
+      try {
+        const project = await projects.getBySlug(projectSlug);
+        const ctx = { userId: MEDIA_SERVE_USER, projectId: project.id, role: 'owner' as const };
+        asset = (await contentRepo.get(ctx, 'media', assetId)) as MediaAsset;
+      } catch {
+        asset = null;
+      }
+      if (mediaRecordCache.size >= MEDIA_RECORD_CACHE_MAX) mediaRecordCache.clear();
+      mediaRecordCache.set(key, { at: Date.now(), asset });
+      return asset;
+    };
+
     // Optimize a raw image buffer (AVIF/WebP/LQIP), store the binaries, and record
     // the tenant-scoped metadata. Shared by the upload route AND the stock import.
     async function createMediaAsset(
@@ -3249,7 +3290,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
       storeOpts?: { cap?: number },
     ): Promise<ImageAsset> {
-      const assetId = randomUUID();
+      const assetId = await mintAssetId(ctx);
       const { assetDir, inputPath } = await storage.stageUpload(projectSlug, assetId, buffer);
       try {
         // Store the retained ORIGINAL. Cap precedence: an explicit caller cap (the importer's 2400)
@@ -3263,7 +3304,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             | undefined;
           cap = settings?.website?.imageUploadCap;
         }
-        const storedName = MediaStorage.safeStoredName(meta.filename || 'image');
+        // Prefix the stored file with `<id>-` so the optimized original lands FLAT as
+        // `<slug>/<id>-<name>` in the shared project dir; `logicalStoredName` strips it back for the DB.
+        const storedName = `${assetId}-${MediaStorage.safeStoredName(meta.filename || 'image')}`;
         const stored = await withOptimizeSlot(() =>
           storeOriginal(inputPath, assetDir, { storedName, ...(cap ? { cap } : {}) }),
         );
@@ -3280,8 +3323,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           placeholder: stored.placeholder,
           hasAlpha: stored.hasAlpha,
           animated: stored.animated,
-          original: stored.storedName,
-          url: `/media/${projectSlug}/${assetId}/${stored.storedName}`,
+          original: logicalStoredName(stored.storedName, assetId),
+          url: `/media/${projectSlug}/${stored.storedName}`,
           ...(meta.alt ? { alt: meta.alt } : {}),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
@@ -3310,7 +3353,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const clean = sanitizeSvg(svgText);
       if (!clean) return null;
       const buffer = Buffer.from(clean, 'utf8');
-      const assetId = randomUUID();
+      const assetId = await mintAssetId(ctx);
       // Force a `.svg` stored name regardless of the source filename's extension.
       const base = MediaStorage.safeStoredName(meta.filename || 'image').replace(/\.[^.]+$/, '');
       const storedName = `${base}.svg`;
@@ -3331,7 +3374,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // frame-loop semantics (which drive animated-thumbnail generation), and SVG has none.
           animated: false,
           original: storedName,
-          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
           ...(meta.alt ? { alt: meta.alt } : {}),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
@@ -3350,7 +3393,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       buffer: Buffer,
       meta: { filename: string; mimetype: string; folder?: string },
     ): Promise<FileAsset> {
-      const assetId = randomUUID();
+      const assetId = await mintAssetId(ctx);
       const storedName = MediaStorage.safeStoredName(meta.filename || 'file');
       try {
         await storage.storeFile(projectSlug, assetId, storedName, buffer);
@@ -3362,7 +3405,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bytes: buffer.length,
           contentType: meta.mimetype || 'application/octet-stream',
           storedName,
-          url: `/media/${projectSlug}/${assetId}/file/${storedName}`,
+          // Flat URL — the serve route serves this download-only by looking up kind:'file'.
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as FileAsset;
       } catch (err) {
@@ -3374,7 +3418,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Store an imported site's CSS as one inline-served `.css` file (kind 'stylesheet') so the importer
     // can `<link>` it instead of inlining the bulk CSS into each page's editable source.
     async function createStylesheetAsset(ctx: ProjectContext, projectSlug: string, css: string): Promise<StylesheetAsset> {
-      const assetId = randomUUID();
+      const assetId = await mintAssetId(ctx);
       const storedName = 'styles.css';
       const buffer = Buffer.from(css, 'utf8');
       try {
@@ -3386,7 +3430,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           folder: '',
           bytes: buffer.length,
           storedName,
-          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as StylesheetAsset;
       } catch (err) {
@@ -3399,7 +3443,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // `<script src>`-link it. @security Owner-only import; the cornerstone no-foreign-scripts rule is
     // relaxed ONLY for these self-hosted refs (see ScriptAssetSchema); preview is sandboxed.
     async function createScriptAsset(ctx: ProjectContext, projectSlug: string, js: string): Promise<ScriptAsset> {
-      const assetId = randomUUID();
+      const assetId = await mintAssetId(ctx);
       const storedName = 'script.js';
       const buffer = Buffer.from(js, 'utf8');
       try {
@@ -3411,7 +3455,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           folder: '',
           bytes: buffer.length,
           storedName,
-          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ScriptAsset;
       } catch (err) {
@@ -3711,6 +3755,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // SOFT-delete → the Recycle Bin: the row + binary are RETAINED so it can be restored; a 90-day
         // reaper purges older entries. This is what makes an autonomous agent media delete recoverable.
         await contentRepo.softDeleteMedia(ctx, req.params.id);
+        mediaRecordCache.clear(); // drop any cached serve record for this project's media
         return reply.code(204).send();
       },
     );
@@ -3724,6 +3769,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/restore', { config: rl(30) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       await contentRepo.restoreMedia(ctx, req.params.id);
+      mediaRecordCache.clear();
       return reply.code(204).send();
     });
 
@@ -3734,6 +3780,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // recovery window can never be skipped. A leaked binary (if fs removal fails) is harmless +
       // GC-able; a leaked row would block re-creating the same asset id.
       await contentRepo.purgeMedia(ctx, req.params.id);
+      mediaRecordCache.clear(); // the id is now free to be re-minted — never serve its stale record/kind
       try {
         await storage.remove(project.slug, req.params.id);
       } catch (err) {
@@ -3765,18 +3812,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       asset: MediaAsset,
       folder: string,
     ): Promise<MediaAsset> => {
-      // A new asset id keeps FULL UUID entropy — it is public (in the `/media/<slug>/<assetId>/` URL),
-      // so it must stay unguessable (unlike the short internal `newId()` used for record PKs).
-      const newAssetId = randomUUID();
-      await storage.copyAsset(projectSlug, asset.id, newAssetId);
-      const url =
-        asset.kind === 'image'
-          ? `/media/${projectSlug}/${newAssetId}/${asset.original}`
-          : asset.kind === 'font'
-            ? `/media/${projectSlug}/${newAssetId}/${asset.files[0]!.file}`
-            : `/media/${projectSlug}/${newAssetId}/file/${asset.storedName}`;
-      const copy = { ...asset, id: newAssetId, folder, url } as MediaAsset;
-      return (await contentRepo.put(ctx, 'media', newAssetId, copy)) as MediaAsset;
+      // A fresh short (flat) id, unique within the project. copyAsset writes the source's binaries
+      // under the new `<id>-<file>` names; the url is the flat delivery shape.
+      const dupId = await mintAssetId(ctx);
+      await storage.copyAsset(projectSlug, asset.id, dupId);
+      const logical =
+        asset.kind === 'image' ? asset.original : asset.kind === 'font' ? asset.files[0]!.file : asset.storedName;
+      const url = `/media/${projectSlug}/${dupId}-${logical}`;
+      const copy = { ...asset, id: dupId, folder, url } as MediaAsset;
+      return (await contentRepo.put(ctx, 'media', dupId, copy)) as MediaAsset;
     };
 
     const FolderPathBody = z.object({ path: MediaFolderSchema.refine((v) => v !== '', 'path is required') });
@@ -3868,9 +3912,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
       const folder = body.data.path;
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      let softDeleted = false;
       for (const a of assets) {
-        if (isUnderFolder(a.folder, folder)) await contentRepo.softDeleteMedia(ctx, a.id);
+        if (isUnderFolder(a.folder, folder)) {
+          await contentRepo.softDeleteMedia(ctx, a.id);
+          softDeleted = true;
+        }
       }
+      if (softDeleted) mediaRecordCache.clear();
       const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
       for (const f of folders) {
         if (isUnderFolder(f.path, folder)) await contentRepo.remove(ctx, 'mediafolder', f.id);
@@ -4159,6 +4208,129 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           .send(bytes);
       },
     );
+
+    // FLAT public serving: `/media/<slug>/<id>-<name>` (the new short-id, single-folder scheme). The
+    // legacy `/media/<slug>/<id>/…` routes above still serve un-migrated (uuid) assets. This route
+    // dispatches on the asset's AUTHORITATIVE `kind` (looked up + cached), NOT the file extension — so a
+    // raw-uploaded `.js`/`.svg`/`.html` (kind:'file') can never be served inline/executable; only a
+    // genuine imported `kind:'script'`/`'stylesheet'` or svg `kind:'image'` is. (Serving mirrors the
+    // legacy routes; it is intentionally self-contained and is removed with them in the migration PR.)
+    app.get<{
+      Params: { projectSlug: string; file: string };
+      Querystring: { size?: string; format?: string };
+    }>('/media/:projectSlug/:file', { config: rl(MEDIA_ASSET_RL_MAX) }, async (req, reply) => {
+      const { projectSlug, file } = req.params;
+      // `<id>-<name>`: the id is a fixed short base62 token (no hyphen), so the FIRST hyphen splits it.
+      const dash = file.indexOf('-');
+      if (dash <= 0) return reply.code(404).send({ error: 'not found' });
+      const assetId = file.slice(0, dash);
+      const name = file.slice(dash + 1);
+      if (!isShortAssetId(assetId) || !name || name.includes('/')) return reply.code(404).send({ error: 'not found' });
+      const asset = await resolvePublicMediaAsset(projectSlug, assetId);
+      if (!asset) return reply.code(404).send({ error: 'not found' });
+      const ext = (name.split('.').pop() ?? '').toLowerCase();
+      const read = (): Promise<Buffer | null> => storage.readStored(projectSlug, assetId, name).catch(() => null);
+      const CORS = (r: typeof reply): typeof reply =>
+        r
+          .header('cache-control', 'public, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
+          .header('access-control-allow-origin', '*')
+          .header('cross-origin-resource-policy', 'cross-origin');
+
+      if (asset.kind === 'font') {
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        return CORS(reply).type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2').send(bytes);
+      }
+      if (asset.kind === 'stylesheet') {
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        return CORS(reply).type('text/css; charset=utf-8').send(bytes);
+      }
+      if (asset.kind === 'script') {
+        // @security Inline foreign JS is served ONLY for a genuine imported `kind:'script'` (owner-only
+        // import; the published site is the owner's own origin; preview is sandboxed). A raw `.js` upload
+        // is `kind:'file'` and falls through to download-only below.
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        return CORS(reply).type('text/javascript; charset=utf-8').send(bytes);
+      }
+      if (asset.kind === 'file') {
+        // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can
+        // never render/execute on this origin — EXCEPT a PDF, served inline + same-origin-frameable so a
+        // cloned modal <iframe> can show it (browser's sandboxed viewer; nosniff + explicit type).
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        if (ext === 'pdf') {
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', PDF_MEDIA_CSP)
+            .header('x-frame-options', 'SAMEORIGIN')
+            .type('application/pdf')
+            .send(bytes);
+        }
+        return reply
+          .header('cache-control', 'public, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
+          // `name` is STORED_FILE-validated (no quotes/CRLF/Unicode) — safe in the header.
+          .header('content-disposition', `attachment; filename="${name}"`)
+          .type('application/octet-stream')
+          .send(bytes);
+      }
+      // kind:'image'. An SVG (format:'svg') is served inline under a locked-down CSP + a revalidating
+      // ETag (it can be overwritten in place via the Studio, so its URL is mutable — never `immutable`).
+      if (asset.format === 'svg' || isSvgFile(name)) {
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        const etag = `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
+        const svgHeaders = (r: typeof reply): typeof reply =>
+          r
+            .header('etag', etag)
+            .header('cache-control', 'no-cache')
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+            .header('access-control-allow-origin', '*')
+            .header('cross-origin-resource-policy', 'cross-origin');
+        const inmRaw = req.headers['if-none-match'];
+        const inm = Array.isArray(inmRaw) ? inmRaw.join(',') : inmRaw;
+        if (typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag)) {
+          return svgHeaders(reply).code(304).send();
+        }
+        return svgHeaders(reply).type('image/svg+xml; charset=utf-8').send(bytes);
+      }
+      // Raster image: `?size` (default xl) picks an on-demand thumbnail; `?size=original` serves the raw
+      // original inline; `?format=avif` opts into AVIF.
+      if (isThumbnailable(name)) {
+        const q = req.query;
+        if (q.size === 'original') {
+          const original = await read();
+          if (!original) return reply.code(404).send({ error: 'not found' });
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream')
+            .send(original);
+        }
+        const size: SizeToken = q.size && isSizeToken(q.size) ? q.size : DEFAULT_SIZE;
+        const format: ThumbFormat = q.format && isThumbFormat(q.format) ? q.format : 'webp';
+        let bytes: Buffer;
+        try {
+          bytes = await ensureThumb(projectSlug, assetId, name, size, format);
+        } catch (err) {
+          if ((err as { statusCode?: number }).statusCode === 503) {
+            return reply.code(503).header('retry-after', '2').send({ error: 'server busy' });
+          }
+          return reply.code(404).send({ error: 'not found' });
+        }
+        return reply
+          .header('cache-control', 'public, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
+          .type(format === 'avif' ? 'image/avif' : 'image/webp')
+          .send(bytes);
+      }
+      return reply.code(404).send({ error: 'not found' });
+    });
   }
 
   // Assembles the inputs a static build needs from the project's current DB content — shared by

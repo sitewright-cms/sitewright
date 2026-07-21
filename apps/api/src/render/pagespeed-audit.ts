@@ -42,6 +42,9 @@ export interface PagespeedFinding {
   score: number | null;
   /** Human-readable value, e.g. "Potential savings of 320 KiB" or "3 links". */
   displayValue?: string;
+  /** Lighthouse's explanation of WHAT the check means + how to fix it (markdown; the UI shows it as the
+   *  finding's actionable-advice tooltip). May carry a trailing "[Learn more](url)" the client can strip. */
+  description?: string;
 }
 
 export interface PagespeedAuditResult {
@@ -140,6 +143,7 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
         category: SCORE_KEY[cat],
         score: audit.score,
         displayValue: audit.displayValue || undefined,
+        description: audit.description || undefined,
       });
     }
   }

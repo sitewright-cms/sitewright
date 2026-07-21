@@ -232,7 +232,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95`}
+            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/95`}
           >
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3 dark:border-white/10">
               {headerLeft}

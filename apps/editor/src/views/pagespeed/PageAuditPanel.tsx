@@ -298,7 +298,7 @@ export function PageAuditPanel({
       onClick={() => setFormFactor(ff)}
       disabled={running}
       className={`waves-effect inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
-        formFactor === ff ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+        formFactor === ff ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100'
       }`}
     >
       <Icon className="h-4 w-4" /> {text}
@@ -318,7 +318,7 @@ export function PageAuditPanel({
               {seo.description || <span className="italic text-slate-400 dark:text-slate-500">No meta description — add one in Page settings for better search snippets.</span>}
             </p>
           </div>
-          <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 text-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-600">
+          <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
             {seo.image && imgOk ? (
               <img src={seo.image} alt="Social share thumbnail" className="h-full w-full object-cover" onError={() => setImgOk(false)} />
             ) : (
@@ -351,7 +351,7 @@ export function PageAuditPanel({
               <div
                 role="group"
                 aria-label="Audit device"
-                className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-xl"
+                className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
               >
                 {deviceToggle('mobile', Smartphone, 'Mobile')}
                 {deviceToggle('desktop', Monitor, 'Desktop')}

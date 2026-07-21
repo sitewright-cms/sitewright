@@ -197,7 +197,7 @@ export function SearchableSelect({
               ...(pos.above ? { bottom: window.innerHeight - pos.top + 4 } : { top: pos.top + 4 }),
               zIndex: 1000,
             }}
-            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900"
+            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-800"
           >
             <div className="border-b border-slate-100 p-2 dark:border-white/10">
               <SearchField

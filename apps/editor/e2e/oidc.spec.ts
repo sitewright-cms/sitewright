@@ -29,6 +29,8 @@ test('admin configures an OIDC provider; the login screen offers it', async ({ p
   await page.getByRole('menuitem', { name: 'System Settings' }).click();
 
   const modal = page.getByRole('dialog', { name: 'System settings' });
+  // Single sign-on (OIDC) is grouped under the "Ops" tab.
+  await modal.getByRole('tab', { name: 'Ops' }).click();
   await modal.getByRole('button', { name: 'Add provider' }).click();
   await modal.getByLabel('Provider 1 id').fill('e2esso');
   await modal.getByLabel('Provider 1 label').fill('E2E SSO');

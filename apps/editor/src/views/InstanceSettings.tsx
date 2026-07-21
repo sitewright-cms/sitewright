@@ -29,6 +29,9 @@ import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
 import { SectionHelp } from './ui/SectionHelp';
 import { Tabs } from './ui/Tabs';
+import { LocalePickerModal } from './i18n/LocalePickerModal';
+import { localeFlag, localeLabel } from './i18n/locale-catalog';
+import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 
 /** System-settings sections grouped into tabs (declared before the component so the id union is stable). */
 const SETTINGS_TABS = [
@@ -40,9 +43,6 @@ const SETTINGS_TABS = [
   { id: 'agents', label: 'Agents' },
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
-import { LocalePickerModal } from './i18n/LocalePickerModal';
-import { localeFlag, localeLabel } from './i18n/locale-catalog';
-import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },

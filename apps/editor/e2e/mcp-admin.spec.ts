@@ -42,16 +42,22 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   const modal = page.getByRole('dialog', { name: 'System settings' });
   await expect(modal).toBeVisible();
 
+  // Settings are grouped into tabs: agent instructions live under "AI Assistant"; the MCP endpoint
+  // catalog + connect guide are the info-only "Agents" tab.
+  await modal.getByRole('tab', { name: 'AI Assistant' }).click();
   // Agent-instructions textarea is pre-filled with the built-in default.
   const instr = modal.getByLabel('Agent instructions');
   await expect(instr).toBeVisible();
   await expect(instr).toHaveValue(/CODE-FIRST/);
 
   // The endpoint list shows registered MCP tools; the connect guide shows the CLI bridge command.
+  await modal.getByRole('tab', { name: 'Agents' }).click();
   await expect(modal.getByText('MCP endpoints')).toBeVisible();
   await expect(modal.getByText('put_page', { exact: true })).toBeVisible();
   await expect(modal.getByText('Connect an agent')).toBeVisible();
   await expect(modal.getByText(/sitewright mcp --url/)).toBeVisible();
+  // Back to the AI Assistant tab to edit + save the instructions (the Save row is hidden on Agents).
+  await modal.getByRole('tab', { name: 'AI Assistant' }).click();
 
   // Edit + save an override. The save response re-hydrates the textarea from the STORED value, so a
   // value that survives the round-trip proves it persisted. (Cross-reload persistence + the override

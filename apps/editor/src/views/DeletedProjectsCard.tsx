@@ -9,7 +9,8 @@ const solidDanger =
  * The instance-admin "Deleted projects" surface: every soft-deleted project, each with RESTORE (un-delete)
  * and DELETE (permanent reap — rows, files, and any orphaned client accounts), plus a "remove all" sweep.
  * The permanent actions take a simple inline confirm (the destructive type-to-confirm gate lives on the
- * in-app delete, not here). Self-contained — it loads its own data and is not part of the settings form.
+ * in-app delete, not here). Self-contained — it loads its own data; it renders inside the System Settings
+ * form (the "Ops" tab) but every button is `type="button"`, so it never triggers the settings-save submit.
  */
 export function DeletedProjectsCard() {
   const [items, setItems] = useState<DeletedProject[] | null>(null);

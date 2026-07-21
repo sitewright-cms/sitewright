@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Upgrade-path guard** — the app stamps the data-migration generation it has applied (in SQLite's
+  `PRAGMA user_version`) and, on boot, refuses to start if the instance is *older* than the oldest
+  one-time data migration this build still ships (i.e. a required migration was removed in a newer
+  release and jumping straight here would silently skip it). Instead of half-migrating, it leaves the
+  data untouched and serves a clear maintenance page — in the container logs (`[sitewright/upgrade]`)
+  **and** in the browser (a 503 page explaining the stepped-upgrade path). No-op today (nothing has
+  been removed); it only ever engages once an old migration is pruned in a future release.
+
 ### Changed
 
 - **Short media IDs + single-folder `/media` layout** — a newly-uploaded media asset now gets a short

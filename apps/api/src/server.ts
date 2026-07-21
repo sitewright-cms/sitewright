@@ -9,6 +9,8 @@ import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { backupBeforeMigrations, snapshotDatabase } from './db/backup.js';
+import { checkUpgradePath, stampDataMigrationVersion } from './db/upgrade-guard.js';
+import { buildUpgradeBlockedApp } from './http/upgrade-blocked.js';
 import { InstanceSettingsRepository } from './repo/instance-settings.js';
 import { runShutdown } from './shutdown.js';
 import { createReleaseChecker } from './version/checker.js';
@@ -177,6 +179,21 @@ await mkdir(cfg.previewRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(cfg.sourceRefRoot, { recursive: true });
 
+// Upgrade-path guard: refuse to boot (leaving data untouched) if this instance is OLDER than the oldest
+// data migration this build still ships — i.e. a required one-time migration was removed in a newer
+// build and jumping straight here would silently skip it. No-op while all data migrations are present
+// (MIN_UPGRADE_FROM=0). When blocked we DON'T exit — we serve a maintenance page (console + browser)
+// on the same port so the operator sees exactly what to do, and we never run the destructive migrations.
+const upgradeGuard = await checkUpgradePath(db);
+if (upgradeGuard.blocked) {
+  process.stderr.write(`[sitewright/upgrade] BLOCKED — refusing to boot: ${upgradeGuard.message}\n`);
+  const blockedApp = buildUpgradeBlockedApp(upgradeGuard.message, cfg.version);
+  await blockedApp.listen({ host: '0.0.0.0', port: cfg.port });
+  process.stdout.write(`[sitewright/api] UPGRADE BLOCKED — serving the maintenance page on :${cfg.port}\n`);
+  // Serve the error indefinitely; never fall through to the real app / migrations / listen below.
+  await new Promise<never>(() => {});
+}
+
 const app = await createApp({
   db,
   // Storage introspection (DB + backups sizes, purge action) needs the data dir + DB URL.
@@ -257,20 +274,25 @@ try {
   );
 }
 
-// Idempotent content migration: bring any legacy HYPHENATED dataset slugs (locale twins like `services-de`,
-// or user/agent multi-word slugs like `faq-passengers`) onto the underscore identifier convention so their
-// `dataset.<slug>` loops resolve. A no-op once migrated; never block boot if it fails.
+// Idempotent boot DATA migrations (each detects legacy data by shape + no-ops once done). We track
+// which SUCCEEDED so we stamp only the highest CONTIGUOUS generation actually applied — a failed
+// migration must NOT be recorded as done, else a future build that removed it would sail through the
+// upgrade guard on a false stamp instead of blocking. Each is best-effort (a failure warns + continues:
+// the dual-support paths keep legacy data working, and the next boot retries).
+let datasetOk = false;
+let mediaOk = false;
+
+// gen 1 — legacy HYPHENATED dataset slugs (locale twins like `services-de`, multi-word user slugs) →
+// underscore identifiers so their `dataset.<slug>` loops resolve.
 try {
   await migrateDatasetSlugsToUnderscore(db, (m) => process.stderr.write(`[sitewright/migrate] ${m}\n`));
+  datasetOk = true;
 } catch (err) {
   process.stderr.write(`[sitewright/migrate] WARNING: dataset-slug migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
-// Idempotent DATA migration: convert EXISTING media assets to the flat short-id scheme (single-folder
-// `/media/<slug>/<id>-<name>`), rewriting every reference across live content + revision history and
-// moving on-disk binaries. A no-op once migrated. Snapshots the DB before its first rewrite so a bad
-// run is recoverable. Never blocks boot if it fails (the dual-support serve path keeps legacy assets
-// working, so a failed migration degrades to "not yet migrated", not "broken").
+// gen 2 — convert EXISTING media assets to the flat short-id scheme, rewriting every reference across
+// live content + revision history and moving on-disk binaries. Snapshots the DB before its first rewrite.
 try {
   await migrateMediaToFlatShortId(db, new MediaStorage(cfg.mediaRoot), {
     snapshot: async () => {
@@ -285,8 +307,20 @@ try {
     },
     log: (m) => process.stderr.write(`[sitewright/migrate] ${m}\n`),
   });
+  mediaOk = true;
 } catch (err) {
   process.stderr.write(`[sitewright/migrate] WARNING: media-flat migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
+}
+
+// Stamp the highest CONTIGUOUS generation that succeeded this boot (SQLite PRAGMA user_version, monotonic
+// — it never lowers an already-higher stamp). gen 1 failing pins the stamp there regardless of gen 2, so
+// a since-removed migration can never be falsely recorded as applied. The upgrade guard reads it on future
+// boots. Best-effort — a stamp failure must not block boot (a future upgrade just sees a lower generation).
+const reachedGeneration = datasetOk ? (mediaOk ? 2 : 1) : 0;
+try {
+  await stampDataMigrationVersion(db, reachedGeneration);
+} catch (err) {
+  process.stderr.write(`[sitewright/migrate] WARNING: could not stamp data-migration version — ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
 // Refuse to boot into a permanently-locked state: registration is CLOSED by default (self-signup is an

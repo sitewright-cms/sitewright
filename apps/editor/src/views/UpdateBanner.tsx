@@ -45,7 +45,7 @@ export function UpdateBanner() {
   // The stale-tab reload bar takes precedence (this tab's code is out of date).
   if (staleBuild) {
     return (
-      <div className="flex items-center justify-center gap-3 border-b border-indigo-200/70 bg-indigo-100/80 px-4 py-2 text-sm text-indigo-900 backdrop-blur-xl">
+      <div className="flex items-center justify-center gap-3 border-b border-indigo-200/70 dark:border-indigo-500/20 bg-indigo-100/80 dark:bg-indigo-500/15 px-4 py-2 text-sm text-indigo-900 dark:text-indigo-200 backdrop-blur-xl">
         <span>A new version of the editor is available.</span>
         <button
           onClick={() => window.location.reload()}
@@ -60,7 +60,7 @@ export function UpdateBanner() {
   if (!info || dismissed) return null;
 
   return (
-    <div className="flex items-center justify-center gap-3 border-b border-amber-200/60 bg-amber-100/70 px-4 py-2 text-sm text-amber-900 backdrop-blur-xl">
+    <div className="flex items-center justify-center gap-3 border-b border-amber-200/60 dark:border-amber-500/20 bg-amber-100/70 dark:bg-amber-500/15 px-4 py-2 text-sm text-amber-900 dark:text-amber-200 backdrop-blur-xl">
       <span>
         A new Sitewright release ({info.latest}) is available.{' '}
         {info.url && (
@@ -71,7 +71,7 @@ export function UpdateBanner() {
       </span>
       <button
         aria-label="Dismiss update notice"
-        className="rounded px-1 text-amber-700 hover:text-amber-950"
+        className="rounded px-1 text-amber-700 dark:text-amber-400 hover:text-amber-950"
         onClick={() => setDismissed(true)}
       >
         <X className="h-4 w-4" />

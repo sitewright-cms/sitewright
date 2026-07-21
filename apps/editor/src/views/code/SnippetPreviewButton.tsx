@@ -55,16 +55,16 @@ function PreviewCard({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       style={{ position: 'fixed', top, left, width: CARD_W, height: CARD_H, zIndex: 80 }}
-      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+      className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-2.5" style={{ height: HEADER_H }}>
-        <span className="truncate font-mono text-[11px] font-medium text-slate-500">{label}</span>
-        <button type="button" aria-label="Close preview" onClick={onClose} className="text-slate-400 transition hover:text-slate-700">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5" style={{ height: HEADER_H }}>
+        <span className="truncate font-mono text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
+        <button type="button" aria-label="Close preview" onClick={onClose} className="text-slate-400 dark:text-slate-500 transition hover:text-slate-700 dark:hover:text-slate-200">
           <X className="h-4 w-4" />
         </button>
       </div>
       <div className="relative" style={{ height: CARD_H - HEADER_H }}>
-        {!loaded && <div className="absolute inset-0 grid place-items-center text-xs text-slate-400">Rendering…</div>}
+        {!loaded && <div className="absolute inset-0 grid place-items-center text-xs text-slate-400 dark:text-slate-500">Rendering…</div>}
         {/* The server already serves this under `CSP: sandbox allow-scripts` (opaque origin); the
             iframe `sandbox` attribute is belt-and-suspenders — scripts run, but it can't reach the
             editor's origin/cookies. */}
@@ -129,7 +129,7 @@ export function SnippetPreviewButton({ url, label }: { url: string; label: strin
         onFocus={keepOpen}
         onBlur={scheduleClose}
         onClick={() => (open ? setOpen(false) : keepOpen())}
-        className="shrink-0 rounded-md px-1.5 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
+        className="shrink-0 rounded-md px-1.5 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400"
       >
         <EyeIcon />
       </button>

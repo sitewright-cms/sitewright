@@ -36,7 +36,7 @@ export function DuplicateProjectModal({ project, onClose, onDuplicated }: Duplic
   return (
     <Modal title="Duplicate project" onClose={onClose} size="md">
       <div className="space-y-4 p-1">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-white/5 p-3 text-sm text-slate-700 dark:text-slate-200">
           <p className="font-semibold">Create an independent copy of “{project.name}”.</p>
           <p className="mt-1.5">
             The copy gets its own slug and all of the pages, content, datasets and media. Deploy
@@ -44,7 +44,7 @@ export function DuplicateProjectModal({ project, onClose, onDuplicated }: Duplic
           </p>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-rose-600">
+          <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
             {error}
           </p>
         )}

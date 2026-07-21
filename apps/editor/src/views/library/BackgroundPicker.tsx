@@ -175,9 +175,9 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
       <div className="flex h-full min-h-0 gap-4 p-4">
         {/* LEFT — single-column scrollable preset cards */}
         <div className="flex w-[280px] min-h-0 shrink-0 flex-col">
-          <p className="mb-2 shrink-0 text-xs text-slate-500">Pick a background. Themed live by your color scheme →</p>
+          <p className="mb-2 shrink-0 text-xs text-slate-500 dark:text-slate-400">Pick a background. Themed live by your color scheme →</p>
           {noGl ? (
-            <p className="rounded-lg bg-rose-50 p-3 text-xs text-rose-600">WebGL unavailable — previews can’t render, but the markup still works on the published site.</p>
+            <p className="rounded-lg bg-rose-50 dark:bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400">WebGL unavailable — previews can’t render, but the markup still works on the published site.</p>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
               {SHADER_BG_PRESETS.map((p) => (
@@ -207,36 +207,36 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
             {/* knobs */}
             <div className="flex flex-col gap-2">
               <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600">Speed</span>
+                <span className="text-slate-600 dark:text-slate-300">Speed</span>
                 <input type="range" min={0} max={4} step={0.1} value={speed} onChange={(e) => setSpeed(+e.target.value)} className="w-40" />
               </label>
               <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600">Intensity</span>
+                <span className="text-slate-600 dark:text-slate-300">Intensity</span>
                 <input type="range" min={0} max={1} step={0.05} value={intensity} onChange={(e) => setIntensity(+e.target.value)} className="w-40" />
               </label>
               <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600">Angle</span>
+                <span className="text-slate-600 dark:text-slate-300">Angle</span>
                 <input type="range" min={-360} max={360} step={1} value={angle} onChange={(e) => setAngle(+e.target.value)} className="w-40" />
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
-                <span className="text-slate-600">Pointer-interactive (morphs on hover)</span>
+                <span className="text-slate-600 dark:text-slate-300">Pointer-interactive (morphs on hover)</span>
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
-                <span className="text-slate-600" title="A scrim above the background, below your text, for legibility.">Add text-legibility overlay</span>
+                <span className="text-slate-600 dark:text-slate-300" title="A scrim above the background, below your text, for legibility.">Add text-legibility overlay</span>
               </label>
             </div>
 
             {/* color scheme */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Color scheme</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Color scheme</span>
                 <button
                   type="button"
                   onClick={() => setColorMode('ci')}
                   aria-pressed={colorMode === 'ci'}
-                  className={`rounded-md px-2 py-0.5 text-[11px] transition ${colorMode === 'ci' ? 'bg-indigo-100 font-semibold text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                  className={`rounded-md px-2 py-0.5 text-[11px] transition ${colorMode === 'ci' ? 'bg-indigo-100 dark:bg-indigo-500/15 font-semibold text-indigo-700 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'}`}
                   title="Use the project's corporate-identity colors (no data-colors attribute)"
                 >
                   CI colors
@@ -249,22 +249,22 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
                     type="button"
                     title={p.name}
                     onClick={() => applyPalette(p.colors)}
-                    className="h-6 w-9 rounded border border-slate-200 transition hover:scale-105"
+                    className="h-6 w-9 rounded border border-slate-200 dark:border-slate-700 transition hover:scale-105"
                     style={{ background: `linear-gradient(135deg, ${p.colors[0]}, ${p.colors[1]} 55%, ${p.colors[2]})` }}
                   />
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                <input type="color" value={colA} onChange={(e) => setCustomColor(setColA, e.target.value)} aria-label="Brand 1" className="h-8 w-9 rounded border border-slate-200" />
-                <input type="color" value={colB} onChange={(e) => setCustomColor(setColB, e.target.value)} aria-label="Brand 2" className="h-8 w-9 rounded border border-slate-200" />
-                <input type="color" value={colC} onChange={(e) => setCustomColor(setColC, e.target.value)} aria-label="Accent / ink" className="h-8 w-9 rounded border border-slate-200" />
-                <span className="text-[11px] text-slate-400">{colorMode === 'custom' ? 'custom — saved as data-colors' : 'using your CI colors'}</span>
+                <input type="color" value={colA} onChange={(e) => setCustomColor(setColA, e.target.value)} aria-label="Brand 1" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
+                <input type="color" value={colB} onChange={(e) => setCustomColor(setColB, e.target.value)} aria-label="Brand 2" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
+                <input type="color" value={colC} onChange={(e) => setCustomColor(setColC, e.target.value)} aria-label="Accent / ink" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">{colorMode === 'custom' ? 'custom — saved as data-colors' : 'using your CI colors'}</span>
               </div>
             </div>
           </div>
 
           <div className="flex shrink-0 items-stretch gap-2">
-            <pre className="max-h-28 flex-1 overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+            <pre className="max-h-28 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
               <code>{markup}</code>
             </pre>
             <button onClick={() => copy(markup, 'shader-bg')} className={`${ghostButton} shrink-0 self-start px-4 py-2 text-sm font-semibold`}>

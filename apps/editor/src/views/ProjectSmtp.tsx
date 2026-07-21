@@ -81,8 +81,8 @@ export function ProjectSmtp({ project }: { project: Project }) {
       open={open}
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="cursor-pointer text-sm font-bold text-slate-700">
-        Project SMTP <span className="font-normal text-slate-400">— for “Project SMTP” forms</span>
+      <summary className="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
+        Project SMTP <span className="font-normal text-slate-400 dark:text-slate-500">— for “Project SMTP” forms</span>
       </summary>
       <form onSubmit={save} className="mt-3 flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm">
@@ -91,11 +91,11 @@ export function ProjectSmtp({ project }: { project: Project }) {
         </label>
         {enabled && (
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Port
               <input
                 className={field}
@@ -111,11 +111,11 @@ export function ProjectSmtp({ project }: { project: Project }) {
                 required
               />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Username
               <input className={field} aria-label="SMTP username" value={user} onChange={(e) => setUser(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Password
               <input
                 className={field}
@@ -126,11 +126,11 @@ export function ProjectSmtp({ project }: { project: Project }) {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               From email
               <input className={field} aria-label="SMTP from email" type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} required />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               From name
               <input className={field} aria-label="SMTP from name" value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </label>
@@ -144,8 +144,8 @@ export function ProjectSmtp({ project }: { project: Project }) {
           <button type="submit" className={primaryButton}>
             Save SMTP
           </button>
-          {saved && <span className="text-sm text-green-600">Saved.</span>}
-          {error && <span className="text-sm text-red-600">{error}</span>}
+          {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
+          {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
         </div>
       </form>
     </details>

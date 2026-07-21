@@ -84,14 +84,14 @@ export function RevisionHistoryModal({ projectId, kind, entityId, dataset, label
   return (
     <Modal
       title="Revision history"
-      titleExtra={label ? <span className="text-sm font-normal text-slate-400">· {label}</span> : undefined}
+      titleExtra={label ? <span className="text-sm font-normal text-slate-400 dark:text-slate-500">· {label}</span> : undefined}
       size="lg"
       onClose={onClose}
     >
       {items === null ? (
-        <p className="px-2 py-10 text-center text-sm text-slate-400">Loading history…</p>
+        <p className="px-2 py-10 text-center text-sm text-slate-400 dark:text-slate-500">Loading history…</p>
       ) : items.length === 0 ? (
-        <p className="px-2 py-10 text-center text-sm text-slate-400">
+        <p className="px-2 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
           No history yet — nothing has been saved for this {kind} since revisions were enabled.
         </p>
       ) : (
@@ -104,20 +104,20 @@ export function RevisionHistoryModal({ projectId, kind, entityId, dataset, label
               <li key={r.id} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-slate-700" title={new Date(r.revisionAt).toLocaleString()}>
+                  <div className="truncate text-slate-700 dark:text-slate-200" title={new Date(r.revisionAt).toLocaleString()}>
                     <span className="font-medium">{authorLabel(r)}</span>
-                    <span className="text-slate-400"> · {when(r.revisionAt)}</span>
+                    <span className="text-slate-400 dark:text-slate-500"> · {when(r.revisionAt)}</span>
                     {isCurrent && (
-                      <span className="ml-2 rounded bg-indigo-100/80 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">current</span>
+                      <span className="ml-2 rounded bg-indigo-100/80 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">current</span>
                     )}
                   </div>
-                  {r.note && <div className="truncate text-xs text-slate-400">{r.note}</div>}
+                  {r.note && <div className="truncate text-xs text-slate-400 dark:text-slate-500">{r.note}</div>}
                 </div>
                 <button
                   type="button"
                   disabled={restoringId !== null || isCurrent}
                   onClick={() => void restore(r)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:opacity-40"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-default disabled:opacity-40"
                 >
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden /> {restoringId === r.id ? 'Restoring…' : 'Restore'}
                 </button>

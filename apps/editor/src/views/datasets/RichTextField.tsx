@@ -40,7 +40,7 @@ const COMMANDS: ReadonlyArray<RichCommand | null> = [
 ];
 
 const btnClass =
-  'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-700';
+  'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 dark:text-slate-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400';
 
 /**
  * A compact WYSIWYG editor for a dataset `richtext` field — a `contentEditable` surface with the
@@ -92,11 +92,11 @@ export function RichTextField({
   };
 
   const toolbar = (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 bg-white/60 px-1.5 py-1">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-white/60 dark:bg-slate-900/60 px-1.5 py-1">
       {!source &&
         COMMANDS.map((c, i) =>
           c === null ? (
-            <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200" />
+            <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
           ) : (
             <button
               key={c.label}
@@ -116,7 +116,7 @@ export function RichTextField({
         aria-label="Edit HTML source"
         aria-pressed={source}
         title="Edit HTML source"
-        className={`${btnClass} ml-auto ${source ? 'bg-indigo-100 text-indigo-700' : ''}`}
+        className={`${btnClass} ml-auto ${source ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : ''}`}
         onClick={() => setSource((v) => !v)}
       >
         <Code2 className="h-4 w-4" />
@@ -125,13 +125,13 @@ export function RichTextField({
   );
 
   return (
-    <div className="overflow-hidden rounded-lg border border-white/60 bg-white/70 shadow-sm focus-within:border-[var(--sw-brand-1)]">
+    <div className="overflow-hidden rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 shadow-sm focus-within:border-[var(--sw-brand-1)]">
       {toolbar}
       {source ? (
         <textarea
           id={id}
           aria-label={ariaLabel ? `${ariaLabel} (HTML source)` : 'HTML source'}
-          className="block min-h-28 w-full resize-y bg-transparent px-3 py-2 font-mono text-xs text-slate-800 outline-none"
+          className="block min-h-28 w-full resize-y bg-transparent px-3 py-2 font-mono text-xs text-slate-800 dark:text-slate-100 outline-none"
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -146,7 +146,7 @@ export function RichTextField({
           contentEditable
           suppressContentEditableWarning
           spellCheck
-          className="sw-rich-edit min-h-24 max-w-none px-3 py-2 text-sm text-slate-800 outline-none"
+          className="sw-rich-edit min-h-24 max-w-none px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none"
           onInput={emit}
           onBlur={emit}
         />

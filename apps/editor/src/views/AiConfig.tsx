@@ -120,7 +120,7 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
         </label>
         {enabled && (
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Provider
               <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
@@ -128,31 +128,31 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
                 <option value="openai">OpenAI-compatible (custom endpoint)</option>
               </select>
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Model
               <input className={field} aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={modelPlaceholder(provider)} />
             </label>
             {provider === 'openrouter' && (
-              <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                 Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
               </p>
             )}
             {provider === 'openai' && (
-              <label className="col-span-2 flex flex-col text-xs text-slate-500">
-                Base URL <span className="text-slate-400">(public host only)</span>
+              <label className="col-span-2 flex flex-col text-xs text-slate-500 dark:text-slate-400">
+                Base URL <span className="text-slate-400 dark:text-slate-500">(public host only)</span>
                 <input className={field} aria-label="AI base URL" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
               </label>
             )}
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               API key
               <input className={field} aria-label="AI API key" type="password" value={apiKey} placeholder={hasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setApiKey(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
-              Monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+              Monthly token cap <span className="text-slate-400 dark:text-slate-500">(0 = unlimited)</span>
               <input className={field} aria-label="Monthly token cap" type="number" min={0} value={limit} onChange={(e) => setLimit(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
-              Max output tokens / reply <span className="text-slate-400">(blank = default 8192)</span>
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+              Max output tokens / reply <span className="text-slate-400 dark:text-slate-500">(blank = default 8192)</span>
               <input
                 className={field}
                 aria-label="Max output tokens per reply"
@@ -175,13 +175,13 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
               {testing ? 'Testing…' : 'Test connection'}
             </button>
           )}
-          {saved && <span className="text-sm text-green-600">Saved.</span>}
-          {error && <span className="text-sm text-red-600">{error}</span>}
+          {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
+          {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
           {testResult &&
             (testResult.ok ? (
-              <span className="text-sm text-green-600">✓ Connected{testResult.model ? ` (${testResult.model})` : ''}</span>
+              <span className="text-sm text-green-600 dark:text-green-400">✓ Connected{testResult.model ? ` (${testResult.model})` : ''}</span>
             ) : (
-              <span className="text-sm text-red-600" title={testResult.error}>✗ {testResult.error}</span>
+              <span className="text-sm text-red-600 dark:text-red-400" title={testResult.error}>✗ {testResult.error}</span>
             ))}
         </div>
       </form>
@@ -193,8 +193,8 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
 
   return (
     <details className={`mb-4 ${glassCard} p-3`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
-      <summary className="cursor-pointer text-sm font-bold text-slate-700">
-        AI Assistant <span className="font-normal text-slate-400">— this project’s own provider (optional)</span>
+      <summary className="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
+        AI Assistant <span className="font-normal text-slate-400 dark:text-slate-500">— this project’s own provider (optional)</span>
       </summary>
       {body}
     </details>

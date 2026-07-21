@@ -45,7 +45,7 @@ function ratingClasses(r: Rating): { text: string; dot: string } {
     case 'poor':
       return { text: 'text-rose-600', dot: 'bg-rose-500' };
     default:
-      return { text: 'text-slate-400', dot: 'bg-slate-300' };
+      return { text: 'text-slate-400 dark:text-slate-500', dot: 'bg-slate-300' };
   }
 }
 
@@ -68,10 +68,10 @@ const METRICS: readonly MetricDef[] = [
 
 /** Category → a short, color-coded tag (PageSpeed-style). */
 const CATEGORY: Record<PagespeedFinding['category'], { label: string; cls: string }> = {
-  performance: { label: 'Perf', cls: 'bg-amber-100 text-amber-700' },
-  accessibility: { label: 'A11y', cls: 'bg-sky-100 text-sky-700' },
-  bestPractices: { label: 'Best', cls: 'bg-violet-100 text-violet-700' },
-  seo: { label: 'SEO', cls: 'bg-emerald-100 text-emerald-700' },
+  performance: { label: 'Perf', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  accessibility: { label: 'A11y', cls: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
+  bestPractices: { label: 'Best', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
+  seo: { label: 'SEO', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
 };
 
 /** Strip Lighthouse's trailing "[Learn more](url)" markdown link → readable tooltip text. */
@@ -119,11 +119,11 @@ function MetricCard({ def, value }: { def: MetricDef; value: number | undefined 
   const rc = ratingClasses(rate(value, def.good, def.poor));
   return (
     <div className="flex flex-col gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
-      <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+      <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         <span className={`inline-block h-1.5 w-1.5 rounded-full ${rc.dot}`} aria-hidden />
         {def.abbr}
         <span className="tooltip tooltip-top before:z-20 before:max-w-[16rem] before:whitespace-normal before:text-left" data-tip={def.tip}>
-          <CircleHelp className="h-3.5 w-3.5 cursor-help text-slate-400" aria-label={`${def.name}: ${def.tip}`} />
+          <CircleHelp className="h-3.5 w-3.5 cursor-help text-slate-400 dark:text-slate-500" aria-label={`${def.name}: ${def.tip}`} />
         </span>
       </div>
       <div className={`text-lg font-semibold tabular-nums ${rc.text}`}>{def.fmt(value)}</div>
@@ -139,14 +139,14 @@ function FindingRow({ f }: { f: PagespeedFinding }) {
       <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${cat.cls}`}>{cat.label}</span>
       <div className="min-w-0 flex-1">
         <div className="text-sm text-slate-700 dark:text-slate-200">{f.title}</div>
-        {f.displayValue ? <div className="text-xs font-medium text-slate-400">{f.displayValue}</div> : null}
+        {f.displayValue ? <div className="text-xs font-medium text-slate-400 dark:text-slate-500">{f.displayValue}</div> : null}
       </div>
       {advice ? (
         <span
           className="tooltip tooltip-left before:z-20 before:max-w-[20rem] before:whitespace-normal before:text-left"
           data-tip={advice}
         >
-          <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 cursor-help text-slate-400" aria-label={advice} />
+          <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 cursor-help text-slate-400 dark:text-slate-500" aria-label={advice} />
         </span>
       ) : null}
     </li>
@@ -198,7 +198,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
       </div>
 
       <div>
-        <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {findings.length === 0 ? 'Opportunities & diagnostics' : `${findings.length} opportunit${findings.length === 1 ? 'y' : 'ies'} & diagnostics`}
         </h4>
         {findings.length === 0 ? (
@@ -212,7 +212,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
         )}
       </div>
 
-      <p className="text-[11px] leading-snug text-slate-400">
+      <p className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">
         Lab audit (Lighthouse {result.lighthouseVersion}) on a deploy-equivalent build. Performance is a throttled
         lab score — directional; SEO, accessibility and best-practices are deterministic. No real-user field data.
       </p>
@@ -283,7 +283,7 @@ export function PageAuditPanel({
       onClick={() => setFormFactor(ff)}
       disabled={running}
       className={`waves-effect inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
-        formFactor === ff ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
+        formFactor === ff ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
       }`}
     >
       <Icon className="h-4 w-4" /> {text}
@@ -296,14 +296,14 @@ export function PageAuditPanel({
         {/* SEO summary — the head fields this page will publish with. */}
         <section className="flex gap-4 rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
           <div className="min-w-0 flex-1">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">SEO preview</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">SEO preview</h3>
             <p className="mt-1 truncate text-base font-semibold text-slate-800 dark:text-slate-100">{seo.title || <span className="text-slate-400">Untitled page</span>}</p>
             <p className="truncate text-xs text-emerald-700 dark:text-emerald-400">{seo.path || '/'}</p>
-            <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-              {seo.description || <span className="italic text-slate-400">No meta description — add one in Page settings for better search snippets.</span>}
+            <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">
+              {seo.description || <span className="italic text-slate-400 dark:text-slate-500">No meta description — add one in Page settings for better search snippets.</span>}
             </p>
           </div>
-          <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 text-slate-300 dark:border-white/10 dark:bg-white/5">
+          <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 text-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-600">
             {seo.image && imgOk ? (
               <img src={seo.image} alt="Social share thumbnail" className="h-full w-full object-cover" onError={() => setImgOk(false)} />
             ) : (

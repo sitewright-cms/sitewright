@@ -151,14 +151,14 @@ export function WebsiteSection({
           />
         </div>
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
             Site data → {'{{ website.data }}'} (edited here, in preview + publish)
           </label>
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setDataOpen(true)} className={ghostButton}>
               Edit data
             </button>
-            <span className="text-xs text-slate-400">{dataSummary(form.data)}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{dataSummary(form.data)}</span>
           </div>
         </div>
       </GlassCard>
@@ -269,7 +269,7 @@ export function WebsiteSection({
         </div>
         <label className="mt-4 flex flex-col">
           <span className={fieldLabel}>Sticky header</span>
-          <span className="mb-1 block text-[11px] text-slate-400">
+          <span className="mb-1 block text-[11px] text-slate-400 dark:text-slate-500">
             Fix the top navigation to the viewport so it stays visible as the page scrolls. Add the{' '}
             <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> class to your first section (or an inner
             element, so a full-bleed hero bleeds under the header) to clear the fixed bar.
@@ -295,7 +295,7 @@ export function WebsiteSection({
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Back-to-top button</span>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
               Shows a chevron-up button after the first screen of scrolling that scrolls back to the top.
             </span>
           </span>
@@ -311,7 +311,7 @@ export function WebsiteSection({
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>ScrollSpy (highlight section in view)</span>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
               Highlights the main &amp; mobile nav link whose in-page section (a link to{' '}
               <code className="rounded bg-slate-700/60 px-1">#about</code> → a{' '}
               <code className="rounded bg-slate-700/60 px-1">&lt;section id=&quot;about&quot;&gt;</code>) is scrolled
@@ -375,7 +375,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable themes</span>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
               Adds a dark variant of your theme. When off, the site stays single-theme.
             </span>
           </span>
@@ -401,7 +401,7 @@ export function WebsiteSection({
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
-            <span className="mt-1 block text-[11px] text-slate-400">
+            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
               The starting theme. A <code>{'{{sw-theme-toggle}}'}</code> in your nav lets visitors override it.
             </span>
           </label>
@@ -446,7 +446,7 @@ export function WebsiteSection({
             </label>
           )}
         </div>
-        <span className="mt-2 block text-[11px] text-slate-400">
+        <span className="mt-2 block text-[11px] text-slate-400 dark:text-slate-500">
           Sets the content container width used by every section, so the whole site aligns to one width.
         </span>
       </GlassCard>
@@ -470,7 +470,7 @@ export function WebsiteSection({
               <option value="webp">WebP only</option>
               <option value="avif">AVIF + WebP</option>
             </select>
-            <span className="mt-1 block text-[11px] text-slate-400">
+            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
               AVIF is smaller on supporting browsers, at ~2× the generated files. <code>{'{{sw-image}}'}</code> then emits a{' '}
               <code>&lt;picture&gt;</code> with an AVIF source.
             </span>
@@ -487,7 +487,7 @@ export function WebsiteSection({
               value={form.imageUploadCap}
               onChange={(e) => patch({ imageUploadCap: e.target.value })}
             />
-            <span className="mt-1 block text-[11px] text-slate-400">
+            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
               Caps the retained ORIGINAL (→ WebP when it bites). Blank keeps full resolution; delivery tops out at 2400px either way.
             </span>
           </label>
@@ -512,7 +512,7 @@ export function WebsiteSection({
           >
             <Trash2 className="mr-1.5 inline h-3.5 w-3.5" /> {pruning ? 'Clearing…' : 'Clear thumbnail cache'}
           </button>
-          {pruneMsg && <span className="text-xs text-slate-400">{pruneMsg}</span>}
+          {pruneMsg && <span className="text-xs text-slate-400 dark:text-slate-500">{pruneMsg}</span>}
         </div>
       </GlassCard>
 
@@ -548,7 +548,7 @@ export function WebsiteSection({
       </GlassCard>
 
       <motion.div variants={cardVariants} className="sm:col-span-2 mt-2">
-        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
           Skeleton slots — shared Handlebars partials rendered around every page
           <SectionHelp tip="Validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}." />
         </h3>
@@ -631,7 +631,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable shop</span>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
               A front-end cart for static sites. When off, <code>{'{{sw-cart}}'}</code> /{' '}
               <code>{'{{sw-add-to-cart}}'}</code> render nothing.
             </span>
@@ -651,13 +651,13 @@ export function WebsiteSection({
               type="button"
               aria-label="Edit shop settings"
               onClick={() => setShopOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
             >
               <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700">Shop settings</span>
-                <span className="block text-[11px] text-slate-400">Currency, labels, checkout channels</span>
+                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Shop settings</span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">Currency, labels, checkout channels</span>
               </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                 <Pencil className="h-4 w-4" /> Edit
               </span>
             </button>
@@ -675,7 +675,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable consent manager</span>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
               A cookie banner that loads analytics / chatbots / embeds only after consent. Off by default — the
               banner appears on every page once you turn it on.
             </span>
@@ -695,17 +695,17 @@ export function WebsiteSection({
               type="button"
               aria-label="Edit consent settings"
               onClick={() => setConsentOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
             >
               <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700">Consent settings</span>
-                <span className="block text-[11px] text-slate-400">Banner, categories, third-party integrations</span>
+                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Consent settings</span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">Banner, categories, third-party integrations</span>
               </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                 <Pencil className="h-4 w-4" /> Edit
               </span>
             </button>
-            <p className="mt-2 text-[11px] text-slate-400">
+            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
               The banner appears automatically on every page. Any third-party <code>&lt;iframe&gt;</code> you paste
               (YouTube, Vimeo, Maps, Calendly…) is held click-to-load until consent. Add a “Cookie settings” re-open
               link anywhere with <code>&lt;a href=&quot;#sw-consent&quot;&gt;</code>.

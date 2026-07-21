@@ -77,7 +77,7 @@ function DiscardIcon() {
 // Floating Discard: a SOLID white pill (never transparent in its active state — it overlays page
 // content), with a shadow so it reads as a floating control. Disabled = faded + inert.
 const floatingDiscard =
-  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-lg shadow-slate-900/10 transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40';
+  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-lg shadow-slate-900/10 transition hover:bg-slate-50 dark:hover:bg-white/5 disabled:pointer-events-none disabled:opacity-40';
 
 /**
  * The project Settings surface: a glassmorphic, animated editor for the unified
@@ -209,7 +209,7 @@ export function SettingsView({
     tabRefs.current[next]?.focus();
   }
 
-  if (loadError) return <p className="p-6 text-sm text-red-600">{loadError}</p>;
+  if (loadError) return <p className="p-6 text-sm text-red-600 dark:text-red-400">{loadError}</p>;
   if (!form) return <SkeletonList rows={5} className="max-w-2xl" label="Loading settings…" />;
 
   return (
@@ -220,7 +220,7 @@ export function SettingsView({
         {showSwitcher && (
           // Legacy self-switching surface (the project's top tabs drive the fixed-section case).
           <div className="mb-4 flex">
-            <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
+            <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 dark:border-white/10 bg-white/50 dark:bg-white/5 p-1 shadow-sm backdrop-blur-xl">
               {SECTIONS.map((s, i) => (
                 <button
                   key={s.key}
@@ -235,16 +235,16 @@ export function SettingsView({
                   tabIndex={section === s.key ? 0 : -1}
                   onClick={() => setSection(s.key)}
                   onKeyDown={(e) => onTabKey(e, i)}
-                  className="waves-effect relative rounded-xl px-4 py-1.5 text-sm font-medium text-slate-600 transition"
+                  className="waves-effect relative rounded-xl px-4 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 transition"
                 >
                   {section === s.key && (
                     <motion.span
                       layoutId="settings-seg"
-                      className="absolute inset-0 -z-10 rounded-xl bg-white shadow-md shadow-slate-900/5"
+                      className="absolute inset-0 -z-10 rounded-xl bg-white dark:bg-slate-900 shadow-md shadow-slate-900/5"
                       transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                     />
                   )}
-                  <span className={section === s.key ? 'text-slate-900' : ''}>{s.label}</span>
+                  <span className={section === s.key ? 'text-slate-900 dark:text-slate-100' : ''}>{s.label}</span>
                 </button>
               ))}
             </div>

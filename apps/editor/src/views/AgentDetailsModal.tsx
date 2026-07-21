@@ -15,14 +15,14 @@ function when(iso: string | null): string {
 
 type ConnectTab = 'chatgpt' | 'claude' | 'lechat' | 'cli';
 const TAB_ORDER: ConnectTab[] = ['chatgpt', 'claude', 'lechat', 'cli'];
-const CODE = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
+const CODE = 'rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-mono text-slate-700 dark:text-slate-200';
 const PRE = 'mt-1.5 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-100';
 
 /** A hosted MCP client (ChatGPT / Claude.ai / Le Chat) connects to the remote MCP server over OAuth. */
 function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; settingsPath: string; planNote: string }) {
   return (
     <>
-      <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
+      <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 dark:text-slate-300 marker:text-slate-400 dark:marker:text-slate-500">
         <li>{settingsPath}</li>
         <li>
           Paste this remote MCP server URL and give the connector a name: <code className={CODE}>{mcpUrl}</code>
@@ -36,7 +36,7 @@ function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; setti
           the changes appear live.
         </li>
       </ol>
-      <p className="mt-2 text-[11px] text-slate-400">{planNote}</p>
+      <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">{planNote}</p>
     </>
   );
 }
@@ -79,7 +79,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
       tabIndex={tab === key ? 0 : -1}
       onClick={() => setTab(key)}
       className={`waves-effect rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-        tab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+        tab === key ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
       }`}
     >
       {label}
@@ -87,16 +87,16 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
   );
 
   return (
-    <section className={`rounded-lg border p-4 ${emphasized ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
-      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Connect an agent</h3>
-      <p className="mt-1 text-sm text-slate-600">
+    <section className={`rounded-lg border p-4 ${emphasized ? 'border-indigo-200 dark:border-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-white/5'}`}>
+      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Connect an agent</h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
         Let an AI agent build this site over MCP — hosted in ChatGPT, Claude.ai or Le Chat, or via a local CLI agent:
       </p>
       <div
         role="tablist"
         aria-label="Connect an agent"
         onKeyDown={onTabKey}
-        className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1"
+        className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 dark:bg-white/10 p-1"
       >
         {tabBtn('chatgpt', 'ChatGPT.com')}
         {tabBtn('claude', 'Claude.ai')}
@@ -126,8 +126,8 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
           />
         )}
         {tab === 'cli' && (
-          <div className="space-y-2.5 text-sm text-slate-600">
-            <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-400">
+          <div className="space-y-2.5 text-sm text-slate-600 dark:text-slate-300">
+            <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-400 dark:marker:text-slate-500">
               <li>
                 Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
                 <code className={CODE}>npx @sitewright/cli</code>).
@@ -151,7 +151,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
                 for headless/SSH).
               </li>
             </ol>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Where the block goes: Cursor <code className={CODE}>~/.cursor/mcp.json</code> · Windsurf{' '}
               <code className={CODE}>~/.codeium/windsurf/mcp_config.json</code> · Gemini CLI{' '}
               <code className={CODE}>~/.gemini/settings.json</code> · VS Code <code className={CODE}>.vscode/mcp.json</code>.
@@ -216,12 +216,12 @@ export function AgentDetailsModal({
   return (
     <Modal title="AI agent details" size="lg" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Agents and tokens connected to this project. Disconnecting takes effect immediately — an OAuth/MCP agent must
           re-authorize to reconnect.
         </p>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-        {items === null && !error && <p className="text-sm text-slate-400">Loading…</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+        {items === null && !error && <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>}
 
         {/* No connections → lead with the connect guide so owners know they CAN add an agent. */}
         {empty && <ConnectGuide emphasized />}
@@ -230,10 +230,10 @@ export function AgentDetailsModal({
           <div key={c.id} className={`${glassPanel} flex flex-wrap items-center gap-x-4 gap-y-2 p-3`}>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-medium text-slate-800">{c.name}</span>
+                <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{c.name}</span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    c.kind === 'oauth' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                    c.kind === 'oauth' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   {c.kind === 'oauth' ? 'OAuth / MCP' : 'Personal token'}
@@ -241,18 +241,18 @@ export function AgentDetailsModal({
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {c.capabilities.map((cap) => (
-                  <span key={cap} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                  <span key={cap} className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-600 dark:text-slate-300">
                     {cap}
                   </span>
                 ))}
               </div>
-              <div className="mt-1 text-[11px] text-slate-400">
+              <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                 {c.role} · last active {when(c.lastUsedAt)} · connected {when(c.connectedAt)}
               </div>
             </div>
             {confirmId === c.id ? (
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-slate-500">Disconnect?</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Disconnect?</span>
                 <button
                   type="button"
                   disabled={busyId === c.id}
@@ -261,7 +261,7 @@ export function AgentDetailsModal({
                 >
                   {busyId === c.id ? 'Disconnecting…' : 'Confirm'}
                 </button>
-                <button type="button" onClick={() => setConfirmId(null)} className="px-1.5 text-xs text-slate-500 hover:text-slate-800">
+                <button type="button" onClick={() => setConfirmId(null)} className="px-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
                   Cancel
                 </button>
               </div>

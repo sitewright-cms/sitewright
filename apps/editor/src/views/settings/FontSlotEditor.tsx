@@ -80,11 +80,11 @@ export function FontSlotEditor({
   const isAsset = slot.source === 'asset';
   const previewFamily = isAsset ? `'${slot.family}', sans-serif` : slot.family;
   return (
-    <div className="rounded-xl border border-white/60 bg-white/50 p-3">
+    <div className="rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <span className={fieldLabel} style={{ margin: 0 }}>{label}</span>
         {isAsset && (
-          <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700">
+          <span className="rounded-full bg-indigo-100/80 dark:bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-400">
             {slot.family}
           </span>
         )}
@@ -130,7 +130,7 @@ export function FontSlotEditor({
         </label>
       </div>
       <p
-        className="mt-2 truncate text-lg text-slate-700"
+        className="mt-2 truncate text-lg text-slate-700 dark:text-slate-200"
         style={{ fontFamily: previewFamily, fontWeight: slot.weight }}
         aria-hidden
       >

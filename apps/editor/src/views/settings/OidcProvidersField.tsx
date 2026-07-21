@@ -36,7 +36,7 @@ interface OidcProvidersFieldProps {
   onChange: (next: OidcProviderDraft[]) => void;
 }
 
-const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
+const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 
 /**
  * Admin editor for the configured OIDC single-sign-on providers (a controlled list). Each provider
@@ -50,36 +50,36 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
 
   return (
     <div className="flex flex-col gap-3">
-      {providers.length === 0 && <p className="text-xs text-slate-400">No providers yet — add one to offer “Sign in with …”.</p>}
+      {providers.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">No providers yet — add one to offer “Sign in with …”.</p>}
       {providers.map((p, i) => (
-        <div key={p._key} className="rounded-xl border border-white/60 bg-white/40 p-3">
+        <div key={p._key} className="rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input type="checkbox" className={toggleInput} checked={p.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} aria-label={`Provider ${i + 1} enabled`} />
               Enabled
             </label>
-            <button type="button" className="text-sm font-medium text-rose-600 hover:text-rose-700" onClick={() => remove(i)} aria-label={`Remove provider ${i + 1}`}>
+            <button type="button" className="text-sm font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-400" onClick={() => remove(i)} aria-label={`Remove provider ${i + 1}`}>
               Remove
             </button>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-slate-500 dark:text-slate-400">
               <span className={fieldLabel}>Id (slug)</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} id`} value={p.id} placeholder="google" onChange={(e) => update(i, { id: e.target.value })} />
             </label>
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-slate-500 dark:text-slate-400">
               <span className={fieldLabel}>Button label</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} label`} value={p.label} placeholder="Google" onChange={(e) => update(i, { label: e.target.value })} />
             </label>
-            <label className="text-xs text-slate-500 sm:col-span-2">
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
               <span className={fieldLabel}>Issuer URL</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} issuer`} value={p.issuer} placeholder="https://accounts.google.com" onChange={(e) => update(i, { issuer: e.target.value })} />
             </label>
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-slate-500 dark:text-slate-400">
               <span className={fieldLabel}>Client ID</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} client id`} value={p.clientId} onChange={(e) => update(i, { clientId: e.target.value })} />
             </label>
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-slate-500 dark:text-slate-400">
               <span className={fieldLabel}>Client secret</span>
               <input
                 className={glassInput}
@@ -90,22 +90,22 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
                 onChange={(e) => update(i, { secret: e.target.value })}
               />
             </label>
-            <label className="text-xs text-slate-500 sm:col-span-2">
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
               <span className={fieldLabel}>Scopes</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} scopes`} value={p.scopes} placeholder="openid profile email" onChange={(e) => update(i, { scopes: e.target.value })} />
             </label>
-            <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
+            <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 sm:col-span-2">
               <input type="checkbox" className={toggleInput} checked={p.usePkce} onChange={(e) => update(i, { usePkce: e.target.checked })} aria-label={`Provider ${i + 1} use PKCE`} />
               <span>
                 <span className="font-medium">Use PKCE (S256)</span>
-                <span className="block text-slate-500">On by default. Turn off only if the provider rejects PKCE — disabling it needs a client secret (a public client without PKCE is insecure).</span>
+                <span className="block text-slate-500 dark:text-slate-400">On by default. Turn off only if the provider rejects PKCE — disabling it needs a client secret (a public client without PKCE is insecure).</span>
               </span>
             </label>
           </div>
         </div>
       ))}
       <div>
-        <button type="button" className="rounded-lg border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white" onClick={add}>
+        <button type="button" className="rounded-lg border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-white/10" onClick={add}>
           Add provider
         </button>
       </div>

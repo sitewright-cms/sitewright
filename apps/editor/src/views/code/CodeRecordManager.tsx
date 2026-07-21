@@ -222,10 +222,10 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
         // Hover the name → the cookbook description in a PORTAL tooltip, so it isn't clipped by the
         // side-panel's overflow the way a CSS data-tip bubble would be.
         <HoverTip tip={desc} className="min-w-0 flex-1">
-          <span className="block w-full truncate text-left text-sm font-medium text-slate-700">{r.name}</span>
+          <span className="block w-full truncate text-left text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
         </HoverTip>
       ) : (
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={r.name}>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200" title={r.name}>
           {r.name}
         </span>
       )}
@@ -235,7 +235,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           <button className={`${ghostButton} px-2 py-1 text-xs`} aria-label={`Edit ${r.name}`} onClick={() => setEditing({ rec: r, scope })}>
             Edit
           </button>
-          <button className="px-1.5 text-xs text-slate-400 transition hover:text-rose-600" aria-label={`Delete ${r.name}`} onClick={() => void del(r, scope)}>
+          <button className="px-1.5 text-xs text-slate-400 dark:text-slate-500 transition hover:text-rose-600 dark:hover:text-rose-400" aria-label={`Delete ${r.name}`} onClick={() => void del(r, scope)}>
             <X className="h-4 w-4" />
           </button>
         </>
@@ -270,7 +270,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       <div className="space-y-2">
         {order.filter((group) => byGroup.has(group)).map((group) => (
           <div key={group}>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{group}</p>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{group}</p>
             <ul className={grid}>{byGroup.get(group)!.map((g) => chip(g, 'global', !!isAdmin))}</ul>
           </div>
         ))}
@@ -283,7 +283,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       {globalAdapters && (
         <div className="mb-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
               Global {noun}s {isAdmin ? '· editable' : '· built-in, read-only'}
             </p>
             {isAdmin && (
@@ -293,24 +293,24 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
             )}
           </div>
           {globals.length === 0 ? (
-            <p className="text-[11px] text-slate-400">No global {noun}s.</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">No global {noun}s.</p>
           ) : (
             globalChips()
           )}
-          <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Your {noun}s</p>
+          <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Your {noun}s</p>
         </div>
       )}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <button className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={() => void create('project')}>
           + New {noun}
         </button>
-        {nameHint && <span className="text-[11px] text-slate-400">{nameHint}</span>}
+        {nameHint && <span className="text-[11px] text-slate-400 dark:text-slate-500">{nameHint}</span>}
       </div>
       {error && <p className="mb-2 text-xs text-rose-500">{error}</p>}
       {loading ? (
-        <p className="text-xs text-slate-400">Loading…</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">Loading…</p>
       ) : records.length === 0 ? (
-        <p className="text-xs text-slate-400">No {noun}s yet — create one to get started.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">No {noun}s yet — create one to get started.</p>
       ) : (
         <ul className={grid}>{records.map((r) => chip(r, 'project', true))}</ul>
       )}

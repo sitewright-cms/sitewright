@@ -11,11 +11,11 @@ export function GlassCard({ title, icon, tooltip, children, wide = false }: { ti
     <motion.section variants={cardVariants} whileHover={cardHover} className={`${glassCard} p-5 ${wide ? 'sm:col-span-2' : ''}`}>
       {/* Full-bleed grey header bar (negative margins cancel the card's p-5) so every section title
           reads as a distinct, emphasized band: light-grey background + uppercase tracked title. */}
-      <header className="-mx-5 -mt-5 mb-4 flex items-center gap-3 rounded-t-2xl border-b border-slate-200/70 bg-slate-100/70 px-5 py-3">
+      <header className="-mx-5 -mt-5 mb-4 flex items-center gap-3 rounded-t-2xl border-b border-slate-200/70 dark:border-slate-700/70 bg-slate-100/70 dark:bg-white/10 px-5 py-3">
         <span className={accentChip} aria-hidden>
           {icon}
         </span>
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{title}</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">{title}</h3>
         {tooltip && <SectionHelp tip={tooltip} />}
       </header>
       {children}
@@ -63,9 +63,9 @@ export function Field({
         onChange={(e) => onChange(e.target.value)}
       />
       {error ? (
-        <span id={errorId} className="mt-1 block text-[11px] font-medium text-red-500">{error}</span>
+        <span id={errorId} className="mt-1 block text-[11px] font-medium text-red-500 dark:text-red-400">{error}</span>
       ) : hint ? (
-        <span className="mt-1 block text-[11px] text-slate-400">{hint}</span>
+        <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">{hint}</span>
       ) : null}
     </label>
   );
@@ -110,7 +110,7 @@ export function FieldButton({ label, value, onClick }: { label: string; value: R
       <span className={fieldLabel}>{label}</span>
       <button type="button" aria-label={label} onClick={onClick} className={`${glassInput} flex items-center justify-between text-left`}>
         <span className="truncate">{value}</span>
-        <svg aria-hidden viewBox="0 0 24 24" className="ml-2 h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <svg aria-hidden viewBox="0 0 24 24" className="ml-2 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
@@ -121,7 +121,7 @@ export function FieldButton({ label, value, onClick }: { label: string; value: R
 /** A small section sub-heading inside a card; an optional `tip` adds a "?" help affordance. */
 export function SubLabel({ children, tip }: { children: ReactNode; tip?: string }) {
   return (
-    <p className="mb-2 mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+    <p className="mb-2 mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
       {children}
       {tip && <SectionHelp tip={tip} />}
     </p>

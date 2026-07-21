@@ -23,9 +23,9 @@ export function ShopSettingsModal({ form, patch, onClose }: { form: SettingsForm
   return (
     <Modal title="Shop settings" size="2xl" onClose={onClose}>
       <div className="flex flex-col gap-4 p-5">
-        <div className="rounded-lg border border-indigo-200/70 bg-indigo-50/50 p-3 text-xs text-slate-600">
+        <div className="rounded-lg border border-indigo-200/70 dark:border-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10 p-3 text-xs text-slate-600 dark:text-slate-300">
           <p>
-            <strong className="font-semibold text-slate-700">Where are the labels?</strong> The cart's wording —
+            <strong className="font-semibold text-slate-700 dark:text-slate-200">Where are the labels?</strong> The cart's wording —
             the add-to-cart button, drawer title/note, currency symbol &amp; code, and each channel/field label —
             is <strong>translatable</strong>, so it lives in <strong>Translations &amp; Labels</strong> (one row
             per locale), not here. This screen holds only the shop's structure. Cart labels use the reserved{' '}
@@ -38,7 +38,7 @@ export function ShopSettingsModal({ form, patch, onClose }: { form: SettingsForm
 
         <div>
           <SubLabel>Currency formatting</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400">
+          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
             The symbol &amp; ISO code are translatable (Translations &amp; Labels → <code>cart_currency_symbol</code> /{' '}
             <code>cart_currency_code</code>). Here you set only how the amount is formatted.
           </p>

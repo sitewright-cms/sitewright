@@ -234,7 +234,7 @@ export function PublishBar({
   const showView = published && !dirty && localHosting && !!url;
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
   const btnBase =
-    'inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700';
+    'inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400';
 
   return (
     <div className="flex items-center gap-2">
@@ -263,22 +263,22 @@ export function PublishBar({
             aria-haspopup="menu"
             aria-expanded={previewMenuOpen}
             onClick={() => setPreviewMenuOpen((o) => !o)}
-            className="inline-flex cursor-pointer items-center rounded-r-md border border-l-0 border-slate-300 bg-white px-1.5 py-1.5 text-slate-600 transition hover:border-indigo-400 hover:text-indigo-700"
+            className="inline-flex cursor-pointer items-center rounded-r-md border border-l-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-1.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
         </div>
         {previewMenuOpen && (
-          <div role="menu" className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <div role="menu" className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
             <button
               role="menuitem"
               onClick={() => {
                 setPreviewMenuOpen(false);
                 setShareLinksOpen(true);
               }}
-              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
-              <Link2 className="h-4 w-4 text-slate-400" />
+              <Link2 className="h-4 w-4 text-slate-400 dark:text-slate-500" />
               Preview share links…
             </button>
           </div>
@@ -309,7 +309,7 @@ export function PublishBar({
               className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
                 dirty
                   ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400 hover:text-indigo-700'
+                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
               }`}
             >
               <DeployIcon />
@@ -324,7 +324,7 @@ export function PublishBar({
               className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
                 dirty
                   ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'border-slate-300 bg-white text-slate-600 hover:border-indigo-400'
+                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
               }`}
             >
               <ChevronDown className="h-4 w-4" />
@@ -333,31 +333,31 @@ export function PublishBar({
         )}
 
         {menuOpen && (
-          <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Deploy to…</p>
+          <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
+            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Deploy to…</p>
             {targets.map((t) => (
               <button
                 key={t.id}
                 role="menuitem"
                 onClick={() => deployTo(t)}
                 disabled={busy}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.protocol === 'local' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{t.name}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{targetWhere(t)}</span>
+                  <span className="block truncate text-[11px] text-slate-400 dark:text-slate-500">{targetWhere(t)}</span>
                 </span>
               </button>
             ))}
-            <div className="my-1 border-t border-slate-100" />
+            <div className="my-1 border-t border-slate-100 dark:border-white/10" />
             <button
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
                 onOpenDeploy?.();
               }}
-              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
               + Add a target…
             </button>
@@ -365,7 +365,7 @@ export function PublishBar({
               role="menuitem"
               href={api.archiveUrl(project.id)}
               aria-label="Download site zip"
-              className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
               <Download className="h-3.5 w-3.5" />
               Download .zip

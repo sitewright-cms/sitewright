@@ -9,6 +9,13 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#4F2DD8" />
     <title>Sitewright</title>
+    <!-- FOUC guard: stamp the color theme onto <html> before first paint, from the persisted
+         `sw:colorMode` preference (light/dark/auto → OS). The `dark:` variant keys off this attribute
+         (styles.css). Kept in sync with src/lib/color-mode.ts. Plain (non-module) inline script so it
+         runs synchronously; served under `script-src 'self' 'sha256-…'` — if this script's bytes change,
+         recompute the hash in apps/api/src/http/app.ts (editorCsp). If the hash ever mismatches, the
+         script is simply blocked and main.tsx applies the theme instead (a brief flash, never broken). -->
+    <script>(function(){try{var m=localStorage.getItem("sw:colorMode");if(m!=="light"&&m!=="dark"&&m!=="auto")m="auto";var d=m==="dark"||(m==="auto"&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);var t=d?"dark":"light";var e=document.documentElement;e.setAttribute("data-theme",t);e.style.colorScheme=t;}catch(x){}})();</script>
   </head>
   <body>
     <div id="root"></div>

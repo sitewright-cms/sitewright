@@ -53,8 +53,8 @@ export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAU
           <BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-7 w-7" />
           <span className="font-display">{branding.name}</span>
         </h1>
-        <h2 className="text-sm font-bold text-slate-800">Choose a new password</h2>
-        <p className="mt-0.5 mb-5 text-xs text-slate-500">
+        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Choose a new password</h2>
+        <p className="mt-0.5 mb-5 text-xs text-slate-500 dark:text-slate-400">
           This account (<span className="font-medium">{email}</span>) is still using the default password.
           Set a new one to continue — it’s required before you can do anything else.
         </p>
@@ -96,9 +96,9 @@ export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAU
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
-          {mismatch && <p className="mt-1 text-xs text-amber-600" role="alert">Passwords don’t match.</p>}
+          {mismatch && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400" role="alert">Passwords don’t match.</p>}
         </div>
-        {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400" role="alert">{error}</p>}
         <button type="submit" className={`${primaryButton} mt-1 w-full`} disabled={!canSubmit}>
           {saving ? 'Saving…' : 'Set new password & continue'}
         </button>

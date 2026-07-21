@@ -105,23 +105,23 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
   return (
     <div className="flex flex-col gap-2">
       {dialog}
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Languages this site is available in. The main language owns each page’s layout; the others follow it
         (or fork their own). Removing a language deletes all of its pages.
       </p>
       <ul className="flex flex-col gap-1.5">
         {locales.map((loc) => (
-          <li key={loc} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/60 px-3 py-2">
+          <li key={loc} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 px-3 py-2">
             <span aria-hidden className="text-lg">{localeFlag(loc)}</span>
-            <span className="text-sm font-medium text-slate-800">{localeLabel(loc)}</span>
-            <span className="font-mono text-xs uppercase text-slate-400">{loc}</span>
+            <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{localeLabel(loc)}</span>
+            <span className="font-mono text-xs uppercase text-slate-400 dark:text-slate-500">{loc}</span>
             {loc === defaultLocale ? (
               <span className="ml-auto flex items-center gap-2">
-                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">main language</span>
+                <span className="rounded-full bg-indigo-100 dark:bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300">main language</span>
                 <button
                   type="button"
                   disabled={busy}
-                  className="text-sm font-medium text-indigo-600 transition hover:text-indigo-700 disabled:opacity-50"
+                  className="text-sm font-medium text-indigo-600 dark:text-indigo-400 transition hover:text-indigo-700 dark:hover:text-indigo-400 disabled:opacity-50"
                   onClick={() => {
                     setError(null);
                     setChangeOpen(true);
@@ -134,7 +134,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
               <button
                 type="button"
                 aria-label={`Remove ${localeLabel(loc)}`}
-                className="ml-auto text-sm font-medium text-rose-600 transition hover:text-rose-700"
+                className="ml-auto text-sm font-medium text-rose-600 dark:text-rose-400 transition hover:text-rose-700 dark:hover:text-rose-400"
                 onClick={() => void remove(loc)}
               >
                 Remove
@@ -155,7 +155,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
           + Add language
         </button>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {changeOpen && (
         <LocalePickerModal
           title="Change the main language"

@@ -63,13 +63,13 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
   const itemClass = (selected: boolean) =>
     `group block w-full rounded-xl px-3 py-2 text-left transition ${selected ? gradientSurface : `${glassCard} ${gradientHover}`}`;
   const subClass = (selected: boolean) =>
-    `font-mono text-[11px] ${selected ? 'text-white/70' : 'text-slate-400 group-hover:text-white/70'}`;
+    `font-mono text-[11px] ${selected ? 'text-white/70' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/70'}`;
 
   return (
     <Modal title="Business type" size="2xl" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
-        <p className="text-xs text-slate-500">
-          The schema.org <code className="rounded bg-slate-100 px-1 py-0.5">@type</code> used in your
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          The schema.org <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">@type</code> used in your
           site’s structured data (JSON-LD). Pick one, or disable structured data entirely.
         </p>
         <SearchField
@@ -98,7 +98,7 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
 
           {groups.map(([group, items]) => (
             <div key={group}>
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{group}</p>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">{group}</p>
               <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((t) => {
                   const selected = value === t.type;

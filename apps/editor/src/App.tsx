@@ -269,14 +269,14 @@ function MainApp({
   const isClient = inProject?.role === 'member';
 
   const header = (
-    <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60">
       {/* Full-width flex row: project selector at the far left, the tablist centered via its own
           mx-auto, and the publish/admin nav at the far right. */}
       <div className="flex w-full items-center gap-x-4">
       {/* Left: the brand mark (opens the selector) + the project selector. */}
       <div className="flex min-w-0 items-center gap-3">
         <button
-          className="flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700"
+          className="flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300"
           onClick={() => setSelectorOpen(true)}
           aria-label={`${branding.name} — switch project`}
           title="Switch project"
@@ -286,12 +286,12 @@ function MainApp({
         {inProject && (
           <button
             aria-label="Switch project"
-            className="flex min-w-0 items-center gap-1 rounded-xl border border-white/60 bg-white/50 px-2.5 py-1 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
+            className="flex min-w-0 items-center gap-1 rounded-xl border border-white/60 bg-white/50 px-2.5 py-1 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             onClick={() => setSelectorOpen(true)}
           >
             <span className="truncate">{inProject.name}</span>
-            <span className="shrink-0 text-slate-400">/{inProject.slug}</span>
-            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+            <span className="shrink-0 text-slate-400 dark:text-slate-500">/{inProject.slug}</span>
+            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
           </button>
         )}
       </div>
@@ -299,7 +299,7 @@ function MainApp({
       {/* Center: the project tablist (any project member — clients get the full studio too) — mx-auto centers it. */}
       <div className="mx-auto flex justify-center">
         {inProject && (
-          <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm">
+          <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm dark:border-white/10 dark:bg-white/5">
             {MANAGE_TABS.map((t) => (
               <button
                 key={t}
@@ -307,7 +307,7 @@ function MainApp({
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={`waves-effect rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-                  tab === t ? gradientSurface : `text-slate-500 ${gradientHover}`
+                  tab === t ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
                 }`}
               >
                 {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
@@ -356,14 +356,14 @@ function MainApp({
   return (
     <div className="relative min-h-screen">
       {/* Soft blurred accent blobs over the gradient shell (decorative, behind content). */}
-      <div aria-hidden className="pointer-events-none fixed -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-fuchsia-300/20 blur-3xl" />
-      <div aria-hidden className="pointer-events-none fixed -bottom-32 -left-32 -z-10 h-96 w-96 rounded-full bg-sky-300/20 blur-3xl" />
+      <div aria-hidden className="pointer-events-none fixed -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-fuchsia-300/20 blur-3xl dark:bg-fuchsia-500/10" />
+      <div aria-hidden className="pointer-events-none fixed -bottom-32 -left-32 -z-10 h-96 w-96 rounded-full bg-sky-300/20 blur-3xl dark:bg-sky-500/10" />
       <UpdateBanner />
       {header}
       {stage.name === 'home' && (
-        <main className="mx-auto max-w-3xl px-6 py-16 text-center text-slate-400">
+        <main className="mx-auto max-w-3xl px-6 py-16 text-center text-slate-400 dark:text-slate-500">
           <p>Pick a project to get started.</p>
-          <button className="mt-3 text-sm text-indigo-600 hover:underline" onClick={() => setSelectorOpen(true)}>
+          <button className="mt-3 text-sm text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setSelectorOpen(true)}>
             Open the project selector
           </button>
         </main>

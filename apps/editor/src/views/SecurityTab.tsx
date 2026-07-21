@@ -22,12 +22,12 @@ function errMsg(err: unknown, fallback: string): string {
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const toast = useToast();
   return (
-    <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-lg shadow-amber-500/10">
-      <p className="text-sm font-bold text-amber-900">Save these recovery codes — they won’t be shown again.</p>
-      <p className="mt-0.5 text-xs text-amber-800">Each code works once if you lose your authenticator app.</p>
+    <div className="rounded-2xl border border-amber-300/70 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-500/10 p-4 shadow-lg shadow-amber-500/10">
+      <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Save these recovery codes — they won’t be shown again.</p>
+      <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200">Each code works once if you lose your authenticator app.</p>
       <ul className="mt-3 grid grid-cols-2 gap-1.5" aria-label="Recovery codes">
         {codes.map((c) => (
-          <li key={c} className="rounded-lg border border-amber-200/70 bg-white/80 px-3 py-1.5 text-center font-mono text-sm tracking-wide">{c}</li>
+          <li key={c} className="rounded-lg border border-amber-200/70 dark:border-amber-500/20 bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 text-center font-mono text-sm tracking-wide">{c}</li>
         ))}
       </ul>
       <div className="mt-3 flex gap-2">
@@ -155,18 +155,18 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
     return (
       <form onSubmit={confirmSetup} className={`flex flex-col gap-4 ${glassCard} p-5`}>
         <div>
-          <h3 className="text-sm font-bold text-slate-800">Set up your authenticator app</h3>
-          <p className="mt-0.5 text-xs text-slate-500">Scan the QR code (or enter the key), then type the 6-digit code to confirm.</p>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Set up your authenticator app</h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Scan the QR code (or enter the key), then type the 6-digit code to confirm.</p>
         </div>
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
           {qr ? (
-            <img src={qr} alt="TOTP QR code" className="h-44 w-44 rounded-lg border border-white/60 bg-white p-1" />
+            <img src={qr} alt="TOTP QR code" className="h-44 w-44 rounded-lg border border-white/60 dark:border-white/10 bg-white dark:bg-slate-900 p-1" />
           ) : (
-            <div className="flex h-44 w-44 items-center justify-center rounded-lg border border-white/60 bg-white/60 text-xs text-slate-400">Generating…</div>
+            <div className="flex h-44 w-44 items-center justify-center rounded-lg border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 text-xs text-slate-400 dark:text-slate-500">Generating…</div>
           )}
           <div className="min-w-0 flex-1">
             <label className={fieldLabel}>Manual key</label>
-            <code className="block break-all rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-xs" aria-label="TOTP secret key">{enrol.secret}</code>
+            <code className="block break-all rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-xs" aria-label="TOTP secret key">{enrol.secret}</code>
             <label className={`${fieldLabel} mt-3`} htmlFor="totp-confirm-code">Code from app</label>
             <input
               id="totp-confirm-code"
@@ -182,7 +182,7 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
             />
           </div>
         </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         <div className="flex gap-2">
           <button type="submit" className={primaryButton} disabled={busy || code.trim().length === 0}>
             {busy ? 'Confirming…' : 'Enable two-factor'}
@@ -198,14 +198,14 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
     return (
       <form onSubmit={runPwAction} className={`flex flex-col gap-4 ${glassCard} p-5`}>
         <div>
-          <h3 className="text-sm font-bold text-slate-800">{pwAction === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes'}</h3>
-          <p className="mt-0.5 text-xs text-slate-500">Confirm your password to continue.</p>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{pwAction === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes'}</h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Confirm your password to continue.</p>
         </div>
         <div>
           <label className={fieldLabel} htmlFor="mfa-pw">Current password</label>
           <input id="mfa-pw" aria-label="Current password" type="password" autoComplete="current-password" className={glassInput} value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         <div className="flex gap-2">
           <button type="submit" className={primaryButton} disabled={busy || password.length === 0}>
             {pwAction === 'disable' ? 'Disable' : 'Regenerate codes'}
@@ -221,17 +221,17 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
     <div className="flex flex-col gap-4">
       <div className={`flex flex-col gap-4 ${glassCard} p-5`}>
         <div>
-          <h3 className="text-sm font-bold text-slate-800">Two-factor authentication</h3>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Two-factor authentication</h3>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             {totpEnabled
               ? 'Your account is protected by an authenticator app. You’ll enter a code when you sign in.'
               : 'Add a second step at sign-in with an authenticator app (TOTP) like 1Password, Authy, or Google Authenticator.'}
           </p>
         </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         {totpEnabled ? (
           <>
-            <p className={`text-xs ${recoveryCodesRemaining <= 3 ? 'text-amber-600' : 'text-slate-500'}`}>
+            <p className={`text-xs ${recoveryCodesRemaining <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
               {recoveryCodesRemaining === 0
                 ? 'No recovery codes left — regenerate a set so you can still get in if you lose your authenticator.'
                 : `${recoveryCodesRemaining} recovery ${recoveryCodesRemaining === 1 ? 'code' : 'codes'} remaining${recoveryCodesRemaining <= 3 ? ' — consider regenerating.' : '.'}`}

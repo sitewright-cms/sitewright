@@ -53,7 +53,7 @@ export function FilePicker({
   };
 
   const tabBtn = (id: 'library' | 'url') =>
-    `rounded-lg px-3 py-1 text-xs ${tab === id ? 'bg-white font-bold text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`;
+    `rounded-lg px-3 py-1 text-xs ${tab === id ? 'bg-white dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'}`;
 
   return (
     <Modal
@@ -61,7 +61,7 @@ export function FilePicker({
       size="full"
       onClose={onClose}
       headerExtra={
-        <div className="flex overflow-hidden rounded-xl border border-white/60 bg-white/40 p-0.5">
+        <div className="flex overflow-hidden rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-0.5">
           <button type="button" className={tabBtn('library')} onClick={() => switchTab('library')}>
             Library
           </button>
@@ -83,7 +83,7 @@ export function FilePicker({
         </div>
       ) : (
         <div className="flex flex-col gap-3 p-5">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Paste a URL. <strong>Use as-is</strong> keeps the link (it won’t be self-hosted);{' '}
             <strong>Import</strong> downloads it into your library so the published site stays self-contained.
           </p>
@@ -94,13 +94,13 @@ export function FilePicker({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
           />
-          {error && <p className="text-sm text-rose-500">{error}</p>}
+          {error && <p className="text-sm text-rose-500 dark:text-rose-300">{error}</p>}
           <div className="flex gap-2">
             <button
               type="button"
               disabled={!url.trim()}
               onClick={() => choose(url.trim())}
-              className="waves-effect rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-300 disabled:opacity-50"
+              className="waves-effect rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 transition hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50"
             >
               Use URL as-is
             </button>

@@ -88,7 +88,7 @@ function ConfirmBody({ state, onClose }: { state: ConfirmState; onClose: () => v
   return (
     <Modal title={state.title} size="md" onClose={() => done(false)}>
       <div className="flex flex-col gap-5 p-5">
-        <div className="text-sm text-slate-600">{state.message}</div>
+        <div className="text-sm text-slate-600 dark:text-slate-300">{state.message}</div>
         <div className="flex justify-end gap-2">
           <button className={ghostButton} onClick={() => done(false)}>
             {state.cancelLabel ?? 'Cancel'}
@@ -121,7 +121,7 @@ function PromptBody({ state, onClose }: { state: PromptState; onClose: () => voi
           if (value.trim() !== '') submit();
         }}
       >
-        <label className="flex flex-col text-xs font-bold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
           {state.label}
           <input
             aria-label={state.label}

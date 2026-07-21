@@ -55,11 +55,11 @@ export function NewProjectModal({ onClose, onCreated }: NewProjectModalProps) {
           void create();
         }}
       >
-        <label className="flex flex-col text-xs font-bold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
           Project name
           <input aria-label="Project name" className={`mt-1.5 font-normal ${glassInput}`} value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
         </label>
-        <label className="flex flex-col text-xs font-bold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
           Slug
           <input
             aria-label="Project slug"
@@ -72,9 +72,9 @@ export function NewProjectModal({ onClose, onCreated }: NewProjectModalProps) {
             }}
             required
           />
-          <span className="mt-1 font-normal text-[11px] text-slate-400">The site’s URL-safe identifier — auto-filled from the name.</span>
+          <span className="mt-1 font-normal text-[11px] text-slate-400 dark:text-slate-500">The site’s URL-safe identifier — auto-filled from the name.</span>
         </label>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {/* Submit via the header ✓ (Create project) or Enter; a hidden submit input wires Enter. */}
         <input type="submit" hidden />
       </form>

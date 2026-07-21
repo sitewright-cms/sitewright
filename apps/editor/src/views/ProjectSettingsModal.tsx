@@ -96,14 +96,14 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
           silently discard its in-progress fields (e.g. a just-pasted API key). */}
       <div className={`flex flex-col gap-3 p-5 ${tab === 'general' ? '' : 'hidden'}`}>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">Project name</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Project name</span>
           <input aria-label="Project name" className={glassInput} value={name} onChange={(e) => setName(e.target.value)} />
-          {nameInvalid && nameChanged && <span className="text-[11px] text-rose-500">Name cannot be empty.</span>}
+          {nameInvalid && nameChanged && <span className="text-[11px] text-rose-500 dark:text-rose-300">Name cannot be empty.</span>}
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">
-            Slug <span className="text-slate-300">— the site address (<code>/sites/&lt;slug&gt;/</code>)</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Slug <span className="text-slate-400 dark:text-slate-500">— the site address (<code>/sites/&lt;slug&gt;/</code>)</span>
           </span>
           <input
             aria-label="Project slug"
@@ -112,7 +112,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
             onChange={(e) => setSlugInput(e.target.value)}
             placeholder={project.slug}
           />
-          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500' : 'text-slate-400'}`}>
+          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500'}`}>
             {slugChanged && !slugValid
               ? 'Use only lowercase letters, numbers, and single hyphens, e.g. my-agency-site.'
               : slugTaken
@@ -122,7 +122,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
         </label>
 
         {slugChanged && slugValid && !slugTaken && (
-          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 px-3 py-3 text-[11px] leading-relaxed text-amber-800">
+          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-3 py-3 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
             <p>
               Changing the slug to <code>{slug}</code> changes the site address and rewrites every media
               reference. Any external links to the old address will stop working, and you'll need to publish
@@ -139,7 +139,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
       <div className={`p-5 ${tab === 'ai' ? '' : 'hidden'}`}>
         <AiConfig projectId={project.id} flat />

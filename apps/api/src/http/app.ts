@@ -5850,8 +5850,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Google in the admin's browser (selected fonts are then self-hosted), so allow the Google
     // style + font hosts here. `setHeaders` overriding the response CSP makes the onSend default-
     // CSP hook skip it (it only sets the default when no CSP is present).
+    // The `sha256-…` allows the single inline FOUC script in editor/index.html (applies the persisted
+    // color theme before first paint, so dark-mode users see no light flash). It is the ONLY inline
+    // script permitted (no `unsafe-inline`); its hash covers the script's exact bytes — if that script
+    // in apps/editor/index.html ever changes, recompute this hash (sha256, base64, of the script body).
+    // If the hash ever mismatches, the script is simply blocked and main.tsx applies the theme instead
+    // (a brief flash, never broken).
     const editorCsp =
-      "default-src 'self'; script-src 'self'; img-src 'self' data: https:; " +
+      "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: https:; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
       "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     // `dotfiles: 'deny'` makes the posture explicit (don't rely on @fastify/send's 'ignore'

@@ -179,15 +179,15 @@ export function FormsManager({ project }: { project: Project }) {
     return (
       <div className={`flex flex-col gap-5 ${glassCard} p-5`}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-700">
-            Edit form <code className="text-xs text-slate-400">{draft.id}</code>
+          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Edit form <code className="text-xs text-slate-400 dark:text-slate-500">{draft.id}</code>
           </h3>
           <button className={ghostButton} onClick={() => setDraft(null)}>
             Cancel
           </button>
         </div>
 
-        <label className="flex flex-col text-xs text-slate-500">
+        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Name
           <input
             aria-label="Form name"
@@ -197,7 +197,7 @@ export function FormsManager({ project }: { project: Project }) {
           />
         </label>
 
-        <label className="flex flex-col text-xs text-slate-500">
+        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Recipient email (where submissions are sent — kept server-side)
           <input
             aria-label="Recipient email"
@@ -211,10 +211,10 @@ export function FormsManager({ project }: { project: Project }) {
         </label>
 
         <fieldset className={`${glassPanel} p-3`}>
-          <legend className="px-1 text-xs font-bold text-slate-500">Fields</legend>
+          <legend className="px-1 text-xs font-bold text-slate-500 dark:text-slate-400">Fields</legend>
           <ul className="flex flex-col gap-2">
             {draft.fields.map((field, i) => (
-              <li key={i} className="flex flex-col gap-1 border-b border-slate-100 pb-2 text-sm last:border-0">
+              <li key={i} className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/10 pb-2 text-sm last:border-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     aria-label={`Field ${i + 1} name`}
@@ -242,7 +242,7 @@ export function FormsManager({ project }: { project: Project }) {
                       </option>
                     ))}
                   </select>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                     <input
                       type="checkbox"
                       className={toggleInput}
@@ -285,7 +285,7 @@ export function FormsManager({ project }: { project: Project }) {
                     />
                   )}
                   {field.type === 'checkbox' && (field.options?.length ?? 0) > 0 && field.required && (
-                    <span className="w-full text-xs text-amber-600">
+                    <span className="w-full text-xs text-amber-600 dark:text-amber-400">
                       “required” isn’t enforced on a multi-select checkbox group (the browser has no “at least one” rule).
                     </span>
                   )}
@@ -303,7 +303,7 @@ export function FormsManager({ project }: { project: Project }) {
         </fieldset>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col text-xs text-slate-500">
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
             Submit button label
             <input
               aria-label="Submit label"
@@ -312,7 +312,7 @@ export function FormsManager({ project }: { project: Project }) {
               onChange={(e) => patch({ submitLabel: e.target.value })}
             />
           </label>
-          <label className="flex flex-col text-xs text-slate-500">
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
             Thank-you redirect (optional; overrides the inline message)
             <input
               aria-label="Redirect URL"
@@ -322,7 +322,7 @@ export function FormsManager({ project }: { project: Project }) {
               placeholder="/thank-you"
             />
           </label>
-          <label className="flex flex-col text-xs text-slate-500">
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
             Success message
             <input
               aria-label="Success message"
@@ -331,7 +331,7 @@ export function FormsManager({ project }: { project: Project }) {
               onChange={(e) => patch({ successMessage: e.target.value })}
             />
           </label>
-          <label className="flex flex-col text-xs text-slate-500">
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
             Error message
             <input
               aria-label="Error message"
@@ -342,7 +342,7 @@ export function FormsManager({ project }: { project: Project }) {
           </label>
         </div>
 
-        <label className="flex max-w-sm flex-col text-xs text-slate-500">
+        <label className="flex max-w-sm flex-col text-xs text-slate-500 dark:text-slate-400">
           Delivery mode
           <select
             aria-label="Delivery mode"
@@ -361,13 +361,13 @@ export function FormsManager({ project }: { project: Project }) {
               </option>
             ))}
           </select>
-          <span className="mt-1 text-[11px] text-slate-400">
+          <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
             Only modes enabled by an instance admin are listed.
           </span>
         </label>
 
         {draft.mode === 'thirdParty' && (
-          <label className="flex max-w-lg flex-col text-xs text-slate-500">
+          <label className="flex max-w-lg flex-col text-xs text-slate-500 dark:text-slate-400">
             Third-party endpoint URL (the form posts here directly)
             <input
               aria-label="Third-party endpoint URL"
@@ -390,7 +390,7 @@ export function FormsManager({ project }: { project: Project }) {
             disabled={draft.mode === 'contactPhp' || draft.mode === 'thirdParty'}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400' : ''}>
+          <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400 dark:text-slate-500' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
             {(draft.mode === 'contactPhp' || draft.mode === 'thirdParty') &&
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
@@ -401,7 +401,7 @@ export function FormsManager({ project }: { project: Project }) {
           <button onClick={save} className={primaryButton}>
             Save form
           </button>
-          {error && <span className="text-sm text-red-600">{error}</span>}
+          {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
         </div>
       </div>
     );
@@ -419,8 +419,8 @@ export function FormsManager({ project }: { project: Project }) {
       {dialog}
       {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
       {enabledModes.userSmtp && <ProjectSmtp project={project} />}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {saved && <p className="text-sm text-green-600">Saved.</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {saved && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
       <ul className="flex flex-col gap-2">
         {forms.map((f, i) => {
           const showing = submissionsFor === f.id;
@@ -446,10 +446,10 @@ export function FormsManager({ project }: { project: Project }) {
                 >
                   {f.name}
                 </button>
-                <code className="text-xs text-slate-400 group-hover:text-white/80">{f.id}</code>
-                <span className="text-xs text-slate-500 group-hover:text-white/90">{f.fields.length} fields</span>
+                <code className="text-xs text-slate-400 dark:text-slate-500 group-hover:text-white/80">{f.id}</code>
+                <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">{f.fields.length} fields</span>
                 {f.hcaptcha && (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
+                  <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
                     hCaptcha
                   </span>
                 )}
@@ -483,12 +483,12 @@ export function FormsManager({ project }: { project: Project }) {
             </li>
           );
         })}
-        {forms.length === 0 && <li className="text-sm text-slate-400">No forms yet. Create one, then add a Form block to a page.</li>}
+        {forms.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No forms yet. Create one, then add a Form block to a page.</li>}
       </ul>
 
       <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500">New form name</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400">New form name</label>
           <input
             aria-label="New form name"
             className={`${glassInput} mt-1`}

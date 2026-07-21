@@ -33,13 +33,13 @@ function WidgetGallery() {
     };
   }, []);
 
-  if (error) return <p className="p-4 text-sm text-slate-500">Couldn’t load the widget catalog.</p>;
-  if (!widgets) return <p className="p-4 text-sm text-slate-400">Loading widgets…</p>;
-  if (widgets.length === 0) return <p className="p-4 text-sm text-slate-500">No widgets are available.</p>;
+  if (error) return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Couldn’t load the widget catalog.</p>;
+  if (!widgets) return <p className="p-4 text-sm text-slate-400 dark:text-slate-500">Loading widgets…</p>;
+  if (widgets.length === 0) return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">No widgets are available.</p>;
 
   return (
     <div className="p-3">
-      <p className="mb-3 px-1 text-xs leading-relaxed text-slate-500">
+      <p className="mb-3 px-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         Managed, data-backed blocks. Insert one with <code className="font-mono">{'{{> name}}'}</code>, then edit its
         content in the <span className="font-medium">Datasets</span> rail after saving.
       </p>
@@ -49,7 +49,7 @@ function WidgetGallery() {
           return (
             <li key={w.name} className={`${glassPanel} flex flex-col gap-1.5 rounded-xl px-3 py-2.5`}>
               <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700" title={w.label}>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200" title={w.label}>
                   {w.label}
                 </span>
                 <button
@@ -61,14 +61,14 @@ function WidgetGallery() {
                   {copiedId === w.name ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
                 </button>
               </div>
-              <p className="text-xs leading-relaxed text-slate-500">{w.description}</p>
+              <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{w.description}</p>
               {w.datasets.length > 0 && (
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   Editable data:{' '}
                   {w.datasets.map((d, i) => (
                     <span key={d.slug}>
                       {i > 0 && ', '}
-                      <span className="font-medium text-slate-500">{d.name}</span>
+                      <span className="font-medium text-slate-500 dark:text-slate-400">{d.name}</span>
                     </span>
                   ))}
                 </p>

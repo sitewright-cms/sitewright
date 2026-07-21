@@ -176,10 +176,10 @@ export function SearchableSelect({
         onKeyDown={onKeyDown}
         className={`${glassInput} flex items-center justify-between gap-2 text-left font-normal ${className ?? ''}`}
       >
-        <span className={`truncate ${selected ? 'text-slate-800' : 'text-slate-400'}`}>
+        <span className={`truncate ${selected ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>
           {selected ? selected.label : placeholder}
         </span>
-        <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-slate-400" />
+        <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
       </button>
 
       {open &&
@@ -197,9 +197,9 @@ export function SearchableSelect({
               ...(pos.above ? { bottom: window.innerHeight - pos.top + 4 } : { top: pos.top + 4 }),
               zIndex: 1000,
             }}
-            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900"
           >
-            <div className="border-b border-slate-100 p-2">
+            <div className="border-b border-slate-100 p-2 dark:border-white/10">
               <SearchField
                 value={query}
                 onChange={setQuery}
@@ -212,7 +212,7 @@ export function SearchableSelect({
             </div>
             <ul id={listId} role="listbox" aria-label={ariaLabel} className="overflow-y-auto p-1" style={{ maxHeight: pos.maxHeight }}>
               {filtered.length === 0 ? (
-                <li className="px-3 py-2 text-sm text-slate-400">No matches.</li>
+                <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">No matches.</li>
               ) : (
                 filtered.map((opt, i) => (
                   <li key={opt.value} role="option" aria-selected={opt.value === value}>
@@ -224,11 +224,11 @@ export function SearchableSelect({
                       onPointerMove={() => setActive(i)}
                       onClick={() => choose(opt)}
                       className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition ${
-                        i === active ? 'bg-slate-100 text-slate-900' : 'text-slate-700'
+                        i === active ? 'bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-slate-100' : 'text-slate-700 dark:text-slate-200'
                       }`}
                     >
                       <span className="truncate">{opt.label}</span>
-                      {opt.value === value && <Check aria-hidden className="h-4 w-4 shrink-0 text-slate-500" />}
+                      {opt.value === value && <Check aria-hidden className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />}
                     </button>
                   </li>
                 ))

@@ -142,7 +142,7 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
 
         {ticket ? (
           <>
-            <p className="mb-6 text-sm text-slate-500">
+            <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
               {useRecovery ? 'Enter one of your recovery codes' : 'Enter the 6-digit code from your authenticator app'}
             </p>
             <form onSubmit={submitTotp} className="flex flex-col gap-3">
@@ -158,14 +158,14 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
                 onChange={(e) => setCode(e.target.value)}
                 required
               />
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button type="submit" disabled={busy || code.trim().length === 0} className={`${primaryButton} w-full`}>
                 {busy ? 'Verifying…' : 'Verify'}
               </button>
             </form>
             <div className="mt-4 flex items-center justify-between text-sm">
               <button
-                className="text-slate-500 hover:text-slate-900"
+                className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                 onClick={() => {
                   setUseRecovery((v) => !v);
                   setCode('');
@@ -174,14 +174,14 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
               >
                 {useRecovery ? 'Use your authenticator app' : 'Use a recovery code'}
               </button>
-              <button className="text-slate-500 hover:text-slate-900" onClick={restart}>
+              <button className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100" onClick={restart}>
                 Back to sign in
               </button>
             </div>
           </>
         ) : (
           <>
-            <p className="mb-6 text-sm text-slate-500">
+            <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
               {mode === 'register' ? 'Create your account' : 'Sign in to your account'}
             </p>
             <form onSubmit={submit} className="flex flex-col gap-3">
@@ -206,7 +206,7 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
                 required
               />
               {mode === 'register' && <PasswordRequirements value={password} />}
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button type="submit" disabled={busy || registerBlocked} className={`${primaryButton} w-full`}>
                 {mode === 'register' ? 'Create account' : 'Sign in'}
               </button>
@@ -226,7 +226,7 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
               ))}
             {canRegister && !lockedEmail && (
               <button
-                className="mt-4 text-sm text-slate-500 hover:text-slate-900"
+                className="mt-4 text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                 onClick={() => {
                   setMode(mode === 'login' ? 'register' : 'login');
                   setError(null);

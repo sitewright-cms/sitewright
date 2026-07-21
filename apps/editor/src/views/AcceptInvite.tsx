@@ -87,7 +87,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
 
   const card = (children: React.ReactNode) => <div className={`mx-auto mt-24 max-w-md ${glassCard} p-8`}>{children}</div>;
   const leave = (
-    <button className="mt-4 text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
+    <button className="mt-4 text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100" onClick={onDone}>
       ← Continue to {branding.name}
     </button>
   );
@@ -96,7 +96,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
     return card(
       <>
         <h1 className="mb-2 text-xl font-bold">Invitation</h1>
-        <p className="text-sm text-red-600">This invite link is invalid or has expired.</p>
+        <p className="text-sm text-red-600 dark:text-red-400">This invite link is invalid or has expired.</p>
         {leave}
       </>,
     );
@@ -109,7 +109,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
     return card(
       <>
         <h1 className="mb-2 text-xl font-bold">Already accepted</h1>
-        <p className="text-sm text-slate-600">This invitation has already been used.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">This invitation has already been used.</p>
         {leave}
       </>,
     );
@@ -118,7 +118,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
     return card(
       <>
         <h1 className="mb-2 text-xl font-bold">Invitation expired</h1>
-        <p className="text-sm text-slate-600">Ask the sender to send a new invite link.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Ask the sender to send a new invite link.</p>
         {leave}
       </>,
     );
@@ -129,11 +129,11 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
     return card(
       <>
         <h1 className="mb-1 text-xl font-bold">{acceptError ? 'Could not accept' : 'Joining…'}</h1>
-        <p className="mb-3 text-sm text-slate-600">
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
           {acceptError ? acceptError : `Adding you ${target}.`}
         </p>
         {acceptError && (
-          <p className="mb-3 text-[11px] text-slate-400">
+          <p className="mb-3 text-[11px] text-slate-400 dark:text-slate-500">
             Accepting requires being signed in as <strong>{peek.email}</strong>. Sign out and use the invite link again with that email.
           </p>
         )}
@@ -143,7 +143,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
               {accepting ? 'Accepting…' : 'Try again'}
             </button>
           )}
-          <button className="text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
+          <button className="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100" onClick={onDone}>
             Not now
           </button>
         </div>
@@ -158,7 +158,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
     return card(
       <>
         <h1 className="mb-1 text-xl font-bold">You’re invited</h1>
-        <p className="mb-5 text-sm text-slate-600">
+        <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">
           <strong>{peek.email}</strong> was invited {target}. Choose how to continue:
         </p>
         <div className="flex flex-col gap-2.5">
@@ -179,7 +179,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
 
   return (
     <div>
-      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-indigo-200/60 bg-indigo-50/70 p-4 text-center text-sm text-indigo-900 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20 bg-indigo-50/70 dark:bg-indigo-500/10 p-4 text-center text-sm text-indigo-900 dark:text-indigo-200 shadow-sm backdrop-blur-xl">
         You’ve been invited as <strong>{peek.email}</strong> {target}.{' '}
         {peek.hasAccount ? 'Sign in to accept.' : 'Set a password to accept.'}
         {hasOidc && (

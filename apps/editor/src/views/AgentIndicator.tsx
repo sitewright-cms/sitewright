@@ -35,7 +35,7 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
       <button
         type="button"
         onClick={onClick}
-        className={`${base} bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
+        className={`${base} bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/15`}
         title="An agent is editing this project right now — click for details / to disconnect."
       >
         <Spinner />
@@ -48,7 +48,7 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
       <button
         type="button"
         onClick={onClick}
-        className={`${base} bg-amber-50 text-amber-700 hover:bg-amber-100`}
+        className={`${base} bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15`}
         title="An agent is connected (idle) — click for details / to disconnect."
       >
         <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
@@ -60,7 +60,7 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
     <button
       type="button"
       onClick={onClick}
-      className={`${base} text-slate-400 hover:bg-slate-100 hover:text-slate-600`}
+      className={`${base} text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300`}
       title="No agent connected — click to learn how to connect an AI agent."
     >
       <RobotIcon />

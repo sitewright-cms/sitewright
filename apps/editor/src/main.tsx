@@ -11,10 +11,16 @@ import './styles.css';
 import { App } from './App';
 import { ToastProvider } from './views/ui/Toast';
 import { recordRunningBuild } from './buildId';
+import { initColorMode } from './lib/color-mode';
 
 // Record this bundle's build hash (from its own asset URL) so the UpdateBanner can detect a stale tab
 // after a redeploy and prompt a reload. Runs before any component renders.
 recordRunningBuild(import.meta.url);
+
+// Apply the persisted color mode (light/dark/auto) and wire the `auto`→OS listener. The inline FOUC
+// script in index.html already stamped `data-theme` before paint; this re-affirms it (idempotent) and
+// attaches the runtime OS-change listener the static script can't.
+initColorMode();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');

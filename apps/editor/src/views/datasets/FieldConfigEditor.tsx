@@ -37,7 +37,7 @@ export function FieldConfigEditor({
     const target = fieldReferenceDataset(field);
     return (
       <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6 text-xs">
-        <span className="text-slate-400">links to</span>
+        <span className="text-slate-400 dark:text-slate-500">links to</span>
         <select
           aria-label={`Reference target for ${field.name}`}
           className={`${glassInput} w-auto px-2 py-1 text-xs`}
@@ -51,7 +51,7 @@ export function FieldConfigEditor({
             </option>
           ))}
         </select>
-        {target === '' && <span className="text-amber-600">pick a dataset to choose entries from</span>}
+        {target === '' && <span className="text-amber-600 dark:text-amber-400">pick a dataset to choose entries from</span>}
       </div>
     );
   }
@@ -75,9 +75,9 @@ export function FieldConfigEditor({
     };
     return (
       <div className="mt-1.5 space-y-1 pl-6">
-        <span className="text-[11px] font-medium text-slate-400">Choices</span>
+        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">Choices</span>
         {raw.length === 0 && (
-          <p className="text-[11px] text-amber-600">Add choices — without them the entry editor shows a plain text box.</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400">Add choices — without them the entry editor shows a plain text box.</p>
         )}
         {raw.map((opt, i) => (
           <div key={optionKeys.current[i]} className="flex items-center gap-1.5">
@@ -91,7 +91,7 @@ export function FieldConfigEditor({
             <button
               type="button"
               aria-label={`Remove choice ${i + 1}`}
-              className="rounded p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+              className="rounded p-1 text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
               onClick={() => removeOpt(i)}
             >
               <X className="h-3.5 w-3.5" />
@@ -100,7 +100,7 @@ export function FieldConfigEditor({
         ))}
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-md border border-dashed border-indigo-300/70 px-2 py-1 text-[11px] font-semibold text-indigo-600 transition hover:bg-indigo-50"
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-indigo-300/70 px-2 py-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
           onClick={addOpt}
         >
           <Plus className="h-3 w-3" /> Add choice

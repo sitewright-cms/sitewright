@@ -36,24 +36,24 @@ export function CustomFontSlots({
       {slots.map((row) => {
         const reserved = RESERVED.has(row.name);
         return (
-          <div key={row.id} className="rounded-xl border border-white/60 bg-white/40 p-3">
+          <div key={row.id} className="rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-3">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500">font-</span>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">font-</span>
               <input
                 aria-label="Custom font name"
-                className="w-40 rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-sm sw-brand-focus outline-none"
+                className="w-40 rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-2 py-1 text-sm sw-brand-focus outline-none"
                 placeholder="boombox"
                 value={row.name}
                 onChange={(e) => update(row.id, { name: toSlug(e.target.value) })}
               />
               {row.name && !reserved && (
-                <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">.font-{row.name}</code>
+                <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[11px] text-slate-600 dark:text-slate-300">.font-{row.name}</code>
               )}
-              {reserved && <span className="text-[11px] text-rose-500">“{row.name}” is reserved</span>}
+              {reserved && <span className="text-[11px] text-rose-500 dark:text-rose-300">“{row.name}” is reserved</span>}
               <button
                 type="button"
                 aria-label={`Remove ${row.name || 'custom'} font slot`}
-                className="ml-auto rounded-md px-2 py-1 text-xs text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                className="ml-auto rounded-md px-2 py-1 text-xs text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
                 onClick={() => onChange(slots.filter((s) => s.id !== row.id))}
               >
                 Remove

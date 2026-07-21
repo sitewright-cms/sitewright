@@ -142,24 +142,24 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
   return (
     <Modal title={`Deploy to ${target.name}`} size="md" onClose={onClose} saveLabel="Close">
       <div className="space-y-4 p-5">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {isGit ? (
             <>
-              Committing the published site to <span className="font-medium text-slate-700">{target.branch}</span>
-              <span className="text-slate-400"> · {target.repoUrl}</span>
+              Committing the published site to <span className="font-medium text-slate-700 dark:text-slate-200">{target.branch}</span>
+              <span className="text-slate-400 dark:text-slate-500"> · {target.repoUrl}</span>
             </>
           ) : (
             <>
-              Uploading the published site to <span className="font-medium text-slate-700">{target.protocol.toUpperCase()}@{target.host}</span>
-              {target.remoteDir ? <span className="text-slate-400"> · {target.remoteDir}</span> : null}
+              Uploading the published site to <span className="font-medium text-slate-700 dark:text-slate-200">{target.protocol.toUpperCase()}@{target.host}</span>
+              {target.remoteDir ? <span className="text-slate-400 dark:text-slate-500"> · {target.remoteDir}</span> : null}
             </>
           )}
         </p>
 
         {running && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-slate-700">
-              <span className="loading loading-spinner loading-sm text-indigo-600" aria-hidden />
+            <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <span className="loading loading-spinner loading-sm text-indigo-600 dark:text-indigo-400" aria-hidden />
               {phaseLabel(status, target)}
             </div>
             {/* Determinate once the file count is known; indeterminate otherwise (git / connecting). */}
@@ -168,35 +168,35 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
               {...(pct !== undefined ? { value: status.index, max: status.total } : {})}
               aria-label="Deploy progress"
             />
-            {status.file && <p className="truncate font-mono text-[11px] text-slate-400" title={status.file}>{status.file}</p>}
+            {status.file && <p className="truncate font-mono text-[11px] text-slate-400 dark:text-slate-500" title={status.file}>{status.file}</p>}
             {showRunningDiag && (
-              <p className="text-[11px] font-medium text-slate-500">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false)}</p>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false)}</p>
             )}
           </div>
         )}
 
         {status.kind === 'done' && (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
               <Check className="h-4 w-4" />
               {status.protocol === 'git'
                 ? `Pushed to ${status.branch ?? 'the branch'}${status.commit ? ` · ${status.commit.slice(0, 7)}` : ''}.`
                 : deployedSummary(status)}
             </p>
             {showDoneDiag && (
-              <p className="text-xs text-slate-500">{diagnosticsLine(status.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, true)}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{diagnosticsLine(status.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, true)}</p>
             )}
             {siteUrl ? (
               <a
                 href={siteUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400"
               >
                 Open production site <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : (
-              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              <p className="rounded-lg border border-amber-300 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
                 Website Production URL is not configured: sitemap.xml and robots.txt will not be generated. Configure a
                 production URL in website settings.
               </p>
@@ -205,7 +205,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
         )}
 
         {status.kind === 'error' && (
-          <p className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{status.message}</p>
+          <p className="rounded-lg border border-rose-300 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">{status.message}</p>
         )}
       </div>
     </Modal>

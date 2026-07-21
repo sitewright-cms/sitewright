@@ -49,7 +49,7 @@ export function TeamManager() {
   return (
     <div className="max-w-2xl">
       <h3 className="mb-1 text-lg font-bold">Administrators</h3>
-      <p className="mb-4 text-sm text-slate-500">
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
         Your platform staff. Invite a <strong>developer</strong> to give them full access to every
         project on this instance.
       </p>
@@ -61,8 +61,8 @@ export function TeamManager() {
             className={`flex items-center justify-between ${glassPanel} px-4 py-2.5`}
           >
             <span>
-              <span className="font-medium text-slate-800">{m.email}</span>{' '}
-              <span className="ml-1 rounded-full border border-white/60 bg-white/60 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              <span className="font-medium text-slate-800 dark:text-slate-100">{m.email}</span>{' '}
+              <span className="ml-1 rounded-full border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 {m.role}
               </span>
             </span>
@@ -77,7 +77,7 @@ export function TeamManager() {
             )}
           </li>
         ))}
-        {members.length === 0 && <li className="text-sm text-slate-400">No administrators yet.</li>}
+        {members.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No administrators yet.</li>}
       </ul>
 
       <InvitePanel
@@ -87,7 +87,7 @@ export function TeamManager() {
         onRevoke={(id) => api.revokeInvite(id)}
         onChanged={load}
       />
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {dialog}
     </div>
   );

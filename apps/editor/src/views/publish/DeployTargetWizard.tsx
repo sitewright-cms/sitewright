@@ -54,7 +54,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
   }, [project.id]);
 
   if (targets === null) {
-    return <p className="mt-3 text-sm text-slate-500">Saved deploy targets are unavailable (no encryption key configured on this server).</p>;
+    return <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Saved deploy targets are unavailable (no encryption key configured on this server).</p>;
   }
 
   if (mode.kind === 'configure') {
@@ -81,13 +81,13 @@ export function DeployTargetWizard({ project }: { project: Project }) {
     <div className="mt-1 flex flex-col gap-4">
       {targets.length > 0 && (
         <div>
-          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Your deploy targets</h4>
+          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Your deploy targets</h4>
           <ul className="flex flex-col gap-1.5">
             {targets.map((t) => (
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
-                <span className="font-medium text-slate-800">{t.name}</span>
-                <span className="text-xs text-slate-400">{whereLabel(t)}</span>
-                {t.minifyHtml && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">minified</span>}
+                <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{whereLabel(t)}</span>
+                {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}
                   {t.protocol !== 'local' && (
@@ -127,7 +127,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
       )}
 
       <div>
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Add a deploy target</h4>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Add a deploy target</h4>
         <div className="grid grid-cols-2 gap-2">
           {TYPES.filter((ty) => !(ty.protocol === 'local' && hasLocal)).map((ty) => {
             const Icon = ty.icon;
@@ -135,21 +135,21 @@ export function DeployTargetWizard({ project }: { project: Project }) {
               <button
                 key={ty.protocol}
                 type="button"
-                className={`${glassPanel} flex items-start gap-3 p-3 text-left transition hover:bg-white`}
+                className={`${glassPanel} flex items-start gap-3 p-3 text-left transition hover:bg-white dark:hover:bg-white/10`}
                 onClick={() => setMode({ kind: 'configure', protocol: ty.protocol, editing: null })}
               >
                 <span className={`${accentChip} shrink-0`} aria-hidden>
                   <Icon className="h-4 w-4" />
                 </span>
                 <span className="flex flex-col">
-                  <span className="text-sm font-semibold text-slate-800">{ty.title}</span>
-                  <span className="text-xs text-slate-400">{ty.blurb}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{ty.title}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{ty.blurb}</span>
                 </span>
               </button>
             );
           })}
         </div>
-        {hasLocal && <p className="mt-2 text-[11px] text-slate-400">Local Hosting is already configured — edit it above.</p>}
+        {hasLocal && <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">Local Hosting is already configured — edit it above.</p>}
       </div>
 
       {dialog}

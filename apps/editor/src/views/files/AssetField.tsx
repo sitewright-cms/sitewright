@@ -41,7 +41,7 @@ export function AssetField({
       {!hideLabel && <span className={fieldLabel}>{label}</span>}
       <div className="flex items-center gap-2">
         {value && looksLikeImage(value) && (
-          <img src={value} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" />
+          <img src={value} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 dark:border-slate-700 object-cover" />
         )}
         <input
           id={inputId}
@@ -66,7 +66,7 @@ export function AssetField({
           <button
             type="button"
             aria-label={`Clear ${label}`}
-            className="shrink-0 px-1 text-xs text-slate-400 transition hover:text-rose-600"
+            className="shrink-0 px-1 text-xs text-slate-400 dark:text-slate-500 transition hover:text-rose-600 dark:hover:text-rose-400"
             onClick={() => onChange('')}
           >
             Clear

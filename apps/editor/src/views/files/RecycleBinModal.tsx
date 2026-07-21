@@ -61,24 +61,24 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
   return (
     <Modal title="Recycle Bin" size="xl" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500">Deleted files are kept here for 90 days, then permanently removed.</p>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        <p className="text-sm text-slate-500 dark:text-slate-400">Deleted files are kept here for 90 days, then permanently removed.</p>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {loading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-400">The Recycle Bin is empty.</p>
+          <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">The Recycle Bin is empty.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-slate-100">
+          <ul className="flex flex-col divide-y divide-slate-100 dark:divide-white/10">
             {items.map((m) => (
               <li key={m.id} className="flex items-center gap-3 py-2">
                 {m.kind === 'image' ? (
-                  <img src={m.url} alt="" className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200" />
+                  <img src={m.url} alt="" className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200 dark:ring-white/10" />
                 ) : (
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-400">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500">
                     <FileTypeIcon filename={m.filename} className="h-5 w-5" />
                   </span>
                 )}
-                <span className="min-w-0 flex-1 truncate text-sm text-slate-700" title={m.filename}>
+                <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>
                   {m.filename}
                 </span>
                 <button type="button" onClick={() => void restore(m)} className={`${ghostButton} px-2.5 py-1 text-xs`}>

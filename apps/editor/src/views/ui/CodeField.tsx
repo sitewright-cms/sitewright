@@ -45,15 +45,15 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
         type="button"
         aria-label={`Edit ${label}`}
         onClick={() => setOpen(true)}
-        className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
+        className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
       >
         <span className="min-w-0">
-          <span className="block truncate text-xs font-medium text-slate-700">{label}</span>
-          <span className="block text-[11px] text-slate-400">
+          <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">{label}</span>
+          <span className="block text-[11px] text-slate-400 dark:text-slate-500">
             {lineCount === 0 ? (placeholder ? `Empty · e.g. ${placeholder}` : 'Empty') : `${lineCount} line${lineCount === 1 ? '' : 's'}`}
           </span>
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
           <CodeIcon /> Edit
         </span>
       </button>
@@ -61,7 +61,7 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
         <button
           type="button"
           onClick={() => onChange(starter.code)}
-          className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-100"
+          className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 transition hover:bg-indigo-100 dark:hover:bg-indigo-500/15"
         >
           + {starter.label}
         </button>

@@ -234,7 +234,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
     <Modal title="SVG animation studio" size="studio" onClose={onClose}>
       {stage === 'import' ? (
         <div className="mx-auto flex max-w-2xl flex-col gap-4 p-6">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Import an SVG — paste its markup or upload a <code>.svg</code>. Then assign an animation to each element and export
             the animated SVG. Pre-animated SVGs re-open with their settings intact.
           </p>
@@ -247,12 +247,12 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
             onChange={(e) => setPasteText(e.target.value)}
             className={`${glassInput} w-full font-mono text-xs`}
           />
-          {importError && <p className="text-xs font-semibold text-red-600">{importError}</p>}
+          {importError && <p className="text-xs font-semibold text-red-600 dark:text-red-400">{importError}</p>}
           <label className="flex cursor-pointer items-start gap-2.5" title="Strip comments, <metadata>, Inkscape/Illustrator/Sodipodi cruft & layer names on import — CSS, ids and animation directives are kept.">
             <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} aria-label="Clean up code on import" />
             <span className="leading-tight">
-              <span className="block text-xs font-semibold text-slate-700">Clean up code</span>
-              <span className="block text-[11px] text-slate-400">Remove editor cruft (comments, metadata, Inkscape/Illustrator junk). Keeps CSS, ids &amp; animation.</span>
+              <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Clean up code</span>
+              <span className="block text-[11px] text-slate-400 dark:text-slate-500">Remove editor cruft (comments, metadata, Inkscape/Illustrator junk). Keeps CSS, ids &amp; animation.</span>
             </span>
           </label>
           <div className="flex items-center gap-3">
@@ -276,8 +276,8 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
       ) : (
         <div className="flex h-full min-h-0">
           {/* element tree */}
-          <div className="flex w-72 shrink-0 flex-col border-r border-slate-200">
-            <div className="flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <div className="flex w-72 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <span>Elements</span>
               <button type="button" className="text-[11px] font-semibold normal-case tracking-normal text-primary" onClick={() => setStage('import')}>
                 ← re-import
@@ -294,11 +294,11 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
               <button type="button" className={primaryButton} onClick={() => send({ type: 'sw-studio-play' })}>
                 ▶ Play
               </button>
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500" title="Replay the animation on a loop so you can review edits without pressing Play">
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400" title="Replay the animation on a loop so you can review edits without pressing Play">
                 <input type="checkbox" className={toggleInput} checked={autoLoop} onChange={(e) => setAutoLoop(e.target.checked)} aria-label="Auto-loop preview" />
                 Auto-loop
               </label>
-              <span className="text-xs text-slate-400">{selectedId ? `selected: ${selectedId}` : 'click an element to select it'}</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">{selectedId ? `selected: ${selectedId}` : 'click an element to select it'}</span>
             </div>
             <iframe ref={iframeRef} title="SVG studio canvas" src={previewSrc} sandbox="allow-scripts" className="min-h-0 flex-1 border-y border-slate-200 bg-white" />
             <div className="flex items-center gap-2 px-3 py-2">
@@ -312,7 +312,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
                 (naming ? (
                   <span className="flex items-center gap-1">
                     <input aria-label="New file name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="animation" className={`${glassInput} w-32 text-xs`} />
-                    <span className="text-xs text-slate-400">.svg</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">.svg</span>
                     <button type="button" className={primaryButton} onClick={saveNew}>Save</button>
                     <button type="button" className={ghostButton} onClick={() => setNaming(false)}>Cancel</button>
                   </span>
@@ -328,15 +328,15 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
                     </button>
                   </>
                 ))}
-              {saveMsg && <span className="text-xs font-semibold text-emerald-600">{saveMsg}</span>}
+              {saveMsg && <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{saveMsg}</span>}
             </div>
           </div>
 
           {/* right panel: Element | Global settings */}
-          <div className="flex w-80 shrink-0 flex-col border-l border-slate-200">
-            <div className="flex shrink-0 border-b border-slate-200 text-xs font-semibold">
+          <div className="flex w-80 shrink-0 flex-col border-l border-slate-200 dark:border-slate-700">
+            <div className="flex shrink-0 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold">
               {([['element', 'Element'], ['global', 'Global settings']] as const).map(([t, lbl]) => (
-                <button key={t} type="button" onClick={() => setPanelTab(t)} className={`flex-1 px-3 py-2.5 transition ${panelTab === t ? 'border-b-2 border-primary text-primary' : 'text-slate-500 hover:text-slate-700'}`}>
+                <button key={t} type="button" onClick={() => setPanelTab(t)} className={`flex-1 px-3 py-2.5 transition ${panelTab === t ? 'border-b-2 border-primary text-primary' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                   {lbl}
                 </button>
               ))}
@@ -345,11 +345,11 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
               {panelTab === 'global' ? (
                 <GlobalSettings rootAttr={rootAttr} setRootAttr={setRootAttr} />
               ) : !sel ? (
-                <p className="text-sm text-slate-400">Select an element (in the tree or on the canvas) to animate it.</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500">Select an element (in the tree or on the canvas) to animate it.</p>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <div className="text-xs font-bold text-slate-500">
-                    {sel.tagName.toLowerCase()} <span className="font-mono text-[11px] text-slate-400">#{selectedId}</span>
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {sel.tagName.toLowerCase()} <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">#{selectedId}</span>
                   </div>
                   <Field label="Effect" desc="What this element does.">
                     <select aria-label="Effect" className={`${glassInput} text-xs`} value={effect} onChange={(e) => setEffect(e.target.value)}>
@@ -384,9 +384,9 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
                           <option value="out">Out (exit)</option>
                         </select>
                       </Field>
-                      <p className="text-[11px] leading-snug text-slate-400">Trigger, replay, click &amp; loop are set once for the whole SVG in <button type="button" className="font-semibold text-primary" onClick={() => setPanelTab('global')}>Global settings</button>.</p>
+                      <p className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">Trigger, replay, click &amp; loop are set once for the whole SVG in <button type="button" className="font-semibold text-primary" onClick={() => setPanelTab('global')}>Global settings</button>.</p>
                       {effect === 'draw' && (
-                      <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-2">
+                      <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
                         <Field label="Stroke color" desc="draw outline">
                           <input aria-label="Stroke color" type="text" placeholder="currentColor" value={attr('data-sw-svg-draw-color')} onChange={(e) => setAttr('data-sw-svg-draw-color', e.target.value || null)} className={`${glassInput} w-full text-xs`} />
                         </Field>
@@ -436,8 +436,8 @@ function Field({ label, desc, children }: { label: string; desc: string; childre
   return (
     <div className="flex flex-col gap-1">
       <div className="leading-tight">
-        <span className="text-xs font-semibold text-slate-700">{label}</span>
-        <span className="ml-1.5 text-[11px] text-slate-400">{desc}</span>
+        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">{desc}</span>
       </div>
       {children}
     </div>
@@ -454,7 +454,7 @@ function GlobalSettings({ rootAttr, setRootAttr }: { rootAttr: (n: string) => st
   const loopOn = loopMs > 0;
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[11px] leading-snug text-slate-400">These apply to the whole SVG — how &amp; when the entire animation plays.</p>
+      <p className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">These apply to the whole SVG — how &amp; when the entire animation plays.</p>
       <Field label="Trigger" desc="When it plays.">
         <select aria-label="Trigger" className={`${glassInput} text-xs`} value={trigger} onChange={(e) => setRootAttr('data-sw-svg-trigger', e.target.value === 'view' ? null : 'load')}>
           <option value="view">On scroll-in</option>
@@ -466,7 +466,7 @@ function GlobalSettings({ rootAttr, setRootAttr }: { rootAttr: (n: string) => st
       <div className="flex flex-col gap-2">
         <GlobalToggle label="Auto-repeat loop" desc="Replay the whole animation on a timer." checked={loopOn} onChange={(v) => setRootAttr('data-sw-svg-loop', v ? String(LOOP_DEFAULT_MS) : null)} />
         {loopOn && (
-          <label className="ml-7 flex items-center gap-2 text-xs text-slate-600">
+          <label className="ml-7 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
             every
             <input aria-label="Loop interval (seconds)" type="number" min={1} max={600} step={1} value={Math.round(loopMs / 1000)} onChange={(e) => setRootAttr('data-sw-svg-loop', String(Math.max(1, Math.min(600, num(e.target.value))) * 1000))} className={`${glassInput} w-20`} />
             seconds
@@ -483,8 +483,8 @@ function GlobalToggle({ label, desc, checked, onChange }: { label: string; desc:
     <label className="flex cursor-pointer items-start gap-2.5">
       <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
       <span className="leading-tight">
-        <span className="block text-xs font-semibold text-slate-700">{label}</span>
-        <span className="block text-[11px] text-slate-400">{desc}</span>
+        <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="block text-[11px] text-slate-400 dark:text-slate-500">{desc}</span>
       </span>
     </label>
   );
@@ -501,12 +501,12 @@ function TreeList({ nodes, selectedId, onSelect, svg }: { nodes: TreeNode[]; sel
               type="button"
               onClick={() => onSelect(n.id)}
               style={{ paddingLeft: 8 + n.depth * 16 }}
-              className={`flex w-full items-center gap-2 rounded-md py-1.5 pr-2.5 text-left text-[13px] ${selectedId === n.id ? 'bg-primary/10 font-semibold text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`flex w-full items-center gap-2 rounded-md py-1.5 pr-2.5 text-left text-[13px] ${selectedId === n.id ? 'bg-primary/10 font-semibold text-primary' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10'}`}
             >
-              <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${animated ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+              <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${animated ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-white/10'}`} />
               <span className="shrink-0 font-medium">{n.tag}</span>
-              {n.authored && <span className="truncate font-mono text-[11px] text-slate-400">#{n.id}</span>}
-              {n.tag === 'g' && <span className="ml-auto shrink-0 text-[11px] text-slate-400">({n.children.length})</span>}
+              {n.authored && <span className="truncate font-mono text-[11px] text-slate-400 dark:text-slate-500">#{n.id}</span>}
+              {n.tag === 'g' && <span className="ml-auto shrink-0 text-[11px] text-slate-400 dark:text-slate-500">({n.children.length})</span>}
             </button>
             {n.children.length > 0 && <TreeList nodes={n.children} selectedId={selectedId} onSelect={onSelect} svg={svg} />}
           </li>

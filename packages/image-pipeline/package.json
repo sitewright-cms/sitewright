@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/image-pipeline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Build-time image optimization for Sitewright: responsive AVIF/WebP variants, LQIP placeholders, and srcset manifests via sharp.",
   "license": "Apache-2.0",
   "type": "module",

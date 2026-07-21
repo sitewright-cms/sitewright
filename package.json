@@ -1,6 +1,6 @@
 {
   "name": "sitewright-monorepo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Sitewright — OSS website development platform for web-development agencies.",

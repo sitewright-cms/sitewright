@@ -28,6 +28,18 @@ import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
 import { SectionHelp } from './ui/SectionHelp';
+import { Tabs } from './ui/Tabs';
+
+/** System-settings sections grouped into tabs (declared before the component so the id union is stable). */
+const SETTINGS_TABS = [
+  { id: 'general', label: 'General' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'ai', label: 'AI Assistant' },
+  { id: 'security', label: 'Security' },
+  { id: 'ops', label: 'Ops' },
+  { id: 'agents', label: 'Agents' },
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
@@ -66,6 +78,10 @@ const formatBytes = (n: number): string => {
  * one". Shown only to instance admins (gated in App).
  */
 export function InstanceSettings() {
+  const [tab, setTab] = useState<SettingsTab>('general');
+  // A tab panel: visible only when active. Hidden panels stay MOUNTED so the single form save always
+  // submits every section's state regardless of which tab is showing.
+  const panelCls = (id: SettingsTab) => (tab === id ? 'flex flex-col gap-6' : 'hidden');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -522,7 +538,10 @@ export function InstanceSettings() {
 
   return (
     <>
-    <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
+    <Tabs ariaLabel="System settings sections" active={tab} onSelect={setTab} tabs={SETTINGS_TABS} />
+    <form onSubmit={save} className="flex flex-col gap-6">
+    <div className={panelCls('general')}>
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
@@ -647,6 +666,9 @@ export function InstanceSettings() {
         </label>
       </fieldset>
 
+      </div>
+
+      <div className={panelCls('integrations')}>
       <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-bold">Global SMTP</legend>
         <label className="flex items-center gap-2 text-sm">
@@ -807,6 +829,9 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
+      </div>
+
+      <div className={panelCls('ai')}>
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           AI Assistant
@@ -934,6 +959,9 @@ export function InstanceSettings() {
         </label>
       </fieldset>
 
+      </div>
+
+      <div className={panelCls('security')}>
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           Revision history
@@ -1114,6 +1142,9 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
+      </div>
+
+      <div className={panelCls('ops')}>
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           Logging
@@ -1211,6 +1242,10 @@ export function InstanceSettings() {
         <OidcProvidersField providers={oidcProviders} onChange={setOidcProviders} />
       </fieldset>
 
+      <DeletedProjectsCard />
+      </div>
+
+      {tab !== 'agents' && (
       <div className="flex items-center gap-3">
         <button type="submit" className={primaryButton}>
           Save settings
@@ -1218,10 +1253,10 @@ export function InstanceSettings() {
         {saved && <span className="text-sm text-green-600">Saved.</span>}
         {error && <span className="text-sm text-red-600">{error}</span>}
       </div>
+      )}
     </form>
 
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pb-10">
-      <DeletedProjectsCard />
+    <div className={tab === 'agents' ? 'flex flex-col gap-6' : 'hidden'}>
       <section className={`${glassCard} p-4`}>
         <h2 className="flex items-center gap-1.5 text-sm font-bold">
           MCP endpoints
@@ -1266,6 +1301,7 @@ export function InstanceSettings() {
           </li>
         </ol>
       </section>
+    </div>
     </div>
     {localePickerOpen && (
       <LocalePickerModal

@@ -25,7 +25,7 @@ export function SettingsModalHost({
   if (view === 'system') {
     // The instance/system settings form brings its own padding + Save button.
     return (
-      <Modal title="System settings" size="xl" onClose={onClose}>
+      <Modal title="System settings" size="2xl" onClose={onClose}>
         <InstanceSettings />
       </Modal>
     );

@@ -737,7 +737,7 @@ describe('buildSite', () => {
     expect(home).toContain('[data-sw-preloader]{display:none!important}'); // noscript no-JS safety
     expect(home).toContain('preloader.js'); // runtime linked
     // The runtime file is emitted at the site root.
-    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('sw-loading')");
+    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
   });
 
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {
@@ -920,7 +920,7 @@ describe('buildSite', () => {
     expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
     expect(home).toContain('scrollspy.js'); // runtime linked
     expect(home).toContain('nav-link.js'); // smooth-scroll runtime ships with scrollspy (in-page anchors)
-    expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain("getElementById('main-nav')");
+    expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain('main-nav'); // minified — assert the stable id token
   });
 
   it('scrollspy (per-element attribute): source scan ships the runtime without the site-wide flag', async () => {
@@ -982,13 +982,13 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain(':root[data-sw-theme="dark"]{'); // dark token block inlined
+    expect(home).toContain(':root[data-sw-theme=dark]{'); // dark token block inlined (CSS minified → attr quotes dropped)
     expect(home).toContain('data-sw-theme="light"'); // pinned default → no flash
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
     const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
     expect(head).toContain('<script src="theme.js?v=');
-    expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain("localStorage.setItem(KEY,next)");
+    expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain('localStorage.setItem'); // minified — locals are renamed, assert the API call
   });
 
   it('themes OFF: no dark CSS, no theme.js, and the toggle helper renders nothing', async () => {

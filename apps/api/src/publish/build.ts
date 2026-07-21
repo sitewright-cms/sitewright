@@ -73,6 +73,8 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
+  minifyJs,
+  minifyCss,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
@@ -904,6 +906,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const html = renderDocument(page, {
           brand,
           bodyHtml,
+          // Minify the inline platform CSS (base/normalize, brand, theme, component/effect styles,
+          // typography) — the published/deployed/audited build only; preview omits it.
+          minifyCss,
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
@@ -1052,11 +1057,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(css);
     }
 
+    // Write a first-party runtime bundle at the site root, MINIFIED (esbuild via @sitewright/blocks
+    // `minifyJs`; falls back to the source on any edge case). `bytes` tracks the minified size so the
+    // manifest reflects what actually ships. Vendored library runtimes inside these bundles are already
+    // minified; re-minifying the whole concatenation is idempotent-safe.
+    const writeJs = async (name: string, code: string): Promise<void> => {
+      const min = minifyJs(code);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant/registry filename under the validated tmp dir
+      await writeFile(join(tmp, name), min, 'utf8');
+      bytes += Buffer.byteLength(min);
+    };
+
     // One platform component bundle (first-party behavior; only-used-ships).
     if (usesComponents && components.js) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, COMPONENT_SCRIPT), components.js, 'utf8');
-      bytes += Buffer.byteLength(components.js);
+      await writeJs(COMPONENT_SCRIPT, components.js);
     }
 
     // Write each used body-effect runtime's JS at the site root (first-party behavior; only-used-ships).
@@ -1064,57 +1078,39 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // runtimes ship (marquee is CSS-only → no script to write).
     for (const r of usedBodyEffects) {
       if (!r.script || !r.js) continue;
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- registry-constant filename under the validated tmp dir
-      await writeFile(join(tmp, r.script), r.js, 'utf8');
-      bytes += Buffer.byteLength(r.js);
+      await writeJs(r.script, r.js);
     }
     // The color-scheme toggle + no-flash runtime (first-party behavior; only-used-ships).
     if (usesThemeToggleRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, THEME_SCRIPT), THEME_TOGGLE_JS, 'utf8');
-      bytes += Buffer.byteLength(THEME_TOGGLE_JS);
+      await writeJs(THEME_SCRIPT, THEME_TOGGLE_JS);
     }
     // The nav-placeholder runtime (open a <dialog> / smooth-scroll a #section; only-used-ships).
     if (usesNavLink) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, NAV_LINK_SCRIPT), NAV_LINK_JS, 'utf8');
-      bytes += Buffer.byteLength(NAV_LINK_JS);
+      await writeJs(NAV_LINK_SCRIPT, NAV_LINK_JS);
     }
     // The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge; only-used-ships).
     if (usesPreloaderRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, PRELOADER_SCRIPT), PRELOADER_JS, 'utf8');
-      bytes += Buffer.byteLength(PRELOADER_JS);
+      await writeJs(PRELOADER_SCRIPT, PRELOADER_JS);
     }
     // The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top; only-used-ships).
     if (usesBackToTopRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, BACK_TO_TOP_SCRIPT), BACK_TO_TOP_JS, 'utf8');
-      bytes += Buffer.byteLength(BACK_TO_TOP_JS);
+      await writeJs(BACK_TO_TOP_SCRIPT, BACK_TO_TOP_JS);
     }
     // The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink; only-used-ships).
     if (usesStickyHeaderRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, STICKY_HEADER_SCRIPT), STICKY_HEADER_JS, 'utf8');
-      bytes += Buffer.byteLength(STICKY_HEADER_JS);
+      await writeJs(STICKY_HEADER_SCRIPT, STICKY_HEADER_JS);
     }
     // The SCROLLSPY runtime (highlight the nav link whose in-page section is in view; only-used-ships).
     if (usesScrollSpyRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, SCROLLSPY_SCRIPT), SCROLLSPY_JS, 'utf8');
-      bytes += Buffer.byteLength(SCROLLSPY_JS);
+      await writeJs(SCROLLSPY_SCRIPT, SCROLLSPY_JS);
     }
     // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
     if (usesNavRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, NAV_EFFECTS_SCRIPT), NAV_EFFECTS_JS, 'utf8');
-      bytes += Buffer.byteLength(NAV_EFFECTS_JS);
+      await writeJs(NAV_EFFECTS_SCRIPT, NAV_EFFECTS_JS);
     }
     // The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight; only-used-ships).
     if (usesBtnRuntime) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, BUTTON_EFFECTS_SCRIPT), BUTTON_EFFECTS_JS, 'utf8');
-      bytes += Buffer.byteLength(BUTTON_EFFECTS_JS);
+      await writeJs(BUTTON_EFFECTS_SCRIPT, BUTTON_EFFECTS_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

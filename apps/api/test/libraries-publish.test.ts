@@ -56,7 +56,7 @@ describe('lazyload + ripple runtimes → publish', () => {
     expect(html).toContain('@keyframes sw-waves'); // inline ripple CSS
     const js = await client.get(`/sites/${slug}/ripple.js`);
     expect(js.statusCode).toBe(200);
-    expect(js.body).toContain("createElement('span')");
+    expect(js.body).toContain('createElement("span")'); // JS minified → string quotes normalized to double
   });
 
   it('renders {{sw-icon}} as an inline SVG in the published page', async () => {

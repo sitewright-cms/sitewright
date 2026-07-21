@@ -96,7 +96,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     // components.js carries the Banner runtime (its per-banner storage namespace) + CSS.
     const comp = await client.get(`/sites/${slug}/components.js`);
     expect(comp.statusCode).toBe(200);
-    expect(comp.body).toContain("'sw-banner:'");
+    expect(comp.body).toContain('sw-banner:'); // JS minified → string quotes normalized to double
     expect(comp.body).toContain('data-sw-component="banner"');
   });
 

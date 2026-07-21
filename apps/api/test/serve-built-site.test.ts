@@ -1,8 +1,21 @@
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { get } from 'node:http';
 import { afterEach, expect, test } from 'vitest';
 import { serveBuiltSite, type ServedSite } from '../src/render/serve-built-site.js';
+
+/** Raw HTTP GET (no undici auto-decompress) so we can observe Content-Encoding + the gzip magic bytes. */
+function rawGet(url: string, headers: Record<string, string>): Promise<{ headers: Record<string, string | string[] | undefined>; body: Buffer }> {
+  const u = new URL(url);
+  return new Promise((resolve, reject) => {
+    get({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, headers }, (r) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => resolve({ headers: r.headers, body: Buffer.concat(chunks) }));
+    }).on('error', reject);
+  });
+}
 
 /** The loopback static server that gives Lighthouse a real navigation, with deploy-equivalent cache headers. */
 
@@ -55,6 +68,24 @@ test('404s an unknown path', async () => {
   served = await serveBuiltSite(await fixture());
   const res = await fetch(`${served.url}nope.html`);
   expect(res.status).toBe(404);
+});
+
+test('gzips a text response when the client accepts gzip (representative transfer size)', async () => {
+  served = await serveBuiltSite(await fixture());
+  const res = await rawGet(`${served.url}_assets/app.css`, { 'accept-encoding': 'gzip, deflate, br' });
+  expect(res.headers['content-encoding']).toBe('gzip');
+  expect(String(res.headers['vary'])).toMatch(/accept-encoding/i);
+  expect(res.headers['content-length']).toBeUndefined(); // streamed → length not known up front
+  expect(res.body[0]).toBe(0x1f); // gzip magic
+  expect(res.body[1]).toBe(0x8b);
+});
+
+test('does NOT gzip when the client does not accept it (serves verbatim with content-length)', async () => {
+  served = await serveBuiltSite(await fixture());
+  const res = await rawGet(`${served.url}_assets/app.css`, { 'accept-encoding': 'identity' });
+  expect(res.headers['content-encoding']).toBeUndefined();
+  expect(res.headers['content-length']).toBe('15'); // 'body{color:red}'
+  expect(res.body.toString()).toBe('body{color:red}');
 });
 
 test('never escapes the root on an encoded traversal attempt', async () => {

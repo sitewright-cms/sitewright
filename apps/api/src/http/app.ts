@@ -1,4 +1,6 @@
 import { timingSafeEqual, createHmac, createHash } from 'node:crypto';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1205,6 +1207,49 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
       );
     }
+  });
+
+  // Gzip served-site TEXT responses (local-hosting `/sites/…` + the `<slug>.<sitesDomain>` subdomain) so
+  // deployed-on-platform pages transfer like a real compressing host — the biggest byte win for HTML/CSS/
+  // JS. SCOPED by the served-site check so it never touches API JSON or the SSE `/events` stream (those
+  // are app-origin, not served-site). Binary assets (images/fonts, already compressed) and streamed or
+  // already-encoded responses are skipped, as are tiny bodies where a gzip frame wouldn't pay off.
+  const gzip = promisify(gzipCb);
+  const SITE_COMPRESSIBLE = new Set([
+    'text/html',
+    'text/css',
+    'text/javascript',
+    'application/javascript',
+    'application/json',
+    'image/svg+xml',
+    'application/xml',
+    'text/plain',
+  ]);
+  app.addHook('onSend', async (req, reply, payload) => {
+    const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
+    if (!servedSite || reply.hasHeader('content-encoding')) return payload;
+    // Only compress a materialized string/Buffer body — never a stream or null.
+    if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) return payload;
+    const ct = String(reply.getHeader('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (!SITE_COMPRESSIBLE.has(ct)) return payload;
+    const accept = req.headers['accept-encoding'];
+    const acceptStr = Array.isArray(accept) ? accept.join(',') : (accept ?? '');
+    if (!/\bgzip\b/.test(acceptStr)) return payload;
+    const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
+    if (raw.length < 1024) return payload; // a gzip header/trailer isn't worth it for tiny bodies
+    const gz = await gzip(raw);
+    reply.header('content-encoding', 'gzip');
+    reply.header('content-length', gz.length);
+    // Append to any existing Vary (asset responses already set `Vary: Host`) — don't clobber it.
+    const varyList = new Set(
+      String(reply.getHeader('vary') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    varyList.add('Accept-Encoding');
+    reply.header('vary', [...varyList].join(', '));
+    return gz;
   });
 
   app.setErrorHandler((err, _req, reply) => {

@@ -28,22 +28,22 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await page.keyboard.press('Escape');
 
   // The gear menu lists the unified settings items. A non-admin owner has no admin-only items (System
-  // Settings, Team). Account actions (Access keys, Logout) are NOT here — they moved to the user menu.
+  // Settings, Administrators). Account actions (Access keys, Logout) are NOT here — they moved to the user menu.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'Settings' });
-  for (const label of ['Publish & Deploy Options', 'Clients']) {
+  for (const label of ['Publish & Deploy Options', 'Project Members']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }
   await expect(menu.getByRole('menuitem', { name: 'System Settings' })).toHaveCount(0);
-  await expect(menu.getByRole('menuitem', { name: 'Team' })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'Administrators' })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: 'Access', exact: true })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: /Sign out|Logout/ })).toHaveCount(0);
 
-  // A target (Clients) opens AS A MODAL.
-  await menu.getByRole('menuitem', { name: 'Clients' }).click();
-  await expect(page.getByRole('dialog', { name: 'Clients' })).toBeVisible();
+  // A target (Project Members) opens AS A MODAL.
+  await menu.getByRole('menuitem', { name: 'Project Members' }).click();
+  await expect(page.getByRole('dialog', { name: 'Project Members' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Clients' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Project Members' })).toBeHidden();
 
   // Publishing surfaces a transient TOAST (the persistent "Published · N pages" line was removed).
   await page.getByRole('button', { name: 'Publish' }).click();

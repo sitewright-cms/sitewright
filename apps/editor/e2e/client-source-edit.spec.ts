@@ -22,12 +22,12 @@ test('client edits a code page’s bound region (content), template stays immuta
   // The auto-created HOME page (empty-slug root) already carries a data-sw-text region the
   // client will edit later — no need to add one.
 
-  // --- Owner: invite a client (Settings → Clients modal), capture the invite link ---
+  // --- Owner: invite a project member (Settings → Project Members modal), capture the invite link ---
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Clients' }).click();
-  const clientsModal = page.getByRole('dialog', { name: 'Clients' });
-  await clientsModal.getByLabel('Client email').fill(clientEmail);
-  await clientsModal.getByRole('button', { name: 'Invite client' }).click();
+  await page.getByRole('menuitem', { name: 'Project Members' }).click();
+  const clientsModal = page.getByRole('dialog', { name: 'Project Members' });
+  await clientsModal.getByLabel('Project member email').fill(clientEmail);
+  await clientsModal.getByRole('button', { name: 'Invite project member' }).click();
   const link = (await clientsModal.locator('code').first().textContent())?.trim();
   expect(link).toContain('/?invite=');
   // Close the modal before reaching the header gear (the modal backdrop overlays the header).

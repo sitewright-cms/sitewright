@@ -108,6 +108,16 @@ describe('flat media delivery route (/media/<slug>/<id>-<name>)', () => {
     expect(revalidated.statusCode).toBe(304);
   });
 
+  it('a SHORT (flat) id is rejected on the legacy 3-/4-segment routes (no extension-dispatch bypass)', async () => {
+    const { t, projectId, slug } = await setup('legacy@flat.test');
+    const { item } = await upload(projectId, t, 'photo.png', 'image/png', PNG_1X1);
+    const [id, name] = [item.url.split('/').pop()!.split('-')[0]!, item.url.split('-').slice(1).join('-')];
+    // Crafting the legacy 3-seg / 4-seg URL for a flat (short-id) asset must 404 — it can only be served
+    // by the kind-dispatching flat route, never the extension-dispatching legacy routes.
+    expect((await app.inject({ method: 'GET', url: `/media/${slug}/${id}/${name}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/media/${slug}/${id}/file/${name}` })).statusCode).toBe(404);
+  });
+
   it('404s malformed flat paths (no id-hyphen, non-short id, unknown asset)', async () => {
     const { t, projectId, slug } = await setup('x@flat.test');
     await upload(projectId, t, 'photo.png', 'image/png', PNG_1X1); // ensure the project dir exists

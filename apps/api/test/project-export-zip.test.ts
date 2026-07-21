@@ -133,13 +133,14 @@ describe('GET /projects/:id/export.zip', () => {
       ...multipart('photo.png', 'image/png', PNG_1X1),
     });
     expect([200, 201]).toContain(up.statusCode);
-    const asset = (up.json() as { item: { id: string; original: string } }).item;
+    const asset = (up.json() as { item: { id: string; original: string; url: string } }).item;
 
     // Hit the on-demand thumbnailer so a derived `<stem>-sm.webp` is cached INTO the asset dir —
-    // the exact scenario that used to bleed regenerable thumbnails into the export.
+    // the exact scenario that used to bleed regenerable thumbnails into the export. Uses the asset's
+    // own (flat) delivery url — a new short-id asset is only served by the flat route.
     const thumb = await app.inject({
       method: 'GET',
-      url: `/media/${slug}/${asset.id}/${asset.original}?size=sm`,
+      url: `${asset.url}?size=sm`,
     });
     expect(thumb.statusCode).toBe(200);
     expect(thumb.headers['content-type']).toContain('image/webp');

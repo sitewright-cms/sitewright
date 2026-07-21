@@ -14,7 +14,7 @@ export function modelPlaceholder(p: AiProviderKind): string {
  * The API key is write-only (the server returns only a `hasKey` flag; leave it blank to keep the stored
  * one). Owner/member only; a non-writer gets a 403 which we surface as a notice.
  */
-export function AiConfig({ projectId }: { projectId: string }) {
+export function AiConfig({ projectId, flat = false }: { projectId: string; flat?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [provider, setProvider] = useState<AiProviderKind>('anthropic');
@@ -112,12 +112,8 @@ export function AiConfig({ projectId }: { projectId: string }) {
   if (loading) return null;
   const field = `${glassInput} px-2 py-1`;
 
-  return (
-    <details className={`mb-4 ${glassCard} p-3`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
-      <summary className="cursor-pointer text-sm font-bold text-slate-700">
-        AI Assistant <span className="font-normal text-slate-400">— this project’s own provider (optional)</span>
-      </summary>
-      <form onSubmit={save} className="mt-3 flex flex-col gap-3">
+  const body = (
+    <form onSubmit={save} className={`flex flex-col gap-3 ${flat ? '' : 'mt-3'}`}>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className={toggleInput} aria-label="Use this project's own AI provider" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Use this project’s own AI provider (bring your own key)
@@ -189,6 +185,18 @@ export function AiConfig({ projectId }: { projectId: string }) {
             ))}
         </div>
       </form>
+  );
+
+  // `flat` embeds the form directly (e.g. inside the Project Settings "AI Assistant" tab); otherwise it
+  // stays a self-contained collapsible card (its original Website-Settings placement, now unused).
+  if (flat) return body;
+
+  return (
+    <details className={`mb-4 ${glassCard} p-3`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer text-sm font-bold text-slate-700">
+        AI Assistant <span className="font-normal text-slate-400">— this project’s own provider (optional)</span>
+      </summary>
+      {body}
     </details>
   );
 }

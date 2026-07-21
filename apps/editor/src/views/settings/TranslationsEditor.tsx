@@ -130,7 +130,11 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   const surfacedKeys = new Set(surfacedGroups.flatMap((g) => g.keys.map((k) => k.key)));
   const storedByKey = new Map(rows.map((r) => [r.key.trim(), r] as const));
   // Free rows = everything not owned by a surfaced reserved group (those render in their own section).
-  const freeRows = rows.filter((r) => !surfacedKeys.has(r.key.trim()));
+  // Sorted alphabetically by key so the operator catalog reads A→Z (and dotted keys cluster by scope,
+  // in alphabetical scope order below). Rows keep their stable `id`, so re-sorting is focus-safe.
+  const freeRows = rows
+    .filter((r) => !surfacedKeys.has(r.key.trim()))
+    .sort((a, b) => a.key.trim().localeCompare(b.key.trim()));
   // SCOPE grouping: a dotted key (`home.headline`) groups under its first segment (`home`); a flat key
   // groups under "General". Order is first-seen (stable). When NO key uses a scope, render flat (no
   // headers) so a simple catalog stays simple.

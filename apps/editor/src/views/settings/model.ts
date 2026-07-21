@@ -204,9 +204,13 @@ const colorsToPairs = (r: Record<string, string> | undefined): KeyedPair[] => {
 
 const strsToKeyed = (items: string[] | undefined): KeyedStr[] => (items ?? []).map((value) => ({ id: rowId(), value }));
 
-/** website.translations (`key → { locale → string }`) → editable rows (insertion order preserved). */
+/** website.translations (`key → { locale → string }`) → editable rows. Sorted alphabetically by key so the
+ *  operator catalog reads A→Z on load; rows are held in component state afterward, so editing a key or
+ *  adding a row never live-re-sorts (new rows append and stay put, dotted keys cluster by scope). */
 const translationsToRows = (t: Record<string, Record<string, string>> | undefined): TranslationRow[] =>
-  Object.entries(t ?? {}).map(([key, cells]) => ({ id: rowId(), key, cells: { ...cells } }));
+  Object.entries(t ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, cells]) => ({ id: rowId(), key, cells: { ...cells } }));
 
 /**
  * Editable rows → website.translations, dropping blank/dangerous keys, blank/whitespace-only cells, and

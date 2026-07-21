@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link2, Copy, Trash2, Plus, Check } from 'lucide-react';
+import { Copy, Trash2, Plus, Check } from 'lucide-react';
 import { api } from '../../api';
-import { GlassCard } from './ui';
 import { ghostButton, glassInput } from '../../theme';
 
 type Share = { id: string; label: string; createdAt: number; url: string };
@@ -56,11 +55,12 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
   };
 
   return (
-    <GlassCard
-      title="Preview share links"
-      icon={<Link2 className="h-4 w-4" />}
-      tooltip="Create a stable, revocable link that lets an UNAUTHENTICATED client view the live DRAFT preview (sandboxed — safe). The normal preview link expires and needs a logged-in member; share links do not. Delete a link to revoke it instantly."
-    >
+    <div>
+      <p className="mb-3 text-xs text-slate-500">
+        Create a stable, revocable link that lets an <strong>unauthenticated</strong> client view the live
+        DRAFT preview (sandboxed — safe). The normal preview link expires and needs a logged-in member;
+        share links do not. Delete a link to revoke it instantly.
+      </p>
       <div className="mb-3 flex gap-2">
         <input
           className={glassInput}
@@ -96,6 +96,6 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
           ))}
         </ul>
       )}
-    </GlassCard>
+    </div>
   );
 }

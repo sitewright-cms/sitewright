@@ -26,8 +26,6 @@ import { api, type EffectForks } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
 import { ConsentSettingsModal } from './ConsentSettingsModal';
-import { AiConfig } from '../AiConfig';
-import { PreviewShareLinks } from './PreviewShareLinks';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
@@ -749,8 +747,6 @@ export function WebsiteSection({
             onChange={(translations) => patch({ translations })}
           />
         </GlassCard>
-        <AiConfig projectId={projectId} />
-        <PreviewShareLinks projectId={projectId} />
       </div>
     </motion.div>
   );

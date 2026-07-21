@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ExternalLink, Download } from 'lucide-react';
+import { ChevronDown, ExternalLink, Download, Link2 } from 'lucide-react';
 import { api, eventsUrl, type DeployTargetView, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
 import { DeployModal } from './publish/DeployModal';
+import { Modal } from './ui/Modal';
+import { PreviewShareLinks } from './settings/PreviewShareLinks';
 import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
 
@@ -65,7 +67,10 @@ export function PublishBar({
   const [agentActive, setAgentActive] = useState(false);
   const [connectionCount, setConnectionCount] = useState(0);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [previewMenuOpen, setPreviewMenuOpen] = useState(false);
+  const [shareLinksOpen, setShareLinksOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const previewMenuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const agentActiveRef = useRef(false);
 
@@ -172,7 +177,7 @@ export function PublishBar({
     };
   }, [project.id]);
 
-  // Close the dropdown on an outside click.
+  // Close the deploy dropdown on an outside click.
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -181,6 +186,16 @@ export function PublishBar({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
+
+  // Close the preview dropdown on an outside click.
+  useEffect(() => {
+    if (!previewMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (previewMenuRef.current && !previewMenuRef.current.contains(e.target as Node)) setPreviewMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [previewMenuOpen]);
 
   // Deploy to Local Hosting (build the site + serve it at /sites/) via the publish action.
   async function publishLocal() {
@@ -228,18 +243,47 @@ export function PublishBar({
         count={connectionCount}
         onClick={() => setAgentModalOpen(true)}
       />
-      {/* Always-on Preview: browse the live site with the latest (saved) changes — no publish needed. */}
-      <button
-        onClick={() =>
-          window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
-        }
-        title="Preview the live site with your latest changes — no publish needed"
-        aria-label="Preview the live site"
-        className={btnBase}
-      >
-        <PreviewIcon />
-        Preview
-      </button>
+      {/* Always-on Preview: a SPLIT button — the main action browses the live site with the latest (saved)
+          changes (no publish needed); the caret opens a menu with "Preview share links". */}
+      <div className="relative" ref={previewMenuRef}>
+        <div className="inline-flex">
+          <button
+            onClick={() =>
+              window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
+            }
+            title="Preview the live site with your latest changes — no publish needed"
+            aria-label="Preview the live site"
+            className={`${btnBase} rounded-r-none`}
+          >
+            <PreviewIcon />
+            Preview
+          </button>
+          <button
+            aria-label="Preview options"
+            aria-haspopup="menu"
+            aria-expanded={previewMenuOpen}
+            onClick={() => setPreviewMenuOpen((o) => !o)}
+            className="inline-flex cursor-pointer items-center rounded-r-md border border-l-0 border-slate-300 bg-white px-1.5 py-1.5 text-slate-600 transition hover:border-indigo-400 hover:text-indigo-700"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+        {previewMenuOpen && (
+          <div role="menu" className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            <button
+              role="menuitem"
+              onClick={() => {
+                setPreviewMenuOpen(false);
+                setShareLinksOpen(true);
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <Link2 className="h-4 w-4 text-slate-400" />
+              Preview share links…
+            </button>
+          </div>
+        )}
+      </div>
 
       {showView && (
         <a href={viewUrl} target="_blank" rel="noreferrer" title="View your live (served) site" aria-label="View the live site" className={btnBase}>
@@ -349,6 +393,13 @@ export function PublishBar({
             loadStatus();
           }}
         />
+      )}
+      {shareLinksOpen && (
+        <Modal title="Preview share links" size="lg" onClose={() => setShareLinksOpen(false)}>
+          <div className="p-5">
+            <PreviewShareLinks projectId={project.id} />
+          </div>
+        </Modal>
       )}
     </div>
   );

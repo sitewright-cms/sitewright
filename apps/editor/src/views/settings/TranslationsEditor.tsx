@@ -130,6 +130,8 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   const surfacedKeys = new Set(surfacedGroups.flatMap((g) => g.keys.map((k) => k.key)));
   const storedByKey = new Map(rows.map((r) => [r.key.trim(), r] as const));
   // Free rows = everything not owned by a surfaced reserved group (those render in their own section).
+  // Row ORDER (alphabetical) is set once at load in model.ts `translationsToRows`, then held in state —
+  // NOT re-sorted here, so a row being typed (or a freshly added blank row) never jumps position.
   const freeRows = rows.filter((r) => !surfacedKeys.has(r.key.trim()));
   // SCOPE grouping: a dotted key (`home.headline`) groups under its first segment (`home`); a flat key
   // groups under "General". Order is first-seen (stable). When NO key uses a scope, render flat (no

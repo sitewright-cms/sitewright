@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { api, type Project } from '../api';
 import { glassInput } from '../theme';
 import { Modal } from './ui/Modal';
+import { Tabs } from './ui/Tabs';
+import { AiConfig } from './AiConfig';
 import { useDialogs } from './ui/Dialogs';
 
 interface ProjectSettingsModalProps {
@@ -25,6 +27,7 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  */
 export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose }: ProjectSettingsModalProps) {
   const { confirm, dialog } = useDialogs();
+  const [tab, setTab] = useState<'general' | 'ai'>('general');
   const [name, setName] = useState(project.name);
   const [slugInput, setSlugInput] = useState(project.slug);
   const [saving, setSaving] = useState(false);
@@ -68,17 +71,30 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
   return (
     <Modal
       title="Project Settings"
-      size="md"
+      size="lg"
       onClose={onClose}
       onBeforeClose={confirmClose}
-      // No slug change → the header Save just updates the name. A slug change is committed via the explicit
-      // button below (so the URL change is deliberate), so the header Save is hidden then.
-      onSave={slugChanged ? undefined : () => void run()}
+      // Header Save applies to the GENERAL tab only (name; a slug change is committed via the explicit
+      // button below so the URL change is deliberate). The AI tab self-saves, so the header Save is hidden.
+      onSave={tab === 'general' && !slugChanged ? () => void run() : undefined}
       saving={saving}
       saveDisabled={!dirty || nameInvalid}
       saveLabel="Save"
     >
-      <div className="flex flex-col gap-3 p-5">
+      <div className="px-5 pt-4">
+        <Tabs
+          ariaLabel="Project settings sections"
+          active={tab}
+          onSelect={setTab}
+          tabs={[
+            { id: 'general', label: 'General' },
+            { id: 'ai', label: 'AI Assistant' },
+          ]}
+        />
+      </div>
+      {/* Both panels stay MOUNTED (toggled with `hidden`) — switching tabs must not unmount AiConfig and
+          silently discard its in-progress fields (e.g. a just-pasted API key). */}
+      <div className={`flex flex-col gap-3 p-5 ${tab === 'general' ? '' : 'hidden'}`}>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500">Project name</span>
           <input aria-label="Project name" className={glassInput} value={name} onChange={(e) => setName(e.target.value)} />
@@ -124,6 +140,9 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
         )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+      </div>
+      <div className={`p-5 ${tab === 'ai' ? '' : 'hidden'}`}>
+        <AiConfig projectId={project.id} flat />
       </div>
       {dialog}
     </Modal>

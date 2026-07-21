@@ -38,9 +38,9 @@ export function BrandColorsEditor({ rows, onChange }: { rows: KeyedPair[]; onCha
       </div>
       <div>
         <SubLabel>Custom colors</SubLabel>
-        <p className="mb-2 text-xs text-slate-500">
-          Extra named colors, usable as <code className="rounded bg-slate-100 px-1 py-0.5">bg-&lt;name&gt;</code> /{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">text-&lt;name&gt;</code> utilities.
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+          Extra named colors, usable as <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">bg-&lt;name&gt;</code> /{' '}
+          <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">text-&lt;name&gt;</code> utilities.
         </p>
         <TokenEditor rows={custom} onChange={setCustom} keyPlaceholder="brand-teal" valuePlaceholder="#0d9488" swatch picker addLabel="+ Add color" />
       </div>

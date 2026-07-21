@@ -95,7 +95,7 @@ function FieldGroup({
         if (isGroupFieldType(f.type)) return <div key={f.name}>{input}</div>;
         return (
           <div key={f.name}>
-            <label htmlFor={`entry-${childPath}`} className="mb-1 block text-xs font-medium text-slate-500">
+            <label htmlFor={`entry-${childPath}`} className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
               {f.name}
               {f.required ? <span className="text-rose-400"> *</span> : null}
             </label>
@@ -125,15 +125,15 @@ function GroupShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200/80 bg-slate-50/70">
+    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-white/5">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-          <ChevronRight aria-hidden className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
-          <span className="truncate text-xs font-semibold text-slate-600">
+          <ChevronRight aria-hidden className={`h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} />
+          <span className="truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
             {title}
             {required ? <span className="text-rose-400"> *</span> : null}
           </span>
-          <span className="shrink-0 rounded-full bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{meta}</span>
+          <span className="shrink-0 rounded-full bg-slate-200/70 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">{meta}</span>
         </button>
       </div>
       {open ? <div className="space-y-2 px-2.5 pb-2.5">{children}</div> : null}
@@ -163,7 +163,7 @@ function ObjectField({
   return (
     <GroupShell title={field.name} required={field.required} meta={`${count} ${count === 1 ? 'field' : 'fields'}`} open={open} onToggle={() => setOpen((v) => !v)}>
       {malformed ? (
-        <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">This field's stored value isn't an object and is shown empty — saving will replace it.</p>
+        <p className="rounded bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">This field's stored value isn't an object and is shown empty — saving will replace it.</p>
       ) : null}
       <FieldGroup fields={field.fields ?? []} values={rec} projectId={projectId} path={path} onChange={(name, v) => onRaw({ ...rec, [name]: v })} />
     </GroupShell>
@@ -245,13 +245,13 @@ function ListField({
     commit(nextItems, nextKeys);
   };
 
-  const iconBtn = 'rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent';
+  const iconBtn = 'rounded p-1 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent';
   return (
     <GroupShell title={field.name} required={field.required} meta={`${items.length} ${items.length === 1 ? 'item' : 'items'}`} open={open} onToggle={() => setOpen((v) => !v)}>
       {malformed ? (
-        <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">This field's stored value isn't a list and is shown empty — saving will replace it.</p>
+        <p className="rounded bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">This field's stored value isn't a list and is shown empty — saving will replace it.</p>
       ) : null}
-      {items.length === 0 ? <p className="text-xs text-slate-400">No items yet.</p> : null}
+      {items.length === 0 ? <p className="text-xs text-slate-400 dark:text-slate-500">No items yet.</p> : null}
       {items.map((item, i) => (
         <div
           key={keys.current[i]}
@@ -271,12 +271,12 @@ function ListField({
             setDragIdx(null);
             setDrop(null);
           }}
-          className={`relative rounded-md border border-slate-200 bg-white shadow-sm transition ${dragIdx === i ? 'opacity-40' : ''}`}
+          className={`relative rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm transition ${dragIdx === i ? 'opacity-40' : ''}`}
         >
           {drop?.idx === i ? (
             <span aria-hidden className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`} />
           ) : null}
-          <div className="flex items-center gap-1.5 border-b border-slate-100 px-2 py-1">
+          <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-white/10 px-2 py-1">
             <span
               aria-hidden
               draggable
@@ -294,8 +294,8 @@ function ListField({
             >
               <GripVertical className="h-4 w-4" />
             </span>
-            <span className="shrink-0 text-[11px] font-semibold text-slate-400">#{i + 1}</span>
-            <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">{itemSummary(sub, item)}</span>
+            <span className="shrink-0 text-[11px] font-semibold text-slate-400 dark:text-slate-500">#{i + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{itemSummary(sub, item)}</span>
             <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} up`} title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
@@ -305,7 +305,7 @@ function ListField({
             <button type="button" className={iconBtn} aria-label={`Duplicate item ${i + 1}`} title="Duplicate" onClick={() => duplicate(i)}>
               <Copy className="h-3.5 w-3.5" />
             </button>
-            <button type="button" className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`} aria-label={`Remove item ${i + 1}`} title="Remove" onClick={() => remove(i)}>
+            <button type="button" className={`${iconBtn} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`} aria-label={`Remove item ${i + 1}`} title="Remove" onClick={() => remove(i)}>
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -314,7 +314,7 @@ function ListField({
           </div>
         </div>
       ))}
-      <button type="button" className={`${ghostButton} w-full justify-center border border-dashed border-indigo-300/70 text-indigo-600`} onClick={add}>
+      <button type="button" className={`${ghostButton} w-full justify-center border border-dashed border-indigo-300/70 text-indigo-600 dark:text-indigo-400`} onClick={add}>
         <Plus className="h-4 w-4" /> Add item
       </button>
     </GroupShell>
@@ -363,7 +363,7 @@ function ReferenceField({ field, value, onRaw, id, ariaLabel }: { field: Field; 
     return (
       <>
         <input id={id} aria-label={ariaLabel} className={glassInput} value={cur} onChange={(e) => onRaw(e.target.value)} />
-        <p className="mt-1 text-[11px] text-amber-600">No target dataset set — configure this reference in the schema editor.</p>
+        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">No target dataset set — configure this reference in the schema editor.</p>
       </>
     );
   }
@@ -407,16 +407,16 @@ function JsonField({ value, onRaw, id, ariaLabel, path }: { value: unknown; onRa
     }
   };
   return (
-    <div className={`overflow-hidden rounded-lg border ${valid ? 'border-slate-300' : 'border-rose-400'}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-2 py-1">
-        <span className={`text-[11px] ${valid ? 'text-slate-400' : 'text-rose-500'}`}>
+    <div className={`overflow-hidden rounded-lg border ${valid ? 'border-slate-300 dark:border-slate-600' : 'border-rose-400'}`}>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-white/5 px-2 py-1">
+        <span className={`text-[11px] ${valid ? 'text-slate-400 dark:text-slate-500' : 'text-rose-500'}`}>
           {empty ? 'Empty (optional — no value stored)' : valid ? 'Valid JSON' : 'Invalid JSON — fix the syntax to save'}
         </span>
         <button
           type="button"
           onClick={format}
           disabled={!valid || empty}
-          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Format
         </button>
@@ -608,14 +608,14 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
           <History className="h-4 w-4" aria-hidden />
         </button>
       )}
-      <div role="group" aria-label="Status" className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
+      <div role="group" aria-label="Status" className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
       {(['draft', 'published'] as const).map((s) => (
         <button
           key={s}
           type="button"
           aria-pressed={status === s}
           onClick={() => setStatus(s)}
-          className={`waves-effect rounded-lg px-2.5 py-1 capitalize transition ${status === s ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'}`}
+          className={`waves-effect rounded-lg px-2.5 py-1 capitalize transition ${status === s ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'}`}
         >
           {s}
         </button>
@@ -634,8 +634,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
         <div className="flex flex-col gap-3 p-5">
           {keyFieldOpen ? (
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-slate-500">
-                Key <span className="text-slate-300">— the id used in <code>{`{{item.${dataset.slug}.<key>}}`}</code> (letters, digits, _)</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Key <span className="text-slate-400 dark:text-slate-500">— the id used in <code>{`{{item.${dataset.slug}.<key>}}`}</code> (letters, digits, _)</span>
               </span>
               <input
                 aria-label="Entry key"
@@ -645,11 +645,11 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
                 autoFocus={editKey}
                 onChange={(e) => setKeyInput(e.target.value)}
               />
-              <span className={`text-[11px] ${keyTaken || keyInvalid ? 'text-rose-500' : 'text-slate-400'}`}>
+              <span className={`text-[11px] ${keyTaken || keyInvalid ? 'text-rose-500' : 'text-slate-400 dark:text-slate-500'}`}>
                 {keyInvalid ? 'enter letters, digits, or underscores' : <>→ <code>{computedId}</code>{keyTaken ? ' · already used in this dataset' : ''}</>}
               </span>
               {existsServer && idChanged ? (
-                <span className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                <span className="rounded-lg bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
                   Renaming the key recreates this entry as <code>{computedId}</code> and deletes the old <code>{base.id}</code> — update any{' '}
                   <code>{`{{item.${dataset.slug}.${base.id}}}`}</code> references in your pages.
                 </span>
@@ -657,28 +657,28 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
             </label>
           ) : (
             <div className="flex items-center gap-2">
-              <p className="flex-1 text-[11px] text-slate-400">
-                Key: <code className="rounded bg-slate-100 px-1 py-0.5">{base.id}</code> — read it directly with{' '}
-                <code className="rounded bg-slate-100 px-1 py-0.5">{`{{item.${dataset.slug}.${base.id}.…}}`}</code>
+              <p className="flex-1 text-[11px] text-slate-400 dark:text-slate-500">
+                Key: <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">{base.id}</code> — read it directly with{' '}
+                <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">{`{{item.${dataset.slug}.${base.id}.…}}`}</code>
               </p>
               <button
                 type="button"
-                className="waves-effect shrink-0 rounded-lg border border-white/60 bg-white/50 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm transition hover:bg-white"
+                className="waves-effect shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 shadow-sm transition hover:bg-white dark:hover:bg-white/10"
                 onClick={() => setEditKey(true)}
               >
                 Edit key
               </button>
             </div>
           )}
-          {dataset.fields.length === 0 && <p className="text-xs text-slate-400">This dataset has no fields yet — add some first.</p>}
+          {dataset.fields.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">This dataset has no fields yet — add some first.</p>}
           {dataset.fields.map((field) => {
             const group = isGroupFieldType(field.type);
             return (
               <div key={field.name} className="flex flex-col gap-1">
                 {group ? null : (
-                  <label htmlFor={`entry-${field.name}`} className="text-xs font-medium text-slate-500">
+                  <label htmlFor={`entry-${field.name}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     {field.name}
-                    <span className="ml-1 text-slate-300">({field.type})</span>
+                    <span className="ml-1 text-slate-400 dark:text-slate-500">({field.type})</span>
                     {field.required && <span className="ml-1 text-red-400">*</span>}
                   </label>
                 )}

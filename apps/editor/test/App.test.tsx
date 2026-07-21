@@ -166,12 +166,12 @@ describe('App shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
-    for (const label of ['Publish & Deploy Options', 'Clients']) {
+    for (const label of ['Publish & Deploy Options', 'Project Members']) {
       expect(within(menu).getByRole('menuitem', { name: label })).toBeInTheDocument();
     }
-    // System Settings + Team are admin-only — hidden for this non-admin owner.
+    // System Settings + Administrators are admin-only — hidden for this non-admin owner.
     expect(within(menu).queryByRole('menuitem', { name: 'System Settings' })).toBeNull();
-    expect(within(menu).queryByRole('menuitem', { name: 'Team' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Administrators' })).toBeNull();
     // Account actions are NOT in the gear menu — Access keys + Logout live under the user icon now.
     expect(within(menu).queryByRole('menuitem', { name: 'Access' })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: /Sign out|Logout/ })).toBeNull();
@@ -192,9 +192,9 @@ describe('App shell', () => {
     await screen.findByText(/PROJECT Acme/);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
-    // An admin gets the admin-only items (System Settings + Team).
+    // An admin gets the admin-only items (System Settings + Administrators).
     expect(within(menu).getByRole('menuitem', { name: 'System Settings' })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: 'Team' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Administrators' })).toBeInTheDocument();
   });
 
   it('returns an authenticated user to the login screen when a request reports a 401', async () => {

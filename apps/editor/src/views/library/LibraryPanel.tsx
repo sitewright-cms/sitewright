@@ -56,10 +56,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
     <button
       key="sw-components"
       onClick={() => setSwOpen(true)}
-      className="waves-effect rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2.5 text-left transition hover:from-emerald-100 hover:to-teal-100"
+      className="waves-effect rounded-xl border border-emerald-200/70 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 dark:from-emerald-500/10 to-teal-50 dark:to-teal-500/10 px-3 py-2.5 text-left transition hover:from-emerald-100 dark:hover:from-emerald-500/15 hover:to-teal-100 dark:hover:to-teal-500/15"
     >
-      <span className="block text-sm font-bold text-emerald-800">SiteWright Components</span>
-      <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80">
+      <span className="block text-sm font-bold text-emerald-800 dark:text-emerald-400">SiteWright Components</span>
+      <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80 dark:text-emerald-400">
         First-party interactive components (data-sw-component) — usage & examples.
       </span>
     </button>
@@ -71,10 +71,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
         {/* The template/directive reference — the author's guide to the code-first surface. */}
         <button
           onClick={() => setRefOpen(true)}
-          className="waves-effect rounded-xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-sky-50 px-3 py-2.5 text-left transition hover:from-indigo-100 hover:to-sky-100"
+          className="waves-effect rounded-xl border border-indigo-200/70 dark:border-indigo-500/20 bg-gradient-to-br from-indigo-50 dark:from-indigo-500/10 to-sky-50 dark:to-sky-500/10 px-3 py-2.5 text-left transition hover:from-indigo-100 dark:hover:from-indigo-500/15 hover:to-sky-100 dark:hover:to-sky-500/15"
         >
-          <span className="block text-sm font-bold text-indigo-800">Template reference</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-indigo-500/80">
+          <span className="block text-sm font-bold text-indigo-800 dark:text-indigo-400">Template reference</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-indigo-500/80 dark:text-indigo-300">
             Handlebars helpers, data-sw-* directives, bindings & loop variables.
           </span>
         </button>
@@ -82,10 +82,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
         {/* The animated-background preset picker — live WebGL previews; copies data-sw-component="shader-bg" markup. */}
         <button
           onClick={() => setBgOpen(true)}
-          className="waves-effect rounded-xl border border-fuchsia-200/70 bg-gradient-to-br from-fuchsia-50 to-violet-50 px-3 py-2.5 text-left transition hover:from-fuchsia-100 hover:to-violet-100"
+          className="waves-effect rounded-xl border border-fuchsia-200/70 dark:border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-50 dark:from-fuchsia-500/10 to-violet-50 dark:to-violet-500/10 px-3 py-2.5 text-left transition hover:from-fuchsia-100 dark:hover:from-fuchsia-500/15 hover:to-violet-100 dark:hover:to-violet-500/15"
         >
-          <span className="block text-sm font-bold text-fuchsia-800">Animated backgrounds</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-fuchsia-500/80">
+          <span className="block text-sm font-bold text-fuchsia-800 dark:text-fuchsia-400">Animated backgrounds</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-fuchsia-500/80 dark:text-fuchsia-300">
             WebGL background presets, themed by your CI colors — preview & copy the markup.
           </span>
         </button>
@@ -94,10 +94,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
             with your CI colors, and copy the <button class="…"> markup. */}
         <button
           onClick={() => setBtnOpen(true)}
-          className="waves-effect rounded-xl border border-amber-200/70 bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-2.5 text-left transition hover:from-amber-100 hover:to-orange-100"
+          className="waves-effect rounded-xl border border-amber-200/70 dark:border-amber-500/20 bg-gradient-to-br from-amber-50 dark:from-amber-500/10 to-orange-50 dark:to-orange-500/10 px-3 py-2.5 text-left transition hover:from-amber-100 dark:hover:from-amber-500/15 hover:to-orange-100 dark:hover:to-orange-500/15"
         >
-          <span className="block text-sm font-bold text-amber-800">Button builder</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-amber-600/80">
+          <span className="block text-sm font-bold text-amber-800 dark:text-amber-400">Button builder</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-amber-600/80 dark:text-amber-400">
             Compose a button (effect, accent, shape) + browse the effects lab — preview & copy the markup.
           </span>
         </button>
@@ -106,10 +106,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
             scroll the live preview, and copy the data-sw-parallax* markup. */}
         <button
           onClick={() => setPxOpen(true)}
-          className="waves-effect rounded-xl border border-cyan-200/70 bg-gradient-to-br from-cyan-50 to-sky-50 px-3 py-2.5 text-left transition hover:from-cyan-100 hover:to-sky-100"
+          className="waves-effect rounded-xl border border-cyan-200/70 dark:border-cyan-500/20 bg-gradient-to-br from-cyan-50 dark:from-cyan-500/10 to-sky-50 dark:to-sky-500/10 px-3 py-2.5 text-left transition hover:from-cyan-100 dark:hover:from-cyan-500/15 hover:to-sky-100 dark:hover:to-sky-500/15"
         >
-          <span className="block text-sm font-bold text-cyan-800">Parallax builder</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-cyan-600/80">
+          <span className="block text-sm font-bold text-cyan-800 dark:text-cyan-400">Parallax builder</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-cyan-600/80 dark:text-cyan-400">
             Scroll-linked depth, fade, scale & blur — compose, scroll the preview & copy the markup.
           </span>
         </button>
@@ -118,10 +118,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
             canvas, and export the animated SVG. */}
         <button
           onClick={() => setSvgOpen(true)}
-          className="waves-effect rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2.5 text-left transition hover:from-emerald-100 hover:to-teal-100"
+          className="waves-effect rounded-xl border border-emerald-200/70 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 dark:from-emerald-500/10 to-teal-50 dark:to-teal-500/10 px-3 py-2.5 text-left transition hover:from-emerald-100 dark:hover:from-emerald-500/15 hover:to-teal-100 dark:hover:to-teal-500/15"
         >
-          <span className="block text-sm font-bold text-emerald-800">SVG animation studio</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80">
+          <span className="block text-sm font-bold text-emerald-800 dark:text-emerald-400">SVG animation studio</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80 dark:text-emerald-400">
             Import an SVG → animate each element (draw-on / fade / zoom / flip / reveal / morph) → export.
           </span>
         </button>
@@ -132,10 +132,10 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
             {s.category === 'daisyui' && swComponentsButton}
             <button
               onClick={() => setOpenCategory(s.category)}
-              className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
+              className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white dark:hover:bg-white/10`}
             >
-              <span className="block text-sm font-bold text-slate-700">{s.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
+              <span className="block text-sm font-bold text-slate-700 dark:text-slate-200">{s.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-slate-400 dark:text-slate-500">{s.blurb}</span>
             </button>
           </Fragment>
         ))}
@@ -175,7 +175,7 @@ function FontsLibraryModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => copy(font.family, font.family)}
-            className="waves-effect rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700"
+            className="waves-effect rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-400"
             title={`Copy "${font.family}"`}
           >
             {copiedId === font.family ? 'Copied!' : 'Copy name'}
@@ -241,7 +241,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
   return (
     <Modal title={section.label} size="full" onClose={onClose}>
       <div className="flex h-full flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500">{section.blurb}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
         <SearchField
           ariaLabel={`Search ${section.label}`}
           autoFocus
@@ -254,7 +254,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
         />
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
           {error ? (
-            <p className="py-8 text-center text-sm text-rose-500">Couldn’t load the library set. Close and reopen to retry.</p>
+            <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the library set. Close and reopen to retry.</p>
           ) : loading ? (
             // DaisyUI skeleton placeholder while the (large) icon set loads.
             <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
@@ -263,14 +263,14 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No matches.</p>
+            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
           ) : isGrid ? (
             <IconGrid items={shown} />
           ) : (
             <ItemList items={filtered} preview={section.preview ?? false} />
           )}
         </div>
-        <p className="shrink-0 text-[11px] text-slate-400">
+        <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
           {filtered.length} {isGrid ? 'icons' : 'items'}
           {overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
         </p>
@@ -291,10 +291,10 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
           title={`${it.name} — click to copy ${it.example}`}
           aria-label={`Copy ${it.name} icon snippet`}
           onClick={() => copy(it.example, it.id)}
-          className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-2.5 text-slate-600 transition hover:border-indigo-300 hover:bg-white hover:text-slate-900"
+          className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
         >
           {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
-          <span className="w-full truncate text-center text-[10px] text-slate-400">
+          <span className="w-full truncate text-center text-[10px] text-slate-400 dark:text-slate-500">
             {copiedId === it.id ? 'Copied!' : it.name}
           </span>
         </button>
@@ -327,7 +327,7 @@ function Preview({ html }: { html: string }) {
 /** Dark code block for a copy-paste snippet. */
 function CodeBlock({ code }: { code: string }) {
   return (
-    <pre className="overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
+    <pre className="overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
       <code>{code}</code>
     </pre>
   );
@@ -344,8 +344,8 @@ function ItemCard({ item, preview }: { item: LibraryItem; preview: boolean }) {
     <li className={`${glassPanel} rounded-xl p-4`}>
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="text-sm font-bold text-slate-700">{item.name}</h4>
-          <p className="mt-0.5 text-xs text-slate-500">{item.description}</p>
+          <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.name}</h4>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{item.description}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {variants.length > 0 && (
@@ -365,11 +365,11 @@ function ItemCard({ item, preview }: { item: LibraryItem; preview: boolean }) {
       {preview && <Preview html={item.example} />}
       <CodeBlock code={item.example} />
       {expanded && variants.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-3 border-t border-slate-200/70 pt-3">
+        <ul className="mt-3 flex flex-col gap-3 border-t border-slate-200/70 dark:border-slate-700 pt-3">
           {variants.map((v, i) => (
             <li key={v.name}>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{v.name}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{v.name}</span>
                 <button
                   onClick={() => copy(v.example, `${item.id}:${i}`)}
                   className={`${ghostButton} shrink-0 px-2 py-0.5 text-[11px]`}

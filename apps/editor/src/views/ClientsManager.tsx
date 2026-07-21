@@ -59,7 +59,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   return (
     <div className="max-w-2xl">
       <h3 className="mb-1 text-lg font-bold">Project Members</h3>
-      <p className="mb-4 text-sm text-slate-500">
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
         People you’ve invited to edit <strong>{project.name}</strong> — full editing of this one
         project (they can’t delete it or invite others).
       </p>
@@ -70,7 +70,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
             key={m.userId}
             className={`flex items-center justify-between ${glassPanel} px-4 py-2.5`}
           >
-            <span className="font-medium text-slate-800">{m.email}</span>
+            <span className="font-medium text-slate-800 dark:text-slate-100">{m.email}</span>
             <button
               aria-label={`Remove ${m.email}`}
               className={dangerButton}
@@ -80,7 +80,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
             </button>
           </li>
         ))}
-        {clients.length === 0 && <li className="text-sm text-slate-400">No project members yet.</li>}
+        {clients.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No project members yet.</li>}
       </ul>
 
       <InvitePanel
@@ -90,7 +90,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
         onRevoke={(id) => api.revokeInvite(id)}
         onChanged={load}
       />
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {dialog}
     </div>
   );

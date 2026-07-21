@@ -96,30 +96,30 @@ export function FolderPicker({
       headerExtra={<SearchField className="w-44" ariaLabel="Search folders by path" value={query} onChange={setQuery} placeholder="Search folders" />}
     >
       <div className="flex flex-col gap-2 p-5">
-        <p className="text-sm text-slate-500">Pick a media-library folder. The field stores its path, e.g. <code className="rounded bg-slate-100 px-1">gallery/team</code>.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Pick a media-library folder. The field stores its path, e.g. <code className="rounded bg-slate-100 dark:bg-white/10 px-1">gallery/team</code>.</p>
 
         {/* Root option — selects the whole library (path ''). */}
         <button
           type="button"
           aria-label="Use root folder (all files)"
           onClick={() => choose('')}
-          className={`${glassCard} flex w-full items-center gap-3 p-3 text-left transition hover:border-indigo-400 hover:bg-white`}
+          className={`${glassCard} flex w-full items-center gap-3 p-3 text-left transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10`}
         >
           <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" />
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-sm font-medium text-slate-700">Assets (root)</span>
-            <span className="text-[11px] text-slate-400">All files · top-level folder</span>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Assets (root)</span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">All files · top-level folder</span>
           </span>
         </button>
 
         {error ? (
-          <p className="py-3 text-sm text-rose-600">{error}</p>
+          <p className="py-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>
         ) : loading ? (
-          <p className="py-3 text-sm text-slate-400">Loading folders…</p>
+          <p className="py-3 text-sm text-slate-400 dark:text-slate-500">Loading folders…</p>
         ) : paths.length === 0 ? (
-          <p className="py-3 text-sm text-slate-400">No folders yet. Create folders in the Assets panel, then pick one here.</p>
+          <p className="py-3 text-sm text-slate-400 dark:text-slate-500">No folders yet. Create folders in the Assets panel, then pick one here.</p>
         ) : shown.length === 0 ? (
-          <p className="py-3 text-sm text-slate-400">No folders match “{query.trim()}”.</p>
+          <p className="py-3 text-sm text-slate-400 dark:text-slate-500">No folders match “{query.trim()}”.</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {shown.map((path) => {
@@ -130,12 +130,12 @@ export function FolderPicker({
                     type="button"
                     aria-label={`Use folder ${path}`}
                     onClick={() => choose(path)}
-                    className={`${glassCard} flex w-full items-center gap-3 p-2.5 text-left transition hover:border-indigo-400 hover:bg-white`}
+                    className={`${glassCard} flex w-full items-center gap-3 p-2.5 text-left transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10`}
                   >
                     <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm text-slate-700" title={path}>{path}</span>
-                      <span className="text-[11px] text-slate-400">{count} file{count === 1 ? '' : 's'}</span>
+                      <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={path}>{path}</span>
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500">{count} file{count === 1 ? '' : 's'}</span>
                     </span>
                   </button>
                 </li>

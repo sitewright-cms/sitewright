@@ -82,7 +82,7 @@ export function NestedFieldsEditor({
   };
 
   return (
-    <div className="mt-2 space-y-2 border-l-2 border-indigo-200/60 pl-3">
+    <div className="mt-2 space-y-2 border-l-2 border-indigo-200/60 dark:border-indigo-500/20 pl-3">
       <ul className="space-y-1.5">
         {value.map((field, i) => (
           <li key={field.name} className="space-y-1.5">
@@ -99,7 +99,7 @@ export function NestedFieldsEditor({
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
-              <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                 <input
                   type="checkbox"
                   className={toggleInput}
@@ -110,13 +110,13 @@ export function NestedFieldsEditor({
                 required
               </label>
               <div className="ml-auto flex items-center gap-0.5">
-                <button type="button" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30" aria-label={`Move ${field.name} up`} disabled={i === 0} onClick={() => moveChild(i, -1)}>
+                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} up`} disabled={i === 0} onClick={() => moveChild(i, -1)}>
                   <ChevronUp className="h-4 w-4" />
                 </button>
-                <button type="button" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30" aria-label={`Move ${field.name} down`} disabled={i === value.length - 1} onClick={() => moveChild(i, 1)}>
+                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} down`} disabled={i === value.length - 1} onClick={() => moveChild(i, 1)}>
                   <ChevronDown className="h-4 w-4" />
                 </button>
-                <button type="button" className="rounded p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove field ${field.name}`} onClick={() => removeChild(i)}>
+                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400" aria-label={`Remove field ${field.name}`} onClick={() => removeChild(i)}>
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -130,7 +130,7 @@ export function NestedFieldsEditor({
             )}
           </li>
         ))}
-        {value.length === 0 && <li className="text-xs text-amber-600">Add at least one field — a list/object needs children to save.</li>}
+        {value.length === 0 && <li className="text-xs text-amber-600 dark:text-amber-400">Add at least one field — a list/object needs children to save.</li>}
       </ul>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -148,12 +148,12 @@ export function NestedFieldsEditor({
         <button
           type="button"
           onClick={addChild}
-          className="inline-flex items-center gap-1 rounded-md border border-dashed border-indigo-300/70 px-2.5 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-indigo-300/70 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
         >
           <Plus className="h-3.5 w-3.5" /> Add field
         </button>
       </div>
-      {error && <p className="text-xs text-rose-600">{error}</p>}
+      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
     </div>
   );
 }

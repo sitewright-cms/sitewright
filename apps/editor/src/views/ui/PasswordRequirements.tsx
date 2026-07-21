@@ -24,7 +24,7 @@ export function PasswordRequirements({ value, className }: PasswordRequirementsP
             key={rule.id}
             data-testid={`pw-rule-${rule.id}`}
             data-met={met ? 'true' : 'false'}
-            className={!touched ? 'text-slate-400' : met ? 'text-emerald-600' : 'text-slate-500'}
+            className={!touched ? 'text-slate-400 dark:text-slate-500' : met ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}
           >
             <span aria-hidden="true" className="mr-1.5 inline-flex w-3 justify-center">
               {touched && met ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />}

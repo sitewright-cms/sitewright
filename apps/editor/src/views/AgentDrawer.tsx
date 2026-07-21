@@ -338,39 +338,39 @@ export function AgentDrawer({
       {/* No full-screen backdrop: the drawer is a NON-MODAL side panel — the preview stays fully
           visible + interactive on the left while you chat (close via ×, Esc, or the AI badge). */}
       <aside
-        className={`fixed right-0 top-0 z-[61] flex h-full w-[26rem] max-w-[92vw] flex-col border-l border-white/60 bg-white/80 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed right-0 top-0 z-[61] flex h-full w-[26rem] max-w-[92vw] flex-col border-l border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
         role="dialog"
         aria-label="AI Assistant"
       >
-        <header className="flex items-center gap-2 border-b border-slate-200/70 px-4 py-3">
+        <header className="flex items-center gap-2 border-b border-slate-200/70 dark:border-slate-700/70 px-4 py-3">
           <span className="sw-brand-gradient inline-flex h-7 w-7 items-center justify-center rounded-lg text-white">
             <Sparkles className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold text-slate-800">AI Assistant</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-slate-100">AI Assistant</div>
             <StatusPill status={status} label={statusLabel} />
           </div>
           {sessionTokens > 0 && (
-            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-400" title="Total tokens used this session">
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500" title="Total tokens used this session">
               {sessionTokens.toLocaleString()} tok
             </span>
           )}
           {messages.length > 0 && (
-            <button type="button" aria-label="New chat" title="New chat" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={newChat}>
+            <button type="button" aria-label="New chat" title="New chat" className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" onClick={newChat}>
               <SquarePen className="h-4 w-4" />
             </button>
           )}
-          <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={onClose}>
+          <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>
         </header>
 
         {needConsent ? (
           <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-            <p className="text-sm text-slate-600">Choose what the assistant may do on this site. You can change this anytime.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Choose what the assistant may do on this site. You can change this anytime.</p>
             <div className="flex flex-col gap-2">
               {CONSENT_CAPS.map(({ cap, label, hint }) => (
-                <label key={cap} className="flex items-start gap-2.5 rounded-xl border border-white/60 bg-white/60 p-2.5">
+                <label key={cap} className="flex items-start gap-2.5 rounded-xl border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 p-2.5">
                   <input
                     type="checkbox"
                     className={toggleInput}
@@ -387,8 +387,8 @@ export function AgentDrawer({
                     }
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-slate-700">{label}</span>
-                    <span className="block text-xs text-slate-400">{hint}</span>
+                    <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+                    <span className="block text-xs text-slate-400 dark:text-slate-500">{hint}</span>
                   </span>
                 </label>
               ))}
@@ -396,30 +396,30 @@ export function AgentDrawer({
             <button type="button" className={primaryButton} onClick={approve}>
               Approve &amp; start
             </button>
-            {error && <p className="text-sm text-rose-600">{error}</p>}
+            {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
           </div>
         ) : (
           <>
             <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
               {messages.length === 0 && (
-                <p className="mt-6 text-center text-sm text-slate-400">
+                <p className="mt-6 text-center text-sm text-slate-400 dark:text-slate-500">
                   Ask me to change this page — e.g. “make the headline shorter” or “add a contact section”.
                 </p>
               )}
               {messages.map((m, i) => (
                 <MessageBubble key={i} msg={m} />
               ))}
-              {error && <p className="text-sm text-rose-600">{error}</p>}
+              {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
             </div>
-            <div className="border-t border-slate-200/70 p-3">
+            <div className="border-t border-slate-200/70 dark:border-slate-700/70 p-3">
               {attachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {attachments.map((a, i) => (
-                    <span key={i} className="relative inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white/70 p-1 pr-5 text-xs text-slate-600">
+                    <span key={i} className="relative inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 p-1 pr-5 text-xs text-slate-600 dark:text-slate-300">
                       {a.previewUrl ? (
                         <img src={a.previewUrl} alt={a.name ?? ''} className="h-8 w-8 rounded object-cover" />
                       ) : (
-                        <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-400">
+                        <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500">
                           <FileText className="h-4 w-4" />
                         </span>
                       )}
@@ -427,7 +427,7 @@ export function AgentDrawer({
                       <button
                         type="button"
                         aria-label={`Remove ${a.name ?? 'attachment'}`}
-                        className="absolute right-0.5 top-0.5 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        className="absolute right-0.5 top-0.5 rounded p-0.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300"
                         onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
                       >
                         <X className="h-3 w-3" />
@@ -506,7 +506,7 @@ function StatusPill({ status, label }: { status: Status; label: string }) {
   // During activity the indicator is a prominent, pulsing pill so it's obvious the agent is busy.
   if (status === 'working')
     return (
-      <span className="relative inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-300">
+      <span className="relative inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-300">
         <span aria-hidden className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -516,12 +516,12 @@ function StatusPill({ status, label }: { status: Status; label: string }) {
     );
   if (status === 'thinking')
     return (
-      <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-300">
+      <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-indigo-100 dark:bg-indigo-500/15 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-300">
         <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
         {label}
       </span>
     );
-  return <span className="text-[11px] font-medium text-slate-400">{label}</span>;
+  return <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{label}</span>;
 }
 
 function MessageBubble({ msg }: { msg: ChatMsg }) {
@@ -532,9 +532,9 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
           <div className="flex flex-wrap justify-end gap-1">
             {msg.attachments.map((a, i) =>
               a.previewUrl ? (
-                <img key={i} src={a.previewUrl} alt={a.name ?? ''} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                <img key={i} src={a.previewUrl} alt={a.name ?? ''} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-white/10" />
               ) : (
-                <span key={i} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                <span key={i} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-white/10 px-2 py-1 text-xs text-slate-500 dark:text-slate-400">
                   <FileText className="h-3.5 w-3.5" /> {a.name ?? 'document'}
                 </span>
               ),
@@ -545,12 +545,12 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
       </div>
     );
   return (
-    <div className="self-start rounded-2xl rounded-bl-sm border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-700 shadow-sm">
+    <div className="self-start rounded-2xl rounded-bl-sm border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 shadow-sm">
       {msg.tools.length > 0 && (
         <ul className="mb-1.5 flex flex-col gap-1">
           {msg.tools.map((t, i) => (
             <li key={i} className="flex flex-col gap-0.5">
-              <span className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                 {t.ok === undefined ? (
                   <Wrench className="h-3.5 w-3.5 animate-pulse text-amber-500" />
                 ) : t.ok ? (
@@ -562,15 +562,15 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
               </span>
               {/* On a failure, show WHY (e.g. a validation error) so the user isn't left with a bare ✗. */}
               {t.ok === false && t.summary && (
-                <span className="ml-5 whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-600">{t.summary}</span>
+                <span className="ml-5 whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-600 dark:text-rose-400">{t.summary}</span>
               )}
             </li>
           ))}
         </ul>
       )}
-      {msg.text ? <ChatMarkdown text={msg.text} /> : msg.streaming ? <span className="text-slate-400">…</span> : null}
+      {msg.text ? <ChatMarkdown text={msg.text} /> : msg.streaming ? <span className="text-slate-400 dark:text-slate-500">…</span> : null}
       {msg.tokens != null && msg.tokens > 0 && !msg.streaming && (
-        <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">{msg.tokens.toLocaleString()} tokens</div>
+        <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{msg.tokens.toLocaleString()} tokens</div>
       )}
     </div>
   );

@@ -526,7 +526,7 @@ export function InstanceSettings() {
   }
 
   if (loading) return <SkeletonList rows={5} className="mx-auto max-w-2xl p-8" label="Loading settings…" />;
-  if (loadError) return <div className="p-8 text-red-600">{loadError}</div>;
+  if (loadError) return <div className="p-8 text-red-600 dark:text-red-400">{loadError}</div>;
 
   const field = glassInput;
 
@@ -549,7 +549,7 @@ export function InstanceSettings() {
           <SectionHelp tip="White-label the admin panel — the name, accent gradient, and logo shown across the editor and the sign-in screen." />
         </legend>
         <label className="mb-3 block">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Platform name</span>
+          <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Platform name</span>
           <input
             className={field}
             aria-label="Platform name"
@@ -562,11 +562,11 @@ export function InstanceSettings() {
         <div className="mb-3 flex items-center gap-4">
           <div className="flex items-center gap-2">
             <ColorField value={brandPrimary} onChange={setBrandPrimary} label="Primary color" />
-            <span className="text-xs text-slate-600">Primary</span>
+            <span className="text-xs text-slate-600 dark:text-slate-300">Primary</span>
           </div>
           <div className="flex items-center gap-2">
             <ColorField value={brandSecondary} onChange={setBrandSecondary} label="Secondary color" />
-            <span className="text-xs text-slate-600">Secondary</span>
+            <span className="text-xs text-slate-600 dark:text-slate-300">Secondary</span>
           </div>
           {/* Live gradient preview (the same `.sw-brand-gradient` surface used across the chrome). */}
           <span
@@ -577,11 +577,11 @@ export function InstanceSettings() {
         </div>
         <div className="flex items-center gap-3">
           {logoPreview ? (
-            <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200" />
+            <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200 dark:ring-white/10" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-400 ring-1 ring-slate-200">none</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-400 dark:text-slate-500 ring-1 ring-slate-200 dark:ring-white/10">none</span>
           )}
-          <label className="cursor-pointer text-xs font-medium text-indigo-700 hover:underline">
+          <label className="cursor-pointer text-xs font-medium text-indigo-700 dark:text-indigo-400 hover:underline">
             {/* "Replace" only when a logo is actually present (a pending remove → logoDraft===null → "Upload"). */}
             {logoDraft !== null && (hasLogo || logoDraft) ? 'Replace logo' : 'Upload logo'}
             <input
@@ -593,13 +593,13 @@ export function InstanceSettings() {
             />
           </label>
           {(hasLogo || logoDraft) && (
-            <button type="button" className="text-xs font-medium text-rose-600 hover:underline" onClick={() => setLogoDraft(null)}>
+            <button type="button" className="text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline" onClick={() => setLogoDraft(null)}>
               Remove
             </button>
           )}
-          <span className="text-[11px] text-slate-400">PNG, JPEG, or WebP · ≤ ~512 KB</span>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">PNG, JPEG, or WebP · ≤ ~512 KB</span>
         </div>
-        {logoError && <p className="mt-2 text-xs text-rose-600">{logoError}</p>}
+        {logoError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{logoError}</p>}
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
@@ -622,7 +622,7 @@ export function InstanceSettings() {
                 />
                 <span>
                   <span className="font-medium">{label}</span>
-                  <span className="block text-xs text-slate-500">{hint}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
                 </span>
               </label>
             );
@@ -635,7 +635,7 @@ export function InstanceSettings() {
           New projects
           <SectionHelp tip="The language a newly created project starts in. Existing projects are unaffected." />
         </legend>
-        <label className="flex flex-col text-xs text-slate-500">
+        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Default locale for new projects
           <button
             type="button"
@@ -644,12 +644,12 @@ export function InstanceSettings() {
             onClick={() => setLocalePickerOpen(true)}
           >
             <span aria-hidden className="text-lg">{localeFlag(newProjectLocale)}</span>
-            <span className="font-medium text-slate-800">{localeLabel(newProjectLocale)}</span>
-            <span className="font-mono text-xs uppercase text-slate-400">{newProjectLocale}</span>
-            <span className="ml-auto text-xs text-indigo-600">Change</span>
+            <span className="font-medium text-slate-800 dark:text-slate-100">{localeLabel(newProjectLocale)}</span>
+            <span className="font-mono text-xs uppercase text-slate-400 dark:text-slate-500">{newProjectLocale}</span>
+            <span className="ml-auto text-xs text-indigo-600 dark:text-indigo-400">Change</span>
           </button>
         </label>
-        <label className="mt-3 flex flex-col text-xs text-slate-500">
+        <label className="mt-3 flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Default image delivery format ({'{{sw-image}}'})
           <select
             aria-label="Default image delivery format"
@@ -660,7 +660,7 @@ export function InstanceSettings() {
             <option value="webp">WebP</option>
             <option value="avif">AVIF + WebP</option>
           </select>
-          <span className="mt-1 text-[11px] text-slate-400">
+          <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
             AVIF is smaller on supporting browsers, at ~2× the generated files. Projects can override this in Website settings.
           </span>
         </label>
@@ -683,11 +683,11 @@ export function InstanceSettings() {
         </label>
         {smtpEnabled && (
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Port
               <input
                 className={field}
@@ -703,11 +703,11 @@ export function InstanceSettings() {
                 required
               />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Username
               <input className={field} aria-label="SMTP username" value={user} onChange={(e) => setUser(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Password
               <input
                 className={field}
@@ -718,7 +718,7 @@ export function InstanceSettings() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               From email
               <input
                 className={field}
@@ -729,7 +729,7 @@ export function InstanceSettings() {
                 required
               />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               From name
               <input className={field} aria-label="SMTP from name" value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </label>
@@ -755,11 +755,11 @@ export function InstanceSettings() {
         </label>
         {hcaptchaEnabled && (
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Site key
               <input className={field} aria-label="hCaptcha site key" value={siteKey} onChange={(e) => setSiteKey(e.target.value)} required />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Secret key
               <input
                 className={field}
@@ -791,7 +791,7 @@ export function InstanceSettings() {
         </label>
         {stockEnabled && (
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Unsplash access key
               <input
                 className={field}
@@ -805,10 +805,10 @@ export function InstanceSettings() {
                 <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('unsplash', unsplashKey)} disabled={stockTesting === 'unsplash' || (!unsplashKey && !hasUnsplash)}>
                   {stockTesting === 'unsplash' ? 'Testing…' : 'Test'}
                 </button>
-                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={unsplashTest.error}>✗ {unsplashTest.error}</span>)}
+                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <span className="text-xs text-red-600 dark:text-red-400" title={unsplashTest.error}>✗ {unsplashTest.error}</span>)}
               </span>
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Pexels API key
               <input
                 className={field}
@@ -822,7 +822,7 @@ export function InstanceSettings() {
                 <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('pexels', pexelsKey)} disabled={stockTesting === 'pexels' || (!pexelsKey && !hasPexels)}>
                   {stockTesting === 'pexels' ? 'Testing…' : 'Test'}
                 </button>
-                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600">✓ Connected</span> : <span className="text-xs text-red-600" title={pexelsTest.error}>✗ {pexelsTest.error}</span>)}
+                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <span className="text-xs text-red-600 dark:text-red-400" title={pexelsTest.error}>✗ {pexelsTest.error}</span>)}
               </span>
             </label>
           </div>
@@ -849,7 +849,7 @@ export function InstanceSettings() {
         </label>
         {aiEnabled && (
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Provider
               <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as AiProviderKind)}>
                 <option value="anthropic">Anthropic</option>
@@ -857,31 +857,31 @@ export function InstanceSettings() {
                 <option value="openai">OpenAI-compatible (custom endpoint)</option>
               </select>
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Model
               <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={modelPlaceholder(aiProvider)} />
             </label>
             {aiProvider === 'openrouter' && (
-              <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                 Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
               </p>
             )}
             {aiProvider === 'openai' && (
-              <label className="col-span-2 flex flex-col text-xs text-slate-500">
-                Base URL <span className="text-slate-400">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
+              <label className="col-span-2 flex flex-col text-xs text-slate-500 dark:text-slate-400">
+                Base URL <span className="text-slate-400 dark:text-slate-500">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
                 <input className={field} aria-label="AI base URL" type="url" value={aiBaseUrl} onChange={(e) => setAiBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
               </label>
             )}
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               API key
               <input className={field} aria-label="AI API key" type="password" value={aiKey} placeholder={aiHasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setAiKey(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
-              Default per-project monthly token cap <span className="text-slate-400">(0 = unlimited)</span>
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+              Default per-project monthly token cap <span className="text-slate-400 dark:text-slate-500">(0 = unlimited)</span>
               <input className={field} aria-label="Default per-project monthly token cap" type="number" min={0} value={aiProjectLimit} onChange={(e) => setAiProjectLimit(e.target.value)} />
             </label>
-            <label className="flex flex-col text-xs text-slate-500">
-              Max output tokens / reply <span className="text-slate-400">(blank = default 8192)</span>
+            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+              Max output tokens / reply <span className="text-slate-400 dark:text-slate-500">(blank = default 8192)</span>
               <input
                 className={field}
                 aria-label="Max output tokens per reply"
@@ -903,9 +903,9 @@ export function InstanceSettings() {
               </button>
               {aiTest &&
                 (aiTest.ok ? (
-                  <span className="text-sm text-green-600">✓ Connected{aiTest.model ? ` (${aiTest.model})` : ''}</span>
+                  <span className="text-sm text-green-600 dark:text-green-400">✓ Connected{aiTest.model ? ` (${aiTest.model})` : ''}</span>
                 ) : (
-                  <span className="text-sm text-red-600" title={aiTest.error}>✗ {aiTest.error}</span>
+                  <span className="text-sm text-red-600 dark:text-red-400" title={aiTest.error}>✗ {aiTest.error}</span>
                 ))}
             </div>
           </div>
@@ -925,7 +925,7 @@ export function InstanceSettings() {
         />
         <button
           type="button"
-          className="mt-2 text-xs text-slate-500 underline hover:text-slate-700"
+          className="mt-2 text-xs text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
           onClick={() => setAgentInstructions(DEFAULT_AGENT_INSTRUCTIONS)}
         >
           Reset to default
@@ -939,7 +939,7 @@ export function InstanceSettings() {
             tip={`How long an agent connection (MCP / OAuth) stays valid before the user must re-approve — the absolute refresh-token cap. Default ${DEFAULT_AGENT_SESSION_HOURS}h. Raise it for agents that work across days; lower it to tighten the window. Refresh tokens still rotate and are theft-detected regardless.`}
           />
         </legend>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           Session length (hours)
           <input
             type="number"
@@ -970,7 +970,7 @@ export function InstanceSettings() {
           />
         </legend>
         <div className="flex flex-wrap items-center gap-6">
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             Coalesce window (seconds)
             <input
               type="number"
@@ -986,7 +986,7 @@ export function InstanceSettings() {
               onBlur={() => setCoalesceSeconds((s) => clampCoalesceSeconds(s))}
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             Keep history for (days)
             <input
               type="number"
@@ -1007,13 +1007,13 @@ export function InstanceSettings() {
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-bold">Accounts</legend>
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
           Registration is invite-only — new users join by accepting an invitation. There is no public
           self-registration.
         </p>
         <label className="block text-sm">
           <span className="font-medium">Failed sign-in attempts before throttling</span>
-          <span className="mb-1 block text-xs text-slate-500">
+          <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
             Per IP per minute. After this many FAILED login or 2FA attempts, further tries from that IP are
             blocked for a minute (a successful sign-in never counts). Default {DEFAULT_AUTH_MAX_FAILURES}.
           </span>
@@ -1038,7 +1038,7 @@ export function InstanceSettings() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
             <span className="font-medium">Session signing key</span>
-            <span className="block text-xs text-slate-500">
+            <span className="block text-xs text-slate-500 dark:text-slate-400">
               {cookieSecretPinned
                 ? 'Pinned via the COOKIE_SECRET environment variable — rotate it there.'
                 : 'Rotate to invalidate every active session (e.g. after a suspected leak). Everyone, including you, is signed out and must log in again.'}
@@ -1046,14 +1046,14 @@ export function InstanceSettings() {
           </div>
           <button
             type="button"
-            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50`}
+            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 disabled:opacity-50`}
             disabled={cookieSecretPinned || rotating}
             onClick={() => void rotateSessionKey()}
           >
             {rotating ? 'Rotating…' : 'Rotate session key'}
           </button>
         </div>
-        {rotateMsg && <p className="mt-2 text-sm text-rose-600">{rotateMsg}</p>}
+        {rotateMsg && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{rotateMsg}</p>}
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
@@ -1061,11 +1061,11 @@ export function InstanceSettings() {
           HTTP Strict Transport Security (HSTS)
           <SectionHelp tip="Tells browsers to only ever reach this platform origin over HTTPS. Only has effect when the instance is actually served over TLS. HSTS is STICKY — once a browser has seen it, it refuses plain HTTP for the whole max-age — so enable it only when you're sure the origin stays on HTTPS." />
         </legend>
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
           Off by default. Sends the{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">Strict-Transport-Security</code> header on platform
-          responses. Locally-hosted client sites (<code className="rounded bg-slate-100 px-1 py-0.5">&lt;slug&gt;.your-domain</code>{' '}
-          / <code className="rounded bg-slate-100 px-1 py-0.5">/sites/…</code>) are excluded unless you opt in below.
+          <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">Strict-Transport-Security</code> header on platform
+          responses. Locally-hosted client sites (<code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">&lt;slug&gt;.your-domain</code>{' '}
+          / <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">/sites/…</code>) are excluded unless you opt in below.
         </p>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -1081,7 +1081,7 @@ export function InstanceSettings() {
           <div className="mt-3 flex flex-col gap-3">
             <label className="block text-sm">
               <span className="font-medium">max-age (seconds)</span>
-              <span className="mb-1 block text-xs text-slate-500">
+              <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
                 How long browsers keep enforcing HTTPS after each visit. Common: 31536000 (1 year). 0 tells browsers to forget the policy.
               </span>
               <input
@@ -1108,7 +1108,7 @@ export function InstanceSettings() {
               />
               <span>
                 includeSubDomains
-                <span className="ml-2 text-xs text-amber-600">only if EVERY subdomain is served over HTTPS</span>
+                <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">only if EVERY subdomain is served over HTTPS</span>
               </span>
             </label>
             <label className="flex items-center gap-2 text-sm">
@@ -1122,7 +1122,7 @@ export function InstanceSettings() {
               />
               <span className={hstsIncludeSub && hstsMaxAge >= 31_536_000 ? '' : 'opacity-50'}>
                 preload
-                <span className="ml-2 text-xs text-amber-600">near-irreversible; requires includeSubDomains + a 1-year+ max-age</span>
+                <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">near-irreversible; requires includeSubDomains + a 1-year+ max-age</span>
               </span>
             </label>
             <label className="flex items-center gap-2 text-sm">
@@ -1135,7 +1135,7 @@ export function InstanceSettings() {
               />
               <span>
                 Also apply to served client sites
-                <span className="ml-2 text-xs text-amber-600">only with a valid (e.g. wildcard) cert for your site subdomains</span>
+                <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">only with a valid (e.g. wildcard) cert for your site subdomains</span>
               </span>
             </label>
           </div>
@@ -1152,7 +1152,7 @@ export function InstanceSettings() {
         </legend>
         <label className="block text-sm">
           <span className="font-medium">Log level</span>
-          <span className="mb-1 block text-xs text-slate-500">
+          <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
             debug/trace are useful for diagnosis but noisy — keep it at info in normal operation.
           </span>
           <select
@@ -1176,16 +1176,16 @@ export function InstanceSettings() {
           <SectionHelp tip="Before applying a pending schema migration on startup, the app writes a WAL-safe snapshot of the DATABASE only (media isn't touched by migrations) so a bad migration can be rolled back. Restore: stop the app, copy a .bak over sitewright.db, remove the -wal/-shm sidecars, restart." />
         </legend>
         <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <dt className="text-slate-500">Database size</dt>
+          <dt className="text-slate-500 dark:text-slate-400">Database size</dt>
           <dd className="text-right font-medium">{storage ? formatBytes(storage.dbBytes) : '—'}</dd>
-          <dt className="text-slate-500">Pre-migration snapshots</dt>
+          <dt className="text-slate-500 dark:text-slate-400">Pre-migration snapshots</dt>
           <dd className="text-right font-medium">
             {storage ? `${storage.backups.count} · ${formatBytes(storage.backups.bytes)}` : '—'}
           </dd>
         </dl>
         <label className="block text-sm">
           <span className="font-medium">Snapshots to keep automatically</span>
-          <span className="mb-1 block text-xs text-slate-500">
+          <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
             How many pre-migration snapshots to retain; older ones are pruned after each new one. Default {DEFAULT_BACKUP_RETENTION}.
           </span>
           <input
@@ -1201,11 +1201,11 @@ export function InstanceSettings() {
             }}
             onBlur={() => setBackupRetention((v) => Math.max(1, Math.min(100, Math.round(v) || DEFAULT_BACKUP_RETENTION)))}
           />
-          <span className="ml-2 text-xs text-slate-400">(saved with “Save settings”)</span>
+          <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">(saved with “Save settings”)</span>
         </label>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">
-            <span className="mb-1 block text-xs text-slate-500">Purge now — keep newest</span>
+            <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">Purge now — keep newest</span>
             <input
               type="number"
               min={1}
@@ -1222,13 +1222,13 @@ export function InstanceSettings() {
           </label>
           <button
             type="button"
-            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50`}
+            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 disabled:opacity-50`}
             disabled={purging || storage?.backups.count === 0}
             onClick={() => void purgeOldBackups()}
           >
             {purging ? 'Purging…' : 'Purge snapshots'}
           </button>
-          {purgeMsg && <span className="text-sm text-slate-600">{purgeMsg}</span>}
+          {purgeMsg && <span className="text-sm text-slate-600 dark:text-slate-300">{purgeMsg}</span>}
         </div>
       </fieldset>
 
@@ -1250,8 +1250,8 @@ export function InstanceSettings() {
         <button type="submit" className={primaryButton}>
           Save settings
         </button>
-        {saved && <span className="text-sm text-green-600">Saved.</span>}
-        {error && <span className="text-sm text-red-600">{error}</span>}
+        {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
+        {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
       </div>
       )}
     </form>
@@ -1265,9 +1265,9 @@ export function InstanceSettings() {
         <ul className="flex flex-col gap-1.5 text-sm">
           {MCP_TOOL_CATALOG.map((t) => (
             <li key={t.name} className="flex flex-wrap items-baseline gap-2">
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px] font-bold">{t.name}</code>
-              <span className="text-xs text-slate-500">{t.description}</span>
-              <span className="ml-auto rounded-full border border-white/60 bg-white/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+              <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[12px] font-bold">{t.name}</code>
+              <span className="text-xs text-slate-500 dark:text-slate-400">{t.description}</span>
+              <span className="ml-auto rounded-full border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                 {t.capability ?? 'always'}
               </span>
             </li>
@@ -1280,24 +1280,24 @@ export function InstanceSettings() {
           Connect an agent
           <SectionHelp tip="Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login — the agent connects on demand and shows you a link to approve." />
         </h2>
-        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600">
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600 dark:text-slate-300">
           <li>
-            Install the CLI: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>
+            Install the CLI: <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>
           </li>
           <li>
             Register this as a stdio MCP server in your agent — no login step needed first:{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>
+            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>
           </li>
           <li>
-            When the agent calls its <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">login</code> tool it gets a
+            When the agent calls its <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">login</code> tool it gets a
             link + code (device flow, OAuth 2.1 + PKCE). Open it, pick the project, approve — and keep that tab open to
-            watch the agent’s changes live. Use <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">switch_project</code> to
+            watch the agent’s changes live. Use <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">switch_project</code> to
             move it to another project.
           </li>
           <li>
             Prefer to sign in ahead of time? Run{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code> (add{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">--device</code> for headless/SSH).
+            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code> (add{' '}
+            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">--device</code> for headless/SSH).
           </li>
         </ol>
       </section>

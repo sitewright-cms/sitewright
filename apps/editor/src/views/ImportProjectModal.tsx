@@ -91,29 +91,29 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
       <div className="flex flex-col gap-4 p-5">
         {step === 'source' && (
           <>
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-8 text-center transition hover:border-slate-400">
-              <FileUp className="h-7 w-7 text-slate-400" />
-              <span className="text-sm font-medium text-slate-700">{file ? file.name : 'Choose a Sitewright project export (.zip)'}</span>
-              <span className="text-[11px] text-slate-400">Creates a brand-new project — your existing projects are untouched.</span>
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 px-4 py-8 text-center transition hover:border-slate-400">
+              <FileUp className="h-7 w-7 text-slate-400 dark:text-slate-500" />
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{file ? file.name : 'Choose a Sitewright project export (.zip)'}</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Creates a brand-new project — your existing projects are untouched.</span>
               <input type="file" accept=".zip,application/zip" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </label>
-            <p className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] text-indigo-900">
+            <p className="flex items-start gap-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-900 dark:text-indigo-200">
               <PackageOpen className="mt-0.5 h-4 w-4 shrink-0" />
               <span>The archive's content, media and settings are restored into a new project. Deploy targets and SMTP credentials are not included — reconfigure them after importing.</span>
             </p>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           </>
         )}
 
         {busy && (
           <div className="flex flex-col gap-3 py-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <Loader2 className="h-4 w-4 animate-spin" /> Importing…
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
               <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-400" />
             </div>
-            <ul className="flex flex-col gap-1 rounded-xl bg-slate-50 p-3 font-mono text-[11px] text-slate-500">
+            <ul className="flex flex-col gap-1 rounded-xl bg-slate-50 dark:bg-white/5 p-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
               {lines.length === 0 ? <li>Starting…</li> : lines.map((l) => <li key={l.id} className="truncate">{l.text}</li>)}
             </ul>
           </div>
@@ -121,7 +121,7 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
 
         {step === 'report' && report && (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-400">
               <CircleCheck className="h-5 w-5" /> Imported “{report.name}”
             </div>
             <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -138,9 +138,9 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-      <dt className="text-[11px] text-slate-400">{label}</dt>
-      <dd className="font-medium text-slate-800">{value}</dd>
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2">
+      <dt className="text-[11px] text-slate-400 dark:text-slate-500">{label}</dt>
+      <dd className="font-medium text-slate-800 dark:text-slate-100">{value}</dd>
     </div>
   );
 }

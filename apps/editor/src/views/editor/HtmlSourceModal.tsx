@@ -34,11 +34,11 @@ export function HtmlSourceModal({ swKey, value, onSave, onClose }: HtmlSourceMod
       onBeforeClose={dirty ? () => confirm({ title: 'Discard changes', message: 'Discard unsaved HTML edits?', confirmLabel: 'Discard' }) : undefined}
     >
       <div className="flex h-full flex-col gap-2 p-3">
-        <p className="shrink-0 text-xs text-slate-500">
+        <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
           Raw HTML for this rich-text region. Disallowed tags and attributes (scripts, event handlers,
           inline styles other than text-align, …) are stripped when the page renders.
         </p>
-        <div className="h-[60vh] min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="h-[60vh] min-h-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <CodeEditor value={html} onChange={setHtml} ariaLabel="HTML source" language="html" />
         </div>
       </div>

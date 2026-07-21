@@ -77,7 +77,7 @@ export function GoogleFontGallery({
 
   return (
     <div className="flex h-full flex-col gap-3 p-5">
-      <p className="text-sm text-slate-500">{intro}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">{intro}</p>
       <SearchField
         ariaLabel="Search Google Fonts"
         autoFocus
@@ -88,7 +88,7 @@ export function GoogleFontGallery({
           reset();
         }}
       />
-      {error && <p className="text-sm text-rose-500">{error}</p>}
+      {error && <p className="text-sm text-rose-500 dark:text-rose-300">{error}</p>}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
         {!catalog ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -97,19 +97,19 @@ export function GoogleFontGallery({
             ))}
           </div>
         ) : shown.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400">No fonts match “{query}”.</p>
+          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No fonts match “{query}”.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {shown.map((font) => (
-              <li key={font.family} className="rounded-xl border border-slate-200/70 bg-white/60 p-3">
+              <li key={font.family} className="rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-3">
                 <p
-                  className="truncate text-xl text-slate-800"
+                  className="truncate text-xl text-slate-800 dark:text-slate-100"
                   style={{ fontFamily: `'${font.family}', ${font.fallback}`, fontWeight: font.weights.includes(400) ? 400 : font.weights[0] }}
                 >
                   {font.family}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-400">{font.fallback}</span>
+                  <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{font.fallback}</span>
                   {renderAction(font)}
                 </div>
               </li>
@@ -117,7 +117,7 @@ export function GoogleFontGallery({
           </ul>
         )}
       </div>
-      <p className="shrink-0 text-[11px] text-slate-400">
+      <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
         {catalog
           ? `Showing ${shown.length} of ${filtered.length}${q ? ' matches' : ' families'}${
               shown.length < filtered.length ? ' — scroll for more' : ''

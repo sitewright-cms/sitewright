@@ -14,7 +14,7 @@ const OP_FILTERS = [
   { value: 'restore', label: 'Restored' },
   { value: 'delete', label: 'Deleted' },
 ];
-const selectCls = 'rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-600 shadow-sm';
+const selectCls = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-sm text-slate-600 dark:text-slate-300 shadow-sm';
 
 /**
  * Project-wide revision activity feed (the History nav tab). Lists every revision across all content
@@ -97,7 +97,7 @@ export function HistoryView({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-bold text-slate-800">History</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">History</h2>
         <div className="flex items-center gap-2">
           <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Filter by content type" className={selectCls}>
             <option value="">All content</option>
@@ -118,9 +118,9 @@ export function HistoryView({ project }: { project: Project }) {
       </div>
 
       {items === null ? (
-        <p className="py-10 text-center text-sm text-slate-400">Loading history…</p>
+        <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">Loading history…</p>
       ) : items.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-400">No revisions yet for this filter.</p>
+        <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">No revisions yet for this filter.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((r) => {
@@ -129,11 +129,11 @@ export function HistoryView({ project }: { project: Project }) {
               <li key={r.id} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-slate-700" title={new Date(r.revisionAt).toLocaleString()}>
-                    <span className="text-slate-400">{KIND_LABEL[r.kind] ?? r.kind} · </span>
+                  <div className="truncate text-slate-700 dark:text-slate-200" title={new Date(r.revisionAt).toLocaleString()}>
+                    <span className="text-slate-400 dark:text-slate-500">{KIND_LABEL[r.kind] ?? r.kind} · </span>
                     <span className="font-medium">{r.label}</span>
                   </div>
-                  <div className="truncate text-xs text-slate-400">
+                  <div className="truncate text-xs text-slate-400 dark:text-slate-500">
                     {authorLabel(r)} · {when(r.revisionAt)}
                     {r.note ? ` · ${r.note}` : ''}
                   </div>
@@ -142,7 +142,7 @@ export function HistoryView({ project }: { project: Project }) {
                   type="button"
                   disabled={restoringId !== null}
                   onClick={() => void restore(r)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:opacity-40"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-default disabled:opacity-40"
                 >
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden /> {restoringId === r.id ? 'Restoring…' : 'Restore'}
                 </button>
@@ -157,7 +157,7 @@ export function HistoryView({ project }: { project: Project }) {
           type="button"
           onClick={() => void loadMore()}
           disabled={loadingMore}
-          className="mx-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 disabled:opacity-40"
+          className="mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-40"
         >
           {loadingMore ? 'Loading…' : 'Load more'}
         </button>

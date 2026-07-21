@@ -83,18 +83,18 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
     <div className="flex flex-col gap-6">
       {dialog}
       {issued && (
-        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
+        <div className="rounded-2xl border border-amber-300/70 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-500/10 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-bold text-amber-900">Copy your new token now — it won’t be shown again.</p>
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Copy your new token now — it won’t be shown again.</p>
             <button
               aria-label="Dismiss token"
-              className="text-amber-700 hover:text-amber-900"
+              className="text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
               onClick={() => setIssued(null)}
             >
               <X className="h-4 w-4" />
             </button>
           </div>
-          <code className="mt-2 block break-all rounded-lg border border-amber-200/70 bg-white/80 px-3 py-2 text-xs" aria-label="New API token">
+          <code className="mt-2 block break-all rounded-lg border border-amber-200/70 dark:border-amber-500/20 bg-white/80 dark:bg-slate-900/80 px-3 py-2 text-xs" aria-label="New API token">
             {issued}
           </code>
         </div>
@@ -146,7 +146,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
           <legend className={fieldLabel}>Capabilities</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
             {ALL_CAPABILITIES.map((cap) => (
-              <label key={cap} className="flex items-center gap-1.5 text-xs text-slate-600">
+              <label key={cap} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                 <input type="checkbox" className={toggleInput} checked={caps.includes(cap)} onChange={() => toggleCap(cap)} /> {cap}
               </label>
             ))}
@@ -167,9 +167,9 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
             key={k.id}
             className={`flex items-center gap-3 ${glassPanel} px-4 py-3 text-sm`}
           >
-            <span className="font-medium text-slate-800">{k.name}</span>
-            <code className="text-xs text-slate-400">{k.tokenPrefix}…</code>
-            <span className="text-xs text-slate-500">{k.capabilities.join(', ')}</span>
+            <span className="font-medium text-slate-800 dark:text-slate-100">{k.name}</span>
+            <code className="text-xs text-slate-400 dark:text-slate-500">{k.tokenPrefix}…</code>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{k.capabilities.join(', ')}</span>
             <button
               aria-label={`Revoke ${k.name}`}
               className={`ml-auto ${dangerButton}`}
@@ -180,12 +180,12 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
           </li>
         ))}
         {keys.length === 0 && (
-          <li className="text-sm text-slate-400">
+          <li className="text-sm text-slate-400 dark:text-slate-500">
             No API keys yet. Create one for CI, or run <code>sitewright login</code> for interactive access.
           </li>
         )}
       </ul>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

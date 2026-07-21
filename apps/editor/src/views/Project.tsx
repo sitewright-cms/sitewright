@@ -135,7 +135,7 @@ const LINK_ICON = rowIcon(
 // isn't hovered (`[&:not(:hover)]`), so a direct hover's white-chip (`hover:bg-white text-slate-900`)
 // always wins regardless of Tailwind's variant ordering.
 const ROW_ACTION =
-  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900';
+  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
@@ -649,7 +649,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
               {/* Language switcher — the list shows one language at a time. Hidden until a
                   second language exists (a single-language project needs no switcher). */}
               {multilingual && (
-                <div role="tablist" aria-label="Language" className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                <div role="tablist" aria-label="Language" className="flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-white/10 p-1">
                   {locales.map((loc) => (
                     <button
                       key={loc}
@@ -658,7 +658,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       aria-selected={loc === currentLocale}
                       title={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}
                       className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
-                        loc === currentLocale ? gradientSurface : `text-slate-500 ${gradientHover}`
+                        loc === currentLocale ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
                       }`}
                       onClick={() => setCurrentLocale(loc)}
                     >
@@ -672,7 +672,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:bg-white dark:hover:bg-white/10"
                 onClick={() => {
                   setAddLocaleError(null);
                   setAddLocaleOpen(true);
@@ -776,7 +776,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}
-                      className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white hover:text-slate-600 active:cursor-grabbing"
+                      className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {
                           e.preventDefault();
@@ -797,7 +797,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                   >
                     <span
                       aria-hidden
-                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500' : 'text-slate-400'} group-hover:text-white`}
+                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'} group-hover:text-white`}
                       title={isLink ? 'Navigation placeholder' : isHome ? 'Home page' : 'Page'}
                     >
                       {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
@@ -805,28 +805,28 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     {/* The MENU label (nav title falls back to the page title), rendered clean — icon/flag
                         + text for a rich label (placeholder or a page with a rich menu title), never raw markup. */}
                     <span className="truncate font-medium"><PlaceholderLabel name={p.nav?.title || p.title} /></span>
-                    <span className="truncate text-sm text-slate-400 group-hover:text-white/90">
+                    <span className="truncate text-sm text-slate-400 dark:text-slate-500 group-hover:text-white/90">
                       {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
                     </span>
                     {isLink && (
-                      <span className="rounded-full bg-violet-100/80 px-2 py-0.5 text-[11px] font-medium text-violet-700 group-hover:bg-white/25 group-hover:text-white">placeholder</span>
+                      <span className="rounded-full bg-violet-100/80 px-2 py-0.5 text-[11px] font-medium text-violet-700 group-hover:bg-white/25 group-hover:text-white dark:bg-violet-500/15 dark:text-violet-300">placeholder</span>
                     )}
                     {p.status === 'draft' && (
-                      <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600 group-hover:bg-white/25 group-hover:text-white">draft</span>
+                      <span className="rounded-full bg-slate-200/80 dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 group-hover:bg-white/25 group-hover:text-white">draft</span>
                     )}
                     {p.template && (
-                      <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700 group-hover:bg-white/25 group-hover:text-white">template</span>
+                      <span className="rounded-full bg-indigo-100/80 dark:bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white">template</span>
                     )}
                     {/* Code-mode badge for a translated page: it follows the main language's
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
                     {multilingual && p.locale && !isLink && !p.source && !p.template && (
-                      <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-medium text-emerald-700 group-hover:bg-white/25 group-hover:text-white">
+                      <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white">
                         inherited
                       </span>
                     )}
                     {multilingual && p.locale && !isLink && p.source && (
-                      <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-700 group-hover:bg-white/25 group-hover:text-white">
+                      <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white">
                         custom code
                       </span>
                     )}
@@ -883,7 +883,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       <Tooltip tip="Delete page" side="top">
                         <button
                           aria-label={`Delete ${p.title}`}
-                          className={`${ROW_ACTION} hover:bg-rose-50 hover:text-rose-600`}
+                          className={`${ROW_ACTION} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`}
                           onClick={() => void removePage(p)}
                         >
                           {TRASH_ICON}
@@ -894,7 +894,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                   </li>
               );
             })}
-            {pages.length === 0 && <li className="text-sm text-slate-400">No pages yet.</li>}
+            {pages.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No pages yet.</li>}
           </ul>
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">
@@ -902,7 +902,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           </div>
 
           {/* List-level errors (reorder/delete) — the add-page error lives inside its own modal. */}
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
           {phOpen && (
             <Modal title="New Placeholder" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
               <form onSubmit={createPlaceholder} className="flex flex-col gap-4 p-5">
@@ -917,7 +917,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     autoFocus
                     required
                   />
-                  <span className="mt-1 text-[11px] text-slate-400">
+                  <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                     Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
                   </span>
                 </div>
@@ -936,16 +936,16 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       <option key={p.id} value={fullPath(p)}>{p.title}</option>
                     ))}
                   </datalist>
-                  <span className="mt-1 text-[11px] text-slate-400">
+                  <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                     Internal <code>/path</code>, external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
                   </span>
-                  <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                  <label className="mt-2 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={phNewTab} onChange={(e) => setPhNewTab(e.target.checked)} />
                     Open in a new tab
                   </label>
                 </div>
-                <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
-                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400">Show in</legend>
+                <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Show in</legend>
                   <div className="flex flex-wrap gap-4">
                     {NAV_SLOTS.map((slot) => (
                       <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
@@ -960,12 +960,12 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       </label>
                     ))}
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <input type="checkbox" className={toggleInput} aria-label="Dropdown of child pages" checked={phDropdown} onChange={(e) => setPhDropdown(e.target.checked)} />
                     Dropdown of child pages
                   </label>
                 </fieldset>
-                {phError && <p className="text-sm text-red-600">{phError}</p>}
+                {phError && <p className="text-sm text-red-600 dark:text-red-400">{phError}</p>}
                 <div className="flex justify-end">
                   <button type="submit" className={primaryButton}>Add placeholder</button>
                 </div>

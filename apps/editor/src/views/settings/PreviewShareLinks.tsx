@@ -56,7 +56,7 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-500">
+      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
         Create a stable, revocable link that lets an <strong>unauthenticated</strong> client view the live
         DRAFT preview (sandboxed — safe). The normal preview link expires and needs a logged-in member;
         share links do not. Delete a link to revoke it instantly.

@@ -100,7 +100,7 @@ export function StockPicker({
   return (
     <div className={bare ? '' : `${glassCard} p-4`}>
       <form onSubmit={search} className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col text-xs text-slate-500">
+        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Provider
           <select
             className={field}
@@ -116,7 +116,7 @@ export function StockPicker({
             ))}
           </select>
         </label>
-        <label className="flex flex-1 flex-col text-xs text-slate-500">
+        <label className="flex flex-1 flex-col text-xs text-slate-500 dark:text-slate-400">
           Search stock photos
           <input
             className={field}
@@ -136,17 +136,17 @@ export function StockPicker({
       </form>
 
       {loaded && !selectedAvailable && (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
           This provider needs an API key. Configure it under System settings → Stock image providers.
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
         {results.map((r) => (
           <figure key={`${r.provider}:${r.id}`} className={`flex flex-col ${glassPanel} p-2`}>
             <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="h-24 w-full rounded object-cover" loading="lazy" />
-            <figcaption className="mt-1 truncate text-[11px] text-slate-500" title={`${r.author} · ${r.license}`}>
+            <figcaption className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400" title={`${r.author} · ${r.license}`}>
               {r.author} · {r.license}
             </figcaption>
             <button
@@ -159,7 +159,7 @@ export function StockPicker({
           </figure>
         ))}
         {searched && !searching && results.length === 0 && !error && (
-          <p className="text-sm text-slate-400">No results.</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">No results.</p>
         )}
       </div>
     </div>

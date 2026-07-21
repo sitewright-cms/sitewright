@@ -48,7 +48,7 @@ export function TokenEditor({
               swatch && (
                 <span
                   aria-hidden
-                  className="h-7 w-7 shrink-0 rounded-md border border-white/70 shadow-inner"
+                  className="h-7 w-7 shrink-0 rounded-md border border-white/70 dark:border-white/10 shadow-inner"
                   style={{ background: SAFE_COLOR.test(r.value) ? r.value : 'transparent' }}
                 />
               )
@@ -64,7 +64,7 @@ export function TokenEditor({
                 the field is read-only so a color can't be typed in, just shown. */}
             <input
               aria-label={`${valuePlaceholder} ${i + 1}`}
-              className={`${glassInput}${picker ? ' cursor-default text-slate-500' : ''}`}
+              className={`${glassInput}${picker ? ' cursor-default text-slate-500 dark:text-slate-400' : ''}`}
               value={r.value}
               placeholder={valuePlaceholder}
               readOnly={picker}
@@ -75,7 +75,7 @@ export function TokenEditor({
               type="button"
               aria-label={`Remove ${r.key || keyPlaceholder} ${i + 1}`}
               onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
-              className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+              className="shrink-0 rounded-md px-2 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
             >
               <X className="h-4 w-4" />
             </button>

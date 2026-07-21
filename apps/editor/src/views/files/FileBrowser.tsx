@@ -83,8 +83,8 @@ const COPY_ICON = icon(
 const DOWNLOAD_ICON = icon(<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />);
 const TRASH_ICON = icon(<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />);
 
-const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
-const ACT_DANGER = `${ACT} hover:bg-rose-50 hover:text-rose-600`;
+const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100';
+const ACT_DANGER = `${ACT} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`;
 
 export interface FileBrowserProps {
   projectId: string;
@@ -386,21 +386,21 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       onDrop={(e) => onDropInto(folder, e)}
     >
       {dialog}
-      {intro && <p className="mb-3 text-sm text-slate-500">{intro}</p>}
+      {intro && <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{intro}</p>}
 
       {/* Upload + stock toolbar */}
       <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'sw-brand-ring' : ''}`}>
         <div className="flex flex-col gap-1">
-          <label htmlFor={uploadId} className="text-xs font-bold text-slate-700">
+          <label htmlFor={uploadId} className="text-xs font-bold text-slate-700 dark:text-slate-200">
             Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
           </label>
           <input id={uploadId} ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
             Any file type. Images become AVIF/WebP; other files are stored as downloads.
             {folder && <> Filing into <strong>{folder}</strong>.</>}
-            {uploading && <span className="ml-1 text-indigo-500">uploading…</span>}
+            {uploading && <span className="ml-1 text-indigo-500 dark:text-indigo-300">uploading…</span>}
           </p>
-          <label className="mt-0.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
+          <label className="mt-0.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
             <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
             Clean up SVG code on upload
           </label>
@@ -413,17 +413,17 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         </button>
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {/* Breadcrumb + new folder + view toggle */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <nav aria-label="Folder path" className="flex items-center gap-1 text-sm text-slate-600">
+        <nav aria-label="Folder path" className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-300">
           <button
             type="button"
             onClick={() => goTo('')}
             onDragOver={allowDrop('')}
             onDrop={(e) => onDropInto('', e)}
-            className={`rounded px-1.5 py-0.5 hover:bg-white/60 ${dropTarget === '' ? 'bg-indigo-100' : ''}`}
+            className={`rounded px-1.5 py-0.5 hover:bg-white/60 dark:hover:bg-white/10 ${dropTarget === '' ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
           >
             Assets
           </button>
@@ -437,7 +437,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   onClick={() => goTo(crumbPath)}
                   onDragOver={allowDrop(crumbPath)}
                   onDrop={(e) => onDropInto(crumbPath, e)}
-                  className={`rounded px-1.5 py-0.5 hover:bg-white/60 ${dropTarget === crumbPath ? 'bg-indigo-100' : ''}`}
+                  className={`rounded px-1.5 py-0.5 hover:bg-white/60 dark:hover:bg-white/10 ${dropTarget === crumbPath ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
                 >
                   {seg}
                 </button>
@@ -458,7 +458,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               + New folder
             </button>
           )}
-          <div className="flex overflow-hidden rounded-lg border border-white/60">
+          <div className="flex overflow-hidden rounded-lg border border-white/60 dark:border-white/10">
             {(['list', 'grid'] as const).map((v) => (
               <button
                 key={v}
@@ -466,7 +466,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 aria-label={`${v} view`}
                 aria-pressed={view === v}
                 onClick={() => setView(v)}
-                className={`px-2.5 py-1.5 text-sm capitalize ${view === v ? 'bg-white text-slate-900' : 'bg-white/40 text-slate-500'}`}
+                className={`px-2.5 py-1.5 text-sm capitalize ${view === v ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100' : 'bg-white/40 dark:bg-white/5 text-slate-500 dark:text-slate-400'}`}
               >
                 {v}
               </button>
@@ -476,11 +476,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       </div>
 
       {searching && (
-        <p className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+        <p className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <span>
             Searching <strong>all folders</strong> for “{query.trim()}”.
           </span>
-          <button type="button" onClick={() => setQuery('')} className="rounded px-1.5 py-0.5 text-indigo-600 hover:bg-white/60">
+          <button type="button" onClick={() => setQuery('')} className="rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 hover:bg-white/60 dark:hover:bg-white/10">
             Clear
           </button>
         </p>
@@ -488,20 +488,20 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
 
       {view === 'list' ? (
         <table className="w-full text-left text-sm">
-          <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+          <thead className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
             <tr>
               <th className="py-1 font-medium" aria-sort={ariaSort('name')}>
-                <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
                   Name {sortArrow('name')}
                 </button>
               </th>
               <th className="py-1 font-medium" aria-sort={ariaSort('type')}>
-                <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
                   Type {sortArrow('type')}
                 </button>
               </th>
               <th className="py-1 text-right font-medium" aria-sort={ariaSort('size')}>
-                <button type="button" onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                <button type="button" onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
                   Size {sortArrow('size')}
                 </button>
               </th>
@@ -517,15 +517,15 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 onDragEnd={() => (dragItem.current = null)}
                 onDragOver={allowDrop(path)}
                 onDrop={(e) => onDropInto(path, e)}
-                className={`border-t border-white/40 ${dropTarget === path ? 'bg-indigo-50' : ''}`}
+                className={`border-t border-white/40 dark:border-white/10 ${dropTarget === path ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}
               >
                 <td className="py-2">
-                  <button type="button" onClick={() => goTo(path)} className="flex items-center gap-2.5 text-base text-slate-700 hover:text-indigo-600">
+                  <button type="button" onClick={() => goTo(path)} className="flex items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
                     <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> {seg}
                   </button>
                 </td>
-                <td className="py-2 text-slate-400">folder</td>
-                <td className="py-2 text-right text-slate-500">{formatBytes(bytes)}</td>
+                <td className="py-2 text-slate-400 dark:text-slate-500">folder</td>
+                <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</td>
                 <td className="py-2">
                   {!pick && !searching && (
                     <div className="flex justify-end gap-0.5">
@@ -543,13 +543,13 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 draggable={!pick}
                 onDragStart={pick ? undefined : () => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
                 onDragEnd={() => (dragItem.current = null)}
-                className="border-t border-white/40"
+                className="border-t border-white/40 dark:border-white/10"
               >
                 <td className="py-2">
                   <button
                     type="button"
                     onClick={() => activate(m)}
-                    className="flex items-center gap-2.5 text-left text-base text-slate-700 hover:text-indigo-600"
+                    className="flex items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
                     title={m.filename}
                   >
                     {m.kind === 'image' ? (
@@ -559,12 +559,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     )}
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate">{m.filename}</span>
-                      {searching && <span className="truncate text-xs text-slate-400">in {m.folder || 'Assets'}</span>}
+                      {searching && <span className="truncate text-xs text-slate-400 dark:text-slate-500">in {m.folder || 'Assets'}</span>}
                     </span>
                   </button>
                 </td>
-                <td className="py-2 text-slate-400">{typeLabel(m)}</td>
-                <td className="py-2 text-right text-slate-500">{formatBytes(m.bytes)}</td>
+                <td className="py-2 text-slate-400 dark:text-slate-500">{typeLabel(m)}</td>
+                <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">
                     {pick ? (
@@ -583,7 +583,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             ))}
             {subfolders.length === 0 && here.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-3 text-sm text-slate-400">{emptyMsg}</td>
+                <td colSpan={4} className="py-3 text-sm text-slate-400 dark:text-slate-500">{emptyMsg}</td>
               </tr>
             )}
           </tbody>
@@ -602,11 +602,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             >
               <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
                 <FolderIcon className="h-10 w-10 text-indigo-400" />
-                <span className="truncate text-sm text-slate-700" title={seg}>{seg}</span>
-                <span className="text-[10px] text-slate-400">{formatBytes(bytes)}</span>
+                <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={seg}>{seg}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(bytes)}</span>
               </button>
               {!pick && !searching && (
-                <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 p-0.5 shadow group-hover:flex">
+                <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 dark:bg-slate-900/90 p-0.5 shadow group-hover:flex">
                   <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
                   <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
                 </div>
@@ -625,15 +625,15 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 {m.kind === 'image' ? (
                   <SkeletonImage src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
                 ) : (
-                  <div className="flex h-24 w-full items-center justify-center rounded bg-white/40">
+                  <div className="flex h-24 w-full items-center justify-center rounded bg-white/40 dark:bg-white/5">
                     <FileTypeIcon filename={m.filename} className="h-10 w-10" />
                   </div>
                 )}
-                <figcaption className="mt-1 truncate text-sm text-slate-700" title={m.filename}>{m.filename}</figcaption>
-                {searching && <span className="block truncate text-[10px] text-slate-400">in {m.folder || 'Assets'}</span>}
+                <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>{m.filename}</figcaption>
+                {searching && <span className="block truncate text-[10px] text-slate-400 dark:text-slate-500">in {m.folder || 'Assets'}</span>}
               </button>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-400">{formatBytes(m.bytes)}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(m.bytes)}</span>
                 <div className="hidden gap-0.5 group-hover:flex">
                   {pick ? (
                     <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
@@ -649,7 +649,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               </div>
             </figure>
           ))}
-          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-400">{emptyMsg}</p>}
+          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-400 dark:text-slate-500">{emptyMsg}</p>}
         </div>
       )}
 
@@ -668,7 +668,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
           <div className="flex flex-col items-center gap-3 p-4">
             <img src={preview.url} alt={preview.alt ?? preview.filename} className="max-h-[70vh] w-auto rounded-lg shadow-lg" />
-            <div className="flex w-full items-center justify-between text-xs text-slate-500">
+            <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span>
                 {preview.format} · {preview.width}×{preview.height} · {formatBytes(preview.bytes)}
               </span>
@@ -677,7 +677,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               </a>
             </div>
             {preview.attribution && (
-              <p className={`w-full text-[11px] text-slate-400 ${glassPanel} p-2`}>
+              <p className={`w-full text-[11px] text-slate-400 dark:text-slate-500 ${glassPanel} p-2`}>
                 {preview.attribution.provider} · {preview.attribution.author} · {preview.attribution.license}
               </p>
             )}

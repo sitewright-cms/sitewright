@@ -90,7 +90,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (hex
         onPointerMove={(e) => {
           if (e.buttons === 1) onSv(e);
         }}
-        className="relative h-36 w-full cursor-crosshair touch-none select-none rounded-lg border border-white/60 shadow-inner"
+        className="relative h-36 w-full cursor-crosshair touch-none select-none rounded-lg border border-white/60 dark:border-white/10 shadow-inner"
         style={{
           background: `linear-gradient(to top,#000,rgba(0,0,0,0)),linear-gradient(to right,#fff,rgba(255,255,255,0)),hsl(${hsva.h} 100% 50%)`,
         }}
@@ -104,7 +104,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (hex
 
       {/* Live preview swatch (over a checkerboard so alpha reads) + hue & alpha sliders. */}
       <div className="flex items-center gap-3">
-        <span aria-hidden className="h-9 w-9 shrink-0 rounded-md border border-white/70" style={CHECKER}>
+        <span aria-hidden className="h-9 w-9 shrink-0 rounded-md border border-white/70 dark:border-white/10" style={CHECKER}>
           <span className="block h-full w-full rounded-md" style={{ background: formatHex(rgba) }} />
         </span>
         <div className="flex flex-1 flex-col gap-2">
@@ -152,7 +152,7 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
   const invalid = draft !== null && parseColor(draft) === null;
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{fmt}</span>
+      <span className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">{fmt}</span>
       <input
         aria-label={fmt.toUpperCase()}
         spellCheck={false}
@@ -257,7 +257,7 @@ function PickerPopover({
       role="dialog"
       aria-label={`${label} picker`}
       style={{ position: 'fixed', top: pos.top, left: pos.left, width: POPOVER_W, zIndex: 80 }}
-      className="rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl"
+      className="rounded-xl border border-white/60 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 p-3 shadow-2xl backdrop-blur-xl"
     >
       <ColorPicker value={value} onChange={onChange} />
     </div>,
@@ -285,7 +285,7 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
         aria-label={`Edit ${label}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="block h-7 w-7 rounded-md border border-white/70 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
+        className="block h-7 w-7 rounded-md border border-white/70 dark:border-white/10 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
         style={SAFE_COLOR.test(value) ? { ...CHECKER } : { background: 'transparent' }}
       >
         <span aria-hidden className="block h-full w-full rounded-md" style={{ background: SAFE_COLOR.test(value) ? value : 'transparent' }} />
@@ -314,20 +314,20 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
   const valid = SAFE_COLOR.test(value);
 
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/40 p-2.5 text-center">
-      <span className="text-xs font-bold text-slate-600">{title}</span>
+    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-2.5 text-center">
+      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{title}</span>
       <button
         ref={btnRef}
         type="button"
         aria-label={`Edit ${title}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="block h-12 w-full rounded-lg border border-white/70 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
+        className="block h-12 w-full rounded-lg border border-white/70 dark:border-white/10 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
         style={valid ? { ...CHECKER } : { background: 'transparent' }}
       >
         <span aria-hidden className="block h-full w-full rounded-lg" style={{ background: valid ? value : 'transparent' }} />
       </button>
-      <span className="font-mono text-[11px] text-slate-500">{value || 'Default'}</span>
+      <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">{value || 'Default'}</span>
       {open && btnRef.current && (
         <PickerPopover anchor={btnRef.current} label={title} value={value} onChange={onChange} onClose={close} />
       )}

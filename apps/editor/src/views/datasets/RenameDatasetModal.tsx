@@ -85,13 +85,13 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
     >
       <div className="flex flex-col gap-3 p-5">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">Name</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Name</span>
           <input aria-label="Dataset name" className={glassInput} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-500">
-            Slug <span className="text-slate-300">— the binding key in <code>{`{{#each dataset.<slug>}}`}</code></span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Slug <span className="text-slate-400 dark:text-slate-500">— the binding key in <code>{`{{#each dataset.<slug>}}`}</code></span>
           </span>
           <input
             aria-label="Dataset slug"
@@ -100,7 +100,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
             onChange={(e) => setSlugInput(e.target.value)}
             placeholder={dataset.slug}
           />
-          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500' : 'text-slate-400'}`}>
+          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500'}`}>
             {slugChanged && !slugValid
               ? 'Use only lowercase letters, numbers, and underscores, e.g. faq_passengers (no hyphens — they break the binding).'
               : slugTaken
@@ -110,7 +110,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
         </label>
 
         {slugChanged && slugValid && !slugTaken && (
-          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 px-3 py-3 text-[11px] leading-relaxed text-amber-800">
+          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-3 py-3 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
             <p>
               Renaming the slug to <code>{slug}</code> changes the binding key. Choose how to handle the{' '}
               {entryCount} {entryCount === 1 ? 'entry' : 'entries'} and any page/template references:
@@ -127,14 +127,14 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
               type="button"
               disabled={saving}
               onClick={() => void run(false)}
-              className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+              className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15 disabled:opacity-60"
             >
               Rename slug only — leave references (advanced; loops will break until you fix them)
             </button>
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
       {dialog}
     </Modal>

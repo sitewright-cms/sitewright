@@ -199,7 +199,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
     <div
       role="group"
       aria-label="Builder mode"
-      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
     >
       {(['builder', 'lab'] as const).map((m) => (
         <button
@@ -207,7 +207,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
           type="button"
           aria-pressed={mode === m}
           onClick={() => setMode(m)}
-          className={`waves-effect rounded-lg px-2.5 py-1 transition ${mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'}`}
+          className={`waves-effect rounded-lg px-2.5 py-1 transition ${mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'}`}
         >
           {m === 'builder' ? 'Builder' : 'Lab'}
         </button>

@@ -80,22 +80,22 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
   return (
     <div>
       {link && (
-        <div className="mb-4 rounded-2xl border border-amber-300/60 bg-amber-50/70 p-3 text-sm shadow-sm backdrop-blur-xl">
-          <p className="font-medium text-amber-900">Invite link for {link.email}</p>
-          <p className="mt-1 text-amber-800">
+        <div className="mb-4 rounded-2xl border border-amber-300/60 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/10 p-3 text-sm shadow-sm backdrop-blur-xl">
+          <p className="font-medium text-amber-900 dark:text-amber-200">Invite link for {link.email}</p>
+          <p className="mt-1 text-amber-800 dark:text-amber-200">
             Send this link to your {noun}. They accept by signing in (or registering) with that email.
           </p>
-          <pre className="mt-2 mb-0 overflow-x-auto rounded bg-white px-2 py-1 font-mono text-[12px] text-amber-900">
+          <pre className="mt-2 mb-0 overflow-x-auto rounded bg-white dark:bg-slate-900 px-2 py-1 font-mono text-[12px] text-amber-900 dark:text-amber-200">
             <code>{link.url}</code>
           </pre>
           <div className="mt-2 flex items-center gap-3">
             <button
-              className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+              className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-500/15"
               onClick={() => copy(link.url)}
             >
               {copied ? <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> Copied</span> : 'Copy link'}
             </button>
-            <button className="text-xs text-amber-700 underline" onClick={() => setLink(null)}>
+            <button className="text-xs text-amber-700 dark:text-amber-400 underline" onClick={() => setLink(null)}>
               Dismiss
             </button>
           </div>
@@ -109,9 +109,9 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
               key={inv.id}
               className={`flex items-center justify-between ${glassPanel} px-3 py-2 text-sm`}
             >
-              <span className="text-slate-600">
+              <span className="text-slate-600 dark:text-slate-300">
                 {inv.email}
-                <span className="ml-2 text-[11px] text-slate-400">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                <span className="ml-2 text-[11px] text-slate-400 dark:text-slate-500">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
               </span>
               <button
                 aria-label={`Revoke invite for ${inv.email}`}
@@ -149,7 +149,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
           {busy ? 'Inviting…' : `Invite ${noun}`}
         </button>
       </form>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {dialog}
     </div>
   );

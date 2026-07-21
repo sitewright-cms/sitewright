@@ -46,8 +46,8 @@ function Toggle({ label, checked, onChange, hint, disabled = false }: { label: s
   return (
     <label className="flex items-center gap-2 py-1">
       <input type="checkbox" className={toggleInput} checked={checked} disabled={disabled} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
-      <span className="text-sm text-slate-700">{label}</span>
-      {hint && <span className="text-xs text-slate-400">{hint}</span>}
+      <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
+      {hint && <span className="text-xs text-slate-400 dark:text-slate-500">{hint}</span>}
     </label>
   );
 }
@@ -230,7 +230,7 @@ export function TargetConfigForm({
         <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={onCancel} aria-label="Back">
           ← Back
         </button>
-        <h4 className="text-sm font-bold text-slate-800">
+        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">
           {isEdit ? 'Edit' : 'Configure'} {titleFor(protocol)}
         </h4>
       </header>
@@ -239,14 +239,14 @@ export function TargetConfigForm({
 
       {protocol === 'local' && (
         <>
-          <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-            Serves the built site on this platform at <code className="rounded bg-white px-1">{siteUrl}</code>
-            {' '}(and at <code className="rounded bg-white px-1">{project.slug}.&lt;your sites domain&gt;</code> when subdomain hosting is enabled). Publish from the header to update it.
+          <p className="rounded-lg bg-slate-50 dark:bg-white/5 p-3 text-xs text-slate-500 dark:text-slate-400">
+            Serves the built site on this platform at <code className="rounded bg-white dark:bg-slate-900 px-1">{siteUrl}</code>
+            {' '}(and at <code className="rounded bg-white dark:bg-slate-900 px-1">{project.slug}.&lt;your sites domain&gt;</code> when subdomain hosting is enabled). Publish from the header to update it.
           </p>
           <Toggle label="Require a secret link (unlisted)" checked={unlisted} hint="hides the site behind a ?token= link" onChange={(v) => { setUnlisted(v); if (v && !previewToken) setPreviewToken(genToken()); }} />
           {unlisted && previewToken && (
-            <p className="break-all rounded-lg bg-slate-50 p-2 text-xs text-slate-500">
-              Unlisted link: <code className="rounded bg-white px-1">{siteUrl}?token={previewToken}</code>
+            <p className="break-all rounded-lg bg-slate-50 dark:bg-white/5 p-2 text-xs text-slate-500 dark:text-slate-400">
+              Unlisted link: <code className="rounded bg-white dark:bg-slate-900 px-1">{siteUrl}?token={previewToken}</code>
             </p>
           )}
         </>
@@ -273,7 +273,7 @@ export function TargetConfigForm({
             <Field label="User" value={user} onChange={setUser} required />
             <label className="block">
               <span className={fieldLabel}>Authentication</span>
-              <select aria-label="SFTP auth method" className="sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none" value={sftpAuth} onChange={(e) => setSftpAuth(e.target.value as 'password' | 'key')}>
+              <select aria-label="SFTP auth method" className="sw-brand-focus w-full rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none" value={sftpAuth} onChange={(e) => setSftpAuth(e.target.value as 'password' | 'key')}>
                 <option value="password">Password</option>
                 <option value="key">Private key</option>
               </select>
@@ -302,7 +302,7 @@ export function TargetConfigForm({
         <>
           <label className="block">
             <span className={fieldLabel}>Authentication</span>
-            <select aria-label="Git auth method" className="sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none" value={gitAuth} onChange={(e) => setGitAuth(e.target.value as 'token' | 'key')}>
+            <select aria-label="Git auth method" className="sw-brand-focus w-full rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none" value={gitAuth} onChange={(e) => setGitAuth(e.target.value as 'token' | 'key')}>
               <option value="token">Token (HTTPS)</option>
               <option value="key">SSH key</option>
             </select>
@@ -323,8 +323,8 @@ export function TargetConfigForm({
 
       <Toggle label="Minify HTML" checked={minify} hint="collapse whitespace + drop comments at build" onChange={setMinify} />
 
-      {keepHint && <p className="text-[11px] text-slate-400">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {keepHint && <p className="text-[11px] text-slate-400 dark:text-slate-500">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="flex items-center gap-2 pt-1">
         <button type="button" className={primaryButton} disabled={busy} onClick={submit}>

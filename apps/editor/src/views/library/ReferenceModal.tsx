@@ -8,7 +8,7 @@ import { REFERENCE_GROUPS, type ReferenceEntry, type ReferenceGroup } from './re
 
 function navBtn(active: boolean): string {
   return `rounded-lg px-3 py-1.5 text-left text-xs font-medium transition ${
-    active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-800'
+    active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-slate-100'
   }`;
 }
 
@@ -17,30 +17,30 @@ function EntryCard({ entry, copied, onCopy }: { entry: ReferenceEntry; copied: b
   return (
     <li className={`${glassPanel} rounded-xl p-4`}>
       <div className="mb-1.5 flex items-start justify-between gap-3">
-        <code className="font-mono text-[13px] font-bold text-indigo-700">{entry.syntax}</code>
+        <code className="font-mono text-[13px] font-bold text-indigo-700 dark:text-indigo-400">{entry.syntax}</code>
         {!entry.noCopy && (
           <button onClick={onCopy} className={`${ghostButton} shrink-0 px-2.5 py-1 text-xs`}>
             {copied ? 'Copied!' : 'Copy'}
           </button>
         )}
       </div>
-      <p className="text-xs leading-relaxed text-slate-600">{entry.description}</p>
+      <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">{entry.description}</p>
       {entry.args && entry.args.length > 0 && (
         <dl className="mt-2 flex flex-col gap-0.5">
           {entry.args.map((a) => (
             <div key={a.name} className="flex gap-2 text-[11px]">
-              <dt className="shrink-0 font-mono font-bold text-slate-500">{a.name}</dt>
-              <dd className="text-slate-400">{a.desc}</dd>
+              <dt className="shrink-0 font-mono font-bold text-slate-500 dark:text-slate-400">{a.name}</dt>
+              <dd className="text-slate-400 dark:text-slate-500">{a.desc}</dd>
             </div>
           ))}
         </dl>
       )}
       {entry.example && (
-        <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
+        <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
           <code>{entry.example}</code>
         </pre>
       )}
-      {entry.note && <p className="mt-2 text-[11px] italic text-amber-700">{entry.note}</p>}
+      {entry.note && <p className="mt-2 text-[11px] italic text-amber-700 dark:text-amber-400">{entry.note}</p>}
     </li>
   );
 }
@@ -118,12 +118,12 @@ export function ReferenceModal({
           />
           <div className="min-h-0 flex-1 overflow-auto pr-1">
             {total === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">No matches.</p>
+              <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
             ) : (
               groups.map((g) => (
                 <section key={g.id} className="mb-6">
-                  <h3 className="text-sm font-bold text-slate-700">{g.title}</h3>
-                  <p className="mb-2 text-xs text-slate-400">{g.blurb}</p>
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">{g.title}</h3>
+                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">{g.blurb}</p>
                   <ul className="flex flex-col gap-3">
                     {g.entries.map((e) => (
                       <EntryCard key={e.id} entry={e} copied={copiedId === e.id} onCopy={() => copy(e.example ?? e.syntax, e.id)} />
@@ -133,7 +133,7 @@ export function ReferenceModal({
               ))
             )}
           </div>
-          <p className="shrink-0 text-[11px] text-slate-400">{total} {entriesNoun} · click Copy to grab a snippet.</p>
+          <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">{total} {entriesNoun} · click Copy to grab a snippet.</p>
         </div>
       </div>
     </Modal>

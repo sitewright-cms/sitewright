@@ -69,8 +69,8 @@ function Field({ label, desc, children }: { label: string; desc: string; childre
   return (
     <div className="flex flex-col gap-1">
       <div className="leading-tight">
-        <span className="text-xs font-semibold text-slate-700">{label}</span>
-        <span className="ml-1.5 text-[11px] text-slate-400">{desc}</span>
+        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">{desc}</span>
       </div>
       {children}
     </div>
@@ -93,7 +93,7 @@ function NumInput({ aria, value, set, lo, hi, step, disabled }: { aria: string; 
     />
   );
 }
-const Arrow = () => <span className="text-slate-400">→</span>;
+const Arrow = () => <span className="text-slate-400 dark:text-slate-500">→</span>;
 
 // One effect's controls: a toggle + from→to (+ axis on Motion) + a Viewport range, and — when the
 // window leaves room — an OUT phase (locked 'from', its own viewport for a HOLD range, and a 'to').
@@ -116,12 +116,12 @@ function ChannelCard({
   const room = inEnd < 100; // scroll left after the IN range for an OUT phase?
   const [os, oe] = outPct(ch);
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
       <label className="flex items-start gap-2">
         <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={ch.on} onChange={(e) => patch(name, { on: e.target.checked })} aria-label={label} />
         <span className="leading-tight">
-          <span className="text-xs font-semibold text-slate-700">{label}</span>
-          <span className="block text-[11px] text-slate-400">{CHANNEL_DESC[name]}</span>
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+          <span className="block text-[11px] text-slate-400 dark:text-slate-500">{CHANNEL_DESC[name]}</span>
         </span>
       </label>
       {ch.on && (
@@ -152,7 +152,7 @@ function ChannelCard({
                 <NumInput aria={`${label} viewport from`} value={ch.vpc[0]} set={(n) => patch(name, { vpc: [n, ch.vpc[1]] })} lo={0} hi={100} step={5} />
                 <Arrow />
                 <NumInput aria={`${label} viewport to`} value={ch.vpc[1]} set={(n) => patch(name, { vpc: [ch.vpc[0], n] })} lo={0} hi={100} step={5} />
-                <span className="text-[11px] text-slate-400">%</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
               </div>
             )}
           </Field>
@@ -160,12 +160,12 @@ function ChannelCard({
             <Field label="Animate back out" desc="Reverse the effect later, after an optional hold.">
               <label className="flex items-center gap-2">
                 <input type="checkbox" className={toggleInput} checked={ch.outOn} onChange={(e) => patch(name, { outOn: e.target.checked, ...(e.target.checked ? { outWin: [inEnd, 100] as [number, number] } : {}) })} aria-label={`${label} animate out`} />
-                <span className="text-xs text-slate-600">{ch.outOn ? 'On' : 'Off'}</span>
+                <span className="text-xs text-slate-600 dark:text-slate-300">{ch.outOn ? 'On' : 'Off'}</span>
               </label>
             </Field>
           )}
           {room && ch.outOn && (
-            <div className="ml-1 flex flex-col gap-3 border-l-2 border-slate-200 pl-3">
+            <div className="ml-1 flex flex-col gap-3 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
               <Field label="Out: from → to" desc="‘From’ is locked to the In ‘to’; set where it ends.">
                 <div className="flex items-center gap-2">
                   <NumInput aria={`${label} out from`} value={ch.v[1]} lo={lim.lo} hi={lim.hi} step={lim.step} disabled />
@@ -178,7 +178,7 @@ function ChannelCard({
                   <NumInput aria={`${label} out from-range`} value={os} set={(n) => patch(name, { outWin: [clamp(n, inEnd, 100), ch.outWin[1]] })} lo={inEnd} hi={100} step={5} />
                   <Arrow />
                   <NumInput aria={`${label} out to-range`} value={oe} set={(n) => patch(name, { outWin: [ch.outWin[0], clamp(n, os, 100)] })} lo={os} hi={100} step={5} />
-                  <span className="text-[11px] text-slate-400">%</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
                 </div>
               </Field>
             </div>
@@ -267,7 +267,7 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
           {NAMES.map((name) => (
             <ChannelCard key={name} name={name} ch={chans[name]} patch={patch} axis={axis} setAxis={setAxis} />
           ))}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Each effect runs from → to across its Viewport range of the element’s pass through the screen (0% entering · 50% centred · 100% leaving), then holds. Turn on “Animate back out” to reverse it later — the gap between the in-range end and the out-range start is a <strong>hold</strong> where nothing changes. All motion is off under reduced motion.
           </p>
         </div>

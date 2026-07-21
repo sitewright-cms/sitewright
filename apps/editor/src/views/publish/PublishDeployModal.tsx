@@ -29,9 +29,9 @@ export function PublishDeployModal({
       }}
     >
       <div className="p-5">
-        <p className="mb-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-          Choose where to deploy your site. <strong className="font-bold text-slate-700">Local Hosting</strong> serves it
-          on this platform at <code className="rounded bg-white px-1">/sites/{project.slug}/</code>;{' '}
+        <p className="mb-3 rounded-lg bg-slate-50 dark:bg-white/5 p-3 text-xs text-slate-500 dark:text-slate-400">
+          Choose where to deploy your site. <strong className="font-bold text-slate-700 dark:text-slate-200">Local Hosting</strong> serves it
+          on this platform at <code className="rounded bg-white dark:bg-slate-900 px-1">/sites/{project.slug}/</code>;{' '}
           <strong>FTP / FTPS / SFTP</strong> upload it to your own server; <strong>Git</strong> pushes it to a branch.
           Final page assembly happens at deploy time.
         </p>

@@ -17,51 +17,51 @@ const PAGE = (
 );
 
 const CATEGORIES: Record<string, { exts: string[]; color: string; glyph: ReactNode }> = {
-  image: { exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'ico'], color: 'text-emerald-500', glyph: (
+  image: { exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'ico'], color: 'text-emerald-500 dark:text-emerald-300', glyph: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="9" cy="9" r="2" />
       <path d="m21 15-4.5-4.5L5 21" />
     </>
   ) },
-  pdf: { exts: ['pdf'], color: 'text-rose-500', glyph: (
+  pdf: { exts: ['pdf'], color: 'text-rose-500 dark:text-rose-300', glyph: (
     <>
       {PAGE}
       <path d="M8.5 13h1a1.5 1.5 0 0 1 0 3h-1zM14 13v3m0-3h2m-2 1.5h1.5" />
     </>
   ) },
-  doc: { exts: ['doc', 'docx', 'rtf', 'odt', 'txt', 'md'], color: 'text-sky-500', glyph: (
+  doc: { exts: ['doc', 'docx', 'rtf', 'odt', 'txt', 'md'], color: 'text-sky-500 dark:text-sky-300', glyph: (
     <>
       {PAGE}
       <path d="M8 13h8M8 16h8M8 10h3" />
     </>
   ) },
-  sheet: { exts: ['xls', 'xlsx', 'csv', 'ods'], color: 'text-green-600', glyph: (
+  sheet: { exts: ['xls', 'xlsx', 'csv', 'ods'], color: 'text-green-600 dark:text-green-400', glyph: (
     <>
       {PAGE}
       <path d="M8 13h8M8 16h8M11 11v8M15 11v8" />
     </>
   ) },
-  archive: { exts: ['zip', 'rar', '7z', 'tar', 'gz'], color: 'text-amber-500', glyph: (
+  archive: { exts: ['zip', 'rar', '7z', 'tar', 'gz'], color: 'text-amber-500 dark:text-amber-300', glyph: (
     <>
       {PAGE}
       <path d="M12 8v1m0 2v1m0 2v1m0 2v1" />
     </>
   ) },
-  audio: { exts: ['mp3', 'wav', 'ogg', 'flac', 'm4a'], color: 'text-fuchsia-500', glyph: (
+  audio: { exts: ['mp3', 'wav', 'ogg', 'flac', 'm4a'], color: 'text-fuchsia-500 dark:text-fuchsia-300', glyph: (
     <>
       <path d="M9 18V5l11-2v13" />
       <circle cx="6" cy="18" r="3" />
       <circle cx="17" cy="16" r="3" />
     </>
   ) },
-  video: { exts: ['mp4', 'webm', 'mov', 'avi', 'mkv'], color: 'text-purple-500', glyph: (
+  video: { exts: ['mp4', 'webm', 'mov', 'avi', 'mkv'], color: 'text-purple-500 dark:text-purple-300', glyph: (
     <>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path d="m10 9 5 3-5 3z" />
     </>
   ) },
-  code: { exts: ['js', 'ts', 'json', 'html', 'css', 'xml', 'yml', 'yaml'], color: 'text-slate-500', glyph: (
+  code: { exts: ['js', 'ts', 'json', 'html', 'css', 'xml', 'yml', 'yaml'], color: 'text-slate-500 dark:text-slate-400', glyph: (
     <>
       {PAGE}
       <path d="m9 13-2 2 2 2M15 13l2 2-2 2" />
@@ -69,7 +69,7 @@ const CATEGORIES: Record<string, { exts: string[]; color: string; glyph: ReactNo
   ) },
 };
 
-const GENERIC = { color: 'text-slate-400', glyph: PAGE };
+const GENERIC = { color: 'text-slate-400 dark:text-slate-500', glyph: PAGE };
 
 function categoryFor(filename: string): { color: string; glyph: ReactNode } {
   const ext = filename.includes('.') ? filename.slice(filename.lastIndexOf('.') + 1).toLowerCase() : '';

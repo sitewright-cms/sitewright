@@ -163,7 +163,7 @@ export function HeaderSettingsMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="waves-effect rounded-md p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
+        className="waves-effect rounded-md p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
       >
         <GearIcon />
       </button>
@@ -172,14 +172,14 @@ export function HeaderSettingsMenu({
           role="menu"
           aria-label="Settings"
           onKeyDown={onMenuKey}
-          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-900"
         >
           {rows.map((row, ri) => {
-            if (row.kind === 'divider') return <div key={`div-${ri}`} role="separator" className="my-1 border-t border-slate-100" />;
+            if (row.kind === 'divider') return <div key={`div-${ri}`} role="separator" className="my-1 border-t border-slate-100 dark:border-white/10" />;
             if (row.kind === 'header') {
               // A non-interactive group label (matches the Deploy menu's section-header style).
               return (
-                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   {row.label}
                 </p>
               );
@@ -202,8 +202,8 @@ export function HeaderSettingsMenu({
                   // A `danger` item (Delete Project) is rose, set apart from the neutral items.
                   className={
                     it.danger
-                      ? 'waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:bg-rose-50 focus-visible:outline-none'
-                      : `waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`
+                      ? 'waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm font-medium text-rose-600 dark:text-rose-400 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 focus-visible:bg-rose-50 dark:focus-visible:bg-rose-500/10 focus-visible:outline-none'
+                      : `waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 dark:text-slate-200 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 dark:focus-visible:bg-white/10 dark:focus-visible:text-slate-100 focus-visible:outline-none sw-brand-focus-visible-inset`
                   }
                 >
                   {it.label}

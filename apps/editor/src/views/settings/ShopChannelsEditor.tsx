@@ -6,7 +6,7 @@ import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopFiel
 
 /** Glass select styling WITHOUT a width util, so a native <select> auto-sizes to its widest option. */
 const glassSelectAuto =
-  'sw-brand-focus shrink-0 rounded-lg border border-white/60 bg-white/70 px-2 py-2 text-sm text-slate-800 shadow-sm outline-none transition';
+  'sw-brand-focus shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-2 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none transition';
 
 const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -40,8 +40,8 @@ function OrderFieldsEditor({
   const setField = (id: string, patch: Partial<KeyedShopField>) =>
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   return (
-    <div className="mt-2 rounded-md border border-slate-200/60 bg-slate-50/50 p-2">
-      <p className="mb-1.5 text-xs font-medium text-slate-500">
+    <div className="mt-2 rounded-md border border-slate-200/60 dark:border-slate-700/60 bg-slate-50/50 dark:bg-white/5 p-2">
+      <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
         Order fields — collected before sending. Each has a stable <em>key</em>; its label text is set in Translations &amp; Labels under <code>shop.&lt;key&gt;</code>.
       </p>
       <div className="flex flex-col gap-2">
@@ -66,7 +66,7 @@ function OrderFieldsEditor({
                 </option>
               ))}
             </select>
-            <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+            <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
               <input
                 type="checkbox"
                 className={toggleInput}
@@ -80,7 +80,7 @@ function OrderFieldsEditor({
               type="button"
               aria-label={`Remove field ${fi + 1} from channel ${channelIndex + 1}`}
               onClick={() => onChange(fields.filter((x) => x.id !== f.id))}
-              className="shrink-0 rounded-md px-1.5 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+              className="shrink-0 rounded-md px-1.5 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -118,7 +118,7 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="rounded-lg border border-slate-200/70 p-3"
+            className="rounded-lg border border-slate-200/70 dark:border-slate-700/70 p-3"
           >
             <div className="flex items-center gap-2">
               <select
@@ -144,7 +144,7 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                 type="button"
                 aria-label={`Remove channel ${i + 1}`}
                 onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
-                className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                className="shrink-0 rounded-md px-2 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
               >
                 <X className="h-4 w-4" />
               </button>

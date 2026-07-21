@@ -27,7 +27,7 @@ function Section({ title, tip, children }: { title: string; tip?: string; childr
   return (
     <section>
       <div className="mb-2.5 flex items-center gap-1.5">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
         {tip && <SectionHelp tip={tip} />}
       </div>
       <div className="flex flex-col gap-4">{children}</div>
@@ -325,7 +325,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     <div
       role="group"
       aria-label="Status"
-      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
     >
       {(['published', 'draft'] as const).map((s) => (
         <button
@@ -334,7 +334,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           aria-pressed={v.status === s}
           onClick={() => patch({ status: s })}
           className={`waves-effect rounded-lg px-2.5 py-1 capitalize transition ${
-            v.status === s ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
+            v.status === s ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
           }`}
         >
           {s}
@@ -369,7 +369,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         {/* ── BASICS ─────────────────────────────────────────────────────────── */}
         <Section title="Basics" tip="What the page is called and where it sits in the site tree.">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col text-xs font-bold text-slate-700">
+            <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
               <span className="flex items-center gap-1.5">
                 {isLink ? 'Name (menu label)' : 'Title'}
                 {isLink && <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}}.'} />}
@@ -386,7 +386,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               />
             </label>
             {!isLink && (
-              <label className="flex flex-col text-xs font-bold text-slate-700">
+              <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                 Page Slug
                 <input
                   aria-label="Page path"
@@ -404,7 +404,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                   // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
                   onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
                 />
-                <span className="mt-1 font-normal text-[11px] text-slate-400">
+                <span className="mt-1 font-normal text-[11px] text-slate-400 dark:text-slate-500">
                   {isRootHome ? (
                     'The home page is the site root (/).'
                   ) : (
@@ -416,7 +416,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </label>
             )}
             {isLink && (
-              <label className="flex flex-col text-xs font-bold text-slate-700">
+              <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                 <span className="flex items-center gap-1.5">
                   Link target
                   <SectionHelp tip={'Internal /path (rebased), external https:// / mailto: / tel:, a same-page #section, or a #dialog-id (opens that modal). Leave empty for a dropdown-only parent.'} />
@@ -442,7 +442,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           </div>
 
           {isLink && (
-            <label className="flex items-center gap-2 text-sm font-normal text-slate-600">
+            <label className="flex items-center gap-2 text-sm font-normal text-slate-600 dark:text-slate-300">
               <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
               Open in a new tab
             </label>
@@ -451,7 +451,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           {/* A 2-col grid with ONE child keeps Parent at HALF width, aligned under the Title
               column of the title/slug grid above (not a full-width dropdown across the modal). */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col text-xs font-bold text-slate-700">
+            <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
               <span className="flex items-center gap-1.5">
                 Parent Page
                 <SectionHelp
@@ -500,20 +500,20 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           </div>
 
           {isCreate && multilingual && (
-            <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/40 p-3">
-              <legend className="px-1 text-xs font-bold uppercase tracking-wide text-slate-500">Available in</legend>
+            <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/40 dark:bg-white/5 p-3">
+              <legend className="px-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Available in</legend>
               <label className="flex items-start gap-2 text-sm">
                 <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available in all languages" checked={scope === 'all'} onChange={() => onScopeChange?.('all')} />
                 <span>
                   <span className="font-medium">All languages</span>
-                  <span className="block text-[11px] text-slate-500">One main-language page; every other language follows its layout.</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">One main-language page; every other language follows its layout.</span>
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
                 <input type="radio" name="sw-page-scope" className="mt-0.5" aria-label="Available only in the current language" checked={scope === 'current'} onChange={() => onScopeChange?.('current')} />
                 <span>
                   <span className="font-medium">Only {localeFlag(currentLocale ?? defaultLocale)} {localeLabel(currentLocale ?? defaultLocale)}</span>
-                  <span className="block text-[11px] text-slate-500">A page that exists only in this language.</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">A page that exists only in this language.</span>
                 </span>
               </label>
             </fieldset>
@@ -521,12 +521,12 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         </Section>
 
         {/* Create-mode submit errors (slug taken / reserved / failed) surface high, right under Basics. */}
-        {error && <p className="text-sm font-medium text-red-600" role="alert">{error}</p>}
+        {error && <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">{error}</p>}
 
         {/* ── SEO & SOCIAL (concrete pages only) ─────────────────────────────── */}
         {!isLink && (
           <Section title="SEO & Social" tip="How this page appears in search results and in link previews (Open Graph).">
-            <label className="flex flex-col text-xs font-bold text-slate-700">
+            <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
               Meta Description
               <textarea
                 aria-label="Meta description"
@@ -558,7 +558,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 checked={v.noindex}
                 onChange={(e) => patch({ noindex: e.target.checked })}
               />
-              <span className="flex items-center gap-1.5 font-bold text-slate-700">
+              <span className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200">
                 Hide from search engines
                 <SectionHelp tip="Adds a noindex robots tag and drops this page from the sitemap, so search engines won't list it. The page stays published and reachable by direct link." />
               </span>
@@ -587,12 +587,12 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             ))}
           </div>
           {v.navSlots.includes('custom') && (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
               “Custom” isn’t shown by the default menus — loop it in your page or snippet code with <code>{'{{#each nav.custom}}'}</code>.
             </p>
           )}
           {isLink && v.navSlots.length === 0 && (
-            <p className="text-[11px] font-medium text-amber-600">
+            <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
               This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
             </p>
           )}
@@ -601,9 +601,9 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               field moved to Advanced for concrete pages; a link placeholder keeps its Order here
               because it has no Advanced section.) */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col text-[11px] text-slate-500">
+            <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
-                Menu label {inMenu && <span className="text-rose-500" aria-hidden>*</span>}
+                Menu label {inMenu && <span className="text-rose-500 dark:text-rose-300" aria-hidden>*</span>}
               </span>
               <input
                 aria-label="Nav menu label"
@@ -617,13 +617,13 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 }}
               />
               {inMenu ? (
-                <span className="mt-1 text-slate-400">Defaults to the page title if left blank.</span>
+                <span className="mt-1 text-slate-400 dark:text-slate-500">Defaults to the page title if left blank.</span>
               ) : (
-                <span className="mt-1 text-slate-400">Only used when the page is in a menu (tick one above).</span>
+                <span className="mt-1 text-slate-400 dark:text-slate-500">Only used when the page is in a menu (tick one above).</span>
               )}
             </label>
             {isLink && (
-              <label className="flex flex-col text-[11px] text-slate-500">
+              <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
                 Order
                 <input
                   aria-label="Nav order"
@@ -651,7 +651,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             )}
           </div>
           {v.navDropdown && (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {childCount > 0
                 ? `${childCount} child page${childCount === 1 ? '' : 's'} will nest under this item.`
                 : 'Pages whose Parent Page is this page will nest under this nav item.'}
@@ -666,20 +666,20 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               type="button"
               aria-expanded={advancedOpen}
               onClick={() => setAdvancedOpen((o) => !o)}
-              className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 transition hover:text-slate-700"
+              className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 transition hover:text-slate-700 dark:hover:text-slate-200"
             >
               <ChevronRight className={`h-3.5 w-3.5 transition ${advancedOpen ? 'rotate-90' : ''}`} />
               Advanced
-              {!advancedOpen && <span className="font-normal normal-case tracking-normal text-slate-400">Template · Raw HTML</span>}
+              {!advancedOpen && <span className="font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500">Template · Raw HTML</span>}
             </button>
             {advancedOpen && (
               <div className="mt-3 flex flex-col gap-4">
                 {isTranslated ? (
                   // A translated page: choose how it gets its CODE — inherit the main language's
                   // layout, fork its own, or use a template. (The text is always translated via page.data.)
-                  <fieldset className="flex flex-col text-xs font-bold text-slate-700">
+                  <fieldset className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                     Code source
-                    <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/40 p-2.5 font-normal">
+                    <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/40 dark:bg-white/5 p-2.5 font-normal">
                       <label className="flex items-start gap-2 text-sm">
                         <input
                           type="radio"
@@ -691,7 +691,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                         />
                         <span>
                           Inherit from {owner ? `“${owner.title}”` : 'the main language'}
-                          <span className="block text-[11px] text-slate-400">Follows the main language’s layout — edit there to change every language.</span>
+                          <span className="block text-[11px] text-slate-400 dark:text-slate-500">Follows the main language’s layout — edit there to change every language.</span>
                         </span>
                       </label>
                       <label className="flex items-start gap-2 text-sm">
@@ -705,7 +705,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                         />
                         <span>
                           Fork — this language gets its own code
-                          <span className="block text-[11px] text-slate-400">Copies the current layout in; edit it freely in the page editor.</span>
+                          <span className="block text-[11px] text-slate-400 dark:text-slate-500">Copies the current layout in; edit it freely in the page editor.</span>
                         </span>
                       </label>
                       <label className="flex items-start gap-2 text-sm">
@@ -737,7 +737,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                     </div>
                   </fieldset>
                 ) : (
-                  <label className="flex flex-col text-xs font-bold text-slate-700">
+                  <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                     <span className="flex items-center gap-1.5">
                       Template
                       <SectionHelp tip="A templated page renders the template’s code — its editor is locked (fork to customize)." />
@@ -763,14 +763,14 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                     checked={v.rawHtml}
                     onChange={(e) => patch({ rawHtml: e.target.checked })}
                   />
-                  <span className="flex items-center gap-1.5 font-bold text-slate-700">
+                  <span className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200">
                     Raw HTML
                     <SectionHelp tip="Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts)." />
                   </span>
                 </label>
 
                 {/* Menu order lives here (an occasional tweak) — usually you just drag pages in the list. */}
-                <label className="flex flex-col text-xs font-bold text-slate-700">
+                <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                   <span className="flex items-center gap-1.5">
                     Menu order
                     <SectionHelp tip="Position among sibling menu items (lower numbers come first). Usually set by dragging pages in the sidebar list instead." />

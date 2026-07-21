@@ -42,15 +42,15 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
       title={branding.name}
       size="md"
       onClose={onClose}
-      headerLeft={<BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-6 w-6 text-slate-900" />}
+      headerLeft={<BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-6 w-6 text-slate-900 dark:text-slate-100" />}
       headerExtra={
         // Creating projects is an agency-staff action; clients only ever pick from their invited projects.
         canCreate ? (
           <div className="flex gap-2">
-            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onImportZip}>
+            <button type="button" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100" onClick={onImportZip}>
               Import zip
             </button>
-            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onNewFromWebsite}>
+            <button type="button" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100" onClick={onNewFromWebsite}>
               From website
             </button>
             <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
@@ -78,7 +78,7 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
                 onClick={() => onOpen(p)}
               >
                 <span className="font-medium">{p.name}</span>{' '}
-                <span className={`text-sm ${p.id === currentId ? 'text-white/80' : 'text-slate-400 group-hover:text-white/80'}`}>
+                <span className={`text-sm ${p.id === currentId ? 'text-white/80' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/80'}`}>
                   /{p.slug}
                 </span>
                 {p.role === 'member' && (
@@ -86,7 +86,7 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
                     className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       p.id === currentId
                         ? 'bg-white/20 text-white'
-                        : 'bg-indigo-100/80 text-indigo-700 group-hover:bg-white/20 group-hover:text-white'
+                        : 'bg-indigo-100/80 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 group-hover:bg-white/20 group-hover:text-white'
                     }`}
                   >
                     member
@@ -96,7 +96,7 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
             </li>
           ))}
           {filtered.length === 0 && (
-            <li className="py-2 text-sm text-slate-400">
+            <li className="py-2 text-sm text-slate-400 dark:text-slate-500">
               {query ? 'No projects match your search.' : canCreate ? 'No projects yet — create your first one.' : 'No projects yet.'}
             </li>
           )}

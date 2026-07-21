@@ -11,6 +11,12 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Dark mode** — the editor now has a full dark theme with a **light / dark / auto** (follow-OS) switcher
+  in the account (person-icon) menu. The choice is remembered per browser and applied before first paint,
+  so there's no light flash on load. Every editor surface — the shell, header, panels, drawers, modals,
+  forms, inputs, menus, the page/settings/dataset editors, the library, and the page-audit report — was
+  given a dark treatment; the configurable brand accent colours, the code editor, and the site previews
+  are unchanged. Several low-contrast labels and hints were also darkened in **light** mode for legibility.
 - **Upgrade-path guard** — the app stamps the data-migration generation it has applied (in SQLite's
   `PRAGMA user_version`) and, on boot, refuses to start if the instance is *older* than the oldest
   one-time data migration this build still ships (i.e. a required migration was removed in a newer

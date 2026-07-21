@@ -41,9 +41,9 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
   return (
     <Modal title="Consent settings" size="2xl" onClose={onClose}>
       <div className="flex flex-col gap-4 p-5">
-        <div className="rounded-lg border border-indigo-200/70 bg-indigo-50/50 p-3 text-xs text-slate-600">
+        <div className="rounded-lg border border-indigo-200/70 dark:border-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10 p-3 text-xs text-slate-600 dark:text-slate-300">
           <p>
-            <strong className="font-semibold text-slate-700">Where is the wording?</strong> The banner heading, intro,
+            <strong className="font-semibold text-slate-700 dark:text-slate-200">Where is the wording?</strong> The banner heading, intro,
             button labels and category names/descriptions are <strong>translatable</strong>, so they live in{' '}
             <strong>Translations &amp; Labels</strong> (the reserved <code>consent_*</code> keys), not here. This screen
             holds only the structure + the third-party integrations to gate.
@@ -68,7 +68,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
           <label className="mt-3 flex items-center justify-between gap-3">
             <span className="min-w-0">
               <span className={fieldLabel}>Show “Reject all” button</span>
-              <span className="block text-[11px] text-slate-400">Recommended for GDPR — a one-click reject on the first layer.</span>
+              <span className="block text-[11px] text-slate-400 dark:text-slate-500">Recommended for GDPR — a one-click reject on the first layer.</span>
             </span>
             <input type="checkbox" role="switch" aria-label='Show "Reject all" button' className={toggleInput} checked={c.denyButton !== false} onChange={(e) => setConsent({ denyButton: e.target.checked ? undefined : false })} />
           </label>
@@ -76,10 +76,10 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Categories offered</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400">“Strictly necessary” is always on. Uncheck a category to hide it from the preferences panel.</p>
+          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">“Strictly necessary” is always on. Uncheck a category to hide it from the preferences panel.</p>
           <div className="flex flex-wrap gap-4">
             {CATS.map((cat) => (
-              <label key={cat.id} className="flex items-center gap-2 text-sm text-slate-700">
+              <label key={cat.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" className="h-4 w-4 accent-indigo-600" aria-label={cat.label} checked={offered.has(cat.id)} onChange={(e) => toggleCat(cat.id, e.target.checked)} />
                 {cat.label}
               </label>
@@ -89,7 +89,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Embedded content (videos, maps, …)</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400">
+          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
             Any third-party <code>&lt;iframe&gt;</code> you paste into a page is held behind an “Allow once / Always allow”
             placeholder until the visitor consents — nothing loads from the provider before then. Choose the category it
             falls into (override a single embed with <code>data-sw-consent=&quot;marketing&quot;</code>, or skip gating with{' '}
@@ -114,11 +114,11 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Third-party integrations</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400">Each loads ONLY after its category is consented; the site’s Content-Security-Policy is widened automatically to allow just these.</p>
+          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Each loads ONLY after its category is consented; the site’s Content-Security-Policy is widened automatically to allow just these.</p>
           <ConsentIntegrationsEditor rows={c.integrations ?? []} onChange={(integrations) => setConsent({ integrations: integrations.length ? integrations : undefined })} />
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-white/60 bg-white/50 p-3 text-xs text-slate-600">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-3 text-xs text-slate-600 dark:text-slate-300">
           <span>Changed your trackers? Re-ask every visitor for consent.</span>
           <button type="button" className={ghostButton} onClick={() => setConsent({ version: version + 1 })}>
             Re-ask everyone (v{version})

@@ -68,7 +68,7 @@ export function LocalePickerModal({
   return (
     <Modal title={title} size="md" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
-        {description && <p className="text-sm text-slate-500">{description}</p>}
+        {description && <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>}
         <SearchField
           ariaLabel="Search languages"
           placeholder="Search languages…"
@@ -87,16 +87,16 @@ export function LocalePickerModal({
                 onClick={() => onPick(l.code)}
               >
                 <span aria-hidden className="text-lg">{l.flag}</span>
-                <span className="font-medium text-slate-800 group-hover:text-white">{l.name}</span>
-                <span className="ml-auto font-mono text-xs uppercase text-slate-400 group-hover:text-white/80">{l.code}</span>
+                <span className="font-medium text-slate-800 dark:text-slate-100 group-hover:text-white">{l.name}</span>
+                <span className="ml-auto font-mono text-xs uppercase text-slate-400 dark:text-slate-500 group-hover:text-white/80">{l.code}</span>
               </button>
             </li>
           ))}
-          {shown.length === 0 && <li className="px-3 py-2 text-sm text-slate-400">No matching language — add a custom one below.</li>}
+          {shown.length === 0 && <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">No matching language — add a custom one below.</li>}
         </ul>
 
-        <div className="mt-1 border-t border-slate-200/70 pt-3">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">Custom locale</label>
+        <div className="mt-1 border-t border-slate-200/70 dark:border-slate-700/70 pt-3">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Custom locale</label>
           <div className="flex items-center gap-2">
             <span aria-hidden className="text-lg">{localeFlag(custom || 'xx')}</span>
             <input
@@ -120,15 +120,15 @@ export function LocalePickerModal({
               {actionLabel}
             </button>
           </div>
-          {customError && <p className="mt-1 text-sm text-red-600">{customError}</p>}
+          {customError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{customError}</p>}
         </div>
 
         {busy && (
-          <p className="flex items-center gap-2 text-sm text-slate-500">
+          <p className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <span className="loading loading-spinner loading-xs" aria-hidden /> Working…
           </p>
         )}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </Modal>
   );

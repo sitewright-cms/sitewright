@@ -59,8 +59,8 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
   return (
     <div className="flex flex-col gap-3">
       {dialog}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <p className="text-xs text-slate-500">{total} submission{total === 1 ? '' : 's'}</p>
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <p className="text-xs text-slate-500 dark:text-slate-400">{total} submission{total === 1 ? '' : 's'}</p>
       <ul className="flex flex-col gap-2">
         {items.map((s) => {
           const open = openId === s.id;
@@ -74,9 +74,9 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                   aria-label={`${open ? 'Collapse' : 'Expand'} submission from ${s.formId}`}
                   onClick={() => setOpenId(open ? null : s.id)}
                 >
-                  {!formId && <code className="text-xs text-slate-400">{s.formId}</code>}{!formId && ' '}
-                  <span className="text-slate-700">{summary.slice(0, 80)}</span>
-                  <span className="ml-2 text-xs text-slate-400">{new Date(s.createdAt).toLocaleString()}</span>
+                  {!formId && <code className="text-xs text-slate-400 dark:text-slate-500">{s.formId}</code>}{!formId && ' '}
+                  <span className="text-slate-700 dark:text-slate-200">{summary.slice(0, 80)}</span>
+                  <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{new Date(s.createdAt).toLocaleString()}</span>
                 </button>
                 <button
                   aria-label={`Delete submission ${s.id}`}
@@ -87,11 +87,11 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                 </button>
               </div>
               {open && (
-                <dl className="mt-3 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 border-t border-slate-100 pt-3 text-xs">
+                <dl className="mt-3 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 border-t border-slate-100 dark:border-white/10 pt-3 text-xs">
                   {Object.entries(s.fields).map(([k, v]) => (
                     <div key={k} className="contents">
-                      <dt className="font-mono text-slate-500">{k}</dt>
-                      <dd className="whitespace-pre-wrap break-words text-slate-800">{v}</dd>
+                      <dt className="font-mono text-slate-500 dark:text-slate-400">{k}</dt>
+                      <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
                     </div>
                   ))}
                 </dl>
@@ -99,7 +99,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
             </li>
           );
         })}
-        {items.length === 0 && <li className="text-sm text-slate-400">No submissions yet.</li>}
+        {items.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No submissions yet.</li>}
       </ul>
     </div>
   );

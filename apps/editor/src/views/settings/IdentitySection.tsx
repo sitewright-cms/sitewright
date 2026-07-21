@@ -78,7 +78,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         icon={<Type className="h-4 w-4" />}
         tooltip="The heading and body fonts applied across every page — in the editor preview and the published site. Use them anywhere with the font-heading and font-body classes. Fonts can be a system family, a Google webfont, or your own uploaded file — all self-hosted (never loaded from a CDN on your site)."
       >
-        {fontsError && <p className="mb-2 text-xs text-rose-500">Couldn’t load your font library. Saved slots still work; try reloading.</p>}
+        {fontsError && <p className="mb-2 text-xs text-rose-500 dark:text-rose-300">Couldn’t load your font library. Saved slots still work; try reloading.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <FontSlotEditor
             label="Heading font"

@@ -6,7 +6,7 @@ import { newConsentIntegration } from './model';
 
 /** Glass select styling WITHOUT a width util, so a native <select> auto-sizes to its widest option. */
 const glassSelectAuto =
-  'sw-brand-focus shrink-0 rounded-lg border border-white/60 bg-white/70 px-2 py-2 text-sm text-slate-800 shadow-sm outline-none transition';
+  'sw-brand-focus shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-2 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none transition';
 
 const PRESETS: Array<{ value: NonNullable<ConsentIntegration['preset']>; label: string }> = [
   { value: 'ga4', label: 'Google Analytics 4' },
@@ -43,7 +43,7 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
         {rows.map((r, i) => {
           const preset = r.preset ?? 'custom';
           return (
-            <motion.div key={r.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden rounded-xl border border-white/60 bg-white/50 p-3 shadow-sm">
+            <motion.div key={r.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-3 shadow-sm">
               <div className="flex items-start gap-2">
                 <input aria-label={`Integration ${i + 1} name`} className={`${glassInput} min-w-0 flex-1`} value={r.name} placeholder="Google Analytics" onChange={(e) => set(r.id, { name: e.target.value })} />
                 <select
@@ -67,7 +67,7 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
                     </option>
                   ))}
                 </select>
-                <button type="button" aria-label={`Remove integration ${i + 1}`} onClick={() => onChange(rows.filter((x) => x.id !== r.id))} className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
+                <button type="button" aria-label={`Remove integration ${i + 1}`} onClick={() => onChange(rows.filter((x) => x.id !== r.id))} className="shrink-0 rounded-md px-2 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400">
                   <X className="h-4 w-4" />
                 </button>
               </div>

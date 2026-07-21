@@ -45,31 +45,31 @@ export function DeletedProjectsCard() {
 
   return (
     <section className={`${glassCard} p-4`}>
-      <h2 className="mb-1 text-sm font-bold text-slate-700">Deleted projects</h2>
-      <p className="mb-3 text-xs text-slate-500">
+      <h2 className="mb-1 text-sm font-bold text-slate-700 dark:text-slate-200">Deleted projects</h2>
+      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
         Soft-deleted projects are hidden and their sites are offline, but recoverable. <strong>Restore</strong>{' '}
         brings one back intact; <strong>Delete</strong> permanently erases its data, files, and any client
         left with no other project (your agency staff are never removed).
       </p>
       {error && (
-        <p role="alert" className="mb-2 text-sm text-rose-600">
+        <p role="alert" className="mb-2 text-sm text-rose-600 dark:text-rose-400">
           {error}
         </p>
       )}
       {items === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-slate-400">No deleted projects.</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500">No deleted projects.</p>
       ) : (
         <>
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+          <ul className="divide-y divide-slate-100 dark:divide-white/10 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
             {items.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-slate-800">
-                    {p.name} <span className="font-normal text-slate-400">/{p.slug}</span>
+                  <div className="truncate font-medium text-slate-800 dark:text-slate-100">
+                    {p.name} <span className="font-normal text-slate-400 dark:text-slate-500">/{p.slug}</span>
                   </div>
-                  <div className="truncate text-xs text-slate-400">
+                  <div className="truncate text-xs text-slate-400 dark:text-slate-500">
                     Deleted {p.deletedAt ? new Date(p.deletedAt).toLocaleString() : ''}
                     {p.deletedBy ? ` by ${p.deletedBy}` : ''}
                   </div>
@@ -109,7 +109,7 @@ export function DeletedProjectsCard() {
           <div className="mt-3 flex items-center justify-end gap-2 text-sm">
             {confirming === 'all' ? (
               <>
-                <span className="text-rose-700">Permanently remove all {items.length}?</span>
+                <span className="text-rose-700 dark:text-rose-400">Permanently remove all {items.length}?</span>
                 <button
                   type="button"
                   disabled={busy !== null}
@@ -127,7 +127,7 @@ export function DeletedProjectsCard() {
                 type="button"
                 disabled={busy !== null}
                 onClick={() => setConfirming('all')}
-                className="font-medium text-rose-600 transition hover:underline disabled:opacity-50"
+                className="font-medium text-rose-600 dark:text-rose-400 transition hover:underline disabled:opacity-50"
               >
                 Remove all deleted projects
               </button>

@@ -766,7 +766,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     <div
       role="group"
       aria-label="Edit mode"
-      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
     >
       {(['source', 'content', 'audit'] as const).map((m) => (
         <button
@@ -775,7 +775,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           aria-pressed={mode === m}
           onClick={() => setMode(m)}
           className={`waves-effect rounded-lg px-2.5 py-1 transition ${
-            mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
+            mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
           }`}
         >
           {editModeLabel(m)}
@@ -787,12 +787,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Centered between the switch and the right-side actions: the page path + status badges.
   const titleExtra = (
     <>
-      <span className="hidden truncate text-xs text-slate-400 sm:inline">{settings.path}</span>
+      <span className="hidden truncate text-xs text-slate-400 dark:text-slate-500 sm:inline">{settings.path}</span>
       {settings.status === 'draft' && (
-        <span className="rounded-lg bg-slate-200/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+        <span className="rounded-lg bg-slate-200/80 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">draft</span>
       )}
       {settings.template && (
-        <span className="rounded-lg bg-indigo-100/80 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700">
+        <span className="rounded-lg bg-indigo-100/80 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-400">
           template
         </span>
       )}
@@ -801,7 +801,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
 
   // Right side, just before Save/Close: the save status + the Page-settings gear (source mode only).
   const toolBtnClass =
-    'inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:opacity-40';
+    'inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-slate-500 dark:text-slate-400 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-default disabled:opacity-40';
   // Undo/redo target the ACTIVE editor: CodeMirror's history in source mode, the page.data inline-edit
   // history in content mode — so the SAME two buttons work consistently in both modes.
   const activeCanUndo = mode === 'source' ? srcCanUndo : canUndo;
@@ -811,8 +811,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // BOTH modes share ONE toolbar: Undo · Redo · Page data · Page settings · Reload (+ the Modal's Save/Close).
   const headerExtra = (
     <>
-      {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
-      {saveError && <span className="text-xs text-red-600">{saveError}</span>}
+      {saved && !dirty && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved</span>}
+      {saveError && <span className="text-xs text-red-600 dark:text-red-400">{saveError}</span>}
       <Tooltip tip="Undo (Ctrl+Z)" side="bottom">
         <button type="button" aria-label="Undo" disabled={!activeCanUndo} onClick={doUndo} className={toolBtnClass}>
           <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -869,7 +869,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       titleExtra={titleExtra}
       headerExtra={headerExtra}
     >
-      <div className="flex h-full flex-col gap-2 bg-slate-100/50 p-2">
+      <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">
         {/* Row 1 — the authoring strip (SOURCE MODE ONLY): the CodeMirror source editor, or the
             template / inherited-code LOCK panel. Collapsed on open (a contentbase-style peek),
             expanding while hovered or focused. CONTENT mode hides this strip entirely so the live
@@ -878,8 +878,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <section
             aria-label="Template source editor"
             data-expanded={stripExpanded}
-            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
-              !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 backdrop-blur-xl'
+            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 dark:border-white/10 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
+              !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl'
             } ${stripExpanded ? 'h-[45vh]' : 'h-36'}`}
             onMouseEnter={() => setStripHover(true)}
             onMouseLeave={() => setStripHover(false)}
@@ -891,7 +891,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           >
             {settings.template ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   This page renders the template{' '}
                   <strong>{activeTemplate?.name ?? settings.template}</strong> — its code lives in the
                   template, and this page contributes only its editable content (see the{' '}
@@ -900,14 +900,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
                   Fork template into page
                 </button>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   Forking copies the template’s code into this page and removes the reference, so you
                   can customize it freely.
                 </p>
               </div>
             ) : inheritsCode ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   This page inherits its layout from the main language
                   {codeOwner ? <> (<strong>{codeOwner.title}</strong>)</> : null}. Change the structure
                   for every language by editing the main page — here you translate the text (see the{' '}
@@ -916,7 +916,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
                   Fork the code for this language
                 </button>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   Forking copies the current layout into this language so you can customize it
                   independently of the others.
                 </p>
@@ -947,7 +947,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <div
             role="group"
             aria-label="Preview device"
-            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 bg-white/80 p-1 shadow-lg backdrop-blur-xl"
+            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-xl"
           >
             {PREVIEW_DEVICES.map((d) => (
               <Tooltip key={d.key} tip={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`} side="left">
@@ -957,7 +957,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                   aria-pressed={device === d.key}
                   onClick={() => setDevice(d.key)}
                   className={`inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition ${
-                    device === d.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900'
+                    device === d.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100'
                   }`}
                 >
                   {DEVICE_ICONS[d.key]}

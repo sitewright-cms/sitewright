@@ -232,12 +232,12 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
+            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95`}
           >
-            <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3">
+            <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3 dark:border-white/10">
               {headerLeft}
               <div className={`flex min-w-0 flex-1 items-center gap-2 ${centerTitle ? 'justify-center' : ''}`}>
-                <h2 id={titleId} className="truncate text-sm font-bold text-slate-800">{title}</h2>
+                <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
                 {titleExtra}
               </div>
               {headerExtra}
@@ -259,7 +259,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                   type="button"
                   aria-label="Close"
                   onClick={() => void requestClose()}
-                  className="waves-effect inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                  className="waves-effect inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-slate-100"
                 >
                   <CloseIcon />
                 </button>

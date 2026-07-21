@@ -40,7 +40,7 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
   const [tab, setTab] = useState<Tab>('account');
 
   const tabBtn = (id: Tab) =>
-    `rounded-lg px-3.5 py-1.5 text-sm transition ${tab === id ? `${gradientSurface} font-bold` : 'font-medium text-slate-500 hover:text-slate-800'}`;
+    `rounded-lg px-3.5 py-1.5 text-sm transition ${tab === id ? `${gradientSurface} font-bold` : 'font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`;
 
   return (
     <Modal
@@ -48,7 +48,7 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
       size="lg"
       onClose={onClose}
       headerExtra={
-        <div className="flex overflow-hidden rounded-xl border border-white/60 bg-white/40 p-0.5">
+        <div className="flex overflow-hidden rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-0.5">
           <button type="button" className={tabBtn('account')} onClick={() => setTab('account')}>Account</button>
           <button type="button" className={tabBtn('password')} onClick={() => setTab('password')}>Password</button>
           <button type="button" className={tabBtn('access')} onClick={() => setTab('access')}>Access keys</button>
@@ -68,7 +68,7 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
 
 /** Shared inline error/help row under a form. */
 function FormError({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-rose-600">{children}</p>;
+  return <p className="text-sm text-rose-600 dark:text-rose-400">{children}</p>;
 }
 
 function AccountTab({ email, onEmailChanged }: { email: string; onEmailChanged: (email: string) => void }) {
@@ -106,8 +106,8 @@ function AccountTab({ email, onEmailChanged }: { email: string; onEmailChanged: 
   return (
     <form onSubmit={submit} className={`flex flex-col gap-4 ${glassCard} p-5`}>
       <div>
-        <h3 className="text-sm font-bold text-slate-800">Login email</h3>
-        <p className="mt-0.5 text-xs text-slate-500">This is the address you sign in with. Changing it requires your current password.</p>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Login email</h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">This is the address you sign in with. Changing it requires your current password.</p>
       </div>
       <div>
         <label className={fieldLabel} htmlFor="account-email">Email</label>
@@ -177,8 +177,8 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
   return (
     <form onSubmit={submit} className={`flex flex-col gap-4 ${glassCard} p-5`}>
       <div>
-        <h3 className="text-sm font-bold text-slate-800">{hasPassword ? 'Change password' : 'Set a password'}</h3>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{hasPassword ? 'Change password' : 'Set a password'}</h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           {hasPassword
             ? 'Changing your password signs out every other session.'
             : 'Your account signs in via single sign-on. Set a password to also sign in with your email.'}
@@ -198,7 +198,7 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
       <div>
         <label className={fieldLabel} htmlFor="pw-confirm">Confirm new password</label>
         <input id="pw-confirm" type="password" autoComplete="new-password" className={glassInput} value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-        {mismatch && <p className="mt-1 text-xs text-amber-600">Passwords don’t match.</p>}
+        {mismatch && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Passwords don’t match.</p>}
       </div>
       {error && <FormError>{error}</FormError>}
       <div>
@@ -213,7 +213,7 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
 function AccessKeysTab({ project }: { project: Project | null }) {
   if (!project || project.role !== 'owner') {
     return (
-      <div className={`${glassCard} p-5 text-sm text-slate-500`}>
+      <div className={`${glassCard} p-5 text-sm text-slate-500 dark:text-slate-400`}>
         Open a project you own to manage its access keys. Access keys are project-scoped tokens for CI
         and headless tools.
       </div>
@@ -221,8 +221,8 @@ function AccessKeysTab({ project }: { project: Project | null }) {
   }
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-slate-500">
-        Project-scoped tokens (PATs) for <span className="font-medium text-slate-700">{project.name}</span> — used by CI and headless tools.
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Project-scoped tokens (PATs) for <span className="font-medium text-slate-700 dark:text-slate-200">{project.name}</span> — used by CI and headless tools.
       </p>
       {/* Keyed so the one-time-token banner + state reset if the open project changes. */}
       <ApiKeysManager key={project.id} project={project} />

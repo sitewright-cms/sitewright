@@ -32,9 +32,9 @@ function Row({ item, display, onEdit }: { item: RegionItem; display: string; onE
       type="button"
       onClick={() => onEdit(item.rid)}
       title={`Edit ${display}`}
-      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700"
+      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400"
     >
-      <span className="shrink-0 text-slate-400">{KIND_ICON[item.kind] ?? <Type className="h-3.5 w-3.5" />}</span>
+      <span className="shrink-0 text-slate-400 dark:text-slate-500">{KIND_ICON[item.kind] ?? <Type className="h-3.5 w-3.5" />}</span>
       <span className="min-w-0 flex-1 truncate">{display}</span>
     </button>
   );
@@ -109,12 +109,12 @@ export function RegionsPanel({
     <SidePanel side="left" align="start" compact label="Regions" icon={<LayoutList className="h-3.5 w-3.5" aria-hidden />} size="w-[22rem]">
       <div className="flex flex-col gap-3 p-2">
         {regions.length === 0 ? (
-          <p className="px-2 py-6 text-center text-sm text-slate-500">No editable regions on this page.</p>
+          <p className="px-2 py-6 text-center text-sm text-slate-500 dark:text-slate-400">No editable regions on this page.</p>
         ) : (
           <>
             {pageItems.length > 0 && (
               <section>
-                <h3 className="px-2 pb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">Page content</h3>
+                <h3 className="px-2 pb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Page content</h3>
                 <div className="flex flex-col">
                   {pageItems.map((r) => (
                     <Row key={r.rid} item={r} display={r.label} onEdit={onEdit} />
@@ -124,8 +124,8 @@ export function RegionsPanel({
             )}
             {datasets.map(([name, items]) => (
               <section key={name}>
-                <h3 className="px-2 pb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                  {name} <span className="text-slate-300">· {items.length}</span>
+                <h3 className="px-2 pb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {name} <span className="text-slate-400 dark:text-slate-500">· {items.length}</span>
                 </h3>
                 <div className="flex flex-col">
                   {items.map((r) => (

@@ -50,7 +50,7 @@ export function SkeletonImage({ src, alt, className = '' }: { src: string; alt: 
         <span
           role="img"
           aria-label={alt || 'Image unavailable'}
-          className="flex h-full w-full items-center justify-center bg-base-200 text-base-content/30"
+          className="flex h-full w-full items-center justify-center bg-base-200 text-base-content/30 dark:bg-white/10 dark:text-white/40"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-1/3 w-1/3" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16l5-5 4 4 3-3 6 6M3 5h18v14H3z" />

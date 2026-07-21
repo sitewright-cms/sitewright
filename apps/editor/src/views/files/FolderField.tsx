@@ -55,7 +55,7 @@ export function FolderField({
           <button
             type="button"
             aria-label={`Clear ${label}`}
-            className="shrink-0 px-1 text-xs text-slate-400 transition hover:text-rose-600"
+            className="shrink-0 px-1 text-xs text-slate-400 dark:text-slate-500 transition hover:text-rose-600 dark:hover:text-rose-400"
             onClick={() => onChange('')}
           >
             Clear

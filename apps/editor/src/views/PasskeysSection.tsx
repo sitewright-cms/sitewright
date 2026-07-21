@@ -75,17 +75,17 @@ export function PasskeysSection() {
     <div className={`flex flex-col gap-3 ${glassCard} p-5`}>
       {dialog}
       <div>
-        <h3 className="text-sm font-bold text-slate-800">Passkeys</h3>
-        <p className="mt-0.5 text-sm text-slate-500">Sign in without a password using your device’s biometrics or a security key.</p>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Passkeys</h3>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Sign in without a password using your device’s biometrics or a security key.</p>
       </div>
-      {!supported && <p className="text-sm text-amber-600">This browser doesn’t support passkeys.</p>}
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {!supported && <p className="text-sm text-amber-600 dark:text-amber-400">This browser doesn’t support passkeys.</p>}
+      {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
       {items.length > 0 && (
         <ul className="flex flex-col gap-2">
           {items.map((pk) => (
             <li key={pk.id} className={`flex items-center gap-3 ${glassPanel} px-4 py-2.5 text-sm`}>
-              <span className="min-w-0 truncate font-medium text-slate-800">{pk.name}</span>
-              <span className="shrink-0 text-xs text-slate-400">added {new Date(pk.createdAt).toLocaleDateString()}</span>
+              <span className="min-w-0 truncate font-medium text-slate-800 dark:text-slate-100">{pk.name}</span>
+              <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">added {new Date(pk.createdAt).toLocaleDateString()}</span>
               <span className="ml-auto flex shrink-0 gap-1">
                 <button type="button" className={ghostButton} onClick={() => void rename(pk)}>Rename</button>
                 <button type="button" className={dangerButton} aria-label={`Remove ${pk.name}`} onClick={() => void remove(pk)}>Remove</button>

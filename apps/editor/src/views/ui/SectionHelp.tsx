@@ -15,7 +15,7 @@ export function SectionHelp({ tip, side = 'bottom' }: { tip: string; side?: Side
       <button
         type="button"
         aria-label={tip}
-        className="inline-flex cursor-help text-slate-400 outline-none transition hover:text-slate-600 focus-visible:text-slate-600"
+        className="inline-flex cursor-help text-slate-400 outline-none transition hover:text-slate-600 focus-visible:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 dark:focus-visible:text-slate-300"
       >
         <CircleHelp className="h-3.5 w-3.5" />
       </button>

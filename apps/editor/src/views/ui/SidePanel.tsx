@@ -271,18 +271,18 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
         {...(!open ? ({ inert: '' } as object) : {})}
         onDragOver={openOnFileDrag ? onPanelFileDrag : undefined}
         onDrop={openOnFileDrag ? onPanelFileDrag : undefined}
-        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none ${panelPos(side, align, width)} ${panelSize} ${
+        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none dark:border-white/10 dark:bg-slate-900/90 ${panelPos(side, align, width)} ${panelSize} ${
           open ? `${SLIDE[side].open} opacity-100` : `${SLIDE[side].closed} opacity-0 pointer-events-none`
         }`}
       >
-        <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 ${edgeInset}`}>
-          <span className="flex-1 text-xs font-bold uppercase tracking-widest text-indigo-700">{label}</span>
+        <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 dark:border-white/10 ${edgeInset}`}>
+          <span className="flex-1 text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">{label}</span>
           <button
             type="button"
             aria-label={`Close ${label}`}
             title="Close"
             onClick={() => setOpen(false)}
-            className="waves-effect rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="waves-effect rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-200"
           >
             <X className="h-4 w-4" />
           </button>

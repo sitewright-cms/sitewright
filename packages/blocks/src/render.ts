@@ -198,6 +198,13 @@ export interface RenderDocumentOptions extends RenderContext {
    * components ship (only-used-ships). First-party; never tenant input.
    */
   systemI18n?: string;
+  /**
+   * Optional CSS minifier for the platform's INLINE `<style>` blocks (base/normalize, brand, theme,
+   * criticalCss, the compiled component/effect `inlineStyles`, and the typography/@font-face block). The
+   * publish build passes one (@sitewright/blocks `minifyCss`); preview and tests omit it → byte-identical
+   * output for them (no snapshot churn). Must be defensive (never throw); `minifyCss` already is.
+   */
+  minifyCss?: (css: string) => string;
 }
 
 /**
@@ -249,8 +256,12 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     inlineScripts,
     previewScroll,
     systemI18n,
+    minifyCss,
     ...ctx
   } = opts;
+  // Identity when no minifier is supplied (preview / tests) → byte-identical output; the build passes
+  // @sitewright/blocks `minifyCss` to shrink the inline platform CSS.
+  const mc = minifyCss ?? ((s: string) => s);
   // Code-first only: the body is always the pre-rendered Handlebars `source` output. A page with
   // no rendered body (e.g. a brand-new, source-less page) gets an empty `<main>`.
   const body = bodyHtml ?? '';
@@ -342,11 +353,14 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (jsonLd ? `${jsonLd}\n` : '') +
     (head ? `${head}\n` : '') +
     // RAW-FIDELITY replicas omit the platform's own base CSS so it can't fight the imported stylesheet.
-    (rawFidelity ? '' : `<style>${css}</style>\n`) +
-    (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
+    // Neutralize any `</style` in the (platform + owner-set critical) CSS too — defense-in-depth symmetry
+    // with `inlineStyles` below, now that these also pass through the esbuild minify transform.
+    (rawFidelity ? '' : `<style>${mc(css).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`) +
+    (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
-    // (defense-in-depth; mirrors the inlineScripts guard below).
-    (inlineStyles ?? []).map((style) => `<style>${style.replace(/<\/(style)/gi, '<\\/$1')}</style>\n`).join('') +
+    // (defense-in-depth; mirrors the inlineScripts guard below). Minify BEFORE the neutralize so the
+    // escaped `<\/style` sentinel is never fed to the CSS parser.
+    (inlineStyles ?? []).map((style) => `<style>${mc(style).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`).join('') +
     // RAW-FIDELITY replicas also skip the platform's compiled utility sheet (styles.css) — its Tailwind
     // utilities collide with the imported site's same-named classes (e.g. `.w-100` = 100 spacing units
     // here vs. the site's `width:100%`), which would clobber the imported layout.
@@ -358,7 +372,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // No `</style` neutralization needed (unlike inlineStyles): the output is built only from
     // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name + the
     // app-controlled fontUrl (no `<`). @font-face urls point at LOCAL self-hosted woff2.
-    (rawFidelity ? '' : `<style>${typographyCss(brand?.typography, fontAssets, { fontUrl })}</style>\n`) +
+    (rawFidelity ? '' : `<style>${mc(typographyCss(brand?.typography, fontAssets, { fontUrl }))}</style>\n`) +
     `</head>\n` +
     // Skeleton landmarks: the platform OWNS the semantic element + unique id for each slot and the
     // page body, so a slot/page author writes neutral HTML (the validator rejects <nav>/<main>/

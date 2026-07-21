@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, normalize, extname } from 'node:path';
+import { createGzip } from 'node:zlib';
 import type { AddressInfo } from 'node:net';
 
 /**
@@ -38,6 +39,28 @@ const MIME: Record<string, string> = {
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const NO_CACHE = 'no-cache';
+
+/**
+ * Text content-types worth gzipping. Mirrors what a real production host (nginx/CDN) compresses — so a
+ * page-speed audit against this loopback is representative of a compressing deploy, not penalised by a
+ * naive uncompressed server. Binary types (images / fonts / pdf) are already compressed → skipped.
+ */
+const COMPRESSIBLE = new Set([
+  'text/html',
+  'text/css',
+  'text/javascript',
+  'application/json',
+  'image/svg+xml',
+  'application/xml',
+  'text/plain',
+]);
+function isCompressible(contentType: string): boolean {
+  return COMPRESSIBLE.has(contentType.split(';')[0]!.trim());
+}
+function acceptsGzip(header: string | string[] | undefined): boolean {
+  const h = Array.isArray(header) ? header.join(',') : (header ?? '');
+  return /\bgzip\b/.test(h);
+}
 
 /**
  * Cache-control mirrors the real deploy EXACTLY: only a URL carrying the per-publish `?v=` cache-bust
@@ -82,8 +105,8 @@ export async function serveBuiltSite(root: string, host = '127.0.0.1'): Promise<
           res.end('not found');
           return;
         }
-        res.setHeader('content-type', MIME[extname(file).toLowerCase()] ?? 'application/octet-stream');
-        res.setHeader('content-length', s.size);
+        const contentType = MIME[extname(file).toLowerCase()] ?? 'application/octet-stream';
+        res.setHeader('content-type', contentType);
         res.setHeader('cache-control', cacheControlFor(rawUrl));
         const stream = createReadStream(file);
         // A file made unreadable after stat() (TOCTOU on the temp dir) must not crash the process.
@@ -91,7 +114,22 @@ export async function serveBuiltSite(root: string, host = '127.0.0.1'): Promise<
           if (!res.headersSent) res.statusCode = 500;
           res.end();
         });
-        stream.pipe(res);
+        // Gzip text responses (like a real host) so the audit sees representative transfer sizes; the
+        // gzipped length is unknown up front, so drop content-length and stream through zlib. Binary
+        // assets keep their exact content-length and are served verbatim.
+        if (isCompressible(contentType) && acceptsGzip(req.headers['accept-encoding'])) {
+          res.setHeader('content-encoding', 'gzip');
+          res.setHeader('vary', 'Accept-Encoding');
+          const gz = createGzip();
+          gz.on('error', () => {
+            if (!res.headersSent) res.statusCode = 500;
+            res.end();
+          });
+          stream.pipe(gz).pipe(res);
+        } else {
+          res.setHeader('content-length', s.size);
+          stream.pipe(res);
+        }
       } catch {
         if (!res.headersSent) res.statusCode = 500;
         res.end('error');

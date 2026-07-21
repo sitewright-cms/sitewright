@@ -41,7 +41,7 @@ describe('runWorker', () => {
     expect(result.manifest.routes).toBe(1);
     const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
     expect(home).toContain('Welcome');
-    expect(home).toContain('--sw-color-primary: #0a7;');
+    expect(home).toContain('--sw-color-primary: #0a7'); // CSS minified → trailing `;` before `}` dropped
   });
 
   it('materializes referenced thumbnails from the inlined ORIGINAL and bundles them into the artifact', async () => {

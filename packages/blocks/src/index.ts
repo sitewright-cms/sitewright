@@ -39,4 +39,5 @@ export * from './brand-css.js';
 export * from './preview-css.js';
 export * from './typography-css.js';
 export * from './render.js';
+export * from './minify.js';
 export * from './nav-runtime.js';

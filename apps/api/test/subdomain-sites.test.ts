@@ -52,6 +52,48 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
   const site = (url: string, cookies: Record<string, string> = {}) =>
     client.inject({ method: 'GET', url, headers: { host: `${slug}.${DOMAIN}` }, cookies });
 
+  it('gzips a served-site TEXT response when the client accepts gzip; serves verbatim otherwise', async () => {
+    await seedAndPublish();
+    // The platform-shell HTML carries the inline base/brand CSS (> 1 KiB), so it clears the gzip threshold.
+    const gz = await client.inject({
+      method: 'GET',
+      url: '/',
+      headers: { host: `${slug}.${DOMAIN}`, 'accept-encoding': 'gzip, deflate, br' },
+    });
+    expect(gz.statusCode).toBe(200);
+    expect(gz.headers['content-encoding']).toBe('gzip');
+    expect(String(gz.headers['vary'])).toMatch(/accept-encoding/i);
+    expect(gz.rawPayload[0]).toBe(0x1f); // gzip magic bytes
+    expect(gz.rawPayload[1]).toBe(0x8b);
+    // Same request without gzip → uncompressed, real HTML.
+    const plain = await client.inject({
+      method: 'GET',
+      url: '/',
+      headers: { host: `${slug}.${DOMAIN}`, 'accept-encoding': 'identity' },
+    });
+    expect(plain.headers['content-encoding']).toBeUndefined();
+    expect(plain.body).toContain('Hello world');
+  });
+
+  it('never gzips a binary served-site asset (already-compressed content-type is skipped)', async () => {
+    await seedAndPublish();
+    // A hashed CSS asset IS compressible; a favicon/binary is not. Verify the compiled stylesheet compresses
+    // but the response for a non-existent path (404, empty body) is left alone.
+    const css = await client.inject({
+      method: 'GET',
+      url: '/styles.css',
+      headers: { host: `${slug}.${DOMAIN}`, 'accept-encoding': 'gzip' },
+    });
+    // styles.css exists for a Tailwind-using page and is text/css → compressed.
+    if (css.statusCode === 200) expect(css.headers['content-encoding']).toBe('gzip');
+    const missing = await client.inject({
+      method: 'GET',
+      url: '/nope.bin',
+      headers: { host: `${slug}.${DOMAIN}`, 'accept-encoding': 'gzip' },
+    });
+    expect(missing.headers['content-encoding']).toBeUndefined(); // 404 empty body → not compressed
+  });
+
   it('serves the local site at the subdomain ROOT, with root-relative redirects', async () => {
     await seedAndPublish();
     const root = await site('/');

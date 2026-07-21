@@ -37,15 +37,15 @@ export const EXAMPLE_WEBSITE = {
       <ul class="mt-6 flex list-none flex-wrap gap-2.5 p-0">{{#each company.social}}<li><a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/15 text-neutral-content/60 transition hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url link}}" aria-label="{{name}}" target="_blank" rel="noopener">{{sw-icon icon "h-4 w-4"}}</a></li>{{/each}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_studio', 'Studio')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer.studio', 'Studio')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.header}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_legal', 'Legal')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer.legal', 'Legal')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.footer}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}{{#if website.consent.enabled}}<li>{{sw-consent-settings class="appearance-none cursor-pointer border-0 bg-transparent p-0 text-neutral-content/65 transition hover:text-neutral-content"}}</li>{{/if}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_contact', 'Contact')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer.contact', 'Contact')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">
         <!-- The mailto target is a LITERAL: the template validator only allows an interpolated
              URL attribute behind a slash/hash/https prefix (a mailto: prefix is not on that
@@ -56,13 +56,13 @@ export const EXAMPLE_WEBSITE = {
       </ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_news_title', 'Newsletter')}</h6>
-      <p class="mt-4 text-sm leading-relaxed text-neutral-content/60">${T('footer_news', 'Occasional notes on web craft. No spam.')}</p>
-      <a class="btn btn-outline mt-5" href="{{sw-url ${SL('href_contact')}}}">${T('footer_btn', 'Get in touch')}</a>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer.news_title', 'Newsletter')}</h6>
+      <p class="mt-4 text-sm leading-relaxed text-neutral-content/60">${T('footer.news', 'Occasional notes on web craft. No spam.')}</p>
+      <a class="btn btn-outline mt-5" href="{{sw-url ${SL('href_contact')}}}">${T('footer.btn', 'Get in touch')}</a>
     </div>
   </div>
   <div class="border-t border-neutral-content/10">
-    <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${T('footer_built', 'Built with Sitewright — code-first, instantly fast.')}</p>
+    <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${T('footer.built', 'Built with Sitewright — code-first, instantly fast.')}</p>
   </div>
 </div>`,
   // The CONSENT MANAGER banner is AUTO-INJECTED site-wide when website.consent.enabled (above) — no bottom

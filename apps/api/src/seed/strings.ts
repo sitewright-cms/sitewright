@@ -24,19 +24,19 @@ export interface ChromeStrings {
   /** The language switcher's accessible group label. */
   aria_language: string;
   /** Footer column headings. */
-  footer_studio: string;
-  footer_contact: string;
-  footer_legal: string;
-  footer_news_title: string;
+  'footer.studio': string;
+  'footer.contact': string;
+  'footer.legal': string;
+  'footer.news_title': string;
   /** Footer newsletter blurb + CTA. */
-  footer_news: string;
-  footer_btn: string;
+  'footer.news': string;
+  'footer.btn': string;
   /** Footer bottom line (after the © legal name). */
-  footer_built: string;
+  'footer.built': string;
   /** Cookie-consent banner (bottom slot). */
-  cookie_text: string;
-  cookie_more: string;
-  cookie_accept: string;
+  'cookie.text': string;
+  'cookie.more': string;
+  'cookie.accept': string;
   href_privacy: string;
   // MINI SHOP cart — RESERVED keys the {{sw-add-to-cart}}/{{sw-cart}} helpers read from the catalog so a
   // bare helper auto-localizes its built-in labels (no per-page hash). See packages/blocks reservedTr.
@@ -92,16 +92,16 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_contact: '/contact',
     mobile_menu: 'Menu',
     aria_language: 'Language',
-    footer_studio: 'Studio',
-    footer_contact: 'Contact',
-    footer_legal: 'Legal',
-    footer_news_title: 'Newsletter',
-    footer_news: 'Occasional notes on web craft. No spam.',
-    footer_btn: 'Get in touch',
-    footer_built: 'Built with Sitewright — code-first, instantly fast.',
-    cookie_text: 'We use a few essential cookies to make this site work and anonymous analytics to improve it.',
-    cookie_more: 'Learn more',
-    cookie_accept: 'OK, got it',
+    'footer.studio': 'Studio',
+    'footer.contact': 'Contact',
+    'footer.legal': 'Legal',
+    'footer.news_title': 'Newsletter',
+    'footer.news': 'Occasional notes on web craft. No spam.',
+    'footer.btn': 'Get in touch',
+    'footer.built': 'Built with Sitewright — code-first, instantly fast.',
+    'cookie.text': 'We use a few essential cookies to make this site work and anonymous analytics to improve it.',
+    'cookie.more': 'Learn more',
+    'cookie.accept': 'OK, got it',
     href_privacy: '/privacy',
     cart_add: 'Add to cart',
     cart_title: 'Your cart',
@@ -149,16 +149,16 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_contact: '/de/kontakt',
     mobile_menu: 'Menü',
     aria_language: 'Sprache',
-    footer_studio: 'Studio',
-    footer_contact: 'Kontakt',
-    footer_legal: 'Rechtliches',
-    footer_news_title: 'Newsletter',
-    footer_news: 'Gelegentliche Notizen zum Webhandwerk. Kein Spam.',
-    footer_btn: 'Kontakt aufnehmen',
-    footer_built: 'Gebaut mit Sitewright — code-first und sofort schnell.',
-    cookie_text: 'Wir verwenden wenige notwendige Cookies für den Betrieb dieser Website und anonyme Statistiken zu ihrer Verbesserung.',
-    cookie_more: 'Mehr erfahren',
-    cookie_accept: 'Alles klar',
+    'footer.studio': 'Studio',
+    'footer.contact': 'Kontakt',
+    'footer.legal': 'Rechtliches',
+    'footer.news_title': 'Newsletter',
+    'footer.news': 'Gelegentliche Notizen zum Webhandwerk. Kein Spam.',
+    'footer.btn': 'Kontakt aufnehmen',
+    'footer.built': 'Gebaut mit Sitewright — code-first und sofort schnell.',
+    'cookie.text': 'Wir verwenden wenige notwendige Cookies für den Betrieb dieser Website und anonyme Statistiken zu ihrer Verbesserung.',
+    'cookie.more': 'Mehr erfahren',
+    'cookie.accept': 'Alles klar',
     href_privacy: '/de/datenschutz',
     cart_add: 'In den Warenkorb',
     cart_title: 'Warenkorb',
@@ -206,16 +206,16 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_contact: '/es/contacto',
     mobile_menu: 'Menú',
     aria_language: 'Idioma',
-    footer_studio: 'Estudio',
-    footer_contact: 'Contacto',
-    footer_legal: 'Legal',
-    footer_news_title: 'Boletín',
-    footer_news: 'Notas ocasionales sobre el oficio web. Nada de spam.',
-    footer_btn: 'Escríbanos',
-    footer_built: 'Hecho con Sitewright — code-first y rápido desde el primer momento.',
-    cookie_text: 'Usamos unas pocas cookies esenciales para que esta web funcione y estadística anónima para mejorarla.',
-    cookie_more: 'Más información',
-    cookie_accept: 'Entendido',
+    'footer.studio': 'Estudio',
+    'footer.contact': 'Contacto',
+    'footer.legal': 'Legal',
+    'footer.news_title': 'Boletín',
+    'footer.news': 'Notas ocasionales sobre el oficio web. Nada de spam.',
+    'footer.btn': 'Escríbanos',
+    'footer.built': 'Hecho con Sitewright — code-first y rápido desde el primer momento.',
+    'cookie.text': 'Usamos unas pocas cookies esenciales para que esta web funcione y estadística anónima para mejorarla.',
+    'cookie.more': 'Más información',
+    'cookie.accept': 'Entendido',
     href_privacy: '/es/privacidad',
     cart_add: 'Añadir al carrito',
     cart_title: 'Su carrito',

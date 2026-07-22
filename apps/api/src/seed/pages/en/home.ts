@@ -164,7 +164,7 @@ export function pageHome(assets: Record<string, string>): Page {
     <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-sw-animation="fade-up" data-sw-translate="home.tst_title">Loved by the brands we build for</h2>
     <!-- First-party CAROUSEL: scroll-snap track (swipeable without JS); the runtime adds arrows,
          dots, keyboard nav, and gentle autoplay (pausing on hover/focus/reduced-motion). -->
-    <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-arrows="circle" data-sw-animation="fade-up" data-sw-delay="100">
       <div data-sw-part="track">
         {{#each dataset.testimonials}}
         <figure data-sw-part="slide" class="px-1 sm:px-10">

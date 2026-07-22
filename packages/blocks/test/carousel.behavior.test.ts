@@ -78,4 +78,17 @@ describe('Carousel runtime CLS guard (jsdom)', () => {
     expect(root().getAttribute('data-sw-enhanced')).toBeNull();
     expect(root().style.visibility).toBe('');
   });
+
+  it('stamps data-sw-multi when --sw-items > 1 (peek/multi) so the CSS shows compact circle arrows', () => {
+    document.body.innerHTML = `<div data-sw-block="Carousel" data-sw-component="carousel" aria-label="Test" style="--sw-items:2">${twoSlides}</div>`;
+    (0, eval)(CAROUSEL_RUNTIME_JS);
+    expect(root().getAttribute('data-sw-enhanced')).toBe('true');
+    expect(root().getAttribute('data-sw-multi')).toBe('true');
+  });
+
+  it('leaves data-sw-multi UNSET for a single full-width slider (edge/gradient arrows by default)', () => {
+    mountAndRun(twoSlides); // no --sw-items → effective 1
+    expect(root().getAttribute('data-sw-enhanced')).toBe('true');
+    expect(root().getAttribute('data-sw-multi')).toBeNull();
+  });
 });

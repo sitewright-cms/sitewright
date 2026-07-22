@@ -103,14 +103,34 @@ const CAROUSEL_CSS = [
   // Controls stay hidden until the runtime enhances — the no-JS fallback never shows
   // inert UI. (These gates are deliberately strong; to drop a control, omit its part.)
   '[data-sw-block="Carousel"] [data-sw-part="prev"],[data-sw-block="Carousel"] [data-sw-part="next"],[data-sw-block="Carousel"] [data-sw-part="dots"]{display:none}',
-  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="prev"],[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="next"]{display:flex;align-items:center;justify-content:center}',
+  // justify-content is a zero-specificity default (below) so the edge arrows can re-anchor it and any
+  // authored `justify-*` utility still wins; only the visibility gate stays strong here.
+  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="prev"],[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="next"]{display:flex;align-items:center}',
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="dots"]{display:flex}',
-  // DEFAULT placement (zero specificity — any authored utility class wins): arrows
-  // overlaid mid-left/right, dots overlaid centered at the bottom of the slides.
-  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]){position:absolute;top:50%;transform:translateY(-50%);width:2.75rem;height:2.75rem;border:0;border-radius:9999px;background:rgb(0 0 0/.45);color:#fff;cursor:pointer;z-index:1}',
-  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"]){left:.75rem}',
-  ':where([data-sw-block="Carousel"]) :where([data-sw-part="next"]){right:.75rem}',
+  // DEFAULT placement (zero specificity — any authored utility class wins): dots overlaid centered at
+  // the bottom of the slides; arrows overlaid at the edges with a look chosen by slides-per-view below.
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]){position:absolute;border:0;color:#fff;cursor:pointer;z-index:1;justify-content:center}',
   ':where([data-sw-block="Carousel"]) :where([data-sw-part="dots"]){position:absolute;bottom:.75rem;left:50%;transform:translateX(-50%);gap:.4rem;z-index:1}',
+  // ── Arrow LOOK: automatic by slides-per-view, overridable with data-arrows ──────────────────────
+  // The runtime stamps data-sw-multi="true" when the effective --sw-items > 1 (re-checked on reInit,
+  // so a responsive breakpoint flip is honoured). Two mutually-exclusive, zero-specificity sets — an
+  // explicit data-arrows="edge|circle" wins, else (including an absent OR unrecognized value) data-sw-multi
+  // decides — so exactly one ALWAYS applies (a typo'd data-arrows degrades to the default, never unstyled):
+  //  • EDGE = DEFAULT for a single full-width slide (hero/image slideshow): a full-height tab with an
+  //    edge-darkening gradient and a soft opacity + icon-scale transition on hover.
+  //  • CIRCLE = multi-item / peek layouts (or data-arrows="circle"): the compact translucent disc,
+  //    right for card rows / tickers where a full-height tab would swamp the slides.
+  // The chevron stays centered in both (svg margin:auto below).
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]){top:0;bottom:0;width:clamp(3rem,7vw,5rem);border-radius:0;opacity:.85;transition:opacity .3s ease}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]){left:0;background:linear-gradient(to right,rgb(0 0 0/.6),rgb(0 0 0/.12) 55%,transparent)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]){right:0;background:linear-gradient(to left,rgb(0 0 0/.6),rgb(0 0 0/.12) 55%,transparent)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]):hover{opacity:1}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{filter:drop-shadow(0 2px 6px rgb(0 0 0/.55));transition:transform .3s ease}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):hover svg{transform:scale(1.12) translateX(-.15rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):hover svg{transform:scale(1.12) translateX(.15rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"],[data-sw-part="next"]){top:50%;transform:translateY(-50%);width:2.75rem;height:2.75rem;border-radius:9999px;background:rgb(0 0 0/.45)}',
+  ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"]){left:.75rem}',
+  ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="next"]){right:.75rem}',
   '[data-sw-block="Carousel"] [data-sw-part="prev"][disabled],[data-sw-block="Carousel"] [data-sw-part="next"][disabled]{opacity:.35;cursor:default}',
   '[data-sw-block="Carousel"] [data-sw-part="prev"] svg,[data-sw-block="Carousel"] [data-sw-part="next"] svg{margin:auto}',
   // Dots are runtime-generated buttons holding the Lucide `circle` glyph; the active
@@ -119,6 +139,16 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button svg{display:block;width:100%;height:100%}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"]{opacity:1}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"] svg circle{fill:currentColor}',
+  // Caption DEFAULT (zero-specificity): a frosted-glass, centered pill — the hero look, now the baseline
+  // for any .sw-caption inside a slider. Author utilities (a light pill, a wider box, no blur) override
+  // it; centering the pill within the slide stays the wrapper's job — the hero layouts already wrap the
+  // caption in an `absolute inset-0 flex items-center justify-center` box, so a bare .sw-caption there
+  // becomes a centered frosted pill with no extra classes.
+  ':where([data-sw-block="Carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 1.75rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  // Frosted dots pill + thicker glyph — the hero polish, applied to any SINGLE-item slider (the default
+  // look); multi-item rows keep the plain dots. Zero-specificity so an authored utility still wins.
+  ':where([data-sw-block="Carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]){backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
+  ':where([data-sw-block="Carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]) button svg{stroke-width:4px}',
   '[data-sw-block="Carousel"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;background:rgb(0 0 0/.35);transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
   // The runtime's live region announcing the active slide — visually hidden, AT-readable.
   '[data-sw-block="Carousel"] .sw-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
@@ -148,11 +178,9 @@ const CAROUSEL_CSS = [
   // (the Widget's Ken-Burns toggle) — so a static hero still gets the cover layout + caption motion.
   '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="slide"]{overflow:hidden;position:relative}',
   '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;object-fit:cover}',
-  // Hero-slider polish: a STRONG caption drop-shadow, a frosted (backdrop-blurred) pill behind the dots, and
-  // thicker (4px) dot glyph strokes — scoped to the hero (data-kenburns) so a plain carousel is unaffected.
+  // Hero (data-kenburns) caption gets an EXTRA-strong drop-shadow over bright imagery. The frosted dots
+  // pill + thicker glyphs now come from the single-item default above (every kenburns hero matches it).
   '[data-sw-block="Carousel"][data-kenburns] .sw-caption{box-shadow:0 30px 80px rgba(0,0,0,.85),0 12px 28px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.5)}',
-  '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="dots"]{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
-  '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="dots"] button svg{stroke-width:4px}',
   '@media (prefers-reduced-motion: no-preference){' +
     '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
     '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +

@@ -66,8 +66,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <div data-sw-part="track">
     <figure data-sw-part="slide">
       <div class="sw-kenburns bg-gradient-to-br from-primary to-secondary" data-sw-bg="page.data.hero_slide_1"></div>
-      <div class="absolute inset-0 flex items-center justify-center bg-black/30 p-6">
-        <div class="sw-caption max-w-2xl text-center text-white">
+      <div class="absolute inset-0 flex items-center justify-center p-6">
+        <div class="sw-caption max-w-2xl p-8 text-center text-white sm:p-10">
           <h2 class="text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="page.data.hero_title_1">Craft that ships</h2>
           <p class="mt-4 text-lg text-white/80" data-sw-text="page.data.hero_lead_1">A full-bleed opener with a slow Ken Burns drift.</p>
           <a class="btn btn-primary mt-6" href="/contact" data-sw-href="page.data.hero_cta_url" data-sw-text="page.data.hero_cta_label">Get started</a>
@@ -76,8 +76,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     </figure>
     <figure data-sw-part="slide">
       <div class="sw-kenburns bg-gradient-to-tr from-secondary to-accent" data-sw-bg="page.data.hero_slide_2"></div>
-      <div class="absolute inset-0 flex items-center justify-center bg-black/30 p-6">
-        <div class="sw-caption max-w-2xl text-center text-white">
+      <div class="absolute inset-0 flex items-center justify-center p-6">
+        <div class="sw-caption max-w-2xl p-8 text-center text-white sm:p-10">
           <h2 class="text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="page.data.hero_title_2">Built to last</h2>
           <p class="mt-4 text-lg text-white/80" data-sw-text="page.data.hero_lead_2">Each caption is editable; the cover layer is a data-sw-bg image.</p>
         </div>
@@ -98,8 +98,10 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     demonstrates: ['carousel', 'data-effect=slide', 'data-loop', 'sw-icon', 'parts:prev/next/dots'],
     // data-effect="slide" translates the strip (vs the default crossfade); arrows + dots are optional
     // parts — omit a part to drop that control. Slide spacing is padding INSIDE the slide, never margin.
+    // data-arrows="circle" keeps the compact disc arrows: a single-item slider defaults to the full-height
+    // gradient EDGE arrows (right for image heroes), but a bordered CONTENT card wants the small discs.
     source: `{{!-- Single-item content slider. Each slide is one full-width card. --}}
-<div class="relative overflow-hidden rounded-3xl border border-base-200" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="What clients say">
+<div class="relative overflow-hidden rounded-3xl border border-base-200" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-arrows="circle" aria-label="What clients say">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="bg-base-100 px-10 py-14 text-center">
       <p class="mx-auto max-w-2xl text-xl leading-relaxed">&ldquo;They shipped twice as fast as our last agency, and the handover was flawless.&rdquo;</p>

@@ -60,6 +60,18 @@ function enhance(root) {
   root.style.visibility = 'hidden';
   setTimeout(reveal, 300);
 
+  // Arrow LOOK depends on slides-per-view: a single full-width slide (the default) gets the full-height
+  // gradient "hero" edge arrows; a multi-item / peek layout (--sw-items > 1) gets the compact circle
+  // arrows. Stamp data-sw-multi so the zero-specificity component CSS can branch (an explicit
+  // data-arrows="edge|circle" on the root overrides it in CSS). Re-run on reInit because a responsive
+  // --sw-items can flip at a breakpoint.
+  function syncItemsMode() {
+    var items = parseFloat(window.getComputedStyle(root).getPropertyValue('--sw-items')) || 1;
+    if (items > 1) root.setAttribute('data-sw-multi', 'true');
+    else root.removeAttribute('data-sw-multi');
+  }
+  syncItemsMode();
+
   var attr = function (name, fallback) {
     var v = root.getAttribute(name);
     return v === null || v === '' ? fallback : v;
@@ -296,6 +308,7 @@ function enhance(root) {
     .on('select', sync)
     .on('settle', pruneActive)
     .on('reInit', function () {
+      syncItemsMode();
       buildDots();
       applyItemAlign();
       sync();

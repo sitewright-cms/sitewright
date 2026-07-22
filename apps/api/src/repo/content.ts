@@ -253,6 +253,33 @@ export class ContentRepository {
   }
 
   /**
+   * APPEND-ONLY, RACE-SAFE backfill of a widget dataset's field schema. Adds any `manifestFields` the
+   * stored `dataset` lacks (matched by `name`) — never removes, reorders, or overwrites an existing
+   * field, never touches entries, and preserves every other dataset property (name, slug, …). The
+   * read-modify-write runs in ONE transaction, so a concurrent dataset edit cannot be lost to a stale
+   * snapshot (SQLite serializes the transaction). No-op — returns false, no write — when the dataset is
+   * absent or already has every manifest field. Used by widget provisioning to backfill a field added
+   * to a widget after a project already provisioned its dataset (e.g. the hero widget's `height`).
+   */
+  async reconcileDatasetFields(
+    ctx: ProjectContext,
+    slug: string,
+    manifestFields: ReadonlyArray<{ name: string }>,
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor; // tx exposes the same query builder
+      const existing = await this.row(exec, ctx, 'dataset', slug, '');
+      if (!existing) return false;
+      const data = existing.data as { fields?: Array<{ name?: string }> } & Record<string, unknown>;
+      const have = new Set((data.fields ?? []).map((f) => f?.name));
+      const missing = manifestFields.filter((f) => !have.has(f.name));
+      if (!missing.length) return false;
+      await this.writeRow(exec, ctx, 'dataset', slug, { ...data, fields: [...(data.fields ?? []), ...missing] });
+      return true;
+    });
+  }
+
+  /**
    * Delete one entity. `scope` narrows the (kind, entityId) key — pass the OWNING DATASET SLUG for an
    * `entry` (so the right dataset's row is removed), `''` for project-global kinds.
    */

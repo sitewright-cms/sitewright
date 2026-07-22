@@ -23,10 +23,18 @@ function pkgVersion(name: string): string {
  * The served bytes are minified, so a terser/clean-css version bump changes them for an unchanged source —
  * hashing the versions re-busts `?v=` instead of silently overwriting an `immutable`-cached URL.
  */
-export const MINIFIER_VERSION = `terser-${pkgVersion('terser')}+cleancss-${pkgVersion('clean-css')}`;
+export const MINIFIER_VERSION = `terser-${pkgVersion('terser')}+cleancss-${pkgVersion('clean-css')}-l1all0`;
 
 // clean-css keeps `/*! … */` banners by default (specialComments '*'); a single reusable instance is fine.
-const cleanCss = new CleanCSS();
+//
+// `level: { 1: { all: false } }` DISABLES clean-css's structural optimizations while keeping the base
+// pass (whitespace + comment stripping). Those optimizations SILENTLY DROP modern CSS clean-css 5.x
+// can't model — `@starting-style` and the `transition: display/overlay … allow-discrete` rule that drive
+// the slide-in of the cart drawer + component modals (a dropped rule → the drawer "pops" instead of
+// sliding). The base pass still gives ~all the byte win (comments/whitespace are the bulk); the skipped
+// structural rewrites cost <1% on real CSS. (The platform CSS uses no CSS nesting, which clean-css 5.x
+// also can't parse — see minify.test.ts.) The `-l1all0` marker above re-busts `?v=` for the changed output.
+const cleanCss = new CleanCSS({ level: { 1: { all: false } } });
 
 /**
  * Minify the platform's OWN inline CSS. SYNC (it's the renderDocument `minifyCss` hook, and renderDocument

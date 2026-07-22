@@ -982,7 +982,7 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain(':root[data-sw-theme=dark]{'); // dark token block inlined (CSS minified → attr quotes dropped)
+    expect(home).toMatch(/:root\[data-sw-theme=("?)dark\1\]\s*\{/); // dark token block inlined (attr quotes are minifier-optional)
     expect(home).toContain('data-sw-theme="light"'); // pinned default → no flash
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.

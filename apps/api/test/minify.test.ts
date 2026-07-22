@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { minifyJs, minifyCss, MINIFIER_VERSION } from '../src/publish/minify.js';
+import { CART_CSS } from '@sitewright/blocks';
 
 describe('minifyJs (terser)', () => {
   it('strips whitespace/comments and shrinks the source', async () => {
@@ -44,19 +45,30 @@ describe('minifyCss (clean-css)', () => {
     expect(out).toContain('/*! modern-normalize v3.0.1 | MIT License */');
   });
 
-  it('PRESERVES @starting-style + allow-discrete transitions (the cart/modal slide-in)', () => {
-    // Regression: clean-css's structural optimizations (level 1 `all`) silently DROP `@starting-style`
-    // and the `transition: … allow-discrete` rule, so the cart drawer "pops" instead of sliding.
+  it('PRESERVES the CONTENT inside @starting-style + the allow-discrete transition (cart/modal slide-in)', () => {
+    // Regression: clean-css 5.x parses the nested inner rule of `@starting-style{ sel{…} }` as a bogus
+    // property and empties the block to `@starting-style{}` (at EVERY level) — killing the ENTRY state so
+    // the cart drawer "pops" instead of sliding. Assert the INNER rule survives, not just the keyword.
     const css =
-      '[data-sw-cart] dialog{transform:translateX(100%);transition:transform .3s ease,display .3s allow-discrete,overlay .3s allow-discrete}' +
+      '[data-sw-cart] dialog{transform:translateX(100%);transition:transform .3s ease,display .3s allow-discrete}' +
       '[data-sw-cart] dialog[open]{transform:translateX(0);display:flex}' +
       '@starting-style{[data-sw-cart] dialog[open]{transform:translateX(100%)}}';
-    const out = minifyCss(css);
-    expect(out, 'the @starting-style entry state must survive').toContain('@starting-style');
+    const out = minifyCss(css).replace(/\s/g, '');
+    expect(out, 'the @starting-style block must keep its inner selector+decl (not an empty shell)').toMatch(
+      /@starting-style\{\[data-sw-cart\]dialog\[open\]\{transform:translateX\(100%\)\}\}/,
+    );
+    expect(out, 'must NOT be an empty @starting-style shell').not.toContain('@starting-style{}');
     expect(out, 'the allow-discrete transition must survive').toContain('allow-discrete');
-    expect(out, 'the base closed-state transform must survive').toContain('translateX(100%)');
     // still minified (whitespace/comment stripping is the bulk of the win)
     expect(minifyCss(`/* drop */\n${css}`)).not.toContain('/* drop */');
+  });
+
+  it('preserves the @starting-style body of the REAL shipped cart CSS (end-to-end guard)', () => {
+    const out = minifyCss(CART_CSS).replace(/\s/g, '');
+    // The cart drawer's entry state lives inside @starting-style — its inner dialog[open] transform must
+    // survive minification, or the shipped drawer "pops" instead of sliding.
+    expect(out).not.toContain('@starting-style{}'); // never an empty shell
+    expect(out).toMatch(/@starting-style\{[^@]*dialog\[open\][^@]*translateX\(100%\)/);
   });
 
   it('is a no-op for empty input and never throws on odd input', () => {

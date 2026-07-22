@@ -383,21 +383,27 @@ function IconGallery({ section, onClose }: { section: LibrarySection; onClose: (
       <div className="flex h-full flex-col gap-3 p-5">
         <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
         {/* Weight switcher — each button shows a sample glyph in that weight; fill is the default. */}
-        <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-1.5">
+        <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-2">
           {weights.map((w) => (
             <button
               key={w}
               role="radio"
               aria-checked={weight === w}
               onClick={() => setWeight(w)}
-              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs capitalize transition ${
+              className={`flex min-w-[7rem] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium capitalize leading-none transition ${
                 weight === w
                   ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
                   : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
               }`}
             >
-              {sample[w] && <span aria-hidden className="h-4 w-4" dangerouslySetInnerHTML={{ __html: sample[w]! }} />}
-              {w}
+              {sample[w] && (
+                <span
+                  aria-hidden
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
+                  dangerouslySetInnerHTML={{ __html: sample[w]! }}
+                />
+              )}
+              <span>{w}</span>
             </button>
           ))}
         </div>

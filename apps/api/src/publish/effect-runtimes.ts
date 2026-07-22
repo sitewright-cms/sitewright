@@ -81,7 +81,14 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   { key: 'marquee', uses: usesMarquee, css: MARQUEE_CSS }, // CSS-only (pure CSS animation)
   { key: 'lazyload', uses: usesLazyload, css: LAZYLOAD_CSS, js: LAZYLOAD_JS, script: 'lazyload.js' },
   { key: 'ripple', uses: usesRipple, css: RIPPLE_CSS, js: RIPPLE_JS, script: 'ripple.js' },
-  { key: 'cart', uses: usesCart, css: CART_CSS, js: CART_JS, script: 'cart.js', preview: 'style-only' },
+  // cart RUNS in the single-page preview: its ENTIRE visible UI (the fixed toggle tab + the drawer) is
+  // built by cart.js and gated `display:none` until `data-sw-enhanced`, so 'style-only' rendered NOTHING
+  // (the author saw no cart at all). cart.js is preview-safe by construction (localStorage in try/catch,
+  // showModal() fallback for the sandboxed iframe) and its overlay is benign in the canvas — the drawer
+  // opens only on an explicit toggle click, and an add-to-cart click just writes localStorage.
+  { key: 'cart', uses: usesCart, css: CART_CSS, js: CART_JS, script: 'cart.js', preview: 'run' },
+  // consent stays style-only: its runtime hydrates HELD cross-origin iframes + fights the click-to-edit
+  // bridge, and (unlike the cart) its banner markup is server-rendered so it's visible without the JS.
   { key: 'consent', uses: usesConsent, css: CONSENT_CSS, js: CONSENT_JS, script: 'consent.js', preview: 'style-only' },
 ];
 

@@ -96,6 +96,9 @@ import {
   decorateNav,
   NAV_LINK_JS,
   searchIcons,
+  renderIconSvg,
+  PHOSPHOR_NAMES,
+  PHOSPHOR_WEIGHTS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import {
@@ -5776,6 +5779,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const query = (typeof q.q === 'string' ? q.q : '').slice(0, 200);
     const limit = Math.min(48, Math.max(1, Number.parseInt(typeof q.limit === 'string' ? q.limit : '', 10) || 24));
     return { query, results: searchIcons(query, limit) };
+  });
+
+  // The Phosphor name + weight lists — the editor icon library fetches these so it can search/paginate
+  // client-side WITHOUT bundling the (multi-MB) icon-body data into the editor. STATIC platform data.
+  app.get('/authoring/icons/names', { config: rl(60) }, async () => ({ names: PHOSPHOR_NAMES, weights: PHOSPHOR_WEIGHTS }));
+
+  // Render a BATCH of icons to inline <svg> (the editor library previews a page at a time, per weight).
+  // `names` is comma-separated, capped; `weight` is one of PHOSPHOR_WEIGHTS (default fill). Bodies come
+  // only from the trusted maps; renderIconSvg attribute-escapes. STATIC; bounded (≤120 names/call).
+  app.get('/authoring/icons/render', { config: rl(120) }, async (req) => {
+    const q = req.query as { names?: unknown; weight?: unknown };
+    const weight = typeof q.weight === 'string' && (PHOSPHOR_WEIGHTS as readonly string[]).includes(q.weight) ? q.weight : 'fill';
+    const names = (typeof q.names === 'string' ? q.names : '')
+      .slice(0, 3000) // cap the raw string too (defense-in-depth, mirrors the search route), then the count
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean)
+      .slice(0, 120);
+    const svgs: Record<string, string> = {};
+    for (const name of names) {
+      const svg = name.startsWith('brand:') ? renderIconSvg(name, 'h-6 w-6') : renderIconSvg(`${name}:${weight}`, 'h-6 w-6');
+      if (svg) svgs[name] = svg;
+    }
+    return { weight, svgs };
   });
 
   // "Fork existing effect" snippets for the Website-settings custom-code editors — each built-in

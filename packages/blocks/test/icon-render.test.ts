@@ -84,7 +84,7 @@ describe('searchIcons — multi-term icon search', () => {
   it('matches tags as WHOLE words, not substrings (no cross-word false positives)', async () => {
     const { searchIcons } = await import('../src/index.js');
     // 'onito' is a mid-word fragment of the tag 'monitor' — must NOT surface tag-sourced matches.
-    const m = searchIcons('onito')[0].matches;
+    const m = searchIcons('onito')[0]!.matches;
     expect(m).not.toContain('pulse');
     expect(m).not.toContain('airplay');
   });

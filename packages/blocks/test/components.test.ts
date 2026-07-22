@@ -175,11 +175,15 @@ describe('component registry', () => {
     // The two selector sets are zero-specificity (each :where(...)), so an authored utility still wins.
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="edge"]');
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="circle"]');
-    // EDGE arrows match the original hand-built hero: a WIDE tab (up to 8rem), a STRONG gradient, and a
-    // LARGE 2.75rem chevron (vs the 1.5rem default). The chevron size is owned by the CSS (bare markup).
+    // EDGE arrows match the original hand-built hero: a WIDE tab (up to 8rem), a LARGE 2.75rem chevron,
+    // a LIGHT base gradient that DARKENS on hover (a cross-faded ::before, since gradients can't transition),
+    // and a chevron that slides FURTHER on press (:active).
     expect(css).toContain('width:clamp(4.5rem,8vw,8rem)');
-    expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?linear-gradient\(to right,rgb\(0 0 0\/\.8\)/);
-    expect(css).toMatch(/\[data-arrows="edge"\][^{]*svg\{width:2\.75rem;height:2\.75rem/);
+    expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?\)\{left:0;background:linear-gradient\(to right,rgb\(0 0 0\/\.5\)/); // light base
+    expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?\)::before\{background:linear-gradient\(to right,rgb\(0 0 0\/\.8\)/); // darker ::before
+    expect(css).toMatch(/:hover::before\{opacity:1\}/); // hover fades the darker layer in
+    expect(css).toMatch(/:active svg\{transform:scale\(1\.05\) translateX\(-\.8rem\)\}/); // press slides further
+    expect(css).toMatch(/\[data-arrows="edge"\][^{]*svg\{position:relative;z-index:1;width:2\.75rem;height:2\.75rem/);
     // Default (circle / bare) chevron size lives in the common zero-spec rule at 1.5rem.
     expect(css).toMatch(/:where\(\[data-sw-part="prev"\],\[data-sw-part="next"\]\) svg\{width:1\.5rem;height:1\.5rem\}/);
   });

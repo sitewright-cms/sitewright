@@ -49,19 +49,20 @@ describe('effect-runtime registry — self-consistency', () => {
     }
   });
 
-  it('classifies marquee (CSS-only) and cart/consent (style-only in preview) correctly', () => {
+  it('classifies marquee (CSS-only), consent (style-only) and cart (RUNS in preview) correctly', () => {
     const marquee = BODY_EFFECT_RUNTIMES.find((r) => r.key === 'marquee')!;
     expect(marquee.js).toBeUndefined();
     expect(marquee.script).toBeUndefined();
-    for (const key of ['cart', 'consent']) {
-      expect(BODY_EFFECT_RUNTIMES.find((r) => r.key === key)!.preview).toBe('style-only');
-    }
+    // consent stays style-only in preview; cart RUNS (its whole visible UI is JS-built, so style-only
+    // rendered nothing — the author saw no cart at all).
+    expect(BODY_EFFECT_RUNTIMES.find((r) => r.key === 'consent')!.preview).toBe('style-only');
+    expect(BODY_EFFECT_RUNTIMES.find((r) => r.key === 'cart')!.preview).toBe('run');
   });
 
   it('the helpers resolve the full set for an all-markers page, and nothing for a plain one', () => {
     // Every runtime WITH css inlines it in both paths (svg-morph is JS-only).
     expect(bodyEffectStyles(ALL_MARKERS)).toHaveLength(BODY_EFFECT_RUNTIMES.filter((r) => r.css).length);
-    // Preview JS = 'run' runtimes that have JS (excludes CSS-only marquee + style-only cart/consent).
+    // Preview JS = 'run' runtimes that have JS (excludes CSS-only marquee + style-only consent).
     const runWithJs = BODY_EFFECT_RUNTIMES.filter((r) => r.js && (r.preview ?? 'run') === 'run');
     expect(previewBodyEffectScripts(ALL_MARKERS)).toHaveLength(runWithJs.length);
     // Publish files = every runtime with an external script (all except CSS-only marquee).
@@ -138,7 +139,7 @@ describe('effect-runtime registry — behavioural parity (publish vs preview)', 
     }
 
     // PREVIEW: the same page inlines every runtime's CSS + the 'run' runtimes' JS (svg draw signature,
-    // parallax selector, animation observer). cart/consent are styled but their JS stays inert.
+    // parallax selector, animation observer). consent is styled but its JS stays inert (cart runs).
     const preview = ((await client.post(`/projects/${projectId}/preview`, page)).json() as { html: string }).html;
     expect(preview).toContain('transform-box:fill-box'); // svg-anim CSS
     expect(preview).toContain('getTotalLength'); // svg-anim JS (run)

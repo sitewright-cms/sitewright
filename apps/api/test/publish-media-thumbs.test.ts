@@ -131,6 +131,59 @@ describe('rebaseMediaHeadUrl', () => {
   });
 });
 
+// The CURRENT editor media-url scheme is FLAT: `/media/<slug>/<id>-<name>` (short id + '-' + filename,
+// no per-asset folder — [[media-flat-scheme-epic]]). Publishing a project whose assets are on that scheme
+// must rebase these urls exactly like the legacy `<id>/<name>` folder shape — a regression here shipped
+// EVERY image as an un-rebased `/media/…` 404 on the published site.
+describe('media rebase — FLAT <id>-<name> scheme', () => {
+  it('rewriteMediaUrlsFlat rebases flat sized + bare + name-with-hyphens image urls', () => {
+    const refs: ThumbRefs = new Map();
+    const html =
+      `<img src="/media/acme/a1-photo.jpg?size=lg&format=webp">` +
+      `<img src="/media/acme/a2-hero.png">` +
+      `<img src="/media/acme/bz-brand-logo.png">`; // the live-bug shape (id `bz`, name `brand-logo.png`)
+    const out = rewriteMediaUrlsFlat(html, 'acme', '', refs, idAlias);
+    expect(out).toContain('_assets/a1-photo-lg.webp');
+    expect(out).toContain('_assets/a2-hero-xl.webp'); // bare ⇒ xl default
+    expect(out).toContain('_assets/bz-brand-logo-xl.webp'); // id split at FIRST hyphen, name keeps the rest
+    expect(out).not.toContain('/media/acme/'); // fully rebased — no leftover 404 urls
+    expect(refs.get('bz')?.thumbs.has('xl:webp')).toBe(true);
+  });
+
+  it('rewriteMediaUrlsFlat handles flat svg + non-image + size=original', () => {
+    const refs: ThumbRefs = new Map();
+    const html = `/media/acme/s1-logo.svg /media/acme/f1-styles.css /media/acme/a1-doc.png?size=original`;
+    const out = rewriteMediaUrlsFlat(html, 'acme', '', refs, idAlias);
+    expect(out).toContain('_assets/s1-logo.svg');
+    expect(out).toContain('_assets/f1-styles.css');
+    expect(out).toContain('_assets/a1-doc.png');
+    expect(out).not.toContain('/media/acme/');
+    expect(refs.get('s1')?.original).toBe(true);
+    expect(refs.get('a1')?.original).toBe(true);
+  });
+
+  it('resolveThumbForHead + rebaseMediaHeadUrl resolve flat urls (og:image / logo)', () => {
+    const refs: ThumbRefs = new Map();
+    expect(resolveThumbForHead('/media/acme/og-pic.jpg', '/media/acme/', '_assets/', 'lg', 'webp', refs, idAlias)).toBe(
+      '_assets/og-pic-lg.webp',
+    );
+    expect(resolveThumbForHead('/media/acme/lg-brand-logo.png', '/media/acme/', '_assets/', 'lg', 'webp', refs, idAlias)).toBe(
+      '_assets/lg-brand-logo-lg.webp', // id `lg`, name `brand-logo.png` → thumbnail
+    );
+    expect(rebaseMediaHeadUrl('/media/acme/f1-brand.css', '/media/acme/', '_assets/', refs, idAlias)).toBe(
+      '_assets/f1-brand.css',
+    );
+  });
+
+  it('leaves a bare/malformed flat ref untouched (no name after the id)', () => {
+    const refs: ThumbRefs = new Map();
+    // `/media/acme/nohyphen` has no `-` → not a valid flat url → left as-is rather than mis-rebased.
+    expect(rewriteMediaUrlsFlat('<a href="/media/acme/nohyphen">x</a>', 'acme', '', refs, idAlias)).toContain(
+      '/media/acme/nohyphen',
+    );
+  });
+});
+
 describe('materializeImageThumbs', () => {
   let dir = '';
   let png: Buffer = Buffer.alloc(0);

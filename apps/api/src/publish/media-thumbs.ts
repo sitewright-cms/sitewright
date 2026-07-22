@@ -79,22 +79,46 @@ function parseQuery(query: string): { size: SizeToken | 'original'; format: Thum
 }
 
 /**
- * Resolve one image/raw media DELIVERY path (`<id>/<name>` or `<id>/file/<name>`, no leading slug) to
- * its FLAT bundled file name (`<alias>-<name…>`). Records an ORIGINAL ref for svg (so materialize
- * copies it). Returns just the flat basename (no `_assets/` prefix). `undefined` when the shape is not
- * a recognised `<id>/…<name>` path. Used by the head/SEO `rel()` fallback (never runs `?size=`).
+ * Split the part of a `/media/<slug>/…` url AFTER the slug prefix (query already removed) into its asset
+ * id + file name, handling BOTH media-url shapes:
+ *   - FLAT `<id>-<name>` (the current scheme, [[media-flat-scheme-epic]]) — id = the run before the FIRST
+ *     hyphen (the same rule as blocks' `mediaAssetId`); a flat url has no raw `/file/` variant.
+ *   - legacy `<id>/[file/]<name>` FOLDER — id = the whole 1st segment; `/file/` marks a verbatim download.
+ * `undefined` for a shape that is neither (a bare `/media/<slug>/`, extra nesting, or no name), so the
+ * caller leaves the url untouched. Distinguishing the two on the slash keeps the flat `<id>-<name>` from
+ * being mistaken for a folder and vice-versa.
+ */
+function splitMediaPath(rest: string): { id: string; name: string; isRaw: boolean } | undefined {
+  const slash = rest.indexOf('/');
+  if (slash === 0) return undefined; // leading slash → malformed
+  if (slash > 0) {
+    const id = rest.slice(0, slash);
+    let name = rest.slice(slash + 1);
+    const isRaw = name.startsWith('file/');
+    if (isRaw) name = name.slice('file/'.length);
+    if (!id || !name || name.includes('/')) return undefined; // no further nesting is expected
+    return { id, name, isRaw };
+  }
+  // FLAT single segment: `<id>-<name>` (id ends at the first hyphen; the name keeps any later hyphens).
+  const dash = rest.indexOf('-');
+  if (dash <= 0) return undefined;
+  const id = rest.slice(0, dash);
+  const name = rest.slice(dash + 1);
+  return id && name ? { id, name, isRaw: false } : undefined;
+}
+
+/**
+ * Resolve one image/raw media DELIVERY path (flat `<id>-<name>` or legacy `<id>/[file/]<name>`, no
+ * leading slug) to its FLAT bundled file name (`<alias>-<name…>`). Records an ORIGINAL ref for svg (so
+ * materialize copies it). Returns just the flat basename (no `_assets/` prefix). `undefined` when the
+ * shape is unrecognised. Used by the head/SEO `rel()` fallback (never runs `?size=`).
  */
 function resolveFlatFile(rest: string, refs: ThumbRefs, alias: AliasFn): string | undefined {
-  const slash = rest.indexOf('/');
-  if (slash <= 0) return undefined;
-  const id = rest.slice(0, slash);
-  let name = rest.slice(slash + 1);
-  const isRaw = name.startsWith('file/');
-  if (isRaw) name = name.slice('file/'.length);
-  if (!name || name.includes('/')) return undefined; // no further nesting is expected
-  const a = alias(id);
-  if (!isRaw && isSvgFile(name)) addOriginalRef(refs, id);
-  return flatMediaName(a, name);
+  const seg = splitMediaPath(rest);
+  if (!seg) return undefined;
+  const a = alias(seg.id);
+  if (!seg.isRaw && isSvgFile(seg.name)) addOriginalRef(refs, seg.id);
+  return flatMediaName(a, seg.name);
 }
 
 /**
@@ -113,16 +137,20 @@ export function rewriteMediaUrlsFlat(
 ): string {
   const prefix = `/media/${projectSlug}/`;
   const assetRoot = `${siteRoot}${ASSET_DIR}/`;
-  // <id>/[file/]<name>[?query] — char classes exclude the delimiters that end a URL token (quotes,
-  // whitespace, ')', ',', '>'), so a match never runs past its own URL.
+  // The media PATH — either flat `<id>-<name>` or legacy `<id>/[file/]<name>` — then an optional query.
+  // The char classes exclude the delimiters that end a URL token (quotes, whitespace, ')', ',', '>'), so
+  // a match never runs past its own URL. `splitMediaPath` disambiguates the two shapes on the slash.
   const re = new RegExp(
-    `${escapeRegExp(prefix)}([A-Za-z0-9_-]+)/(file/)?([A-Za-z0-9_.-]+)(\\?[A-Za-z0-9=&%_-]*)?`,
+    `${escapeRegExp(prefix)}([A-Za-z0-9_.-]+(?:/(?:file/)?[A-Za-z0-9_.-]+)?)(\\?[A-Za-z0-9=&%_-]*)?`,
     'g',
   );
-  return html.replace(re, (_whole, id: string, rawSeg: string | undefined, name: string, query: string | undefined) => {
+  return html.replace(re, (whole: string, path: string, query: string | undefined) => {
+    const seg = splitMediaPath(path);
+    if (!seg) return whole; // unrecognised shape → leave untouched (a stray bare /media/<slug>/ ref)
+    const { id, name, isRaw } = seg;
     const a = alias(id);
     // RAW download (`/file/<name>`) — copied verbatim by copyMedia; drop the query.
-    if (rawSeg) return `${assetRoot}${flatMediaName(a, name)}`;
+    if (isRaw) return `${assetRoot}${flatMediaName(a, name)}`;
     if (isSvgFile(name)) {
       addOriginalRef(refs, id);
       return `${assetRoot}${flatMediaName(a, name)}`;
@@ -157,11 +185,9 @@ export function resolveThumbForHead(
   const rest = src.slice(mediaPrefix.length);
   const q = rest.indexOf('?');
   const clean = q >= 0 ? rest.slice(0, q) : rest;
-  const slash = clean.indexOf('/');
-  if (slash < 0) return undefined;
-  const id = clean.slice(0, slash);
-  const name = clean.slice(slash + 1);
-  if (!id || name.includes('/')) return undefined;
+  const seg = splitMediaPath(clean);
+  if (!seg) return undefined;
+  const { id, name } = seg;
   const a = alias(id);
   // A vector (SVG) head/SEO image (og:image / logo) is copied verbatim — no thumbnail variant.
   if (isSvgFile(name)) {

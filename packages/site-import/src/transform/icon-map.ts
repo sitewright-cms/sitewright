@@ -19,8 +19,11 @@ const LUCIDE = new Set<string>(ICON_NAMES);
 const BRANDS = new Set<string>(BRAND_ICON_NAMES);
 const FLAGS = new Set<string>(FLAG_CODES);
 
-/** A resolved platform icon: a bare Lucide name, or a simple-icons brand slug. */
-export type IconMapping = { icon: string } | { brand: string };
+/** Phosphor weight carried when the FOREIGN icon signals a non-filled style ({{sw-icon}} renders `fill` by
+ *  default, so `solid` sources need no weight). Emitted as the `name:weight` suffix. */
+export type IconWeight = 'thin' | 'light' | 'regular' | 'duotone';
+/** A resolved platform icon: a bare icon name (+ optional non-default weight), or a simple-icons brand slug. */
+export type IconMapping = { icon: string; weight?: IconWeight } | { brand: string };
 
 /**
  * Foreign icon name → Lucide name, ONLY where the names genuinely differ (a direct name match needs no
@@ -68,83 +71,115 @@ const BRAND_ALIAS: Readonly<Record<string, string>> = {
 const FA_MODIFIER = /^(\d+x|fw|lg|sm|xs|spin|pulse|border|pull-left|pull-right|inverse|li|stack|stack-1x|stack-2x|rotate-\d+|flip-\w+|fixed-width)$/;
 // FA6 FAMILY tokens (`fa-brands`, `fa-solid`, …) sit alongside the icon token — a family, not a name.
 const FA_FAMILY = /^(brands|solid|regular|light|thin|duotone|sharp)$/;
+// FA family → the Phosphor weight it visually corresponds to. Solid/sharp/brands map to the platform's
+// filled DEFAULT (no entry). Both the FA6 long form (`fa-regular`) and the FA5 short form (`far`) count.
+const FA_FAMILY_WEIGHT: Readonly<Record<string, IconWeight>> = {
+  regular: 'regular', light: 'light', thin: 'thin', duotone: 'duotone',
+  far: 'regular', fal: 'light', fat: 'thin', fad: 'duotone',
+};
 
 /**
  * Resolve a normalized foreign icon name to a platform icon, or null when there's no equivalent. Brand /
- * social names win over Lucide (a `brand:` slug is the real logo), so this checks the brand set first.
+ * social names win over the icon set (a `brand:` slug is the real logo — always filled, weight dropped).
+ * The name's own VARIANT suffix refines the weight: `-o`/`-outline(d)` → regular, `-two-tone` → duotone,
+ * `-fill` → the filled default (overriding an ecosystem's outline default, e.g. Bootstrap's).
  */
-function resolveName(raw: string): IconMapping | null {
+function resolveName(raw: string, weight?: IconWeight): IconMapping | null {
   if (!raw) return null;
   const name = raw.toLowerCase();
+  if (/-(?:o|outline|outlined)$/.test(name)) weight = 'regular';
+  else if (name.endsWith('-two-tone')) weight = 'duotone';
+  else if (name.endsWith('-fill')) weight = undefined;
   // Strip FA outline (-o) / -alt and Bootstrap/Material `-fill`/`-outline` variants → the base name.
   const base = name.replace(/-(?:o|alt|fill|outline|outlined|round|sharp|two-tone)$/, '');
-  // LinkedIn lives in Lucide (not the simple-icons brand set) — resolve it there before the brand checks.
+  const icon = (n: string): IconMapping => (weight ? { icon: n, weight } : { icon: n });
+  // LinkedIn lives in the icon set (not the simple-icons brand set) — a logo, so keep it filled (no weight).
   if (name === 'linkedin' || name === 'linkedin-in' || base === 'linkedin') return { icon: 'linkedin' };
   /* eslint-disable-next-line security/detect-object-injection -- static alias Record read; the key is a normalized icon token, not attacker-controlled property access */
   const brandAlias = BRAND_ALIAS[name] ?? BRAND_ALIAS[base];
   if (brandAlias && BRANDS.has(brandAlias)) return { brand: brandAlias };
   if (BRANDS.has(name)) return { brand: name };
   if (BRANDS.has(base)) return { brand: base };
-  if (LUCIDE.has(name)) return { icon: name };
-  if (LUCIDE.has(base)) return { icon: base };
+  if (LUCIDE.has(name)) return icon(name);
+  if (LUCIDE.has(base)) return icon(base);
   /* eslint-disable-next-line security/detect-object-injection -- static alias Record read; the key is a normalized icon token, not attacker-controlled property access */
   const iconAlias = ICON_ALIAS[name] ?? ICON_ALIAS[base];
-  if (iconAlias && LUCIDE.has(iconAlias)) return { icon: iconAlias };
-  if (LUCIDE.has(`${base}s`)) return { icon: `${base}s` }; // fuzzy plural
-  if (base.endsWith('s') && LUCIDE.has(base.slice(0, -1))) return { icon: base.slice(0, -1) }; // fuzzy singular
+  if (iconAlias && LUCIDE.has(iconAlias)) return icon(iconAlias);
+  if (LUCIDE.has(`${base}s`)) return icon(`${base}s`); // fuzzy plural
+  if (base.endsWith('s') && LUCIDE.has(base.slice(0, -1))) return icon(base.slice(0, -1)); // fuzzy singular
   return null;
 }
 
-/** The bare icon token extracted from a foreign class string (`fa-phone` → `phone`), or null. */
-function extractToken(classStr: string): string | null {
-  for (const t of classStr.toLowerCase().split(/\s+/).filter(Boolean)) {
+/** The bare icon token + the WEIGHT its ecosystem/family signals (`fa fa-phone` → filled default;
+ *  `far fa-clock` / `bi bi-envelope` / `feather-mail` → outline `regular`), or null. */
+function extractToken(classStr: string): { name: string; weight?: IconWeight } | null {
+  const tokens = classStr.toLowerCase().split(/\s+/).filter(Boolean);
+  // FA FAMILY is a sibling token (`far fa-clock`, `fa-regular fa-user`) — find it before the name loop.
+  let faWeight: IconWeight | undefined;
+  for (const t of tokens) {
+    /* eslint-disable-next-line security/detect-object-injection -- static Record read of a class token */
+    const w = FA_FAMILY_WEIGHT[t.replace(/^fa-/, '')] ?? FA_FAMILY_WEIGHT[t];
+    if (w) { faWeight = w; break; }
+  }
+  for (const t of tokens) {
     // FontAwesome: `fa-<name>` — skip the family (`fa-brands`) and sizing/style modifiers.
     let m = t.match(/^fa-(.+)$/);
-    if (m && m[1] && !FA_MODIFIER.test(m[1]) && !FA_FAMILY.test(m[1])) return m[1];
-    // Bootstrap Icons: `bi-<name>`.
+    if (m && m[1] && !FA_MODIFIER.test(m[1]) && !FA_FAMILY.test(m[1])) return { name: m[1], weight: faWeight };
+    // Bootstrap Icons: `bi-<name>` — the BARE set is outline; `-fill` names are the filled variants
+    // (resolveName's `-fill` handling drops the weight back to the filled default).
     m = t.match(/^bi-(.+)$/);
-    if (m && m[1]) return m[1];
+    if (m && m[1]) return { name: m[1], weight: 'regular' };
     // Ionicons: `ion-<name>` / `ion-md-<name>` / `ion-ios-<name>`; `logo-`/`social-` → a brand name.
     m = t.match(/^ion-(?:md-|ios-)?(.+)$/);
-    if (m && m[1]) return m[1].replace(/^(?:logo|social)-/, '');
-    // Feather: `feather-<name>` (the `feather` base class is skipped).
+    if (m && m[1]) return { name: m[1].replace(/^(?:logo|social)-/, '') };
+    // Feather: `feather-<name>` — a stroke set, so outline weight.
     m = t.match(/^feather-(.+)$/);
-    if (m && m[1]) return m[1];
-    // Inline Lucide convention: `lucide lucide-<name>` (a captured `lucide-react`/CDN svg keeps this class).
+    if (m && m[1]) return { name: m[1], weight: 'regular' };
+    // Inline Lucide convention: `lucide lucide-<name>` — also a stroke set.
     m = t.match(/^lucide-(.+)$/);
-    if (m && m[1]) return m[1];
-    // Glyphicons (Bootstrap 3): `glyphicon-<name>`.
+    if (m && m[1]) return { name: m[1], weight: 'regular' };
+    // Glyphicons (Bootstrap 3): `glyphicon-<name>` — solid glyphs, filled default.
     m = t.match(/^glyphicon-(.+)$/);
-    if (m && m[1]) return m[1];
+    if (m && m[1]) return { name: m[1] };
   }
   return null;
 }
 
 /**
- * Resolve a foreign icon CLASS string to a platform icon, or null when there's no equivalent.
- * @example mapIconClass('fa fa-4x fa-suitcase') // { icon: 'briefcase' }
+ * Resolve a foreign icon CLASS string to a platform icon, or null when there's no equivalent. The mapping
+ * carries a Phosphor WEIGHT when the source is an outline/light variant ({{sw-icon}} is FILLED by default,
+ * so solid sources emit no suffix and outline sources emit `name:regular` — the clone keeps the original's
+ * visual weight instead of silently swapping outline glyphs for filled ones).
+ * @example mapIconClass('fa fa-4x fa-suitcase') // { icon: 'briefcase' }             (solid → filled default)
+ * @example mapIconClass('far fa-clock')         // { icon: 'clock', weight: 'regular' }
  * @example mapIconClass('fab fa-twitter')       // { brand: 'x' }
- * @example mapIconClass('bi bi-telephone')      // { icon: 'phone' }
+ * @example mapIconClass('bi bi-telephone')      // { icon: 'phone', weight: 'regular' }
+ * @example mapIconClass('bi bi-envelope-fill')  // { icon: 'mail' }                  (-fill → filled default)
  * @example mapIconClass('btn btn-primary')      // null (not an icon)
  */
 export function mapIconClass(classStr: string | null | undefined): IconMapping | null {
   if (!classStr) return null;
   const token = extractToken(classStr);
-  return token ? resolveName(token) : null;
+  return token ? resolveName(token.name, token.weight) : null;
 }
 
 /**
  * Resolve a Material Icons LIGATURE to a platform icon, or null. Material renders `<i class="material-icons">
  * home</i>` — the icon is the element's TEXT, not a class — so underscores in the ligature are normalized
- * to hyphens before the shared resolver runs.
+ * to hyphens before the shared resolver runs. The optional CLASS string carries Material's style variant
+ * (`material-icons-outlined` → outline `regular`, `…-two-tone` → `duotone`; the base font is filled =
+ * platform default).
  * @example mapMaterialLigature('shopping_cart') // { icon: 'shopping-cart' }
  * @example mapMaterialLigature('call')          // { icon: 'phone' }
+ * @example mapMaterialLigature('home', 'material-icons-outlined') // { icon: 'house', weight: 'regular' }
  */
-export function mapMaterialLigature(text: string | null | undefined): IconMapping | null {
+export function mapMaterialLigature(text: string | null | undefined, classStr?: string | null): IconMapping | null {
   if (!text) return null;
   const name = text.trim().toLowerCase().replace(/_/g, '-');
   if (!name || /\s/.test(name)) return null; // a ligature is a single token; real prose is not an icon
-  return resolveName(name);
+  const cls = (classStr ?? '').toLowerCase();
+  const weight: IconWeight | undefined = /\boutlined\b|-outlined\b/.test(cls) ? 'regular' : /two-tone/.test(cls) ? 'duotone' : undefined;
+  return resolveName(name, weight);
 }
 
 /**

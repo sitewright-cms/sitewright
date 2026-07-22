@@ -262,6 +262,18 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
     .catch(() => {});
   // 2 — network settle after the scroll's lazy fetches
   await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
+  // 2b — platform carousels hide their track during Embla enhancement (the #718 CLS guard) and reveal it two
+  // rAFs AFTER data-sw-enhanced lands — a capture in that window shows a blank band. Wait (bounded) until
+  // every multi-slide carousel is enhanced AND visible. Vacuously immediate on pages without platform
+  // carousels (the live ORIGINAL side), and a stalled init just burns the 1s timeout, never fails the render.
+  await page
+    .waitForFunction(
+      `Array.from(document.querySelectorAll('[data-sw-component="carousel"]')).every((c) =>
+         c.querySelectorAll('[data-sw-part="slide"]').length < 2 ||
+         (c.getAttribute('data-sw-enhanced') === 'true' && c.style.visibility !== 'hidden'))`,
+      { timeout: 1000 },
+    )
+    .catch(() => {});
   // 3 — fonts ready
   await page
     .evaluate(async () => { const g = globalThis as unknown as { document?: { fonts?: { ready?: Promise<unknown> } } }; if (g.document?.fonts?.ready) { try { await g.document.fonts.ready; } catch { /* fonts optional */ } } })
@@ -301,18 +313,34 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
   if (opts?.freeze !== false) {
     await page
       .evaluate(() => {
-        const g = globalThis as unknown as { document: { getAnimations?: () => Array<{ finish: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } } };
-        try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { /* running/infinite */ } }); } catch { /* not supported */ }
+        const g = globalThis as unknown as {
+          document: { getAnimations?: () => Array<{ finish: () => void; cancel?: () => void }>; createElement: (t: string) => { textContent: string }; head?: { appendChild: (n: unknown) => void } };
+          setTimeout: (fn: () => void, ms: number) => number; clearTimeout: (id: number) => void; clearInterval: (id: number) => void;
+        };
+        // Finish finite animations to their end-state; an INFINITE one throws on finish() — CANCEL it back to
+        // its base state instead of leaving it paused mid-tween (a CSS marquee/rotator paused mid-cross-fade
+        // is the "garbled overlapping text" capture).
+        try { g.document.getAnimations?.().forEach((a) => { try { a.finish(); } catch { try { a.cancel?.(); } catch { /* detached */ } } }); } catch { /* not supported */ }
+        // JS-timer cyclers (jQuery/slick rotators, bespoke setInterval sliders) ignore every CSS/WAAPI freeze
+        // and keep mutating the DOM between the freeze and the shot. The capture is terminal — nothing after
+        // it needs page timers — so clear them all (ids are a monotonic counter; a fresh id bounds the sweep).
+        // Sweep capped: a hostile page could pre-inflate the timer-id counter to make this loop spin.
+        try { const top = Math.min(g.setTimeout(() => {}, 0), 100_000); for (let i = 1; i <= top; i++) { g.clearTimeout(i); g.clearInterval(i); } } catch { /* timers optional */ }
         const s = g.document.createElement('style');
         // Pause CSS/WAAPI animations AND force scroll-reveal libraries to their VISIBLE end-state — a
         // JS-driven reveal (Framer-Motion whileInView sets inline opacity/translate; AOS `[data-aos]`;
         // Locomotive `[data-scroll]`; the platform's own `[data-sw-animation]`) leaves a section at
         // opacity:0 once it scrolls out of view, which a full-page composite would capture as BLANK.
         // Targeted (inline-reveal + known reveal hooks) so normal layout/transforms are untouched.
+        // Slick fade-rotators stack ALL slides with inline opacities mid-fade — collapse to the active one.
         s.textContent =
           '*,*::before,*::after{animation-play-state:paused !important;transition:none !important;scroll-behavior:auto !important}' +
           '[style*="opacity"],[data-aos],[data-sw-animation],[data-scroll]{opacity:1 !important;visibility:visible !important}' +
-          '[style*="translate"],[data-aos],[data-sw-animation]{transform:none !important}';
+          '[style*="translate"],[data-aos],[data-sw-animation]{transform:none !important}' +
+          '.slick-slide:not(.slick-active){opacity:0 !important}.slick-slide.slick-active{opacity:1 !important}' +
+          // The timer sweep above may have killed a still-pending #718 fallback-reveal timer — force the
+          // carousel visible for the shot (its enhancement, when done, is already awaited in step 2b).
+          '[data-sw-component="carousel"]{visibility:visible !important}';
         g.document.head?.appendChild(s);
       })
       .catch(() => {});

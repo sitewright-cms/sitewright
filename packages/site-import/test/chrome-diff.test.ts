@@ -277,3 +277,22 @@ describe('scoreChromeMeta', () => {
     expect(r.metaOff).toBe(0);
   });
 });
+
+describe('scoreChrome — clip-path skew equivalence + font fingerprints (clone-friction round)', () => {
+  it('a clip-path parallelogram clone of a transform-skewed original does not flag skew', () => {
+    const orig = [el({ text: 'REQUEST QUOTE', transform: SKEW25, w: 250 })];
+    // 8% of a 250px button over 40px height ≈ -27° — the realistic clip build of a -25° skew.
+    const clone = [el({ text: 'REQUEST QUOTE', clip: 'polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%)', w: 250, h: 40 })];
+    const straight = [el({ text: 'REQUEST QUOTE', w: 250 })];
+    // Straight clone: -25° vs 0° flags. Clip clone: -25° vs ≈-22° is inside the doubled clip tolerance.
+    expect(scoreChrome(matchChrome(orig, straight)).diffs[0]?.props.join()).toContain('skew:-25°→0°');
+    expect(scoreChrome(matchChrome(orig, clone)).diffs).toHaveLength(0);
+  });
+  it('font fingerprints suppress a same-face name alias in chrome scoring', () => {
+    const orig = [el({ text: 'Web Design', font: 'secondary-font' })];
+    const clone = [el({ text: 'Web Design', font: 'Orbitron, sans-serif' })];
+    expect(scoreChrome(matchChrome(orig, clone)).styleOff).toBe(1); // names differ, no metrics
+    const fonts = { orig: { 'secondary-font': 2731 }, clone: { orbitron: 2735 } };
+    expect(scoreChrome(matchChrome(orig, clone), { fonts }).styleOff).toBe(0);
+  });
+});

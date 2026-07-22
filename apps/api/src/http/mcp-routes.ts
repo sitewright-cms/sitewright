@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createSitewrightMcpServer, staticAuth, SitewrightClient, SitewrightApiError, type FetchLike } from '@sitewright/mcp';
+import { hashApiToken } from '../auth/api-keys.js';
 import { issuerOf } from './oauth-routes.js';
 
 function bearerOf(req: FastifyRequest): string | undefined {
@@ -55,6 +56,25 @@ export function registerMcpRoutes(
     return new SitewrightClient('', async () => token, fetchImpl);
   };
 
+  // The JSON-RPC id of the posted request (best-effort — null when the body never parsed, e.g. a 429
+  // thrown at onRequest). Error replies carry a real JSON-RPC envelope so a stateless MCP host gets a
+  // well-formed `error{code,message}` it can surface/retry on, instead of a bare HTTP JSON body it
+  // reports as an undefined RPC error.
+  const rpcIdOf = (body: unknown): string | number | null => {
+    const id = (body as { id?: unknown } | null | undefined)?.id;
+    return typeof id === 'string' || typeof id === 'number' ? id : null;
+  };
+  const rpcError = (reply: FastifyReply, status: number, message: string, id: string | number | null): FastifyReply =>
+    reply.code(status).send({ jsonrpc: '2.0', id, error: { code: -32000, message } });
+
+  // Introspect cache: EVERY /mcp POST resolves the token's scope via GET /api-key/self, which sits in the
+  // same per-token rate bucket at 30/min — an agent pacing tool calls well under the /mcp cap still tripped
+  // it, surfacing as `mcp_unavailable` mid-run. Successful scopes are immutable for a key's lifetime in
+  // practice (project binding + role + capabilities), so a short cache removes the hidden ceiling; every
+  // TOOL call still re-validates the bearer in-process, so a revoked key fails closed within the TTL anyway.
+  const SCOPE_TTL_MS = 15_000;
+  const scopeCache = new Map<string, { scope: Awaited<ReturnType<SitewrightClient['introspect']>>; exp: number }>();
+
   const handle = async (req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     // issuerOf prefers SW_PUBLIC_URL, else derives from the request — same single-origin assumption
     // the OAuth routes make (behind a TLS proxy set SW_PUBLIC_URL or TRUST_PROXY so this isn't
@@ -70,17 +90,31 @@ export function registerMcpRoutes(
     if (!token) return challenge();
 
     // Resolve the token's project scope (validates it); a bad/expired token → the OAuth challenge,
-    // any other API error (e.g. a 429 from the introspect rate-limit) → its real status, not a 500.
+    // any other API error (e.g. a 429 from the introspect rate-limit) → its real status as a JSON-RPC
+    // error envelope, not a 500. Fresh scopes are cached briefly (see SCOPE_TTL_MS above).
     const client = injectClient(token);
+    // Cache key = the token's sha256 (the codebase-wide rule: raw tokens are never persisted or held
+    // beyond the request), so a heap inspection of the cache yields no usable bearer material.
+    const cacheKey = hashApiToken(token);
+    const cached = scopeCache.get(cacheKey);
     let scope;
-    try {
-      scope = await client.introspect();
-    } catch (err) {
-      if (err instanceof SitewrightApiError) {
-        if (err.status === 401) return challenge();
-        return reply.code(err.status).send({ error: 'mcp_unavailable', error_description: err.message });
+    if (cached && cached.exp > Date.now()) {
+      scope = cached.scope;
+      // The client instance is per-request — seed it so tool calls (which read the client's own
+      // introspected scope for project paths) work without re-spending an introspect request.
+      client.primeScope(scope);
+    } else {
+      try {
+        scope = await client.introspect();
+      } catch (err) {
+        if (err instanceof SitewrightApiError) {
+          if (err.status === 401) return challenge();
+          return rpcError(reply, err.status, `mcp_unavailable: ${err.message}`, rpcIdOf(req.body));
+        }
+        throw err;
       }
-      throw err;
+      if (scopeCache.size > 500) scopeCache.clear(); // bound memory on token churn; refill is one introspect
+      scopeCache.set(cacheKey, { scope, exp: Date.now() + SCOPE_TTL_MS });
     }
 
     // Stateless transport (no session store): the bearer token carries all state, so each request is
@@ -106,7 +140,16 @@ export function registerMcpRoutes(
     }
   };
 
-  app.post('/mcp', { config: opts.rl(120) }, handle);
+  // Route-level error handler: a 429 thrown by the rate-limit hook (or an unexpected 500) would otherwise
+  // go out as the app-wide bare `{ error: … }` JSON — not a JSON-RPC envelope — which stateless MCP hosts
+  // surface as an undefined RPC error. The rate-limit plugin's retry-after/x-ratelimit-* headers are
+  // already on the reply and survive this handler; the message tells the agent to honor them.
+  const mcpErrorHandler = (error: { statusCode?: number }, req: FastifyRequest, reply: FastifyReply): void => {
+    const status = error.statusCode ?? 500;
+    const message = status === 429 ? 'rate limit exceeded — honor the retry-after header and back off' : 'internal error';
+    void rpcError(reply, status, message, rpcIdOf(req.body));
+  };
+  app.post('/mcp', { config: opts.rl(120), errorHandler: mcpErrorHandler }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination
   // (DELETE) — 405 so a spec-compliant host doesn't open and wait on a stream that never arrives
   // (and we never buffer a streaming body via .text()).

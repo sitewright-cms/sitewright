@@ -303,6 +303,13 @@ export class SitewrightClient {
     return scope;
   }
 
+  /** Seeds the scope WITHOUT a network round-trip — for a caller that already introspected this same
+   *  token (e.g. the /mcp transport's short-lived scope cache). Every subsequent API call still carries
+   *  the bearer and is re-validated server-side, so a stale seed fails closed, never open. */
+  primeScope(scope: Scope): void {
+    this.scope = scope;
+  }
+
   async listContent(kind: string, dataset?: string): Promise<unknown[]> {
     const res = await this.request<{ items: unknown[] }>(
       'GET',

@@ -7,10 +7,10 @@
 //                      SSRF-validated, connect-pinned), exactly like the importer's `renderViaBrowser`,
 //                      so the browser's unpinnable DNS is never used.
 import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
-import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta } from '@sitewright/site-import/fidelity';
+import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta, type FontMetrics } from '@sitewright/site-import/fidelity';
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
-import { FIDELITY_EXTRACT, FIDELITY_META, REGION_BOX } from './fidelity-extract.js';
+import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
@@ -159,7 +159,7 @@ export async function captureUrlShots(
 export async function captureUrlElements(
   url: string,
   opts: { mode: CaptureMode; signal?: AbortSignal },
-): Promise<{ items: ChromeEl[]; meta: ChromeMeta }> {
+): Promise<{ items: ChromeEl[]; meta: ChromeMeta; fonts: FontMetrics }> {
   const browser = await getBrowser();
   const vp = SCREENSHOT_VIEWPORTS.fullhd;
   return withRenderSlot(async () => {
@@ -175,11 +175,14 @@ export async function captureUrlElements(
       // marks it "reported, not gated" anyway, so PASS/FAIL is unaffected).
       const items = (await page.evaluate(FIDELITY_EXTRACT as () => unknown).catch(() => [])) as ChromeEl[];
       const meta = (await page.evaluate(FIDELITY_META as () => unknown).catch(() => ({}))) as ChromeMeta;
-      return { items, meta };
+      // Font fingerprints let the diff recognise the SAME face served under different family names (the
+      // imported original's internal "primary-font" vs the clone's real name) — see gate.ts sameFace.
+      const fonts = (await page.evaluate(FIDELITY_FONTS as () => unknown).catch(() => ({}))) as FontMetrics;
+      return { items, meta, fonts };
     } finally {
       await context.close().catch(() => {});
     }
-  }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta }));
+  }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta, fonts: {} as FontMetrics }));
 }
 
 /**
@@ -286,12 +289,13 @@ export interface FidelityResult {
   diffs: { body: string[]; chrome: string[]; meta: string[] };
 }
 export function scoreFidelity(
-  orig: { items: ChromeEl[]; meta: ChromeMeta },
-  build: { items: ChromeEl[]; meta: ChromeMeta },
+  orig: { items: ChromeEl[]; meta: ChromeMeta; fonts?: FontMetrics },
+  build: { items: ChromeEl[]; meta: ChromeMeta; fonts?: FontMetrics },
 ): FidelityResult {
-  const bodyMatch = matchAndDiff(orig.items.filter((e) => e.region === 'body' && e.text), build.items.filter((e) => e.region === 'body' && e.text));
+  const fonts = { orig: orig.fonts, clone: build.fonts };
+  const bodyMatch = matchAndDiff(orig.items.filter((e) => e.region === 'body' && e.text), build.items.filter((e) => e.region === 'body' && e.text), fonts);
   const body = scorePage(bodyMatch);
-  const chrome = scoreChrome(matchChrome(orig.items, build.items));
+  const chrome = scoreChrome(matchChrome(orig.items, build.items), { fonts });
   const meta = scoreChromeMeta(orig.meta, build.meta);
   return {
     pass: body.pass && chrome.pass && meta.pass,

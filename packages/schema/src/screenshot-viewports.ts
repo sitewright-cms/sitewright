@@ -23,7 +23,9 @@ export interface ScreenshotViewport {
 
 export const SCREENSHOT_VIEWPORTS = {
   wqhd: { label: 'WQHD · 2560', width: 2560, height: 1440, capHeight: 6000, isMobile: false },
-  fullhd: { label: 'Full HD · 1920', width: 1920, height: 1080, capHeight: 7000, isMobile: false },
+  // fullhd cap raised 7000→12000 (matching mobile): a ~10k-px original was TOP-CLIPPED in the desktop
+  // visual_audit/compare side-by-side, so agents judged tall pages against a footer-less "ground truth".
+  fullhd: { label: 'Full HD · 1920', width: 1920, height: 1080, capHeight: 12000, isMobile: false },
   laptop: { label: 'Laptop · 1440', width: 1440, height: 900, capHeight: 8000, isMobile: false },
   tablet: { label: 'Tablet · 768', width: 768, height: 1024, capHeight: 10000, isMobile: true },
   mobile: { label: 'Mobile · 390', width: 390, height: 844, capHeight: 12000, isMobile: true },

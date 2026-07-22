@@ -74,6 +74,32 @@ describe('dataset + entry content API', () => {
     expect((entryList.json() as { items: Array<{ dataset: string }> }).items[0]?.dataset).toBe('posts');
   });
 
+  it('rejects a dataset put whose SLUG belongs to another entity (409, the post-rename footgun)', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await app.inject({ method: 'PUT', url: `${base}/content/dataset/posts`, cookies, payload: dataset });
+    // Rename changes only the SLUG — the entity keeps id "posts".
+    const renamed = await app.inject({ method: 'POST', url: `${base}/datasets/posts/rename`, cookies, payload: { slug: 'articles', cascade: true } });
+    expect(renamed.statusCode).toBe(200);
+    // An agent that re-puts using the NEW slug as the id must get a 409 pointing at the real entity,
+    // not a silent second dataset carrying the same slug.
+    const dup = await app.inject({
+      method: 'PUT', url: `${base}/content/dataset/articles`, cookies,
+      payload: { ...dataset, id: 'articles', slug: 'articles' },
+    });
+    expect(dup.statusCode).toBe(409);
+    expect((dup.json() as { error: string }).error).toContain('posts');
+    // Writing via the ORIGINAL id still works.
+    const ok = await app.inject({
+      method: 'PUT', url: `${base}/content/dataset/posts`, cookies,
+      payload: { ...dataset, slug: 'articles' },
+    });
+    expect(ok.statusCode).toBe(200);
+    const list = await app.inject({ method: 'GET', url: `${base}/content/dataset`, cookies });
+    expect((list.json() as { items: unknown[] }).items).toHaveLength(1);
+  });
+
   it('rejects a dataset whose id does not match the path (409)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({

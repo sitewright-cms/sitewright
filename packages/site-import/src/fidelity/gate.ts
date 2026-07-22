@@ -47,6 +47,57 @@ export const isVisibleBg = (bg: string | null | undefined): boolean => {
 /** An element carries a MEANINGFUL fill — a gradient image or a non-transparent bg colour. Used to gate the
  *  fill/gradient diff on filled NON-button chrome (nav tab colours, the active-item pill) too, not just buttons. */
 export const hasFill = (e: { bg?: string; bgImage?: string }): boolean => /gradient/i.test(e.bgImage || '') || isVisibleBg(e.bg);
+/** Resolve one clip-path coordinate to px against a box dimension: `N%`, `Npx`, bare `N`, or the two calc
+ *  forms Chromium serializes for skewed shapes (`calc(N% ± Mpx)`). Unknown forms → NaN (caller bails). */
+const clipCoordPx = (raw: string, dim: number): number => {
+  const s = raw.trim();
+  const calc = /^calc\(\s*([\d.]+)%\s*([+-])\s*([\d.]+)px\s*\)$/.exec(s);
+  if (calc) return (parseFloat(calc[1]!) / 100) * dim + (calc[2] === '+' ? 1 : -1) * parseFloat(calc[3]!);
+  if (s.endsWith('%')) return (parseFloat(s) / 100) * dim;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+};
+/** Effective skewX angle (degrees) of a 4-point `polygon()` clip-path parallelogram — how platform buttons
+ *  build the skewed look WITHOUT a transform. Slant = the top-left corner's x offset vs the bottom-left's,
+ *  over the polygon height; sign matches `skewX` (top shifted RIGHT of bottom = negative angle, like
+ *  `skewX(-25°)`). Non-polygon / non-4-point / unparsable coords → 0 (no skew claimed). */
+export const clipSkewDeg = (clip: string | null | undefined, w: number | undefined, h: number | undefined): number => {
+  if (!clip || !w || !h) return 0;
+  // Greedy to the LAST `)` — a coordinate may itself contain a paren (`calc(100% - 15px)`), so a
+  // non-greedy/negated-class match would truncate the point list at the calc's closing paren.
+  const m = /polygon\((.*)\)/.exec(clip);
+  if (!m) return 0;
+  const pts = m[1]!.split(',').map((p) => p.trim().split(/\s+(?![^(]*\))/)); // don't split inside calc(…)
+  if (pts.length !== 4 || pts.some((p) => p.length < 2)) return 0;
+  const xy = pts.map((p) => ({ x: clipCoordPx(p[0]!, w), y: clipCoordPx(p.slice(1).join(' '), h) }));
+  if (xy.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return 0;
+  const ys = xy.map((p) => p.y);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const height = maxY - minY;
+  if (height < 4) return 0;
+  const top = xy.filter((p) => Math.abs(p.y - minY) < 2), bottom = xy.filter((p) => Math.abs(p.y - maxY) < 2);
+  if (top.length !== 2 || bottom.length !== 2) return 0;
+  const dx = Math.min(top[0]!.x, top[1]!.x) - Math.min(bottom[0]!.x, bottom[1]!.x);
+  return Math.round((-Math.atan2(dx, height) * 180) / Math.PI);
+};
+/** The skew an element actually SHOWS: its transform matrix skew, else the slant of its clip-path
+ *  parallelogram. Lets a clone that builds the skewed look with `clip-path` (the platform primitive) match an
+ *  original that uses `transform: skew` — visually equivalent implementations must not diff. */
+export const effSkewDeg = (e: { transform?: string; clip?: string; w?: number; h?: number }): number =>
+  skewDeg(e.transform) || clipSkewDeg(e.clip, e.w, e.h);
+/** Per-page font fingerprints: firstFamily → rendered pangram width (px). Two family NAMES that render the
+ *  same glyphs (an imported site serves its face as "primary-font"; the clone declares "orbitron") measure
+ *  identically, so the diff can suppress the name-only mismatch instead of flagging a false fontMiss. */
+export type FontMetrics = Record<string, number>;
+/** Whether two computed font-family lists render the SAME face: equal first-family names, or (when both
+ *  sides' pages measured the family) pangram widths within 2%. Missing metrics → names must match. */
+export const sameFace = (oFont: string, cFont: string, oM?: FontMetrics, cM?: FontMetrics): boolean => {
+  const of = firstFamily(oFont), cf = firstFamily(cFont);
+  if (of === cf) return true;
+  const ow = oM?.[of], cw = cM?.[cf];
+  if (!ow || !cw) return false;
+  return Math.abs(ow - cw) / Math.max(ow, cw) <= 0.02;
+};
 
 // ─── types ────────────────────────────────────────────────────────────────────────────────────────────
 export interface StyleEl {
@@ -56,7 +107,16 @@ export interface StyleEl {
   bg: string; bgImage: string; shadow: string; transform: string; radius: string;
   /** letter-spacing (computed). Optional — the body diff doesn't compare it. */
   ls?: string;
+  /** Absolute document y (px) — lets the body matcher pick the NEAREST same-text candidate instead of the
+   *  first, so a repeated label (a card button vs a footer link) can't cross-pair and report bogus diffs. */
+  y?: number;
+  /** Untransformed border-box dims — needed to resolve %-based clip-path coords to a skew angle. */
+  w?: number; h?: number;
+  /** Computed clip-path when not `none` — a polygon parallelogram here counts as a skew (see effSkewDeg). */
+  clip?: string;
 }
+/** Per-side page fonts for the alias check, passed alongside the element arrays. */
+export interface FontsOpt { orig?: FontMetrics; clone?: FontMetrics }
 export interface HoverState { bg: string; bgImage: string; color: string }
 export interface ChromeEl extends StyleEl {
   region: 'header' | 'footer' | 'body';
@@ -70,35 +130,51 @@ export interface GateScore { coverage: number; matched: number; origCount: numbe
 export interface ChromePair { region: 'header' | 'footer'; o: ChromeEl; c: ChromeEl }
 export interface ChromeMatch { pairs: ChromePair[]; unmatched: ChromeEl[] }
 export interface ChromeDiff { region: string; label: string; props: string[] }
-export interface ChromeThresholds { maxPosDx?: number; maxSizeRatio?: number; minCoverage?: number; maxSkewDeg?: number; minWeightDelta?: number; maxLsDx?: number; maxRadiusDx?: number }
+export interface ChromeThresholds { maxPosDx?: number; maxSizeRatio?: number; minCoverage?: number; maxSkewDeg?: number; minWeightDelta?: number; maxLsDx?: number; maxRadiusDx?: number; fonts?: FontsOpt }
 export interface ChromeScore { matched: number; origCount: number; coverage: number; posOff: number; sizeOff: number; styleOff: number; diffs: ChromeDiff[]; unmatched: ChromeEl[]; pass: boolean }
 export interface ChromeMeta { position?: string; ripple?: number; modalTriggers?: number }
 export interface ChromeMetaScore { diffs: string[]; metaOff: number; pass: boolean }
 
 // ─── BODY diff ────────────────────────────────────────────────────────────────────────────────────────
-/** Match each original element to a clone element by normalized text (same-role preferred, greedy 1:1) and
- *  record the font/gradient/fill divergences that matter for body fidelity. */
-export function matchAndDiff(orig: StyleEl[], clone: StyleEl[]): MatchResult {
+/** Match each original element to a clone element by normalized text (same-role preferred; among same-text
+ *  candidates the NEAREST by document y wins — a page repeating a label, e.g. a card button and a footer
+ *  link both reading "GET A QUOTE", must not cross-pair and report the other element's fill/gradient as a
+ *  bogus diff) and record the font/gradient/fill divergences that matter for body fidelity. */
+export function matchAndDiff(orig: StyleEl[], clone: StyleEl[], fonts: FontsOpt = {}): MatchResult {
   const byText = new Map<string, StyleEl[]>();
   for (const c of clone) { const k = c.text.toLowerCase(); if (!byText.has(k)) byText.set(k, []); byText.get(k)!.push(c); }
   const diffs: StyleDiff[] = [];
   const unmatched: StyleEl[] = [];
   let matched = 0;
+  // Nearest same-text candidate by |Δy|, preferring same-role. y is absolute document px on both sides — a
+  // cross-section pair differs by hundreds/thousands of px, the true counterpart by little, so plain distance
+  // is enough. Candidates without y (older extracts) rank by insertion order (distance 0), preserving the old
+  // greedy behaviour for them.
+  const nearest = (o: StyleEl, cand: StyleEl[]): number => {
+    let best = -1, bestD = Infinity, bestRole = false;
+    for (let i = 0; i < cand.length; i++) {
+      const c = cand[i]!;
+      const d = o.y !== undefined && c.y !== undefined ? Math.abs(o.y - c.y) : 0;
+      const roleHit = c.role === o.role;
+      if (best < 0 || (roleHit && !bestRole) || (roleHit === bestRole && d < bestD)) { best = i; bestD = d; bestRole = roleHit; }
+    }
+    return best;
+  };
   for (const o of orig) {
     const cand = byText.get(o.text.toLowerCase());
     if (!cand || !cand.length) { unmatched.push(o); continue; }
-    let i = cand.findIndex((c) => c.role === o.role);
-    if (i < 0) i = 0;
-    const c = cand.splice(i, 1)[0]!;
+    const c = cand.splice(nearest(o, cand), 1)[0]!;
     matched++;
     const props: string[] = [];
-    if (firstFamily(o.font) !== firstFamily(c.font)) props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`);
+    if (!sameFace(o.font, c.font, fonts.orig, fonts.clone)) props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`);
     if (o.role === 'heading' || o.role === 'button') {
       const og = /gradient/i.test(o.bgImage || ''), cg = /gradient/i.test(c.bgImage || '');
       if (og && !cg) props.push('gradient:MISSING');
       else if (og && cg && stripWs(o.bgImage) !== stripWs(c.bgImage)) props.push('gradient:DIFF');
       else if (!og && o.role === 'button' && o.bg !== c.bg) props.push(`fill:${o.bg}→${c.bg}`);
-      if (o.transform && o.transform !== 'none' && (!c.transform || c.transform === 'none')) props.push('transform:MISSING(skew?)');
+      // A clone that builds the skewed look with a clip-path parallelogram (the platform primitive) has no
+      // transform — effSkewDeg treats it as skew-present, so only a genuinely straight clone flags.
+      if (o.transform && o.transform !== 'none' && (!c.transform || c.transform === 'none') && effSkewDeg(c) === 0) props.push('transform:MISSING(skew?)');
       if (o.shadow && o.shadow !== 'none' && (!c.shadow || c.shadow === 'none')) props.push('shadow:MISSING');
     }
     if (o.role === 'heading') {
@@ -203,7 +279,7 @@ export function matchChrome(
 
 /** Score matched chrome pairs by layout + per-element style (skew/weight/ls/radius/shadow/gradient/fill). */
 export function scoreChrome(match: ChromeMatch, opts: ChromeThresholds = {}): ChromeScore {
-  const { maxPosDx = 40, maxSizeRatio = 1.25, minCoverage = 0.85, maxSkewDeg = 4, minWeightDelta = 150, maxLsDx = 0.6, maxRadiusDx = 3 } = opts;
+  const { maxPosDx = 40, maxSizeRatio = 1.25, minCoverage = 0.85, maxSkewDeg = 4, minWeightDelta = 150, maxLsDx = 0.6, maxRadiusDx = 3, fonts = {} } = opts;
   const diffs: ChromeDiff[] = [];
   let posOff = 0, sizeOff = 0, styleOff = 0;
   // A responsive rebuild can shift the WHOLE bar horizontally (a different container width, or centre vs
@@ -228,8 +304,15 @@ export function scoreChrome(match: ChromeMatch, opts: ChromeThresholds = {}): Ch
     if (Math.abs(relDx) > maxPosDx) { props.push(`x:${Math.round(o.x)}→${Math.round(c.x)}${Math.abs(shift) > 2 ? ` (Δ${Math.round(relDx)} vs bar-shift ${Math.round(shift)})` : ''}`); posOff++; }
     if (o.w && c.w && Math.max(o.w, c.w) / Math.min(o.w, c.w) > maxSizeRatio) { props.push(`w:${Math.round(o.w)}→${Math.round(c.w)}`); sizeOff++; }
     if (o.h && c.h && Math.max(o.h, c.h) / Math.min(o.h, c.h) > maxSizeRatio) { props.push(`h:${Math.round(o.h)}→${Math.round(c.h)}`); sizeOff++; }
-    if (firstFamily(o.font) !== firstFamily(c.font)) { props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`); styleOff++; }
-    if (Math.abs(skewDeg(o.transform) - skewDeg(c.transform)) > maxSkewDeg) { props.push(`skew:${skewDeg(o.transform)}°→${skewDeg(c.transform)}°`); styleOff++; }
+    if (!sameFace(o.font, c.font, fonts.orig, fonts.clone)) { props.push(`font:${firstFamily(o.font)}→${firstFamily(c.font)}`); styleOff++; }
+    // Effective skew: transform matrix OR clip-path parallelogram slant — either side may implement the
+    // slanted look either way (the platform's skewed buttons are clip-path). The clip-derived angle is a
+    // geometric estimate, so allow double the tolerance when a clip supplied one of the angles.
+    {
+      const oSkew = effSkewDeg(o), cSkew = effSkewDeg(c);
+      const viaClip = skewDeg(o.transform) !== oSkew || skewDeg(c.transform) !== cSkew;
+      if (Math.abs(oSkew - cSkew) > (viaClip ? maxSkewDeg * 2 : maxSkewDeg)) { props.push(`skew:${oSkew}°→${cSkew}°`); styleOff++; }
+    }
     if (Math.abs(weightNum(o.weight) - weightNum(c.weight)) >= minWeightDelta) { props.push(`weight:${weightNum(o.weight)}→${weightNum(c.weight)}`); styleOff++; }
     if (Math.abs(lsPx(o.ls, o.size) - lsPx(c.ls, c.size)) > maxLsDx) { props.push(`ls:${o.ls || 'normal'}→${c.ls || 'normal'}`); styleOff++; }
     if (Math.abs(radiusPx(o.radius) - radiusPx(c.radius)) > maxRadiusDx) { props.push(`radius:${o.radius}→${c.radius}`); styleOff++; }

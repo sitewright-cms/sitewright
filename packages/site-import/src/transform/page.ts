@@ -181,19 +181,26 @@ function preserveIconSizeClasses(classStr: string, defaultBox = 'h-5 w-5'): stri
   return kept.join(' ');
 }
 
-/** A resolved icon → its `{{sw-icon}}` name (`brand:<slug>` for a brand logo, else the bare Lucide name). */
+/** A resolved icon → its `{{sw-icon}}` name: `brand:<slug>` for a brand logo, else the icon name with a
+ *  `:weight` suffix when the foreign source signalled a non-filled style (outline → `name:regular`; the
+ *  platform default is Phosphor FILL, so solid sources stay bare). */
 function iconName(mapping: IconMapping): string {
-  return 'brand' in mapping ? `brand:${mapping.brand}` : mapping.icon;
+  if ('brand' in mapping) return `brand:${mapping.brand}`;
+  return mapping.weight ? `${mapping.icon}:${mapping.weight}` : mapping.icon;
 }
 
 /** Resolve an inline `<svg>` to a platform icon ONLY when it carries a clear name hint — a `lucide-<name>`
  *  class, a `data-lucide`/`data-icon`/`data-feather` attr, or a single-word `aria-label`. A nameless svg is
- *  already a clean vector icon (its own paths survive import) and is left untouched. */
+ *  already a clean vector icon (its own paths survive import) and is left untouched. Lucide/Feather hints are
+ *  STROKE sets → outline weight (the platform default is filled). */
 function svgIconMapping(el: Element): IconMapping | null {
   const byClass = mapIconClass(el.attribs.class);
   if (byClass) return byClass;
-  const hint = el.attribs['data-lucide'] ?? el.attribs['data-icon'] ?? el.attribs['data-feather'] ?? el.attribs['aria-label'];
-  return hint ? mapMaterialLigature(hint) : null; // mapMaterialLigature also resolves a bare hyphenated name
+  const strokeHint = el.attribs['data-lucide'] ?? el.attribs['data-feather'];
+  const hint = strokeHint ?? el.attribs['data-icon'] ?? el.attribs['aria-label'];
+  const mapping = hint ? mapMaterialLigature(hint) : null; // mapMaterialLigature also resolves a bare hyphenated name
+  if (mapping && 'icon' in mapping && !mapping.weight && strokeHint !== undefined) return { ...mapping, weight: 'regular' };
+  return mapping;
 }
 
 /**
@@ -223,7 +230,7 @@ function mapForeignIcons(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagn
         let mapping: IconMapping | null;
         if (MATERIAL_ICON_RE.test(cls)) {
           const ligature = textContent([el]).trim();
-          mapping = mapMaterialLigature(ligature);
+          mapping = mapMaterialLigature(ligature, cls);
           label = `material:${ligature}`;
         } else {
           mapping = mapIconClass(cls);

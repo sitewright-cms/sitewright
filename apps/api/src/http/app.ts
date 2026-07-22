@@ -5792,6 +5792,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const q = req.query as { names?: unknown; weight?: unknown };
     const weight = typeof q.weight === 'string' && (PHOSPHOR_WEIGHTS as readonly string[]).includes(q.weight) ? q.weight : 'fill';
     const names = (typeof q.names === 'string' ? q.names : '')
+      .slice(0, 3000) // cap the raw string too (defense-in-depth, mirrors the search route), then the count
       .split(',')
       .map((n) => n.trim())
       .filter(Boolean)

@@ -335,26 +335,33 @@ function IconGallery({ section, onClose }: { section: LibrarySection; onClose: (
   const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(filtered.length);
   const shown = filtered.slice(0, visible);
 
-  // A weight change invalidates every rendered preview.
+  // Render the visible page via the API — best-effort. Previews are keyed by `${weight}:${name}` so (a) a
+  // LATE response for a weight the user already switched away from lands in a key nobody reads (never
+  // corrupts the current weight), and (b) switching weights back reuses cached glyphs (no refetch/clear).
+  // The loop keeps fetching 120-name batches until the whole shown page is rendered — so the scroll-pager's
+  // auto-fill can't leave a permanent gap past the first 120. Every requested name is marked (svg or '')
+  // so an unrenderable name can't spin the loop. `alive` is re-checked after BOTH awaits.
   useEffect(() => {
-    previewsRef.current = {};
-    setPreviews({});
-  }, [weight]);
-
-  // Render the visible page (in the current weight) via the API — best-effort, batched, capped server-side.
-  useEffect(() => {
-    const missing = filtered.slice(0, visible).filter((n) => !previewsRef.current[n]);
-    if (!missing.length) return;
     let alive = true;
     void (async () => {
-      try {
-        const r = await fetch(`/authoring/icons/render?weight=${weight}&names=${encodeURIComponent(missing.slice(0, 120).join(','))}`);
-        if (!r.ok || !alive) return;
-        const d = (await r.json()) as { svgs: Record<string, string> };
-        previewsRef.current = { ...previewsRef.current, ...d.svgs };
-        setPreviews((p) => ({ ...p, ...d.svgs }));
-      } catch {
-        /* preview is best-effort */
+      for (;;) {
+        const batch = filtered
+          .slice(0, visible)
+          .filter((n) => previewsRef.current[`${weight}:${n}`] === undefined)
+          .slice(0, 120);
+        if (!batch.length || !alive) return;
+        try {
+          const r = await fetch(`/authoring/icons/render?weight=${weight}&names=${encodeURIComponent(batch.join(','))}`);
+          if (!r.ok || !alive) return;
+          const d = (await r.json()) as { svgs: Record<string, string> };
+          if (!alive) return; // the user may have changed weight during r.json()
+          const add: Record<string, string> = {};
+          for (const n of batch) add[`${weight}:${n}`] = d.svgs[n] ?? ''; // '' marks "attempted, no glyph"
+          previewsRef.current = { ...previewsRef.current, ...add };
+          setPreviews((p) => ({ ...p, ...add }));
+        } catch {
+          return; // preview is best-effort
+        }
       }
     })();
     return () => {
@@ -367,7 +374,7 @@ function IconGallery({ section, onClose }: { section: LibrarySection; onClose: (
     name: n,
     description: '',
     example: weight === 'fill' ? `{{sw-icon "${n}" "h-5 w-5"}}` : `{{sw-icon "${n}:${weight}" "h-5 w-5"}}`,
-    svg: previews[n],
+    svg: previews[`${weight}:${n}`] || undefined,
   }));
   const overflow = filtered.length - shown.length;
 

@@ -7,9 +7,10 @@ import type { LibraryItem } from './catalog';
 // icon-body data never lands in the editor bundle. This module must therefore NEVER import renderIconSvg /
 // the Phosphor data (that was a ~3.9MB main-bundle regression).
 
-/** Wrap a brand (fill) icon path in a current-color <svg> for the preview. */
+/** Wrap a brand (fill) icon path in a current-color <svg> for the preview. The path is trusted, static
+ *  simple-icons data (numeric SVG commands, no user input); the `"`-escape is defense-in-depth. */
 function brandSvg(path: string, cls = 'h-6 w-6'): string {
-  return `<svg class="${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${path}" /></svg>`;
+  return `<svg class="${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${path.replace(/"/g, '&quot;')}" /></svg>`;
 }
 
 /** The built-in brand/social logos — inserted with the `brand:` prefix. */

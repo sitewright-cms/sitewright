@@ -42,6 +42,24 @@ function enhance(root) {
   var slides = Array.prototype.slice.call(track.querySelectorAll('[data-sw-part="slide"]'));
   if (slides.length < 2) return;
 
+  // CLS guard: enhancement (the slide restructure + the engine's first layout) reflows the track
+  // across the next frame or two — the browser's layout-shift metric counts those transient reflows
+  // even though the FINAL pixels are stable, tanking the score on any page with sliders. visibility:
+  // hidden on the whole carousel KEEPS its box (so nothing below it moves) while keeping the invisible
+  // mid-enhance frames OUT of the metric (invisible elements don't contribute to CLS); it is revealed
+  // once the engine has settled. Hiding the ROOT (not just the track) also means the controls the
+  // data-sw-enhanced flip switches on — arrows/dots — don't flash over the not-yet-painted slides.
+  // PE-safe: this only runs on the JS enhancement path — the no-JS carousel is never hidden. The
+  // timeout is a belt-and-braces fallback so a starved rAF (or a throw below) can never leave it hidden.
+  var revealed = false;
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
+    root.style.visibility = '';
+  }
+  root.style.visibility = 'hidden';
+  setTimeout(reveal, 300);
+
   var attr = function (name, fallback) {
     var v = root.getAttribute(name);
     return v === null || v === '' ? fallback : v;
@@ -301,6 +319,12 @@ function enhance(root) {
   });
 
   root.setAttribute('data-sw-enhanced', 'true');
+
+  // Reveal once the engine's first layout has settled — two frames clears Embla's init reflow (one
+  // is too early: the reflow paints on the following frame). Idempotent with the timeout fallback.
+  requestAnimationFrame(function () {
+    requestAnimationFrame(reveal);
+  });
 }
 
 function init() {

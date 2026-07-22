@@ -87,8 +87,11 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   // showModal() fallback for the sandboxed iframe) and its overlay is benign in the canvas — the drawer
   // opens only on an explicit toggle click, and an add-to-cart click just writes localStorage.
   { key: 'cart', uses: usesCart, css: CART_CSS, js: CART_JS, script: 'cart.js', preview: 'run' },
-  // consent stays style-only: its runtime hydrates HELD cross-origin iframes + fights the click-to-edit
-  // bridge, and (unlike the cart) its banner markup is server-rendered so it's visible without the JS.
+  // consent stays style-only: its runtime hydrates HELD cross-origin iframes and drives a page-covering
+  // consent GATE, which would be disruptive/incorrect in the editor canvas (single-page preview doesn't
+  // grant consent — only the whole-site draft preview does, via build.ts grantAll). KNOWN LIMITATION: the
+  // consent banner therefore isn't shown in the single-page preview either (its mount is also empty +
+  // display:none-until-enhanced, like the cart was) — a separate follow-up, not fixed here.
   { key: 'consent', uses: usesConsent, css: CONSENT_CSS, js: CONSENT_JS, script: 'consent.js', preview: 'style-only' },
 ];
 
@@ -110,7 +113,7 @@ export function bodyEffectNoscript(scanHtml: string): string {
 }
 
 /** The inline JS blocks for the SINGLE-PAGE preview — every 'run' runtime the page uses (style-only ones
- *  like cart/consent are excluded: styled but inert in the editor canvas). */
+ *  like consent are excluded: inert in the editor canvas). */
 export function previewBodyEffectScripts(scanHtml: string): string[] {
   return BODY_EFFECT_RUNTIMES.filter((r) => r.js && (r.preview ?? 'run') === 'run' && r.uses(scanHtml)).map((r) => r.js as string);
 }

@@ -71,6 +71,19 @@ describe('minifyCss (clean-css)', () => {
     expect(out).toMatch(/@starting-style\{[^@]*dialog\[open\][^@]*translateX\(100%\)/);
   });
 
+  it('does not mis-split on the literal @starting-style inside a comment (no neighbour corruption)', () => {
+    // The splitter must only treat `@starting-style` followed by `{` as an at-rule; a mention in a comment
+    // must not hijack a later rule's `{` and corrupt the CSS in between.
+    const out = minifyCss('/* uses @starting-style semantics */\n.foo{color:red}');
+    expect(out).toContain('.foo{color:red}'); // the real rule survives intact
+    expect(out).not.toContain('semantics'); // the comment text isn't leaked as CSS
+    // A real @starting-style still AFTER a comment mention is handled correctly.
+    const out2 = minifyCss('/* @starting-style note */.a{color:red}@starting-style{.b{x:1}}');
+    expect(out2).toContain('.a{color:red}');
+    expect(out2).not.toContain('note'); // comment text not leaked
+    expect(out2.replace(/\s/g, '')).toContain('@starting-style{.b{x:1}}');
+  });
+
   it('is a no-op for empty input and never throws on odd input', () => {
     expect(minifyCss('')).toBe('');
     expect(typeof minifyCss('this is {{{ not css')).toBe('string');

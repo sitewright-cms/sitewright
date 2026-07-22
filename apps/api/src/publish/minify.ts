@@ -68,20 +68,17 @@ export function minifyCss(css: string): string {
   if (!css) return css;
   try {
     if (!css.includes('@starting-style')) return cleanCssMinify(css);
-    const M = '@starting-style';
+    // Match only a REAL at-rule: the literal followed by optional whitespace then `{`. This skips a
+    // stray `@starting-style` substring inside a comment/selector/string (e.g. `/* see @starting-style
+    // */`), which a raw indexOf would mis-split — hunting for a later unrelated `{` and corrupting the
+    // rules in between.
+    const re = /@starting-style\s*\{/g;
     let out = '';
     let i = 0;
-    while (i < css.length) {
-      const start = css.indexOf(M, i);
-      if (start < 0) {
-        out += cleanCssMinify(css.slice(i));
-        break;
-      }
-      const open = css.indexOf('{', start + M.length);
-      if (open < 0) {
-        out += cleanCssMinify(css.slice(i));
-        break;
-      }
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(css)) !== null) {
+      const start = m.index;
+      const open = start + m[0].length - 1; // index of the matched `{`
       let depth = 0;
       let j = open;
       for (; j < css.length; j++) {
@@ -93,10 +90,12 @@ export function minifyCss(css: string): string {
         }
       }
       // The part before the at-rule is a complete set of rules → clean-css it; the @starting-style block
-      // (start…j, braces balanced) → the nesting-safe pass. Continue after the block.
+      // (start…j, braces balanced) → the nesting-safe pass. Resume scanning AFTER the block.
       out += cleanCssMinify(css.slice(i, start)) + lightMinifyCss(css.slice(start, j));
       i = j;
+      re.lastIndex = j;
     }
+    out += cleanCssMinify(css.slice(i));
     return out;
   } catch {
     return css;

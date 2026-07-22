@@ -95,9 +95,47 @@ const EXTRACT = () => {
     let leaf = el;
     while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
     const lcs = getComputedStyle(leaf);
+    // EFFECTIVE transform: a skew may live on a wrapper (element itself reads `none`) — walk up to 2
+    // ancestors so both sides report the skew that actually paints (mirrors FIDELITY_EXTRACT).
+    let tf = cs.transform;
+    if (!tf || tf === 'none') {
+      let anc = el.parentElement;
+      for (let i = 0; i < 2 && anc; i++, anc = anc.parentElement) {
+        const at = getComputedStyle(anc).transform;
+        if (at && at !== 'none') { tf = at; break; }
+      }
+    }
+    // clip-path polygon = the platform's skew primitive; captured for effSkewDeg equivalence.
+    const clip = cs.clipPath && cs.clipPath !== 'none' ? cs.clipPath.slice(0, 160) : undefined;
     // w/h from OFFSET dims (untransformed border-box, STABLE across skew) not the rect (which inflates with
     // the transform → run-to-run height jitter). x/y stay viewport-relative.
-    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: tf, radius: cs.borderRadius, clip });
+  }
+  return out;
+};
+
+// Per-page font fingerprints (firstFamily → pangram width at 100px) so the diff can recognise the SAME face
+// served under different family names (imported "primary-font" vs the clone's real name) — mirrors
+// FIDELITY_FONTS in apps/api/src/render/fidelity-extract.ts.
+const FONTS = async () => {
+  try { await document.fonts.ready; } catch { /* measure what painted */ }
+  const first = (f) => (f || '').split(',')[0].trim().replace(/['"]/g, '').toLowerCase();
+  const fams = new Set();
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) fams.add(first(getComputedStyle(el).fontFamily));
+  const ctx = document.createElement('canvas').getContext('2d');
+  const out = {};
+  if (!ctx) return out;
+  for (const fam of fams) {
+    if (!fam) continue;
+    const spec = `100px "${fam.replace(/"/g, '')}"`;
+    // Only fingerprint CONFIRMED-resolvable families — a failed font measures as the generic fallback
+    // and two different failed fonts would falsely fingerprint as the same face. Omission → the diff
+    // uses strict name comparison instead (fails closed). Mirrors FIDELITY_FONTS in fidelity-extract.ts.
+    let loaded = false;
+    try { loaded = document.fonts.check(spec); } catch { /* unsupported → strict names */ }
+    if (!loaded) continue;
+    ctx.font = spec;
+    out[fam] = Math.round(ctx.measureText('Sphinx of black quartz judge my vow 0123456789').width);
   }
   return out;
 };
@@ -186,6 +224,8 @@ async function capture(browser, url, label = '') {
     }
     // Whole-bar chrome facts (pinned? ripple? modals?) — attached to the array so main can diff them.
     try { items.meta = await page.evaluate(CHROME_META); } catch { items.meta = {}; }
+    // Font fingerprints for the sameFace alias check.
+    try { items.fonts = await page.evaluate(FONTS); } catch { items.fonts = {}; }
     return items;
   } finally { await ctx.close().catch(() => {}); }
 }
@@ -204,12 +244,14 @@ async function main() {
       const cloneUrl = cloneUrlFor(BASE, base, route);
       const origAll = await capture(browser, src, 'original');
       const cloneAll = await capture(browser, cloneUrl, 'clone');
-      // BODY — text-matched font/gradient diff, body region only.
-      const m = matchAndDiff(origAll.filter((e) => e.region === 'body' && e.text), cloneAll.filter((e) => e.region === 'body' && e.text));
+      // BODY — text-matched font/gradient diff, body region only. Font fingerprints let the diff pass a
+      // same-face-different-name pair (imported "primary-font" vs the clone's real family name).
+      const fonts = { orig: origAll.fonts, clone: cloneAll.fonts };
+      const m = matchAndDiff(origAll.filter((e) => e.region === 'body' && e.text), cloneAll.filter((e) => e.region === 'body' && e.text), fonts);
       const s = scorePage(m);
       // CHROME — per-element structural diff (pos/size/font/skew/weight/ls/radius/gradient/shadow) of
       // header + footer, PLUS whole-bar meta (pinned position, ripple, modal triggers).
-      const ch = scoreChrome(matchChrome(origAll, cloneAll));
+      const ch = scoreChrome(matchChrome(origAll, cloneAll), { fonts });
       const cm = scoreChromeMeta(origAll.meta, cloneAll.meta);
       rows.push({ id, s, ch, cm });
       const chromePass = ch.pass && cm.pass;

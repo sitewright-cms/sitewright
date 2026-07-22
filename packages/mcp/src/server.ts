@@ -1063,4 +1063,8 @@ export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, n
    f. Repeat d–e until your written visual_audit region list reaches ZERO blocker + major AND clone_audit passes. Only THEN set page.data.swImport.rewritten:true and status "published".
 3. When every page passes, publish_project.
 
+PACING: tool calls are rate-limited PER TOKEN, and the render-heavy audits are the tightest (a few per
+minute each) — space them out, and treat a 429 or a transient "mcp_unavailable"/RPC error as BACKPRESSURE,
+not failure: honor the retry-after header, back off (seconds, exponential), and retry the SAME call.
+
 Never declare a page done from your own render, a screenshot, or a coverage number — judge it against the visual_audit side-by-sides, region by region, to zero blocker+major, AND cross-check the settled original DOM (step d2) for the things a screenshot hides: lazy map/embed iframes (reproduce them — a gray pre-footer band is a MAP, not "empty"), scroll-shrink nav, entrance motion, and real shadow depth. If a page is huge, edit it section by section.`;

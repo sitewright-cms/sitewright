@@ -185,9 +185,9 @@ USE THE PLATFORM'S INTERACTIVE COMPONENTS wherever they make a layout richer —
 lightbox galleries, tabs, accordions, banners, animated shader/gradient backgrounds, date pickers —
 rather than a flat wall of static sections; prefer a first-party component over hand-rolling. Call
 get_components (contracts + skeletons) before laying out a page.
-USE ICONS: reach for {{sw-icon "name"}} (Lucide) for iconography — a phone / mail / map-pin in contact
-+ footer blocks, a check in feature lists, a chevron/arrow on links — plus brand:<slug> logos and
-{{sw-flag}} country flags. Don't ship an icon-less contact / footer / feature / stats section.
+USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
+thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag}} flags; search_icons finds
+names. Don't ship an icon-less contact / footer / feature / stats section.
 DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
 often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
@@ -217,6 +217,7 @@ LAYOUT RHYTHM (use on every section):
 - Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
 - In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
 - Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
+- Custom CSS grids: size flexible tracks minmax(0,1fr), NOT bare 1fr — a wide child (a carousel scroll-strip, an unbroken word) makes a 1fr track grow past the viewport and the whole page scrolls sideways; minmax(0,1fr) lets the track shrink and clip instead.
 
 COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
 
@@ -272,7 +273,7 @@ to usable HTML without JS — never add your own script). Call the \`get_compone
 machine-readable contracts: markers, parts, config attributes, and copy-paste markup skeletons.
 Quick rules vs the similar-looking DaisyUI classes:
 - Slideshow/slider → data-sw-component="carousel" (Embla-powered): fade (default) or slide
-  effect, arrows + dot indicators (Lucide icons via {{sw-icon}}), swipe + keyboard, looping,
+  effect, arrows + dot indicators (platform icons via {{sw-icon}}), swipe + keyboard, looping,
   autoplay or continuous auto-scroll, wheel gestures, auto height, and multi-item/peek layouts
   via the --sw-items CSS variable (with data-effect="slide"). DaisyUI's \`carousel\` classes are
   just a CSS scroll-snap strip — fine for a swipeable card row, but they have NO controls (the
@@ -298,6 +299,11 @@ Quick rules vs the similar-looking DaisyUI classes:
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
   Recipes to copy: modal-basic (link trigger + editable body) / modal-confirm (forced-choice).
+  STYLING: at enhance time the dialog's classes + inline style are SPLIT onto injected parts — width
+  utilities (w-*/max-w-*/min-w-*, any variant prefix) land on [data-sw-part="panel"] (default
+  max-width 32rem), everything else + the inline style on [data-sw-part="body"] — so CSS selecting
+  the <dialog> itself silently no-ops. Target #<id> [data-sw-part="panel"] for width/placement and
+  #<id> [data-sw-part="body"] for background/padding/rounding.
 - Cookie / consent banner → DON'T author one. Enable the Consent Manager (website.consent.enabled)
   and the banner AUTO-INJECTS on every page (it also gates third-party scripts/iframes + derives CSP).
   See the consent guide.
@@ -901,7 +907,10 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    its entries + loops. rename_dataset ALSO takes a "name" — set a human display name so the dataset doesn't
    stay the import's generic "List"/"List 2" in the editor. ITEM KEYS (entry ids) follow the same rule: they
    are underscore identifiers (used as {{item.<dataset>.<id>}} paths + data-sw-entry edit handles), NEVER
-   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). An entry id only has to be unique
+   slug-prefixed or hyphenated ("fast_pickup", not "items-fast-pickup"). rename_dataset KEEPS the dataset's
+   ENTITY ID (only the slug + name change) — keep addressing the dataset by its ORIGINAL id in
+   put_content/get_content; a dataset put under a NEW id that collides with an existing dataset's slug is
+   rejected (409) instead of silently creating a duplicate. An entry id only has to be unique
    WITHIN its dataset — two datasets can each hold a clean "intro"/"row_1", so DON'T disambiguate across
    datasets. Because ids repeat across datasets, get_content / delete_content / list_revisions on an ENTRY
    take a "dataset" arg (its owning slug) alongside the id; put_content needs none (the entry body carries
@@ -1256,15 +1265,17 @@ sample the original's real values, don't approximate to the nearest token):
 - FIXED SOCIAL RAIL with hover-reveal → \`website.sidebarLeft\`/\`sidebarRight\`. If the original has a fixed
   edge rail of social icons that slides/reveals on hover, reproduce it (a fixed column + \`translate-x\` at
   rest → \`hover:translate-x-0\`), on the SAME breakpoints as the original (keep it on DESKTOP if it's there).
-- ICONS ARE AUTO-MAPPED — then MATCH ICON STYLE (solid vs outline). The importer now MAPS foreign icons
-  (FontAwesome / Material / etc.) to the platform \`{{sw-icon}}\` (Lucide) or \`brand:\` icons automatically
-  where a match exists, so an imported page's icons ALREADY render as \`{{sw-icon}}\` calls — PREFER the mapped
-  icon; only re-pick one when the auto-map was wrong or had no match. When you DO pick: \`{{sw-icon}}\` is Lucide
-  (OUTLINE stroke) and the original's icons are often SOLID (FontAwesome) — match the solid-vs-outline
-  treatment. For a SOCIAL / brand logo use the BRAND glyph (\`{{sw-icon "brand:facebook"}}\`, \`brand:x-twitter\`
-  / the classic bird, \`brand:whatsapp\`, …) inside the original's solid circle badge if it has one; for a
-  filled UI glyph pick the closest filled treatment — don't ship thin outline icons where the original is
-  solid+filled.
+- ICONS ARE AUTO-MAPPED — WEIGHT INCLUDED. The importer MAPS foreign icons (FontAwesome / Material /
+  Bootstrap / Feather / etc.) to platform \`{{sw-icon}}\` / \`brand:\` icons automatically where a match
+  exists — including the VISUAL WEIGHT: \`{{sw-icon}}\` is Phosphor, FILLED by default, and an outline
+  source (fa-regular/far, bare bi-*, feather, material-…-outlined) maps to \`name:regular\`. PREFER the
+  mapped icon. When the auto-map was wrong or had no match, FIND the right glyph with the search_icons
+  tool (multi-term: "phone call telephone") instead of hand-rolling an <svg>, and MATCH the original's
+  weight with the \`name:weight\` suffix (thin|light|regular|bold|fill|duotone — fill is the default, so
+  a solid original needs no suffix). For a SOCIAL / brand logo use the BRAND glyph
+  (\`{{sw-icon "brand:facebook"}}\`, \`brand:x-twitter\` / the classic bird, \`brand:whatsapp\`, …) inside the
+  original's badge shape if it has one. Don't ship outline icons where the original is solid — or the
+  reverse.
 - ENTRANCE / MOTION animations: the import strips the foreign JS (foreign animation libraries etc.), so fade/slide-in-on-scroll and
   entrance animations are LOST. Re-add them with the platform animation directives (get_guide("effects") /
   data-sw-animation) where the original animates — e.g. the nav's fade-in-down, section reveals.
@@ -1364,7 +1375,9 @@ STEP 3 — LOOP IT in a page/template source:
   A list field → {{#each <field>}}…{{/each}}; an object field → {{<field>.<key>}}.
 
 RENAME safely with rename_dataset — it cascades the slug across every entry AND every {{#each dataset.<slug>}} /
-dataset="<slug>" reference in one transaction (don't hand-edit). To see a real shape before writing, get_content the
+dataset="<slug>" reference in one transaction (don't hand-edit). The dataset KEEPS its entity id — keep using the
+ORIGINAL id in put_content/get_content after a rename (a put under a new id whose slug collides with an existing
+dataset is rejected with 409). To see a real shape before writing, get_content the
 dataset and one of its entries and MIRROR them.
 `,
   },

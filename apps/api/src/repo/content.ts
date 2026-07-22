@@ -243,6 +243,15 @@ export class ContentRepository {
     // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
     // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
     const key = this.entityKey(kind, entityId, parsed);
+    // Dataset SLUGS must stay unique, but datasets are keyed by entity ID and `renameDataset` changes only
+    // the slug — so after a rename, a put addressed by the NEW slug would silently INSERT a second dataset
+    // carrying the same slug (loops then resolve ambiguously). Mirror renameDataset's collision check and
+    // point the caller at the real entity id instead.
+    if (kind === 'dataset') {
+      const slug = (parsed as { slug?: string }).slug;
+      const dup = slug ? ((await this.list(ctx, 'dataset')) as Array<{ id: string; slug?: string }>).find((d) => d.id !== key && d.slug === slug) : undefined;
+      if (dup) throw new ConflictError(`a dataset with slug "${slug}" already exists (entity id "${dup.id}") — write it via that id (rename_dataset keeps the original id)`);
+    }
     // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
     const scope = this.scopeForData(kind, parsed);
     await this.writeRow(this.db, ctx, kind, key, parsed);

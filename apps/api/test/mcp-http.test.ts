@@ -118,4 +118,27 @@ describe('remote MCP transport (/mcp)', () => {
     const got = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/home`, headers: { authorization: `Bearer ${token}` } });
     expect(got.statusCode).toBe(200);
   });
+
+  it('sustains >30 calls/min (introspect is cached, not re-billed per call) and 429s as a JSON-RPC envelope', async () => {
+    const { token } = await setup();
+    // Before the scope cache, EVERY /mcp POST spent one GET /api-key/self from the same per-token
+    // bucket (30/min) — call #31 died as `mcp_unavailable` while /mcp's own cap was 120. Now the
+    // introspect result is cached, so the full /mcp allowance is usable; the eventual 429 (the /mcp
+    // route's own cap) must be a JSON-RPC error envelope with retry-after, not a bare HTTP body.
+    let firstLimited: InjectRes | undefined;
+    let ok = 0;
+    for (let i = 0; i < 130; i++) {
+      const res = await mcp(token, { jsonrpc: '2.0', id: i + 10, method: 'tools/call', params: { name: 'get_scope', arguments: {} } });
+      if (res.statusCode === 200) ok++;
+      else if (res.statusCode === 429) { firstLimited = res; break; }
+      else expect.fail(`unexpected status ${res.statusCode} on call ${i + 1}`);
+    }
+    expect(ok).toBeGreaterThan(30); // the old introspect ceiling — must be gone
+    expect(firstLimited, 'expected to reach the /mcp route cap').toBeDefined();
+    const body = firstLimited!.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string } };
+    expect(body.jsonrpc).toBe('2.0');
+    expect(body.error?.code).toBe(-32000);
+    expect(body.error?.message).toContain('retry-after');
+    expect(firstLimited!.headers['retry-after']).toBeDefined();
+  });
 });

@@ -22,7 +22,7 @@ describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
     expect(mapIconClass('fa fa-map-marker')).toEqual({ icon: 'map-pin' });
     expect(mapIconClass('fa fa-bars')).toEqual({ icon: 'menu' });
     expect(mapIconClass('fa fa-question-circle')).toEqual({ icon: 'circle-help' });
-    expect(mapIconClass('fa fa-pencil-square-o')).toEqual({ icon: 'square-pen' });
+    expect(mapIconClass('fa fa-pencil-square-o')).toEqual({ icon: 'square-pen', weight: 'regular' }); // -o = FA4 outline
     expect(mapIconClass('fa fa-sign-out')).toEqual({ icon: 'log-out' }); // 'sign-out' isn't a Lucide name → alias
     expect(mapIconClass('fa fa-life-ring')).toEqual({ icon: 'life-buoy' });
   });
@@ -37,10 +37,20 @@ describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
     expect(mapIconClass('fa-solid fa-phone')).toEqual({ icon: 'phone' });
   });
 
-  it('strips FA outline (-o) / -alt variants to the base name', () => {
-    expect(mapIconClass('fa fa-lightbulb-o')).toEqual({ icon: 'lightbulb' });
-    expect(mapIconClass('fa fa-handshake-o')).toEqual({ icon: 'handshake' });
-    expect(mapIconClass('fa fa-mobile-alt')).toEqual({ icon: 'smartphone' });
+  it('strips FA outline (-o) / -alt variants to the base name (outline keeps its weight)', () => {
+    expect(mapIconClass('fa fa-lightbulb-o')).toEqual({ icon: 'lightbulb', weight: 'regular' });
+    expect(mapIconClass('fa fa-handshake-o')).toEqual({ icon: 'handshake', weight: 'regular' });
+    expect(mapIconClass('fa fa-mobile-alt')).toEqual({ icon: 'smartphone' }); // -alt is a shape, not an outline
+  });
+
+  it('maps the foreign VARIANT to a Phosphor weight (fill is the platform default → solid stays bare)', () => {
+    expect(mapIconClass('fas fa-phone')).toEqual({ icon: 'phone' }); // solid → filled default
+    expect(mapIconClass('far fa-clock')).toEqual({ icon: 'clock', weight: 'regular' }); // FA5 regular family
+    expect(mapIconClass('fa-regular fa-user')).toEqual({ icon: 'user', weight: 'regular' }); // FA6 long form
+    expect(mapIconClass('fal fa-star')).toEqual({ icon: 'star', weight: 'light' });
+    expect(mapIconClass('fa-thin fa-star')).toEqual({ icon: 'star', weight: 'thin' });
+    expect(mapIconClass('fad fa-star')).toEqual({ icon: 'star', weight: 'duotone' });
+    expect(mapIconClass('fab fa-instagram')).toEqual({ brand: 'instagram' }); // brands never carry weight
   });
 
   it('maps FA brand/social icons to brand: slugs (and LinkedIn to the Lucide glyph)', () => {
@@ -57,14 +67,14 @@ describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
     expect(mapIconClass('fab fa-linkedin-in')).toEqual({ icon: 'linkedin' });
   });
 
-  it('maps Bootstrap Icons (bi-*)', () => {
-    expect(mapIconClass('bi bi-telephone')).toEqual({ icon: 'phone' });
-    expect(mapIconClass('bi bi-geo-alt')).toEqual({ icon: 'map-pin' });
-    expect(mapIconClass('bi bi-envelope-fill')).toEqual({ icon: 'mail' });
-    expect(mapIconClass('bi bi-person')).toEqual({ icon: 'user' });
-    expect(mapIconClass('bi bi-cart')).toEqual({ icon: 'shopping-cart' });
+  it('maps Bootstrap Icons (bi-*) — the bare set is OUTLINE, `-fill` names are the filled variants', () => {
+    expect(mapIconClass('bi bi-telephone')).toEqual({ icon: 'phone', weight: 'regular' });
+    expect(mapIconClass('bi bi-geo-alt')).toEqual({ icon: 'map-pin', weight: 'regular' });
+    expect(mapIconClass('bi bi-envelope-fill')).toEqual({ icon: 'mail' }); // -fill → filled default
+    expect(mapIconClass('bi bi-person')).toEqual({ icon: 'user', weight: 'regular' });
+    expect(mapIconClass('bi bi-cart')).toEqual({ icon: 'shopping-cart', weight: 'regular' });
     expect(mapIconClass('bi bi-facebook')).toEqual({ brand: 'facebook' });
-    expect(mapIconClass('bi bi-house')).toEqual({ icon: 'house' });
+    expect(mapIconClass('bi bi-house')).toEqual({ icon: 'house', weight: 'regular' });
   });
 
   it('maps Ionicons (ion-*, ion-md-*, ion-logo-*)', () => {
@@ -75,9 +85,15 @@ describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
   });
 
   it('maps Feather (feather-*) and Glyphicons (glyphicon-*)', () => {
-    expect(mapIconClass('feather feather-phone')).toEqual({ icon: 'phone' });
-    expect(mapIconClass('glyphicon glyphicon-envelope')).toEqual({ icon: 'mail' });
-    expect(mapIconClass('lucide lucide-map-pin')).toEqual({ icon: 'map-pin' }); // inline-lucide class convention
+    expect(mapIconClass('feather feather-phone')).toEqual({ icon: 'phone', weight: 'regular' }); // stroke set
+    expect(mapIconClass('glyphicon glyphicon-envelope')).toEqual({ icon: 'mail' }); // solid glyphs
+    expect(mapIconClass('lucide lucide-map-pin')).toEqual({ icon: 'map-pin', weight: 'regular' }); // stroke set
+  });
+
+  it('maps the Material style CLASS to a weight (base font is filled = platform default)', () => {
+    expect(mapMaterialLigature('home', 'material-icons')).toEqual({ icon: 'home' });
+    expect(mapMaterialLigature('home', 'material-icons-outlined')).toEqual({ icon: 'home', weight: 'regular' });
+    expect(mapMaterialLigature('favorite', 'material-icons-two-tone')).toEqual({ icon: 'heart', weight: 'duotone' });
   });
 
   it('maps Material Icons ligature text (the element text is the icon name)', () => {
@@ -167,7 +183,7 @@ describe('sanitizeForSource icon pass (via transformBody)', () => {
 
   it('maps a hinted inline <svg> (lucide-<name>) but leaves a nameless svg alone', () => {
     const hinted = run('<svg class="lucide lucide-phone" viewBox="0 0 24 24"><path d="M1 1"/></svg>').source;
-    expect(hinted).toContain('{{sw-icon "phone"');
+    expect(hinted).toContain('{{sw-icon "phone:regular"'); // stroke-set hint → outline weight
     const nameless = run('<svg viewBox="0 0 24 24"><path d="M2 2"/></svg>').source;
     expect(nameless).toContain('<svg'); // already a clean vector icon → untouched
     expect(nameless).not.toContain('sw-icon');
@@ -182,8 +198,16 @@ describe('sanitizeForSource icon pass (via transformBody)', () => {
 
   it('maps a Bootstrap icon on a <span> and keeps surrounding text', () => {
     const { source } = run('<a href="tel:123"><span class="bi bi-telephone"></span> Call us</a>');
-    expect(source).toContain('{{sw-icon "phone"');
+    expect(source).toContain('{{sw-icon "phone:regular"'); // bare bi-* is the outline set
     expect(source).toContain('Call us');
+  });
+
+  it('emits the mapped weight as a `name:weight` suffix that survives template validation', () => {
+    const { source } = run('<i class="far fa-clock"></i><i class="fas fa-phone"></i>');
+    expect(source).toContain('{{sw-icon "clock:regular"');
+    expect(source).toContain('{{sw-icon "phone"'); // solid → bare (fill default)
+    expect(source).not.toContain('"phone:');
+    expect(() => validateTemplate(source)).not.toThrow();
   });
 
   it('maps a country flag font to the separate {{sw-flag}} helper', () => {

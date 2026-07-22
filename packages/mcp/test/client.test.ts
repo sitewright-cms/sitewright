@@ -32,6 +32,16 @@ async function introspected(handler: Parameters<typeof fakeFetch>[0]) {
 }
 
 describe('SitewrightClient', () => {
+  it('primeScope seeds the scope without a network round-trip (project paths work, zero fetches)', async () => {
+    const fake = fakeFetch((input) => ({ status: 200, body: JSON.stringify({ items: [] }), input }));
+    const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.listContent('page');
+    // No introspect call was ever made — the first (and only) request is the content list itself.
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]!.input).toBe('https://cms.test/projects/p1/content/page');
+  });
+
   it('introspects with a Bearer header and trims the base URL', async () => {
     const { calls } = await introspected(() => ({ status: 200, body: JSON.stringify(scope) }));
     expect(calls[0]!.input).toBe('https://cms.test/api-key/self'); // trailing slash trimmed, no double //

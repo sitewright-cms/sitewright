@@ -126,3 +126,75 @@ describe('scorePage', () => {
     expect(r.pass).toBe(false);
   });
 });
+
+// ─── gate-accuracy round (clone-friction fixes): clip-skew equivalence, font fingerprints, y-proximity ───
+import { clipSkewDeg, effSkewDeg, sameFace } from '../src/fidelity/gate.js';
+
+describe('clipSkewDeg / effSkewDeg — clip-path parallelogram as the skew primitive', () => {
+  it('reads the slant angle from %-based and px-based polygons', () => {
+    // top-left shifted RIGHT of bottom-left → negative angle (skewX(-…) convention)
+    expect(clipSkewDeg('polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%)', 200, 40)).toBe(-22);
+    expect(clipSkewDeg('polygon(15px 0%, 100% 0%, calc(100% - 15px) 100%, 0% 100%)', 264, 41)).toBe(-20);
+    expect(clipSkewDeg('polygon(0% 0%, 92% 0%, 100% 100%, 8% 100%)', 200, 40)).toBe(22); // slants the other way
+  });
+  it('claims NO skew for non-parallelogram / unparsable / degenerate shapes', () => {
+    expect(clipSkewDeg('none', 200, 40)).toBe(0);
+    expect(clipSkewDeg(undefined, 200, 40)).toBe(0);
+    expect(clipSkewDeg('circle(50%)', 200, 40)).toBe(0);
+    expect(clipSkewDeg('polygon(0 0, 100% 0, 100% 100%)', 200, 40)).toBe(0); // 3 points
+    expect(clipSkewDeg('polygon(0 0, 100% 0, 100% 100%, 0 100%)', 200, 2)).toBe(0); // degenerate height
+    expect(clipSkewDeg('polygon(calc(100% - 2rem) 0, 100% 0, 100% 100%, 0 100%)', 200, 40)).toBe(0); // rem calc → bail
+    expect(clipSkewDeg('polygon(0 0, 100% 0, 100% 100%, 0 100%)', 0, 0)).toBe(0); // no box dims
+  });
+  it('effSkewDeg prefers the transform matrix, falls back to the clip slant', () => {
+    expect(effSkewDeg({ transform: 'matrix(1, 0, -0.466308, 1, 0, 0)', clip: 'polygon(8% 0, 100% 0, 92% 100%, 0 100%)', w: 200, h: 40 })).toBe(-25);
+    expect(effSkewDeg({ transform: 'none', clip: 'polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%)', w: 200, h: 40 })).toBe(-22);
+    expect(effSkewDeg({ transform: 'none' })).toBe(0);
+  });
+});
+
+describe('sameFace — font fingerprints suppress name-only mismatches', () => {
+  const oM = { 'primary-font': 2731, 'text-font': 2210 };
+  const cM = { orbitron: 2735, arial: 1980 };
+  it('equal first families always match (no metrics needed)', () => {
+    expect(sameFace('"Orbitron", sans-serif', 'orbitron', undefined, undefined)).toBe(true);
+  });
+  it('different names with ~equal pangram widths are the SAME face', () => {
+    expect(sameFace('primary-font, sans-serif', '"Orbitron", sans-serif', oM, cM)).toBe(true);
+  });
+  it('different names with different widths (a genuinely different face) still flag', () => {
+    expect(sameFace('primary-font, sans-serif', 'Arial, sans-serif', oM, cM)).toBe(false);
+  });
+  it('missing metrics on either side → names must match (old behaviour)', () => {
+    expect(sameFace('primary-font', 'orbitron', undefined, cM)).toBe(false);
+    expect(sameFace('primary-font', 'orbitron', oM, undefined)).toBe(false);
+  });
+  it('matchAndDiff threads the fingerprints (no fontMiss for a same-face alias)', () => {
+    const orig = [el({ text: 'HELLO', font: 'primary-font' })];
+    const clone = [el({ text: 'HELLO', font: 'Orbitron, sans-serif' })];
+    expect(matchAndDiff(orig, clone).diffs).toHaveLength(1); // without metrics: name mismatch flags
+    expect(matchAndDiff(orig, clone, { orig: oM, clone: cM }).diffs).toHaveLength(0); // with: suppressed
+  });
+});
+
+describe('matchAndDiff — y-proximity pairing + clip-skew suppression', () => {
+  it('pairs repeated labels by NEAREST document y, not first-come (no card↔footer cross-pairing)', () => {
+    const orig = [
+      el({ role: 'button', text: 'GET A QUOTE', y: 900, bg: 'rgb(204, 115, 0)' }),
+      el({ role: 'button', text: 'GET A QUOTE', y: 5200, bg: 'rgb(2, 139, 192)' }),
+    ];
+    const clone = [
+      // Clone lists the FOOTER instance first — greedy first-fit would cross-pair and report two fill diffs.
+      el({ role: 'button', text: 'GET A QUOTE', y: 5150, bg: 'rgb(2, 139, 192)' }),
+      el({ role: 'button', text: 'GET A QUOTE', y: 880, bg: 'rgb(204, 115, 0)' }),
+    ];
+    expect(matchAndDiff(orig, clone).diffs).toHaveLength(0);
+  });
+  it('does not report transform:MISSING when the clone skews via clip-path', () => {
+    const orig = [el({ role: 'button', text: 'GO', transform: 'matrix(1, 0, -0.466308, 1, 0, 0)' })];
+    const straight = [el({ role: 'button', text: 'GO' })];
+    const clipped = [el({ role: 'button', text: 'GO', clip: 'polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%)', w: 200, h: 40 })];
+    expect(matchAndDiff(orig, straight).diffs[0]?.props).toContain('transform:MISSING(skew?)');
+    expect(matchAndDiff(orig, clipped).diffs).toHaveLength(0);
+  });
+});

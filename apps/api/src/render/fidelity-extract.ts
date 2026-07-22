@@ -48,10 +48,55 @@ export function FIDELITY_EXTRACT() {
     let leaf = el;
     while (true) { const k = [...leaf.children].filter((c) => n(c.textContent)); if (k.length === 1 && n(k[0].textContent) === textFull) leaf = k[0]; else break; }
     const lcs = getComputedStyle(leaf);
+    // EFFECTIVE transform: an author may put the skew on a wrapper (the element itself reads `none`) — walk
+    // up to 2 ancestors so both sides report the skew that actually paints, wherever it lives. Without this
+    // the diff flip-flops when original and clone attach the same skew at different depths.
+    let tf = cs.transform;
+    if (!tf || tf === 'none') {
+      let anc = el.parentElement;
+      for (let i = 0; i < 2 && anc; i++, anc = anc.parentElement) {
+        const at = getComputedStyle(anc).transform;
+        if (at && at !== 'none') { tf = at; break; }
+      }
+    }
+    // clip-path: a polygon parallelogram is the platform's skew primitive — captured so the diff can treat
+    // it as skew-equivalent (gate.ts effSkewDeg) instead of reporting transform:MISSING.
+    const clip = cs.clipPath && cs.clipPath !== 'none' ? cs.clipPath.slice(0, 160) : undefined;
     // w/h from OFFSET dims (untransformed border-box, integer, STABLE) not getBoundingClientRect (which
     // includes the skew transform → the axis-aligned box inflates run-to-run: the 45↔73 height jitter that
     // made the gate non-convergent). x/y stay viewport-relative (rect). Inline el → offset* 0 → fall back.
-    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: cs.transform, radius: cs.borderRadius });
+    out.push({ role, tag, text, region, x: Math.round(r.left), y: Math.round(absY), w: el.offsetWidth || Math.round(r.width), h: el.offsetHeight || Math.round(r.height), font: lcs.fontFamily, size: lcs.fontSize, weight: lcs.fontWeight, ls: lcs.letterSpacing, color: lcs.color, bg: cs.backgroundColor, bgImage: cs.backgroundImage.slice(0, 240), shadow: cs.boxShadow.slice(0, 140), transform: tf, radius: cs.borderRadius, clip });
+  }
+  return out;
+}
+
+/**
+ * Per-page font FINGERPRINTS: first font-family of every text-bearing element → the rendered width of a fixed
+ * pangram at 100px in that family. Two family NAMES that load the same glyphs (an imported original serves
+ * its face as "primary-font"; the clone declares the real name) measure identically — the diff uses this to
+ * suppress name-only font mismatches (gate.ts sameFace) instead of flagging a false fontMiss. Waits for
+ * document.fonts so a face still loading doesn't fingerprint as the fallback.
+ */
+export async function FIDELITY_FONTS() {
+  try { await document.fonts.ready; } catch { /* measure with whatever painted */ }
+  const first = (f) => (f || '').split(',')[0].trim().replace(/['"]/g, '').toLowerCase();
+  const fams = new Set();
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) fams.add(first(getComputedStyle(el).fontFamily));
+  const ctx = document.createElement('canvas').getContext('2d');
+  const out = {};
+  if (!ctx) return out;
+  for (const fam of fams) {
+    if (!fam) continue;
+    const spec = `100px "${fam.replace(/"/g, '')}"`;
+    // Fingerprint ONLY families the browser confirms are resolvable: an unavailable family silently
+    // measures as the generic fallback, and two DIFFERENT failed fonts would fingerprint identically —
+    // sameFace would then hide a real "the clone's font never loaded" defect. An unconfirmed family is
+    // OMITTED, so the diff falls back to strict name comparison (fails closed, never masks).
+    let loaded = false;
+    try { loaded = document.fonts.check(spec); } catch { /* unsupported → strict names */ }
+    if (!loaded) continue;
+    ctx.font = spec;
+    out[fam] = Math.round(ctx.measureText('Sphinx of black quartz judge my vow 0123456789').width);
   }
   return out;
 }

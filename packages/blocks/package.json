@@ -4,6 +4,7 @@
   "description": "Framework-free block library for Sitewright: block descriptors (palette + prop-field metadata) and a pure, XSS-safe HTML renderer that mirrors the published Astro output. Shared by the editor and the live-preview endpoint.",
   "license": "Apache-2.0",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

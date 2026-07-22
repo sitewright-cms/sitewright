@@ -45,6 +45,29 @@ describe('GET /authoring/components', () => {
     await app.close();
   });
 
+  it('GET /authoring/icons/names + /render — the editor icon library fetches names + previews (no bundled data)', async () => {
+    const app = await createApp({ db: await makeTestDb() });
+    await app.ready();
+    const names = await app.inject({ method: 'GET', url: '/authoring/icons/names' });
+    expect(names.statusCode).toBe(200);
+    const nb = names.json() as { names: string[]; weights: string[] };
+    expect(nb.names).toContain('gear');
+    expect(nb.weights).toContain('fill');
+    expect(nb.weights).toContain('duotone');
+    // Batch render: an icon (weighted) + a brand: logo; unknown weight → fill; unknown name → omitted.
+    const render = await app.inject({ method: 'GET', url: '/authoring/icons/render?weight=bold&names=gear,brand:github,totally-unknown-xyz' });
+    expect(render.statusCode).toBe(200);
+    const rb = render.json() as { weight: string; svgs: Record<string, string> };
+    expect(rb.weight).toBe('bold');
+    expect(rb.svgs.gear).toContain('sw-icon-gear sw-icon-bold');
+    expect(rb.svgs['brand:github']).toContain('sw-icon-brand-github');
+    expect(rb.svgs['totally-unknown-xyz']).toBeUndefined();
+    // A bad weight falls back to fill.
+    const dflt = await app.inject({ method: 'GET', url: '/authoring/icons/render?weight=nope&names=star' });
+    expect((dflt.json() as { weight: string }).weight).toBe('fill');
+    await app.close();
+  });
+
   it('stays an API path (unknown /authoring/* is a JSON 404, not the SPA shell)', async () => {
     const app = await createApp({ db: await makeTestDb() });
     await app.ready();

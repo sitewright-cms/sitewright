@@ -116,8 +116,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       <figcaption class="mt-6 text-sm font-semibold text-base-content/60">Priya S. &middot; Marketing Lead</figcaption>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-left:bold" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-right:bold" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true" class="text-primary"></div>
 </div>`,
   },
@@ -159,8 +159,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-right:bold" ""}}</button>
 </div>`,
   },
   {

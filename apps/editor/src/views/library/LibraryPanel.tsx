@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { useToast } from '../ui/Toast';
@@ -156,6 +156,8 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
       )}
       {section?.category === 'fonts' ? (
         <FontsLibraryModal onClose={() => setOpenCategory(null)} />
+      ) : section?.category === 'icons' ? (
+        <IconGallery section={section} onClose={() => setOpenCategory(null)} />
       ) : (
         section && <SectionModal section={section} onClose={() => setOpenCategory(null)} />
       )}
@@ -198,10 +200,11 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     if (!section.lazy) return;
     const lazy = section.lazy;
     let alive = true;
+    // Only brand + flags load here now — the (large) Phosphor icon set is API-driven (see IconGallery).
     void import('./catalog-icons')
       .then((m) => {
         if (alive) {
-          setItems(lazy === 'brand' ? m.BRAND_ITEMS : lazy === 'flags' ? m.FLAG_ITEMS : m.ICON_ITEMS);
+          setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.FLAG_ITEMS);
           setLoading(false);
         }
       })
@@ -273,6 +276,151 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
         <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
           {filtered.length} {isGrid ? 'icons' : 'items'}
           {overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The Phosphor icon gallery — names + previews come from the API (GET /authoring/icons/names + /render) so
+ * the multi-MB icon data never bundles into the editor. A weight-switcher row (thin…duotone) re-previews
+ * the grid and updates the copied `{{sw-icon "name[:weight]"}}` snippet. Fill is the default (no suffix).
+ */
+function IconGallery({ section, onClose }: { section: LibrarySection; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [weight, setWeight] = useState('fill');
+  const [names, setNames] = useState<string[]>([]);
+  const [weights, setWeights] = useState<string[]>(['fill']);
+  const [sample, setSample] = useState<Record<string, string>>({}); // weight → a sample glyph, for the row
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const previewsRef = useRef<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // Names + weights + a representative glyph per weight (for the switcher row), once on open.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch('/authoring/icons/names');
+        if (!r.ok) throw new Error();
+        const d = (await r.json()) as { names: string[]; weights: string[] };
+        if (!alive) return;
+        setNames(d.names);
+        setWeights(d.weights);
+        setLoading(false);
+        const s: Record<string, string> = {};
+        await Promise.all(
+          d.weights.map(async (w) => {
+            const rr = await fetch(`/authoring/icons/render?weight=${w}&names=star`);
+            if (rr.ok) s[w] = ((await rr.json()) as { svgs: Record<string, string> }).svgs.star ?? '';
+          }),
+        );
+        if (alive) setSample(s);
+      } catch {
+        if (alive) {
+          setError(true);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => (q ? names.filter((n) => n.includes(q) || n.replace(/-/g, ' ').includes(q)) : names), [names, q]);
+  const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(filtered.length);
+  const shown = filtered.slice(0, visible);
+
+  // A weight change invalidates every rendered preview.
+  useEffect(() => {
+    previewsRef.current = {};
+    setPreviews({});
+  }, [weight]);
+
+  // Render the visible page (in the current weight) via the API — best-effort, batched, capped server-side.
+  useEffect(() => {
+    const missing = filtered.slice(0, visible).filter((n) => !previewsRef.current[n]);
+    if (!missing.length) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch(`/authoring/icons/render?weight=${weight}&names=${encodeURIComponent(missing.slice(0, 120).join(','))}`);
+        if (!r.ok || !alive) return;
+        const d = (await r.json()) as { svgs: Record<string, string> };
+        previewsRef.current = { ...previewsRef.current, ...d.svgs };
+        setPreviews((p) => ({ ...p, ...d.svgs }));
+      } catch {
+        /* preview is best-effort */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [visible, q, weight, names]);
+
+  const items: LibraryItem[] = shown.map((n) => ({
+    id: `icon-${n}`,
+    name: n,
+    description: '',
+    example: weight === 'fill' ? `{{sw-icon "${n}" "h-5 w-5"}}` : `{{sw-icon "${n}:${weight}" "h-5 w-5"}}`,
+    svg: previews[n],
+  }));
+  const overflow = filtered.length - shown.length;
+
+  return (
+    <Modal title={`${section.label} — Phosphor`} size="full" onClose={onClose}>
+      <div className="flex h-full flex-col gap-3 p-5">
+        <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
+        {/* Weight switcher — each button shows a sample glyph in that weight; fill is the default. */}
+        <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-1.5">
+          {weights.map((w) => (
+            <button
+              key={w}
+              role="radio"
+              aria-checked={weight === w}
+              onClick={() => setWeight(w)}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs capitalize transition ${
+                weight === w
+                  ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
+                  : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
+              }`}
+            >
+              {sample[w] && <span aria-hidden className="h-4 w-4" dangerouslySetInnerHTML={{ __html: sample[w]! }} />}
+              {w}
+            </button>
+          ))}
+        </div>
+        <SearchField
+          ariaLabel="Search icons"
+          autoFocus
+          placeholder="Search icons…"
+          value={query}
+          onChange={(v) => {
+            setQuery(v);
+            reset();
+          }}
+        />
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
+          {error ? (
+            <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the icon set. Close and reopen to retry.</p>
+          ) : loading ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
+              {Array.from({ length: 36 }, (_, i) => (
+                <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+          ) : (
+            <IconGrid items={items} />
+          )}
+        </div>
+        <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
+          {filtered.length} icons{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · {weight} · click to copy the snippet.
         </p>
       </div>
     </Modal>

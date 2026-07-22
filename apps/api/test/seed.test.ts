@@ -1,45 +1,46 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { seedInstance, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../src/seed.js';
-import { ProjectRepository } from '../src/repo/projects.js';
-import { users, projects } from '../src/db/schema.js';
+import { users, projects, content } from '../src/db/schema.js';
+
+// Broken-bundle isolation (one failed bundle must not abort the admin or the other bundles) is
+// covered in seed-resilience.test.ts, which mocks listSeedBundles onto a corrupt directory.
 
 // Each test registers the admin via argon2 (CPU-heavy); under the full suite + coverage that can
 // exceed the 5s default, so give these a generous ceiling (they're not slow on their own).
 describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('isolates a ScrollSpy Demo seed failure — the admin + Example Project still seed', async () => {
+  it('seeds the admin + the Example Project from its committed bundle, is idempotent, and the admin can log in', async () => {
     const db = await makeTestDb();
-    // Force ONLY the second project's creation to fail; the example create calls through.
-    const orig = ProjectRepository.prototype.create;
-    vi.spyOn(ProjectRepository.prototype, 'create').mockImplementation(async function (this: ProjectRepository, input, userId) {
-      if (input.slug === 'scrollspy-demo') throw new Error('boom');
-      return orig.call(this, input, userId);
-    });
     const log: string[] = [];
     await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1', log: (m) => log.push(m) });
 
-    // The admin + Example Project committed before the demo block, so they survive the demo's failure.
-    expect((await db.select().from(users)).length).toBe(1);
-    expect((await db.select().from(projects)).map((p) => p.name)).toEqual(['Example Project']);
-    expect(log.join('\n')).toMatch(/ScrollSpy Demo seed failed/);
-    expect(log.join('\n')).toMatch(/Example Project are unaffected/);
-  });
-
-  it('seeds the admin + Example Project, is idempotent, and the admin can log in', async () => {
-    const db = await makeTestDb();
-    await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
-
-    // The super-admin and the two showcase projects exist (the Example Project + the ScrollSpy Demo).
+    // The super-admin and the committed showcase bundle exist.
     expect((await db.select().from(users)).map((u) => u.email)).toEqual(['admin@sitewright.example']);
-    expect((await db.select().from(projects)).map((p) => p.name)).toEqual(['Example Project', 'ScrollSpy Demo']);
+    expect((await db.select().from(projects)).map((p) => p.name)).toEqual(['Example Project']);
+    expect(log.join('\n')).toMatch(/imported "Example Project" from its bundled export/);
+
+    // The bundle import actually produced content: the example project holds its pages and got the
+    // seeded Local Hosting deploy target (the export deliberately omits deploy targets).
+    const example = (await db.select().from(projects)).find((p) => p.slug === 'example')!;
+    const pages = await db
+      .select({ id: content.entityId })
+      .from(content)
+      .where(and(eq(content.projectId, example.id), eq(content.kind, 'page')));
+    expect(pages.length).toBeGreaterThan(0);
+    const targets = await db
+      .select({ id: content.entityId })
+      .from(content)
+      .where(and(eq(content.projectId, example.id), eq(content.kind, 'deploy_target')));
+    expect(targets.map((t) => t.id)).toEqual(['local-hosting']);
 
     // Idempotent: once any user exists, a re-seed (even with different env) does nothing.
     await seedInstance({ db, adminEmail: 'someone-else@x.test', adminPassword: 'other' });
     expect((await db.select().from(users)).length).toBe(1);
-    expect((await db.select().from(projects)).length).toBe(2);
+    expect((await db.select().from(projects)).length).toBe(1);
 
     // The admin logs in with the configured password.
     const app = await createApp({ db });

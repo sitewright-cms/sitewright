@@ -33,6 +33,10 @@ describe('RevisionsRepository', () => {
 
   it('keeps entry revision history PER-DATASET (same id in two datasets → separate histories)', async () => {
     const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
+    // The owning datasets must exist first — an entry put against an unknown dataset 409s now.
+    const fields = [{ name: 'title', type: 'text' }];
+    await content.put(ctx, 'dataset', 'posts', { id: 'posts', name: 'Posts', slug: 'posts', fields });
+    await content.put(ctx, 'dataset', 'news', { id: 'news', name: 'News', slug: 'news', fields });
     // The same entry id 'intro' lives in two datasets — each edited independently.
     await content.put(ctx, 'entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P1' } });
     await content.put(ctx, 'entry', 'intro', { id: 'intro', dataset: 'posts', status: 'published', values: { title: 'P2' } });

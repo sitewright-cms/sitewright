@@ -1,26 +1,31 @@
 import { describe, it, expect } from 'vitest';
+import { join } from 'node:path';
 import { validateTemplate } from '@sitewright/blocks';
 import { GLOBAL_TEMPLATES, GLOBAL_SNIPPET_PARTIALS, WIDGET_PARTIALS, WIDGET_MANIFESTS } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
 import { RESERVED_TRANSLATION_GROUPS } from '@sitewright/schema';
-import {
-  examplePages,
-  pagesEn,
-  EXAMPLE_WEBSITE,
-  EXAMPLE_DATASETS,
-  EXAMPLE_FORMS,
-  EXAMPLE_SETTINGS,
-  CHROME_STRINGS,
-  CHROME_TRANSLATIONS,
-  exampleEntries,
-} from '../src/seed/index.js';
+import { EXAMPLE_PROJECTS_DIR, loadSeedBundle } from '../src/seed-bundle.js';
 
-// The image-bearing content is parameterized by an asset-URL map; for these structural/
-// validator checks the URLs are irrelevant, so seed with an empty map (→ empty image refs).
-const EXAMPLE_PAGES = examplePages({});
-const EXAMPLE_ENTRIES = exampleEntries({});
-const EN_PAGES = pagesEn(new Proxy({}, { get: () => '' }) as Record<string, string>);
+// The demo content now lives in the COMMITTED export bundle (apps/api/example_projects/example) —
+// these guards read the bundle the seed imports, so an exported edit that breaks an invariant
+// fails here before it ships.
+const { bundle } = await loadSeedBundle(join(EXAMPLE_PROJECTS_DIR, 'example'));
+const EXAMPLE_PAGES = bundle.pages;
+const EXAMPLE_DATASETS = bundle.datasets;
+const EXAMPLE_ENTRIES = bundle.entries;
+const EXAMPLE_FORMS = bundle.forms;
+const EXAMPLE_SETTINGS = bundle.project.settings;
+const EXAMPLE_WEBSITE = bundle.project.website!;
+// ONE key→{locale: value} catalog replaces the old per-locale CHROME_STRINGS/CHROME_TRANSLATIONS
+// modules — chrome, page prose, and the reserved cart/consent strings all localize through it.
+const CATALOG = (EXAMPLE_WEBSITE.translations ?? {}) as Record<string, Record<string, string>>;
+const EN_PAGES = EXAMPLE_PAGES.filter((p) => !p.locale);
 const EXTRA_LOCALES = EXAMPLE_SETTINGS.locales.filter((l) => l !== EXAMPLE_SETTINGS.defaultLocale);
+// An EN page participates in translation via its translationGroup (export sets it to the page's own
+// id). The current export ships comp-svg WITHOUT one (added to the live showcase untranslated) —
+// pinned below so any NEW untranslated page still fails the i18n guards.
+const TRANSLATED_EN_PAGES = EN_PAGES.filter((p) => p.translationGroup);
+const KNOWN_UNTRANSLATED = ['comp-svg'];
 
 // NOTE: the extractor sees only data-sw-* keys and page.data.* references — a translatable
 // string authored as a STATIC attribute literal (e.g. data-sw-title="Project work" instead of
@@ -67,11 +72,12 @@ function boundKeys(source: string): { directive: string[]; attr: string[]; url: 
 /**
  * Guards the seeded demo CONTENT: every source/slot passes the no-JS validator, every dataset
  * binding resolves, and — the flagship i18n invariants — every locale variant is INHERIT-mode
- * with a COMPLETE translation (every key its shared code binds), the chrome string sets are
- * parity-checked, and every localized dataset/form twin matches its base. A future edit to the
- * demo can't silently ship an untranslated key or a page that only blows up at publish time.
+ * with a COMPLETE translation (every key its shared code binds), the translation catalog is
+ * parity-checked across locales, and every localized dataset/form twin matches its base. A future
+ * re-export of the demo can't silently ship an untranslated key or a page that only blows up at
+ * publish time.
  */
-describe('seed demo content', () => {
+describe('seed demo content (the example bundle)', () => {
   it('every code-first page source passes the no-JS template validator', () => {
     for (const page of EXAMPLE_PAGES) {
       if (page.source) {
@@ -81,8 +87,10 @@ describe('seed demo content', () => {
   });
 
   it('every skeleton slot (mainNav, footer) passes the validator', () => {
-    expect(() => validateTemplate(EXAMPLE_WEBSITE.mainNav)).not.toThrow();
-    expect(() => validateTemplate(EXAMPLE_WEBSITE.footer)).not.toThrow();
+    expect(EXAMPLE_WEBSITE.mainNav, 'bundle ships a mainNav slot').toBeTruthy();
+    expect(EXAMPLE_WEBSITE.footer, 'bundle ships a footer slot').toBeTruthy();
+    expect(() => validateTemplate(EXAMPLE_WEBSITE.mainNav!)).not.toThrow();
+    expect(() => validateTemplate(EXAMPLE_WEBSITE.footer!)).not.toThrow();
     // No `bottom` slot any more — the consent banner auto-injects (no {{sw-consent}} placeholder).
   });
 
@@ -121,8 +129,10 @@ describe('seed demo content', () => {
   // ---- the flagship i18n invariants ------------------------------------------------------------
 
   it('every non-link EN page has exactly one INHERIT-mode variant per extra locale, with translated title + data', () => {
+    // The untranslated set must not grow: only the pinned known gap may lack a translationGroup.
+    expect(EN_PAGES.filter((p) => !p.translationGroup).map((p) => p.id)).toEqual(KNOWN_UNTRANSLATED);
     for (const locale of EXTRA_LOCALES) {
-      for (const owner of EN_PAGES) {
+      for (const owner of TRANSLATED_EN_PAGES) {
         const variants = EXAMPLE_PAGES.filter((p) => p.locale === locale && p.translationGroup === owner.id);
         expect(variants, `"${owner.id}" → ${locale}`).toHaveLength(1);
         const v = variants[0]!;
@@ -141,7 +151,7 @@ describe('seed demo content', () => {
 
   it('every locale variant carries EVERY page.data key its inherited code binds (translation completeness)', () => {
     for (const locale of EXTRA_LOCALES) {
-      for (const owner of EN_PAGES) {
+      for (const owner of TRANSLATED_EN_PAGES) {
         const source = effectiveSource(owner);
         if (!source) continue;
         const v = EXAMPLE_PAGES.find((p) => p.locale === locale && p.translationGroup === owner.id)!;
@@ -163,19 +173,29 @@ describe('seed demo content', () => {
     }
   });
 
-  it('chrome strings: every locale carries the SAME key set, and every key the slots reference exists', () => {
-    const locales = Object.keys(CHROME_STRINGS);
-    expect(locales).toEqual(expect.arrayContaining([...EXAMPLE_SETTINGS.locales]));
-    const enKeys = Object.keys(CHROME_STRINGS.en!).sort();
-    for (const locale of locales) {
-      expect(Object.keys(CHROME_STRINGS[locale]!).sort(), `strings.${locale} keys`).toEqual(enKeys);
+  it('translation-catalog parity: every key carries every extra locale, and every key the slots reference exists', () => {
+    // The old per-locale CHROME_STRINGS maps became the single website.translations catalog
+    // (key → {locale: value}). Parity now means: every catalog key is translated into every
+    // non-default locale. An `en` cell is OPTIONAL for page-scoped keys (the element's inline text
+    // is the EN fallback) — the reserved-key guard below pins the EN cells that must exist.
+    const keys = Object.keys(CATALOG);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      for (const locale of EXTRA_LOCALES) {
+        const v = CATALOG[key]![locale];
+        expect(typeof v === 'string' && v !== '' ? 'ok' : `MISSING ${locale} ${key}`, `catalog "${key}" ${locale}`).toBe('ok');
+      }
     }
+    // The chrome slots localize via the catalog — both the {{sw-translate "key"}} helper form and
+    // the inline-editable data-sw-translate="key" directive; every referenced key must resolve.
     const slots = [EXAMPLE_WEBSITE.mainNav, EXAMPLE_WEBSITE.footer].filter(Boolean).join('\n');
-    // The slots now localize via the translation catalog: {{sw-translate "key"}} / (sw-translate "key").
-    const referenced = [...slots.matchAll(/sw-translate "([a-z_]+)"/g)].map((m) => m[1]!);
+    const referenced = [
+      ...[...slots.matchAll(/sw-translate "([A-Za-z_][A-Za-z0-9_.]*)"/g)].map((m) => m[1]!),
+      ...[...slots.matchAll(/data-sw-translate="([A-Za-z_][A-Za-z0-9_.]*)"/g)].map((m) => m[1]!),
+    ];
     expect(referenced.length).toBeGreaterThan(0);
     for (const key of new Set(referenced)) {
-      expect(enKeys.includes(key), `strings key "${key}"`).toBe(true);
+      expect(keys.includes(key), `catalog key "${key}"`).toBe(true);
     }
   });
 
@@ -183,14 +203,13 @@ describe('seed demo content', () => {
     // Pages bind prominent strings via data-sw-translate="<scope>.<key>" (the inline-editable global
     // catalog). EN is the element's inline fallback; the example is a complete trilingual showcase, so
     // every such key must carry a non-empty cell for every NON-default locale (de/es).
-    const catalog = (EXAMPLE_WEBSITE.translations ?? {}) as Record<string, Record<string, string>>;
     const sources = EXAMPLE_PAGES.map((p) => effectiveSource(p, true) ?? '').join('\n');
     const keys = new Set([...sources.matchAll(/data-sw-translate="([A-Za-z_][A-Za-z0-9_.]*)"/g)].map((m) => m[1]!));
     expect(keys.size).toBeGreaterThan(0);
     // at least the migrated page scopes are present (sanity that the migration landed)
     for (const k of ['home.headline', 'services.headline', 'about.headline']) expect(keys.has(k), `page binds ${k}`).toBe(true);
     for (const key of keys) {
-      const cell = catalog[key as keyof typeof catalog];
+      const cell = CATALOG[key as keyof typeof CATALOG];
       expect(cell, `data-sw-translate key "${key}" exists in website.translations`).toBeTruthy();
       for (const loc of EXTRA_LOCALES) {
         const v = cell![loc as keyof typeof cell];
@@ -199,15 +218,15 @@ describe('seed demo content', () => {
     }
   });
 
-  it('reserved-translation registry ↔ seed: every reserved key is seeded, and its EN value is the registry default', () => {
+  it('reserved-translation registry ↔ bundle: every reserved key is seeded, and its EN value is the registry default', () => {
     // The RESERVED_TRANSLATION registry (@sitewright/schema) is the single source of truth for the
     // platform's built-in English UI strings (the cart helpers' fallback + the editor ghost rows). The
-    // example's EN chrome must not drift from it, so a populated example matches what an empty project
-    // renders by fallback.
+    // example's EN catalog cells must not drift from it, so a populated example matches what an empty
+    // project renders by fallback.
     for (const group of RESERVED_TRANSLATION_GROUPS) {
       for (const { key, default: def } of group.keys) {
-        const cell = CHROME_TRANSLATIONS[key];
-        expect(cell, `reserved key "${key}" is seeded in the chrome catalog`).toBeDefined();
+        const cell = CATALOG[key];
+        expect(cell, `reserved key "${key}" is seeded in the catalog`).toBeDefined();
         expect(cell!.en, `reserved key "${key}" EN value matches the registry default`).toBe(def);
       }
     }
@@ -275,32 +294,29 @@ describe('seed demo content', () => {
     }
   });
 
-  it('binds the provided LOCAL asset URLs into entries + pages — and uses NO remote image hosts', () => {
-    const assets = {
-      'proj-harbor': '/media/p/ex-proj-harbor/ex-proj-harbor-800.jpg',
-      'team-mara': '/media/p/ex-team-mara/ex-team-mara-400.jpg',
-      // The entry id is `team-dev` but it looks up the `team-devon` asset key — pin that mapping.
-      'team-devon': '/media/p/ex-team-devon/ex-team-devon-400.jpg',
-      'prod-tee': '/media/p/ex-prod-tee/ex-prod-tee-640.jpg',
-      'blog-speed': '/media/p/ex-blog-speed/ex-blog-speed-960.jpg',
-      hero: '/media/p/ex-hero/ex-hero-800.jpg',
-      studio: '/media/p/ex-studio/ex-studio-800.jpg',
-    };
-    const entries = exampleEntries(assets);
-    const pages = examplePages(assets);
-    // entry ids are underscore identifiers now; the ASSET KEYS (assets[...]) stay as-is (media keys).
-    expect(JSON.stringify(entries.find((e) => e.id === 'proj_harbor'))).toContain(assets['proj-harbor']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'team_mara'))).toContain(assets['team-mara']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'team_dev'))).toContain(assets['team-devon']);
-    expect(JSON.stringify(entries.find((e) => e.id === 'prod_tee'))).toContain(assets['prod-tee']);
-    const sources = pages.map((p) => p.source ?? '').join('\n');
-    expect(sources).toContain(assets.hero);
-    expect(sources).toContain(assets.studio);
+  it('bakes LOCAL flat media URLs into entries + pages — and uses NO remote image hosts', () => {
+    // The old assets-map parameterization (examplePages(assets)) is gone — the export bakes the real
+    // flat media URLs (/media/<slug>/<shortId>-<file>) in. Asset ids are per-export short ids, so pin
+    // the stable FILENAME tail instead of the id.
+    const mediaUrl = (name: string): RegExp => new RegExp(`/media/example/[A-Za-z0-9]+-${name}`);
+    const entryJson = (id: string): string => JSON.stringify(EXAMPLE_ENTRIES.find((e) => e.id === id));
+    expect(entryJson('proj_harbor')).toMatch(mediaUrl('proj-harbor\\.png'));
+    expect(entryJson('team_mara')).toMatch(mediaUrl('team-mara\\.png'));
+    // The entry id is `team_dev` but its image is the `team-devon` asset — pin that mapping.
+    expect(entryJson('team_dev')).toMatch(mediaUrl('team-devon\\.png'));
+    expect(entryJson('prod_tee')).toMatch(mediaUrl('prod-tee\\.png'));
+    const sources = EXAMPLE_PAGES.map((p) => p.source ?? '').join('\n');
+    expect(sources).toMatch(mediaUrl('hero\\.png'));
+    expect(sources).toMatch(mediaUrl('studio\\.png'));
     // The German article variants carry the same local cover (page.data flows through too).
-    expect(JSON.stringify(pages.find((p) => p.id === 'blog-static-speed-de')?.data)).toContain(assets['blog-speed']);
-    // No remote image hosts anywhere in the seeded demo content.
-    const all = [JSON.stringify(entries), JSON.stringify(pages.map((p) => p.data)), sources].join('\n');
+    expect(JSON.stringify(EXAMPLE_PAGES.find((p) => p.id === 'blog-static-speed-de')?.data)).toMatch(mediaUrl('blog-speed\\.png'));
+    // No remote image hosts anywhere in the seeded demo content — and every media URL stays under
+    // this project's own flat /media/<slug>/ namespace.
+    const all = [JSON.stringify(EXAMPLE_ENTRIES), JSON.stringify(EXAMPLE_PAGES.map((p) => p.data)), sources].join('\n');
     expect(all).not.toContain('picsum');
     expect(all).not.toMatch(/https?:\/\/[^"']*\.(?:jpg|jpeg|png|webp|gif|avif)/i);
+    for (const url of [...all.matchAll(/\/media\/[^"'\\\s)]+/g)].map((m) => m[0])) {
+      expect(url.startsWith('/media/example/'), `local media url ${url}`).toBe(true);
+    }
   });
 });

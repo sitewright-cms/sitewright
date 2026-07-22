@@ -1,0 +1,33 @@
+{
+  "kind": "sitewright-project-export",
+  "exportFormat": 1,
+  "bundleFormat": 2,
+  "app": "0.0.0",
+  "exportedAt": "2026-07-22T22:24:53.132Z",
+  "source": {
+    "id": "p5l1y8tSiT7R",
+    "name": "Example Project",
+    "slug": "example"
+  },
+  "mediaSlug": "example",
+  "counts": {
+    "pages": 91,
+    "templates": 0,
+    "snippets": 0,
+    "datasets": 25,
+    "entries": 116,
+    "translations": 0,
+    "forms": 3,
+    "media": 32,
+    "mediaFolders": 6
+  },
+  "omitted": [
+    "deploy_target_credentials",
+    "project_smtp_password",
+    "form_submissions",
+    "content_revisions",
+    "members",
+    "invites",
+    "api_keys"
+  ]
+}

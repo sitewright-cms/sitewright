@@ -20,9 +20,9 @@ export function pageComponentsSlider(): Page {
     data: {
       sld_intro: 'One component, every configuration. Each slider below is plain declarative markup — a data-sw-component root, data-sw-part slots, and data-* options.',
       sec_hero_t: 'Hero slider — one include',
-      sec_hero_d: 'The classic frontpage opener: fixed-height background slides with an alternating Ken Burns drift and captions that rise in. This entire block is the hero-slider Widget — drop it in, then edit its slides (images + captions) as data. No custom CSS.',
+      sec_hero_d: 'The classic frontpage opener: fixed-height background slides with an alternating Ken Burns drift and captions that rise in. This entire block is the hero-slider Widget — drop it in, then edit its slides, captions, and settings (including the slider height) as data. No custom CSS.',
       sec_fade_t: 'Slider — the defaults',
-      sec_fade_d: 'No options at all: slides crossfade, arrows overlay mid-left and mid-right, indicators sit centered at the bottom.',
+      sec_fade_d: 'No options at all: slides crossfade, full-height gradient arrows sit at the left and right edges and brighten on hover, and a frosted pill of indicators is centered at the bottom. A single-item slider gets this hero treatment automatically; multi-item rows below keep compact circle arrows.',
       sec_slide_t: 'Slide effect, looping, autoplay',
       sec_slide_d: 'The translating strip instead of a crossfade, wrapping endlessly and advancing on its own — hover or focus pauses it.',
       sec_items_t: 'Multiple items with a peek',
@@ -53,7 +53,7 @@ export function pageComponentsSlider(): Page {
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_slider.sec_fade_t">Slider — the defaults</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_slider.sec_fade_d">No options at all: slides crossfade, arrows overlay mid-left and mid-right, indicators sit centered at the bottom.</p>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_slider.sec_fade_d">No options at all: slides crossfade, full-height gradient arrows sit at the left and right edges, and a frosted pill of indicators is centered at the bottom.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="carousel"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" aria-label="{{sw-translate "comp_slider.aria_fade"}}">
     <div data-sw-part="track">
@@ -144,7 +144,7 @@ export function pageComponentsSlider(): Page {
   <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_slider.sec_wheel_t">Wheel gestures &amp; auto height</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_slider.sec_wheel_d">Scroll the mouse wheel or trackpad over the slider to move it; the track animates its height to fit each quote.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-wheel="true" data-autoheight="true" data-effect="slide"</code></pre>
-  <div class="relative mt-8 mx-auto max-w-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-wheel="true" data-autoheight="true" aria-label="{{sw-translate "comp_slider.aria_wheel"}}">
+  <div class="relative mt-8 mx-auto max-w-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-wheel="true" data-autoheight="true" data-arrows="circle" aria-label="{{sw-translate "comp_slider.aria_wheel"}}">
     <div data-sw-part="track">
       {{#each dataset.projects}}
       <figure data-sw-part="slide" class="px-2 pb-10">

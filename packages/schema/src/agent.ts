@@ -710,10 +710,14 @@ the widget renders the entry whose id = page.data.hero_config, else the first) w
   • caption_light (boolean) — TRUE = a WHITE caption box with dark text; FALSE (default) = a dark translucent
     box with white text + backdrop blur. Set it to whichever the original's caption uses (a white-boxed
     caption over the photo → caption_light:true).
+  • height (text) — an EXPLICIT CSS length (e.g. "70vh", "600px", "100%") when the original's hero is neither
+    the 86vh full-bleed nor the 60vh contained default. Leave BLANK to use the full_bleed default height;
+    set it to pin the hero to the original's measured height for a precise match.
 So a cloned hero carousel = put the slide images/captions as a \`hero\` entry's \`slides\` list + set the toggles
 (incl. full_bleed / caption_light to MATCH the original's frame + caption look); you do NOT hand-author the
-carousel markup. Also set \`interval\` to the original's real slide duration and match its height via full_bleed
-— a contained rounded box where the original is a full-bleed hero is a MAJOR fidelity miss.
+carousel markup. Also set \`interval\` to the original's real slide duration and match its height — via
+full_bleed, or \`height\` for an exact value — a contained rounded box where the original is a full-bleed hero
+is a MAJOR fidelity miss.
 The other built-in widget is {{> logo-marquee}} — a CSS-only auto-scrolling logo strip; its \`marquee\` dataset
 entry has { speed (select: Normal/Slow/Fast), logos (LIST of { image, alt, link }), or a \`folder\` name to
 pull every image in a media folder }. Same pattern: include the partial, populate the dataset, no markup.

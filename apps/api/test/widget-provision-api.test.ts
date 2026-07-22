@@ -74,4 +74,48 @@ describe('Widget provisioning on page save', () => {
     expect(entry.item.values.autoplay).toBe(false);
     expect(entry.item.values.slides[0]?.caption).toBe('Edited');
   });
+
+  it('APPEND-ONLY reconcile: a pre-existing hero dataset gains new manifest fields (height) without touching entries', async () => {
+    const { t, projectId } = await setup('w4@acme.test');
+    // Simulate a project provisioned BEFORE the `height` field existed: a hero dataset whose fields lack
+    // it, plus a user-edited entry.
+    const oldFields = [
+      { name: 'autoplay', type: 'boolean', required: false, localized: false },
+      {
+        name: 'slides',
+        type: 'list',
+        required: false,
+        localized: false,
+        fields: [
+          { name: 'image', type: 'image', required: false, localized: false },
+          { name: 'caption', type: 'richtext', required: false, localized: false },
+        ],
+      },
+    ];
+    await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/dataset/hero`,
+      cookies: { sw_session: t },
+      payload: { id: 'hero', name: 'Hero Slider', slug: 'hero', fields: oldFields },
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/entry/config`,
+      cookies: { sw_session: t },
+      payload: { id: 'config', dataset: 'hero', status: 'published', values: { autoplay: false, slides: [{ image: '/x.jpg', caption: 'Kept' }] } },
+    });
+
+    // A page save that composes the widget → the reconcile APPENDS the missing manifest field(s).
+    expect((await putPage(app, t, projectId, '<section>{{> hero-slider}}</section>')).statusCode).toBe(200);
+
+    const ds = (await getJson(app, t, projectId, 'dataset', 'hero')).json() as { item: { fields: Array<{ name: string }> } };
+    const names = ds.item.fields.map((f) => f.name);
+    expect(names).toContain('height'); // the new field appeared for the existing project
+    expect(names[0]).toBe('autoplay'); // existing fields kept, in their original order (append-only)
+    expect(names.indexOf('slides')).toBe(1); // not reordered
+    // The user's entry is untouched by the reconcile.
+    const entry = (await getJson(app, t, projectId, 'entry', 'config', 'hero')).json() as { item: { values: { autoplay: boolean; slides: Array<{ caption: string }> } } };
+    expect(entry.item.values.autoplay).toBe(false);
+    expect(entry.item.values.slides[0]?.caption).toBe('Kept');
+  });
 });

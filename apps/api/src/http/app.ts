@@ -434,7 +434,15 @@ async function ensureWidgetDatasets(repo: ContentRepository, ctx: ProjectContext
           throw err;
         },
       );
-      if (exists) continue; // never overwrite an existing dataset (it holds the user's edits)
+      if (exists) {
+        // RECONCILE (APPEND-ONLY, RACE-SAFE): a widget manifest can GAIN fields after a project already
+        // provisioned its dataset (e.g. the hero widget's new `height`). Backfill any manifest field the
+        // stored dataset is missing so the new control shows up in the entry editor for existing projects
+        // — in ONE transaction so a concurrent dataset edit can't be lost, appending only (never removing/
+        // reordering/overwriting an existing field or any entry). No-op when nothing is missing.
+        await repo.reconcileDatasetFields(ctx, ds.slug, ds.fields);
+        continue;
+      }
       await repo.put(ctx, 'dataset', ds.slug, { id: ds.slug, name: ds.name, slug: ds.slug, fields: ds.fields });
       for (const e of ds.seed ?? []) {
         await repo.put(ctx, 'entry', e.id, { id: e.id, dataset: ds.slug, status: 'published', values: e.values });

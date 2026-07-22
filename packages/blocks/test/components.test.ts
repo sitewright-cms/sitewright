@@ -161,6 +161,32 @@ describe('component registry', () => {
     expect(none.js).toBe('');
   });
 
+  it('Carousel arrows: EDGE (gradient, full-height) by default, CIRCLE for multi-item / data-arrows="circle"', () => {
+    const { css } = componentAssets(['Carousel']);
+    // The runtime stamps data-sw-multi from --sw-items; the CSS branches the arrow LOOK on it, with an
+    // explicit data-arrows="edge|circle" override. Both sets are zero-specificity :where() so utilities win.
+    expect(css).toContain('[data-arrows="edge"]');
+    expect(css).toContain('[data-arrows="circle"]');
+    expect(css).toContain('data-sw-multi');
+    // EDGE default (single-item): a full-height gradient tab. Gated to NOT-multi (or forced edge).
+    expect(css).toMatch(/\[data-arrows="edge"\][^{]*:not\(\[data-sw-multi="true"\]\)[\s\S]*?linear-gradient\(to right/);
+    // CIRCLE (multi-item, or forced circle): the compact translucent disc.
+    expect(css).toMatch(/\[data-arrows="circle"\][^{]*\[data-sw-multi="true"\][\s\S]*?border-radius:9999px/);
+    // The two selector sets are zero-specificity (each :where(...)), so an authored utility still wins.
+    expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="edge"]');
+    expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="circle"]');
+  });
+
+  it('Carousel caption + dots default to the frosted "hero" look (single-item), overridable', () => {
+    const { css } = componentAssets(['Carousel']);
+    // .sw-caption → frosted centered pill by default (zero-specificity so a light/wide utility overrides).
+    expect(css).toContain(':where([data-sw-block="Carousel"] .sw-caption){');
+    expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*backdrop-filter:blur/);
+    expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*text-align:center/);
+    // Frosted dots pill + thicker glyph now apply to any SINGLE-item slider (:not multi), not just kenburns.
+    expect(css).toMatch(/:not\(\[data-sw-multi="true"\]\)\) :where\(\[data-sw-part="dots"\]\)\{[^}]*backdrop-filter/);
+  });
+
   it('Modal uses the native <dialog> API', () => {
     const modal = componentAssets(['Modal']);
     expect(modal.css).toContain('::backdrop');

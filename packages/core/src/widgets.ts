@@ -73,20 +73,26 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     // {{#unless (sw-blank caption)}} so empty/whitespace/cleared-WYSIWYG residue shows no empty box.
     // `dataset.hero` falls back to the bare dataset on translated pages (resolveLocaleDatasets).
     // An empty dataset → the {{#sw-pick-entry}} block renders nothing.
+    // Arrows and the frosted centered caption pill are NOT styled here — the base Carousel component CSS
+    // owns the "hero look" (a single-item slider auto-gets the full-height gradient EDGE arrows + the
+    // frosted .sw-caption pill + frosted dots pill). This body only supplies the caption TYPOGRAPHY and
+    // the light/dark caption variant. `height` (optional, px/vh/% etc.) overrides the full_bleed default
+    // height via an inline style (validator-safe — a quoted `style` value is HTML-escaped, no breakout);
+    // when blank the class-based default (86vh full-bleed / 60vh contained) applies.
     source: `{{#sw-pick-entry dataset.hero @root.page.data.hero_config}}
-<div class="relative overflow-hidden {{#if full_bleed}}h-[86vh] min-h-[560px]{{else}}h-[60vh] min-h-[420px] max-h-[640px] rounded-3xl{{/if}}" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
+<div class="relative overflow-hidden {{#if full_bleed}}{{#unless height}}h-[86vh] min-h-[560px]{{/unless}}{{else}}rounded-3xl {{#unless height}}h-[60vh] min-h-[420px] max-h-[640px]{{/unless}}{{/if}}"{{#if height}} style="height:{{height}}"{{/if}} data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
   <div data-sw-part="track">
     {{#each slides}}
     <div data-sw-part="slide">
       {{#if image}}<img class="sw-kenburns" src="{{sw-url image}}" alt="" />{{else}}<div class="sw-kenburns bg-base-200"></div>{{/if}}
       {{#unless (sw-blank caption)}}<div class="absolute inset-0 flex items-center justify-center p-6">
-        <div class="sw-caption rounded-xl px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider shadow-2xl {{#if caption_light}}bg-white/90 text-neutral-900{{else}}bg-black/40 text-white backdrop-blur-md{{/if}}">{{sw-html caption}}</div>
+        <div class="sw-caption text-2xl font-semibold uppercase tracking-wider{{#if caption_light}} bg-white/90 text-neutral-900{{/if}}">{{sw-html caption}}</div>
       </div>{{/unless}}
     </div>
     {{/each}}
   </div>
-  {{#if show_arrows}}<button type="button" data-sw-part="prev" class="group absolute inset-y-0 left-0 z-10 flex h-full w-20 transform-none items-center justify-start rounded-none bg-transparent bg-gradient-to-r from-black/85 via-black/45 to-transparent hover:from-black/95 hover:via-black/60 pl-4 text-white opacity-90 transition-all duration-300 hover:opacity-100 sm:w-32" aria-label="Previous slide">{{sw-icon "chevron-left" "size-20 drop-shadow-[0_3px_10px_rgb(0_0_0/0.85)] scale-[0.55] transition-transform duration-300 group-hover:scale-[0.65] group-hover:-translate-x-4 group-active:-translate-x-8"}}</button>
-  <button type="button" data-sw-part="next" class="group absolute inset-y-0 right-0 z-10 flex h-full w-20 transform-none items-center justify-end rounded-none bg-transparent bg-gradient-to-l from-black/85 via-black/45 to-transparent hover:from-black/95 hover:via-black/60 pr-4 text-white opacity-90 transition-all duration-300 hover:opacity-100 sm:w-32" aria-label="Next slide">{{sw-icon "chevron-right" "size-20 drop-shadow-[0_3px_10px_rgb(0_0_0/0.85)] scale-[0.55] transition-transform duration-300 group-hover:scale-[0.65] group-hover:translate-x-4 group-active:translate-x-8"}}</button>{{/if}}
+  {{#if show_arrows}}<button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left"}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right"}}</button>{{/if}}
   {{#if show_indicators}}<div data-sw-part="dots" aria-hidden="true"></div>{{/if}}
 </div>
 {{/sw-pick-entry}}`,
@@ -106,6 +112,9 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
             // text (vs the default dark translucent box) — match whichever the original uses.
             { name: 'full_bleed', type: 'boolean', required: false, localized: false },
             { name: 'caption_light', type: 'boolean', required: false, localized: false },
+            // height: an explicit slider height in any CSS length (e.g. "70vh", "600px", "100%"). Blank =
+            // the full_bleed default (86vh full-bleed / 60vh contained). Set into an inline style at render.
+            { name: 'height', type: 'text', required: false, localized: false },
             {
               name: 'slides',
               type: 'list',
@@ -129,6 +138,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
                 show_indicators: true,
                 full_bleed: false,
                 caption_light: false,
+                height: '',
                 slides: [
                   { image: '', caption: 'Your headline here' },
                   { image: '', caption: 'A second slide' },

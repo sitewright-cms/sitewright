@@ -108,6 +108,29 @@ describe('hero-slider Widget render', () => {
     expect(render(fullConfig)).toContain('data-kenburns="on"');
   });
 
+  it('height: an explicit CSS length sets an inline style and drops the class-based default height', () => {
+    const html = render({ ...fullConfig, height: '70vh' });
+    expect(html).toContain('style="height:70vh"');
+    expect(html).not.toContain('h-[60vh]'); // the vh default is suppressed when an explicit height is set
+    expect(html).not.toContain('h-[86vh]');
+  });
+
+  it('height: blank → the full_bleed-based default height class applies (no inline style)', () => {
+    const contained = render({ ...fullConfig, full_bleed: false, height: '' });
+    expect(contained).toContain('h-[60vh]');
+    expect(contained).not.toContain('style="height:');
+    const bleed = render({ ...fullConfig, full_bleed: true, height: '' });
+    expect(bleed).toContain('h-[86vh]');
+    expect(bleed).not.toContain('style="height:');
+  });
+
+  it('height overrides a contained hero cleanly (max-h clamp dropped so a tall value is honoured; corners kept)', () => {
+    const html = render({ ...fullConfig, full_bleed: false, height: '900px' });
+    expect(html).toContain('style="height:900px"');
+    expect(html).not.toContain('max-h-[640px]'); // would otherwise clamp an explicit tall height
+    expect(html).toContain('rounded-3xl'); // contained corner treatment still applies
+  });
+
   it('renders nothing until the `hero` dataset exists (no config → empty)', () => {
     expect(renderTemplate('{{> hero-slider}}', { dataset: { hero: [] }, partials: WIDGET_PARTIALS }).trim()).toBe('');
   });

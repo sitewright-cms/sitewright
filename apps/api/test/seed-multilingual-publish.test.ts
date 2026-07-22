@@ -1,21 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
-import {
-  EXAMPLE_IDENTITY,
-  EXAMPLE_WEBSITE,
-  EXAMPLE_SETTINGS,
-  examplePages,
-  EXAMPLE_DATASETS,
-  exampleEntries,
-  EXAMPLE_FORMS,
-} from '../src/seed/index.js';
+import { EXAMPLE_PROJECTS_DIR, loadSeedBundle } from '../src/seed-bundle.js';
+import { MediaStorage } from '../src/media/storage.js';
 
-// Image URLs are irrelevant to the multilingual/publish assertions; seed with an empty asset map.
-const EXAMPLE_PAGES = examplePages({});
-const EXAMPLE_ENTRIES = exampleEntries({});
+// The demo content now ships as the committed export bundle the first-boot seed imports — this
+// suite pushes that exact bundle through the real import + publish pipeline (the render smoke for
+// the bundle). Image URLs are baked into the export; the bundle's media binaries are restored into
+// the harness media root so the published site is complete.
+const BUNDLE_DIR = join(EXAMPLE_PROJECTS_DIR, 'example');
+const { bundle } = await loadSeedBundle(BUNDLE_DIR);
 
 /**
  * End-to-end guard for the SEEDED flagship showcase: pushes the real demo content through the
@@ -43,24 +39,30 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-seed-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Example Project', slug);
+    projectId = await client.createProject(bundle.project.name, slug);
     const proj = client.project(projectId);
-    // ONE bundle import (the per-entity PUT loop would trip the per-route rate limit at this
-    // size), mirroring seed.ts plus a siteUrl so hreflang/sitemap are emitted. Forms are not
-    // part of the bundle schema — two PUTs.
+    // ONE whole-bundle import (mirrors what seedInstance does via importSeedBundle) plus a
+    // deterministic siteUrl override so the hreflang/sitemap assertions don't chase the live
+    // instance's own URL.
     const res = await client.post(`${proj.base}/import`, {
+      ...bundle,
       project: {
-        identity: EXAMPLE_IDENTITY,
-        website: { ...EXAMPLE_WEBSITE, siteUrl: 'https://northwind.example' },
-        settings: EXAMPLE_SETTINGS,
+        identity: bundle.project.identity,
+        website: { ...bundle.project.website, siteUrl: 'https://northwind.example' },
+        settings: bundle.project.settings,
       },
-      pages: EXAMPLE_PAGES,
-      datasets: EXAMPLE_DATASETS,
-      entries: EXAMPLE_ENTRIES,
     });
     expect(res.statusCode).toBe(200);
-    for (const form of EXAMPLE_FORMS) {
-      expect((await proj.putContent('form', form.id, form)).statusCode, form.id).toBe(200);
+    // Restore the bundle's media binaries (importSeedBundle's media loop) so images publish too.
+    const storage = new MediaStorage(mediaRoot);
+    const mediaDir = join(BUNDLE_DIR, 'media');
+    for (const assetId of await readdir(mediaDir)) {
+      const assetDir = join(mediaDir, assetId);
+      for (const entry of await readdir(assetDir, { recursive: true, withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const rel = join(entry.parentPath ?? assetDir, entry.name).slice(assetDir.length + 1).replaceAll('\\', '/');
+        await storage.importAssetFile(slug, assetId, rel, await readFile(join(assetDir, rel)));
+      }
     }
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
   }, 120_000);
@@ -129,7 +131,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(home).not.toContain('c-tabs.js');
     expect(home).not.toContain('c-lightbox.js');
     expect(home).not.toContain('c-modal.js');
-    expect(home).toContain('data-src'); // lazy-loaded hero (bare attr when the test's asset map is empty)
+    expect(home).toContain('data-src'); // lazy-loaded hero
     expect(home).toContain('lazyload.js'); // its runtime ships (only-used-ships)
     const pricing = await page('services/pricing/index.html');
     expect(pricing).toContain('data-sw-component="tabs"');

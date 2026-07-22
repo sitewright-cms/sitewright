@@ -126,7 +126,10 @@ describe('dataset + entry content API', () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
-    await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
+    // The owning dataset must exist first — an entry put against an unknown dataset 409s now.
+    await app.inject({ method: 'PUT', url: `${base}/content/dataset/posts`, cookies, payload: dataset });
+    const put = await app.inject({ method: 'PUT', url: `${base}/content/entry/post_1`, cookies, payload: entry });
+    expect(put.statusCode).toBe(200);
     // An entry id is only unique within its dataset, so read/delete carry the owning dataset as ?dataset=.
     const del = await app.inject({ method: 'DELETE', url: `${base}/content/entry/post_1?dataset=posts`, cookies });
     expect(del.statusCode).toBe(204);

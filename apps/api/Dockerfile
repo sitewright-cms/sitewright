@@ -52,6 +52,9 @@ RUN apt-get update \
 # on every code change). node_modules above was copied --chown too.
 COPY --chown=node:node dist ./dist
 COPY --chown=node:node drizzle ./drizzle
+# The committed showcase-project bundles (unpacked exports) the first-boot seed imports —
+# resolved relative to dist like the drizzle/ migrations (seed-bundle.ts EXAMPLE_PROJECTS_DIR).
+COPY --chown=node:node example_projects ./example_projects
 COPY --chown=node:node editor ./editor
 COPY --chown=node:node package.json ./
 

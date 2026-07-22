@@ -252,6 +252,15 @@ export class ContentRepository {
       const dup = slug ? ((await this.list(ctx, 'dataset')) as Array<{ id: string; slug?: string }>).find((d) => d.id !== key && d.slug === slug) : undefined;
       if (dup) throw new ConflictError(`a dataset with slug "${slug}" already exists (entity id "${dup.id}") — write it via that id (rename_dataset keeps the original id)`);
     }
+    // An ENTRY must belong to an EXISTING dataset — writing one against an unknown slug creates an
+    // ORPHAN no loop or editor can ever reach (dataset deletes cascade their entries, and the export
+    // skips strays, so this closes the last way orphans were minted: an entry put racing/preceding
+    // its dataset, or carrying a stale slug after rename_dataset).
+    if (kind === 'entry') {
+      const slug = (parsed as { dataset?: string }).dataset;
+      const known = slug ? ((await this.list(ctx, 'dataset')) as Array<{ slug?: string }>).some((d) => d.slug === slug) : false;
+      if (!known) throw new ConflictError(`entry "${key}" references unknown dataset "${slug ?? ''}" — create the dataset first (after rename_dataset, entries must carry the NEW slug)`);
+    }
     // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
     const scope = this.scopeForData(kind, parsed);
     await this.writeRow(this.db, ctx, kind, key, parsed);
@@ -298,14 +307,44 @@ export class ContentRepository {
     }
     const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
+    // Deleting a DATASET removes its entries with it — an entry is unreachable without its dataset
+    // (no loop resolves it, no editor lists it), and leaving it behind creates ORPHANS that used to
+    // make the project un-importable (export shipped them; import's validateProject rejected the
+    // bundle). Tombstone each entry first (same abort-on-history-failure rule as the dataset itself)
+    // so a deleted dataset's rows stay individually restorable from the History rail.
+    const cascade: Array<{ id: string; scope: string; data: unknown }> = [];
+    if (kind === 'dataset') {
+      const slug = (row.data as { slug?: string }).slug;
+      if (slug) {
+        const rows = await this.db
+          .select()
+          .from(content)
+          .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'entry'), eq(content.scope, slug)));
+        for (const entry of rows) cascade.push({ id: entry.entityId, scope: slug, data: entry.data });
+      }
+    }
     // Tombstone BEFORE the delete, and NOT best-effort (unlike `put` history): a lost put-revision is
     // harmless because the entity still exists, but a lost delete-tombstone would make the entity
     // unrecoverable. So if history can't be written we abort the delete rather than destroy data.
     // (No-op for non-revisioned kinds — record() filters them.)
+    for (const entry of cascade) {
+      await this.revisions?.record(ctx, 'entry', entry.id, entry.scope, entry.data, 'delete');
+    }
     await this.revisions?.record(ctx, kind, entityId, scope, row.data, 'delete');
-    await this.db
-      .delete(content)
-      .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
+    const cascadeSlug = kind === 'dataset' ? (row.data as { slug?: string }).slug : undefined;
+    await this.db.transaction(async (tx) => {
+      // Delete cascaded entries BY SCOPE inside the transaction (not by the pre-captured row ids):
+      // an entry written between the tombstone scan and this transaction still dies WITH its dataset,
+      // so a delete can never leave an orphan behind. Such a racing entry misses its individual
+      // tombstone (only the pre-scanned rows got one) — an accepted, tiny history gap in exchange
+      // for the hard no-orphans invariant.
+      if (cascadeSlug) {
+        await tx
+          .delete(content)
+          .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'entry'), eq(content.scope, cascadeSlug)));
+      }
+      await tx.delete(content).where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
+    });
     this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor });
   }
 
@@ -374,6 +413,14 @@ export class ContentRepository {
   /** Assembles the full project as an on-disk-format bundle (the export side of D11). */
   async exportBundle(ctx: ProjectContext, project: ProjectIdentity): Promise<ExportBundle> {
     const settings = (await this.list(ctx, 'settings'))[0] as Settings | undefined;
+    const datasets = (await this.list(ctx, 'dataset')) as Dataset[];
+    const entries = (await this.list(ctx, 'entry')) as Entry[];
+    // Export ONLY entries whose owning dataset still exists. Historic dataset deletes did not cascade
+    // (fixed in `remove`), so long-lived projects can hold ORPHANED entries — and a bundle that ships
+    // them is rejected by importBundle's validateProject (`unknown_dataset`), making the project
+    // un-importable/un-duplicatable. An orphan is invisible to every loop/editor anyway; exporting the
+    // consistent subset keeps export→import self-consistent without destructive cleanup.
+    const datasetSlugs = new Set(datasets.map((dataset) => dataset.slug));
     return {
       formatVersion: PROJECT_FORMAT_VERSION,
       project: {
@@ -386,8 +433,8 @@ export class ContentRepository {
       },
       pages: (await this.list(ctx, 'page')) as Page[],
       templates: (await this.list(ctx, 'template')) as Template[],
-      datasets: (await this.list(ctx, 'dataset')) as Dataset[],
-      entries: (await this.list(ctx, 'entry')) as Entry[],
+      datasets,
+      entries: entries.filter((entry) => datasetSlugs.has(entry.dataset)),
     };
   }
 

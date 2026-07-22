@@ -84,6 +84,9 @@ importers:
       chrome-launcher:
         specifier: ^1.2.1
         version: 1.2.1
+      clean-css:
+        specifier: ^5.3.3
+        version: 5.3.3
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(gel@2.2.0)
@@ -120,6 +123,9 @@ importers:
       ssh2-sftp-client:
         specifier: ^11
         version: 11.0.0
+      terser:
+        specifier: ^5.48.0
+        version: 5.48.0
       zod:
         specifier: ^3.24.1
         version: 3.25.76

@@ -73,10 +73,8 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
-  minifyJs,
-  minifyCss,
-  MINIFIER_VERSION,
 } from '@sitewright/blocks';
+import { minifyJs, minifyCss, MINIFIER_VERSION } from './minify.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
 import { companyToOrganization } from './company-seo.js';
@@ -1067,7 +1065,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // manifest reflects what actually ships. Vendored library runtimes inside these bundles are already
     // minified; re-minifying the whole concatenation is idempotent-safe.
     const writeJs = async (name: string, code: string): Promise<void> => {
-      const min = minifyJs(code);
+      const min = await minifyJs(code);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant/registry filename under the validated tmp dir
       await writeFile(join(tmp, name), min, 'utf8');
       bytes += Buffer.byteLength(min);

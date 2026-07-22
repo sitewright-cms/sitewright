@@ -201,8 +201,8 @@ export interface RenderDocumentOptions extends RenderContext {
   /**
    * Optional CSS minifier for the platform's INLINE `<style>` blocks (base/normalize, brand, theme,
    * criticalCss, the compiled component/effect `inlineStyles`, and the typography/@font-face block). The
-   * publish build passes one (@sitewright/blocks `minifyCss`); preview and tests omit it → byte-identical
-   * output for them (no snapshot churn). Must be defensive (never throw); `minifyCss` already is.
+   * publish build passes one (the API's clean-css-backed `minifyCss`); preview and tests omit it →
+   * byte-identical output for them (no snapshot churn). Must be defensive (never throw); the impl is.
    */
   minifyCss?: (css: string) => string;
 }
@@ -259,8 +259,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     minifyCss,
     ...ctx
   } = opts;
-  // Identity when no minifier is supplied (preview / tests) → byte-identical output; the build passes
-  // @sitewright/blocks `minifyCss` to shrink the inline platform CSS.
+  // Identity when no minifier is supplied (preview / tests) → byte-identical output; the build passes the
+  // API's clean-css-backed `minifyCss` to shrink the inline platform CSS.
   const mc = minifyCss ?? ((s: string) => s);
   // Code-first only: the body is always the pre-rendered Handlebars `source` output. A page with
   // no rendered body (e.g. a brand-new, source-less page) gets an empty `<main>`.
@@ -354,7 +354,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (head ? `${head}\n` : '') +
     // RAW-FIDELITY replicas omit the platform's own base CSS so it can't fight the imported stylesheet.
     // Neutralize any `</style` in the (platform + owner-set critical) CSS too — defense-in-depth symmetry
-    // with `inlineStyles` below, now that these also pass through the esbuild minify transform.
+    // with `inlineStyles` below, now that these also pass through the CSS minify transform.
     (rawFidelity ? '' : `<style>${mc(css).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`) +
     (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element

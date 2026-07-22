@@ -1530,7 +1530,7 @@ describe('buildSite', () => {
     // The inline @font-face points at the bundled media path, page-relative — never Google — ttf format.
     expect(home).toContain('@font-face');
     expect(home).toContain(`src:url(_assets/${fa}-400.ttf) format("truetype")`);
-    expect(home).toContain('--sw-font-heading:"Boombox", sans-serif');
+    expect(home).toMatch(/--sw-font-heading:"Boombox",\s*sans-serif/); // CSS minified (comma spacing varies)
     expect(home).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 

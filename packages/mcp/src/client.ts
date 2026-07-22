@@ -143,6 +143,16 @@ export interface PagespeedScores {
   bestPractices: number | null;
   seo: number | null;
 }
+/** One concrete resource/element a finding points at (a file to fix, or a DOM node). */
+export interface PagespeedResourceItem {
+  /** Origin-relative for the site's own assets; absolute for third-party. */
+  url?: string;
+  /** A short label when the item is a DOM node / source location rather than a plain URL. */
+  label?: string;
+  totalBytes?: number;
+  wastedBytes?: number;
+  wastedMs?: number;
+}
 /** One actionable, non-passing audit the author can fix. */
 export interface PagespeedFinding {
   id: string;
@@ -150,6 +160,30 @@ export interface PagespeedFinding {
   category: keyof PagespeedScores;
   score: number | null;
   displayValue?: string;
+  /** Estimated page-load time saved by fixing this (opportunity audits), in ms. */
+  overallSavingsMs?: number;
+  /** Estimated transfer saved by fixing this (opportunity audits), in bytes. */
+  overallSavingsBytes?: number;
+  /** The specific resources/elements this finding points at — worst-first, capped. */
+  items?: PagespeedResourceItem[];
+  /** How many further items exist beyond the capped `items`. */
+  moreItems?: number;
+}
+/** One heading in the page's structure outline. */
+export interface HeadingNode {
+  /** Heading level, 1 (H1) … 6 (H6). */
+  level: number;
+  text: string;
+  /** A recommendation attached to this heading (a skipped level, or empty text). */
+  issue?: string;
+}
+/** The page's heading (h1–h6) outline plus SEO/accessibility recommendations. */
+export interface HeadingOutline {
+  headings: HeadingNode[];
+  /** Document-level recommendations (missing / duplicate H1, no headings). */
+  issues: string[];
+  /** How many headings were dropped past the render cap. */
+  truncated?: number;
 }
 /** Lighthouse page-speed + SEO audit (GET /projects/:id/pagespeed-audit/:pageId). Lab-only; no CrUX field data. */
 export interface PagespeedAuditResult {
@@ -168,6 +202,8 @@ export interface PagespeedAuditResult {
   runWarnings?: string[];
   /** Chrome's CPU benchmark for the audit host; a low value means the container CPU throttled the run. */
   benchmarkIndex?: number;
+  /** The page's heading (h1–h6) outline with recommendations — absent when the HTML could not be read. */
+  outline?: HeadingOutline;
   lighthouseVersion: string;
   fetchedAt: string;
 }

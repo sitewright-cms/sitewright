@@ -657,7 +657,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'pagespeed_audit',
     {
       description:
-        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. `formFactor` defaults to mobile; pass 'desktop' for the desktop profile.",
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. `formFactor` defaults to mobile; pass 'desktop' for the desktop profile.",
       inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop']).optional() },
     },
     async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
@@ -669,6 +669,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         const r = await client.pagespeedAudit(pageId, formFactor);
         const pct = (n: number | null): string => (n === null ? '—' : String(n));
         const ms = (n?: number): string => (n === undefined ? '—' : `${Math.round(n)} ms`);
+        const kib = (bytes: number): string => `${Math.round(bytes / 1024)} KiB`;
         const lines = [
           `PAGE-SPEED + SEO AUDIT — page “${pageId}” · ${r.formFactor} · Lighthouse ${r.lighthouseVersion}`,
           '',
@@ -684,8 +685,37 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         } else {
           lines.push('', `Actionable findings (${r.findings.length}), worst first:`);
           for (const f of r.findings) {
-            lines.push(`  [${f.category}] ${f.title}${f.displayValue ? ` — ${f.displayValue}` : ''}`);
+            const saving =
+              f.overallSavingsBytes !== undefined && f.overallSavingsBytes > 0
+                ? ` — est. save ${kib(f.overallSavingsBytes)}`
+                : f.overallSavingsMs !== undefined && f.overallSavingsMs > 0
+                  ? ` — est. save ${Math.round(f.overallSavingsMs)} ms`
+                  : '';
+            lines.push(`  [${f.category}] ${f.title}${f.displayValue ? ` — ${f.displayValue}` : ''}${saving}`);
+            // Concrete files/elements to fix (the PageSpeed-style per-resource detail).
+            for (const it of f.items ?? []) {
+              const cost = [
+                it.totalBytes !== undefined ? kib(it.totalBytes) : null,
+                it.wastedBytes !== undefined ? `save ${kib(it.wastedBytes)}` : null,
+                it.wastedMs !== undefined ? `save ${Math.round(it.wastedMs)} ms` : null,
+              ].filter(Boolean);
+              lines.push(`      • ${it.url ?? it.label ?? '(item)'}${cost.length ? ` — ${cost.join(', ')}` : ''}`);
+            }
+            if (f.moreItems) lines.push(`      • …and ${f.moreItems} more`);
           }
+        }
+        // Heading (h1–h6) structure outline + its SEO/accessibility recommendations.
+        if (r.outline) {
+          lines.push('', 'Heading structure:');
+          if (r.outline.headings.length === 0) {
+            lines.push('  (no headings on this page)');
+          } else {
+            for (const h of r.outline.headings) {
+              lines.push(`  ${'  '.repeat(Math.max(0, h.level - 1))}H${h.level}  ${h.text || '(empty)'}${h.issue ? `   ⚠ ${h.issue}` : ''}`);
+            }
+            if (r.outline.truncated) lines.push(`  …and ${r.outline.truncated} more headings`);
+          }
+          for (const issue of r.outline.issues) lines.push(`  ⚠ ${issue}`);
         }
         if (r.runWarnings && r.runWarnings.length > 0) {
           lines.push('', 'Lighthouse environment notices (may explain a host-constrained score):');

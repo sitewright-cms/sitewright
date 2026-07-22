@@ -65,9 +65,11 @@ function enhance(root) {
   // arrows. Stamp data-sw-multi so the zero-specificity component CSS can branch (an explicit
   // data-arrows="edge|circle" on the root overrides it in CSS). Re-run on reInit because a responsive
   // --sw-items can flip at a breakpoint.
+  function itemsPerView() {
+    return parseFloat(window.getComputedStyle(root).getPropertyValue('--sw-items')) || 1;
+  }
   function syncItemsMode() {
-    var items = parseFloat(window.getComputedStyle(root).getPropertyValue('--sw-items')) || 1;
-    if (items > 1) root.setAttribute('data-sw-multi', 'true');
+    if (itemsPerView() > 1) root.setAttribute('data-sw-multi', 'true');
     else root.removeAttribute('data-sw-multi');
   }
   syncItemsMode();
@@ -81,7 +83,11 @@ function enhance(root) {
 
   // Interactive descendants keep their own meaning in click-to-slide mode: clicks on these
   // never advance the carousel, and (matching that) presses on them never ripple the slide.
-  var INTERACTIVE = 'a,button,input,select,textarea,label,[contenteditable]';
+  // Covers native controls AND the platform's own non-native click triggers (a [data-sw-modal]
+  // opener on a div/img, media controls, ARIA buttons, an <a>/<summary>) — so a click on any of
+  // them opens/plays/navigates WITHOUT also advancing the slider. Now that click-to-slide is ON by
+  // default for the hero style, this guard matters for any control embedded in a full-width slide.
+  var INTERACTIVE = 'a,button,input,select,textarea,label,[contenteditable],summary,video,audio,[role="button"],[data-sw-modal],[data-sw-cart-add]';
 
   // Material-style press ripple ("waves" in contentBase terms) — DEFAULT on every control
   // (arrows + dots), and on the slides themselves in click-to-slide mode. A pointer-anchored
@@ -202,14 +208,29 @@ function enhance(root) {
   if (prev) { if (!prev.getAttribute('aria-label')) prev.setAttribute('aria-label', swT('slide_prev', 'Previous slide')); addRipple(prev); prev.addEventListener('click', function () { embla.scrollPrev(); }); }
   if (next) { if (!next.getAttribute('aria-label')) next.setAttribute('aria-label', swT('slide_next', 'Next slide')); addRipple(next); next.addEventListener('click', function () { embla.scrollNext(); }); }
 
-  // Click-to-slide (data-click-next="true"): the whole slide advances the carousel — the
-  // navigation-less pattern. The press ripple lives on the WRAPPER (root), not the slides —
-  // a slide-hosted ripple would translate away with the outgoing slide mid-advance. The
-  // guarded flag skips presses on interactive descendants (incl. the arrows/dots buttons,
-  // which ripple themselves); clicks on those keep their own meaning, and a click that ends
-  // a DRAG never fires (the pointer travelled). The root becomes focusable so arrow keys
-  // still work with no controls.
-  if (attr('data-click-next', '') === 'true') {
+  // Click-to-slide: the whole slide advances the carousel (the navigation-less "full-screen" pattern).
+  // DEFAULT ON for the hero/full-screen style — a single full-width slide with EDGE arrows — so a
+  // full-bleed slider is click-to-advance with no extra attribute; opt out with data-click-next="false".
+  // A multi-item row or a data-arrows="circle" CONTENT slider (testimonials/cards) keeps it OPT-IN
+  // (data-click-next="true"), since a click there usually means "open this card", not "advance". When it
+  // resolves ON we stamp data-click-next="true" so the component CSS hooks (slide cursor:pointer, ripple
+  // clip) match. Ripple lives on the WRAPPER (root) not the slides — a slide-hosted ripple would translate
+  // away mid-advance; the guarded flag skips presses on interactive descendants (arrows/dots/links, which
+  // keep their own meaning); a click that ends a DRAG never fires. The root becomes focusable for arrow keys.
+  // The author's ORIGINAL opt-in/out, captured BEFORE we stamp data-click-next (else the re-read below
+  // would see our own stamp). `clickNextActive()` re-derives the answer from the LIVE --sw-items +
+  // data-arrows, so a responsive breakpoint that flips edge↔circle is honoured (the arrow LOOK flips via
+  // data-sw-multi on reInit, and this keeps the click behaviour in lockstep).
+  var authorClickNext = attr('data-click-next', '');
+  function clickNextActive() {
+    var a = attr('data-arrows', '');
+    var edge = a === 'edge' || (a !== 'circle' && itemsPerView() <= 1);
+    return edge ? authorClickNext !== 'false' : authorClickNext === 'true';
+  }
+  var clickWeStamped = false;
+  if (clickNextActive()) {
+    clickWeStamped = authorClickNext !== 'true'; // we (not the author) turned it on → we own the stamp
+    root.setAttribute('data-click-next', 'true'); // so the [data-click-next="true"] CSS hooks apply
     if (!root.hasAttribute('tabindex')) root.setAttribute('tabindex', '0');
     addRipple(root, true);
     var downX = 0;
@@ -220,11 +241,21 @@ function enhance(root) {
       downY = e.clientY;
     });
     track.addEventListener('click', function (e) {
+      if (!clickNextActive()) return; // a slider that resized into circle/multi must NOT advance on click
       var t = e.target;
       if (t && t.closest && t.closest(INTERACTIVE)) return;
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8) return;
       embla.scrollNext();
     });
+  }
+  // Keep the CSS hook (slide cursor:pointer) in sync with a responsive flip: when WE defaulted it on,
+  // drop/restore the stamp as the mode changes (the listener stays attached but no-ops via the guard
+  // above). Note: a slider that loads as circle/multi and only later resizes into the edge style is not
+  // retro-wired (the listeners were never attached) — a rare, deliberately-unhandled reverse case.
+  function syncClickNext() {
+    if (!clickWeStamped) return;
+    if (clickNextActive()) root.setAttribute('data-click-next', 'true');
+    else root.removeAttribute('data-click-next');
   }
 
   var dotsWrap = root.querySelector('[data-sw-part="dots"]');
@@ -309,6 +340,7 @@ function enhance(root) {
     .on('settle', pruneActive)
     .on('reInit', function () {
       syncItemsMode();
+      syncClickNext();
       buildDots();
       applyItemAlign();
       sync();

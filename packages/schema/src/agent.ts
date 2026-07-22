@@ -924,7 +924,8 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    bare <details> — then match its border/spacing/icon to the source. Shipping a component's default look when
    the original clearly looks different is a fidelity miss.
    SLIDER (Carousel) specifics: include ALL the source's slides (don't drop any), each with a real image src;
-   give the prev/next buttons a visible icon ({{sw-icon "chevron-left"}}) and keep a [data-sw-part="dots"]
+   give the prev/next buttons a visible icon ({{sw-icon "chevron-left" ""}} — the empty class lets the base
+   CSS size the chevron for the edge/circle arrow style; a size utility would override it) and keep a [data-sw-part="dots"]
    (the runtime fills it). The arrows/dots are HIDDEN until the JS runtime ENHANCES the slider — so they do
    NOT show in a static/JS-blocked preview; verify them on a rendered page, and when you restyle the controls
    with <style> make sure you keep them VISIBLE (don't set opacity:0 / off-screen / transparent-on-transparent).

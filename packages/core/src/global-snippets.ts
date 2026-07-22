@@ -84,8 +84,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
   },
@@ -116,8 +116,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       <figcaption class="mt-6 text-sm font-semibold text-base-content/60">Priya S. &middot; Marketing Lead</figcaption>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-left" "size-6"}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-right" "size-6"}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-left" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-right" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true" class="text-primary"></div>
 </div>`,
   },
@@ -159,8 +159,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
 </div>`,
   },
   {
@@ -212,8 +212,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <figure data-sw-part="slide" class="grid min-h-64 place-items-center bg-base-200 text-center text-base-content/50">Add entries to the &ldquo;projects&rdquo; dataset to populate this slider.</figure>
     {{/each}}
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
   },

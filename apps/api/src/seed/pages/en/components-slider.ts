@@ -64,8 +64,8 @@ export function pageComponentsSlider(): Page {
       </figure>
       {{/each}}
     </div>
-    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" "size-6"}}</button>
-    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" "size-6"}}</button>
+    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" ""}}</button>
+    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" ""}}</button>
     <div data-sw-part="dots" aria-hidden="true"></div>
   </div>
 </section>
@@ -83,8 +83,8 @@ export function pageComponentsSlider(): Page {
       </figure>
       {{/each}}
     </div>
-    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" "size-6"}}</button>
-    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" "size-6"}}</button>
+    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" ""}}</button>
+    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" ""}}</button>
     <div data-sw-part="dots" aria-hidden="true"></div>
   </div>
 </section>
@@ -107,8 +107,8 @@ export function pageComponentsSlider(): Page {
       </figure>
       {{/each}}
     </div>
-    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" "size-6"}}</button>
-    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" "size-6"}}</button>
+    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}">{{sw-icon "chevron-left" ""}}</button>
+    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}">{{sw-icon "chevron-right" ""}}</button>
   </div>
 </section>
 
@@ -155,8 +155,8 @@ export function pageComponentsSlider(): Page {
       </figure>
       {{/each}}
     </div>
-    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}" class="!bg-base-200 !text-base-content top-[calc(50%-1.25rem)]">{{sw-icon "chevron-left" "size-6"}}</button>
-    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}" class="!bg-base-200 !text-base-content top-[calc(50%-1.25rem)]">{{sw-icon "chevron-right" "size-6"}}</button>
+    <button type="button" data-sw-part="prev" aria-label="{{sw-translate "comp_slider.a_prev"}}" class="!bg-base-200 !text-base-content top-[calc(50%-1.25rem)]">{{sw-icon "chevron-left" ""}}</button>
+    <button type="button" data-sw-part="next" aria-label="{{sw-translate "comp_slider.a_next"}}" class="!bg-base-200 !text-base-content top-[calc(50%-1.25rem)]">{{sw-icon "chevron-right" ""}}</button>
     <div data-sw-part="dots" aria-hidden="true" class="!bottom-2 text-primary"></div>
   </div>
 </section>

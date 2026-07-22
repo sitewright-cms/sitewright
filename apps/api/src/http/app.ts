@@ -281,7 +281,8 @@ import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type Viewpo
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
-import { runPagespeedAudit, redactOrigin, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
+import { runPagespeedAudit, redactOrigin, rebaseFindingUrls, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
+import { extractHeadings, analyzeHeadingOutline, type HeadingOutline } from '../render/heading-outline.js';
 import { serveBuiltSite } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
@@ -5303,12 +5304,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const result = await withRenderSlot(async () => {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
             served = await serveBuiltSite(dir);
-            const audit = await runPagespeedAudit(`${served.url}${route ? `${route}/` : ''}`, { formFactor });
+            const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
+            const audit = await runPagespeedAudit(pageUrl, { formFactor });
             // Report the LOGICAL page path, never the internal ephemeral loopback URL/port — and the same
-            // for any Lighthouse run-warning (e.g. a redirect warning interpolates the navigated URL), so
-            // scrub the loopback origin out of every warning before it leaves the server.
-            const runWarnings = redactOrigin(audit.runWarnings, new URL(served.url).origin);
-            return { ...audit, url: publicPath, ...(runWarnings ? { runWarnings } : {}) };
+            // for any Lighthouse run-warning (e.g. a redirect warning interpolates the navigated URL) or
+            // per-resource finding URL, so scrub the loopback origin out of every one before it leaves the server.
+            const origin = new URL(served.url).origin;
+            const runWarnings = redactOrigin(audit.runWarnings, origin);
+            const findings = rebaseFindingUrls(audit.findings, origin);
+            // Heading-structure outline (SEO): best-effort — parse the served static HTML. A fetch failure
+            // (e.g. client disconnect) just omits the outline rather than failing the whole audit.
+            let outline: HeadingOutline | undefined;
+            try {
+              const res = await fetch(pageUrl, { signal: abort.signal });
+              if (res.ok) outline = analyzeHeadingOutline(extractHeadings(await res.text()));
+            } catch {
+              /* best-effort — outline stays undefined */
+            }
+            return {
+              ...audit,
+              url: publicPath,
+              findings,
+              ...(runWarnings ? { runWarnings } : {}),
+              ...(outline ? { outline } : {}),
+            };
           });
           if (abort.signal.aborted) return reply; // client disconnected mid-run — the response is moot
           return reply.send(result);

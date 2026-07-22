@@ -77,9 +77,29 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       scores: { performance: 73, accessibility: 95, bestPractices: 100, seo: 100 },
       metrics: { firstContentfulPaintMs: 3304, largestContentfulPaintMs: 5427, totalBlockingTimeMs: 0, cumulativeLayoutShift: 0.05, speedIndexMs: 3000 },
       findings: [
-        { id: 'render-blocking', title: 'Eliminate render-blocking resources', category: 'performance' as const, score: 0.2, displayValue: 'Est savings of 750 ms' },
-        { id: 'color-contrast', title: 'Contrast ratio is too low', category: 'accessibility' as const, score: 0 },
+        {
+          id: 'render-blocking',
+          title: 'Eliminate render-blocking resources',
+          category: 'performance' as const,
+          score: 0.2,
+          displayValue: 'Est savings of 750 ms',
+          overallSavingsBytes: 122880,
+          items: [
+            { url: '/_assets/b.js', totalBytes: 92160, wastedBytes: 92160, wastedMs: 450 },
+            { label: 'a node' },
+          ],
+          moreItems: 3,
+        },
+        { id: 'color-contrast', title: 'Contrast ratio is too low', category: 'accessibility' as const, score: 0, overallSavingsMs: 120 },
       ],
+      outline: {
+        headings: [
+          { level: 2, text: 'Section' },
+          { level: 4, text: 'Deep', issue: 'Skips from H2 to H4 — don’t skip heading levels.' },
+        ],
+        issues: ['No H1 heading. Add a single, descriptive H1 as the page’s main title.'],
+        truncated: 2,
+      },
       lighthouseVersion: '13.4.0',
       fetchedAt: '2026-07-18T21:00:00.000Z',
     })),
@@ -690,9 +710,19 @@ describe('pagespeed_audit tool', () => {
     expect(out).toMatch(/PAGE-SPEED \+ SEO AUDIT/);
     expect(out).toContain('Performance    73');
     expect(out).toContain('SEO            100');
-    // A finding WITH a displayValue and one WITHOUT both render.
-    expect(out).toContain('Eliminate render-blocking resources — Est savings of 750 ms');
-    expect(out).toContain('Contrast ratio is too low');
+    // A finding WITH a displayValue and one WITHOUT both render, each with its estimated saving.
+    expect(out).toContain('Eliminate render-blocking resources — Est savings of 750 ms — est. save 120 KiB');
+    expect(out).toContain('Contrast ratio is too low — est. save 120 ms');
+    // Concrete per-resource detail: the file, its size + saving, and the "+N more" line.
+    expect(out).toContain('• /_assets/b.js — 90 KiB, save 90 KiB, save 450 ms');
+    expect(out).toContain('• a node');
+    expect(out).toContain('…and 3 more');
+    // Heading structure: the indented outline (with a per-node warning) + document-level issue.
+    expect(out).toMatch(/Heading structure:/);
+    expect(out).toContain('H2  Section');
+    expect(out).toContain('H4  Deep   ⚠ Skips from H2 to H4');
+    expect(out).toContain('…and 2 more headings');
+    expect(out).toContain('⚠ No H1 heading');
     expect(callsOf(reader).pagespeedAudit).toHaveBeenCalledWith('home', 'mobile');
   });
 
@@ -710,6 +740,26 @@ describe('pagespeed_audit tool', () => {
     });
     const out = text(await (await connect(clean, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
     expect(out).toMatch(/No failing audits/);
+  });
+
+  it('renders a finding without savings/items and an outline with no headings', async () => {
+    const bare = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        url: 'http://127.0.0.1/',
+        formFactor: 'mobile' as const,
+        scores: { performance: 60, accessibility: 100, bestPractices: 100, seo: 90 },
+        metrics: {},
+        findings: [{ id: 'plain', title: 'Some diagnostic', category: 'seo' as const, score: 0.5 }],
+        outline: { headings: [], issues: ['This page has no headings.'] },
+        lighthouseVersion: '13.4.0',
+        fetchedAt: '2026-07-18T21:00:00.000Z',
+      })),
+    });
+    const out = text(await (await connect(bare, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
+    expect(out).toContain('[seo] Some diagnostic'); // no "— est. save" suffix when there's no saving
+    expect(out).not.toMatch(/est\. save/);
+    expect(out).toContain('(no headings on this page)');
+    expect(out).toContain('⚠ This page has no headings.');
   });
 
   it('is gated: rejects when disconnected and when the content:read capability is missing', async () => {

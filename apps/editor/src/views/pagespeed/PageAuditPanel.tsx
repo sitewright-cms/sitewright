@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Smartphone, Monitor, Loader2, AlertCircle, CircleHelp, ImageOff } from 'lucide-react';
-import { api, type PagespeedAuditResult, type PagespeedFinding } from '../../api';
+import { Smartphone, Monitor, Loader2, AlertCircle, AlertTriangle, ChevronRight, CircleHelp, ImageOff } from 'lucide-react';
+import { api, type PagespeedAuditResult, type PagespeedFinding, type HeadingOutline } from '../../api';
 import { primaryButton, gradientSurface } from '../../theme';
 
 type FormFactor = 'mobile' | 'desktop';
@@ -80,6 +80,36 @@ function adviceText(description: string | undefined): string {
   return description.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
 }
 
+/** Byte count → a compact, human size (KB / MB). */
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.round(bytes)} B`;
+}
+/** Milliseconds saved → seconds for ≥ 1 s (PageSpeed shows time savings in seconds), else ms. */
+function fmtSaveMs(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`;
+}
+/** The compact "estimated savings" badge for a finding — prefer a time saving, then a byte saving. */
+function savingsBadge(f: PagespeedFinding): string | null {
+  if (f.overallSavingsMs !== undefined && f.overallSavingsMs >= 1) return `~${fmtSaveMs(f.overallSavingsMs)}`;
+  if (f.overallSavingsBytes !== undefined && f.overallSavingsBytes >= 1) return `~${fmtBytes(f.overallSavingsBytes)}`;
+  return null;
+}
+/** Heading-level → badge classes (a switch, not a computed lookup, so the security linter stays quiet). */
+function headingBadgeClass(level: number): string {
+  switch (level) {
+    case 1:
+      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300';
+    case 2:
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300';
+    case 3:
+      return 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300';
+    default:
+      return 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400';
+  }
+}
+
 // ---- pieces -------------------------------------------------------------------------------------
 
 /** A circular ring gauge with the 0–100 score in the middle (PageSpeed-style). */
@@ -131,25 +161,121 @@ function MetricCard({ def, value }: { def: MetricDef; value: number | undefined 
   );
 }
 
-function FindingRow({ f }: { f: PagespeedFinding }) {
+/**
+ * One PageSpeed-style recommendation: a collapsed summary (category tag · title · value · estimated
+ * savings) that expands to the how-to-fix advice and the CONCRETE resources to act on — each with its
+ * transfer size and estimated byte/time saving. Uses a native <details> so it's keyboard-accessible and
+ * needs no state. A finding with neither advice nor items renders as a non-expandable row.
+ */
+function RecommendationCard({ f }: { f: PagespeedFinding }) {
   const cat = CATEGORY[f.category];
   const advice = adviceText(f.description);
+  const badge = savingsBadge(f);
+  const items = f.items ?? [];
+  const hasDetail = advice !== '' || items.length > 0;
   return (
-    <li className="flex items-start gap-2.5 py-2">
-      <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${cat.cls}`}>{cat.label}</span>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm text-slate-700 dark:text-slate-200">{f.title}</div>
-        {f.displayValue ? <div className="text-xs font-medium text-slate-400 dark:text-slate-500">{f.displayValue}</div> : null}
-      </div>
-      {advice ? (
-        <span
-          className="tooltip tooltip-left before:z-20 before:max-w-[20rem] before:whitespace-normal before:text-left"
-          data-tip={advice}
-        >
-          <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 cursor-help text-slate-400 dark:text-slate-500" aria-label={advice} />
-        </span>
+    <details className="group rounded-xl border border-slate-200/70 bg-white/50 dark:border-white/10 dark:bg-white/5">
+      <summary className="flex cursor-pointer list-none items-center gap-2.5 p-3 [&::-webkit-details-marker]:hidden">
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${cat.cls}`}>{cat.label}</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{f.title}</div>
+          {f.displayValue ? <div className="truncate text-xs text-slate-400 dark:text-slate-500">{f.displayValue}</div> : null}
+        </div>
+        {badge ? (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 dark:bg-white/10 dark:text-slate-300">
+            {badge}
+          </span>
+        ) : null}
+        {hasDetail ? (
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90" aria-hidden />
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden />
+        )}
+      </summary>
+      {hasDetail ? (
+        <div className="border-t border-slate-200/60 px-3 pb-3 pt-2 dark:border-white/10">
+          {advice ? <p className="mb-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{advice}</p> : null}
+          {items.length > 0 ? (
+            <ul className="flex flex-col gap-1">
+              {items.map((it, i) => (
+                <li key={i} className="flex items-baseline gap-2 text-xs">
+                  <span
+                    className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-300"
+                    title={it.url ?? it.label ?? ''}
+                  >
+                    {it.url ?? it.label ?? '—'}
+                  </span>
+                  {it.totalBytes !== undefined ? (
+                    <span className="shrink-0 tabular-nums text-slate-400 dark:text-slate-500">{fmtBytes(it.totalBytes)}</span>
+                  ) : null}
+                  {it.wastedBytes !== undefined ? (
+                    <span className="shrink-0 tabular-nums font-medium text-amber-600 dark:text-amber-400">−{fmtBytes(it.wastedBytes)}</span>
+                  ) : it.wastedMs !== undefined ? (
+                    <span className="shrink-0 tabular-nums font-medium text-amber-600 dark:text-amber-400">−{fmtSaveMs(it.wastedMs)}</span>
+                  ) : null}
+                </li>
+              ))}
+              {f.moreItems ? <li className="text-xs text-slate-400 dark:text-slate-500">…and {f.moreItems} more</li> : null}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
-    </li>
+    </details>
+  );
+}
+
+/**
+ * The page's H1–H6 heading outline as an indented tree, with SEO/accessibility recommendations:
+ * document-level notices (missing / duplicate H1, no headings) above the tree, and a per-heading warning
+ * marker (skipped level, empty heading) inline. Text is rendered as plain text — never HTML.
+ */
+function HeadingOutlineView({ outline }: { outline: HeadingOutline }) {
+  const { headings, issues, truncated } = outline;
+  // The success banner must account for BOTH document-level issues (missing/duplicate H1) AND per-node
+  // issues (skipped level, empty heading) — the latter live on `heading.issue`, not in `issues`. Without
+  // this, a page with a clean H1 but a skipped level would show "no skipped levels" AND a warning marker
+  // on the offending node, contradicting itself.
+  const hasNodeIssue = headings.some((h) => h.issue);
+  return (
+    <div>
+      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Heading structure</h4>
+      {issues.length > 0 ? (
+        <ul className="mb-2 flex flex-col gap-1">
+          {issues.map((issue, i) => (
+            <li
+              key={i}
+              className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{issue}</span>
+            </li>
+          ))}
+        </ul>
+      ) : headings.length > 0 && !hasNodeIssue ? (
+        <p className="mb-2 text-sm text-emerald-600">Solid structure — one H1 and no skipped levels. 🎉</p>
+      ) : null}
+      {headings.length > 0 ? (
+        <ul className="flex flex-col gap-0.5 rounded-xl border border-slate-200/70 bg-white/40 p-2 dark:border-white/10 dark:bg-white/5">
+          {headings.map((h, i) => (
+            <li key={i} className="flex items-center gap-2 py-0.5 text-sm" style={{ paddingLeft: `${(h.level - 1) * 1.1}rem` }}>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${headingBadgeClass(h.level)}`}>H{h.level}</span>
+              <span className={`min-w-0 flex-1 truncate ${h.text ? 'text-slate-700 dark:text-slate-200' : 'italic text-slate-400 dark:text-slate-500'}`}>
+                {h.text || 'empty heading'}
+              </span>
+              {h.issue ? (
+                <span
+                  className="tooltip tooltip-left before:z-20 before:max-w-[18rem] before:whitespace-normal before:text-left"
+                  data-tip={h.issue}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-label={h.issue} />
+                </span>
+              ) : null}
+            </li>
+          ))}
+          {truncated ? <li className="pl-1 pt-1 text-xs text-slate-400 dark:text-slate-500">…and {truncated} more headings</li> : null}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -180,7 +306,7 @@ function AuditSkeleton() {
 }
 
 function AuditReport({ result }: { result: PagespeedAuditResult }) {
-  const { scores, metrics, findings, runWarnings } = result;
+  const { scores, metrics, findings, runWarnings, outline } = result;
   // Surface Lighthouse's own environment notices (e.g. its slow-CPU warning — emitted whenever the host
   // benchmark ≤ 1000) so a host-constrained lab score is understood, not mistaken for a page defect. We
   // defer to Lighthouse's wording + threshold rather than synthesize a second, near-duplicate line.
@@ -202,19 +328,26 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
       </div>
 
       <div>
-        <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          {findings.length === 0 ? 'Opportunities & diagnostics' : `${findings.length} opportunit${findings.length === 1 ? 'y' : 'ies'} & diagnostics`}
+        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          {findings.length === 0 ? 'Recommendations' : `${findings.length} recommendation${findings.length === 1 ? '' : 's'}`}
         </h4>
         {findings.length === 0 ? (
           <p className="text-sm text-emerald-600">No failing audits — every scored check passed. 🎉</p>
         ) : (
-          <ul className="divide-y divide-slate-200/60 dark:divide-white/10">
-            {findings.map((f) => (
-              <FindingRow key={f.id} f={f} />
-            ))}
-          </ul>
+          <>
+            <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Worst first. Expand a row for the how-to-fix and the specific files/elements to change.</p>
+            <ul className="flex flex-col gap-1.5">
+              {findings.map((f) => (
+                <li key={f.id}>
+                  <RecommendationCard f={f} />
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
+
+      {outline ? <HeadingOutlineView outline={outline} /> : null}
 
       {notices.length > 0 ? (
         <div className="flex flex-col gap-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
@@ -240,9 +373,10 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
 /**
  * PAGE AUDIT — the page editor's Lighthouse tab. Shows the page's SEO-relevant head fields, a
  * Desktop/Mobile run control, a generous skeleton while auditing, then a PageSpeed-style report:
- * ring gauges per category, core Web-Vitals metrics (each with an explanatory tooltip), and a ranked
- * list of failing audits (color-coded category tags + actionable-advice tooltips). The audit runs
- * server-side against a deploy-equivalent build (see the pagespeed-audit route).
+ * ring gauges per category, core Web-Vitals metrics (each with an explanatory tooltip), a ranked list of
+ * expandable recommendations (each with the how-to-fix advice, the CONCRETE files/elements to change, and
+ * their estimated byte/time savings), and the page's H1–H6 heading-structure outline with SEO
+ * recommendations. The audit runs server-side against a deploy-equivalent build (see the pagespeed-audit route).
  */
 export function PageAuditPanel({
   projectId,

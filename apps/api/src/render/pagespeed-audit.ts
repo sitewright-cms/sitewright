@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { launch, type LaunchedChrome } from 'chrome-launcher';
 import lighthouse, { type Flags, type RunnerResult } from 'lighthouse';
 import { chromium } from 'playwright-core';
+import type { HeadingOutline } from './heading-outline.js';
 
 /**
  * Server-side page-speed + SEO audit via Lighthouse. Drives the SAME headless Chromium the rest of
@@ -33,6 +34,26 @@ export interface PagespeedMetrics {
   speedIndexMs?: number;
 }
 
+/**
+ * One concrete resource/element a finding points at — the "which file / which node" detail that turns a
+ * generic audit into an actionable fix (mirrors the per-row tables in Google PageSpeed's opportunities).
+ * All fields optional: a network opportunity carries a `url` + byte/ms costs; an accessibility audit
+ * carries a DOM `label` instead. Only primitive, bounded values are copied out — never a raw Lighthouse
+ * node object — so the payload stays small and safe to render as plain text.
+ */
+export interface PagespeedResourceItem {
+  /** The resource URL — origin-relative for the site's own assets (the loopback origin is stripped), absolute for third-party. */
+  url?: string;
+  /** A short label when the item is a DOM node / source location rather than a plain URL. */
+  label?: string;
+  /** Total transfer/resource size in bytes, when the audit reports one. */
+  totalBytes?: number;
+  /** Bytes that could be saved by fixing this item, when the audit reports one. */
+  wastedBytes?: number;
+  /** Milliseconds that could be saved by fixing this item, when the audit reports one. */
+  wastedMs?: number;
+}
+
 /** A single actionable audit (a failing/opportunity check the author can fix). */
 export interface PagespeedFinding {
   id: string;
@@ -45,6 +66,14 @@ export interface PagespeedFinding {
   /** Lighthouse's explanation of WHAT the check means + how to fix it (markdown; the UI shows it as the
    *  finding's actionable-advice tooltip). May carry a trailing "[Learn more](url)" the client can strip. */
   description?: string;
+  /** Estimated page-load time saved by fixing this (opportunity audits), in ms. */
+  overallSavingsMs?: number;
+  /** Estimated transfer saved by fixing this (opportunity audits), in bytes. */
+  overallSavingsBytes?: number;
+  /** The specific resources/elements this finding points at — worst-first, capped. */
+  items?: PagespeedResourceItem[];
+  /** How many further items exist beyond the capped {@link items} (so the UI can say "+N more"). */
+  moreItems?: number;
 }
 
 export interface PagespeedAuditResult {
@@ -66,6 +95,11 @@ export interface PagespeedAuditResult {
    * faster machine / a real device. Absent when Lighthouse did not report one.
    */
   benchmarkIndex?: number;
+  /**
+   * The page's heading (h1–h6) outline with SEO/accessibility recommendations. Filled in by the route
+   * (parsed from the served HTML), not by {@link summarize} — absent when the HTML could not be read.
+   */
+  outline?: HeadingOutline;
   lighthouseVersion: string;
   fetchedAt: string;
 }
@@ -124,6 +158,185 @@ function toPercent(score: number | null | undefined): number | null {
   return score == null ? null : Math.round(score * 100);
 }
 
+// ---- concrete finding detail (files / nodes / savings) ------------------------------------------
+
+/** Most concrete rows we surface per finding; the UI shows the rest as "+N more". */
+const MAX_ITEMS_PER_FINDING = 6;
+const MAX_URL_LEN = 300;
+const MAX_LABEL_LEN = 160;
+
+function nonEmptyStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+function finiteNum(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+function cap(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
+
+/**
+ * Derive a resource identifier for one Lighthouse table/opportunity row. Opportunity rows carry a plain
+ * `url` string; table rows may instead hold a typed value object (a DOM `node`, a `source-location`, a
+ * `link`, a `url`, or a `code` snippet) under some column key — so we scan the row's values for the first
+ * such object. Only bounded primitives are extracted; no object is passed through.
+ */
+function itemIdentity(item: Record<string, unknown>): { url?: string; label?: string } {
+  const directUrl = nonEmptyStr(item.url);
+  if (directUrl) return { url: cap(directUrl, MAX_URL_LEN) };
+
+  for (const v of Object.values(item)) {
+    if (!v || typeof v !== 'object') continue;
+    const o = v as Record<string, unknown>;
+    switch (o.type) {
+      case 'source-location': {
+        const u = nonEmptyStr(o.url);
+        if (u) {
+          const line = finiteNum(o.line);
+          return { url: cap(line !== undefined ? `${u}:${line + 1}` : u, MAX_URL_LEN) };
+        }
+        break;
+      }
+      case 'url': {
+        const u = nonEmptyStr(o.value);
+        if (u) return { url: cap(u, MAX_URL_LEN) };
+        break;
+      }
+      case 'link': {
+        const u = nonEmptyStr(o.url);
+        const txt = nonEmptyStr(o.text);
+        if (u) return { url: cap(u, MAX_URL_LEN), ...(txt ? { label: cap(txt, MAX_LABEL_LEN) } : {}) };
+        if (txt) return { label: cap(txt, MAX_LABEL_LEN) };
+        break;
+      }
+      case 'node': {
+        const lbl = nonEmptyStr(o.nodeLabel) ?? nonEmptyStr(o.snippet) ?? nonEmptyStr(o.selector);
+        if (lbl) return { label: cap(lbl.replace(/\s+/g, ' ').trim(), MAX_LABEL_LEN) };
+        break;
+      }
+      case 'code': {
+        const c = nonEmptyStr(o.value);
+        if (c) return { label: cap(c.replace(/\s+/g, ' ').trim(), MAX_LABEL_LEN) };
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // Common string identifiers on non-URL table rows: `groupLabel` (main-thread work breakdown),
+  // `statistic` (DOM-size), plus generic label/source/name fields.
+  const lbl =
+    nonEmptyStr(item.label) ??
+    nonEmptyStr(item.source) ??
+    nonEmptyStr(item.name) ??
+    nonEmptyStr(item.statistic) ??
+    nonEmptyStr(item.groupLabel);
+  return lbl ? { label: cap(lbl, MAX_LABEL_LEN) } : {};
+}
+
+/** Common Lighthouse table byte/time column names beyond the byte-efficiency set (totalBytes/wastedBytes/
+ *  wastedMs) — so diagnostics like `bootup-time` ({url,total,scripting}) and `mainthread-work-breakdown`
+ *  ({groupLabel,duration}) surface their figures instead of rendering an empty row. */
+const BYTES_KEYS = ['totalBytes', 'transferSize', 'resourceSize'] as const;
+const MS_KEYS = ['wastedMs', 'duration', 'total', 'blockingTime', 'mainThreadTime'] as const;
+
+/** First finite number among the given keys of an item, else undefined. */
+function firstNum(item: Record<string, unknown>, keys: readonly string[]): number | undefined {
+  for (const k of keys) {
+    const n = finiteNum(item[k]);
+    if (n !== undefined) return n;
+  }
+  return undefined;
+}
+
+interface FindingDetail {
+  items?: PagespeedResourceItem[];
+  moreItems?: number;
+  overallSavingsMs?: number;
+  overallSavingsBytes?: number;
+}
+
+/** Extract the concrete file/node list + savings totals from a Lighthouse audit's `details`, if any. */
+function findingDetail(details: unknown): FindingDetail {
+  if (!details || typeof details !== 'object') return {};
+  const d = details as {
+    type?: unknown;
+    items?: unknown;
+    overallSavingsMs?: unknown;
+    overallSavingsBytes?: unknown;
+    summary?: { wastedMs?: unknown; wastedBytes?: unknown };
+  };
+  if (d.type !== 'opportunity' && d.type !== 'table') return {};
+
+  const rawItems = Array.isArray(d.items) ? d.items : [];
+  const parsed: PagespeedResourceItem[] = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    const id = itemIdentity(item);
+    const totalBytes = firstNum(item, BYTES_KEYS);
+    const wastedBytes = finiteNum(item.wastedBytes);
+    const wastedMs = firstNum(item, MS_KEYS);
+    // A row with no identifier AND no figure carries nothing actionable → drop it.
+    if (!id.url && !id.label && totalBytes === undefined && wastedBytes === undefined && wastedMs === undefined) continue;
+    parsed.push({
+      ...id,
+      ...(totalBytes !== undefined ? { totalBytes } : {}),
+      ...(wastedBytes !== undefined ? { wastedBytes } : {}),
+      ...(wastedMs !== undefined ? { wastedMs } : {}),
+    });
+  }
+  // Worst first: biggest byte saving, then time saving, then largest resource.
+  parsed.sort(
+    (a, b) =>
+      (b.wastedBytes ?? 0) - (a.wastedBytes ?? 0) ||
+      (b.wastedMs ?? 0) - (a.wastedMs ?? 0) ||
+      (b.totalBytes ?? 0) - (a.totalBytes ?? 0),
+  );
+  const items = parsed.slice(0, MAX_ITEMS_PER_FINDING);
+  const moreItems = parsed.length - items.length;
+
+  const overallSavingsMs = finiteNum(d.overallSavingsMs) ?? finiteNum(d.summary?.wastedMs);
+  const overallSavingsBytes = finiteNum(d.overallSavingsBytes) ?? finiteNum(d.summary?.wastedBytes);
+
+  return {
+    ...(items.length ? { items } : {}),
+    ...(moreItems > 0 ? { moreItems } : {}),
+    ...(overallSavingsMs !== undefined ? { overallSavingsMs } : {}),
+    ...(overallSavingsBytes !== undefined ? { overallSavingsBytes } : {}),
+  };
+}
+
+/**
+ * Strip the internal loopback origin out of every finding item (immutable). Lighthouse's per-resource
+ * tables carry the served origin (`http://127.0.0.1:<port>`) for the site's OWN assets; we must never leak
+ * that ephemeral host:port — the same invariant {@link redactOrigin} keeps for run-warnings and the route
+ * keeps for `url`. A same-site `url` becomes origin-relative; third-party URLs (fonts, external images)
+ * don't start with the origin and are left as-is. As defense-in-depth a `label` (a DOM snippet / code
+ * value, which a future Lighthouse audit could conceivably interpolate a resolved URL into) has EVERY
+ * occurrence of the origin removed. Pure — unit-tested.
+ */
+export function rebaseFindingUrls(findings: readonly PagespeedFinding[], origin: string): PagespeedFinding[] {
+  if (!origin) return findings.slice();
+  const carriesOrigin = (it: PagespeedResourceItem): boolean =>
+    (it.url?.startsWith(origin) ?? false) || (it.label?.includes(origin) ?? false);
+  return findings.map((f) => {
+    if (!f.items?.some(carriesOrigin)) return f;
+    return {
+      ...f,
+      items: f.items.map((it) => {
+        if (!carriesOrigin(it)) return it;
+        return {
+          ...it,
+          ...(it.url?.startsWith(origin) ? { url: it.url.slice(origin.length) || '/' } : {}),
+          ...(it.label?.includes(origin) ? { label: it.label.split(origin).join('') } : {}),
+        };
+      }),
+    };
+  });
+}
+
 /**
  * Scrub the internal loopback origin (`http://127.0.0.1:<port>`) out of Lighthouse run-warnings before
  * they leave the server. Lighthouse interpolates the navigated URL into some warnings (e.g. its redirect
@@ -171,6 +384,7 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
         score: audit.score,
         displayValue: audit.displayValue || undefined,
         description: audit.description || undefined,
+        ...findingDetail(audit.details),
       });
     }
   }

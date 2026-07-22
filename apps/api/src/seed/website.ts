@@ -50,7 +50,7 @@ export const EXAMPLE_WEBSITE = {
         <!-- The mailto target is a LITERAL: the template validator only allows an interpolated
              URL attribute behind a slash/hash/https prefix (a mailto: prefix is not on that
              list) — keep this address in sync with EXAMPLE_IDENTITY.email. -->
-        <li class="flex items-start gap-2.5">${icon('mail', 'mt-0.5 h-4 w-4 shrink-0 opacity-50')}<a class="break-all no-underline transition hover:text-neutral-content" href="mailto:hello@northwindstudio.com">{{ company.email }}</a></li>
+        <li class="flex items-start gap-2.5">${icon('envelope', 'mt-0.5 h-4 w-4 shrink-0 opacity-50')}<a class="break-all no-underline transition hover:text-neutral-content" href="mailto:hello@northwindstudio.com">{{ company.email }}</a></li>
         <li class="flex items-start gap-2.5">${icon('phone', 'mt-0.5 h-4 w-4 shrink-0 opacity-50')}{{ company.telephone }}</li>
         <li class="flex items-start gap-2.5">${icon('map-pin', 'mt-0.5 h-4 w-4 shrink-0 opacity-50')}{{ company.address.locality }}, {{ company.address.region }}</li>
       </ul>

@@ -17,8 +17,7 @@
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
-import { iconBody } from './icons.js';
-import { brandIcon } from './brand-icons.js';
+import { renderIconSvg } from './icon-render.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
@@ -421,30 +420,19 @@ function createInstance(): typeof Handlebars {
   // emits a SafeString (raw SVG) without ever reflecting tenant markup. Author-supplied DATA is just
   // the icon NAME (a map key) + a class list. Use in element context. A field literally named `icon`
   // (e.g. a card's emoji) is read plainly as `{{icon}}`, never shadowed by this.
-  hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) => {
-    if (typeof name !== 'string') return new Handlebars.SafeString('');
-    const klass = escapeAttr(typeof cls === 'string' ? cls : 'h-5 w-5');
-    // A Lucide (stroke) glyph of `n`, or undefined when the set has no such name.
-    const lucide = (n: string): string | undefined => {
-      const body = iconBody(n);
-      return body === undefined
-        ? undefined
-        : `<svg class="${klass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
-          `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-    };
-    if (name.startsWith('brand:')) {
-      const slug = name.slice('brand:'.length);
-      const brand = brandIcon(slug);
-      if (brand)
-        return new Handlebars.SafeString(
-          `<svg class="${klass}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${escapeAttr(brand.path)}"/></svg>`,
-        );
-      // The brand/simple-icons set lacks this slug (e.g. `linkedin`) → fall back to the Lucide glyph of the
-      // SAME name so the icon still renders (an empty SafeString would be an invisible 0×0 gap otherwise).
-      return new Handlebars.SafeString(lucide(slug) ?? '');
-    }
-    return new Handlebars.SafeString(lucide(name) ?? '');
-  });
+  // {{sw-icon "name" "css-class"}} → inline an icon as an <svg>. "name" is a PHOSPHOR icon; an optional
+  // ":weight" suffix picks the weight (thin|light|regular|bold|fill|duotone), DEFAULT fill —
+  // {{sw-icon "gear"}} is a filled gear, {{sw-icon "gear:bold"}} a bold one. `brand:<slug>` is a
+  // simple-icons filled logo (unchanged). RESOLUTION per name: Phosphor(name) → Lucide-name→Phosphor
+  // alias → Lucide OUTLINE fallback — so a familiar/agent-written Lucide name still renders (as its
+  // Phosphor twin where mapped, else a Lucide outline), never an invisible 0×0 gap. The emitted <svg>
+  // carries size-less class HOOKS `sw-icon sw-icon-<name> sw-icon-<weight>` (weight is `lucide` for a
+  // fallback) so a site can style by name/weight while authored + CSS-owned sizing still wins. Bodies
+  // come ONLY from the trusted build-time icon maps, never tenant markup; author DATA is just the name +
+  // class (both attribute-escaped). viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback.
+  hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) =>
+    new Handlebars.SafeString(typeof name === 'string' ? renderIconSvg(name, typeof cls === 'string' ? cls : undefined) : ''),
+  );
   // {{sw-flag "de" "h-4"}} → inline a FULL-COLOR country flag as an <svg>. A bare alpha-2 code is the
   // rectangular 4:3 flag; a `<code>-circle` name is the circular variant (e.g. {{sw-flag "de-circle"}}).
   // Unlike sw-icon these keep their own fills (a flag in currentColor would be a blob), so it is a
@@ -793,15 +781,12 @@ function createInstance(): typeof Handlebars {
       str(h.label) || reservedTr(root, 'theme_toggle') || RESERVED_TRANSLATION_DEFAULTS.theme_toggle || 'Toggle dark mode';
     const cls = str(h.class);
     const classAttr = cls ? `sw-theme-toggle ${cls}` : 'sw-theme-toggle';
-    // Icons come ONLY from the trusted Lucide map (never tenant input); the `sw-tt-*` class is the CSS
-    // picker hook. An absent icon → empty body (button still works) — but sun/moon are stock Lucide.
-    const svg = (body: string | undefined, iconClass: string): string =>
-      `<svg class="${iconClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
-      `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body ?? ''}</svg>`;
+    // Sun/moon come from the shared icon renderer (Phosphor fill); the `sw-tt-*` class is the CSS picker
+    // hook that shows the right glyph per theme. The renderer's class hooks compose with sw-tt-*.
     return new Handlebars.SafeString(
       `<button type="button" class="${escapeAttr(classAttr)}" data-sw-theme-toggle ` +
         `aria-label="${escapeAttr(label)}" aria-pressed="false" title="${escapeAttr(label)}">` +
-        `${svg(iconBody('sun'), 'sw-tt-sun')}${svg(iconBody('moon'), 'sw-tt-moon')}</button>`,
+        `${renderIconSvg('sun', 'sw-tt-sun')}${renderIconSvg('moon', 'sw-tt-moon')}</button>`,
     );
   });
   // {{sw-form "contact" class="card p-8"}} → the COMPLETE markup of a stored form definition

@@ -155,8 +155,9 @@ describe('{{sw-theme-toggle}} — theme toggle helper', () => {
     expect(out).toContain('data-sw-theme-toggle');
     expect(out).toContain('class="sw-theme-toggle"');
     expect(out).toContain('aria-pressed="false"');
-    expect(out).toContain('class="sw-tt-sun"');
-    expect(out).toContain('class="sw-tt-moon"');
+    // Sun/moon render via the shared icon renderer (Phosphor fill) with the sw-tt-* CSS picker hook.
+    expect(out).toMatch(/sw-icon sw-icon-sun sw-icon-fill sw-tt-sun/);
+    expect(out).toMatch(/sw-icon sw-icon-moon sw-icon-fill sw-tt-moon/);
   });
   it('renders NOTHING when themes are disabled / unset (helper is safe to leave in)', () => {
     expect(renderTemplate('{{sw-theme-toggle}}', { website: {} } as unknown as TemplateContext)).toBe('');
@@ -325,34 +326,48 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-translate "__proto__" default="ok"}}', ctxT)).toBe('ok');
   });
 
-  it('{{sw-icon}} inlines a built-in SVG (trusted body, escaped class), empty for unknown', () => {
+  it('{{sw-icon}} inlines a Phosphor FILL glyph by default (name/weight class hooks, escaped class), empty for unknown', () => {
     const out = renderTemplate('{{sw-icon "arrow-right" "h-5 w-5"}}', ctx);
-    expect(out).toContain('<svg class="h-5 w-5"');
-    expect(out).toContain('stroke="currentColor"');
+    expect(out).toContain('viewBox="0 0 256 256"'); // Phosphor
+    expect(out).toContain('fill="currentColor"'); // FILL default (not stroke)
+    expect(out).not.toContain('stroke="currentColor"');
+    expect(out).toContain('sw-icon sw-icon-arrow-right sw-icon-fill h-5 w-5'); // name + weight hooks + authored class
     expect(out).toContain('aria-hidden="true"');
-    expect(out).toContain('<path d="M5 12h14"'); // arrow-right body, emitted raw (SafeString)
-    // Unknown icon → nothing (never reflects the name).
-    expect(renderTemplate('[{{sw-icon "does-not-exist"}}]', ctx)).toBe('[]');
+    expect(out).toContain('<path'); // body emitted raw (SafeString)
+    // A `:weight` suffix picks the weight.
+    expect(renderTemplate('{{sw-icon "gear:bold"}}', ctx)).toContain('sw-icon-gear sw-icon-bold');
+    // A Lucide name resolves via the alias to its Phosphor twin.
+    expect(renderTemplate('{{sw-icon "settings"}}', ctx)).toContain('sw-icon-gear sw-icon-fill');
+    // A Lucide-only name falls back to the Lucide OUTLINE (never invisible).
+    const fb = renderTemplate('{{sw-icon "align-horizontal-space-around"}}', ctx);
+    expect(fb).toContain('viewBox="0 0 24 24"');
+    expect(fb).toContain('stroke="currentColor"');
+    expect(fb).toContain('sw-icon-lucide');
+    // A truly unknown icon → nothing (never reflects the name).
+    expect(renderTemplate('[{{sw-icon "does-not-exist-xyz"}}]', ctx)).toBe('[]');
     // The class is attribute-escaped (no breakout possible).
     expect(renderTemplate('{{sw-icon "check" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
   });
 
   it('{{sw-icon}} renders a brand: logo as a filled path (themeable), empty for an unknown brand', () => {
     const out = renderTemplate('{{sw-icon "brand:whatsapp" "h-4 w-4"}}', ctx);
-    expect(out).toContain('<svg class="h-4 w-4"');
+    expect(out).toContain('sw-icon sw-icon-brand-whatsapp h-4 w-4');
+    expect(out).toContain('viewBox="0 0 24 24"');
     expect(out).toContain('fill="currentColor"'); // brand logos fill (theme via text color), not stroke
     expect(out).toContain('<path d="'); // the brand path, emitted raw (SafeString)
     expect(out).not.toContain('stroke="currentColor"');
-    // Unknown brand slug that is ALSO not a Lucide name → nothing.
-    expect(renderTemplate('[{{sw-icon "brand:nope"}}]', ctx)).toBe('[]');
+    // Unknown brand slug that is ALSO not a Phosphor/Lucide name → nothing.
+    expect(renderTemplate('[{{sw-icon "brand:nope-xyz"}}]', ctx)).toBe('[]');
   });
 
-  it('{{sw-icon "brand:<slug>"}} falls back to the Lucide glyph when the brand set lacks the slug (e.g. linkedin)', () => {
-    // simple-icons dropped the LinkedIn logo; without a fallback the icon would be an invisible 0×0 gap.
+  it('{{sw-icon "brand:linkedin"}} falls back to the FILLED Phosphor logo (simple-icons dropped the mark)', () => {
+    // simple-icons removed the LinkedIn logo at the brand's request; we fall back to Phosphor's FILLED
+    // `linkedin-logo` (not an outline), so brand:linkedin is a solid LinkedIn mark, never an invisible gap.
     const out = renderTemplate('{{sw-icon "brand:linkedin" "size-7"}}', ctx);
-    expect(out).toContain('<svg class="size-7"');
-    expect(out).toContain('stroke="currentColor"'); // rendered as the Lucide (stroke) fallback
-    expect(out).not.toBe('');
+    expect(out).toContain('sw-icon-linkedin-logo sw-icon-fill size-7');
+    expect(out).toContain('viewBox="0 0 256 256"');
+    expect(out).toContain('fill="currentColor"'); // FILLED, not the old stroke fallback
+    expect(out).not.toContain('stroke="currentColor"');
   });
 
   it('{{sw-flag}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {

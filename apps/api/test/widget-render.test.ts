@@ -108,13 +108,13 @@ describe('hero-slider Widget render', () => {
     expect(render(fullConfig)).toContain('data-kenburns="on"');
   });
 
-  it('arrow chevrons carry NO size utility (class="") so the base CSS owns the edge/circle glyph size', () => {
-    // Regression guard: a BARE {{sw-icon "chevron-left"}} defaults to the helper's `h-5 w-5` class, which
-    // (a real class) outranks the zero-specificity component CSS and shrinks the hero chevron. The widget
-    // must pass an explicit empty class — {{sw-icon "chevron-left" ""}} → <svg class=""> — so the CSS sizes it.
+  it('arrows are bold double-carets carrying NO size utility so the base CSS owns the edge/circle glyph size', () => {
+    // The full-screen slider arrows are caret-double-*:bold (Phosphor). Regression guard: they must pass an
+    // EMPTY class ({{sw-icon "caret-double-left:bold" ""}}) so the <svg> carries only the name/weight hooks
+    // — no `h-5 w-5` (which, being a real class, would outrank the zero-spec component CSS and shrink them).
     const html = render(fullConfig);
-    expect(html).toMatch(/data-sw-part="prev"[^>]*>\s*<svg class=""/);
-    expect(html).toMatch(/data-sw-part="next"[^>]*>\s*<svg class=""/);
+    expect(html).toMatch(/data-sw-part="prev"[^>]*>\s*<svg class="sw-icon sw-icon-caret-double-left sw-icon-bold"/);
+    expect(html).toMatch(/data-sw-part="next"[^>]*>\s*<svg class="sw-icon sw-icon-caret-double-right sw-icon-bold"/);
     expect(html).not.toContain('h-5 w-5'); // no size utility anywhere on the hero arrows
   });
 

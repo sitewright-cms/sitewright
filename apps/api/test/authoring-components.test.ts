@@ -28,6 +28,23 @@ describe('GET /authoring/components', () => {
     await app.close();
   });
 
+  it('GET /authoring/icons/search — multi-term search, honours limit, empty q → empty groups', async () => {
+    const app = await createApp({ db: await makeTestDb() });
+    await app.ready();
+    // Multiple terms (comma + whitespace) + a limit.
+    const res = await app.inject({ method: 'GET', url: '/authoring/icons/search?q=settings,%20trash%20gear&limit=3' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { query: string; results: Array<{ term: string; matches: string[] }> };
+    expect(body.results.map((g) => g.term)).toEqual(['settings', 'trash', 'gear']);
+    expect(body.results[0]?.matches[0]).toBe('gear'); // "settings" → gear (alias)
+    expect(body.results[0]?.matches.length).toBeLessThanOrEqual(3); // limit honoured
+    // Missing q → empty results (no crash); default limit path.
+    const empty = await app.inject({ method: 'GET', url: '/authoring/icons/search' });
+    expect(empty.statusCode).toBe(200);
+    expect((empty.json() as { results: unknown[] }).results).toEqual([]);
+    await app.close();
+  });
+
   it('stays an API path (unknown /authoring/* is a JSON 404, not the SPA shell)', async () => {
     const app = await createApp({ db: await makeTestDb() });
     await app.ready();

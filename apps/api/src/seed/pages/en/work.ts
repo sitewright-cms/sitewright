@@ -30,7 +30,7 @@ export function pageWork(): Page {
         <figure class="relative aspect-[16/10] overflow-hidden">
           <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] h-full w-full object-cover" loading="lazy" />
           <span class="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" aria-hidden="true"></span>
-          <span class="absolute right-5 top-5 inline-flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white/90 text-neutral opacity-0 shadow-lg transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">${icon('maximize-2', 'h-4 w-4')}</span>
+          <span class="absolute right-5 top-5 inline-flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white/90 text-neutral opacity-0 shadow-lg transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">${icon('arrows-out-simple', 'h-4 w-4')}</span>
         </figure>
         <div class="card-body p-7">
           <div class="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider"><span class="rounded-full bg-primary/10 px-3 py-1 text-primary">{{category}}</span><span class="font-mono font-medium normal-case tracking-normal text-base-content/40">{{year}}</span></div>

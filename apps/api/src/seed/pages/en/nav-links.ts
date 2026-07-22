@@ -9,7 +9,7 @@ export function pageNavLinks(): Page[] {
     {
       id: 'nav-audit',
       path: '',
-      title: '<span class="inline-flex items-center gap-1.5 font-semibold text-accent">{{sw-icon "sparkles" "h-4 w-4"}} Free site audit</span>',
+      title: '<span class="inline-flex items-center gap-1.5 font-semibold text-accent">{{sw-icon "sparkle" "h-4 w-4"}} Free site audit</span>',
       kind: 'link',
       link: { target: '/contact' },
       parent: 'home',

@@ -60,18 +60,56 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     // The component markers survive the directive-strip, so the shipped JS selectors match.
     expect(index.body).toContain('data-sw-component="modal"');
     expect(index.body).toContain('data-sw-part="open"');
-    // Both runtimes are linked.
-    expect(index.body).toContain('<script defer src="components.js?v=');
+    // Both runtimes are linked (the modal ships as its own per-type chunk c-modal.js).
+    expect(index.body).toContain('<script defer src="c-modal.js?v=');
     expect(index.body).toContain('<script defer src="nav-link.js?v=');
+    // No other component type is authored → no other c-*.js chunk ships.
+    expect(index.body).not.toContain('c-carousel.js');
 
-    // components.js carries the modal behavior; nav-link.js carries the general dialog/anchor handler.
-    const comp = await client.get(`/sites/${slug}/components.js`);
+    // c-modal.js carries the modal behavior; nav-link.js carries the general dialog/anchor handler.
+    const comp = await client.get(`/sites/${slug}/c-modal.js`);
     expect(comp.statusCode).toBe(200);
     expect(comp.body).toContain('[data-sw-component="modal"]');
     expect(comp.body).toContain('showModal');
     const navLink = await client.get(`/sites/${slug}/nav-link.js`);
     expect(navLink.statusCode).toBe(200);
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
+  });
+
+  it('splits chrome vs content: a SHARED-SLOT component ships on every page; a page-body one ships only there', async () => {
+    const proj = client.project(projectId);
+    // A carousel lives in the shared BOTTOM slot (site chrome rendered on every page); the modal lives
+    // only in the home page body — so per-page shipping links the carousel everywhere but the modal
+    // only on home.
+    const carousel =
+      '<div data-sw-component="carousel" data-sw-block="Carousel"><div data-sw-part="track">' +
+      '<div data-sw-part="slide">a</div><div data-sw-part="slide">b</div></div></div>';
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { bottom: carousel },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: modalSource };
+    const about = { id: 'about', path: 'about', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<section><h1>Plain</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const homeHtml = (await client.get(`/sites/${slug}/index.html`)).body;
+    const aboutHtml = (await client.get(`/sites/${slug}/about/index.html`)).body;
+    // CHROME (shared slot): the carousel chunk ships on BOTH pages, rebased to each page's depth.
+    expect(homeHtml).toContain('src="c-carousel.js?v=');
+    expect(aboutHtml).toContain('src="../c-carousel.js?v=');
+    // CONTENT (page body): the modal chunk ships ONLY on home — the plain about page never loads it.
+    expect(homeHtml).toContain('c-modal.js');
+    expect(aboutHtml).not.toContain('c-modal.js');
+    // Both chunk files exist once at the site root.
+    expect((await client.get(`/sites/${slug}/c-carousel.js`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(200);
   });
 
   it('ships the Banner runtime for a code-first page that authors a dismissible banner', async () => {
@@ -91,10 +129,10 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="banner"');
     expect(index.body).toContain('data-sw-part="dismiss-forever"');
     expect(index.body).toContain('hidden');
-    expect(index.body).toContain('<script defer src="components.js?v=');
+    expect(index.body).toContain('<script defer src="c-banner.js?v=');
 
-    // components.js carries the Banner runtime (its per-banner storage namespace) + CSS.
-    const comp = await client.get(`/sites/${slug}/components.js`);
+    // c-banner.js carries the Banner runtime (its per-banner storage namespace) + CSS.
+    const comp = await client.get(`/sites/${slug}/c-banner.js`);
     expect(comp.statusCode).toBe(200);
     expect(comp.body).toContain('sw-banner:'); // JS minified → string quotes normalized to double
     expect(comp.body).toContain('data-sw-component="banner"');
@@ -319,9 +357,9 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('<script defer src="nav-link.js?v=');
     expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
-    // No component marker → components.js is NOT shipped.
-    expect(index.body).not.toContain('components.js');
-    expect((await client.get(`/sites/${slug}/components.js`)).statusCode).toBe(404);
+    // No component marker → NO per-type component chunk ships.
+    expect(index.body).not.toContain('src="c-');
+    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(404);
   });
 
   it('ships the dialog runtime when a GLOBAL modal lives in the bottom skeleton slot', async () => {
@@ -357,9 +395,9 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).not.toContain('components.js');
+    expect(index.body).not.toContain('src="c-');
     expect(index.body).not.toContain('nav-link.js');
-    expect((await client.get(`/sites/${slug}/components.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(404);
     expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(404);
   });
 
@@ -372,7 +410,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(html).toContain('dialog[data-sw-component="modal"]'); // MODAL component CSS inlined (keys on the marker)
     expect(html).toContain('[data-sw-component="modal"]'); // MODAL component JS selector inlined
     expect(html).toContain('showModal'); // NAV_LINK_JS inlined (a <dialog> is present) — unique to it
-    expect(html).not.toContain('src="components.js"');
+    expect(html).not.toContain('src="c-'); // no external component chunk in the self-contained preview
     expect(html).not.toContain('src="nav-link.js"');
   });
 

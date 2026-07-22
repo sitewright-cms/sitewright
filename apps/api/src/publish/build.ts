@@ -100,8 +100,11 @@ import {
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
-/** The platform component-behavior bundle, written at the site root and linked per page. */
-const COMPONENT_SCRIPT = 'components.js';
+/** Per-component-type runtime chunk filename (e.g. Carousel → `c-carousel.js`). One file per component
+ *  TYPE used anywhere on the site (written once, stable name → cached across every page that uses that
+ *  type), and each page links ONLY the chunks for the components IT renders — so a simple page no longer
+ *  ships the whole interactive-component bundle just because some other page uses a carousel. */
+const componentChunkName = (type: string): string => `c-${type.toLowerCase()}.js`;
 /** The color-scheme toggle + no-flash runtime, written at the site root and linked SYNC in <head>. */
 const THEME_SCRIPT = 'theme.js';
 /** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
@@ -518,7 +521,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         ...Object.values(usedSnippets).flatMap(componentTypesInSource),
       ]),
     ];
-    const usesComponents = componentTypes.length > 0;
+    // The site-wide union bundle — kept only to seed the `?v=` cache-bust digest (its bytes change iff
+    // any per-type chunk changes). Pages link per-TYPE chunks (per-page), never this concatenation.
     const components = componentAssets(componentTypes);
     // Each platform runtime (animations / lazyload / ripple / cart / dialog) ships only when some
     // authored CODE-FIRST surface uses its marker — page sources, skeleton slots, or snippets. Same
@@ -560,18 +564,21 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       .update([THEME_TOGGLE_JS, NAV_LINK_JS, PRELOADER_JS, BACK_TO_TOP_JS, STICKY_HEADER_JS, SCROLLSPY_JS, NAV_EFFECTS_JS, BUTTON_EFFECTS_JS].join('\x00'))
       .digest('hex')
       .slice(0, 16);
-    // No-JS un-hide for any used runtime that hides content from first paint (svg-anim's no-FOUC rule +
-    // the entrance-animation first-paint hide): one `<noscript><style>` at body-end so a scripting-off
-    // visitor — whom the runtime can never reveal — still sees the content (keeps the PE-first "never hide
-    // content without JS" guarantee). '' when none.
-    const effectNoscriptCss = usedBodyEffects
-      .flatMap((r) => (r.noscript ? [r.noscript] : []))
-      // Defence-in-depth: neutralize any `</style` so a noscript rule can't break out of its <style>
-      // block — matching the inlineStyles renderer. The registry's noscript values are static first-party
-      // constants today, but this keeps the path structurally safe if one ever carries tenant data.
-      .map((css) => css.replace(/<\/(style)/gi, '<\\/$1'))
-      .join('');
-    const effectNoscriptHtml = effectNoscriptCss ? `<noscript><style>${effectNoscriptCss}</style></noscript>` : undefined;
+    // No-JS un-hide for the runtimes a page ships that hide content from first paint (svg-anim's no-FOUC
+    // rule + the entrance-animation first-paint hide): one `<noscript><style>` at body-end so a
+    // scripting-off visitor — whom the runtime can never reveal — still sees the content (keeps the
+    // PE-first "never hide content without JS" guarantee). Computed PER PAGE from that page's body-effect
+    // set (below); a page without a first-paint-hiding runtime emits nothing.
+    const effectNoscriptHtmlFor = (effects: readonly { noscript?: string }[]): string | undefined => {
+      const css = effects
+        .flatMap((r) => (r.noscript ? [r.noscript] : []))
+        // Defence-in-depth: neutralize any `</style` so a noscript rule can't break out of its <style>
+        // block — matching the inlineStyles renderer. The registry's noscript values are static
+        // first-party constants today, but this keeps the path structurally safe if one ever carries data.
+        .map((s) => s.replace(/<\/(style)/gi, '<\\/$1'))
+        .join('');
+      return css ? `<noscript><style>${css}</style></noscript>` : undefined;
+    };
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
@@ -613,6 +620,22 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
       usesMarker(usesDialog) ||
       usesScrollSpyRuntime;
+    // --- PER-PAGE runtime shipping ---------------------------------------------------------------
+    // The *Runtime flags above are the SITE-WIDE union: they decide which runtime files get WRITTEN
+    // (a file must exist if ANY page links it). LINKING, however, is per-PAGE (below, in the render
+    // loop): a page links a component/effect runtime only when the page's OWN source, a SHARED chrome
+    // slot (rendered on every page), or a snippet the page composes trips its marker. That is the
+    // accurate chrome-vs-content split — slot/settings-driven runtimes (nav/footer effects, preloader,
+    // back-to-top, sticky, a site-wide scheme, the consent manager) ship on every page; content-driven
+    // ones (the interactive components, entrance/parallax/svg/cart/…) ship only where authored. These
+    // site-wide sub-conditions are the "applies to every page" half of the mixed runtimes; the per-page
+    // loop OR's each with a per-PAGE marker scan. Every per-page set is a SUBSET of the union above, so
+    // each linked asset was written.
+    const scrollSpySiteWide = scrollSpyUsesRuntime(website?.effects?.scrollSpy);
+    const navSiteWide = navEffectUsesRuntime(website?.effects?.navEffect);
+    const btnSiteWide = buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesBackToTopRuntime;
+    const navLinkSiteWide = pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#'));
+    const themesEnabled = !!website?.enableThemes;
     // Public form definitions (recipient stripped) + the submission endpoint per form — consumed
     // by the form-embed pass in renderTemplate ({{sw-form}} / data-sw-form) and the cart's form
     // channel. Built once (same for every page); absolute when a publicBaseUrl is configured,
@@ -876,27 +899,54 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // (after the tenant's scripts); a custom preloader is the first-body-child overlay. Each
         // applies only when its built-in effect is 'none', so a site without custom code is unchanged.
         const fxCode = websiteEffectsCustomCode(website?.effects);
+        // --- Per-page runtime selection (see the site-wide union + sub-conditions above) ------------
+        // A runtime ships on THIS page when the page's own source, a shared chrome slot (rendered on
+        // every page), or a snippet the page composes trips its marker — so content-driven runtimes
+        // ship per-page while slot/settings-driven ones ship everywhere. Every set here is a SUBSET of
+        // the site-wide union used to WRITE the files below, so no link can 404.
+        const pageScanSources = [pageSource, ...slotSources].filter((s): s is string => Boolean(s));
+        const pageScanAll = [...pageScanSources, ...Object.values(referencedSnippets(pageScanSources, snippets))];
+        const pageUsesMarker = (fn: (s: string | null | undefined) => boolean): boolean => pageScanAll.some(fn);
+        const pageComponentTypes = [...new Set(pageScanAll.flatMap(componentTypesInSource))];
+        const pageComponents = componentAssets(pageComponentTypes);
+        const pageUsesComponents = pageComponentTypes.length > 0;
+        // Marker-gated body effects for THIS page (consent stays site-wide when the manager is enabled —
+        // it hydrates held iframes on every page). Mirrors the editor preview's per-page scan.
+        const pageBodyEffects = BODY_EFFECT_RUNTIMES.filter((r) =>
+          r.key === 'consent' ? usesConsentRuntime : pageUsesMarker(r.uses),
+        );
+        // No-JS un-hide for THIS page's first-paint-hiding runtimes (svg-anim / entrance animations).
+        const pageEffectNoscriptHtml = effectNoscriptHtmlFor(pageBodyEffects);
+        // Mixed chrome runtimes: the site-wide (settings/shell) half OR a per-page authored marker.
+        const pageThemeToggle = themesEnabled && pageUsesMarker(usesThemeToggle);
+        const pageScrollSpy = scrollSpySiteWide || pageUsesMarker(usesScrollSpy);
+        const pageNavRuntime = navSiteWide || pageUsesMarker(usesNavEffects);
+        const pageBtnRuntime = btnSiteWide || pageUsesMarker(usesButtonEffects);
+        const pageNavLink = navLinkSiteWide || pageUsesMarker(usesDialog) || pageScrollSpy;
         const pageInlineStyles = [
-          ...(usesComponents && components.css ? [components.css] : []),
-          // Shared registry: every used body-effect runtime's inline CSS (animation, parallax, svg-anim,
-          // marquee, lazyload, ripple, cart, consent) — same set + order as the editor preview.
-          ...usedBodyEffects.flatMap((r) => (r.css ? [r.css] : [])),
-          ...(usesThemeToggleRuntime ? [THEME_TOGGLE_CSS] : []),
+          ...(pageUsesComponents && pageComponents.css ? [pageComponents.css] : []),
+          // Shared registry: the inline CSS for every body-effect runtime THIS page uses (animation,
+          // parallax, svg-anim, marquee, lazyload, ripple, cart, consent) — same set + order the editor
+          // preview inlines for this page.
+          ...pageBodyEffects.flatMap((r) => (r.css ? [r.css] : [])),
+          ...(pageThemeToggle ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
           ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
         ];
         const pageScripts = [
-          ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
-          // Shared registry: link each used runtime's external script at the site root (marquee is
-          // CSS-only → no script). Same set as the inline CSS above + the editor preview's inline JS.
-          ...usedBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${r.script}`] : [])),
-          ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
+          // One external chunk per interactive-component TYPE this page renders (stable name → cached
+          // across pages; a component-free page links none of them).
+          ...pageComponentTypes.map((t) => `${siteRoot}${componentChunkName(t)}`),
+          // Shared registry: link each body-effect runtime THIS page uses (marquee is CSS-only → no
+          // script). Same set as the inline CSS above + the editor preview's inline JS for this page.
+          ...pageBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${r.script}`] : [])),
+          ...(pageNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
-          ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
-          ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
+          ...(pageNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
+          ...(pageBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
           ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
           ...(usesStickyHeaderRuntime ? [`${siteRoot}${STICKY_HEADER_SCRIPT}`] : []),
-          ...(usesScrollSpyRuntime ? [`${siteRoot}${SCROLLSPY_SCRIPT}`] : []),
+          ...(pageScrollSpy ? [`${siteRoot}${SCROLLSPY_SCRIPT}`] : []),
         ];
         // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
         // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
@@ -915,7 +965,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
-          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}?v=${assetVer}`] : undefined,
+          headScripts: pageThemeToggle ? [`${siteRoot}${THEME_SCRIPT}?v=${assetVer}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
           // Sticky/fixed top-header → the fixed `#main-nav` + `--sw-header-h` offset token, emitted at
@@ -986,7 +1036,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).
           rawFidelity: page.rawHtml === true,
           // Raw-HTML pages also drop the platform effect JS — only the user's own website.scripts remains.
-          customScripts: [website?.scripts, page.rawHtml ? undefined : fxCode.bodyEnd, page.rawHtml ? undefined : effectNoscriptHtml].filter(Boolean).join('\n') || undefined,
+          customScripts: [website?.scripts, page.rawHtml ? undefined : fxCode.bodyEnd, page.rawHtml ? undefined : pageEffectNoscriptHtml].filter(Boolean).join('\n') || undefined,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
@@ -995,7 +1045,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
           // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
-          systemI18n: usesComponents && components.js ? systemI18nData(pageT) : undefined,
+          systemI18n: pageUsesComponents ? systemI18nData(pageT) : undefined,
           // PREVIEW only: the parent-bridge runtime (reports this iframe's location to the editor
           // shell for auto-reload / auto-navigate). First-party + audited; never set in a publish.
           inlineScripts: opts.previewRuntime ? [opts.previewRuntime] : undefined,
@@ -1071,9 +1121,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(min);
     };
 
-    // One platform component bundle (first-party behavior; only-used-ships).
-    if (usesComponents && components.js) {
-      await writeJs(COMPONENT_SCRIPT, components.js);
+    // One first-party runtime CHUNK per component type used anywhere on the site (only-used-ships).
+    // Each chunk is self-contained (its own enhance + init), so a page links just the chunks for the
+    // components it renders. componentTypes is the site-wide union → every per-page link resolves.
+    for (const type of componentTypes) {
+      const chunk = componentAssets([type]).js;
+      if (chunk) await writeJs(componentChunkName(type), chunk);
     }
 
     // Write each used body-effect runtime's JS at the site root (first-party behavior; only-used-ships).

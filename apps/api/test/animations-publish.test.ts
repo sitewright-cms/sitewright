@@ -47,7 +47,8 @@ describe('scroll-reveal animations → publish + preview', () => {
       path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section' },
-      source: '<section><h2>Plain page on the same site</h2></section>',
+      // A nested page that ALSO authors the animation — so it links the runtime rebased to its depth.
+      source: '<section><h2 data-sw-animation="fade-up">Nested page that also animates</h2></section>',
     };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
@@ -65,7 +66,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     expect(index.body).toContain('@keyframes sw-anim-reveal'); // CSS self-heal failsafe
     expect(index.body).toContain('<noscript><style>[data-sw-animation]{opacity:1!important'); // no-JS un-hide
 
-    // Site-wide asset: a nested page on the same site links it rebased to its depth.
+    // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
     expect(aboutPage.body).toContain('<script defer src="../animations.js?v=');

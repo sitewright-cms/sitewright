@@ -73,9 +73,9 @@ describe('buildSite — code-first form embedding', () => {
     expect(html).toContain('name="_hpt"'); // honeypot injected
     expect(html).not.toContain('data-sw-form'); // publish strips the reference marker
     expect(html).not.toContain('secret-recipient'); // the recipient never reaches the export
-    // only-used-ships: the source scan caught the {{sw-form …}} reference → components.js written
-    expect(html).toContain('components.js');
-    await expect(readFile(join(outDir, 'components.js'), 'utf8')).resolves.toContain('data-sw-endpoint');
+    // only-used-ships: the source scan caught the {{sw-form …}} reference → the Form chunk is written
+    expect(html).toContain('c-form.js');
+    await expect(readFile(join(outDir, 'c-form.js'), 'utf8')).resolves.toContain('data-sw-endpoint');
   });
 
   it('endpoints are absolute when a publicBaseUrl is configured', async () => {

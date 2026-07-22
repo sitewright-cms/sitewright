@@ -49,7 +49,8 @@ describe('parallax → publish + preview', () => {
       path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section' },
-      source: '<section><h2>Plain page on the same site</h2></section>',
+      // A nested page that ALSO authors parallax — so it links the runtime rebased to its depth.
+      source: '<section><h2 data-sw-parallax-translate="20,-20">Nested drift</h2></section>',
     };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
@@ -63,7 +64,7 @@ describe('parallax → publish + preview', () => {
     expect(index.body).toContain('<script defer src="parallax.js?v='); // runtime linked
     expect(index.body).toContain('[data-sw-parallax-scene]{position:relative;overflow:hidden}'); // structural CSS inlined
 
-    // Site-wide asset: a nested page links it rebased to its depth.
+    // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
     expect(aboutPage.body).toContain('<script defer src="../parallax.js?v=');

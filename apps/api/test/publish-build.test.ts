@@ -1070,9 +1070,10 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-component="modal"'); // the snippet's component expanded into the page
-    expect(home).toContain('<script defer src="components.js?v=');
+    // Per-page scan includes the snippets a page composes → the Modal chunk is linked on this page.
+    expect(home).toContain('<script defer src="c-modal.js?v=');
     expect(home).toContain('<script defer src="nav-link.js?v=');
-    expect(await readFile(join(outDir, 'components.js'), 'utf8')).toContain('[data-sw-component="modal"]');
+    expect(await readFile(join(outDir, 'c-modal.js'), 'utf8')).toContain('[data-sw-component="modal"]');
     expect(await readFile(join(outDir, 'nav-link.js'), 'utf8')).toContain('scrollIntoView');
   });
 

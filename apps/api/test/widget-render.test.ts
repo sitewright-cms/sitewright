@@ -108,6 +108,16 @@ describe('hero-slider Widget render', () => {
     expect(render(fullConfig)).toContain('data-kenburns="on"');
   });
 
+  it('arrow chevrons carry NO size utility (class="") so the base CSS owns the edge/circle glyph size', () => {
+    // Regression guard: a BARE {{sw-icon "chevron-left"}} defaults to the helper's `h-5 w-5` class, which
+    // (a real class) outranks the zero-specificity component CSS and shrinks the hero chevron. The widget
+    // must pass an explicit empty class — {{sw-icon "chevron-left" ""}} → <svg class=""> — so the CSS sizes it.
+    const html = render(fullConfig);
+    expect(html).toMatch(/data-sw-part="prev"[^>]*>\s*<svg class=""/);
+    expect(html).toMatch(/data-sw-part="next"[^>]*>\s*<svg class=""/);
+    expect(html).not.toContain('h-5 w-5'); // no size utility anywhere on the hero arrows
+  });
+
   it('height: an explicit CSS length sets an inline style and drops the class-based default height', () => {
     const html = render({ ...fullConfig, height: '70vh' });
     expect(html).toContain('style="height:70vh"');

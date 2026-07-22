@@ -175,6 +175,13 @@ describe('component registry', () => {
     // The two selector sets are zero-specificity (each :where(...)), so an authored utility still wins.
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="edge"]');
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="circle"]');
+    // EDGE arrows match the original hand-built hero: a WIDE tab (up to 8rem), a STRONG gradient, and a
+    // LARGE 2.75rem chevron (vs the 1.5rem default). The chevron size is owned by the CSS (bare markup).
+    expect(css).toContain('width:clamp(4.5rem,8vw,8rem)');
+    expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?linear-gradient\(to right,rgb\(0 0 0\/\.8\)/);
+    expect(css).toMatch(/\[data-arrows="edge"\][^{]*svg\{width:2\.75rem;height:2\.75rem/);
+    // Default (circle / bare) chevron size lives in the common zero-spec rule at 1.5rem.
+    expect(css).toMatch(/:where\(\[data-sw-part="prev"\],\[data-sw-part="next"\]\) svg\{width:1\.5rem;height:1\.5rem\}/);
   });
 
   it('Carousel caption + dots default to the frosted "hero" look (single-item), overridable', () => {

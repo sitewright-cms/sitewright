@@ -76,13 +76,13 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         element: 'button',
         required: false,
         description:
-          'Previous button (hidden until enhanced; give it an aria-label and a Lucide glyph, e.g. {{sw-icon "chevron-left"}}). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
+          'Previous button (hidden until enhanced; give it an aria-label and a Lucide glyph, e.g. {{sw-icon "chevron-left" ""}}). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
       },
       {
         part: 'next',
         element: 'button',
         required: false,
-        description: 'Next button (same rules as prev; {{sw-icon "chevron-right"}}). Full-height gradient EDGE arrow by default (single-item) or a right-overlay disc (multi-item / data-arrows="circle").',
+        description: 'Next button (same rules as prev; {{sw-icon "chevron-right" ""}}). Full-height gradient EDGE arrow by default (single-item) or a right-overlay disc (multi-item / data-arrows="circle").',
       },
       {
         part: 'dots',
@@ -105,15 +105,15 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-item-align', on: 'root', description: 'Horizontal alignment: "center" (DEFAULT), "start", or "end". Drives BOTH the Embla snap alignment (so "center" centres the ACTIVE slide with a peek on each side; with loop off, containScroll clamps the first slide left + last right) AND justify-content for an UNDERFULL row that does not scroll (fewer slides than --sw-items). Centre is a no-op for single-item full-width sliders (centre ≡ start); set "start" to left-align a multi-item slider.' },
       { name: 'data-arrows', on: 'root', description: 'Arrow STYLE override. By DEFAULT a single full-width slider gets full-height gradient EDGE arrows (the hero look) and a multi-item / peek layout (--sw-items > 1) gets compact CIRCLE arrows — the runtime picks by stamping data-sw-multi (re-checked at responsive breakpoints). Force it with data-arrows="edge" or "circle": a single-item CONTENT card slider (testimonials) usually wants "circle". The .sw-caption inside a slider also defaults to a frosted centered pill. All defaults are zero-specificity, so utility classes still restyle the buttons/caption.' },
       { name: 'data-kenburns', on: 'root', description: '"Standard hero" motion: the active slide\'s `.sw-kenburns` layer (a `<div data-sw-bg>` OR an `<img>`) slowly pans/zooms (alternating per slide) and its `.sw-caption` rises in. Keyframes ship with the component (no per-site CSS). Present (bare or `="on"`) enables the drift; `="off"` keeps the cover layout + caption motion but no zoom/pan. Pair with full-height slides each containing a `.sw-kenburns` background/image + a `.sw-caption` overlay. The `hero-slider` Widget ({{> hero-slider}}) is the ready-made, data-backed version (its Ken-Burns toggle drives this on/off).' },
-      { name: 'data-click-next', on: 'root', description: '"true" makes every slide click-to-advance with ripple feedback (the navigation-less pattern — arrows/dots optional). Clicks on links/buttons/inputs inside a slide keep their own meaning; a drag never counts as a click; the root becomes keyboard-focusable so arrow keys still work.' },
+      { name: 'data-click-next', on: 'root', description: 'Click/tap anywhere on a slide advances the carousel (the navigation-less pattern, with ripple feedback). DEFAULT ON for the hero/full-screen EDGE style (a single full-width slider) — opt out with data-click-next="false". A multi-item row or a data-arrows="circle" content slider keeps it OPT-IN — set data-click-next="true". Clicks on links/buttons/inputs inside a slide keep their own meaning; a drag never counts as a click; the root becomes keyboard-focusable so arrow keys still work.' },
     ],
     skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000">
   <div data-sw-part="track">
     <figure data-sw-part="slide">Slide one content</figure>
     <figure data-sw-part="slide">Slide two content</figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
     noJs: 'The track is a CSS scroll-snap row — fully swipeable/scrollable; arrows and dots stay hidden so no inert controls show.',

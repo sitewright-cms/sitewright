@@ -91,4 +91,36 @@ describe('Carousel runtime CLS guard (jsdom)', () => {
     expect(root().getAttribute('data-sw-enhanced')).toBe('true');
     expect(root().getAttribute('data-sw-multi')).toBeNull();
   });
+
+  const mount = (attrs: string): void => {
+    document.body.innerHTML = `<div data-sw-block="Carousel" data-sw-component="carousel" aria-label="Test" ${attrs}>${twoSlides}</div>`;
+    (0, eval)(CAROUSEL_RUNTIME_JS);
+  };
+
+  it('click-to-slide is DEFAULT ON for the edge/full-screen style (single-item, no data-arrows)', () => {
+    mount(''); // single full-width → edge → click-next default on
+    expect(root().getAttribute('data-click-next')).toBe('true'); // stamped so the CSS hooks match
+    expect(root().getAttribute('tabindex')).toBe('0'); // focusable for arrow keys
+  });
+
+  it('click-to-slide opts OUT with data-click-next="false" on a single-item slider', () => {
+    mount('data-click-next="false"');
+    expect(root().getAttribute('data-click-next')).toBe('false'); // left as authored, not stamped true
+    expect(root().getAttribute('tabindex')).toBeNull(); // no click-next wiring
+  });
+
+  it('a data-arrows="circle" CONTENT slider keeps click-to-slide OPT-IN (off by default)', () => {
+    mount('data-arrows="circle"'); // single-item but forced circle → NOT the full-screen style
+    expect(root().getAttribute('data-click-next')).toBeNull();
+    expect(root().getAttribute('tabindex')).toBeNull();
+  });
+
+  it('a MULTI-item slider keeps click-to-slide OPT-IN; data-click-next="true" turns it on', () => {
+    mount('style="--sw-items:2"'); // multi → off by default
+    expect(root().getAttribute('data-click-next')).toBeNull();
+    document.body.innerHTML = '';
+    mount('style="--sw-items:2" data-click-next="true"'); // explicit opt-in
+    expect(root().getAttribute('data-click-next')).toBe('true');
+    expect(root().getAttribute('tabindex')).toBe('0');
+  });
 });

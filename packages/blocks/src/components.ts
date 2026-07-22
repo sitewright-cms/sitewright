@@ -110,24 +110,34 @@ const CAROUSEL_CSS = [
   // DEFAULT placement (zero specificity — any authored utility class wins): dots overlaid centered at
   // the bottom of the slides; arrows overlaid at the edges with a look chosen by slides-per-view below.
   ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]){position:absolute;border:0;color:#fff;cursor:pointer;z-index:1;justify-content:center}',
+  // Chevron DEFAULT size (zero-specificity): the arrow markup passes an EMPTY class — `{{sw-icon
+  // "chevron-left" ""}}` → `<svg class="">` — so no utility competes and the base CSS owns the glyph size:
+  // 1.5rem for circle, overridden to 2.75rem for the edge look below (both zero-spec, edge later in source
+  // wins). NOTE: a BARE `{{sw-icon "chevron-left"}}` would default to the helper's `h-5 w-5` class, which
+  // (being a real class) outranks these :where() rules — hence the explicit "". An authored size utility
+  // likewise still overrides both.
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{width:1.5rem;height:1.5rem}',
   ':where([data-sw-block="Carousel"]) :where([data-sw-part="dots"]){position:absolute;bottom:.75rem;left:50%;transform:translateX(-50%);gap:.4rem;z-index:1}',
   // ── Arrow LOOK: automatic by slides-per-view, overridable with data-arrows ──────────────────────
   // The runtime stamps data-sw-multi="true" when the effective --sw-items > 1 (re-checked on reInit,
   // so a responsive breakpoint flip is honoured). Two mutually-exclusive, zero-specificity sets — an
   // explicit data-arrows="edge|circle" wins, else (including an absent OR unrecognized value) data-sw-multi
   // decides — so exactly one ALWAYS applies (a typo'd data-arrows degrades to the default, never unstyled):
-  //  • EDGE = DEFAULT for a single full-width slide (hero/image slideshow): a full-height tab with an
-  //    edge-darkening gradient and a soft opacity + icon-scale transition on hover.
+  //  • EDGE = DEFAULT for a single full-width slide (hero/image slideshow): a WIDE full-height tab
+  //    (up to 8rem) with a strong edge-darkening gradient + a LARGE chevron (2.75rem), matching the
+  //    original hand-built hero arrows; soft opacity + icon-scale/slide transition on hover.
   //  • CIRCLE = multi-item / peek layouts (or data-arrows="circle"): the compact translucent disc,
   //    right for card rows / tickers where a full-height tab would swamp the slides.
-  // The chevron stays centered in both (svg margin:auto below).
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]){top:0;bottom:0;width:clamp(3rem,7vw,5rem);border-radius:0;opacity:.85;transition:opacity .3s ease}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]){left:0;background:linear-gradient(to right,rgb(0 0 0/.6),rgb(0 0 0/.12) 55%,transparent)}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]){right:0;background:linear-gradient(to left,rgb(0 0 0/.6),rgb(0 0 0/.12) 55%,transparent)}',
+  // The chevron stays centered in both (svg margin:auto below). The EDGE chevron size is owned by the
+  // CSS (below) so it stays large on the slimmed bare `{{sw-icon "chevron-left"}}` markup — do NOT put a
+  // size utility on the icon (that would win over this zero-spec default and shrink it).
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]){top:0;bottom:0;width:clamp(4.5rem,8vw,8rem);border-radius:0;opacity:.9;transition:opacity .3s ease}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]){left:0;background:linear-gradient(to right,rgb(0 0 0/.8),rgb(0 0 0/.4) 45%,transparent)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]){right:0;background:linear-gradient(to left,rgb(0 0 0/.8),rgb(0 0 0/.4) 45%,transparent)}',
   ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]):hover{opacity:1}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{filter:drop-shadow(0 2px 6px rgb(0 0 0/.55));transition:transform .3s ease}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):hover svg{transform:scale(1.12) translateX(-.15rem)}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):hover svg{transform:scale(1.12) translateX(.15rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{width:2.75rem;height:2.75rem;filter:drop-shadow(0 2px 8px rgb(0 0 0/.6));transition:transform .3s ease}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):hover svg{transform:scale(1.1) translateX(-.35rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):hover svg{transform:scale(1.1) translateX(.35rem)}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"],[data-sw-part="next"]){top:50%;transform:translateY(-50%);width:2.75rem;height:2.75rem;border-radius:9999px;background:rgb(0 0 0/.45)}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"]){left:.75rem}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="next"]){right:.75rem}',

@@ -1861,9 +1861,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- OIDC single sign-on (the platform as an OIDC Relying Party) ----
   // Redirect-based, so failures redirect back to the SPA with `?oidc_error=` rather than returning
   // JSON. `/auth/config` is unauthenticated so the login screen knows which buttons to show.
-  const oidcErrorRedirect = (reply: FastifyReply, code: string): void => {
-    void reply.redirect(`/?oidc_error=${encodeURIComponent(code)}`);
-  };
+  // Returns the reply (Fastify's documented idiom: always `return reply.send()/redirect()` from an
+  // async handler, never fire-and-forget) so `return oidcErrorRedirect(…)` resolves the handler WITH
+  // the in-flight send. The previous void-discard resolved the handler with `undefined` while the
+  // send was still starting, so Fastify's wrapThenable race-guard sent a SECOND reply — an unhandled
+  // ERR_HTTP_HEADERS_SENT rejection on every OIDC error path (10 per test run).
+  const oidcErrorRedirect = (reply: FastifyReply, code: string): FastifyReply =>
+    reply.redirect(`/?oidc_error=${encodeURIComponent(code)}`);
 
   app.get('/auth/config', { config: rl(60) }, async (_req, reply) => {
     // ONE snapshot of the settings row drives the provider buttons AND the admin-panel branding the

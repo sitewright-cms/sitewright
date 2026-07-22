@@ -76,7 +76,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         element: 'button',
         required: false,
         description:
-          'Previous button (hidden until enhanced; give it an aria-label and a Lucide glyph, e.g. {{sw-icon "caret-double-left:bold" ""}}). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
+          'Previous button (hidden until enhanced; give it an aria-label and an icon, e.g. {{sw-icon "caret-double-left:bold" ""}} — Phosphor, filled by default). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
       },
       {
         part: 'next',

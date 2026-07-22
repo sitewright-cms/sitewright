@@ -246,6 +246,25 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     expect(Object.keys(helpersOnly)).toEqual(['helpers']);
   });
 
+  it('search_icons finds Phosphor names for one OR MANY terms (no auth); empty query errors', async () => {
+    const mcp = await connect(fakeClient(), null);
+    expect(await toolNames(mcp)).toContain('search_icons');
+    const res = JSON.parse(text(await mcp.callTool({ name: 'search_icons', arguments: { query: 'settings, trash cog', limit: 5 } }))) as {
+      results: Array<{ term: string; matches: string[] }>;
+    };
+    expect(res.results.map((g) => g.term)).toEqual(['settings', 'trash', 'cog']);
+    expect(res.results[0]!.matches[0]).toBe('gear'); // "settings" → gear (alias)
+    expect(res.results[0]!.matches.length).toBeLessThanOrEqual(5);
+    expect(res.results[2]!.matches).toContain('gear'); // "cog" → gear via keyword synonym
+    // Also exercise the no-limit path (default) so the handler's branches are fully covered.
+    const dflt = JSON.parse(text(await mcp.callTool({ name: 'search_icons', arguments: { query: 'heart' } }))) as {
+      results: Array<{ matches: string[] }>;
+    };
+    expect(dflt.results[0]!.matches).toContain('heart');
+    // A whitespace-only query has no terms → the tool returns an error result.
+    expect((await mcp.callTool({ name: 'search_icons', arguments: { query: '   ' } })).isError).toBe(true);
+  });
+
   it('get_capabilities returns the capability index — components + guides + write kinds + need→tool map (no auth)', async () => {
     const mcp = await connect(fakeClient(), null);
     expect(await toolNames(mcp)).toContain('get_capabilities');

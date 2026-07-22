@@ -5771,7 +5771,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // search_icons tool. `limit` caps each group (1–48, default 24).
   app.get('/authoring/icons/search', { config: rl(60) }, async (req) => {
     const q = req.query as { q?: unknown; limit?: unknown };
-    const query = typeof q.q === 'string' ? q.q : '';
+    // Cap the query length (the search is synchronous + per-term-linear; iconSearchTerms also caps the
+    // term COUNT). Matches the MCP tool's 200-char bound — together these keep this PUBLIC route bounded.
+    const query = (typeof q.q === 'string' ? q.q : '').slice(0, 200);
     const limit = Math.min(48, Math.max(1, Number.parseInt(typeof q.limit === 'string' ? q.limit : '', 10) || 24));
     return { query, results: searchIcons(query, limit) };
   });

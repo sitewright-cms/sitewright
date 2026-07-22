@@ -14,12 +14,18 @@ export interface IconSearchGroup {
   matches: string[];
 }
 
-/** Split a query into individual terms on commas and/or whitespace. */
+/** The most terms one search handles. Each term does a linear scan over the icon sets, and the search is
+ *  synchronous + on a PUBLIC route, so an unbounded term count would be an event-loop-starvation DoS lever.
+ *  A real "look up several icons" call needs only a handful; 24 is a generous ceiling. */
+export const MAX_ICON_SEARCH_TERMS = 24;
+
+/** Split a query into individual terms on commas and/or whitespace, capped at {@link MAX_ICON_SEARCH_TERMS}. */
 export function iconSearchTerms(query: string): string[] {
   return query
     .split(/[\s,]+/)
     .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, MAX_ICON_SEARCH_TERMS);
 }
 
 /**
@@ -42,9 +48,11 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
     // The term is itself a familiar Lucide name → its Phosphor twin.
     const aliased = aliasToPhosphor(term);
     if (aliased) bump(aliased, 90);
-    // Lucide keyword tags (synonyms) → the matching Lucide name's Phosphor equivalent.
+    // Lucide keyword tags (synonyms) → the matching Lucide name's Phosphor equivalent. Match the term as a
+    // whole TAG TOKEN (not a raw substring — iconTags is a space-joined string, so `.includes` would match
+    // mid-word across unrelated tags, e.g. "onito" inside "monitor", padding results with irrelevant icons).
     for (const lu of ICON_NAMES) {
-      if (lu === term || iconTags(lu).includes(term)) {
+      if (lu === term || iconTags(lu).split(/\s+/).includes(term)) {
         const ph = isPhosphorName(lu) ? lu : aliasToPhosphor(lu);
         if (ph) bump(ph, lu === term ? 80 : 35);
       }

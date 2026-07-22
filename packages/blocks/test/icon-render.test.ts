@@ -81,9 +81,22 @@ describe('searchIcons — multi-term icon search', () => {
     expect(searchIcons('cog')[0]!.matches).toContain('gear'); // lucide "settings" tag "cog" → gear
     expect(searchIcons('magnify')[0]!.matches.some((m) => m.includes('magnifying-glass'))).toBe(true);
   });
+  it('matches tags as WHOLE words, not substrings (no cross-word false positives)', async () => {
+    const { searchIcons } = await import('../src/index.js');
+    // 'onito' is a mid-word fragment of the tag 'monitor' — must NOT surface tag-sourced matches.
+    const m = searchIcons('onito')[0].matches;
+    expect(m).not.toContain('pulse');
+    expect(m).not.toContain('airplay');
+  });
   it('empty/blank query → no groups; caps per term', async () => {
     const { searchIcons } = await import('../src/index.js');
     expect(searchIcons('   ')).toEqual([]);
     expect(searchIcons('arrow', 3)[0]!.matches.length).toBeLessThanOrEqual(3);
+  });
+  it('caps the number of terms (DoS guard) — a huge query is bounded', async () => {
+    const { searchIcons, iconSearchTerms, MAX_ICON_SEARCH_TERMS } = await import('../src/index.js');
+    const many = Array.from({ length: 5000 }, () => 'a').join(',');
+    expect(iconSearchTerms(many).length).toBe(MAX_ICON_SEARCH_TERMS);
+    expect(searchIcons(many).length).toBe(MAX_ICON_SEARCH_TERMS);
   });
 });

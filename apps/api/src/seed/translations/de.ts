@@ -322,7 +322,7 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     },
   },
   'nav-audit': {
-    title: '<span class="inline-flex items-center gap-1.5 font-semibold text-accent">{{sw-icon "sparkles" "h-4 w-4"}} Gratis Site-Check</span>',
+    title: '<span class="inline-flex items-center gap-1.5 font-semibold text-accent">{{sw-icon "sparkle" "h-4 w-4"}} Gratis Site-Check</span>',
   },
   ...translationsDeContent(assets),
   };

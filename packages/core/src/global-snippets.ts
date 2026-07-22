@@ -84,8 +84,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
   },
@@ -116,8 +116,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       <figcaption class="mt-6 text-sm font-semibold text-base-content/60">Priya S. &middot; Marketing Lead</figcaption>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "chevron-right" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true" class="text-primary"></div>
 </div>`,
   },
@@ -159,8 +159,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
 </div>`,
   },
   {
@@ -212,8 +212,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <figure data-sw-part="slide" class="grid min-h-64 place-items-center bg-base-200 text-center text-base-content/50">Add entries to the &ldquo;projects&rdquo; dataset to populate this slider.</figure>
     {{/each}}
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
   },
@@ -295,7 +295,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     source: `{{!-- Content tabs. First tab has a rich (icon) label; the others use plain data-sw-title text. --}}
 <div data-sw-component="tabs">
   <div data-sw-part="panel" data-sw-title="Overview">
-    <span data-sw-part="tabtitle">{{sw-icon "sparkles" "size-4"}} Overview</span>
+    <span data-sw-part="tabtitle">{{sw-icon "sparkle" "size-4"}} Overview</span>
     <div class="prose mt-4 max-w-none"><p>What we do, in one paragraph. Each panel can hold any markup.</p></div>
   </div>
   <div data-sw-part="panel" data-sw-title="Process">
@@ -586,7 +586,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
         {{#each nav.header}}
         {{#if children}}
         <li class="dropdown dropdown-hover">
-          <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>
+          <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "caret-down" "h-4 w-4 opacity-60"}}</a>
           <ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
         </li>
         {{else}}
@@ -598,7 +598,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <div class="navbar-end gap-2">
       {{#if page.translations}}
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1.5">{{sw-flag (lookup @root.website.data.locale_flags page.locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{page.locale}}</span>{{sw-icon "chevron-down" "h-3 w-3 opacity-60"}}</div>
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1.5">{{sw-flag (lookup @root.website.data.locale_flags page.locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{page.locale}}</span>{{sw-icon "caret-down" "h-3 w-3 opacity-60"}}</div>
         <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-40 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each page.translations}}<li><a href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a></li>{{/each}}</ul>
       </div>
       {{/if}}
@@ -611,7 +611,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <div class="navbar relative border-b border-base-200 bg-base-100 px-3 lg:hidden">
     <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="{{sw-translate "mobile_menu" default='Menu'}}" />
     <div class="navbar-start">
-      <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "menu" "h-6 w-6"}}</label>
+      <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "list" "h-6 w-6"}}</label>
       <a class="btn btn-ghost gap-2 px-1 text-base font-bold tracking-tight" href="{{sw-url '/'}}">
         {{#if company.icon}}<img class="h-7 w-7 rounded-lg object-cover" src="{{sw-url company.icon}}" alt="" aria-hidden="true" />{{else}}<span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{/if}}
         {{ company.name }}
@@ -684,7 +684,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       {{#each nav.header}}
       {{#if children}}
       <li class="dropdown dropdown-hover">
-        <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>
+        <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "caret-down" "h-4 w-4 opacity-60"}}</a>
         <ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul>
       </li>
       {{else}}
@@ -798,7 +798,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <div class="group h-56 perspective-distant">
     <div class="relative h-full w-full transition-transform duration-700 transform-3d group-hover:rotate-y-180">
       <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-box bg-base-100 p-6 text-center shadow backface-hidden">
-        {{sw-icon "life-buoy" "h-10 w-10 text-primary"}}
+        {{sw-icon "lifebuoy" "h-10 w-10 text-primary"}}
         <h3 class="font-heading text-lg font-semibold text-base-content" data-sw-text="tile3_title">Continuous Support</h3>
       </div>
       <div class="absolute inset-0 flex items-center justify-center rounded-box bg-primary p-6 text-center text-primary-content shadow rotate-y-180 backface-hidden">

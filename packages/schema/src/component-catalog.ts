@@ -76,13 +76,13 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         element: 'button',
         required: false,
         description:
-          'Previous button (hidden until enhanced; give it an aria-label and a Lucide glyph, e.g. {{sw-icon "chevron-left" ""}}). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
+          'Previous button (hidden until enhanced; give it an aria-label and an icon, e.g. {{sw-icon "caret-double-left:bold" ""}} — Phosphor, filled by default). A single-item slider styles it as a full-height gradient EDGE arrow by default; a multi-item layout (or data-arrows="circle") gives a compact left-overlay disc. Reposition/restyle freely with utility classes.',
       },
       {
         part: 'next',
         element: 'button',
         required: false,
-        description: 'Next button (same rules as prev; {{sw-icon "chevron-right" ""}}). Full-height gradient EDGE arrow by default (single-item) or a right-overlay disc (multi-item / data-arrows="circle").',
+        description: 'Next button (same rules as prev; {{sw-icon "caret-double-right:bold" ""}}). Full-height gradient EDGE arrow by default (single-item) or a right-overlay disc (multi-item / data-arrows="circle").',
       },
       {
         part: 'dots',
@@ -112,8 +112,8 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     <figure data-sw-part="slide">Slide one content</figure>
     <figure data-sw-part="slide">Slide two content</figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
     noJs: 'The track is a CSS scroll-snap row — fully swipeable/scrollable; arrows and dots stay hidden so no inert controls show.',
@@ -184,7 +184,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     examples: [
       {
         label: 'Mixed labels — rich (tabtitle) + plain (data-sw-title)',
-        code: '<div data-sw-component="tabs">\n  <!-- rich: icon + text moved into the button; data-sw-title is the aria-label -->\n  <div data-sw-part="panel" data-sw-title="Overview">\n    <span data-sw-part="tabtitle">{{sw-icon "sparkles" "size-4"}} Overview</span>\n    Panel one content\n  </div>\n  <!-- plain: no tabtitle, so the data-sw-title text is used as the label -->\n  <div data-sw-part="panel" data-sw-title="Pricing">\n    Panel two content\n  </div>\n</div>',
+        code: '<div data-sw-component="tabs">\n  <!-- rich: icon + text moved into the button; data-sw-title is the aria-label -->\n  <div data-sw-part="panel" data-sw-title="Overview">\n    <span data-sw-part="tabtitle">{{sw-icon "sparkle" "size-4"}} Overview</span>\n    Panel one content\n  </div>\n  <!-- plain: no tabtitle, so the data-sw-title text is used as the label -->\n  <div data-sw-part="panel" data-sw-title="Pricing">\n    Panel two content\n  </div>\n</div>',
         note: 'tabtitle is optional and per-tab: the first tab gets an HTML label (nodes moved in, no XSS sink), the second falls back to its data-sw-title text — mix freely.',
       },
     ],

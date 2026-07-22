@@ -1,19 +1,15 @@
 import type { Entry } from '@sitewright/schema';
-import { iconBody } from '@sitewright/blocks';
+import { renderIconSvg } from '@sitewright/blocks';
 
 /**
- * Inline one of the platform's built-in icons (the curated Lucide set in `@sitewright/blocks`) as
- * an SVG, matching the `Icon` block's wrapper so code-first pages share the same icon vocabulary.
- * `cls` controls the size/color (Tailwind, e.g. `h-5 w-5 text-primary`). Unknown names render
- * nothing. The markup is a build-time constant (no interpolation) so it passes the no-JS validator.
+ * Inline one of the platform's built-in icons as an SVG via the SHARED renderer — the SAME resolution the
+ * {{sw-icon}} helper uses: a Phosphor glyph (FILL by default; a `name:weight` suffix picks a weight), with
+ * a Lucide→Phosphor alias then a Lucide-outline fallback. `cls` controls size/colour (Tailwind, e.g.
+ * `h-5 w-5 text-primary`). Unknown names render nothing. The markup is a build-time constant (no
+ * interpolation) so it passes the no-JS validator.
  */
 export function icon(name: string, cls: string): string {
-  const body = iconBody(name);
-  if (!body) return '';
-  return (
-    `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ` +
-    `stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
-  );
+  return renderIconSvg(name, cls);
 }
 
 /** Five filled stars — a rating row, built from the icon set. */

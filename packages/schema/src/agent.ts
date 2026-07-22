@@ -727,15 +727,22 @@ get_guide("components") + the System Library slider recipes for their data-* con
   },
   icons: {
     title: "Icons & flags",
-    summary: "{{sw-icon}} (Lucide + brand:) and {{sw-flag}} country flags",
+    summary: "{{sw-icon}} (Phosphor, 6 weights, brand:) and {{sw-flag}} country flags",
     body: `
-ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
-is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
-arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
-shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix — there are ~270
-of them (simple-icons): {{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram,
-brand:facebook, brand:whatsapp, brand:tiktok, brand:linkedin (falls back to a line glyph),
-brand:figma, brand:spotify, brand:discord, brand:telegram, brand:bluesky, etc. Unknown names
+ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). Icons are
+PHOSPHOR (~1500, kebab-case) and render FILLED by default — {{sw-icon "gear"}} is a solid gear.
+Pick another WEIGHT with a ":weight" suffix: thin | light | regular | bold | fill (default) |
+duotone — e.g. {{sw-icon "gear:bold"}}, {{sw-icon "heart:duotone"}}, {{sw-icon "star:regular"}}
+(regular = the classic outline). Common names: house, list (menu), x, magnifying-glass (search),
+arrow-right, caret-down/left/right (chevrons), caret-double-left/right, envelope (mail), phone,
+map-pin, calendar-blank, star, user, heart, shopping-cart, rocket, sparkle, gear (settings),
+lightning (zap), check, plus, minus, gauge, chat-circle, bell, lightbulb. If you write a
+FAMILIAR Lucide/Heroicons-style name that differs (settings, search, mail, trash-2, chevron-*),
+it is auto-mapped to the Phosphor twin; a name with no Phosphor match falls back to a Lucide
+OUTLINE (never invisible) — but PREFER native Phosphor names. Use search_icons("term1, term2")
+to find exact names. Brand/social logos use "brand:" (simple-icons, ~270): {{sw-icon "brand:github"}},
+brand:x, brand:youtube, brand:instagram, brand:facebook, brand:whatsapp, brand:tiktok,
+brand:linkedin (a FILLED logo), brand:figma, brand:spotify, brand:discord, etc. Unknown names
 render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
 
 FLAGS: country flags are FULL-COLOR, so they use a SEPARATE helper — {{sw-flag "de" "h-4"}}.
@@ -924,7 +931,7 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    bare <details> — then match its border/spacing/icon to the source. Shipping a component's default look when
    the original clearly looks different is a fidelity miss.
    SLIDER (Carousel) specifics: include ALL the source's slides (don't drop any), each with a real image src;
-   give the prev/next buttons a visible icon ({{sw-icon "chevron-left" ""}} — the empty class lets the base
+   give the prev/next buttons a visible icon ({{sw-icon "caret-double-left:bold" ""}} — the empty class lets the base
    CSS size the chevron for the edge/circle arrow style; a size utility would override it) and keep a [data-sw-part="dots"]
    (the runtime fills it). The arrows/dots are HIDDEN until the JS runtime ENHANCES the slider — so they do
    NOT show in a static/JS-blocked preview; verify them on a rendered page, and when you restyle the controls
@@ -1402,6 +1409,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
   { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
   { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
+  { name: 'search_icons', description: "Find icon names for {{sw-icon \"name\"}} (Phosphor, filled by default; add a \":weight\" like \":bold\"/\":duotone\"). Pass one or more terms, comma- or whitespace-separated." },
   { name: 'get_reference', description: "The authoring reference for writing a page source: the {{sw-*}} helpers, the data-sw-* directives, the binding namespaces, and the loop variables (derived from the engine, can't drift)." },
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
   { name: 'list_pages', description: "List the project's pages." },

@@ -91,8 +91,8 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     </div>
     {{/each}}
   </div>
-  {{#if show_arrows}}<button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" ""}}</button>{{/if}}
+  {{#if show_arrows}}<button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>{{/if}}
   {{#if show_indicators}}<div data-sw-part="dots" aria-hidden="true"></div>{{/if}}
 </div>
 {{/sw-pick-entry}}`,

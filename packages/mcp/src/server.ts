@@ -25,6 +25,7 @@ import {
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
+import { searchIcons } from '@sitewright/blocks';
 import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
@@ -356,6 +357,25 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return ok(entry);
       }
       return ok({ components: COMPONENT_CATALOG });
+    },
+  );
+
+  // Find icon names for {{sw-icon "name"}}. Static (no connection needed). Accepts MULTIPLE terms at once
+  // (comma- OR whitespace-separated) → one match group per term. Searches Phosphor names, the Lucide→
+  // Phosphor aliases, and Lucide keyword tags, so a familiar term ("settings", "cog", "trash") finds the
+  // right Phosphor icon. Returns native Phosphor names — use them as {{sw-icon "name"}} (fill by default;
+  // add ":bold"/":duotone"/etc. for a weight).
+  server.registerTool(
+    'search_icons',
+    {
+      description:
+        'Find icon names for {{sw-icon "name"}} (Phosphor, filled by default; add a ":weight" suffix like ":bold" or ":duotone"). Pass ONE OR MORE search terms, comma- or whitespace-separated (e.g. "settings, trash cart") — returns matching Phosphor names per term. Searches names, Lucide-name aliases, and keyword synonyms.',
+      inputSchema: { query: z.string().min(1).max(200), limit: z.number().int().min(1).max(48).optional() },
+    },
+    ({ query, limit }: { query: string; limit?: number }) => {
+      const results = searchIcons(query, limit ?? 24);
+      if (!results.length) return toolError('Provide one or more search terms (comma- or whitespace-separated).');
+      return ok({ results });
     },
   );
 

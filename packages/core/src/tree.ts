@@ -88,7 +88,7 @@ export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLAS
   const attrRe = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
   // {{sw-icon "name" "classes"}} / {{sw-flag "cc" "classes"}}: the helpers emit their second
   // argument as the svg's class attribute at RENDER time. A source-level scan must read it
-  // here too, or icon utility classes (the catalog's own `{{sw-icon "chevron-left" "size-6"}}`
+  // here too, or icon utility classes (the catalog's own `{{sw-icon "caret-left" "size-6"}}`
   // pattern) never reach the compiled sheet and icons render unsized.
   // The FIRST arg may be a quoted literal ("mail") OR a BARE VARIABLE/PATH (`icon`, `this.icon`) — the
   // latter is the common `{{#each company.social}} … {{sw-icon icon "size-7"}}` case, whose class arg

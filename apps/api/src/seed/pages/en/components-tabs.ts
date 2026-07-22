@@ -52,7 +52,7 @@ export function pageComponentsTabs(): Page {
       <p class="leading-relaxed text-base-content/70" data-sw-translate="comp_tabs.body1">Tabs group related content into one compact area.</p>
     </div>
     <div data-sw-part="panel" data-sw-title="{{sw-translate "comp_tabs.tab2"}}" class="pt-2">
-      <span data-sw-part="tabtitle">${icon('settings', 'h-4 w-4')} {{sw-translate "comp_tabs.tab2"}}</span>
+      <span data-sw-part="tabtitle">${icon('gear', 'h-4 w-4')} {{sw-translate "comp_tabs.tab2"}}</span>
       <p class="leading-relaxed text-base-content/70" data-sw-translate="comp_tabs.body2">Give each panel a title and its content.</p>
     </div>
     <div data-sw-part="panel" data-sw-title="{{sw-translate "comp_tabs.tab3"}}" class="pt-2">

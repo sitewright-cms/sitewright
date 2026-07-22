@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@sitewright/blocks": "workspace:*",
     "@sitewright/schema": "workspace:*",
     "zod": "^3.24.1"
   },

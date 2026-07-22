@@ -95,6 +95,7 @@ import {
   mediaForRender,
   decorateNav,
   NAV_LINK_JS,
+  searchIcons,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import {
@@ -5764,6 +5765,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // component vocabulary structurally instead of relying on prose docs. Public like
   // /health + /version, but rate-limited since the payload is non-trivial.
   app.get('/authoring/components', { config: rl(60) }, async () => ({ components: COMPONENT_CATALOG }));
+
+  // Icon search for {{sw-icon "name"}} (Phosphor). STATIC platform data. `q` accepts MULTIPLE terms,
+  // comma- or whitespace-separated → one match group per term. Powers the editor icon library + the MCP
+  // search_icons tool. `limit` caps each group (1–48, default 24).
+  app.get('/authoring/icons/search', { config: rl(60) }, async (req) => {
+    const q = req.query as { q?: unknown; limit?: unknown };
+    // Cap the query length (the search is synchronous + per-term-linear; iconSearchTerms also caps the
+    // term COUNT). Matches the MCP tool's 200-char bound — together these keep this PUBLIC route bounded.
+    const query = (typeof q.q === 'string' ? q.q : '').slice(0, 200);
+    const limit = Math.min(48, Math.max(1, Number.parseInt(typeof q.limit === 'string' ? q.limit : '', 10) || 24));
+    return { query, results: searchIcons(query, limit) };
+  });
 
   // "Fork existing effect" snippets for the Website-settings custom-code editors — each built-in
   // nav/button/preloader effect as a self-contained, ready-to-run HTML snippet (derived from the same

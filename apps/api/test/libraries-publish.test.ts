@@ -61,8 +61,9 @@ describe('lazyload + ripple runtimes → publish', () => {
 
   it('renders {{sw-icon}} as an inline SVG in the published page', async () => {
     const html = await publishWith('<p>Next {{sw-icon "arrow-right" "h-4 w-4"}}</p>');
-    expect(html).toContain('<svg class="h-4 w-4"');
-    expect(html).toContain('<path d="M5 12h14"'); // arrow-right body, raw
+    expect(html).toContain('sw-icon sw-icon-arrow-right sw-icon-fill h-4 w-4'); // Phosphor fill + hooks + class
+    expect(html).toContain('viewBox="0 0 256 256"'); // Phosphor
+    expect(html).toContain('<path'); // body emitted raw
   });
 
   it('ships ripple.js when only a skeleton slot uses waves-effect', async () => {

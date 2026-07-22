@@ -123,18 +123,27 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     const home = await page('index.html');
     expect(home).toContain('data-sw-component="carousel"');
     expect(home).toContain('data-sw-animation="fade-up"');
-    expect(home).toContain('components.js'); // only-used-ships runtime linked
+    // PER-PAGE runtime shipping: home renders the carousel → links ONLY the carousel chunk, NOT the
+    // tabs/lightbox/modal chunks that live on other pages (the whole point of per-type splitting).
+    expect(home).toContain('c-carousel.js');
+    expect(home).not.toContain('c-tabs.js');
+    expect(home).not.toContain('c-lightbox.js');
+    expect(home).not.toContain('c-modal.js');
     expect(home).toContain('data-src'); // lazy-loaded hero (bare attr when the test's asset map is empty)
     expect(home).toContain('lazyload.js'); // its runtime ships (only-used-ships)
     const pricing = await page('services/pricing/index.html');
     expect(pricing).toContain('data-sw-component="tabs"');
+    expect(pricing).toContain('c-tabs.js'); // links the tabs chunk…
+    expect(pricing).not.toContain('c-carousel.js'); // …and NOT the home page's carousel chunk
     expect(pricing).toContain('data-sw-title="Project work"');
     expect(pricing).toContain('$4,800'); // plans dataset (locale-formatted `display` string)
     expect(pricing).toContain('Most popular'); // featured plan's gradient badge (pr_badge)
     const work = await page('work/index.html');
     expect(work).toContain('data-sw-component="lightbox"');
+    expect(work).toContain('c-lightbox.js');
     const contact = await page('contact/index.html');
     expect(contact).toContain('data-sw-component="modal"');
+    expect(contact).toContain('c-modal.js');
     expect(contact).toContain('<dialog');
     const faq = await page('faq/index.html');
     // the accordion is the PATTERN (native <details> + DaisyUI collapse), not a component

@@ -50,7 +50,10 @@ describe('SVG animation engine → publish', () => {
       path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section' },
-      source: '<section><h2>Plain page on the same site</h2></section>',
+      // A nested page that ALSO authors an svg animation — so it links the runtime rebased to its depth.
+      source:
+        '<section><svg viewBox="0 0 10 10" data-sw-svg-scene>' +
+        '<path d="M0 0 H10" fill="none" stroke="currentColor" data-sw-svg="draw"/></svg></section>',
     };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
@@ -64,7 +67,7 @@ describe('SVG animation engine → publish', () => {
     expect(index.body).toContain('[data-sw-svg]{transform-box:fill-box'); // inline structural stylesheet
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
 
-    // Site-wide asset: a nested page on the same site links it rebased to its depth.
+    // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
     expect(aboutPage.body).toContain('<script defer src="../svg-anim.js?v=');

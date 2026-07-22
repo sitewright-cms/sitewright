@@ -219,9 +219,10 @@ export class PublishStore {
     if (!contentType) return null;
     const dir = resolve(this.dirFor(slug));
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
-    // The builder writes these assets ONLY at the site root (styles.css /
-    // components.js). Restrict serving to root-level files so no future write path
-    // into a subdirectory could become publicly served as CSS/JS.
+    // The builder writes these assets ONLY at the site root (styles.css, the
+    // per-type component chunks c-<type>.js, the effect runtimes). Restrict serving
+    // to root-level files so no future write path into a subdirectory could become
+    // publicly served as CSS/JS.
     if (rel.includes('/')) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;

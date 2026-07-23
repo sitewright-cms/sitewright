@@ -150,6 +150,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [pickerKey, setPickerKey] = useState<string | null>(null);
   // The {{sw-control}} target whose asset is being picked (as="image" → images, as="file" → files), or null.
   const [controlPick, setControlPick] = useState<{ target: string; as: 'image' | 'file' } | null>(null);
+  // True while the rich-text toolbar's "insert image" media picker is open; the pick is posted back to the
+  // bridge (insert-media) which inserts the <img> at the saved caret inside the data-sw-html region.
+  const [mediaInsert, setMediaInsert] = useState(false);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
@@ -484,6 +487,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
+      } else if (d.type === 'pick-media') {
+        // The rich-text toolbar's "insert image" button → open the media picker; the pick is posted back as
+        // 'insert-media' and the bridge inserts the <img> at its saved caret. No key: it's a free insertion.
+        setMediaInsert(true);
       } else if (
         d.type === 'open-entry' &&
         typeof d.dataset === 'string' &&
@@ -1022,6 +1029,24 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setPickerKey(null);
           }}
           onClose={() => setPickerKey(null)}
+        />
+      )}
+
+      {/* Rich-text toolbar "insert image": the picked URL is posted back to the bridge, which inserts the
+          <img> at the caret it saved before this modal opened (the region's rich-edit then persists it). */}
+      {mediaInsert && (
+        <FilePicker
+          projectId={project.id}
+          accept={ACCEPT.image}
+          title="Insert image"
+          onPick={(url) => {
+            iframeRef.current?.contentWindow?.postMessage(
+              { source: 'sitewright-editor', type: 'insert-media', url: safeUrl(url, '') },
+              '*',
+            );
+            setMediaInsert(false);
+          }}
+          onClose={() => setMediaInsert(false)}
         />
       )}
 

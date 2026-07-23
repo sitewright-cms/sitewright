@@ -161,7 +161,8 @@ export type RichCmdKind =
   | 'font' // CI font-slot menu (font-heading/body/<named>) → span class
   | 'align' // alignment menu → block class
   | 'indent' // step block indent (arg '1' | '-1')
-  | 'link' // insert/edit link → <a href>
+  | 'link' // insert/edit link → <a href> (+ optional target=_blank)
+  | 'media' // insert an image from the media picker → <img>
   | 'table' // insert a starter table
   | 'source'; // hand off to the raw HTML-source editor
 
@@ -205,6 +206,7 @@ export const RICH_TOOLBAR: ReadonlyArray<RichCmd | null> = [
   { id: 'align', label: 'Alignment', kind: 'align' },
   null,
   { id: 'link', label: 'Link', kind: 'link' },
+  { id: 'media', label: 'Insert image', kind: 'media' },
   { id: 'table', label: 'Insert table', kind: 'table' },
   { id: 'rule', label: 'Divider', kind: 'exec', cmd: 'insertHorizontalRule' },
   { id: 'clear', label: 'Clear formatting', kind: 'exec', cmd: 'removeFormat' },

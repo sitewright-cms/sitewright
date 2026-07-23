@@ -136,17 +136,103 @@ export function stepBlockIndent(editable: HTMLElement, dir: 1 | -1): void {
   }
 }
 
-/** Wrap the current selection in a link (or update the enclosing one) to `url`. The URL is scheme-sanitized
- *  (the same `safeUrl` boundary the `data-sw-href` link editor uses) so a `javascript:`/`data:` URL can never
- *  be written into `href`; an empty/rejected URL unlinks instead. */
-export function applyLink(editable: HTMLElement, url: string): void {
-  editable.focus();
+/** The <a> enclosing the current selection within `editable` (for edit-in-place / pre-fill), or null. Bails
+ *  out when the selection is NOT inside `editable` (e.g. focus moved to a popover input) so it can never
+ *  return an unrelated anchor from page chrome. */
+export function currentAnchor(editable: HTMLElement): HTMLAnchorElement | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const node = sel.getRangeAt(0).commonAncestorContainer;
+  if (!editable.contains(node)) return null;
+  let el: HTMLElement | null = node.nodeType === 1 ? (node as HTMLElement) : node.parentElement;
+  while (el && el !== editable) {
+    if (el.tagName === 'A') return el as HTMLAnchorElement;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function setLinkTarget(a: HTMLElement, newTab: boolean): void {
+  if (newTab) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer'); // the sanitizer forces this on target too
+  } else {
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+  }
+}
+
+/**
+ * Apply a link: edit the enclosing `<a>` in place, else wrap a non-empty selection (createLink), else insert a
+ * NEW anchor with the URL as its text (so a collapsed caret still yields a clickable link). Empty/rejected URL
+ * unlinks. `newTab` toggles `target="_blank"`. The URL is scheme-sanitized (the same `safeUrl` boundary the
+ * `data-sw-href` editor uses) so a `javascript:`/`data:` URL can never reach `href`.
+ */
+export function applyLink(editable: HTMLElement, url: string, newTab = false): void {
+  // Read the anchor + selection BEFORE focusing (focus() can collapse/move the selection).
   const safe = safeUrl(url, '');
+  const existing = currentAnchor(editable);
   if (!safe) {
-    runExec(editable, 'unlink');
+    if (existing) {
+      editable.focus();
+      runExec(editable, 'unlink');
+    }
     return;
   }
-  runExec(editable, 'createLink', safe);
+  if (existing) {
+    existing.setAttribute('href', safe);
+    setLinkTarget(existing, newTab);
+    return;
+  }
+  const sel = window.getSelection();
+  const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+  if (collapsed) {
+    const a = document.createElement('a');
+    a.setAttribute('href', safe);
+    a.textContent = safe;
+    setLinkTarget(a, newTab);
+    if (sel && sel.rangeCount) {
+      const r = sel.getRangeAt(0);
+      r.insertNode(a);
+      r.setStartAfter(a);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } else {
+      editable.appendChild(a);
+    }
+  } else {
+    runExec(editable, 'createLink', safe);
+    const made = currentAnchor(editable);
+    if (made) setLinkTarget(made, newTab);
+  }
+}
+
+/** Insert an `<img>` (scheme-sanitized src) at `range` (the caret saved before the media picker opened) or,
+ *  failing that, at the current selection / end of the editable. */
+export function insertImage(editable: HTMLElement, url: string, range?: Range | null): void {
+  const safe = safeUrl(url, '');
+  if (!safe) return;
+  const img = document.createElement('img');
+  img.setAttribute('src', safe);
+  img.setAttribute('alt', '');
+  let r: Range | null = range && editable.contains(range.commonAncestorContainer) ? range : null;
+  if (!r) {
+    const sel = window.getSelection();
+    r = sel && sel.rangeCount && editable.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.getRangeAt(0) : null;
+  }
+  if (r) {
+    r.insertNode(img);
+    r.setStartAfter(img);
+    r.collapse(true);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+  } else {
+    editable.appendChild(img);
+  }
 }
 
 /** Insert a starter 2×2 table (a header row + a body row) at the caret. Cells are edited in place. */

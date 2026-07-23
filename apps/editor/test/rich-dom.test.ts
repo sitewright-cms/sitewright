@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RICH_COLOR_CLASSES, RICH_SIZE_CLASSES, RICH_ALIGN_CLASSES } from '@sitewright/blocks';
-import { applyInlineClass, applyBlockClass, stepBlockIndent, applyLink } from '../src/lib/rich-dom';
+import { applyInlineClass, applyBlockClass, stepBlockIndent, applyLink, insertImage, currentAnchor } from '../src/lib/rich-dom';
 
 /** A contentEditable with its inner <p> contents selected — the common toolbar case. */
 function editableSelectingP(html: string): HTMLElement {
@@ -77,19 +77,119 @@ describe('rich-dom class application', () => {
     const doc = document as unknown as { execCommand?: unknown };
     const orig = doc.execCommand;
     doc.execCommand = spy;
+    // Re-establish a fresh non-collapsed selection before each createLink case (the mock execCommand doesn't
+    // actually wrap the text, and runExec's focus() collapses the selection, so it must be reset per case).
+    const reselect = () => {
+      const p = el.querySelector('p')!;
+      const r = document.createRange();
+      r.selectNodeContents(p);
+      const s = window.getSelection()!;
+      s.removeAllRanges();
+      s.addRange(r);
+    };
     try {
       applyLink(el, 'javascript:alert(document.cookie)');
-      expect(spy).toHaveBeenCalledWith('unlink', false, undefined); // dangerous → dropped, not linked
+      // No existing anchor + dangerous URL → nothing happens (no link created, nothing to unlink).
       expect(spy).not.toHaveBeenCalledWith('createLink', false, expect.stringContaining('javascript'));
       spy.mockClear();
+      reselect();
       applyLink(el, 'https://ok.test/path');
       expect(spy).toHaveBeenCalledWith('createLink', false, 'https://ok.test/path');
       spy.mockClear();
+      reselect();
       applyLink(el, '/about');
       expect(spy).toHaveBeenCalledWith('createLink', false, '/about');
     } finally {
       doc.execCommand = orig;
     }
+  });
+
+  it('applyLink edits an existing anchor in place (href + new tab), never nesting', () => {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.innerHTML = '<p><a href="/old">click</a></p>';
+    document.body.appendChild(el);
+    const a = el.querySelector('a')!;
+    const range = document.createRange();
+    range.selectNodeContents(a);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    applyLink(el, 'https://new.test', true);
+    expect(el.querySelectorAll('a')).toHaveLength(1); // in place, not nested
+    expect(el.querySelector('a')!.getAttribute('href')).toBe('https://new.test');
+    expect(el.querySelector('a')!.getAttribute('target')).toBe('_blank');
+    expect(el.querySelector('a')!.getAttribute('rel')).toBe('noopener noreferrer');
+    applyLink(el, 'https://new.test', false); // toggle new-tab off
+    expect(el.querySelector('a')!.hasAttribute('target')).toBe(false);
+    expect(el.querySelector('a')!.hasAttribute('rel')).toBe(false);
+  });
+
+  it('currentAnchor returns null when the selection is outside the editable', () => {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.innerHTML = '<p><a href="/x">y</a></p>';
+    document.body.appendChild(el);
+    const outside = document.createElement('div');
+    outside.textContent = 'chrome';
+    document.body.appendChild(outside);
+    const range = document.createRange();
+    range.selectNodeContents(outside);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    expect(currentAnchor(el)).toBeNull(); // selection not in `el` → no anchor, never page-chrome anchors
+  });
+
+  it('applyLink on a collapsed caret inserts a NEW link with the URL as its text', () => {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.innerHTML = '<p>before</p>';
+    document.body.appendChild(el);
+    const p = el.querySelector('p')!;
+    const range = document.createRange();
+    range.setStart(p.firstChild!, 6);
+    range.collapse(true);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    applyLink(el, 'https://x.test', false);
+    const a = el.querySelector('a')!;
+    expect(a.getAttribute('href')).toBe('https://x.test');
+    expect(a.textContent).toBe('https://x.test');
+  });
+
+  it('applyLink drops a dangerous URL (no anchor created)', () => {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.innerHTML = '<p>hi</p>';
+    document.body.appendChild(el);
+    const p = el.querySelector('p')!;
+    const range = document.createRange();
+    range.setStart(p.firstChild!, 2);
+    range.collapse(true);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    applyLink(el, 'javascript:alert(1)', false);
+    expect(el.querySelector('a')).toBeNull();
+  });
+
+  it('insertImage inserts a sanitized <img> at the saved range; drops a dangerous src', () => {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.innerHTML = '<p>ab</p>';
+    document.body.appendChild(el);
+    const p = el.querySelector('p')!;
+    const range = document.createRange();
+    range.setStart(p.firstChild!, 1);
+    range.collapse(true);
+    insertImage(el, '/media/x.jpg', range);
+    const img = el.querySelector('img')!;
+    expect(img.getAttribute('src')).toBe('/media/x.jpg');
+    expect(img.getAttribute('alt')).toBe('');
+    insertImage(el, 'javascript:alert(1)', null); // dangerous → dropped
+    expect(el.querySelectorAll('img')).toHaveLength(1);
   });
 
   it('stepBlockIndent steps the block indent up and down', () => {

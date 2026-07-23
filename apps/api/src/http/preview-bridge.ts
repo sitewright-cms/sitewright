@@ -47,6 +47,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
+ *                     { source:'sitewright-preview', type:'pick-media' }                            (rich toolbar → open media picker)
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
@@ -54,6 +55,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
+ *                     { source:'sitewright-editor', type:'insert-media', url }  (picked media → <img> at the saved caret)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
@@ -113,6 +115,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     indent: '<polyline points="3 8 7 12 3 16"/><line x1="21" x2="11" y1="12" y2="12"/><line x1="21" x2="11" y1="6" y2="6"/><line x1="21" x2="11" y1="18" y2="18"/>',
     align: '<line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+    media: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
     table: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
     rule: '<path d="M5 12h14"/>',
     clear: '<path d="m7 21-4.3-4.3a2 2 0 0 1 0-2.8l9-9a2 2 0 0 1 2.8 0l4.6 4.6a2 2 0 0 1 0 2.8L15 21"/><path d="M22 21H8"/><path d="m5 11 9 9"/>',
@@ -214,6 +217,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-tb-pop input{font:500 12px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px;width:210px;outline:none}' +
       '.sw-tb-pop input:focus{border-color:#6366f1}' +
       '.sw-tb-pop .sw-tb-apply{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;padding:6px 11px;border-radius:6px;background:#4f46e5;color:#fff;font-weight:600;cursor:pointer}' +
+      '.sw-tb-pop .sw-tb-check{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:#475569;cursor:pointer;user-select:none}' +
+      '.sw-tb-pop .sw-tb-check input{width:auto;padding:0;margin:0;cursor:pointer}' +
       '.sw-pop{position:fixed;z-index:2147483647;display:none;flex-direction:column;gap:6px;padding:8px;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font:13px system-ui,sans-serif;min-width:240px}' +
       '.sw-pop label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#64748b}' +
       '.sw-pop input,.sw-pop select,.sw-pop textarea{font:13px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px}' +
@@ -248,7 +253,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   //     colour/highlight/size/font/align/indent (mirrors apps/editor/src/lib/rich-dom.ts) + semantic tags for
   //     marks/blocks. Single row that COLLAPSES trailing groups into a ⋯ overflow menu, positioned ABOVE the
   //     selection (never covering the text being edited). ---
-  var toolbar = null, tbMore = null, tbMoreItems = [], tbPop = null, tbActiveId = null, tbLastAvail = -1;
+  var toolbar = null, tbMore = null, tbMoreItems = [], tbPop = null, tbActiveId = null, tbLastAvail = -1, tbSavedRange = null, tbLinkRange = null;
   function currentRich() {
     var sel = window.getSelection && window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
@@ -301,6 +306,46 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function tbApplyBlock(rich, group, cls) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbSetGroup(bs[i].getAttribute('class'), group, cls || undefined); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
   function tbStepBlockIndent(rich, dir) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbStepIndent(bs[i].getAttribute('class'), dir); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
   function tbInsertTable() { try { document.execCommand('insertHTML', false, '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>'); } catch (e) {} }
+  // The <a> enclosing the current selection within the rich region (for edit-in-place / pre-fill), or null.
+  function tbCurrentAnchor(rich) {
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null;
+    var cac = sel.getRangeAt(0).commonAncestorContainer;
+    if (!rich.contains(cac)) return null; // selection not in this region (e.g. focus moved to a popover input)
+    var n = cac.nodeType === 1 ? cac : (cac ? cac.parentNode : null);
+    while (n && n !== rich) { if (n.nodeType === 1 && n.tagName === 'A') return n; n = n.parentNode; }
+    return null;
+  }
+  // Apply a link: edit the enclosing <a> in place, else wrap a non-empty selection (createLink), else insert a
+  // NEW anchor with the URL as its text (so a collapsed caret still produces a clickable link). Empty url unlinks.
+  // newTab → target=_blank + rel (the sanitizer also forces rel on target). All hrefs are scheme-gated.
+  function tbApplyLink(rich, url, newTab) {
+    url = tbSafeHref(url);
+    var existing = tbCurrentAnchor(rich);
+    if (!url) { if (existing) { try { document.execCommand('unlink'); } catch (e) {} } return; }
+    function setTab(a) { if (newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); } else { a.removeAttribute('target'); a.removeAttribute('rel'); } }
+    if (existing) { existing.setAttribute('href', url); setTab(existing); return; }
+    var sel = window.getSelection();
+    var collapsed = !sel || !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    if (collapsed) {
+      var a = document.createElement('a'); a.setAttribute('href', url); a.textContent = url; setTab(a);
+      if (sel && sel.rangeCount) { var r = sel.getRangeAt(0); r.insertNode(a); r.setStartAfter(a); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); }
+      else rich.appendChild(a);
+    } else {
+      try { document.execCommand('createLink', false, url); } catch (e) {}
+      var made = tbCurrentAnchor(rich); if (made) setTab(made);
+    }
+  }
+  // Insert an <img> at the saved caret (the range captured before the editor's media picker opened).
+  function tbInsertImage(url) {
+    url = tbSafeHref(url); if (!url) { tbSavedRange = null; return; }
+    var rich = tbSavedRange ? closestAttr(tbSavedRange.commonAncestorContainer, 'data-sw-html') : currentRich();
+    if (!rich) { tbSavedRange = null; return; }
+    var img = document.createElement('img'); img.setAttribute('src', url); img.setAttribute('alt', '');
+    if (tbSavedRange) { try { tbSavedRange.insertNode(img); } catch (e) { rich.appendChild(img); } }
+    else rich.appendChild(img);
+    tbSavedRange = null;
+    post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+  }
   function tbColorGroup() { var g = RTB.colorClasses.slice(); for (var i = 0; i < ciColors.length; i++) g.push(ciColors[i].cls); return g; }
   function tbFontGroup() { var g = []; for (var i = 0; i < ciFonts.length; i++) g.push(ciFonts[i].cls); return g; }
   // Scheme-gate a link URL — the SAME allowlist as the editor's safeUrl (SAFE_URL in @sitewright/blocks/url,
@@ -361,16 +406,39 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function tbOpenLink(rich, cmd, anchor) {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    // Capture the caret NOW (before the input steals focus) so Apply acts on the ORIGINAL selection.
+    var s0 = window.getSelection(); tbLinkRange = s0 && s0.rangeCount ? s0.getRangeAt(0).cloneRange() : null;
+    var existing = tbCurrentAnchor(rich); // pre-fill + edit-in-place when the caret is inside a link
     var row = document.createElement('div'); row.className = 'sw-tb-row';
     var input = document.createElement('input'); input.type = 'text'; input.placeholder = 'https://\\u2026 or /path';
+    if (existing) input.value = existing.getAttribute('href') || '';
     var apply = document.createElement('button'); apply.type = 'button'; apply.className = 'sw-tb-apply'; apply.textContent = 'Apply';
-    function doApply() { var url = tbSafeHref(input.value.replace(/^\\s+|\\s+$/g, '')); if (url) { try { document.execCommand('createLink', false, url); } catch (e) {} } else { try { document.execCommand('unlink'); } catch (e) {} } tbFinish(); }
+    row.appendChild(input); row.appendChild(apply); p.appendChild(row);
+    // "Open in new tab" → target=_blank (rel is forced by the sanitizer). Pre-checked from an existing anchor.
+    var check = document.createElement('label'); check.className = 'sw-tb-check';
+    var box = document.createElement('input'); box.type = 'checkbox'; if (existing && existing.getAttribute('target') === '_blank') box.checked = true;
+    check.appendChild(box); check.appendChild(document.createTextNode('Open in new tab')); p.appendChild(check);
+    function doApply() {
+      // Restore the caret captured at open (the input moved the live selection off the region).
+      var s = window.getSelection();
+      if (s && tbLinkRange && rich.contains(tbLinkRange.commonAncestorContainer)) { s.removeAllRanges(); s.addRange(tbLinkRange); }
+      tbApplyLink(rich, input.value.replace(/^\\s+|\\s+$/g, ''), box.checked);
+      tbLinkRange = null;
+      try { rich.focus(); } catch (e) {}
+      tbFinish();
+    }
     apply.addEventListener('mousedown', function (e) { e.preventDefault(); });
     apply.addEventListener('click', function (e) { e.preventDefault(); doApply(); });
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doApply(); } else if (e.key === 'Escape') { e.preventDefault(); tbClosePop(); } });
-    row.appendChild(input); row.appendChild(apply); p.appendChild(row);
     tbShowPop(anchor); setTbActive(cmd.id);
     requestAnimationFrame(function () { try { input.focus(); } catch (e) {} });
+  }
+  // Save the caret + ask the editor to open its media picker; the pick round-trips back as an 'insert-media'
+  // message (the picker is a modal in the PARENT window, so the saved range stays valid meanwhile).
+  function tbPickMedia() {
+    var sel = window.getSelection();
+    tbSavedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    tbClosePop(); post({ type: 'pick-media' });
   }
   function tbOpenMore(anchor) {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
@@ -386,6 +454,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (cmd.kind === 'exec') { try { document.execCommand(cmd.cmd, false, cmd.arg); } catch (e) {} tbFinish(); return; }
     if (cmd.kind === 'indent') { tbStepBlockIndent(rich, cmd.cmd === '-1' ? -1 : 1); tbFinish(); return; }
     if (cmd.kind === 'table') { tbInsertTable(); tbFinish(); return; }
+    if (cmd.kind === 'media') { tbPickMedia(); return; } // hands off to the editor's media picker
     // Popover commands: a second click on the open control closes it (toggle).
     if (tbPop && tbPop.style.display !== 'none' && tbActiveId === cmd.id) { tbClosePop(); return; }
     if (cmd.kind === 'color' || cmd.kind === 'highlight') tbOpenSwatch(rich, cmd, anchor);
@@ -979,6 +1048,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       ciColors = Array.isArray(d.colors) ? d.colors.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
       ciFonts = Array.isArray(d.fonts) ? d.fonts.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
     }
+    else if (d.type === 'insert-media' && typeof d.url === 'string') tbInsertImage(d.url); // media picker → <img> at the saved caret
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

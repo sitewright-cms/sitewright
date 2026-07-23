@@ -154,6 +154,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // True while the rich-text toolbar's "insert image" media picker is open; the pick is posted back to the
   // bridge (insert-media) which inserts the <img> at the saved caret inside the data-sw-html region.
   const [mediaInsert, setMediaInsert] = useState(false);
+  // The rich-content image being edited (double-click in the preview); its current attrs pre-fill the dialog,
+  // and Apply posts update-media back to the bridge, which rewrites that same <img>.
+  const [mediaEdit, setMediaEdit] = useState<{ url: string; alt: string; width: string; height: string } | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
@@ -439,6 +442,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         dataset?: string;
         id?: string;
         items?: RegionItem[]; // 'regions' manifest from the bridge
+        url?: string; // edit-media: the double-clicked image's current attrs
+        alt?: string;
+        width?: string;
+        height?: string;
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -492,6 +499,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // The rich-text toolbar's "insert image" button → open the media picker; the pick is posted back as
         // 'insert-media' and the bridge inserts the <img> at its saved caret. No key: it's a free insertion.
         setMediaInsert(true);
+      } else if (d.type === 'edit-media' && typeof d.url === 'string') {
+        // Double-clicked a rich-content image → open the image-settings dialog pre-filled; Apply posts
+        // 'update-media' and the bridge rewrites that same <img>.
+        setMediaEdit({ url: d.url, alt: typeof d.alt === 'string' ? d.alt : '', width: typeof d.width === 'string' ? d.width : '', height: typeof d.height === 'string' ? d.height : '' });
       } else if (
         d.type === 'open-entry' &&
         typeof d.dataset === 'string' &&
@@ -1046,6 +1057,22 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setMediaInsert(false);
           }}
           onClose={() => setMediaInsert(false)}
+        />
+      )}
+
+      {/* Double-click-to-edit a rich-content image: pre-filled dialog; Apply posts update-media to the bridge. */}
+      {mediaEdit && (
+        <ImageDialog
+          projectId={project.id}
+          initial={mediaEdit}
+          onInsert={(img) => {
+            iframeRef.current?.contentWindow?.postMessage(
+              { source: 'sitewright-editor', type: 'update-media', url: safeUrl(img.url, ''), alt: img.alt, width: img.width, height: img.height },
+              '*',
+            );
+            setMediaEdit(null);
+          }}
+          onClose={() => setMediaEdit(null)}
         />
       )}
 

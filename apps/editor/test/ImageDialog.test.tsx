@@ -24,6 +24,13 @@ describe('ImageDialog', () => {
     expect(onInsert).toHaveBeenCalledWith({ url: '/media/x.jpg', alt: '', width: '', height: '' });
   });
 
+  it('pre-fills for editing and labels the action "Apply"', () => {
+    render(<ImageDialog projectId="p" initial={{ url: '/media/y.jpg', alt: 'Y', width: '120' }} onInsert={() => {}} onClose={() => {}} />);
+    expect((screen.getByLabelText(/Image URL/) as HTMLInputElement).value).toBe('/media/y.jpg');
+    expect((screen.getByLabelText(/Alt text/) as HTMLInputElement).value).toBe('Y');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument();
+  });
+
   it('caps a huge typed dimension to the same max as drag-resize (4000)', () => {
     const onInsert = vi.fn();
     render(<ImageDialog projectId="p" onInsert={onInsert} onClose={() => {}} />);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RICH_COLOR_CLASSES, RICH_SIZE_CLASSES, RICH_ALIGN_CLASSES } from '@sitewright/blocks';
-import { applyInlineClass, applyBlockClass, stepBlockIndent, applyLink, insertImage, currentAnchor } from '../src/lib/rich-dom';
+import { applyInlineClass, applyBlockClass, stepBlockIndent, applyLink, insertImage, updateImage, currentAnchor } from '../src/lib/rich-dom';
 
 /** A contentEditable with its inner <p> contents selected — the common toolbar case. */
 function editableSelectingP(html: string): HTMLElement {
@@ -192,6 +192,23 @@ describe('rich-dom class application', () => {
     expect(img.getAttribute('height')).toBe('200');
     insertImage(el, { url: 'javascript:alert(1)' }, null); // dangerous → dropped
     expect(el.querySelectorAll('img')).toHaveLength(1);
+  });
+
+  it('updateImage rewrites an existing img in place (sanitized src, removes empty dims)', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<p><img src="/old.jpg" alt="old" width="100" height="80"></p>';
+    document.body.appendChild(el);
+    const img = el.querySelector('img')!;
+    updateImage(img, { url: '/new.jpg', alt: 'new', width: '', height: '' });
+    expect(img.getAttribute('src')).toBe('/new.jpg');
+    expect(img.getAttribute('alt')).toBe('new');
+    expect(img.hasAttribute('width')).toBe(false);
+    expect(img.hasAttribute('height')).toBe(false);
+    updateImage(img, { url: 'javascript:alert(1)', alt: 'x' }); // dangerous src rejected → keeps the last good src
+    expect(img.getAttribute('src')).toBe('/new.jpg');
+    updateImage(img, { url: '/n.jpg', width: '99999', height: '-3' }); // defense-in-depth clamp
+    expect(img.getAttribute('width')).toBe('4000');
+    expect(img.hasAttribute('height')).toBe(false);
   });
 
   it('stepBlockIndent steps the block indent up and down', () => {

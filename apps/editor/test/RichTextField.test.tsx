@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { RichTextField } from '../src/views/datasets/RichTextField';
 
 describe('RichTextField', () => {
@@ -44,6 +44,50 @@ describe('RichTextField', () => {
     expect(screen.getByRole('button', { name: 'Red' })).toBeInTheDocument();
     fireEvent.mouseDown(document.body); // click away
     expect(screen.queryByRole('button', { name: 'Red' })).not.toBeInTheDocument();
+  });
+
+  it('double-clicking an image opens the edit dialog pre-filled', () => {
+    render(<RichTextField value='<p><img src="/pic.jpg" alt="Pic" width="200"></p>' onChange={() => {}} ariaLabel="body" projectId="p" />);
+    const img = screen.getByRole('textbox', { name: 'body' }).querySelector('img')!;
+    fireEvent.doubleClick(img);
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument();
+    expect((screen.getByLabelText(/Image URL/) as HTMLInputElement).value).toBe('/pic.jpg');
+  });
+
+  it('highlights a mark in the toolbar when the selection already has it (active state)', () => {
+    // jsdom has no queryCommand* — stub them so the selection reads as bold.
+    const doc = document as unknown as { queryCommandState?: unknown; queryCommandValue?: unknown };
+    const os = doc.queryCommandState;
+    const ov = doc.queryCommandValue;
+    doc.queryCommandState = (c: string) => c === 'bold';
+    doc.queryCommandValue = () => '';
+    try {
+      render(<RichTextField value="<p><b>x</b></p>" onChange={() => {}} ariaLabel="body" />);
+      const editable = screen.getByRole('textbox', { name: 'body' });
+      const range = document.createRange();
+      range.selectNodeContents(editable);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      act(() => {
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+      expect(screen.getByRole('button', { name: 'Bold' }).className).toMatch(/indigo-100|indigo-500\/15/);
+      expect(screen.getByRole('button', { name: 'Italic' }).className).not.toMatch(/indigo-100/);
+      // Move the selection OUT of the field → the active highlight clears (no stale Bold).
+      const away = document.createRange();
+      away.selectNodeContents(document.body);
+      away.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(away);
+      act(() => {
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+      expect(screen.getByRole('button', { name: 'Bold' }).className).not.toMatch(/indigo-100|indigo-500\/15/);
+    } finally {
+      doc.queryCommandState = os;
+      doc.queryCommandValue = ov;
+    }
   });
 
   it('shows the Insert image button only when a projectId is provided', () => {

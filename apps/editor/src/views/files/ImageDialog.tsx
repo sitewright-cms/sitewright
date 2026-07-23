@@ -26,18 +26,22 @@ function dim(v: string): string {
  */
 export function ImageDialog({
   projectId,
+  initial,
   onInsert,
   onClose,
 }: {
   projectId: string;
+  /** Pre-filled values → the dialog is EDITING an existing image (double-click), not inserting. */
+  initial?: Partial<ImageInsert>;
   onInsert: (img: ImageInsert) => void;
   onClose: () => void;
 }) {
-  const [url, setUrl] = useState('');
-  const [alt, setAlt] = useState('');
-  const [width, setWidth] = useState('');
-  const [height, setHeight] = useState('');
+  const [url, setUrl] = useState(initial?.url ?? '');
+  const [alt, setAlt] = useState(initial?.alt ?? '');
+  const [width, setWidth] = useState(initial?.width ?? '');
+  const [height, setHeight] = useState(initial?.height ?? '');
   const [browsing, setBrowsing] = useState(false);
+  const editing = Boolean(initial?.url);
 
   const submit = () => {
     const u = url.trim();
@@ -50,8 +54,15 @@ export function ImageDialog({
 
   return (
     <>
-      <Modal title="Insert image" size="md" onClose={onClose} onSave={submit} saveLabel="Insert" saveDisabled={!url.trim()}>
-        <div className="flex flex-col gap-3">
+      <Modal
+        title={editing ? 'Image settings' : 'Insert image'}
+        size="md"
+        onClose={onClose}
+        onSave={submit}
+        saveLabel={editing ? 'Apply' : 'Insert'}
+        saveDisabled={!url.trim()}
+      >
+        <div className="flex flex-col gap-3 p-5">
           <div>
             <label className={label} htmlFor="sw-img-url">
               Image URL

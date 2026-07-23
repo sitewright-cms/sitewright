@@ -10,8 +10,14 @@ export function computeResize(startW: number, aspect: number, dx: number, min = 
   return { width, height: Math.round(width / (aspect || 1)) };
 }
 
-/** Attach the resizer to `editable`; returns a cleanup that removes listeners + the overlay. */
-export function attachImageResize(editable: HTMLElement, onResize: () => void): () => void {
+/** Attach the resizer to `editable`; returns a cleanup that removes listeners + the overlay. `control`, when
+ *  given, is populated with a `hide()` the caller can invoke (e.g. before opening the image-edit modal, so the
+ *  max-z overlay doesn't float over it). */
+export function attachImageResize(
+  editable: HTMLElement,
+  onResize: () => void,
+  control?: { current: { hide: () => void } | null },
+): () => void {
   let img: HTMLImageElement | null = null;
   let drag: { x: number; w: number; aspect: number } | null = null;
 
@@ -85,6 +91,7 @@ export function attachImageResize(editable: HTMLElement, onResize: () => void): 
   document.addEventListener('click', onClick, true);
   window.addEventListener('scroll', reposition, true);
   window.addEventListener('resize', reposition);
+  if (control) control.current = { hide };
 
   return () => {
     document.removeEventListener('click', onClick, true);
@@ -93,5 +100,6 @@ export function attachImageResize(editable: HTMLElement, onResize: () => void): 
     document.removeEventListener('mousemove', move, true);
     document.removeEventListener('mouseup', end, true);
     box.remove();
+    if (control) control.current = null;
   };
 }

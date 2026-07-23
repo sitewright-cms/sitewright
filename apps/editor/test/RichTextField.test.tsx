@@ -46,6 +46,46 @@ describe('RichTextField', () => {
     expect(screen.queryByRole('button', { name: 'Red' })).not.toBeInTheDocument();
   });
 
+  it('shows the Insert image button only when a projectId is provided', () => {
+    const { rerender } = render(<RichTextField value="" onChange={() => {}} ariaLabel="body" />);
+    expect(screen.queryByRole('button', { name: 'Insert image' })).not.toBeInTheDocument();
+    rerender(<RichTextField value="" onChange={() => {}} ariaLabel="body" projectId="p1" />);
+    expect(screen.getByRole('button', { name: 'Insert image' })).toBeInTheDocument();
+  });
+
+  it('the link popover offers an "Open in new tab" checkbox', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    expect(screen.getByLabelText('Open in new tab')).toBeInTheDocument();
+  });
+
+  it('edits an existing link in place even after the URL input steals the selection', () => {
+    // Regression guard: the popover input moves window.getSelection() OUT of the editable, so Apply must act
+    // on the caret captured at open — not on the live (moved) selection — or it splices a stray anchor.
+    const onChange = vi.fn();
+    render(<RichTextField value='<p><a href="/old">link</a></p>' onChange={onChange} ariaLabel="body" />);
+    const editable = screen.getByRole('textbox', { name: 'body' });
+    const a = editable.querySelector('a')!;
+    const range = document.createRange();
+    range.selectNodeContents(a);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    fireEvent.click(screen.getByRole('button', { name: 'Link' })); // opens popover, captures caret, pre-fills
+    // Simulate the URL input moving the live selection out of the editable.
+    const away = document.createRange();
+    away.selectNodeContents(document.body);
+    away.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(away);
+    fireEvent.change(screen.getByPlaceholderText(/https:/), { target: { value: 'https://new.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const lastHtml = (onChange.mock.calls.at(-1)?.[0] as string) ?? '';
+    expect(lastHtml).toContain('href="https://new.test"');
+    expect((lastHtml.match(/<a[\s>]/g) || []).length).toBe(1); // edited in place, no stray anchor
+    expect(editable.querySelectorAll('a')).toHaveLength(1);
+  });
+
   it('has exactly ONE source toggle (the always-visible ml-auto button, not a duplicate toolbar command)', () => {
     render(<RichTextField value="" onChange={() => {}} ariaLabel="body" />);
     expect(screen.getAllByRole('button', { name: 'Edit HTML source' })).toHaveLength(1);

@@ -82,7 +82,7 @@ describe('RICH_TOOLBAR', () => {
     const cmds = RICH_TOOLBAR.filter((c): c is RichCmd => c !== null);
     const ids = cmds.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
-    const kinds = new Set(['exec', 'color', 'highlight', 'size', 'font', 'align', 'indent', 'link', 'table', 'source']);
+    const kinds = new Set(['exec', 'color', 'highlight', 'size', 'font', 'align', 'indent', 'link', 'media', 'table', 'source']);
     for (const c of cmds) expect(kinds.has(c.kind)).toBe(true);
   });
   it('every exec command carries a cmd; indent carries a direction', () => {
@@ -94,7 +94,7 @@ describe('RICH_TOOLBAR', () => {
   });
   it('includes the headline additions the feature promised', () => {
     const ids = RICH_TOOLBAR.filter(Boolean).map((c) => (c as RichCmd).id);
-    for (const id of ['color', 'highlight', 'font', 'size', 'align', 'indent', 'outdent', 'link', 'table']) {
+    for (const id of ['color', 'highlight', 'font', 'size', 'align', 'indent', 'outdent', 'link', 'media', 'table']) {
       expect(ids).toContain(id);
     }
   });

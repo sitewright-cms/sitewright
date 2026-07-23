@@ -450,7 +450,7 @@ function FieldInput({
   const common = { id, 'aria-label': aria };
   switch (field.type) {
     case 'richtext':
-      return <RichTextField id={id} ariaLabel={aria} value={typeof value === 'string' ? value : ''} onChange={onRaw} />;
+      return <RichTextField id={id} ariaLabel={aria} value={typeof value === 'string' ? value : ''} onChange={onRaw} projectId={projectId} />;
     case 'json':
       return <JsonField id={id} ariaLabel={aria} path={path} value={value} onRaw={onRaw} />;
     case 'number':

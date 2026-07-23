@@ -20,6 +20,7 @@ import {
   IndentDecrease,
   AlignLeft,
   Link as LinkIcon,
+  Image as ImageIcon,
   Table as TableIcon,
   Minus,
   Eraser,
@@ -46,8 +47,12 @@ import {
   applyBlockClass,
   stepBlockIndent,
   applyLink,
+  currentAnchor,
+  insertImage,
   insertStarterTable,
 } from '../../lib/rich-dom';
+import { FilePicker } from '../files/FilePicker';
+import { ACCEPT } from '../files/FileBrowser';
 
 /** Lucide icon per toolbar command id — the on-page bridge maps the SAME ids to inline SVG paths. */
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
@@ -71,6 +76,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   indent: IndentIncrease,
   align: AlignLeft,
   link: LinkIcon,
+  media: ImageIcon,
   table: TableIcon,
   rule: Minus,
   clear: Eraser,
@@ -98,11 +104,14 @@ export function RichTextField({
   onChange,
   id,
   ariaLabel,
+  projectId,
 }: {
   value: string;
   onChange: (html: string) => void;
   id?: string;
   ariaLabel?: string;
+  /** Enables the toolbar's "insert image" media picker (absent → the media button is hidden). */
+  projectId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -112,6 +121,13 @@ export function RichTextField({
   const [source, setSource] = useState(false);
   const [menu, setMenu] = useState<OpenMenu>(null);
   const [linkUrl, setLinkUrl] = useState('');
+  const [linkNewTab, setLinkNewTab] = useState(false);
+  const [picking, setPicking] = useState(false); // media picker open
+  // The caret captured before the media picker modal opened (it blurs the editable), restored on insert.
+  const savedRangeRef = useRef<Range | null>(null);
+  // The caret captured when the LINK popover opened — restored before Apply, because focusing the popover's
+  // URL input moves the selection OUT of the editable (else edit-in-place/unlink/wrap would misfire).
+  const savedLinkRangeRef = useRef<Range | null>(null);
   const ci = useCiPalette();
 
   // Dismiss an open popover (colour/highlight/font/size/align/link) on a mousedown outside the toolbar — the
@@ -163,6 +179,16 @@ export function RichTextField({
       case 'table':
         insertStarterTable(el);
         break;
+      case 'media': {
+        if (!projectId) return; // no picker without a project scope
+        // Capture the caret NOW (the toolbar button's mousedown-preventDefault kept the live selection); do NOT
+        // focus first — focus() can collapse/move the selection, and the picker modal takes focus anyway.
+        const sel = window.getSelection();
+        savedRangeRef.current = sel && sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.getRangeAt(0).cloneRange() : null;
+        setMenu(null);
+        setPicking(true);
+        return;
+      }
       case 'color':
       case 'highlight':
       case 'size':
@@ -170,11 +196,18 @@ export function RichTextField({
       case 'font':
         setMenu((m) => (m?.id === cmd.id ? null : { id: cmd.id, kind: cmd.kind }));
         return; // popover applies the class
-      case 'link':
-        el.focus();
-        setLinkUrl('');
+      case 'link': {
+        // Capture the caret + read the anchor NOW, from the LIVE selection (kept by the toolbar button's
+        // mousedown-preventDefault) — BEFORE any focus(), which would collapse it, and before the popover's
+        // URL input steals it. Restored at Apply so edit-in-place / wrap / unlink act on the right selection.
+        const sel = window.getSelection();
+        savedLinkRangeRef.current = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+        const a = currentAnchor(el);
+        setLinkUrl(a?.getAttribute('href') ?? '');
+        setLinkNewTab(a?.getAttribute('target') === '_blank');
         setMenu((m) => (m?.id === cmd.id ? null : { id: cmd.id, kind: cmd.kind }));
         return;
+      }
     }
     setMenu(null);
     emit();
@@ -196,7 +229,17 @@ export function RichTextField({
   const applyLinkUrl = () => {
     const el = ref.current;
     if (!el) return;
-    applyLink(el, linkUrl.trim());
+    // Restore the caret captured when the popover opened (the URL input moved the live selection out of the
+    // editable), so applyLink's edit-in-place / wrap / unlink branches act on the ORIGINAL selection.
+    const sel = window.getSelection();
+    const saved = savedLinkRangeRef.current;
+    if (sel && saved && el.contains(saved.commonAncestorContainer)) {
+      sel.removeAllRanges();
+      sel.addRange(saved);
+    }
+    applyLink(el, linkUrl.trim(), linkNewTab);
+    el.focus();
+    savedLinkRangeRef.current = null;
     setMenu(null);
     emit();
   };
@@ -209,7 +252,7 @@ export function RichTextField({
         RICH_TOOLBAR.map((c, i) =>
           c === null ? (
             <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
-          ) : c.id === 'source' ? null : (
+          ) : c.id === 'source' || (c.id === 'media' && !projectId) ? null : (
             <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id} onClick={() => run(c)} />
           ),
         )}
@@ -257,32 +300,38 @@ export function RichTextField({
       {menu?.kind === 'size' && <MenuPopover title="Text size" items={RICH_SIZES} onPick={(cls) => applySwatch('size', cls)} />}
       {menu?.kind === 'align' && <MenuPopover title="Alignment" items={RICH_ALIGNS} onPick={(cls) => applySwatch('align', cls)} />}
       {menu?.kind === 'link' && (
-        <div className="absolute left-1.5 top-full z-30 mt-1 flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-lg">
-          <input
-            type="text"
-            autoFocus
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                applyLinkUrl();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setMenu(null);
-              }
-            }}
-            placeholder="https://… or /path"
-            className="w-56 rounded border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-[var(--sw-brand-1)]"
-          />
-          <button
-            type="button"
-            className="rounded bg-[var(--sw-brand-1)] px-2 py-1 text-xs font-semibold text-white"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={applyLinkUrl}
-          >
-            Apply
-          </button>
+        <div className="absolute left-1.5 top-full z-30 mt-1 flex flex-col gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-lg">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              autoFocus
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyLinkUrl();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setMenu(null);
+                }
+              }}
+              placeholder="https://… or /path"
+              className="w-56 rounded border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-[var(--sw-brand-1)]"
+            />
+            <button
+              type="button"
+              className="rounded bg-[var(--sw-brand-1)] px-2 py-1 text-xs font-semibold text-white"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={applyLinkUrl}
+            >
+              Apply
+            </button>
+          </div>
+          <label className="flex items-center gap-1.5 px-0.5 text-xs text-slate-600 dark:text-slate-300">
+            <input type="checkbox" checked={linkNewTab} onChange={(e) => setLinkNewTab(e.target.checked)} />
+            Open in new tab
+          </label>
         </div>
       )}
     </div>
@@ -313,6 +362,26 @@ export function RichTextField({
           className="sw-rich-edit min-h-24 max-w-none px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none"
           onInput={emit}
           onBlur={emit}
+        />
+      )}
+      {picking && projectId && (
+        <FilePicker
+          projectId={projectId}
+          accept={ACCEPT.image}
+          title="Insert image"
+          onPick={(url) => {
+            const el = ref.current;
+            if (el) {
+              insertImage(el, url, savedRangeRef.current);
+              emit();
+            }
+            savedRangeRef.current = null;
+            setPicking(false);
+          }}
+          onClose={() => {
+            savedRangeRef.current = null;
+            setPicking(false);
+          }}
         />
       )}
     </div>

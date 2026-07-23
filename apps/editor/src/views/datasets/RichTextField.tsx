@@ -51,8 +51,8 @@ import {
   insertImage,
   insertStarterTable,
 } from '../../lib/rich-dom';
-import { FilePicker } from '../files/FilePicker';
-import { ACCEPT } from '../files/FileBrowser';
+import { ImageDialog } from '../files/ImageDialog';
+import { attachImageResize } from '../../lib/image-resize';
 
 /** Lucide icon per toolbar command id — the on-page bridge maps the SAME ids to inline SVG paths. */
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
@@ -156,6 +156,16 @@ export function RichTextField({
     if (!el) return;
     onChange(el.innerHTML === '<br>' ? '' : el.innerHTML); // normalize a freshly-cleared editable
   };
+  const emitRef = useRef(emit);
+  emitRef.current = emit;
+
+  // Inline image resize: click an <img> in the editable → aspect-locked corner-drag handles (writes
+  // width/height attrs). Imperative (body-level overlay), so a drag never re-renders React. WYSIWYG mode only.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || source) return;
+    return attachImageResize(el, () => emitRef.current());
+  }, [source]);
 
   // Group class-sets for the toggle math: the STANDARD palette classes ∪ the project's CI classes, so a
   // re-colour/re-font replaces whichever kind is currently applied.
@@ -365,14 +375,12 @@ export function RichTextField({
         />
       )}
       {picking && projectId && (
-        <FilePicker
+        <ImageDialog
           projectId={projectId}
-          accept={ACCEPT.image}
-          title="Insert image"
-          onPick={(url) => {
+          onInsert={(img) => {
             const el = ref.current;
             if (el) {
-              insertImage(el, url, savedRangeRef.current);
+              insertImage(el, img, savedRangeRef.current);
               emit();
             }
             savedRangeRef.current = null;

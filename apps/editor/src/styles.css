@@ -347,6 +347,12 @@ button:disabled,
   font-size: 0.9em;
   padding: 0.1em 0.3em;
 }
+/* Inserted images: never overflow the field, keep aspect (matches the rendered-site baseline
+   `img{max-width:100%;height:auto}`) so a large image stays responsive in the editor too. */
+.sw-rich-edit img {
+  max-width: 100%;
+  height: auto;
+}
 .sw-rich-edit table {
   border-collapse: collapse;
   margin: 0.5em 0;

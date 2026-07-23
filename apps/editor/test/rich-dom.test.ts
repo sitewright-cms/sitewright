@@ -184,11 +184,13 @@ describe('rich-dom class application', () => {
     const range = document.createRange();
     range.setStart(p.firstChild!, 1);
     range.collapse(true);
-    insertImage(el, '/media/x.jpg', range);
+    insertImage(el, { url: '/media/x.jpg', alt: 'A cat', width: '320', height: '200' }, range);
     const img = el.querySelector('img')!;
     expect(img.getAttribute('src')).toBe('/media/x.jpg');
-    expect(img.getAttribute('alt')).toBe('');
-    insertImage(el, 'javascript:alert(1)', null); // dangerous → dropped
+    expect(img.getAttribute('alt')).toBe('A cat');
+    expect(img.getAttribute('width')).toBe('320');
+    expect(img.getAttribute('height')).toBe('200');
+    insertImage(el, { url: 'javascript:alert(1)' }, null); // dangerous → dropped
     expect(el.querySelectorAll('img')).toHaveLength(1);
   });
 

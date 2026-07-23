@@ -55,7 +55,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
- *                     { source:'sitewright-editor', type:'insert-media', url }  (picked media → <img> at the saved caret)
+ *                     { source:'sitewright-editor', type:'insert-media', url, alt, width, height }  (media dialog → <img>)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
@@ -229,7 +229,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // bridge adds .sw-control-on). Publish strips the element entirely (directives.ts).
       '[data-sw-control]{display:none}' +
       '.sw-control-on{display:inline-flex;align-items:center;gap:.35em;cursor:pointer;max-width:22rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 9px;border-radius:9999px;background:#eef2ff;border:1px dashed #6366f1;color:#4338ca;font:600 12px system-ui,sans-serif;line-height:1.5;vertical-align:middle}' +
-      '.sw-control-on:hover{background:#e0e7ff}';
+      '.sw-control-on:hover{background:#e0e7ff}' +
+      // Inline image RESIZE overlay: a fixed outline over the selected rich-content <img> with 4 corner
+      // handles (aspect-locked drag) + a live dimension badge. Body-level, max-z, so it never clips.
+      '.sw-rz{position:fixed;z-index:2147483646;box-sizing:border-box;display:none;border:1.5px solid #6366f1;pointer-events:none}' +
+      '.sw-rz-h{position:absolute;width:11px;height:11px;background:#fff;border:1.5px solid #6366f1;border-radius:2px;pointer-events:auto}' +
+      '.sw-rz-se{right:-6px;bottom:-6px;cursor:nwse-resize}' +
+      '.sw-rz-dim{position:absolute;right:0;bottom:-21px;background:#0f172a;color:#fff;font:600 10px system-ui,sans-serif;padding:1px 6px;border-radius:4px;white-space:nowrap;pointer-events:none}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -335,16 +341,75 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       var made = tbCurrentAnchor(rich); if (made) setTab(made);
     }
   }
-  // Insert an <img> at the saved caret (the range captured before the editor's media picker opened).
-  function tbInsertImage(url) {
+  // Positive-integer px string (or '') for a width/height attribute; bounds an absurd value.
+  function tbDim(v) { var n = Math.round(Number(v)); return (isFinite(n) && n > 0) ? String(Math.min(n, 4000)) : ''; }
+  // Insert an <img> (+ optional alt/width/height) at the saved caret (captured before the media dialog opened).
+  function tbInsertImage(url, alt, width, height) {
     url = tbSafeHref(url); if (!url) { tbSavedRange = null; return; }
     var rich = tbSavedRange ? closestAttr(tbSavedRange.commonAncestorContainer, 'data-sw-html') : currentRich();
     if (!rich) { tbSavedRange = null; return; }
-    var img = document.createElement('img'); img.setAttribute('src', url); img.setAttribute('alt', '');
+    var img = document.createElement('img'); img.setAttribute('src', url); img.setAttribute('alt', typeof alt === 'string' ? alt : '');
+    var w = tbDim(width), h = tbDim(height);
+    if (w) img.setAttribute('width', w);
+    if (h) img.setAttribute('height', h);
     if (tbSavedRange) { try { tbSavedRange.insertNode(img); } catch (e) { rich.appendChild(img); } }
     else rich.appendChild(img);
     tbSavedRange = null;
     post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+  }
+
+  // ---- Inline image resize (aspect-locked corner drag on a rich-content <img>; writes width/height attrs) ----
+  var rzImg = null, rzBox = null, rzDrag = null;
+  function rzEnsure() {
+    if (rzBox) return rzBox;
+    rzBox = document.createElement('div'); rzBox.className = 'sw-rz';
+    // Only the bottom-right handle: an <img> in normal flow keeps its top-left origin when its width/height
+    // ATTRIBUTES change (the sanitizer strips margin/transform, so nw/ne/sw can't anchor their opposite corner
+    // under the cursor). SE grows down-right, tracking the cursor 1:1.
+    var h = document.createElement('div'); h.className = 'sw-rz-h sw-rz-se'; h.setAttribute('data-c', 'se');
+    h.addEventListener('mousedown', rzStart);
+    rzBox.appendChild(h);
+    var dim = document.createElement('div'); dim.className = 'sw-rz-dim'; rzBox.appendChild(dim);
+    document.body.appendChild(rzBox);
+    return rzBox;
+  }
+  function rzPosition() {
+    if (!rzImg || !rzImg.getClientRects || !rzImg.getClientRects().length) { rzHide(); return; }
+    var r = rzImg.getBoundingClientRect(), b = rzEnsure();
+    b.style.display = 'block'; b.style.left = r.left + 'px'; b.style.top = r.top + 'px'; b.style.width = r.width + 'px'; b.style.height = r.height + 'px';
+    b.querySelector('.sw-rz-dim').textContent = Math.round(r.width) + ' \\u00d7 ' + Math.round(r.height);
+  }
+  function rzSelect(img) { rzImg = img; rzPosition(); }
+  function rzHide() { rzImg = null; if (rzBox) rzBox.style.display = 'none'; }
+  function rzStart(e) {
+    if (!rzImg) return;
+    e.preventDefault(); e.stopPropagation();
+    var r = rzImg.getBoundingClientRect();
+    rzDrag = { x: e.clientX, w: r.width, aspect: r.width / (r.height || 1) };
+    document.addEventListener('mousemove', rzMove, true);
+    document.addEventListener('mouseup', rzEnd, true);
+  }
+  function rzMove(e) {
+    if (!rzDrag || !rzImg) return;
+    var w = Math.max(24, Math.min(rzDrag.w + (e.clientX - rzDrag.x), 4000)); // se: cursor delta grows down-right
+    rzImg.setAttribute('width', String(Math.round(w)));
+    rzImg.setAttribute('height', String(Math.round(w / rzDrag.aspect))); // aspect-locked
+    rzPosition();
+  }
+  function rzEnd() {
+    document.removeEventListener('mousemove', rzMove, true);
+    document.removeEventListener('mouseup', rzEnd, true);
+    rzDrag = null;
+    var rich = rzImg && closestAttr(rzImg, 'data-sw-html');
+    if (rich) post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+    rzPosition();
+  }
+  // Content-mode click: selecting a rich-content <img> shows its resize handles; a click elsewhere hides them.
+  function rzClick(e) {
+    if (!editing) return;
+    var t = e.target;
+    if (t && t.tagName === 'IMG' && closestAttr(t, 'data-sw-html')) rzSelect(t);
+    else if (!(rzBox && rzBox.contains(t))) rzHide();
   }
   function tbColorGroup() { var g = RTB.colorClasses.slice(); for (var i = 0; i < ciColors.length; i++) g.push(ciColors[i].cls); return g; }
   function tbFontGroup() { var g = []; for (var i = 0; i < ciFonts.length; i++) g.push(ciFonts[i].cls); return g; }
@@ -945,6 +1010,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // Keep the floating rich-text toolbar glued to its selection as the page scrolls / the viewport resizes
     // (a resize can also change how many buttons fit → re-flow the overflow set).
     if (editing && toolbar && toolbar.style.display !== 'none') positionToolbar();
+    if (editing && rzImg) rzPosition(); // keep the image-resize handles on the image
   }
   function onOvMove(e) {
     if (!editing) return;
@@ -1012,6 +1078,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // bubble-phase handler (e.g. the carousel's data-click-next "advance on slide click") fires —
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
+      document.addEventListener('click', rzClick, true); // image-resize handle select / dismiss
       // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
       ensureOverlay();
       document.addEventListener('mousemove', onOvMove, true);
@@ -1021,9 +1088,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     } else {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
+      document.removeEventListener('click', rzClick, true);
+      document.removeEventListener('mousemove', rzMove, true); // clear any in-flight drag listeners
+      document.removeEventListener('mouseup', rzEnd, true);
       document.removeEventListener('mousemove', onOvMove, true);
       document.removeEventListener('mouseleave', onOvLeave, true);
       window.removeEventListener('resize', repositionHud);
+      rzHide();
       hideHud();
       hideToolbar();
       closePop();
@@ -1048,7 +1119,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       ciColors = Array.isArray(d.colors) ? d.colors.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
       ciFonts = Array.isArray(d.fonts) ? d.fonts.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
     }
-    else if (d.type === 'insert-media' && typeof d.url === 'string') tbInsertImage(d.url); // media picker → <img> at the saved caret
+    else if (d.type === 'insert-media' && typeof d.url === 'string') tbInsertImage(d.url, d.alt, d.width, d.height); // media dialog → <img> at the saved caret
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

@@ -58,18 +58,19 @@ describe('assetEmbedUrls', () => {
 
   it('gives a raster image the default URL, the original, and thumbnail sizes', () => {
     const urls = assetEmbedUrls(image);
-    expect(urls.map((u) => u.label)).toEqual(['URL', 'Original', 'sm', 'md', 'lg', 'xl']);
+    // Size LABELS are uppercase (SM/MD/LG/XL) for display; the `?size=` token stays lowercase.
+    expect(urls.map((u) => u.label)).toEqual(['URL', 'Original', 'SM', 'MD', 'LG', 'XL']);
     expect(urls.find((u) => u.label === 'URL')?.url).toBe('/media/acme/img1-hero.png');
     expect(urls.find((u) => u.label === 'Original')?.url).toBe('/media/acme/img1-hero.png?size=original');
-    expect(urls.find((u) => u.label === 'lg')?.url).toBe('/media/acme/img1-hero.png?size=lg');
+    expect(urls.find((u) => u.label === 'LG')?.url).toBe('/media/acme/img1-hero.png?size=lg');
   });
 
   it('never offers an upscaled thumbnail: a small source stops at the first rung reaching its width', () => {
     const small: MediaAsset = { ...image, width: 400, height: 300 };
     const urls = assetEmbedUrls(small);
     // sm (500) already >= the 400px source, so no md/lg/xl are offered.
-    expect(urls.map((u) => u.label)).toEqual(['URL', 'Original', 'sm']);
-    expect(urls.find((u) => u.label === 'sm')?.hint).toBe('400px wide'); // clamped to the source
+    expect(urls.map((u) => u.label)).toEqual(['URL', 'Original', 'SM']);
+    expect(urls.find((u) => u.label === 'SM')?.hint).toBe('400px wide'); // clamped to the source
   });
 
   it('gives an SVG a single URL (a vector has no rasterized thumbnails)', () => {

@@ -6,6 +6,27 @@
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-display: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  /* Readability floor: the smallest text step (`text-xs`, used ~380× for meta/labels/badges) is
+     raised from 12px to 14px so no UI text renders below ~14px. The arbitrary sub-14px sizes
+     (`text-[9..13px]`) are floored to match in the @layer utilities block below. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.25rem;
+}
+
+/* Floor the handful of arbitrary sub-14px sizes to ~14px too (same readability floor as `text-xs`).
+   None of these are used with a responsive prefix (`sm:text-[…]`), so a flat class override is safe;
+   it stays in the `utilities` layer (later source order beats Tailwind's generated rule). This is a
+   literal allow-list, NOT a true floor: if you introduce a new sub-14px arbitrary size (`text-[8px]`)
+   or a variant (`dark:text-[11px]`), add its class here too — nothing fails loudly if it drifts. */
+@layer utilities {
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\],
+  .text-\[12px\],
+  .text-\[13px\] {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
 }
 
 /* Manual dark mode: rebind the `dark:` variant to key off `<html data-theme="dark">` (stamped by the

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Trash2 } from 'lucide-react';
 import { api, type MediaAsset } from '../../api';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
@@ -17,7 +17,7 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
   const [items, setItems] = useState<Deleted[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { confirm } = useDialogs();
+  const { confirm, dialog } = useDialogs();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,10 +58,31 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
     }
   }
 
+  async function emptyBin() {
+    const n = items.length;
+    if (!(await confirm({ title: 'Empty Recycle Bin', message: `Permanently delete all ${n} file${n === 1 ? '' : 's'} in the Recycle Bin? This cannot be undone.`, confirmLabel: 'Empty Recycle Bin' }))) return;
+    setError(null);
+    try {
+      await api.emptyRecycleBin(projectId);
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'failed to empty the Recycle Bin');
+    }
+  }
+
   return (
     <Modal title="Recycle Bin" size="xl" onClose={onClose}>
+      {dialog}
       <div className="flex flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500 dark:text-slate-400">Deleted files are kept here for 90 days, then permanently removed.</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Deleted files are kept here for 90 days, then permanently removed.</p>
+          {items.length > 0 && (
+            <button type="button" onClick={() => void emptyBin()} className={`${dangerButton} shrink-0`}>
+              <Trash2 className="h-3.5 w-3.5" /> Empty Recycle Bin
+            </button>
+          )}
+        </div>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {loading ? (
           <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>

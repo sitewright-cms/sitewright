@@ -204,8 +204,9 @@ describe('FileBrowser (Assets)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'hero.png' }));
     const dialog = await screen.findByRole('dialog', { name: 'hero.png' });
     expect(within(dialog).getByText('Embed URLs')).toBeInTheDocument();
-    // The Original chip copies the raw-source URL.
-    fireEvent.click(within(dialog).getByTitle('Copy /media/p/img1/hero.png?size=original'));
+    // The Original chip copies the raw-source URL (the hint moved into a DaisyUI tooltip; the
+    // accessible name carries the variant + URL).
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy Original URL: /media/p/img1/hero.png?size=original' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('/media/p/img1/hero.png?size=original'));
   });
 

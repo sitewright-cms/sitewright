@@ -517,7 +517,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       )}
 
       {view === 'list' ? (
-        <table className="w-full text-left text-sm">
+        // table-fixed + per-column widths keep long, unbreakable filenames from widening the table
+        // (they truncate in the Name column instead) — so the drawer never scrolls horizontally.
+        // `min-w` + the overflow wrapper are a graceful fallback ONLY on a very narrow drawer
+        // (< ~34rem): the table scrolls a little rather than collapsing the Name column to nothing.
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[34rem] table-fixed text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
             <tr>
               <th className="py-1 font-medium" aria-sort={ariaSort('name')}>
@@ -525,17 +530,17 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   Name {sortArrow('name')}
                 </button>
               </th>
-              <th className="py-1 font-medium" aria-sort={ariaSort('type')}>
+              <th className="w-32 py-1 font-medium" aria-sort={ariaSort('type')}>
                 <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
                   Type {sortArrow('type')}
                 </button>
               </th>
-              <th className="py-1 text-right font-medium" aria-sort={ariaSort('size')}>
+              <th className="w-20 py-1 text-right font-medium" aria-sort={ariaSort('size')}>
                 <button type="button" onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
                   Size {sortArrow('size')}
                 </button>
               </th>
-              <th className="py-1 text-right font-medium">Actions</th>
+              <th className="w-36 py-1 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -550,8 +555,8 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 className={`border-t border-white/40 dark:border-white/10 ${dropTarget === path ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}
               >
                 <td className="py-2">
-                  <button type="button" onClick={() => goTo(path)} className="flex items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
-                    <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> {seg}
+                  <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400" title={seg}>
+                    <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
                   </button>
                 </td>
                 <td className="py-2 text-slate-400 dark:text-slate-500">folder</td>
@@ -578,7 +583,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   <button
                     type="button"
                     onClick={() => activate(m)}
-                    className="flex items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
                     title={m.filename}
                   >
                     {m.kind === 'image' ? (
@@ -592,7 +597,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     </span>
                   </button>
                 </td>
-                <td className="py-2 text-slate-400 dark:text-slate-500">{typeLabel(m)}</td>
+                <td className="truncate py-2 text-slate-400 dark:text-slate-500" title={typeLabel(m)}>{typeLabel(m)}</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">
@@ -617,6 +622,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             )}
           </tbody>
         </table>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
           {subfolders.map(({ seg, path, bytes }) => (
@@ -738,21 +744,25 @@ function ImagePreview({
             const copied = copiedId === id;
             return (
               <li key={u.label}>
-                <button
-                  type="button"
-                  onClick={() => onCopy(u.url, id)}
-                  className={`group flex w-full items-center gap-2.5 rounded-lg border border-white/60 dark:border-white/10 ${glassPanel} px-2.5 py-1.5 text-left transition hover:border-indigo-300 dark:hover:border-indigo-500/40`}
-                  title={`Copy ${u.url}`}
+                {/* DaisyUI tooltip carries the variant description on hover (e.g. "responsive delivery
+                    — use this in code. Click to Copy"); `block` keeps the wrapped button full-width. */}
+                <span
+                  className="tooltip tooltip-top block before:z-20 before:max-w-[18rem] before:whitespace-normal before:text-left"
+                  data-tip={`${u.hint}. Click to Copy`}
                 >
-                  <span className="w-16 shrink-0">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{u.label}</span>
-                    <span className="block truncate text-[10px] text-slate-400 dark:text-slate-500">{u.hint}</span>
-                  </span>
-                  <code className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{u.url}</code>
-                  <span className={`shrink-0 text-[11px] font-semibold ${copied ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100'}`}>
-                    {copied ? 'Copied ✓' : 'Copy'}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onCopy(u.url, id)}
+                    aria-label={`Copy ${u.label} URL: ${u.url}`}
+                    className={`group flex w-full items-center gap-2.5 rounded-lg border border-white/60 dark:border-white/10 ${glassPanel} px-2.5 py-1.5 text-left transition hover:border-indigo-300 dark:hover:border-indigo-500/40`}
+                  >
+                    <span className="w-12 shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200">{u.label}</span>
+                    <code className="min-w-0 flex-1 truncate text-sm text-slate-500 dark:text-slate-400">{u.url}</code>
+                    <span className={`shrink-0 text-sm font-semibold ${copied ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100'}`}>
+                      {copied ? 'Copied ✓' : 'Copy'}
+                    </span>
+                  </button>
+                </span>
               </li>
             );
           })}

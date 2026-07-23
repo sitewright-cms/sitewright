@@ -43,10 +43,11 @@ export function assetEmbedUrls(asset: MediaAsset): EmbedUrl[] {
     { label: 'Original', hint: `source · ${asset.width}×${asset.height}`, url: `${base}?size=original` },
   ];
   // Rungs from `sm` up to the FIRST size that reaches/exceeds the source width — the same clamp the
-  // {{sw-image}} srcset uses, so an author is never offered an upscaled thumbnail.
+  // {{sw-image}} srcset uses, so an author is never offered an upscaled thumbnail. The chip LABEL is
+  // uppercased (SM/MD/LG/XL) for display; the `?size=` token stays lowercase (what the server expects).
   for (const token of SIZE_ORDER) {
     const width = Math.min(SIZE_WIDTHS[token], asset.width);
-    urls.push({ label: token, hint: `${width}px wide`, url: `${base}?size=${token}` });
+    urls.push({ label: token.toUpperCase(), hint: `${width}px wide`, url: `${base}?size=${token}` });
     if (SIZE_WIDTHS[token] >= asset.width) break;
   }
   return urls;

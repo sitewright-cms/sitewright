@@ -10,6 +10,7 @@ import { LibraryPanel } from './views/library/LibraryPanel';
 import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { WidgetsPanel } from './views/widgets/WidgetsPanel';
 import { DataPanel } from './views/datasets/DataPanel';
+import { CiPaletteForProject } from './lib/ci-palette';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
@@ -354,6 +355,7 @@ function MainApp({
   );
 
   return (
+    <CiPaletteForProject projectId={inProject?.id}>
     <div className="relative min-h-screen">
       {/* Soft blurred accent blobs over the gradient shell (decorative, behind content). */}
       <div aria-hidden className="pointer-events-none fixed -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-fuchsia-300/20 blur-3xl dark:bg-fuchsia-500/10" />
@@ -511,5 +513,6 @@ function MainApp({
         </>
       )}
     </div>
+    </CiPaletteForProject>
   );
 }

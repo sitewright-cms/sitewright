@@ -73,6 +73,8 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
+  RICH_CONTENT_SAFELIST,
+  ciRichClasses,
 } from '@sitewright/blocks';
 import { minifyJs, minifyCss, MINIFIER_VERSION } from './minify.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
@@ -502,6 +504,32 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The consent gate's click-to-load placeholder uses daisyUI `.skeleton` (loading shimmer); it's added by
     // the runtime, so the source scan never sees it — feed it in when consent is on so it compiles.
     const consentClassNames = website?.consent?.enabled === true ? ['skeleton'] : [];
+    // Author-styled rich content (dataset `richtext` entries + `page.data` region overrides authored via the
+    // WYSIWYG toolbar) emits a BOUNDED set of Tailwind utilities — standard colour/highlight/size/align/indent
+    // classes plus this project's CI colour/font classes. That content lives in the content DB / page.data, so
+    // the SOURCE scan above never sees it; feed the ones actually used into the candidate set, else they'd
+    // render in preview (rendered scan) but vanish on the published site. Only classes PRESENT IN THE STORED
+    // content ship (a superset of what a page actually renders — an entry in an unlooped dataset still counts,
+    // matching this file's single-shared-sheet model); a project with no toolbar-styled content adds nothing,
+    // so a utility-free site stays utility-free.
+    const richContentAllowed = new Set([...RICH_CONTENT_SAFELIST, ...ciRichClasses(identity)]);
+    const richContentClassNames: string[] = [];
+    {
+      const found = new Set<string>();
+      const scan = (v: unknown): void => {
+        if (found.size >= richContentAllowed.size) return; // every possible class already seen
+        if (typeof v === 'string') {
+          for (const c of extractClassNames(v)) if (richContentAllowed.has(c)) found.add(c);
+        } else if (Array.isArray(v)) {
+          for (const item of v) scan(item);
+        } else if (v && typeof v === 'object') {
+          for (const item of Object.values(v)) scan(item);
+        }
+      };
+      for (const p of pubBundle.pages) scan(p.data);
+      scan(datasets);
+      richContentClassNames.push(...found);
+    }
     const classNames = [
       ...sourceClassNames,
       ...slotClassNames,
@@ -509,6 +537,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...themeClassNames,
       ...backToTopClassNames,
       ...consentClassNames,
+      ...richContentClassNames,
     ];
     const usesUtilities = classNames.length > 0;
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships

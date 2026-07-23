@@ -16,6 +16,9 @@ vi.mock('../src/api', () => ({
     createProject: (...a: unknown[]) => createProject(...a),
     logout: () => logout(),
     loginConfig: () => loginConfig(),
+    // App wraps its subtree in CiPaletteForProject, which fetches the project's identity for the rich-text
+    // CI palette; stub it so the effect resolves to an empty palette (no brand swatches) in these shell tests.
+    getSettings: () => Promise.resolve({ item: {} }),
   },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
 }));

@@ -20,6 +20,7 @@ export * from './theme-mode.js';
 export * from './escape.js';
 export * from './url.js';
 export * from './sanitize-rich.js';
+export * from './rich-toolbar.js';
 export * from './directives.js';
 export * from './form-embed.js';
 export * from './head.js';

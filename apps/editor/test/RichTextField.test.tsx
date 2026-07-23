@@ -10,9 +10,45 @@ describe('RichTextField', () => {
 
   it('renders the formatting toolbar (mirrors the on-page editor commands)', () => {
     render(<RichTextField value="" onChange={() => {}} ariaLabel="body" />);
-    for (const name of ['Bold', 'Italic', 'Heading 2', 'Quote', 'Bulleted list', 'Numbered list', 'Edit HTML source']) {
+    for (const name of [
+      'Bold', 'Italic', 'Heading 2', 'Quote', 'Bulleted list', 'Numbered list',
+      'Text color', 'Highlight', 'Text size', 'Alignment', 'Increase indent', 'Link', 'Insert table',
+      'Edit HTML source',
+    ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
+  });
+
+  it('opens the text-color popover with standard swatches', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
+    expect(screen.getByRole('button', { name: 'Red' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Default' })).toBeInTheDocument();
+  });
+
+  it('opens the text-size menu', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Text size' }));
+    expect(screen.getByRole('button', { name: 'Large' })).toBeInTheDocument();
+  });
+
+  it('opens the alignment menu', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Alignment' }));
+    expect(screen.getByRole('button', { name: 'Center' })).toBeInTheDocument();
+  });
+
+  it('dismisses an open popover on a mousedown outside the toolbar', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
+    expect(screen.getByRole('button', { name: 'Red' })).toBeInTheDocument();
+    fireEvent.mouseDown(document.body); // click away
+    expect(screen.queryByRole('button', { name: 'Red' })).not.toBeInTheDocument();
+  });
+
+  it('has exactly ONE source toggle (the always-visible ml-auto button, not a duplicate toolbar command)', () => {
+    render(<RichTextField value="" onChange={() => {}} ariaLabel="body" />);
+    expect(screen.getAllByRole('button', { name: 'Edit HTML source' })).toHaveLength(1);
   });
 
   it('toggles to an HTML-source textarea that edits the raw value', () => {

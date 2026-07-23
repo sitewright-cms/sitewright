@@ -14,6 +14,7 @@ import {
 import { safeUrl } from '@sitewright/blocks/url';
 import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
 import { api, previewDocUrl, type Project } from '../api';
+import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
@@ -268,6 +269,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   pageDataRef.current = pageData;
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  // The project's CI rich-text palette (brand colours + font slots) — posted to the preview bridge so the
+  // on-page `data-sw-html` toolbar offers the SAME brand colours/fonts as the dataset richtext toolbar. Held
+  // in a ref so the mount-scoped message handler (empty deps) reads the latest without re-subscribing.
+  const ci = useCiPalette();
+  const ciRef = useRef(ci);
+  ciRef.current = ci;
   // Set by the website.data queue below; declared here so applyControlEdit can route to it (its body runs
   // at message time, after the assignment). Avoids a use-before-define on the queue function.
   const queueWebsiteDataRef = useRef<(key: string, value: string) => void>(() => {});
@@ -505,7 +512,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // A freshly-(re)loaded preview → clear the stale manifest (the new doc re-posts it on entering
         // content mode below) and (re)apply the current edit mode so its regions stay editable.
         setRegions([]);
-        iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
+        const win = iframeRef.current?.contentWindow;
+        win?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
+        // Seed the fresh doc's rich-text toolbar with the project's CI palette (brand colours + font slots).
+        win?.postMessage({ source: 'sitewright-editor', type: 'ci-palette', colors: ciRef.current.colors, fonts: ciRef.current.fonts }, '*');
       }
     };
     window.addEventListener('message', onMessage);
@@ -517,6 +527,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     if (mode === 'audit') return;
     iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
   }, [mode]);
+  // Push the CI palette when it loads (identity is fetched async by the parent, so it may resolve AFTER the
+  // preview already reported 'ready'). `ci` is memoised per-identity by the provider, so this fires only when
+  // the brand actually changes — not every render.
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'sitewright-editor', type: 'ci-palette', colors: ci.colors, fonts: ci.fonts },
+      '*',
+    );
+  }, [ci]);
 
   // --- Undo/redo for INLINE edits (page.data: plain text, rich, image, link). Source is owned by
   //     CodeMirror's own history; settings by the settings modal. A history of snapshots; a debounced

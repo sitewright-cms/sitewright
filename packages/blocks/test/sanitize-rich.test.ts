@@ -83,4 +83,17 @@ describe('sanitizeRichHtml — broad safe-HTML allowlist', () => {
     expect(sanitizeRichHtml('')).toBe('');
     expect(sanitizeRichHtml(undefined as unknown as string)).toBe('');
   });
+
+  it('preserves the rich-text toolbar Tailwind utility classes it emits', () => {
+    // The WYSIWYG toolbars emit EXISTING Tailwind classes (colour/highlight/size/align/indent + CI font/colour)
+    // rather than inline styles; the `class` attribute is allow-listed, so they must survive verbatim.
+    const html = '<p class="text-center pl-8"><span class="text-red-600 text-lg bg-yellow-200 font-heading">styled</span></p>';
+    const out = sanitizeRichHtml(html);
+    for (const c of ['text-center', 'pl-8', 'text-red-600', 'text-lg', 'bg-yellow-200', 'font-heading']) {
+      expect(out).toContain(c);
+    }
+    // The tables / dividers the toolbar can insert are allow-listed too.
+    expect(sanitizeRichHtml('<table><tbody><tr><td>c</td></tr></tbody></table>')).toContain('<td>c</td>');
+    expect(sanitizeRichHtml('<hr>')).toContain('<hr');
+  });
 });

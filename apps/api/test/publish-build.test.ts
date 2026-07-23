@@ -61,6 +61,52 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('safelists the rich-text toolbar classes used in author content (page.data + dataset richtext) — invisible to the source scan', async () => {
+    // The page SOURCE carries no utility classes at all; the toolbar-styled classes live ONLY in page.data
+    // (a data-sw-html region override) and a dataset richtext entry — content the source scan can't see. The
+    // build must still compile them (standard palette + this project's CI colour) into the shared sheet.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home',
+            source: '<div><h1>{{ company.name }}</h1></div>', // NO utility class in the source
+            data: { intro: '<p class="text-center pl-8"><span class="text-red-600 text-lg text-primary zzz-not-real">hi</span></p>' },
+          },
+        ],
+        datasets: [{ id: 'posts', name: 'Posts', slug: 'posts', fields: [{ name: 'body', type: 'richtext', required: false, localized: false }] }],
+        entries: [{ id: 'e1', dataset: 'posts', status: 'published', values: { body: '<p class="bg-yellow-200 font-heading">entry</p>' } }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // Author content flipped the site into "uses utilities" → the sheet is linked + written.
+    expect(home).toMatch(/<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]{16}"/);
+    const css = await readFile(join(outDir, 'styles.css'), 'utf8');
+    for (const cls of ['text-center', 'pl-8', 'text-red-600', 'text-lg', 'text-primary', 'bg-yellow-200', 'font-heading']) {
+      expect(css).toContain(cls);
+    }
+    // A NON-palette class authored in content is NOT force-safelisted (only the bounded toolbar set is).
+    expect(css).not.toContain('zzz-not-real');
+  });
+
+  it('only USED palette classes are safelisted — the whole palette is never dumped', async () => {
+    // A site with no toolbar-styled content still ships a sheet (the platform back-to-top button uses `btn`),
+    // but the rich-content safelist must add NOTHING: unused palette classes stay out of the compiled sheet.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div><h1>{{ company.name }}</h1></div>', data: { note: 'just plain text, no html' } }],
+      }),
+    });
+    const css = await readFile(join(outDir, 'styles.css'), 'utf8');
+    for (const cls of ['text-red-600', 'bg-yellow-200', 'pl-8', 'text-lg']) {
+      expect(css).not.toContain(cls);
+    }
+  });
+
   it('cache-bust token is content-derived: same content across publishes → byte-identical pages (incremental-deploy friendly)', async () => {
     const homeSrc = '<div class="grid"><h1>{{ company.name }}</h1></div>';
     const pages = [{ id: 'home', path: '', title: 'Home', source: homeSrc }];

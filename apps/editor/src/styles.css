@@ -347,6 +347,26 @@ button:disabled,
   font-size: 0.9em;
   padding: 0.1em 0.3em;
 }
+.sw-rich-edit table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+}
+.sw-rich-edit th,
+.sw-rich-edit td {
+  border: 1px solid #cbd5e1;
+  padding: 0.3em 0.5em;
+  text-align: left;
+}
+.sw-rich-edit th {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+.sw-rich-edit hr {
+  border: 0;
+  border-top: 1px solid #cbd5e1;
+  margin: 0.8em 0;
+}
 /* Dark-mode rich-text editable: the field surface flips dark (RichTextField carries `dark:` classes),
    so recolor the preflight-restored formatting (placeholder / blockquote / link / inline-code) for
    contrast on a dark surface. */
@@ -362,6 +382,16 @@ button:disabled,
 }
 [data-theme='dark'] .sw-rich-edit code {
   background: color-mix(in srgb, #6366f1 20%, transparent); /* indigo, translucent on dark */
+}
+[data-theme='dark'] .sw-rich-edit th,
+[data-theme='dark'] .sw-rich-edit td {
+  border-color: #475569; /* slate-600 */
+}
+[data-theme='dark'] .sw-rich-edit th {
+  background: color-mix(in srgb, #94a3b8 16%, transparent);
+}
+[data-theme='dark'] .sw-rich-edit hr {
+  border-top-color: #475569;
 }
 
 /* Dark-chrome skeletons: the DaisyUI `.skeleton` base (base-200) is a LIGHT grey — on the dark shell it

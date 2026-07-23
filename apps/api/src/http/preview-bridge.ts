@@ -1,3 +1,33 @@
+import {
+  RICH_TOOLBAR,
+  RICH_COLORS,
+  RICH_HIGHLIGHTS,
+  RICH_SIZES,
+  RICH_ALIGNS,
+  RICH_COLOR_CLASSES,
+  RICH_HIGHLIGHT_CLASSES,
+  RICH_SIZE_CLASSES,
+  RICH_ALIGN_CLASSES,
+  RICH_INDENT_STEPS,
+} from '@sitewright/blocks';
+
+// The shared rich-text toolbar vocabulary + palettes, serialised into the injected bridge so the on-page
+// `data-sw-html` toolbar renders the SAME commands/order/classes as the dataset richtext toolbar (React).
+// Pure DATA only (functions can't cross into the injected string) — the bridge re-implements the tiny
+// class-toggle math (setGroupClass/stepIndent) inline in vanilla JS below.
+const RICH_TB_DATA = {
+  toolbar: RICH_TOOLBAR,
+  colors: RICH_COLORS,
+  highlights: RICH_HIGHLIGHTS,
+  sizes: RICH_SIZES,
+  aligns: RICH_ALIGNS,
+  colorClasses: [...RICH_COLOR_CLASSES],
+  highlightClasses: [...RICH_HIGHLIGHT_CLASSES],
+  sizeClasses: [...RICH_SIZE_CLASSES],
+  alignClasses: [...RICH_ALIGN_CLASSES],
+  indentSteps: RICH_INDENT_STEPS,
+};
+
 /**
  * First-party bridge script injected into the SANDBOXED preview document (opaque origin, no
  * `allow-same-origin`) — the only way the editor parent can coordinate with it is `postMessage`.
@@ -23,6 +53,7 @@
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
+ *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
@@ -55,6 +86,40 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }, { passive: true });
 
   var editing = false, styled = false;
+
+  // --- Shared rich-text toolbar spec (from @sitewright/blocks) + the project's CI palette (set by the editor
+  //     via a 'ci-palette' message). Icons are inline SVG paths keyed by the SAME command ids the dataset
+  //     toolbar maps to lucide components, so the two toolbars look identical. ---
+  var RTB = ${JSON.stringify(RICH_TB_DATA)};
+  var ciColors = [], ciFonts = [];
+  var TB_ICONS = {
+    bold: '<path d="M6 12h8a4 4 0 0 0 0-8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/>',
+    italic: '<line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/>',
+    underline: '<path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="20" y2="20"/>',
+    strike: '<path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" x2="20" y1="12" y2="12"/>',
+    superscript: '<path d="m4 19 8-8"/><path d="m12 19-8-8"/><path d="M20 12h-4c0-1.5.5-2 1.5-2.5S20 8.5 20 7.5a1.5 1.5 0 0 0-3 0"/>',
+    subscript: '<path d="m4 5 8 8"/><path d="m12 5-8 8"/><path d="M20 21h-4c0-1.5.5-2 1.5-2.5S20 17.5 20 16.5a1.5 1.5 0 0 0-3 0"/>',
+    color: '<path d="m2 15 7-7 7 7"/><path d="M12 5 9 8"/><path d="M5 15h8"/><path d="M18 22a2 2 0 0 0 2-2c0-1.5-2-4-2-4s-2 2.5-2 4a2 2 0 0 0 2 2Z"/>',
+    highlight: '<path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a1.4 1.4 0 0 1-2 0l-5-5a1.4 1.4 0 0 1 0-2L15 5"/>',
+    font: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    size: '<path d="M3.5 13h6"/><path d="m2 16 4.5-9 4.5 9"/><path d="M18 16V7"/><path d="m14 11 4-4 4 4"/>',
+    h2: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17 10c1.5-1.5 4 0 4 2 0 1-1 2-2 2.5L17 18h4"/>',
+    h3: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.5-1 3.5 0 3.5 1.5s-1.5 2-2 2"/><path d="M17 17c1.5 1 4 .5 4-1.5s-2-2.5-3-1.5"/>',
+    paragraph: '<path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/>',
+    quote: '<path d="M7 6H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2c0 2-1 3-2 3"/><path d="M17 6h-3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2c0 2-1 3-2 3"/>',
+    bulletList: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><circle cx="3.5" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none"/>',
+    orderedList: '<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+    outdent: '<polyline points="7 8 3 12 7 16"/><line x1="21" x2="11" y1="12" y2="12"/><line x1="21" x2="11" y1="6" y2="6"/><line x1="21" x2="11" y1="18" y2="18"/>',
+    indent: '<polyline points="3 8 7 12 3 16"/><line x1="21" x2="11" y1="12" y2="12"/><line x1="21" x2="11" y1="6" y2="6"/><line x1="21" x2="11" y1="18" y2="18"/>',
+    align: '<line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+    table: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+    rule: '<path d="M5 12h14"/>',
+    clear: '<path d="m7 21-4.3-4.3a2 2 0 0 1 0-2.8l9-9a2 2 0 0 1 2.8 0l4.6 4.6a2 2 0 0 1 0 2.8L15 21"/><path d="M22 21H8"/><path d="m5 11 9 9"/>',
+    source: '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+    more: '<circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/>'
+  };
+  function tbSvg(id) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + (TB_ICONS[id] || TB_ICONS.paragraph) + '</svg>'; }
 
   // Internal-link navigation: a click on a SITE link (root-relative "/path") tells the EDITOR to open
   // that page's editor, instead of navigating this sandboxed preview to a non-preview URL (which just
@@ -125,9 +190,30 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Locate flash: a brief amber ring when the Regions panel jumps to an element (fades out via the keyframe).
       '@keyframes sw-flash{0%{box-shadow:0 0 0 3px #f59e0b}100%{box-shadow:0 0 0 3px rgba(245,158,11,0)}}' +
       '.sw-flash{animation:sw-flash 1.2s ease-out;border-radius:3px}' +
-      '.sw-tb{position:fixed;z-index:2147483647;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
-      '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
-      '.sw-tb button:hover{background:#334155;color:#fff}' +
+      // Floating rich-text toolbar — matches the dataset richtext toolbar's look (light bar, lucide-style SVG
+      // icons, indigo hover, group separators). SOLID white (not translucent) so it stays legible over any
+      // rendered site content it floats above.
+      '.sw-tb{position:fixed;z-index:2147483647;display:none;align-items:center;gap:1px;padding:3px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 6px 22px rgba(15,23,42,.18);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif}' +
+      '.sw-tb button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:26px;min-width:26px;padding:0 3px;border-radius:6px;color:#64748b;cursor:pointer}' +
+      '.sw-tb button:hover{background:#eef2ff;color:#4338ca}' +
+      '.sw-tb button.sw-tb-on{background:#e0e7ff;color:#4338ca}' +
+      '.sw-tb button svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
+      '.sw-tb .sw-tb-sep{width:1px;height:15px;margin:0 2px;background:#e2e8f0;flex:0 0 auto}' +
+      // Popover (colour/highlight swatch grids · font/size/align menus · link URL input · the overflow "more"
+      // list). Fixed-position, max-z, own styling — never depends on the rendered site CSS.
+      '.sw-tb-pop{position:fixed;z-index:2147483647;display:none;box-sizing:border-box;padding:8px;border-radius:10px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.22);font:500 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#334155;max-width:290px}' +
+      '.sw-tb-pop .sw-tb-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin:0 0 5px}' +
+      '.sw-tb-pop .sw-tb-grid{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px}' +
+      '.sw-tb-pop .sw-tb-grid:last-child{margin-bottom:0}' +
+      '.sw-tb-sw{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;font-weight:800;font-size:13px;color:#334155}' +
+      '.sw-tb-sw:hover{outline:2px solid #a5b4fc;outline-offset:1px}' +
+      '.sw-tb-item{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:7px;width:100%;padding:5px 9px;border-radius:6px;cursor:pointer;color:#334155;white-space:nowrap}' +
+      '.sw-tb-item:hover{background:#eef2ff;color:#4338ca}' +
+      '.sw-tb-item svg{width:15px;height:15px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
+      '.sw-tb-pop .sw-tb-row{display:flex;align-items:center;gap:6px}' +
+      '.sw-tb-pop input{font:500 12px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px;width:210px;outline:none}' +
+      '.sw-tb-pop input:focus{border-color:#6366f1}' +
+      '.sw-tb-pop .sw-tb-apply{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;padding:6px 11px;border-radius:6px;background:#4f46e5;color:#fff;font-weight:600;cursor:pointer}' +
       '.sw-pop{position:fixed;z-index:2147483647;display:none;flex-direction:column;gap:6px;padding:8px;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font:13px system-ui,sans-serif;min-width:240px}' +
       '.sw-pop label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#64748b}' +
       '.sw-pop input,.sw-pop select,.sw-pop textarea{font:13px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px}' +
@@ -158,50 +244,193 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   // --- Project translations ([data-sw-translate]): plain-text editing that writes the SHARED catalog. ---
   function onTranslateInput(e) { var el = e.currentTarget; post({ type: 'translate-edit', key: el.getAttribute('data-sw-translate') || '', value: el.textContent || '' }); }
 
-  // --- Rich ([data-sw-html]) + floating toolbar ---
-  var toolbar = null;
-  var TB_CMDS = [
-    ['B', 'bold'], ['I', 'italic'], ['U', 'underline'], ['S', 'strikeThrough'],
-    ['x\\u00b2', 'superscript'], ['x\\u2082', 'subscript'],
-    ['H2', 'formatBlock:h2'], ['H3', 'formatBlock:h3'], ['\\u275d', 'formatBlock:blockquote'],
-    ['\\u2022', 'insertUnorderedList'], ['1.', 'insertOrderedList'], ['\\u00b6', 'formatBlock:p'],
-    ['\\u2500', 'insertHorizontalRule'], ['\\u2327', 'removeFormat'],
-    ['</>', 'html-source']
-  ];
-  function ensureToolbar() {
-    if (toolbar) return toolbar;
-    toolbar = document.createElement('div');
-    toolbar.className = 'sw-tb';
-    for (var i = 0; i < TB_CMDS.length; i++) {
-      (function (spec) {
-        var b = document.createElement('button');
-        b.type = 'button'; b.textContent = spec[0];
-        b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection
-        b.addEventListener('click', function (e) { e.preventDefault(); runCmd(spec[1]); });
-        toolbar.appendChild(b);
-      })(TB_CMDS[i]);
-    }
-    document.body.appendChild(toolbar);
-    return toolbar;
-  }
+  // --- Rich ([data-sw-html]) floating toolbar — built from the shared RTB spec; emits Tailwind CLASSES for
+  //     colour/highlight/size/font/align/indent (mirrors apps/editor/src/lib/rich-dom.ts) + semantic tags for
+  //     marks/blocks. Single row that COLLAPSES trailing groups into a ⋯ overflow menu, positioned ABOVE the
+  //     selection (never covering the text being edited). ---
+  var toolbar = null, tbMore = null, tbMoreItems = [], tbPop = null, tbActiveId = null, tbLastAvail = -1;
   function currentRich() {
     var sel = window.getSelection && window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
     return closestAttr(sel.anchorNode, 'data-sw-html');
   }
-  function runCmd(cmd) {
-    var rich = currentRich();
-    if (!rich) return;
-    // The HTML-source button hands off to the editor (opens a CodeMirror modal) — not an execCommand.
-    // Include the region's live innerHTML so the editor can seed the modal with the CURRENT content
-    // (the authored default when page.data has no override yet).
-    if (cmd === 'html-source') { post({ type: 'edit-html-source', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML }); hideToolbar(); return; }
-    var parts = cmd.split(':');
-    try { document.execCommand(parts[0], false, parts[1]); } catch (e) {}
-    post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
-    positionToolbar();
-  }
   function onRichInput(e) { var el = e.currentTarget; post({ type: 'rich-edit', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); }
+  function tbEmit() { var rich = currentRich(); if (rich) post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML }); }
+
+  // ---- pure class-list math (mirrors @sitewright/blocks setGroupClass / stepIndentClass) ----
+  function tbTokens(cls) { var out = [], parts = (cls || '').split(/\\s+/); for (var i = 0; i < parts.length; i++) { var t = parts[i]; if (t && out.indexOf(t) < 0) out.push(t); } return out; }
+  function tbSetGroup(cls, group, add) { var kept = tbTokens(cls).filter(function (t) { return group.indexOf(t) < 0; }); if (add) kept.push(add); return kept.join(' '); }
+  function tbStepIndent(cls, dir) {
+    var steps = RTB.indentSteps, toks = tbTokens(cls), cur = '';
+    for (var i = 0; i < toks.length; i++) { if (steps.indexOf(toks[i]) > 0) { cur = toks[i]; break; } }
+    var idx = steps.indexOf(cur); if (idx < 0) idx = 0;
+    var n = Math.min(steps.length - 1, Math.max(0, idx + dir));
+    return tbSetGroup(cls, steps.filter(function (s) { return s; }), steps[n] || undefined);
+  }
+  // ---- DOM apply (mirrors apps/editor/src/lib/rich-dom.ts) ----
+  function tbSelRange(rich) { var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null; var r = sel.getRangeAt(0); if (r.collapsed || !rich.contains(r.commonAncestorContainer)) return null; return r; }
+  function tbApplyInline(rich, group, cls) {
+    var r = tbSelRange(rich); if (!r) return;
+    // Fast path: selection covers a whole <span> wrapper → retag its group class in place (no nested spans).
+    var host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
+    if (host && host !== rich && host.tagName === 'SPAN' && host.textContent === r.toString()) {
+      var retag = tbSetGroup(host.getAttribute('class'), group, cls || undefined);
+      if (retag) host.setAttribute('class', retag); else host.removeAttribute('class');
+      return;
+    }
+    var holder = document.createElement('div'); holder.appendChild(r.extractContents());
+    var kids = holder.querySelectorAll('[class]');
+    for (var i = 0; i < kids.length; i++) { var c = tbSetGroup(kids[i].getAttribute('class'), group); if (c) kids[i].setAttribute('class', c); else kids[i].removeAttribute('class'); }
+    var ins;
+    if (cls) { var span = document.createElement('span'); span.className = cls; while (holder.firstChild) span.appendChild(holder.firstChild); ins = span; }
+    else { ins = document.createDocumentFragment(); while (holder.firstChild) ins.appendChild(holder.firstChild); }
+    var f = ins.firstChild, l = ins.lastChild; r.insertNode(ins);
+    var sel = window.getSelection();
+    if (sel && f && l) { var nr = document.createRange(); nr.setStartBefore(cls ? ins : f); nr.setEndAfter(cls ? ins : l); sel.removeAllRanges(); sel.addRange(nr); }
+  }
+  function tbTopBlock(rich, node) { var el = node.nodeType === 1 ? node : node.parentNode; while (el && el !== rich) { if (el.parentNode === rich) return el; el = el.parentNode; } return null; }
+  function tbBlocks(rich) {
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return [];
+    var r = sel.getRangeAt(0); if (!rich.contains(r.commonAncestorContainer)) return [];
+    var start = tbTopBlock(rich, r.startContainer);
+    if (!start) { try { document.execCommand('formatBlock', false, 'p'); } catch (e) {} var s2 = window.getSelection(); if (!s2 || !s2.rangeCount) return []; r = s2.getRangeAt(0); start = tbTopBlock(rich, r.startContainer); if (!start) return []; }
+    var end = tbTopBlock(rich, r.endContainer) || start, out = [];
+    for (var el = start; el; el = el.nextElementSibling) { out.push(el); if (el === end) break; }
+    return out;
+  }
+  function tbApplyBlock(rich, group, cls) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbSetGroup(bs[i].getAttribute('class'), group, cls || undefined); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
+  function tbStepBlockIndent(rich, dir) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbStepIndent(bs[i].getAttribute('class'), dir); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
+  function tbInsertTable() { try { document.execCommand('insertHTML', false, '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>'); } catch (e) {} }
+  function tbColorGroup() { var g = RTB.colorClasses.slice(); for (var i = 0; i < ciColors.length; i++) g.push(ciColors[i].cls); return g; }
+  function tbFontGroup() { var g = []; for (var i = 0; i < ciFonts.length; i++) g.push(ciFonts[i].cls); return g; }
+  // Scheme-gate a link URL — the SAME allowlist as the editor's safeUrl (SAFE_URL in @sitewright/blocks/url,
+  // which the dataset toolbar + data-sw-href editor use): absolute http(s), mailto/tel/sms, a root-relative
+  // /path, or a #fragment. A javascript:/data:/vbscript: (or scheme-less) URL returns '' → the link is dropped
+  // rather than written into href. The authoritative boundary is still sanitizeRichHtml at render; this keeps
+  // the two toolbars consistent and hardens the live preview.
+  function tbSafeHref(u) { u = String(u || ''); return /^(?:https?:\\/\\/|mailto:|tel:|sms:|\\/(?!\\/)|#)/i.test(u) ? u : ''; }
+
+  // ---- popover (swatch grid / menu / link input / overflow) ----
+  function tbEnsurePop() {
+    if (tbPop) return tbPop;
+    tbPop = document.createElement('div'); tbPop.className = 'sw-tb-pop';
+    tbPop.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection
+    document.addEventListener('mousedown', function (e) { if (!tbPop || tbPop.style.display === 'none') return; if (tbPop.contains(e.target) || (toolbar && toolbar.contains(e.target))) return; tbClosePop(); }, true);
+    document.body.appendChild(tbPop);
+    return tbPop;
+  }
+  function tbClosePop() { if (tbPop) tbPop.style.display = 'none'; setTbActive(null); }
+  function setTbActive(id) { tbActiveId = id; if (!toolbar) return; var bs = toolbar.querySelectorAll('button'); for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('sw-tb-on', id != null && bs[i].getAttribute('data-tbid') === id); }
+  function tbHeading(text) { var h = document.createElement('p'); h.className = 'sw-tb-h'; h.textContent = text; return h; }
+  function tbSwatchBtn(label, styleText, glyph, onPick) { var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-tb-sw'; b.title = label; b.setAttribute('aria-label', label); if (styleText) b.setAttribute('style', styleText); b.textContent = glyph; b.addEventListener('mousedown', function (e) { e.preventDefault(); }); b.addEventListener('click', function (e) { e.preventDefault(); onPick(); }); return b; }
+  function tbItemBtn(label, iconId, onPick) { var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-tb-item'; b.setAttribute('aria-label', label); if (iconId) b.innerHTML = tbSvg(iconId); b.appendChild(document.createTextNode(label)); b.addEventListener('mousedown', function (e) { e.preventDefault(); }); b.addEventListener('click', function (e) { e.preventDefault(); onPick(); }); return b; }
+  function tbShowPop(anchor) {
+    var p = tbPop; p.style.display = 'block';
+    var r = anchor ? anchor.getBoundingClientRect() : (toolbar ? toolbar.getBoundingClientRect() : { left: 20, right: 60, top: 40, bottom: 60 });
+    requestAnimationFrame(function () {
+      var top = r.bottom + 6, left = r.left;
+      var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
+      if (top + p.offsetHeight > window.innerHeight - 6) top = r.top - p.offsetHeight - 6;
+      if (top < 6) top = 6;
+      p.style.top = top + 'px'; p.style.left = left + 'px';
+    });
+  }
+  function tbFinish() { tbEmit(); tbClosePop(); positionToolbar(); }
+  function tbOpenSwatch(rich, cmd, anchor) {
+    var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    var isColor = cmd.kind === 'color';
+    p.appendChild(tbHeading(cmd.label));
+    function pick(cls) { if (isColor) tbApplyInline(rich, tbColorGroup(), cls); else tbApplyInline(rich, RTB.highlightClasses, cls); tbFinish(); }
+    function grid(list) {
+      var g = document.createElement('div'); g.className = 'sw-tb-grid';
+      for (var i = 0; i < list.length; i++) (function (sw) {
+        var style = sw.value ? (isColor ? 'color:' + sw.value : 'background:' + sw.value) : '';
+        g.appendChild(tbSwatchBtn(sw.label, style, sw.cls ? 'A' : '\\u2298', function () { pick(sw.cls); }));
+      })(list[i]);
+      return g;
+    }
+    if (isColor && ciColors.length) { p.appendChild(tbHeading('Brand')); p.appendChild(grid(ciColors)); p.appendChild(tbHeading('Standard')); }
+    p.appendChild(grid(isColor ? RTB.colors : RTB.highlights));
+    tbShowPop(anchor); setTbActive(cmd.id);
+  }
+  function tbOpenMenu(rich, cmd, anchor, items, applyFn) {
+    var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    p.appendChild(tbHeading(cmd.label));
+    for (var i = 0; i < items.length; i++) (function (it) { p.appendChild(tbItemBtn(it.label, null, function () { applyFn(it.cls); tbFinish(); })); })(items[i]);
+    tbShowPop(anchor); setTbActive(cmd.id);
+  }
+  function tbOpenLink(rich, cmd, anchor) {
+    var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    var row = document.createElement('div'); row.className = 'sw-tb-row';
+    var input = document.createElement('input'); input.type = 'text'; input.placeholder = 'https://\\u2026 or /path';
+    var apply = document.createElement('button'); apply.type = 'button'; apply.className = 'sw-tb-apply'; apply.textContent = 'Apply';
+    function doApply() { var url = tbSafeHref(input.value.replace(/^\\s+|\\s+$/g, '')); if (url) { try { document.execCommand('createLink', false, url); } catch (e) {} } else { try { document.execCommand('unlink'); } catch (e) {} } tbFinish(); }
+    apply.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    apply.addEventListener('click', function (e) { e.preventDefault(); doApply(); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doApply(); } else if (e.key === 'Escape') { e.preventDefault(); tbClosePop(); } });
+    row.appendChild(input); row.appendChild(apply); p.appendChild(row);
+    tbShowPop(anchor); setTbActive(cmd.id);
+    requestAnimationFrame(function () { try { input.focus(); } catch (e) {} });
+  }
+  function tbOpenMore(anchor) {
+    var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    for (var i = 0; i < tbMoreItems.length; i++) (function (cmd) {
+      var row = tbItemBtn(cmd.label, cmd.id, function () { tbRun(cmd, row); });
+      p.appendChild(row);
+    })(tbMoreItems[i]);
+    tbShowPop(anchor);
+  }
+  function tbRun(cmd, anchor) {
+    var rich = currentRich(); if (!rich) return;
+    if (cmd.kind === 'source') { post({ type: 'edit-html-source', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML }); tbClosePop(); hideToolbar(); return; }
+    if (cmd.kind === 'exec') { try { document.execCommand(cmd.cmd, false, cmd.arg); } catch (e) {} tbFinish(); return; }
+    if (cmd.kind === 'indent') { tbStepBlockIndent(rich, cmd.cmd === '-1' ? -1 : 1); tbFinish(); return; }
+    if (cmd.kind === 'table') { tbInsertTable(); tbFinish(); return; }
+    // Popover commands: a second click on the open control closes it (toggle).
+    if (tbPop && tbPop.style.display !== 'none' && tbActiveId === cmd.id) { tbClosePop(); return; }
+    if (cmd.kind === 'color' || cmd.kind === 'highlight') tbOpenSwatch(rich, cmd, anchor);
+    else if (cmd.kind === 'size') tbOpenMenu(rich, cmd, anchor, RTB.sizes, function (c) { tbApplyInline(rich, RTB.sizeClasses, c); });
+    else if (cmd.kind === 'align') tbOpenMenu(rich, cmd, anchor, RTB.aligns, function (c) { tbApplyBlock(rich, RTB.alignClasses, c); });
+    else if (cmd.kind === 'font') tbOpenMenu(rich, cmd, anchor, [{ label: 'Default', cls: '' }].concat(ciFonts), function (c) { tbApplyInline(rich, tbFontGroup(), c); });
+    else if (cmd.kind === 'link') tbOpenLink(rich, cmd, anchor);
+  }
+  function tbButton(cmd) {
+    var b = document.createElement('button'); b.type = 'button'; b.title = cmd.label; b.setAttribute('aria-label', cmd.label); b.setAttribute('data-tbid', cmd.id);
+    b.innerHTML = tbSvg(cmd.id);
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the editable's selection
+    b.addEventListener('click', function (e) { e.preventDefault(); tbRun(cmd, b); });
+    return b;
+  }
+  function ensureToolbar() {
+    if (toolbar) return toolbar;
+    toolbar = document.createElement('div'); toolbar.className = 'sw-tb';
+    tbMore = document.createElement('button'); tbMore.type = 'button'; tbMore.title = 'More'; tbMore.setAttribute('aria-label', 'More formatting'); tbMore.innerHTML = tbSvg('more');
+    tbMore.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    tbMore.addEventListener('click', function (e) { e.preventDefault(); tbOpenMore(tbMore); });
+    document.body.appendChild(toolbar);
+    return toolbar;
+  }
+  // Rebuild the single row, collapsing whatever doesn't fit into the ⋯ overflow menu. Constant widths (fixed
+  // by CSS) — no layout thrash. Skipped when the available width is unchanged (so selection moves don't rebuild).
+  function tbReflow(force) {
+    var tb = ensureToolbar();
+    var avail = Math.min((window.innerWidth || 800) - 20, 620);
+    if (!force && avail === tbLastAvail && tb.firstChild) return;
+    tbLastAvail = avail;
+    while (tb.firstChild) tb.removeChild(tb.firstChild);
+    tbMoreItems = [];
+    var spec = RTB.toolbar, BTN = 28, SEP = 5, MORE = 30, total = 0;
+    for (var t = 0; t < spec.length; t++) total += spec[t] === null ? SEP : BTN;
+    var reserve = total > avail ? MORE : 0, acc = 0, cut = spec.length;
+    if (reserve) { for (var i = 0; i < spec.length; i++) { var w = spec[i] === null ? SEP : BTN; if (acc + w + reserve > avail) { cut = i; break; } acc += w; } }
+    for (var j = 0; j < spec.length; j++) {
+      var it = spec[j];
+      if (j >= cut) { if (it !== null) tbMoreItems.push(it); continue; }
+      if (it === null) { var sep = document.createElement('span'); sep.className = 'sw-tb-sep'; sep.setAttribute('aria-hidden', 'true'); tb.appendChild(sep); }
+      else tb.appendChild(tbButton(it));
+    }
+    if (tbMoreItems.length) tb.appendChild(tbMore);
+  }
   function positionToolbar() {
     if (!editing) { hideToolbar(); return; }
     var rich = currentRich();
@@ -211,12 +440,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (!rect || (rect.width === 0 && rect.height === 0 && rect.top === 0)) { rect = rich.getBoundingClientRect(); }
     var tb = ensureToolbar();
     tb.style.display = 'flex';
-    var top = rect.top - tb.offsetHeight - 8; if (top < 4) top = rect.bottom + 8;
-    var left = rect.left; if (left < 4) left = 4;
-    var maxLeft = window.innerWidth - tb.offsetWidth - 4; if (left > maxLeft) left = maxLeft > 4 ? maxLeft : 4;
+    tbReflow();
+    var h = tb.offsetHeight, w = tb.offsetWidth, GAP = 10;
+    // ABOVE the selection with a clear gap → the bar never overlaps the text being edited. Only when there's
+    // no room above (selection near the viewport top) does it flip BELOW. Single row → fixed small height.
+    var top = rect.top - h - GAP; if (top < 6) top = rect.bottom + GAP;
+    var maxTop = window.innerHeight - h - 6; if (top > maxTop) top = maxTop; if (top < 6) top = 6;
+    var left = rect.left; if (left < 6) left = 6;
+    var maxLeft = window.innerWidth - w - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6;
     tb.style.top = top + 'px'; tb.style.left = left + 'px';
   }
-  function hideToolbar() { if (toolbar) toolbar.style.display = 'none'; }
+  function hideToolbar() { if (toolbar) toolbar.style.display = 'none'; tbClosePop(); }
   function onSelChange() { if (editing) positionToolbar(); }
 
   // --- Link URL(+text) popover ([data-sw-href] anchors) ---
@@ -637,7 +871,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function hideHud() { ovTimer = null; ovActive = null; if (ovBox) ovBox.style.display = 'none'; if (ovRow) ovRow.style.display = 'none'; }
   function scheduleHide() { if (ovTimer) return; ovTimer = setTimeout(hideHud, 180); }
-  function repositionHud() { if (editing && ovActive && ovActive.length) { outlineFor(ovActive[0], primaryKind(ovActive[0])); positionRow(ovActive[0]); } }
+  function repositionHud() {
+    if (editing && ovActive && ovActive.length) { outlineFor(ovActive[0], primaryKind(ovActive[0])); positionRow(ovActive[0]); }
+    // Keep the floating rich-text toolbar glued to its selection as the page scrolls / the viewport resizes
+    // (a resize can also change how many buttons fit → re-flow the overflow set).
+    if (editing && toolbar && toolbar.style.display !== 'none') positionToolbar();
+  }
   function onOvMove(e) {
     if (!editing) return;
     if (ov && e.target && ov.contains(e.target)) return; // over the HUD itself → keep it
@@ -733,6 +972,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (d.type === 'scrollTo' && typeof d.y === 'number') { try { window.scrollTo(0, d.y); } catch (err) {} }
     else if (d.type === 'setMode') setEditing(d.mode === 'content');
     else if (d.type === 'edit-region' && typeof d.rid === 'number') editRegion(d.rid);
+    else if (d.type === 'ci-palette') {
+      // The project's CI palette (brand colours + font slots) for the rich-text toolbar. Accept only the
+      // {label,cls,value} shape; the applied cls is later sanitized structurally (it becomes a class token
+      // on authored content, re-sanitized at render like every other rich value).
+      ciColors = Array.isArray(d.colors) ? d.colors.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
+      ciFonts = Array.isArray(d.fonts) ? d.fonts.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
+    }
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

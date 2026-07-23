@@ -25,6 +25,7 @@ import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
 import { FilePicker } from './files/FilePicker';
+import { ImageDialog } from './files/ImageDialog';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
@@ -1032,16 +1033,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         />
       )}
 
-      {/* Rich-text toolbar "insert image": the picked URL is posted back to the bridge, which inserts the
-          <img> at the caret it saved before this modal opened (the region's rich-edit then persists it). */}
+      {/* Rich-text toolbar "insert image": the chosen url + alt/width/height are posted back to the bridge,
+          which inserts the <img> at the caret it saved before this dialog opened (rich-edit then persists it). */}
       {mediaInsert && (
-        <FilePicker
+        <ImageDialog
           projectId={project.id}
-          accept={ACCEPT.image}
-          title="Insert image"
-          onPick={(url) => {
+          onInsert={(img) => {
             iframeRef.current?.contentWindow?.postMessage(
-              { source: 'sitewright-editor', type: 'insert-media', url: safeUrl(url, '') },
+              { source: 'sitewright-editor', type: 'insert-media', url: safeUrl(img.url, ''), alt: img.alt, width: img.width, height: img.height },
               '*',
             );
             setMediaInsert(false);

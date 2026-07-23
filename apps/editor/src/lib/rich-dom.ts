@@ -208,14 +208,24 @@ export function applyLink(editable: HTMLElement, url: string, newTab = false): v
   }
 }
 
-/** Insert an `<img>` (scheme-sanitized src) at `range` (the caret saved before the media picker opened) or,
- *  failing that, at the current selection / end of the editable. */
-export function insertImage(editable: HTMLElement, url: string, range?: Range | null): void {
-  const safe = safeUrl(url, '');
+/** A `<img>` to insert: scheme-sanitized `url` + optional alt text and px width/height. */
+export interface ImageAttrs {
+  url: string;
+  alt?: string;
+  width?: string;
+  height?: string;
+}
+
+/** Insert an `<img>` (scheme-sanitized src + optional alt/width/height) at `range` (the caret saved before the
+ *  media picker opened) or, failing that, at the current selection / end of the editable. */
+export function insertImage(editable: HTMLElement, opts: ImageAttrs, range?: Range | null): void {
+  const safe = safeUrl(opts.url, '');
   if (!safe) return;
   const img = document.createElement('img');
   img.setAttribute('src', safe);
-  img.setAttribute('alt', '');
+  img.setAttribute('alt', opts.alt ?? '');
+  if (opts.width) img.setAttribute('width', opts.width);
+  if (opts.height) img.setAttribute('height', opts.height);
   let r: Range | null = range && editable.contains(range.commonAncestorContainer) ? range : null;
   if (!r) {
     const sel = window.getSelection();

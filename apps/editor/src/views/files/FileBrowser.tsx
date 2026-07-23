@@ -9,8 +9,11 @@ import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
 import { useDialogs } from '../ui/Dialogs';
 import { SkeletonImage } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
+import { useCopy } from '../ui/useCopy';
 import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
 import { cleanSvgFile } from '../library/svg-studio-helpers';
+import { assetEmbedUrls } from './media-embed';
 import {
   sortAssets,
   sortFolders,
@@ -74,17 +77,45 @@ const icon = (paths: ReactNode) => (
   </svg>
 );
 const RENAME_ICON = icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />);
-const COPY_ICON = icon(
+const LINK_ICON = icon(
   <>
-    <rect x="9" y="9" width="13" height="13" rx="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </>,
 );
+const CHECK_ICON = icon(<path d="M20 6 9 17l-5-5" />);
 const DOWNLOAD_ICON = icon(<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />);
 const TRASH_ICON = icon(<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />);
 
 const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100';
 const ACT_DANGER = `${ACT} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`;
+
+/** Inline monospace snippet for handlebars helpers shown in dialog notes. */
+const Code = ({ children }: { children: ReactNode }) => (
+  <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5 font-mono text-[10px] text-indigo-600 dark:text-indigo-300">{children}</code>
+);
+
+/**
+ * The helper note under the Rename field. For an image the display name doubles as the default alt
+ * text (`{{sw-image}}` falls back to it when no alt is set — accessibility & SEO); for any asset the
+ * name is available in templates via `{{this.filename}}` inside a `{{#sw-folder}}` loop.
+ */
+function renameNote(m: MediaAsset): ReactNode {
+  return (
+    <>
+      {m.kind === 'image' ? (
+        <>
+          Used as the image's default <strong>alt text</strong> when you embed it with <Code>{'{{sw-image}}'}</Code> and haven't set one (accessibility &amp; SEO).{' '}
+        </>
+      ) : (
+        <>
+          The file's download name.{' '}
+        </>
+      )}
+      In templates, output it with <Code>{'{{this.filename}}'}</Code> inside a <Code>{'{{#sw-folder}}'}</Code> loop.
+    </>
+  );
+}
 
 export interface FileBrowserProps {
   projectId: string;
@@ -100,12 +131,14 @@ export interface FileBrowserProps {
 
 /**
  * The reusable file/folder browser over the project media library: breadcrumb navigation, list/grid
- * views, upload, new-folder, rename/copy/delete (files + folders) and drag-to-move. Shared by the
+ * views, upload, new-folder, rename/copy-URL/delete (files + folders) and drag-to-move. Shared by the
  * Assets side panel (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
  */
 export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
   const pick = mode === 'pick';
   const { confirm, prompt, dialog } = useDialogs();
+  const toast = useToast();
+  const [copiedId, copy] = useCopy(() => toast.show('URL copied — paste it into your page code'));
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [folderRecords, setFolderRecords] = useState<MediaFolderRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -293,9 +326,6 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     if (!name || name === seg) return;
     await run(() => api.renameMediaFolder(projectId, pathOf(seg), folder === '' ? name : `${folder}/${name}`));
   }
-  async function copyFolder(seg: string) {
-    await run(() => api.copyMediaFolder(projectId, pathOf(seg), pathOf(`${seg} copy`)));
-  }
   async function deleteFolder(seg: string) {
     const path = pathOf(seg);
     const fileCount = assets.filter((a) => a.folder === path || a.folder.startsWith(`${path}/`)).length;
@@ -316,14 +346,14 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
 
   // ---- asset ops -----------------------------------------------------------
   async function renameAsset(m: MediaAsset) {
-    const next = await prompt({ title: 'Rename file', label: 'Display name', initial: m.filename });
+    const next = await prompt({ title: 'Rename file', label: 'Display name', initial: m.filename, note: renameNote(m) });
     if (!next || next === m.filename) return;
     await run(() => api.patchMedia(projectId, m.id, { filename: next }));
   }
-  async function copyAsset(m: MediaAsset) {
-    // Duplicate next to the source (its own folder), not the current browse folder — identical in
-    // normal mode (m.folder === folder), but correct for a global-search result from another folder.
-    await run(() => api.copyMedia(projectId, m.id, m.folder));
+  /** Copy the asset's root-relative delivery URL — what you paste into page code (`{{sw-image}}`,
+   *  `data-sw-src`, `<img src>`). Images expose their original + thumbnail sizes in the preview modal. */
+  function copyUrl(m: MediaAsset) {
+    copy(m.url, m.id);
   }
   async function deleteAsset(m: MediaAsset) {
     if (!(await confirm({ title: 'Delete file', message: `Move “${m.filename}” to the Recycle Bin? You can restore it for 90 days.`, confirmLabel: 'Delete' }))) return;
@@ -530,7 +560,6 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   {!pick && !searching && (
                     <div className="flex justify-end gap-0.5">
                       <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
-                      <button aria-label={`Copy ${seg}`} title="Copy" className={ACT} onClick={() => void copyFolder(seg)}>{COPY_ICON}</button>
                       <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
                     </div>
                   )}
@@ -555,7 +584,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     {m.kind === 'image' ? (
                       <SkeletonImage src={m.url} alt="" className="h-8 w-8 shrink-0 rounded" />
                     ) : (
-                      <FileTypeIcon filename={m.filename} className="h-6 w-6 shrink-0" />
+                      <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
                     )}
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate">{m.filename}</span>
@@ -571,9 +600,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                       <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                     ) : (
                       <>
+                        <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
                         <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
                         <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                        <button aria-label={actLabel('Copy', m)} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
                         <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                       </>
                     )}
@@ -626,7 +655,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   <SkeletonImage src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
                 ) : (
                   <div className="flex h-24 w-full items-center justify-center rounded bg-white/40 dark:bg-white/5">
-                    <FileTypeIcon filename={m.filename} className="h-10 w-10" />
+                    <FileTypeIcon asset={m} className="h-10 w-10" />
                   </div>
                 )}
                 <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>{m.filename}</figcaption>
@@ -639,9 +668,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                   ) : (
                     <>
+                      <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
                       <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
                       <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                      <button aria-label={actLabel('Copy', m)} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
                       <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                     </>
                   )}
@@ -663,26 +692,77 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
 
       {recycleOpen && <RecycleBinModal projectId={projectId} onClose={() => setRecycleOpen(false)} onChanged={() => void load()} />}
 
-      {/* In-app image preview (replaces opening images in a new tab). */}
+      {/* In-app image preview (replaces opening images in a new tab) + copyable embed URLs. */}
       {preview && preview.kind === 'image' && (
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
-          <div className="flex flex-col items-center gap-3 p-4">
-            <img src={preview.url} alt={preview.alt ?? preview.filename} className="max-h-[70vh] w-auto rounded-lg shadow-lg" />
-            <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>
-                {preview.format} · {preview.width}×{preview.height} · {formatBytes(preview.bytes)}
-              </span>
-              <a href={preview.url} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
-                Open original
-              </a>
-            </div>
-            {preview.attribution && (
-              <p className={`w-full text-[11px] text-slate-400 dark:text-slate-500 ${glassPanel} p-2`}>
-                {preview.attribution.provider} · {preview.attribution.author} · {preview.attribution.license}
-              </p>
-            )}
-          </div>
+          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} />
         </Modal>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The in-app image preview: the image, its intrinsic metadata, and an **Embed URLs** panel of
+ * copy-to-clipboard variants (the responsive delivery URL, the raw original, and each on-demand
+ * thumbnail size). Each row copies its root-relative `/media/…` URL — what you paste into page code.
+ */
+function ImagePreview({
+  asset,
+  copiedId,
+  onCopy,
+}: {
+  asset: MediaAsset & { kind: 'image' };
+  copiedId: string | null;
+  onCopy: (text: string, id: string) => void;
+}) {
+  const urls = assetEmbedUrls(asset);
+  const original = urls.find((u) => u.label === 'Original')?.url ?? asset.url;
+  return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <img src={asset.url} alt={asset.alt ?? asset.filename} className="max-h-[40vh] w-auto rounded-lg shadow-lg" />
+      <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+        <span>
+          {asset.format} · {asset.width}×{asset.height} · {formatBytes(asset.bytes)}
+        </span>
+        <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
+          Open original
+        </a>
+      </div>
+
+      <div className="w-full">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Embed URLs</p>
+        <ul className="flex flex-col gap-1">
+          {urls.map((u) => {
+            const id = `${asset.id}:${u.label}`;
+            const copied = copiedId === id;
+            return (
+              <li key={u.label}>
+                <button
+                  type="button"
+                  onClick={() => onCopy(u.url, id)}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg border border-white/60 dark:border-white/10 ${glassPanel} px-2.5 py-1.5 text-left transition hover:border-indigo-300 dark:hover:border-indigo-500/40`}
+                  title={`Copy ${u.url}`}
+                >
+                  <span className="w-16 shrink-0">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{u.label}</span>
+                    <span className="block truncate text-[10px] text-slate-400 dark:text-slate-500">{u.hint}</span>
+                  </span>
+                  <code className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{u.url}</code>
+                  <span className={`shrink-0 text-[11px] font-semibold ${copied ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100'}`}>
+                    {copied ? 'Copied ✓' : 'Copy'}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {asset.attribution && (
+        <p className={`w-full text-[11px] text-slate-400 dark:text-slate-500 ${glassPanel} p-2`}>
+          {asset.attribution.provider} · {asset.attribution.author} · {asset.attribution.license}
+        </p>
       )}
     </div>
   );

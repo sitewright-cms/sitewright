@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSwImage, resolveRenderImage, mediaAssetId } from '../src/image-helper.js';
+import { buildSwImage, resolveRenderImage, mediaAssetId, filenameAlt } from '../src/image-helper.js';
 import { renderTemplate } from '../src/template.js';
 import type { RenderMedia } from '../src/folder.js';
 
@@ -31,6 +31,15 @@ describe('mediaAssetId', () => {
     expect(mediaAssetId('https://cdn.example/x.jpg')).toBeUndefined();
     expect(mediaAssetId('/media/acme')).toBeUndefined(); // no file segment
     expect(mediaAssetId('/media/acme/nodash.jpg')).toBeUndefined(); // flat needs a hyphen
+  });
+});
+
+describe('filenameAlt', () => {
+  it('strips a single trailing extension, keeping dots inside the name', () => {
+    expect(filenameAlt('photo.jpg')).toBe('photo');
+    expect(filenameAlt('my.cool.photo.png')).toBe('my.cool.photo');
+    expect(filenameAlt('Team photo 2024')).toBe('Team photo 2024'); // no extension → unchanged
+    expect(filenameAlt('.htaccess')).toBe('.htaccess'); // leading dot is not an extension
   });
 });
 
@@ -118,6 +127,18 @@ describe('buildSwImage', () => {
 
   it('neutralizes an unsafe url (safeUrl collapses javascript: to "#")', () => {
     expect(buildSwImage('javascript:alert(1)', [img])).toBe('<img src="#" alt="" loading="lazy" decoding="async">');
+  });
+
+  it('falls back to the display FILENAME (extension stripped) for alt when the asset has none', () => {
+    const noAlt: RenderMedia = { ...img, alt: undefined, filename: 'Team photo 2024.jpg' };
+    const html = buildSwImage(noAlt.url, [noAlt]);
+    expect(html).toContain('alt="Team photo 2024"'); // extension dropped, name preserved
+  });
+
+  it('respects an explicit EMPTY alt (decorative) over the filename fallback', () => {
+    const noAlt: RenderMedia = { ...img, alt: undefined, filename: 'hero.jpg' };
+    // An intentional empty alt must survive — the nullish fallback only fires for undefined.
+    expect(buildSwImage(noAlt.url, [noAlt], { alt: '' })).toContain('alt=""');
   });
 
   it('emits a PLAIN <img> for an SVG (vector) — no srcset/?size, keeps intrinsic dims', () => {

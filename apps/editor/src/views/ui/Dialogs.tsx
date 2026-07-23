@@ -19,6 +19,8 @@ export interface PromptOptions {
   initial?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** Optional helper note shown under the field (e.g. how the value is used). */
+  note?: ReactNode;
 }
 
 const dangerButtonSolid =
@@ -132,6 +134,9 @@ function PromptBody({ state, onClose }: { state: PromptState; onClose: () => voi
             autoFocus
           />
         </label>
+        {state.note && (
+          <p className="-mt-2 text-[11px] font-normal leading-relaxed text-slate-500 dark:text-slate-400">{state.note}</p>
+        )}
         <div className="flex justify-end gap-2">
           <button type="button" className={ghostButton} onClick={cancel}>
             Cancel

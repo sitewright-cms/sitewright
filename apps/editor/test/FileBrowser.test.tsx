@@ -186,10 +186,36 @@ describe('FileBrowser (Assets)', () => {
     await waitFor(() => expect(patchMedia).toHaveBeenCalledWith('p', 'file1', { filename: 'flyer.pdf' }));
   });
 
-  it('copies a file → copyMedia into the current folder', async () => {
+  it('copies a file URL to the clipboard (one click, replaces the old duplicate action)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<FileBrowser projectId={project.id} mode="manage" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy brochure.pdf' }));
-    await waitFor(() => expect(copyMedia).toHaveBeenCalledWith('p', 'file1', ''));
+    // The old "Copy" (duplicate) action is gone; the new one copies the URL.
+    expect(screen.queryByRole('button', { name: 'Copy brochure.pdf' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy URL of brochure.pdf' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('/media/p/file1/file/brochure.pdf'));
+    expect(copyMedia).not.toHaveBeenCalled(); // no server-side duplicate
+  });
+
+  it('offers copyable embed URLs (default + original + sizes) in the image preview', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'hero.png' }));
+    const dialog = await screen.findByRole('dialog', { name: 'hero.png' });
+    expect(within(dialog).getByText('Embed URLs')).toBeInTheDocument();
+    // The Original chip copies the raw-source URL.
+    fireEvent.click(within(dialog).getByTitle('Copy /media/p/img1/hero.png?size=original'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('/media/p/img1/hero.png?size=original'));
+  });
+
+  it('the rename dialog explains the name is the alt text (image) and shows the filename helper', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename hero.png' }));
+    await screen.findByLabelText('Display name');
+    expect(screen.getByText('alt text')).toBeInTheDocument();
+    expect(screen.getByText('{{sw-image}}')).toBeInTheDocument();
+    expect(screen.getByText('{{this.filename}}')).toBeInTheDocument();
   });
 
   it('deletes a file only after the confirm dialog', async () => {

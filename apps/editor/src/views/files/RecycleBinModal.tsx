@@ -75,7 +75,7 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
                   <img src={m.url} alt="" className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200 dark:ring-white/10" />
                 ) : (
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500">
-                    <FileTypeIcon filename={m.filename} className="h-5 w-5" />
+                    <FileTypeIcon asset={m} className="h-5 w-5" />
                   </span>
                 )}
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>

@@ -49,6 +49,12 @@ export function mediaAssetId(ref: string): string | undefined {
   return dash > 0 ? seg.slice(0, dash) : undefined;
 }
 
+/** A display filename reduced to alt text: the trailing extension (if any) stripped. */
+export function filenameAlt(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  return dot > 0 ? filename.slice(0, dot) : filename;
+}
+
 /** Resolve a delivery url (or the id inside it) to its project RenderMedia record, if any. */
 export function resolveRenderImage(ref: string, media: readonly RenderMedia[]): RenderMedia | undefined {
   const byUrl = media.find((m) => m.url === ref);
@@ -66,7 +72,10 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   if (!src) return '';
   const base = escapeAttr(src);
   const asset = resolveRenderImage(url, media);
-  const alt = escapeAttr(opts.alt ?? asset?.alt ?? '');
+  // Alt precedence: an explicit `alt` (incl. an intentional empty string) wins, then the asset's
+  // stored alt, then its display FILENAME (extension stripped) — so a descriptively-named file gets
+  // meaningful alt text for free (accessibility & SEO). Only a RESOLVED asset contributes the fallback.
+  const alt = escapeAttr(opts.alt ?? asset?.alt ?? (asset ? filenameAlt(asset.filename) : ''));
   const cls = opts.className ? ` class="${escapeAttr(opts.className)}"` : '';
   const loading = opts.loading === 'eager' ? 'eager' : 'lazy';
   // An eager image is the author's above-the-fold hero → hint the browser it's the LCP candidate (fetch

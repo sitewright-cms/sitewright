@@ -216,6 +216,13 @@ export interface ImageAttrs {
   height?: string;
 }
 
+/** Positive-integer px string (or '' when empty/invalid), capped at the drag-resize max — defense-in-depth so
+ *  an unbounded width/height can never reach an `<img>` attribute regardless of the caller. */
+function clampDim(v?: string): string {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? String(Math.min(n, 4000)) : '';
+}
+
 /** Insert an `<img>` (scheme-sanitized src + optional alt/width/height) at `range` (the caret saved before the
  *  media picker opened) or, failing that, at the current selection / end of the editable. */
 export function insertImage(editable: HTMLElement, opts: ImageAttrs, range?: Range | null): void {
@@ -224,8 +231,10 @@ export function insertImage(editable: HTMLElement, opts: ImageAttrs, range?: Ran
   const img = document.createElement('img');
   img.setAttribute('src', safe);
   img.setAttribute('alt', opts.alt ?? '');
-  if (opts.width) img.setAttribute('width', opts.width);
-  if (opts.height) img.setAttribute('height', opts.height);
+  const iw = clampDim(opts.width);
+  const ih = clampDim(opts.height);
+  if (iw) img.setAttribute('width', iw);
+  if (ih) img.setAttribute('height', ih);
   let r: Range | null = range && editable.contains(range.commonAncestorContainer) ? range : null;
   if (!r) {
     const sel = window.getSelection();
@@ -243,6 +252,20 @@ export function insertImage(editable: HTMLElement, opts: ImageAttrs, range?: Ran
   } else {
     editable.appendChild(img);
   }
+}
+
+/** Update an EXISTING `<img>` in place (double-click-to-edit): scheme-sanitized src + alt, and width/height
+ *  (removed when empty). Used by both toolbars' image-edit flow. */
+export function updateImage(img: HTMLImageElement, opts: ImageAttrs): void {
+  const safe = safeUrl(opts.url, '');
+  if (safe) img.setAttribute('src', safe);
+  img.setAttribute('alt', opts.alt ?? '');
+  const uw = clampDim(opts.width);
+  const uh = clampDim(opts.height);
+  if (uw) img.setAttribute('width', uw);
+  else img.removeAttribute('width');
+  if (uh) img.setAttribute('height', uh);
+  else img.removeAttribute('height');
 }
 
 /** Insert a starter 2×2 table (a header row + a body row) at the caret. Cells are edited in place. */

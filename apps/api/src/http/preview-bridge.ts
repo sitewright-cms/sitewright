@@ -48,6 +48,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *                     { source:'sitewright-preview', type:'pick-media' }                            (rich toolbar → open media picker)
+ *                     { source:'sitewright-preview', type:'edit-media', url, alt, width, height }     (dbl-click img → edit dialog)
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
@@ -56,6 +57,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
  *                     { source:'sitewright-editor', type:'insert-media', url, alt, width, height }  (media dialog → <img>)
+ *                     { source:'sitewright-editor', type:'update-media', url, alt, width, height }  (image-settings → update <img>)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
@@ -200,6 +202,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-tb button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:26px;min-width:26px;padding:0 3px;border-radius:6px;color:#64748b;cursor:pointer}' +
       '.sw-tb button:hover{background:#eef2ff;color:#4338ca}' +
       '.sw-tb button.sw-tb-on{background:#e0e7ff;color:#4338ca}' +
+      '.sw-tb button.sw-tb-active{background:#e0e7ff;color:#4338ca}' + // formatting active for the current selection
+
       '.sw-tb button svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
       '.sw-tb .sw-tb-sep{width:1px;height:15px;margin:0 2px;background:#e2e8f0;flex:0 0 auto}' +
       // Popover (colour/highlight swatch grids · font/size/align menus · link URL input · the overflow "more"
@@ -259,7 +263,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   //     colour/highlight/size/font/align/indent (mirrors apps/editor/src/lib/rich-dom.ts) + semantic tags for
   //     marks/blocks. Single row that COLLAPSES trailing groups into a ⋯ overflow menu, positioned ABOVE the
   //     selection (never covering the text being edited). ---
-  var toolbar = null, tbMore = null, tbMoreItems = [], tbPop = null, tbActiveId = null, tbLastAvail = -1, tbSavedRange = null, tbLinkRange = null;
+  var toolbar = null, tbMore = null, tbMoreItems = [], tbPop = null, tbActiveId = null, tbLastAvail = -1, tbSavedRange = null, tbLinkRange = null, tbEditImg = null;
   function currentRich() {
     var sel = window.getSelection && window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
@@ -357,6 +361,48 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     tbSavedRange = null;
     post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
   }
+  // Double-click a rich-content <img> → ask the editor to open the image dialog pre-filled; the Apply comes
+  // back as 'update-media' and tbUpdateImage rewrites this same <img>.
+  function tbImgDblClick(e) {
+    if (!editing) return;
+    var t = e.target;
+    // Skip an image inside a dataset-loop row — that content is edited via the row's entry editor (a nested
+    // data-sw-html key would be a single shared key), matching setEditing's inEntry skip for every other leaf.
+    if (t && t.tagName === 'IMG' && closestAttr(t, 'data-sw-html') && !(t.closest && t.closest('[data-sw-entry]'))) {
+      e.preventDefault(); tbEditImg = t;
+      post({ type: 'edit-media', url: t.getAttribute('src') || '', alt: t.getAttribute('alt') || '', width: t.getAttribute('width') || '', height: t.getAttribute('height') || '' });
+    }
+  }
+  function tbUpdateImage(url, alt, width, height) {
+    if (!tbEditImg) return;
+    var safe = tbSafeHref(url); if (safe) tbEditImg.setAttribute('src', safe);
+    tbEditImg.setAttribute('alt', typeof alt === 'string' ? alt : '');
+    var w = tbDim(width), h = tbDim(height);
+    if (w) tbEditImg.setAttribute('width', w); else tbEditImg.removeAttribute('width');
+    if (h) tbEditImg.setAttribute('height', h); else tbEditImg.removeAttribute('height');
+    var rich = closestAttr(tbEditImg, 'data-sw-html');
+    if (rich) post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+    tbEditImg = null;
+  }
+
+  // ---- Toolbar active-state: reflect the selection's formatting so an active mark can be clicked to reverse it.
+  var TB_STATE = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strikeThrough', superscript: 'superscript', subscript: 'subscript', bulletList: 'insertUnorderedList', orderedList: 'insertOrderedList' };
+  function tbBlockActive() { try { return String(document.queryCommandValue('formatBlock') || '').toLowerCase(); } catch (e) { return ''; } }
+  function tbUpdateActive() {
+    if (!toolbar) return;
+    var block = tbBlockActive(), bs = toolbar.querySelectorAll('button[data-tbid]');
+    for (var i = 0; i < bs.length; i++) {
+      var id = bs[i].getAttribute('data-tbid'), on = false;
+      try {
+        if (TB_STATE[id]) on = document.queryCommandState(TB_STATE[id]);
+        else if (id === 'h2') on = block === 'h2';
+        else if (id === 'h3') on = block === 'h3';
+        else if (id === 'quote') on = block === 'blockquote';
+        else if (id === 'paragraph') on = block === 'p' || block === 'div';
+      } catch (e) {}
+      bs[i].classList.toggle('sw-tb-active', !!on);
+    }
+  }
 
   // ---- Inline image resize (aspect-locked corner drag on a rich-content <img>; writes width/height attrs) ----
   var rzImg = null, rzBox = null, rzDrag = null;
@@ -408,7 +454,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function rzClick(e) {
     if (!editing) return;
     var t = e.target;
-    if (t && t.tagName === 'IMG' && closestAttr(t, 'data-sw-html')) rzSelect(t);
+    if (t && t.tagName === 'IMG' && closestAttr(t, 'data-sw-html') && !(t.closest && t.closest('[data-sw-entry]'))) rzSelect(t);
     else if (!(rzBox && rzBox.contains(t))) rzHide();
   }
   function tbColorGroup() { var g = RTB.colorClasses.slice(); for (var i = 0; i < ciColors.length; i++) g.push(ciColors[i].cls); return g; }
@@ -445,7 +491,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       p.style.top = top + 'px'; p.style.left = left + 'px';
     });
   }
-  function tbFinish() { tbEmit(); tbClosePop(); positionToolbar(); }
+  function tbFinish() { tbEmit(); tbClosePop(); positionToolbar(); tbUpdateActive(); }
   function tbOpenSwatch(rich, cmd, anchor) {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
     var isColor = cmd.kind === 'color';
@@ -516,7 +562,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function tbRun(cmd, anchor) {
     var rich = currentRich(); if (!rich) return;
     if (cmd.kind === 'source') { post({ type: 'edit-html-source', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML }); tbClosePop(); hideToolbar(); return; }
-    if (cmd.kind === 'exec') { try { document.execCommand(cmd.cmd, false, cmd.arg); } catch (e) {} tbFinish(); return; }
+    if (cmd.kind === 'exec') {
+      // Clicking the ACTIVE heading/quote reverts to a paragraph; marks/lists toggle natively.
+      if (cmd.cmd === 'formatBlock' && cmd.arg && cmd.arg !== 'p' && tbBlockActive() === cmd.arg) { try { document.execCommand('formatBlock', false, 'p'); } catch (e) {} }
+      else { try { document.execCommand(cmd.cmd, false, cmd.arg); } catch (e) {} }
+      tbFinish(); return;
+    }
     if (cmd.kind === 'indent') { tbStepBlockIndent(rich, cmd.cmd === '-1' ? -1 : 1); tbFinish(); return; }
     if (cmd.kind === 'table') { tbInsertTable(); tbFinish(); return; }
     if (cmd.kind === 'media') { tbPickMedia(); return; } // hands off to the editor's media picker
@@ -585,7 +636,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     tb.style.top = top + 'px'; tb.style.left = left + 'px';
   }
   function hideToolbar() { if (toolbar) toolbar.style.display = 'none'; tbClosePop(); }
-  function onSelChange() { if (editing) positionToolbar(); }
+  function onSelChange() { if (editing) { positionToolbar(); tbUpdateActive(); } }
 
   // --- Link URL(+text) popover ([data-sw-href] anchors) ---
   var pop = null, popAnchor = null;
@@ -1079,6 +1130,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
       document.addEventListener('click', rzClick, true); // image-resize handle select / dismiss
+      document.addEventListener('dblclick', tbImgDblClick, true); // double-click an image → edit dialog
       // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
       ensureOverlay();
       document.addEventListener('mousemove', onOvMove, true);
@@ -1089,6 +1141,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
       document.removeEventListener('click', rzClick, true);
+      document.removeEventListener('dblclick', tbImgDblClick, true);
       document.removeEventListener('mousemove', rzMove, true); // clear any in-flight drag listeners
       document.removeEventListener('mouseup', rzEnd, true);
       document.removeEventListener('mousemove', onOvMove, true);
@@ -1120,6 +1173,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       ciFonts = Array.isArray(d.fonts) ? d.fonts.filter(function (c) { return c && typeof c.cls === 'string'; }) : [];
     }
     else if (d.type === 'insert-media' && typeof d.url === 'string') tbInsertImage(d.url, d.alt, d.width, d.height); // media dialog → <img> at the saved caret
+    else if (d.type === 'update-media' && typeof d.url === 'string') tbUpdateImage(d.url, d.alt, d.width, d.height); // image-settings dialog → update the double-clicked <img>
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

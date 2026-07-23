@@ -49,6 +49,7 @@ import {
   applyLink,
   currentAnchor,
   insertImage,
+  updateImage,
   insertStarterTable,
 } from '../../lib/rich-dom';
 import { ImageDialog } from '../files/ImageDialog';
@@ -123,8 +124,11 @@ export function RichTextField({
   const [linkUrl, setLinkUrl] = useState('');
   const [linkNewTab, setLinkNewTab] = useState(false);
   const [picking, setPicking] = useState(false); // media picker open
+  const [editImg, setEditImg] = useState<HTMLImageElement | null>(null); // the <img> being edited (double-click)
+  const [active, setActive] = useState<ReadonlySet<string>>(new Set()); // toolbar commands active for the selection
   // The caret captured before the media picker modal opened (it blurs the editable), restored on insert.
   const savedRangeRef = useRef<Range | null>(null);
+  const resizeCtl = useRef<{ hide: () => void } | null>(null); // dismiss the image-resize overlay (imperative)
   // The caret captured when the LINK popover opened — restored before Apply, because focusing the popover's
   // URL input moves the selection OUT of the editable (else edit-in-place/unlink/wrap would misfire).
   const savedLinkRangeRef = useRef<Range | null>(null);
@@ -164,7 +168,23 @@ export function RichTextField({
   useEffect(() => {
     const el = ref.current;
     if (!el || source) return;
-    return attachImageResize(el, () => emitRef.current());
+    return attachImageResize(el, () => emitRef.current(), resizeCtl);
+  }, [source]);
+
+  // Reflect the selection's formatting in the toolbar (Bold shows active over bold text, etc.) so an active
+  // mark can be clicked to reverse it (execCommand toggles). Recomputed as the selection moves; CLEARED when
+  // the selection leaves this field (else a sibling field / source-toggle leaves a stale highlight).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || source) return;
+    setActive(new Set()); // reset on (re)entering WYSIWYG until a selection lands
+    const onSel = () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer)) setActive(computeActive());
+      else setActive((prev) => (prev.size ? new Set() : prev));
+    };
+    document.addEventListener('selectionchange', onSel);
+    return () => document.removeEventListener('selectionchange', onSel);
   }, [source]);
 
   // Group class-sets for the toggle math: the STANDARD palette classes ∪ the project's CI classes, so a
@@ -177,7 +197,11 @@ export function RichTextField({
     if (!el) return;
     switch (cmd.kind) {
       case 'exec':
-        if (cmd.cmd) runExec(el, cmd.cmd, cmd.arg);
+        if (cmd.cmd === 'formatBlock' && cmd.arg && cmd.arg !== 'p' && blockIs(cmd.arg)) {
+          runExec(el, 'formatBlock', 'p'); // clicking the active heading/quote reverts to a paragraph
+        } else if (cmd.cmd) {
+          runExec(el, cmd.cmd, cmd.arg); // marks/lists toggle natively (bold on bold text removes it)
+        }
         break;
       case 'indent':
         stepBlockIndent(el, cmd.cmd === '-1' ? -1 : 1);
@@ -221,6 +245,7 @@ export function RichTextField({
     }
     setMenu(null);
     emit();
+    setActive(computeActive()); // refresh the active-state after a toggle
   };
 
   // Apply a chosen swatch/class then emit + close the popover.
@@ -263,7 +288,7 @@ export function RichTextField({
           c === null ? (
             <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
           ) : c.id === 'source' || (c.id === 'media' && !projectId) ? null : (
-            <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id} onClick={() => run(c)} />
+            <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id || active.has(c.id)} onClick={() => run(c)} />
           ),
         )}
       <button
@@ -372,6 +397,14 @@ export function RichTextField({
           className="sw-rich-edit min-h-24 max-w-none px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none"
           onInput={emit}
           onBlur={emit}
+          onDoubleClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (t.tagName === 'IMG' && projectId) {
+              e.preventDefault();
+              resizeCtl.current?.hide(); // dismiss the resize handles before the edit dialog opens
+              setEditImg(t as HTMLImageElement); // double-click an image → edit its url/alt/size
+            }
+          }}
         />
       )}
       {picking && projectId && (
@@ -392,8 +425,62 @@ export function RichTextField({
           }}
         />
       )}
+      {editImg && projectId && (
+        <ImageDialog
+          projectId={projectId}
+          initial={{
+            url: editImg.getAttribute('src') ?? '',
+            alt: editImg.getAttribute('alt') ?? '',
+            width: editImg.getAttribute('width') ?? '',
+            height: editImg.getAttribute('height') ?? '',
+          }}
+          onInsert={(img) => {
+            updateImage(editImg, img); // update the double-clicked image in place
+            emit();
+            setEditImg(null);
+          }}
+          onClose={() => setEditImg(null)}
+        />
+      )}
     </div>
   );
+}
+
+const EXEC_STATE: Record<string, string> = {
+  bold: 'bold',
+  italic: 'italic',
+  underline: 'underline',
+  strike: 'strikeThrough',
+  superscript: 'superscript',
+  subscript: 'subscript',
+  bulletList: 'insertUnorderedList',
+  orderedList: 'insertOrderedList',
+};
+
+/** True when the current selection's enclosing block is `tag` (h2/h3/blockquote/p). */
+function blockIs(tag: string): boolean {
+  try {
+    return String(document.queryCommandValue('formatBlock') || '').toLowerCase() === tag;
+  } catch {
+    return false;
+  }
+}
+
+/** The set of toolbar command ids currently ACTIVE for the selection (marks/lists via queryCommandState,
+ *  blocks via queryCommandValue('formatBlock')) — drives the toolbar's on/off highlighting. */
+function computeActive(): Set<string> {
+  const s = new Set<string>();
+  try {
+    for (const [id, cmd] of Object.entries(EXEC_STATE)) if (document.queryCommandState(cmd)) s.add(id);
+    const block = String(document.queryCommandValue('formatBlock') || '').toLowerCase();
+    if (block === 'h2') s.add('h2');
+    else if (block === 'h3') s.add('h3');
+    else if (block === 'blockquote') s.add('quote');
+    else if (block === 'p' || block === 'div') s.add('paragraph');
+  } catch {
+    /* execCommand/query unsupported (e.g. jsdom) */
+  }
+  return s;
 }
 
 function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean; onClick: () => void }) {

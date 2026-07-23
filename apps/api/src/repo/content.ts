@@ -410,6 +410,22 @@ export class ContentRepository {
     this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
   }
 
+  /**
+   * PERMANENTLY delete EVERY soft-deleted media asset (empty the Recycle Bin) in one statement. The
+   * same `isNotNull(deletedAt)` guard as {@link purgeMedia} means a LIVE asset can NEVER be reached —
+   * only binned rows are dropped. Returns the purged asset ids so the caller can remove each binary
+   * (that needs the project slug). Emits a `delete` event per purged asset so open editors refresh.
+   */
+  async purgeAllDeletedMedia(ctx: ProjectContext): Promise<string[]> {
+    const res = await this.db
+      .delete(content)
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), isNotNull(content.deletedAt)))
+      .returning({ entityId: content.entityId });
+    const ids = res.map((r) => r.entityId as string);
+    for (const id of ids) this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
+    return ids;
+  }
+
   /** Assembles the full project as an on-disk-format bundle (the export side of D11). */
   async exportBundle(ctx: ProjectContext, project: ProjectIdentity): Promise<ExportBundle> {
     const settings = (await this.list(ctx, 'settings'))[0] as Settings | undefined;

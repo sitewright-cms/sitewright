@@ -95,6 +95,27 @@ describe('media recycle bin', () => {
     expect(hasBinary(mediaRoot, slug, id)).toBe(false);
   });
 
+  it('empty the recycle bin purges every binned asset (rows + binaries) but leaves live assets', async () => {
+    const { c, base, slug } = await setup();
+    const cookies = { sw_session: c };
+    const a = await upload(base, c);
+    const b = await upload(base, c);
+    const live = await upload(base, c); // never binned — must survive
+    await app.inject({ method: 'DELETE', url: `${base}/media/${a}`, cookies });
+    await app.inject({ method: 'DELETE', url: `${base}/media/${b}`, cookies });
+
+    const res = await app.inject({ method: 'DELETE', url: `${base}/media/deleted`, cookies });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { purged: number }).purged).toBe(2);
+    // bin empty, both binaries gone.
+    expect((((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: unknown[] }).items).toHaveLength(0);
+    expect(hasBinary(mediaRoot, slug, a)).toBe(false);
+    expect(hasBinary(mediaRoot, slug, b)).toBe(false);
+    // the LIVE asset + its binary are untouched (empty-bin is bin-only).
+    expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: Array<{ id: string }> }).items.some((x) => x.id === live)).toBe(true);
+    expect(hasBinary(mediaRoot, slug, live)).toBe(true);
+  });
+
   it('purge refuses a LIVE (never-binned) asset — the bin + recovery window cannot be skipped', async () => {
     const { c, base, slug } = await setup();
     const cookies = { sw_session: c };

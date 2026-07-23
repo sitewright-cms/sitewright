@@ -1104,6 +1104,9 @@ export const api = {
     request<void>('POST', `/projects/${projectId}/media/${id}/restore`),
   purgeMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}/purge`),
+  /** Empty the Recycle Bin — permanently purge EVERY soft-deleted asset. Returns how many were removed. */
+  emptyRecycleBin: (projectId: string) =>
+    request<{ purged: number }>('DELETE', `/projects/${projectId}/media/deleted`),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */
   patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
     request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),

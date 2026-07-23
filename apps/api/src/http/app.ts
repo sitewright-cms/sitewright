@@ -3855,6 +3855,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.code(204).send();
     });
 
+    // Empty the whole Recycle Bin: purge EVERY soft-deleted asset (DB rows + binaries) at once. Same
+    // `content:delete` gate + bin-only guard as the single purge; a leaked binary (fs removal failure)
+    // is harmless + GC-able. Lower rate limit — it's a heavy, deliberate action.
+    app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/deleted', { config: rl(10) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:delete');
+      const ids = await contentRepo.purgeAllDeletedMedia(ctx);
+      mediaRecordCache.clear();
+      for (const id of ids) {
+        try {
+          await storage.remove(project.slug, id);
+        } catch (err) {
+          app.log.error({ err, id }, 'media binary removal failed after emptying the Recycle Bin');
+        }
+      }
+      return reply.send({ purged: ids.length });
+    });
+
     // --- folder + asset OPERATIONS (rename/move/copy/delete) ---------------------
     // Folders are persisted as `mediafolder` records so an EMPTY folder survives a reload;
     // non-root operations cascade to both the folder records and the assets filed under them.

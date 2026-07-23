@@ -21,7 +21,6 @@ const twoSlides =
   '</div>';
 
 const root = (): HTMLElement => document.querySelector('[data-sw-block="Carousel"]') as HTMLElement;
-const track = (): HTMLElement => root().querySelector('[data-sw-part="track"]') as HTMLElement;
 
 describe('Carousel runtime CLS guard (jsdom)', () => {
   beforeEach(() => {
@@ -42,7 +41,7 @@ describe('Carousel runtime CLS guard (jsdom)', () => {
     g.IntersectionObserver = InertObserver;
     if (!g.requestAnimationFrame) g.requestAnimationFrame = (cb: FrameRequestCallback) => setTimeout(() => cb(0), 16) as unknown as number;
     if (!g.cancelAnimationFrame) g.cancelAnimationFrame = (id: number) => clearTimeout(id);
-    if (!g.DOMMatrix) g.DOMMatrix = class { m41 = 0; m42 = 0; constructor(_?: string) {} };
+    if (!g.DOMMatrix) g.DOMMatrix = class { m41 = 0; m42 = 0; constructor() {} };
     if (!window.matchMedia) window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
   });
   afterEach(() => {

@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LibraryPanel } from '../src/views/library/LibraryPanel';
 
 beforeEach(() => {
   // jsdom has no clipboard by default.
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals(); // undo any per-test fetch stub (the API-driven icon gallery)
 });
 
 describe('LibraryPanel', () => {
@@ -76,32 +80,41 @@ describe('LibraryPanel', () => {
     expect(fireEvent.click(link)).toBe(false);
   });
 
-  it('lazy-loads the whole icon pack and copies an icon snippet on click', async () => {
+  it('loads the API-driven icon pack, searches by name, and copies an icon snippet on click', async () => {
+    // The Phosphor icon gallery is API-driven: it fetches the name list from /authoring/icons/names
+    // and renders each visible glyph via /authoring/icons/render. jsdom has no server, so mock both.
+    const NAMES = ['arrow-right', 'arrow-left', 'image', 'star', 'house'];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/authoring/icons/names')) {
+          return { ok: true, json: async () => ({ names: NAMES, weights: ['fill', 'regular', 'bold'] }) };
+        }
+        if (url.includes('/authoring/icons/render')) {
+          const requested = decodeURIComponent(url.split('names=')[1] ?? '').split(',');
+          const svgs = Object.fromEntries(requested.map((n) => [n, `<svg data-icon="${n}"></svg>`]));
+          return { ok: true, json: async () => ({ svgs }) };
+        }
+        return { ok: false, json: async () => ({}) };
+      }),
+    );
+
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /^Icons/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'Icons' });
+    // The Phosphor icon gallery's modal is titled "Icons — Phosphor" (section label + provider), so
+    // match by prefix. Give it a generous timeout — the gallery is code-split + fetches on mount.
+    const dialog = await screen.findByRole('dialog', { name: /^Icons/ }, { timeout: 15000 });
 
-    // Narrow via search BEFORE the (large) pack finishes loading: the search input is
-    // always present (only the grid shows a skeleton), so the grid renders the tiny
-    // filtered set instead of all 360 capped icons.
-    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'arrow-right' } });
-
-    // Icons arrive via a code-split `import('./catalog-icons')` that pulls in the whole
-    // 1865-entry icon module — vitest's first transform+eval of it under CI's parallel
-    // coverage load can take several seconds, well past findBy's default 1s poll. Give this
-    // first post-import query a generous timeout (the per-test timeout below is raised to
-    // match); subsequent queries hit the now-warm module cache and resolve instantly.
-    const iconBtn = await within(dialog).findByRole(
-      'button',
-      { name: 'Copy arrow-right icon snippet' },
-      { timeout: 15000 },
-    );
+    // The search filters the name list (substring, incl. dash→space) → the grid shows the tiny match.
+    fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'arrow-right' } });
+    const iconBtn = await within(dialog).findByRole('button', { name: 'Copy arrow-right icon snippet' }, { timeout: 15000 });
     fireEvent.click(iconBtn);
+    // Default weight is `fill` → the snippet carries no weight suffix.
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "arrow-right" "h-5 w-5"}}');
 
-    // Search by Lucide keyword tags too — "photo" finds "image".
-    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'photo' } });
+    // Re-searching narrows to a different icon and drops the previous match.
+    fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'image' } });
     expect(await within(dialog).findByRole('button', { name: 'Copy image icon snippet' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
   }, 20000);
@@ -110,7 +123,9 @@ describe('LibraryPanel', () => {
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
     fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'Brand icons' });
+    // Same lazy-Suspense caveat as the Icons dialog: if THIS test is the first to trigger the
+    // code-split `import('./catalog-icons')`, the dialog can take several seconds to mount under CI.
+    const dialog = await screen.findByRole('dialog', { name: 'Brand icons' }, { timeout: 15000 });
     // The grid lazy-loads a page at a time (50) and appends more on scroll, so a deep entry like
     // GitHub isn't in the initial render — search to surface it (jsdom can't drive real scroll).
     // Same code-split module as the icon pack — generous timeout in case this test is the

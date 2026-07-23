@@ -10,6 +10,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     include: ['test/**/*.test.{ts,tsx}'],
+    // Several UI tests await a lazy `import()` of the (large) icon chunk or an async API render. The
+    // default 5s test timeout is tighter than their own waitFor/findBy polls and, under the full
+    // parallel `turbo run test` load (many vitest workers oversubscribing CPU), that import can be
+    // starved past 5s → a spurious "Test timed out in 5000ms". A generous global ceiling (above the
+    // longest in-test waitFor/findBy poll) makes the suite load-tolerant without slowing the fast
+    // path — quick tests still finish quickly; only the failure ceiling rises.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       // Gate the pure logic (API client + dataset/preview helpers). UI flows are covered

@@ -34,8 +34,9 @@ describe('generateThumbnail', () => {
     expect(r.format).toBe('avif');
     expect(r.width).toBe(800);
     const meta = await sharp(r.buffer).metadata();
-    // libvips reports AVIF as the HEIF container format.
-    expect(meta.format === 'heif' || meta.format === 'avif').toBe(true);
+    // libvips reports AVIF as the HEIF container format (sharp 0.35's metadata format union no longer
+    // lists 'avif', so match against both rather than a === that the types flag as impossible).
+    expect(['heif', 'avif']).toContain(meta.format);
     expect(meta.width).toBe(800);
   });
 

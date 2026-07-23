@@ -122,7 +122,7 @@ describe('GET /projects/:id/export.zip', () => {
   });
 
   it('ships the retained original but SKIPS the on-demand thumbnail cache (post-#590)', async () => {
-    const { t, projectId, slug } = await setup('thumb@test.local', 'thumbsite');
+    const { t, projectId } = await setup('thumb@test.local', 'thumbsite');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 

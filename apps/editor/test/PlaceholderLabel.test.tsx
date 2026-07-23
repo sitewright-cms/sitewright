@@ -6,8 +6,9 @@ describe('PlaceholderLabel', () => {
   it('renders the real icon + readable text, never the raw HTML/mustache markup', async () => {
     const { container } = render(<PlaceholderLabel name={'<span class="x">{{sw-icon "sparkles"}} Free site audit</span>'} />);
     // Once the icon maps load, the {{sw-icon}} token renders to an actual inline <svg> (not escaped markup).
-    // (Generous timeout: the first lazy-import of the large icon chunk can be slow in the test env.)
-    await waitFor(() => expect(container.querySelector('.sw-ph-label svg')).not.toBeNull(), { timeout: 8000 });
+    // Generous timeout: the first lazy-import of the large icon chunk can be slow under the full parallel
+    // `turbo run test` load (kept below the suite's 20s testTimeout so the poll fires, not the test cap).
+    await waitFor(() => expect(container.querySelector('.sw-ph-label svg')).not.toBeNull(), { timeout: 15000 });
     // The clean text is shown alongside the icon.
     expect(screen.getByText(/Free site audit/)).toBeInTheDocument();
     // The raw template markup is NOT dumped verbatim.

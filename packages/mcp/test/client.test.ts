@@ -404,3 +404,68 @@ describe('SitewrightClient', () => {
     expect(calls[2]!.input).toBe('https://cms.test/projects/p1/compare-regions/about%20us?regions=header');
   });
 });
+
+// Optional-argument query/body branches — each method's arg-present AND arg-absent path.
+describe('SitewrightClient — optional-argument branches', () => {
+  const ok = (input: string) =>
+    input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"item":{},"items":[]}' };
+
+  it('appends ?dataset= for an entry-scoped route only when a dataset is given', async () => {
+    const { client, calls } = await introspected(ok);
+    await client.listContent('entry', 'blog');
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/entry?dataset=blog');
+    await client.listContent('page');
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/page'); // no dataset → no suffix
+  });
+
+  it('adds ?screenshot=1 without &viewports when viewports is omitted', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"html":"<x>","token":"t"}' },
+    );
+    await client.preview({ id: 'home' }, { screenshot: true });
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/preview?screenshot=1');
+  });
+
+  it('forwards formFactor to the pagespeed audit only when supplied', async () => {
+    const { client, calls } = await introspected(ok);
+    await client.pagespeedAudit('home');
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/pagespeed-audit/home');
+    await client.pagespeedAudit('home', 'desktop');
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/pagespeed-audit/home?formFactor=desktop');
+  });
+
+  it('omits alt from the stock-import body when no alt is given', async () => {
+    const { client, calls } = await introspected(ok);
+    await client.importStock('openverse', 'ov1');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1' }); // no alt key
+  });
+
+  it('includes foundation in the import-website body only when passed', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{}' },
+    );
+    await client.importWebsite('https://x.test');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // no foundation key
+    await client.importWebsite('https://x.test', true);
+    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true });
+  });
+
+  it('folds non-empty zod formErrors into the thrown error, and stays clean when there are none', async () => {
+    // formErrors present → appended to the message.
+    const withForm = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: 'invalid', details: { formErrors: ['title is required'] } }) },
+    );
+    await expect(withForm.client.listContent('page')).rejects.toThrow(/title is required/);
+
+    // details present but empty → no trailing " — …" fragment.
+    const empty = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: 'nope', details: {} }) },
+    );
+    await expect(empty.client.listContent('page')).rejects.toThrow(SitewrightApiError);
+    await expect(empty.client.listContent('page')).rejects.not.toThrow(/ — /);
+  });
+});

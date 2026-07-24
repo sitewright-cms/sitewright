@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Boxes, FileCode2, Layers, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
+import { Tabs, type TabDef } from '../ui/Tabs';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
-import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
+import { LIBRARY_SECTIONS, type LibraryItem, type LibrarySection } from './catalog';
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
@@ -34,134 +36,205 @@ function previewHtml(example: string): string {
   return example.replace(/\{\{[^{}]*\}\}/g, 'Example');
 }
 
+// Section blurbs live in the catalog (single source, drift-tested) — reused by the gallery tabs +
+// the DaisyUI card so the drawer never restates them.
+const ICONS_SECTION = LIBRARY_SECTIONS.find((s) => s.category === 'icons')!;
+const BRAND_SECTION = LIBRARY_SECTIONS.find((s) => s.category === 'brand')!;
+const FLAGS_SECTION = LIBRARY_SECTIONS.find((s) => s.category === 'flags')!;
+const DAISY_SECTION = LIBRARY_SECTIONS.find((s) => s.category === 'daisyui')!;
+
+/** One accent per drawer group — consistent color that maps to MEANING, not a per-item rainbow.
+ *  Classes must be literal so Tailwind v4 emits them (same rule as SidePanel's TAB_HOVER_PAD). */
+type Accent = 'indigo' | 'violet' | 'amber';
+const ACCENT: Record<Accent, { tile: string; head: string }> = {
+  indigo: { tile: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300', head: 'text-indigo-500 dark:text-indigo-300/70' },
+  violet: { tile: 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300', head: 'text-violet-500 dark:text-violet-300/70' },
+  amber: { tile: 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300', head: 'text-amber-500 dark:text-amber-300/70' },
+};
+
+interface LibraryCardDef {
+  key: string;
+  icon: ReactNode;
+  title: string;
+  blurb: string;
+  onOpen: () => void;
+}
+
+/** One drawer entry — a large accent-tinted icon tile + title + blurb. Calm body; color = its group. */
+function LibraryCard({ card, accent }: { card: LibraryCardDef; accent: Accent }) {
+  return (
+    <button
+      onClick={card.onOpen}
+      className={`waves-effect ${glassPanel} flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white dark:hover:bg-white/10`}
+    >
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${ACCENT[accent].tile}`} aria-hidden>
+        {card.icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-slate-700 dark:text-slate-200">{card.title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-slate-400 dark:text-slate-500">{card.blurb}</span>
+      </span>
+    </button>
+  );
+}
+
 /**
- * The project-level Library reference: a LEFT-edge {@link SidePanel} that expands on hover. Each
- * section title is a button that opens a searchable gallery modal — Icons (lazy-loaded, the whole
- * pack), Animation, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
- * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
+ * The project-level System Library: a LEFT-edge {@link SidePanel} drawer, organised into three
+ * usefulness-sorted groups (Reference · Assets · Builders & Studios), each with a single accent color
+ * and a large icon per entry. Every card opens a searchable gallery / builder modal — all read-only;
+ * it never mutates the project. The modals render inside the panel, so they elevate above it.
  */
 export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
-  const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
+  const [daisyOpen, setDaisyOpen] = useState(false);
+  const [iconsOpen, setIconsOpen] = useState(false);
+  const [fontsOpen, setFontsOpen] = useState(false);
   const [bgOpen, setBgOpen] = useState(false);
   const [btnOpen, setBtnOpen] = useState(false);
   const [pxOpen, setPxOpen] = useState(false);
   const [svgOpen, setSvgOpen] = useState(false);
-  const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
-  // The first-party SiteWright components guide — a tab-based reference (one tab per component),
-  // rendered like the Template reference. Shown immediately before the DaisyUI components entry.
-  const swComponentsButton = (
-    <button
-      key="sw-components"
-      onClick={() => setSwOpen(true)}
-      className="waves-effect rounded-xl border border-emerald-200/70 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 dark:from-emerald-500/10 to-teal-50 dark:to-teal-500/10 px-3 py-2.5 text-left transition hover:from-emerald-100 dark:hover:from-emerald-500/15 hover:to-teal-100 dark:hover:to-teal-500/15"
-    >
-      <span className="block text-sm font-bold text-emerald-800 dark:text-emerald-400">SiteWright Components</span>
-      <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80 dark:text-emerald-400">
-        First-party interactive components (data-sw-component) — usage & examples.
-      </span>
-    </button>
-  );
+  const groups: { label: string; accent: Accent; cards: LibraryCardDef[] }[] = [
+    {
+      label: 'Reference',
+      accent: 'indigo',
+      cards: [
+        {
+          key: 'template',
+          icon: <FileCode2 className="h-5 w-5" />,
+          title: 'Template reference',
+          blurb: 'Handlebars helpers, data-sw-* directives, bindings & loop variables.',
+          onOpen: () => setRefOpen(true),
+        },
+        {
+          key: 'sw-components',
+          icon: <Boxes className="h-5 w-5" />,
+          title: 'SiteWright Components',
+          blurb: 'First-party components + scroll/parallax/ripple effects (data-sw-*) — usage & examples.',
+          onOpen: () => setSwOpen(true),
+        },
+        {
+          key: 'daisyui',
+          icon: <Palette className="h-5 w-5" />,
+          title: 'DaisyUI components',
+          blurb: 'Brand-themed component classes (Tailwind + DaisyUI), with live previews.',
+          onOpen: () => setDaisyOpen(true),
+        },
+      ],
+    },
+    {
+      label: 'Assets',
+      accent: 'amber',
+      cards: [
+        {
+          key: 'icons',
+          icon: <Shapes className="h-5 w-5" />,
+          title: 'Icons & flags',
+          blurb: 'Phosphor icons, brand logos & country flags — search & copy the snippet.',
+          onOpen: () => setIconsOpen(true),
+        },
+        {
+          key: 'fonts',
+          icon: <Type className="h-5 w-5" />,
+          title: 'Google Fonts',
+          blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography.',
+          onOpen: () => setFontsOpen(true),
+        },
+      ],
+    },
+    {
+      label: 'Builders & Studios',
+      accent: 'violet',
+      cards: [
+        {
+          key: 'backgrounds',
+          icon: <Sparkles className="h-5 w-5" />,
+          title: 'Animated backgrounds',
+          blurb: 'WebGL background presets, themed by your CI colors — preview & copy the markup.',
+          onOpen: () => setBgOpen(true),
+        },
+        {
+          key: 'button',
+          icon: <MousePointerClick className="h-5 w-5" />,
+          title: 'Button builder',
+          blurb: 'Compose a button (effect, accent, shape) + effects lab — preview & copy the markup.',
+          onOpen: () => setBtnOpen(true),
+        },
+        {
+          key: 'parallax',
+          icon: <Layers className="h-5 w-5" />,
+          title: 'Parallax builder',
+          blurb: 'Scroll-linked depth, fade, scale & blur — compose, scroll the preview & copy.',
+          onOpen: () => setPxOpen(true),
+        },
+        {
+          key: 'svg',
+          icon: <Spline className="h-5 w-5" />,
+          title: 'SVG animation studio',
+          blurb: 'Import an SVG → animate each element (draw-on / fade / zoom / flip / reveal) → export.',
+          onOpen: () => setSvgOpen(true),
+        },
+      ],
+    },
+  ];
 
   return (
     <SidePanel side="left" label="System Library" icon={<LibraryIcon />}>
-      <nav className="flex flex-col gap-1.5 p-3">
-        {/* The template/directive reference — the author's guide to the code-first surface. */}
-        <button
-          onClick={() => setRefOpen(true)}
-          className="waves-effect rounded-xl border border-indigo-200/70 dark:border-indigo-500/20 bg-gradient-to-br from-indigo-50 dark:from-indigo-500/10 to-sky-50 dark:to-sky-500/10 px-3 py-2.5 text-left transition hover:from-indigo-100 dark:hover:from-indigo-500/15 hover:to-sky-100 dark:hover:to-sky-500/15"
-        >
-          <span className="block text-sm font-bold text-indigo-800 dark:text-indigo-400">Template reference</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-indigo-500/80 dark:text-indigo-300">
-            Handlebars helpers, data-sw-* directives, bindings & loop variables.
-          </span>
-        </button>
-
-        {/* The animated-background preset picker — live WebGL previews; copies data-sw-component="shader-bg" markup. */}
-        <button
-          onClick={() => setBgOpen(true)}
-          className="waves-effect rounded-xl border border-fuchsia-200/70 dark:border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-50 dark:from-fuchsia-500/10 to-violet-50 dark:to-violet-500/10 px-3 py-2.5 text-left transition hover:from-fuchsia-100 dark:hover:from-fuchsia-500/15 hover:to-violet-100 dark:hover:to-violet-500/15"
-        >
-          <span className="block text-sm font-bold text-fuchsia-800 dark:text-fuchsia-400">Animated backgrounds</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-fuchsia-500/80 dark:text-fuchsia-300">
-            WebGL background presets, themed by your CI colors — preview & copy the markup.
-          </span>
-        </button>
-
-        {/* The Button builder + effects lab — compose a button (face/effect/accent/shape), preview it live
-            with your CI colors, and copy the <button class="…"> markup. */}
-        <button
-          onClick={() => setBtnOpen(true)}
-          className="waves-effect rounded-xl border border-amber-200/70 dark:border-amber-500/20 bg-gradient-to-br from-amber-50 dark:from-amber-500/10 to-orange-50 dark:to-orange-500/10 px-3 py-2.5 text-left transition hover:from-amber-100 dark:hover:from-amber-500/15 hover:to-orange-100 dark:hover:to-orange-500/15"
-        >
-          <span className="block text-sm font-bold text-amber-800 dark:text-amber-400">Button builder</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-amber-600/80 dark:text-amber-400">
-            Compose a button (effect, accent, shape) + browse the effects lab — preview & copy the markup.
-          </span>
-        </button>
-
-        {/* The Parallax builder — compose a scroll-linked element (speed/axis + opacity/scale/blur),
-            scroll the live preview, and copy the data-sw-parallax* markup. */}
-        <button
-          onClick={() => setPxOpen(true)}
-          className="waves-effect rounded-xl border border-cyan-200/70 dark:border-cyan-500/20 bg-gradient-to-br from-cyan-50 dark:from-cyan-500/10 to-sky-50 dark:to-sky-500/10 px-3 py-2.5 text-left transition hover:from-cyan-100 dark:hover:from-cyan-500/15 hover:to-sky-100 dark:hover:to-sky-500/15"
-        >
-          <span className="block text-sm font-bold text-cyan-800 dark:text-cyan-400">Parallax builder</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-cyan-600/80 dark:text-cyan-400">
-            Scroll-linked depth, fade, scale & blur — compose, scroll the preview & copy the markup.
-          </span>
-        </button>
-
-        {/* The SVG Animation Studio — import an SVG, animate each element (effect + timing) with a live
-            canvas, and export the animated SVG. */}
-        <button
-          onClick={() => setSvgOpen(true)}
-          className="waves-effect rounded-xl border border-emerald-200/70 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 dark:from-emerald-500/10 to-teal-50 dark:to-teal-500/10 px-3 py-2.5 text-left transition hover:from-emerald-100 dark:hover:from-emerald-500/15 hover:to-teal-100 dark:hover:to-teal-500/15"
-        >
-          <span className="block text-sm font-bold text-emerald-800 dark:text-emerald-400">SVG animation studio</span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80 dark:text-emerald-400">
-            Import an SVG → animate each element (draw-on / fade / zoom / flip / reveal / morph) → export.
-          </span>
-        </button>
-
-        {LIBRARY_SECTIONS.map((s) => (
-          // The SiteWright Components entry sits immediately before the DaisyUI components section.
-          <Fragment key={s.category}>
-            {s.category === 'daisyui' && swComponentsButton}
-            <button
-              onClick={() => setOpenCategory(s.category)}
-              className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white dark:hover:bg-white/10`}
-            >
-              <span className="block text-sm font-bold text-slate-700 dark:text-slate-200">{s.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-slate-400 dark:text-slate-500">{s.blurb}</span>
-            </button>
-          </Fragment>
+      <nav className="flex flex-col gap-4 p-3">
+        {groups.map((g) => (
+          <div key={g.label} className="flex flex-col gap-1.5">
+            <h3 className={`px-1 text-xs font-bold uppercase tracking-widest ${ACCENT[g.accent].head}`}>{g.label}</h3>
+            {g.cards.map((c) => (
+              <LibraryCard key={c.key} card={c} accent={g.accent} />
+            ))}
+          </div>
         ))}
       </nav>
 
       {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
-      {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
-      {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
-      {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
-      {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"
           allGroups={SW_COMPONENT_GROUPS}
-          searchPlaceholder="Search components…"
+          searchPlaceholder="Search components & effects…"
           onClose={() => setSwOpen(false)}
         />
       )}
-      {section?.category === 'fonts' ? (
-        <FontsLibraryModal onClose={() => setOpenCategory(null)} />
-      ) : section?.category === 'icons' ? (
-        <IconGallery section={section} onClose={() => setOpenCategory(null)} />
-      ) : (
-        section && <SectionModal section={section} onClose={() => setOpenCategory(null)} />
-      )}
+      {daisyOpen && <SectionModal section={DAISY_SECTION} onClose={() => setDaisyOpen(false)} />}
+      {iconsOpen && <IconsFlagsGallery onClose={() => setIconsOpen(false)} />}
+      {fontsOpen && <FontsLibraryModal onClose={() => setFontsOpen(false)} />}
+      {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
+      {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
+      {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
+      {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
     </SidePanel>
+  );
+}
+
+/** The combined Icons / Brand / Flags gallery — one modal, three tabs. Replaces the three former
+ *  top-level Library entries. Each tab owns its own search + paging state (fresh on tab switch). */
+type IconTab = 'icons' | 'brand' | 'flags';
+function IconsFlagsGallery({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<IconTab>('icons');
+  const tabs: TabDef<IconTab>[] = [
+    { id: 'icons', label: 'Icons' },
+    { id: 'brand', label: 'Brand' },
+    { id: 'flags', label: 'Flags' },
+  ];
+  return (
+    <Modal title="Icons & flags" size="full" onClose={onClose}>
+      <div className="flex h-full min-h-0 flex-col gap-3 p-5">
+        <Tabs tabs={tabs} active={tab} onSelect={setTab} ariaLabel="Icon set" className="shrink-0 self-start" />
+        {tab === 'icons' ? (
+          <IconsTab blurb={ICONS_SECTION.blurb} />
+        ) : tab === 'brand' ? (
+          <GridTab key="brand" lazy="brand" blurb={BRAND_SECTION.blurb} label="Brand icons" />
+        ) : (
+          <GridTab key="flags" lazy="flags" blurb={FLAGS_SECTION.blurb} label="Country flags" />
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -188,25 +261,57 @@ function FontsLibraryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** A searchable gallery of one section's items (icons grid, or item cards with optional preview). */
+/** A searchable gallery of one section's items (item cards with optional live preview) — now only the
+ *  DaisyUI components section (icons/brand/flags moved into {@link IconsFlagsGallery}). */
 function SectionModal({ section, onClose }: { section: LibrarySection; onClose: () => void }) {
   const [query, setQuery] = useState('');
-  const [items, setItems] = useState<LibraryItem[]>(section.items);
-  const [loading, setLoading] = useState(!!section.lazy);
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      q
+        ? section.items.filter(
+            (it) =>
+              it.name.toLowerCase().includes(q) ||
+              (it.keywords ?? '').toLowerCase().includes(q) ||
+              it.description.toLowerCase().includes(q),
+          )
+        : section.items,
+    [section.items, q],
+  );
+
+  return (
+    <Modal title={section.label} size="full" onClose={onClose}>
+      <div className="flex h-full flex-col gap-3 p-5">
+        <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
+        <SearchField ariaLabel={`Search ${section.label}`} autoFocus placeholder="Search…" value={query} onChange={setQuery} />
+        <div className="min-h-0 flex-1 overflow-auto pr-1">
+          {filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+          ) : (
+            <ItemList items={filtered} preview={section.preview ?? false} />
+          )}
+        </div>
+        <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{filtered.length} items · click to copy the snippet.</p>
+      </div>
+    </Modal>
+  );
+}
+
+/** A lazy-loaded grid tab (brand logos or country flags) — the large sets are code-split and paged
+ *  in on scroll; searching narrows the full set. Clicking a tile copies its snippet. */
+function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: string; label: string }) {
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Lazy-load the (large) icon / brand-icon sets the first time their modal opens.
   useEffect(() => {
-    if (!section.lazy) return;
-    const lazy = section.lazy;
     let alive = true;
-    // Only brand + flags load here now — the (large) Phosphor icon set is API-driven (see IconGallery).
     void import('./catalog-icons')
       .then((m) => {
-        if (alive) {
-          setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.FLAG_ITEMS);
-          setLoading(false);
-        }
+        if (!alive) return;
+        setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.FLAG_ITEMS);
+        setLoading(false);
       })
       .catch(() => {
         if (alive) {
@@ -217,77 +322,61 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     return () => {
       alive = false;
     };
-  }, [section.lazy]);
+  }, [lazy]);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
     () =>
       q
-        ? items.filter(
-            (it) =>
-              it.name.toLowerCase().includes(q) ||
-              (it.keywords ?? '').toLowerCase().includes(q) ||
-              it.description.toLowerCase().includes(q),
-          )
+        ? items.filter((it) => it.name.toLowerCase().includes(q) || (it.keywords ?? '').toLowerCase().includes(q) || it.description.toLowerCase().includes(q))
         : items,
     [items, q],
   );
-
-  // A grid section (icons, brand logos, or flags) — render a page at a time and append more on scroll
-  // (the full sets are large); searching narrows it. Other sections show everything.
-  const isGrid = section.category === 'icons' || section.category === 'brand' || section.category === 'flags';
-  // Only grids page; pass total=0 for other sections so the pager never grows (they show everything).
-  const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(isGrid ? filtered.length : 0);
-  const shown = isGrid ? filtered.slice(0, visible) : filtered;
+  const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(filtered.length);
+  const shown = filtered.slice(0, visible);
   const overflow = filtered.length - shown.length;
 
   return (
-    <Modal title={section.label} size="full" onClose={onClose}>
-      <div className="flex h-full flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
-        <SearchField
-          ariaLabel={`Search ${section.label}`}
-          autoFocus
-          placeholder="Search…"
-          value={query}
-          onChange={(v) => {
-            setQuery(v);
-            reset();
-          }}
-        />
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
-          {error ? (
-            <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the library set. Close and reopen to retry.</p>
-          ) : loading ? (
-            // DaisyUI skeleton placeholder while the (large) icon set loads.
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
-              {Array.from({ length: 36 }, (_, i) => (
-                <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
-          ) : isGrid ? (
-            <IconGrid items={shown} />
-          ) : (
-            <ItemList items={filtered} preview={section.preview ?? false} />
-          )}
-        </div>
-        <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
-          {filtered.length} {isGrid ? 'icons' : 'items'}
-          {overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
-        </p>
+    <div role="tabpanel" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
+      <SearchField
+        ariaLabel={`Search ${label}`}
+        autoFocus
+        placeholder="Search…"
+        value={query}
+        onChange={(v) => {
+          setQuery(v);
+          reset();
+        }}
+      />
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
+        {error ? (
+          <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the library set. Switch tabs and back to retry.</p>
+        ) : loading ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
+            {Array.from({ length: 36 }, (_, i) => (
+              <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+        ) : (
+          <IconGrid items={shown} />
+        )}
       </div>
-    </Modal>
+      <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+        {filtered.length} items{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
+      </p>
+    </div>
   );
 }
 
 /**
- * The Phosphor icon gallery — names + previews come from the API (GET /authoring/icons/names + /render) so
+ * The Phosphor icon tab — names + previews come from the API (GET /authoring/icons/names + /render) so
  * the multi-MB icon data never bundles into the editor. A weight-switcher row (thin…duotone) re-previews
  * the grid and updates the copied `{{sw-icon "name[:weight]"}}` snippet. Fill is the default (no suffix).
  */
-function IconGallery({ section, onClose }: { section: LibrarySection; onClose: () => void }) {
+function IconsTab({ blurb }: { blurb: string }) {
   const [query, setQuery] = useState('');
   const [weight, setWeight] = useState('fill');
   const [names, setNames] = useState<string[]>([]);
@@ -379,64 +468,62 @@ function IconGallery({ section, onClose }: { section: LibrarySection; onClose: (
   const overflow = filtered.length - shown.length;
 
   return (
-    <Modal title={`${section.label} — Phosphor`} size="full" onClose={onClose}>
-      <div className="flex h-full flex-col gap-3 p-5">
-        <p className="text-sm text-slate-500 dark:text-slate-400">{section.blurb}</p>
-        {/* Weight switcher — each button shows a sample glyph in that weight; fill is the default. */}
-        <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-2">
-          {weights.map((w) => (
-            <button
-              key={w}
-              role="radio"
-              aria-checked={weight === w}
-              onClick={() => setWeight(w)}
-              className={`flex min-w-[7rem] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium capitalize leading-none transition ${
-                weight === w
-                  ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
-                  : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
-              }`}
-            >
-              {sample[w] && (
-                <span
-                  aria-hidden
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-                  dangerouslySetInnerHTML={{ __html: sample[w]! }}
-                />
-              )}
-              <span>{w}</span>
-            </button>
-          ))}
-        </div>
-        <SearchField
-          ariaLabel="Search icons"
-          autoFocus
-          placeholder="Search icons…"
-          value={query}
-          onChange={(v) => {
-            setQuery(v);
-            reset();
-          }}
-        />
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
-          {error ? (
-            <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the icon set. Close and reopen to retry.</p>
-          ) : loading ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
-              {Array.from({ length: 36 }, (_, i) => (
-                <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
-          ) : (
-            <IconGrid items={items} />
-          )}
-        </div>
-        <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
-          {filtered.length} icons{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · {weight} · click to copy the snippet.
-        </p>
+    <div role="tabpanel" aria-label="Icons" className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
+      {/* Weight switcher — each button shows a sample glyph in that weight; fill is the default. */}
+      <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-2">
+        {weights.map((w) => (
+          <button
+            key={w}
+            role="radio"
+            aria-checked={weight === w}
+            onClick={() => setWeight(w)}
+            className={`flex min-w-[7rem] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium capitalize leading-none transition ${
+              weight === w
+                ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
+                : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
+            }`}
+          >
+            {sample[w] && (
+              <span
+                aria-hidden
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
+                dangerouslySetInnerHTML={{ __html: sample[w]! }}
+              />
+            )}
+            <span>{w}</span>
+          </button>
+        ))}
       </div>
-    </Modal>
+      <SearchField
+        ariaLabel="Search icons"
+        autoFocus
+        placeholder="Search icons…"
+        value={query}
+        onChange={(v) => {
+          setQuery(v);
+          reset();
+        }}
+      />
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
+        {error ? (
+          <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the icon set. Switch tabs and back to retry.</p>
+        ) : loading ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
+            {Array.from({ length: 36 }, (_, i) => (
+              <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+        ) : (
+          <IconGrid items={items} />
+        )}
+      </div>
+      <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+        {filtered.length} icons{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · {weight} · click to copy the snippet.
+      </p>
+    </div>
   );
 }
 

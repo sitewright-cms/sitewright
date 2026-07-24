@@ -12,12 +12,30 @@ afterEach(() => {
 });
 
 describe('LibraryPanel', () => {
-  it('expands on hover and lists the section buttons', () => {
+  it('lists the consolidated, grouped library cards', () => {
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    for (const name of [/Icons/, /Animation/, /Lazy-load/, /Ripple effect/, /DaisyUI components/]) {
+    // 9 cards across 3 groups (each card's accessible name = title + blurb).
+    for (const name of [
+      /Template reference/,
+      /SiteWright Components/,
+      /DaisyUI components/,
+      /Icons & flags/,
+      /Google Fonts/,
+      /Animated backgrounds/,
+      /Button builder/,
+      /Parallax builder/,
+      /SVG animation studio/,
+    ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
+    // The old flat effect entries are gone — folded into SiteWright Components.
+    expect(screen.queryByRole('button', { name: /^Lazy-load/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Ripple effect/ })).toBeNull();
+    // Group headings anchor the three sections.
+    expect(screen.getByRole('heading', { name: 'Reference' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Assets' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Builders & Studios' })).toBeInTheDocument();
   });
 
   it('opens a section gallery modal, searches within it, and copies an example', async () => {
@@ -101,10 +119,10 @@ describe('LibraryPanel', () => {
 
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    fireEvent.click(screen.getByRole('button', { name: /^Icons/ }));
-    // The Phosphor icon gallery's modal is titled "Icons — Phosphor" (section label + provider), so
-    // match by prefix. Give it a generous timeout — the gallery is code-split + fetches on mount.
-    const dialog = await screen.findByRole('dialog', { name: /^Icons/ }, { timeout: 15000 });
+    fireEvent.click(screen.getByRole('button', { name: /Icons & flags/ }));
+    // Icons/brand/flags now share one modal titled "Icons & flags"; the Icons tab is the default.
+    // Give it a generous timeout — the gallery fetches on mount.
+    const dialog = await screen.findByRole('dialog', { name: 'Icons & flags' }, { timeout: 15000 });
 
     // The search filters the name list (substring, incl. dash→space) → the grid shows the tiny match.
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'arrow-right' } });
@@ -119,18 +137,19 @@ describe('LibraryPanel', () => {
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
   }, 20000);
 
-  it('lazy-loads the brand icons and copies a brand: snippet', async () => {
+  it('switches to the Brand tab (lazy-loaded) and copies a brand: snippet', async () => {
+    // The default Icons tab fetches on mount — stub it so the real network isn't hit before we
+    // switch to Brand (which needs no fetch, just the code-split `import('./catalog-icons')`).
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
-    // Same lazy-Suspense caveat as the Icons dialog: if THIS test is the first to trigger the
-    // code-split `import('./catalog-icons')`, the dialog can take several seconds to mount under CI.
-    const dialog = await screen.findByRole('dialog', { name: 'Brand icons' }, { timeout: 15000 });
+    fireEvent.click(screen.getByRole('button', { name: /Icons & flags/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Icons & flags' }, { timeout: 15000 });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Brand' }));
     // The grid lazy-loads a page at a time (50) and appends more on scroll, so a deep entry like
     // GitHub isn't in the initial render — search to surface it (jsdom can't drive real scroll).
-    // Same code-split module as the icon pack — generous timeout in case this test is the
-    // first to trigger the (slow-under-CI) `import('./catalog-icons')`.
-    fireEvent.change(within(dialog).getByLabelText('Search Brand icons'), { target: { value: 'github' } });
+    // Generous timeout in case this test is the first to trigger the code-split import.
+    fireEvent.change(await within(dialog).findByLabelText('Search Brand icons', {}, { timeout: 15000 }), { target: { value: 'github' } });
     const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' }, { timeout: 15000 });
     fireEvent.click(gh);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "brand:github" "h-6 w-6"}}');

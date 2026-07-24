@@ -21,7 +21,7 @@ test('library: template reference — open, search, filter by group', async ({ p
     await page.getByRole('button', { name: 'Open System Library' }).click();
     await expect(library).toHaveAttribute('aria-hidden', 'false');
   }
-  await library.getByRole('button', { name: 'Template reference' }).click();
+  await library.getByRole('button', { name: /Template reference/ }).click();
   const ref = page.getByRole('dialog', { name: 'Template reference' });
   await expect(ref).toBeVisible();
 

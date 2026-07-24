@@ -65,7 +65,7 @@ export interface LibrarySection {
   preview?: boolean;
 }
 
-const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
+export const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
   id: `anim-${effect}`,
   name: effect,
   keywords: 'animate scroll reveal animation entrance',
@@ -73,7 +73,7 @@ const ANIMATION_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
   example: `<div data-sw-animation="${effect}" data-sw-delay="0" data-sw-duration="450">…</div>`,
 }));
 
-const LAZYLOAD_ITEMS: LibraryItem[] = [
+export const LAZYLOAD_ITEMS: LibraryItem[] = [
   {
     id: 'lazy-bg',
     name: 'Background image (data-bg)',
@@ -120,7 +120,7 @@ const LAZYLOAD_ITEMS: LibraryItem[] = [
   },
 ];
 
-const RIPPLE_ITEMS: LibraryItem[] = [
+export const RIPPLE_ITEMS: LibraryItem[] = [
   {
     id: 'ripple-light',
     name: 'Ripple on a primary button',
@@ -219,7 +219,7 @@ const DAISYUI_ITEMS: LibraryItem[] = [
 
 // Parallax / scroll-linked effects (data-sw-parallax*) — the read-only attribute reference. The Library
 // "Parallax builder" card composes + previews these; this section is the copy-paste lookup.
-const PARALLAX_ITEMS: LibraryItem[] = [
+export const PARALLAX_ITEMS: LibraryItem[] = [
   {
     id: 'px-translate',
     name: 'Move (from → to, px)',
@@ -276,7 +276,7 @@ const PARALLAX_ITEMS: LibraryItem[] = [
 // draw-on, fade/zoom/flip/blur entrances, and staggered scenes. Timing via the shared
 // data-sw-duration/-delay/-easing/-once primitives. The Library "SVG animation builder" composes +
 // previews these live; this section is the copy-paste lookup.
-const SVG_ANIM_ITEMS: LibraryItem[] = [
+export const SVG_ANIM_ITEMS: LibraryItem[] = [
   {
     id: 'svg-draw',
     name: 'Draw on (stroke)',
@@ -315,7 +315,7 @@ const SVG_ANIM_ITEMS: LibraryItem[] = [
 
 // ScrollSpy (data-sw-scrollspy) — highlight the nav link whose in-page section is in view. Toggles
 // .active + aria-current, so it composes with the Nav effects above. Site-wide via Website settings.
-const SCROLLSPY_ITEMS: LibraryItem[] = [
+export const SCROLLSPY_ITEMS: LibraryItem[] = [
   {
     id: 'spy-nav',
     name: 'On-page nav (data-sw-scrollspy)',

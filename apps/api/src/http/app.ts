@@ -6007,15 +6007,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       prefix: '/',
       wildcard: false,
       dotfiles: 'deny',
-      setHeaders: (res, path) => {
+      // @fastify/static v10 passes a FastifyReply here (v9 passed the raw ServerResponse), so use
+      // reply.header(...) rather than res.setHeader(...).
+      setHeaders: (reply, path) => {
         if (path.endsWith('index.html')) {
-          res.setHeader('content-security-policy', editorCsp);
-          res.setHeader('x-frame-options', 'DENY');
+          reply.header('content-security-policy', editorCsp);
+          reply.header('x-frame-options', 'DENY');
           // The SPA entry must always revalidate so a new deploy's content-hashed asset URLs are picked up.
-          res.setHeader('cache-control', 'no-cache');
+          reply.header('cache-control', 'no-cache');
         } else if (/[/\\]assets[/\\]/.test(path)) {
           // Vite content-hashes asset filenames (the build's `?v`), so cache them forever.
-          res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+          reply.header('cache-control', 'public, max-age=31536000, immutable');
         }
       },
     });

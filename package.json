@@ -37,7 +37,8 @@
       "js-yaml@>=4.0.0 <4.3.0": "^4.3.0",
       "shell-quote@<1.9.0": "^1.9.0",
       "fast-uri@<3.1.4": "3.1.4",
-      "find-my-way@<9.7.0": "^9.7.0"
+      "find-my-way@<9.7.0": "^9.7.0",
+      "postcss@<8.5.18": "^8.5.18"
     },
     "auditConfig": {
       "ignoreGhsas": [

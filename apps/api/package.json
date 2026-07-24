@@ -17,7 +17,7 @@
     "@fastify/cookie": "^11",
     "@fastify/multipart": "^9",
     "@fastify/rate-limit": "^10",
-    "@fastify/static": "^9",
+    "@fastify/static": "^10.1.1",
     "@libsql/client": "^0.14",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@simplewebauthn/server": "^13.3.1",

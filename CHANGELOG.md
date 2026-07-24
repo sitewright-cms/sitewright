@@ -9,8 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-24
+
 ### Added
 
+- **Copy media URLs + smarter file icons** — the File Manager now has a one-click **Copy URL** on every
+  asset and, for images, a panel of copyable delivery URLs (original + responsive sizes); file rows show
+  type-aware icons keyed off the real stored file kind (PDF, font, CSS, JS, video, …), independent of the
+  display name. A rename doubles as the image's default **alt** text. Long filenames truncate instead of
+  overflowing, and the recycle bin gained an **Empty** action.
+- **Version in System Settings** — the System Settings modal header now shows the running instance version
+  (from `GET /version`), with a subtle "update available" link to the release notes when a newer version
+  exists.
 - **Dark mode** — the editor now has a full dark theme with a **light / dark / auto** (follow-OS) switcher
   in the account (person-icon) menu. The choice is remembered per browser and applied before first paint,
   so there's no light flash on load. Every editor surface — the shell, header, panels, drawers, modals,
@@ -51,6 +61,17 @@ The running version of an instance is reported at `GET /version` (baked into the
   added a round trip and could hang on servers that mis-advertise SSH exec. The connection handshake
   timeout was also raised (15s → 60s) so a slow or distant server isn't dropped before the transfer
   starts.
+- **System Library drawer** — the code-first Library reference was consolidated from a long flat list of
+  17 entries into 9 icon-led cards across three labelled groups (Reference · Assets · Builders & Studios),
+  with one consistent accent colour per group. The Icons, Brand-icon and Flag galleries are now one tabbed
+  "Icons & flags" browser; the effect-directive galleries fold into the SiteWright Components reference. The
+  animated-background picker no longer scrolls horizontally and its controls were tidied.
+
+### Security
+
+- **Patched HIGH dependency advisories** — bumped or overrode dependencies flagged with HIGH-severity
+  path-traversal or denial-of-service advisories: `@fastify/static` → v10 (route-guard bypass via `..`),
+  plus `postcss`, `find-my-way`, `brace-expansion`, `shell-quote`, `js-yaml`, and `fast-uri`.
 
 ## [0.2.0] — 2026-07-21
 

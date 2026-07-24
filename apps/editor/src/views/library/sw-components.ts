@@ -8,6 +8,7 @@
 import { COMPONENT_CATALOG, type ComponentCatalogEntry } from '@sitewright/schema';
 import { GLOBAL_WIDGETS, type Widget } from '@sitewright/core';
 import type { ReferenceEntry, ReferenceGroup } from './reference';
+import { ANIMATION_ITEMS, SCROLLSPY_ITEMS, LAZYLOAD_ITEMS, RIPPLE_ITEMS, type LibraryItem } from './catalog';
 
 /** One component → a tab: skeleton + worked examples + parts + options + no-JS + notes. */
 function componentToGroup(c: ComponentCatalogEntry): ReferenceGroup {
@@ -86,8 +87,35 @@ function widgetsToGroup(widgets: readonly Widget[]): ReferenceGroup {
   };
 }
 
-/** Component tabs (from the catalog) + a Widgets tab (from the registry). Derived → never drifts. */
+/**
+ * Convert a Library snippet section ({@link LibraryItem}[]) → a reference tab. The directive-only
+ * effect galleries (Animation, ScrollSpy, Lazy-load, Ripple) live here as tabs — they're the same
+ * data-sw and class directives this guide already documents, so they belong with the components
+ * rather than as separate top-level Library entries.
+ */
+function libraryItemsToGroup(id: string, title: string, blurb: string, items: readonly LibraryItem[]): ReferenceGroup {
+  return {
+    id,
+    title,
+    blurb,
+    entries: items.map((it) => ({
+      id: it.id,
+      name: it.name,
+      syntax: it.name,
+      keywords: `${it.keywords ?? ''} ${title}`.toLowerCase(),
+      description: it.description,
+      example: it.example,
+    })),
+  };
+}
+
+/** Component tabs (from the catalog) + a Widgets tab (from the registry) + the folded-in effect
+ *  directive galleries. Derived → never drifts. */
 export const SW_COMPONENT_GROUPS: ReferenceGroup[] = [
   ...COMPONENT_CATALOG.map(componentToGroup),
   widgetsToGroup(GLOBAL_WIDGETS),
+  libraryItemsToGroup('effect-animation', 'Animation', 'Animate elements as they scroll into view via data-sw-animation.', ANIMATION_ITEMS),
+  libraryItemsToGroup('effect-scrollspy', 'ScrollSpy', 'Highlight the nav link whose in-page section is scrolled into view via data-sw-scrollspy (or the site-wide toggle in Website settings).', SCROLLSPY_ITEMS),
+  libraryItemsToGroup('effect-lazyload', 'Lazy-load', 'Defer offscreen images with data-bg / lazyload.', LAZYLOAD_ITEMS),
+  libraryItemsToGroup('effect-ripple', 'Ripple', 'Material “waves” click ripple via waves-effect.', RIPPLE_ITEMS),
 ];

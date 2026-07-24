@@ -5,6 +5,8 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
+import { SnippetShelf } from './SnippetShelf';
+import { PARALLAX_ITEMS } from './catalog';
 
 interface ParallaxBuilderProps {
   onClose: () => void;
@@ -270,6 +272,7 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Each effect runs from → to across its Viewport range of the element’s pass through the screen (0% entering · 50% centred · 100% leaving), then holds. Turn on “Animate back out” to reverse it later — the gap between the in-range end and the out-range start is a <strong>hold</strong> where nothing changes. All motion is off under reduced motion.
           </p>
+          <SnippetShelf title="Ready-made snippets" items={PARALLAX_ITEMS} blurb="Copy a parallax directive straight into your page, or compose one with the controls above." />
         </div>
 
         {/* preview + code */}

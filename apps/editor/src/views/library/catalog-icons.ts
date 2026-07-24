@@ -3,7 +3,7 @@ import type { LibraryItem } from './catalog';
 
 // Brand + flag catalogs — split out so the Library LAZY-loads them (dynamic import) the first time their
 // modal opens. NOTE: the large PHOSPHOR icon set is deliberately NOT bundled here — its previews are
-// rendered server-side (GET /authoring/icons/names + /render) by the editor's IconGallery, so the multi-MB
+// rendered server-side (GET /authoring/icons/names + /render) by the editor's IconsTab, so the multi-MB
 // icon-body data never lands in the editor bundle. This module must therefore NEVER import renderIconSvg /
 // the Phosphor data (that was a ~3.9MB main-bundle regression).
 

@@ -87,6 +87,29 @@ function PresetCard({ presetKey, palette, intensity, active, onSelect }: {
   );
 }
 
+/** A labelled range slider — label + current value on top, a FULL-WIDTH slider below. Full-width (no
+ *  fixed slider width) keeps the settings panel from establishing a min-content floor that would
+ *  overflow the right column horizontally. */
+function Knob({ label, value, min, max, step, onChange, fmt }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  fmt?: (v: number) => string;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+        <span>{label}</span>
+        <span className="tabular-nums text-xs text-slate-400 dark:text-slate-500">{fmt ? fmt(value) : value}</span>
+      </span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} className="w-full" />
+    </label>
+  );
+}
+
 /**
  * The Background preset PICKER — a live WebGL gallery over the same 30 presets the site runtime ships
  * (one shared offscreen GL context). Left: a scrollable column of preset cards. Right: the live large
@@ -188,7 +211,7 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* RIGHT — large preview + settings + markup */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <div
             className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-900"
             onPointerMove={(e) => {
@@ -205,19 +228,10 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
 
           <div className={`${glassPanel} grid shrink-0 gap-x-6 gap-y-3 rounded-xl p-3 text-sm md:grid-cols-2`}>
             {/* knobs */}
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Speed</span>
-                <input type="range" min={0} max={4} step={0.1} value={speed} onChange={(e) => setSpeed(+e.target.value)} className="w-40" />
-              </label>
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Intensity</span>
-                <input type="range" min={0} max={1} step={0.05} value={intensity} onChange={(e) => setIntensity(+e.target.value)} className="w-40" />
-              </label>
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Angle</span>
-                <input type="range" min={-360} max={360} step={1} value={angle} onChange={(e) => setAngle(+e.target.value)} className="w-40" />
-              </label>
+            <div className="flex min-w-0 flex-col gap-2.5">
+              <Knob label="Speed" value={speed} min={0} max={4} step={0.1} onChange={setSpeed} fmt={(v) => `${v}×`} />
+              <Knob label="Intensity" value={intensity} min={0} max={1} step={0.05} onChange={setIntensity} />
+              <Knob label="Angle" value={angle} min={-360} max={360} step={1} onChange={setAngle} fmt={(v) => `${v}°`} />
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
                 <span className="text-slate-600 dark:text-slate-300">Pointer-interactive (morphs on hover)</span>
@@ -229,7 +243,7 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
             </div>
 
             {/* color scheme */}
-            <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Color scheme</span>
                 <button
@@ -254,17 +268,17 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <input type="color" value={colA} onChange={(e) => setCustomColor(setColA, e.target.value)} aria-label="Brand 1" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
                 <input type="color" value={colB} onChange={(e) => setCustomColor(setColB, e.target.value)} aria-label="Brand 2" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
                 <input type="color" value={colC} onChange={(e) => setCustomColor(setColC, e.target.value)} aria-label="Accent / ink" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">{colorMode === 'custom' ? 'custom — saved as data-colors' : 'using your CI colors'}</span>
+                <span className="min-w-0 text-[11px] text-slate-400 dark:text-slate-500">{colorMode === 'custom' ? 'custom — saved as data-colors' : 'using your CI colors'}</span>
               </div>
             </div>
           </div>
 
           <div className="flex shrink-0 items-stretch gap-2">
-            <pre className="max-h-28 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+            <pre className="max-h-28 min-w-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
               <code>{markup}</code>
             </pre>
             <button onClick={() => copy(markup, 'shader-bg')} className={`${ghostButton} shrink-0 self-start px-4 py-2 text-sm font-semibold`}>

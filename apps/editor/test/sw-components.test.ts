@@ -8,8 +8,19 @@ import { SW_COMPONENT_GROUPS } from '../src/views/library/sw-components';
 // skeleton shown is the catalog's own — so a future component/widget shows up here automatically.
 describe('SiteWright Components reference stays in sync with the registries', () => {
   it('has one tab per catalog component, in catalog order', () => {
-    const componentTabs = SW_COMPONENT_GROUPS.filter((g) => g.id !== 'widgets');
+    // The guide is component tabs + a Widgets tab + the folded-in effect directive galleries.
+    const componentTabs = SW_COMPONENT_GROUPS.filter((g) => g.id !== 'widgets' && !g.id.startsWith('effect-'));
     expect(componentTabs.map((g) => g.title)).toEqual(COMPONENT_CATALOG.map((c) => c.type));
+  });
+
+  it('folds the directive-only effect galleries in as tabs (Animation / ScrollSpy / Lazy-load / Ripple)', () => {
+    for (const id of ['effect-animation', 'effect-scrollspy', 'effect-lazyload', 'effect-ripple']) {
+      const g = SW_COMPONENT_GROUPS.find((x) => x.id === id);
+      expect(g, id).toBeTruthy();
+      expect(g!.entries.length, id).toBeGreaterThan(0);
+      // each folded entry is copy-paste (a syntax + example), not a component skeleton
+      for (const e of g!.entries) expect(e.example, `${id}/${e.id}`).toBeTruthy();
+    }
   });
 
   it('each component tab documents skeleton + parts/options (when present) + no-JS + notes + examples', () => {

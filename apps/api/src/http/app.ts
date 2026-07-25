@@ -6,6 +6,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId, isShortAssetId } from '../id.js';
+import { readTexture } from '../textures.js';
 import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
 import { sql } from 'drizzle-orm';
 import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
@@ -99,6 +100,8 @@ import {
   renderIconSvg,
   PHOSPHOR_NAMES,
   PHOSPHOR_WEIGHTS,
+  searchTextures,
+  TEXTURE_NAMES,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import {
@@ -5843,6 +5846,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (svg) svgs[name] = svg;
     }
     return { weight, svgs };
+  });
+
+  // Texture library — transparent, tileable PNG overlays (from transparenttextures.com). The colour
+  // comes from the element's `background-color` (a CI token), so one asset works over any brand colour.
+  // With `?q=` → per-term search groups (powers the MCP search_textures tool); without → the full name
+  // list (the editor texture library fetches this once, then lazy-loads thumbnails). STATIC platform data.
+  app.get('/authoring/textures', { config: rl(60) }, async (req) => {
+    const q = req.query as { q?: unknown; limit?: unknown };
+    const query = (typeof q.q === 'string' ? q.q : '').slice(0, 200);
+    if (query.trim()) {
+      const limit = Math.min(48, Math.max(1, Number.parseInt(typeof q.limit === 'string' ? q.limit : '', 10) || 24));
+      return { query, results: searchTextures(query, limit) };
+    }
+    return { names: TEXTURE_NAMES };
+  });
+
+  // Serve one texture PNG. `:file` is `<name>.png`; the base name is ALLOWLIST-validated against the
+  // catalog inside `readTexture` (no path traversal). Immutable + CORS so preview + exported sites on
+  // any origin load it. (The published site itself uses the rewritten relative `_assets/` copy.)
+  app.get<{ Params: { file: string } }>('/authoring/textures/:file', { config: rl(MEDIA_ASSET_RL_MAX) }, async (req, reply) => {
+    const { file } = req.params;
+    if (!file.endsWith('.png')) return reply.code(404).send({ error: 'not found' });
+    const bytes = await readTexture(file.slice(0, -4));
+    if (!bytes) return reply.code(404).send({ error: 'not found' });
+    return reply
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .header('access-control-allow-origin', '*')
+      .header('cross-origin-resource-policy', 'cross-origin')
+      .type('image/png')
+      .send(bytes);
   });
 
   // "Fork existing effect" snippets for the Website-settings custom-code editors — each built-in

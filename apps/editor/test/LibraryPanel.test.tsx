@@ -15,7 +15,7 @@ describe('LibraryPanel', () => {
   it('lists the consolidated, grouped library cards', () => {
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    // 9 cards across 3 groups (each card's accessible name = title + blurb).
+    // 10 cards across 3 groups (each card's accessible name = title + blurb).
     for (const name of [
       /Template reference/,
       /SiteWright Components/,
@@ -23,6 +23,7 @@ describe('LibraryPanel', () => {
       /Icons & flags/,
       /Google Fonts/,
       /Animated backgrounds/,
+      /Textures/,
       /Button builder/,
       /Parallax builder/,
       /SVG animation studio/,
@@ -36,6 +37,28 @@ describe('LibraryPanel', () => {
     expect(screen.getByRole('heading', { name: 'Reference' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Assets' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Builders & Studios' })).toBeInTheDocument();
+  });
+
+  it('opens the Textures picker, lists API textures, and copies a CI-tinted CSS snippet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ names: ['cartographer', 'paper', 'denim'] }) }),
+    );
+    render(<LibraryPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
+    fireEvent.click(screen.getByRole('button', { name: /Textures/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Textures' });
+    // A texture thumbnail (fetched from /authoring/textures) is clickable.
+    fireEvent.click(await within(dialog).findByTitle('cartographer'));
+    // Choose the Primary CI colour → the snippet emits a var(--sw-color-*) token (re-tints on the site).
+    fireEvent.click(within(dialog).getByTitle(/Primary Color — var\(--sw-color-primary\)/));
+    const code = dialog.querySelector('pre code');
+    expect(code?.textContent).toContain('background-color: var(--sw-color-primary);');
+    expect(code?.textContent).toContain('url("/authoring/textures/cartographer.png")');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Copy CSS/ }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('/authoring/textures/cartographer.png'));
   });
 
   it('opens a section gallery modal, searches within it, and copies an example', async () => {

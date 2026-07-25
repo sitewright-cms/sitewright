@@ -285,6 +285,26 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     expect((await mcp.callTool({ name: 'search_icons', arguments: { query: '   ' } })).isError).toBe(true);
   });
 
+  it('search_textures finds transparent overlays with ready-to-paste CSS (no auth); empty query errors', async () => {
+    const mcp = await connect(fakeClient(), null);
+    expect(await toolNames(mcp)).toContain('search_textures');
+    const res = JSON.parse(text(await mcp.callTool({ name: 'search_textures', arguments: { query: 'paper, fabric', limit: 4 } }))) as {
+      results: Array<{ term: string; matches: Array<{ name: string; css: string }> }>;
+    };
+    expect(res.results.map((g) => g.term)).toEqual(['paper', 'fabric']);
+    expect(res.results[0]!.matches.length).toBeLessThanOrEqual(4);
+    const first = res.results[0]!.matches[0]!;
+    expect(first.name).toContain('paper');
+    expect(first.css).toContain(`url("/authoring/textures/${first.name}.png")`);
+    expect(first.css).toContain('var(--sw-color-primary)');
+    // Default-limit path (branch coverage).
+    const dflt = JSON.parse(text(await mcp.callTool({ name: 'search_textures', arguments: { query: 'noise' } }))) as {
+      results: Array<{ matches: Array<{ name: string }> }>;
+    };
+    expect(dflt.results[0]!.matches.length).toBeGreaterThan(0);
+    expect((await mcp.callTool({ name: 'search_textures', arguments: { query: '   ' } })).isError).toBe(true);
+  });
+
   it('get_capabilities returns the capability index — components + guides + write kinds + need→tool map (no auth)', async () => {
     const mcp = await connect(fakeClient(), null);
     expect(await toolNames(mcp)).toContain('get_capabilities');

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
@@ -59,6 +59,33 @@ describe('buildSite', () => {
     // content-hash cache-bust `?v=` token (busts iff the runtime assets change; stable otherwise).
     expect(home).toMatch(/<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]{16}"/);
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+  });
+
+  it('materialises referenced platform textures into _assets/_textures + rewrites the url; unreferenced are skipped', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home',
+            source:
+              `<section style="background-color:var(--sw-color-primary);background-image:url('/authoring/textures/cartographer.png')"><h1>{{ company.name }}</h1></section>`,
+          },
+          { id: 'about', path: 'about', title: 'About', source: '<div><h1>About</h1></div>' }, // references no texture
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The authored absolute /authoring/textures/ URL is rebased to a page-relative _assets/_textures/ path
+    // (self-contained), and the var(--sw-color-*) tint is preserved.
+    expect(home).toContain(`background-image:url('_assets/_textures/cartographer.png')`);
+    expect(home).toContain('background-color:var(--sw-color-primary)');
+    expect(home).not.toContain('/authoring/textures/');
+    // The referenced PNG was copied into the export; only it (minimal — the unreferenced textures are not).
+    const png = await readFile(join(outDir, '_assets', '_textures', 'cartographer.png'));
+    expect(png.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47])); // PNG magic
+    expect(await readdir(join(outDir, '_assets', '_textures'))).toEqual(['cartographer.png']);
   });
 
   it('safelists the rich-text toolbar classes used in author content (page.data + dataset richtext) — invisible to the source scan', async () => {

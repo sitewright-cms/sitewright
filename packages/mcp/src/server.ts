@@ -25,7 +25,7 @@ import {
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
-import { searchIcons } from '@sitewright/blocks';
+import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
 import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
@@ -374,6 +374,28 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     },
     ({ query, limit }: { query: string; limit?: number }) => {
       const results = searchIcons(query, limit ?? 24);
+      if (!results.length) return toolError('Provide one or more search terms (comma- or whitespace-separated).');
+      return ok({ results });
+    },
+  );
+
+  // Find transparent background TEXTURES (tileable PNG overlays, e.g. paper, fabric, noise, denim). Static
+  // (no connection needed). Each match carries ready-to-paste CSS: the colour comes from `background-color`
+  // (a var(--sw-color-*) CI token), so one texture works over any brand colour; the url auto-resolves in the
+  // editor previews AND exported sites. Apply the CSS on any element's `style`, a page `<style>`, or
+  // website.criticalCss.
+  server.registerTool(
+    'search_textures',
+    {
+      description:
+        'Find transparent background TEXTURES (tileable PNG overlays — paper, fabric, noise, denim, grid…) to set as an element background. Pass ONE OR MORE terms, comma- or whitespace-separated (e.g. "paper, fabric denim") — returns matching texture names per term, each with ready-to-paste CSS. The colour comes from `background-color` (a var(--sw-color-*) CI token), so one texture works over any brand colour; the url resolves in preview AND exported sites. Drop the CSS on an element `style`, a page `<style>`, or website.criticalCss.',
+      inputSchema: { query: z.string().min(1).max(200), limit: z.number().int().min(1).max(48).optional() },
+    },
+    ({ query, limit }: { query: string; limit?: number }) => {
+      const results = searchTextures(query, limit ?? 24).map((g) => ({
+        term: g.term,
+        matches: g.matches.map((name) => ({ name, css: textureCss(name) })),
+      }));
       if (!results.length) return toolError('Provide one or more search terms (comma- or whitespace-separated).');
       return ok({ results });
     },

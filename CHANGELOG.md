@@ -9,6 +9,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-25
+
+### Added
+
+- **Background textures** — a new **Textures** card in the System Library opens a picker over ~396
+  transparent, tileable overlay textures. Pick a background colour (a CI token or custom) and a texture,
+  then copy the CSS (`background-color: var(--sw-color-*); background-image: url(...)`) onto any element,
+  a page `<style>`, or the site-wide critical CSS. Because the textures are transparent, the colour shows
+  through, so one asset re-tints with the brand + light/dark theme. The URL resolves in the editor
+  previews **and** in exported/deployed static sites (the publish build rewrites it to a self-contained
+  `_assets/_textures/` copy and materialises only the referenced textures). MCP agents can find textures
+  and get the ready-to-paste CSS via a new **search_textures** tool.
+
 ## [0.3.0] — 2026-07-24
 
 ### Added

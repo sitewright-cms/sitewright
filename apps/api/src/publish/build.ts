@@ -11,6 +11,7 @@ import {
   type ThumbRefs,
 } from './media-thumbs.js';
 import { buildAliasMap, aliasResolver, flatMediaName } from './asset-alias.js';
+import { rewriteTextureUrls, materializeTextures } from './publish-textures.js';
 import {
   allRoutes,
   buildNav,
@@ -683,6 +684,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Referenced-thumbnail accumulator — filled as each page's media URLs are rewritten, then
     // materialized (from originals) into `_assets/` after the loop. Only referenced sizes ship.
     const thumbRefs: ThumbRefs = new Map();
+    // Platform textures referenced by any page (`/authoring/textures/<name>.png`) — copied into
+    // `_assets/_textures/` after the page loop so the export is self-contained (complete + minimal).
+    const usedTextures = new Set<string>();
     // Stable, collision-free short alias per asset — the flat file's `<alias>-` prefix. Computed once
     // so every emit site (copyMedia, the body/head URL rewrites, the font url callback, and
     // materializeImageThumbs) agrees on the same name for a given asset.
@@ -1097,11 +1101,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // `relativizeInternalLinks` misses. It matches the `<id>/[file/]<name>` shape, so a stray bare
         // `/media/<slug>/` string (already broken) is left untouched rather than blindly rebased.
         const mediaRebased = rewriteMediaUrlsFlat(html, bundle.project.slug, siteRoot, thumbRefs, alias);
+        // Rebase platform-texture refs (`/authoring/textures/<name>.png`) to a page-relative
+        // `_assets/_textures/<name>.png` and record which are used — BEFORE relativize (already-relative
+        // result is not re-touched), so an authored texture background survives the export self-contained.
+        const texRebased = rewriteTextureUrls(mediaRebased, siteRoot, usedTextures);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
-        const relativized = relativizeInternalLinks(mediaRebased, siteRoot);
+        const relativized = relativizeInternalLinks(texRebased, siteRoot);
         // PREVIEW only: a self-hosted PDF <iframe> can't render in the sandboxed preview frame (Chromium
         // blocks its PDF viewer there) — swap it for a static placeholder. Publish keeps the real viewer.
         const portableHtml = previewMode ? replacePreviewPdfEmbeds(relativized) : relativized;
@@ -1129,6 +1137,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (opts.readMedia && thumbRefs.size > 0) {
       await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias);
     }
+
+    // Copy the platform textures any page referenced into `_assets/_textures/` so the export is
+    // self-contained on any host (the URLs were already rebased to relative paths above).
+    bytes += await materializeTextures(tmp, usedTextures);
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),
     // containing only the utilities actually used, with brand tokens in the theme.

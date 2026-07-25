@@ -41,7 +41,9 @@
     "gen:flag-icons": "node scripts/gen-flag-icons.mjs",
     "gen:flag-icons:check": "node scripts/gen-flag-icons.mjs && git diff --exit-code src/flag-icons.ts",
     "gen:vendor": "node scripts/gen-vendor.mjs",
-    "gen:vendor:check": "node scripts/gen-vendor.mjs && git diff --exit-code src/vendor"
+    "gen:vendor:check": "node scripts/gen-vendor.mjs && git diff --exit-code src/vendor",
+    "gen:textures": "node scripts/gen-texture-catalog.mjs",
+    "gen:textures:check": "node scripts/gen-texture-catalog.mjs && git diff --exit-code src/texture-names.ts"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",

@@ -55,6 +55,9 @@ COPY --chown=node:node drizzle ./drizzle
 # The committed showcase-project bundles (unpacked exports) the first-boot seed imports —
 # resolved relative to dist like the drizzle/ migrations (seed-bundle.ts EXAMPLE_PROJECTS_DIR).
 COPY --chown=node:node example_projects ./example_projects
+# The committed transparent-texture PNGs (served at /authoring/textures/<name>.png + materialised
+# into exports) — resolved relative to dist like example_projects (textures.ts TEXTURES_DIR).
+COPY --chown=node:node assets ./assets
 COPY --chown=node:node editor ./editor
 COPY --chown=node:node package.json ./
 

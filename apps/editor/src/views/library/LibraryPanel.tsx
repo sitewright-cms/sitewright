@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, FileCode2, Layers, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
+import { Boxes, FileCode2, Grid2x2, Layers, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { Tabs, type TabDef } from '../ui/Tabs';
@@ -10,6 +10,7 @@ import { LIBRARY_SECTIONS, type LibraryItem, type LibrarySection } from './catal
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
+import { TexturePicker } from './TexturePicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { ParallaxBuilder } from './ParallaxBuilder';
 import { SvgAnimStudio } from './SvgAnimStudio';
@@ -91,6 +92,7 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
   const [iconsOpen, setIconsOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [bgOpen, setBgOpen] = useState(false);
+  const [texOpen, setTexOpen] = useState(false);
   const [btnOpen, setBtnOpen] = useState(false);
   const [pxOpen, setPxOpen] = useState(false);
   const [svgOpen, setSvgOpen] = useState(false);
@@ -155,6 +157,13 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
           onOpen: () => setBgOpen(true),
         },
         {
+          key: 'textures',
+          icon: <Grid2x2 className="h-5 w-5" />,
+          title: 'Textures',
+          blurb: 'Transparent tileable backgrounds — pick a CI colour + texture and copy the CSS.',
+          onOpen: () => setTexOpen(true),
+        },
+        {
           key: 'button',
           icon: <MousePointerClick className="h-5 w-5" />,
           title: 'Button builder',
@@ -205,6 +214,7 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
       {iconsOpen && <IconsFlagsGallery onClose={() => setIconsOpen(false)} />}
       {fontsOpen && <FontsLibraryModal onClose={() => setFontsOpen(false)} />}
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
+      {texOpen && <TexturePicker onClose={() => setTexOpen(false)} projectId={projectId} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
       {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}

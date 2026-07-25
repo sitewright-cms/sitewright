@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { COMPONENT_CATALOG } from '@sitewright/schema';
+import { TEXTURE_NAMES } from '@sitewright/blocks';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 
@@ -74,6 +75,43 @@ describe('GET /authoring/components', () => {
     const res = await app.inject({ method: 'GET', url: '/authoring/bogus' });
     expect(res.statusCode).toBe(404);
     expect(res.headers['content-type']).toContain('application/json');
+    await app.close();
+  });
+});
+
+describe('GET /authoring/textures', () => {
+  it('lists names without q, and returns per-term search groups with q', async () => {
+    const app = await createApp({ db: await makeTestDb() });
+    await app.ready();
+    const list = await app.inject({ method: 'GET', url: '/authoring/textures' });
+    expect(list.statusCode).toBe(200);
+    const lb = list.json() as { names: string[] };
+    expect(lb.names).toEqual([...TEXTURE_NAMES]);
+    expect(lb.names).toContain('cartographer');
+
+    const search = await app.inject({ method: 'GET', url: '/authoring/textures?q=fabric,%20paper&limit=3' });
+    expect(search.statusCode).toBe(200);
+    const sb = search.json() as { query: string; results: Array<{ term: string; matches: string[] }> };
+    expect(sb.results.map((g) => g.term)).toEqual(['fabric', 'paper']);
+    expect(sb.results[0]?.matches.length).toBeLessThanOrEqual(3);
+    expect(sb.results[0]?.matches.every((m) => m.includes('fabric'))).toBe(true);
+    await app.close();
+  });
+
+  it('serves a real texture PNG (image/png, immutable, cross-origin) and 404s unknown/non-png/traversal', async () => {
+    const app = await createApp({ db: await makeTestDb() });
+    await app.ready();
+    const ok = await app.inject({ method: 'GET', url: '/authoring/textures/cartographer.png' });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.headers['content-type']).toContain('image/png');
+    expect(ok.headers['cache-control']).toContain('immutable');
+    expect(ok.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(ok.rawPayload.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47])); // PNG magic
+
+    for (const url of ['/authoring/textures/not-a-real-texture.png', '/authoring/textures/cartographer.txt']) {
+      const r = await app.inject({ method: 'GET', url });
+      expect(r.statusCode, url).toBe(404);
+    }
     await app.close();
   });
 });

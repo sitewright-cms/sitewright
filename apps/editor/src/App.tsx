@@ -28,6 +28,7 @@ import { LivePreview } from './views/LivePreview';
 import { SitePreview } from './views/SitePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandLogo } from './views/ui/BrandLogo';
+import { ProjectIcon } from './views/ui/ProjectIcon';
 import { parseLiveTarget } from './lib/live-target';
 import { parsePreviewTarget } from './lib/preview-target';
 import { gradientSurface, gradientHover } from './theme';
@@ -267,24 +268,36 @@ function MainApp({
       {/* Full-width flex row: project selector at the far left, the tablist centered via its own
           mx-auto, and the publish/admin nav at the far right. */}
       <div className="flex w-full items-center gap-x-4">
-      {/* Left: the brand mark (opens the selector) + the project selector. */}
+      {/* Left: the brand mark (opens the selector) + the project selector. When a project is open the mark
+          becomes that project's favicon (generic globe fallback); otherwise it's the platform logo. The
+          mark is scaled 1.7× — a 22px box paints at 37.4px, overhanging ~7.7px per side; `pr-2` (8px) on
+          the button absorbs the right overhang so the selector pill stays clear, and the top/bottom
+          overhang sits comfortably inside the header's py-3. Keep that relationship if either value changes. */}
       <div className="flex min-w-0 items-center gap-3">
         <button
-          className="flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300"
+          className="flex shrink-0 items-center pr-2 text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300"
           onClick={() => setSelectorOpen(true)}
-          aria-label={`${branding.name} — switch project`}
+          aria-label={inProject ? `${inProject.name} — switch project` : `${branding.name} — switch project`}
           title="Switch project"
         >
-          <BrandLogo logoUrl={branding.logoUrl} name={branding.name} />
+          <span className="inline-flex" style={{ scale: '1.7' }}>
+            {inProject ? (
+              <ProjectIcon
+                src={inProject.iconUrl}
+                boxClassName="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-[5px]"
+              />
+            ) : (
+              <BrandLogo logoUrl={branding.logoUrl} name={branding.name} />
+            )}
+          </span>
         </button>
         {inProject && (
           <button
             aria-label="Switch project"
-            className="flex min-w-0 items-center gap-1 rounded-xl border border-white/60 bg-white/50 px-2.5 py-1 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            className="flex min-w-0 items-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             onClick={() => setSelectorOpen(true)}
           >
             <span className="truncate">{inProject.name}</span>
-            <span className="shrink-0 text-slate-400 dark:text-slate-500">/{inProject.slug}</span>
             <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
           </button>
         )}

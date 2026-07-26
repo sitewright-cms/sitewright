@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SHADER_BG_CSS, SHADER_BG_JS } from '../src/shader-bg.js';
-import { SHADER_BG_PRESETS, SHADER_BG_PRESET_KEYS, DEFAULT_SHADER_PRESET, shaderPresetByKey } from '../src/shader-bg-presets.js';
+import { SHADER_BG_PRESETS, SHADER_BG_PRESET_KEYS, DEFAULT_SHADER_PRESET, shaderPresetByKey, SHADER_AUTO_LIGHT, SHADER_AUTO_DARK } from '../src/shader-bg-presets.js';
 import { componentTypesInSource, componentAssets, COMPONENT_TYPES } from '../src/components.js';
 import { COMPONENT_CATALOG } from '@sitewright/schema';
 
@@ -39,6 +39,18 @@ describe('shader-bg runtime', () => {
     for (const a of ['data-preset', 'data-speed', 'data-intensity', 'data-angle', 'data-interactive', 'data-colors']) {
       expect(SHADER_BG_JS, a).toContain(a);
     }
+  });
+
+  it('resolves the AUTO color token to the theme base surface (with white/near-black fallback), theme-detected', () => {
+    // The `auto` slot resolves to the base-surface token (theme-aware + page-consistent) with a
+    // white/near-black fallback, and the runtime reads the theme via data-sw-theme so it re-resolves
+    // on a light/dark flip.
+    expect(SHADER_BG_JS).toContain("entry.toLowerCase()==='auto'");
+    expect(SHADER_BG_JS).toContain('var(--sw-color-base-100, ');
+    expect(SHADER_BG_JS).toContain(JSON.stringify(SHADER_AUTO_LIGHT).slice(1, -1)); // #ffffff literal in the fallback
+    expect(SHADER_BG_JS).toContain(JSON.stringify(SHADER_AUTO_DARK).slice(1, -1));
+    expect(SHADER_BG_JS).toContain('data-sw-theme'); // theme observer re-reads colors → auto tracks the flip
+    expect(SHADER_AUTO_LIGHT).not.toBe(SHADER_AUTO_DARK);
   });
 
   it('CSS provides the noJs gradient fallback and hides it once enhanced', () => {

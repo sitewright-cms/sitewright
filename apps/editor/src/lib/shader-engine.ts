@@ -6,7 +6,8 @@
 // (thumbnails + the large preview). This mirrors the prototype: a single GL context for the whole
 // grid, so we never approach the browser's ~16 live-context cap.
 
-import { SHADER_VERT, SHADER_PRELUDE, SHADER_MAIN, shaderPresetByKey } from '@sitewright/blocks';
+import { SHADER_VERT, SHADER_PRELUDE, SHADER_MAIN, shaderPresetByKey, SHADER_AUTO_TOKEN, SHADER_AUTO_LIGHT, SHADER_AUTO_DARK } from '@sitewright/blocks';
+import { DEFAULT_BRAND_COLORS, type MandatoryColorToken } from '@sitewright/schema';
 
 export type RGB = [number, number, number];
 
@@ -157,18 +158,33 @@ function cssToRGB(value: string): RGB {
   return [Number(m[0] ?? 0) / 255, Number(m[1] ?? 0) / 255, Number(m[2] ?? 0) / 255];
 }
 
-const FALLBACK_PALETTE: Record<keyof ShaderPalette, string> = { c1: '#4f46e5', c2: '#0ea5e9', c3: '#1f2937' };
-
-/** The project CI palette as the runtime would read it (primary/secondary/neutral), with defaults. */
-export function ciPalette(): ShaderPalette {
-  return {
-    c1: cssToRGB(`var(--sw-color-primary, ${FALLBACK_PALETTE.c1})`),
-    c2: cssToRGB(`var(--sw-color-secondary, ${FALLBACK_PALETTE.c2})`),
-    c3: cssToRGB(`var(--sw-color-neutral, ${FALLBACK_PALETTE.c3})`),
-  };
+/** Whether the editor chrome is in dark mode (the theme toggle stamps `data-theme` on <html>). */
+export function editorIsDark(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
 }
 
-/** Convert three literal CSS colors (e.g. user-picked hex) to a palette. */
-export function paletteFromColors(c1: string, c2: string, c3: string): ShaderPalette {
-  return { c1: cssToRGB(c1), c2: cssToRGB(c2), c3: cssToRGB(c3) };
+/** The CSS color expression a `data-colors` slot resolves to (pure — no DOM), mirroring the published
+ *  runtime's `slot()`: `auto` → the base-surface token; a CI-token name → its `--sw-color-*` var; a
+ *  hex/rgb() → itself. CRUCIALLY, CI tokens carry the shared DEFAULT_BRAND_COLORS fallback — the editor
+ *  SPA does NOT define `--sw-color-*` on its own DOM (they exist only in rendered site documents), so
+ *  without the fallback every CI slot would resolve to the inherited text color and the preview would go
+ *  flat/uniform. On the published site the real `--sw-color-*` win; here the fallback gives a
+ *  distinguishable brand-default preview. */
+export function slotCssExpr(value: string, isDark: boolean): string {
+  if (value.toLowerCase() === SHADER_AUTO_TOKEN) {
+    return `var(--sw-color-base-100, ${isDark ? SHADER_AUTO_DARK : SHADER_AUTO_LIGHT})`;
+  }
+  if (value.charAt(0) === '#' || value.includes('(')) return value; // literal color
+  const fallback = DEFAULT_BRAND_COLORS[value as MandatoryColorToken] ?? '#888888';
+  return `var(--sw-color-${value}, ${fallback})`;
+}
+
+/** Resolve one `data-colors` slot to an RGB triple (via a hidden probe). See {@link slotCssExpr}. */
+export function resolveSlot(value: string, isDark: boolean): RGB {
+  return cssToRGB(slotCssExpr(value, isDark));
+}
+
+/** A palette from three `data-colors` slot values (each a hex, a CI token, or `auto`), theme-resolved. */
+export function paletteFromSlots(slots: [string, string, string], isDark: boolean): ShaderPalette {
+  return { c1: resolveSlot(slots[0], isDark), c2: resolveSlot(slots[1], isDark), c3: resolveSlot(slots[2], isDark) };
 }

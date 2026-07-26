@@ -486,7 +486,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         name: 'data-colors',
         on: 'root',
         description:
-          'Override the 3 palette slots, comma-separated. Use CI token names ("accent,primary,base-content") or literal CSS colors ("#fff,rgb(0,0,0),steelblue"). Defaults to primary,secondary,neutral, and follows light/dark themes automatically.',
+          'Override the 3 palette slots, comma-separated. Each slot is a CI token name ("accent,primary,base-content"), a literal CSS color ("#fff,rgb(0,0,0),steelblue"), or the special "auto" token that tracks the theme (white in light / near-black in dark, e.g. "accent,auto,#123"). Defaults to primary,secondary,neutral, and follows light/dark themes automatically.',
       },
     ],
     skeleton: `<section class="relative grid min-h-[60vh] place-items-center" data-sw-component="shader-bg" data-preset="mesh-gradient">

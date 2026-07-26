@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SHADER_BG_PRESETS } from '@sitewright/blocks';
+import { SHADER_BG_PRESETS, SHADER_AUTO_TOKEN } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
-import { shaderRenderer, ciPalette, paletteFromColors, type ShaderPalette } from '../../lib/shader-engine';
+import { DEFAULT_BRAND_COLORS, type MandatoryColorToken } from '@sitewright/schema';
+import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+// The preview animates at the runtime's own defaults (data-speed 1, data-intensity 0.5) — those attrs
+// aren't authored by this picker, so what you see is what the pasted markup produces.
+const PREVIEW_SPEED = 1;
+const PREVIEW_INTENSITY = 0.5;
+
+// The CI palette tokens a slot can bind to (theme-aware, follow the project's brand). Kept short — the
+// common brand roles. A slot can also be a literal Custom color or the theme-tracking Auto token.
+const CI_TOKENS = ['primary', 'secondary', 'accent', 'neutral', 'base-content'] as const;
+type SlotMode = (typeof CI_TOKENS)[number] | 'auto' | 'custom';
+
+/** A single `data-colors` slot: a CI token, the `auto` theme token, or a literal Custom color. */
+type Slot = { mode: SlotMode; color: string };
+/** The `data-colors` value a slot serialises to: its hex when Custom, else the mode name (token/auto). */
+const slotToken = (s: Slot): string => (s.mode === 'custom' ? s.color : s.mode === 'auto' ? SHADER_AUTO_TOKEN : s.mode);
 
 /** Ready-made 3-color schemes (brand-1, brand-2, accent/ink), mirroring the showcase palettes. */
 const QUICK_PALETTES: { name: string; colors: [string, string, string] }[] = [
@@ -18,29 +33,12 @@ const QUICK_PALETTES: { name: string; colors: [string, string, string] }[] = [
   { name: 'Ember', colors: ['#f97316', '#ef4444', '#fff7ed'] },
 ];
 
-/** Build the copy-paste `data-sw-component="shader-bg"` markup for the chosen preset + knobs. */
-function buildMarkup(o: {
-  preset: string;
-  speed: number;
-  intensity: number;
-  angle: number;
-  interactive: boolean;
-  colors: string | null;
-  overlay: boolean;
-}): string {
-  const attrs = [`data-sw-component="shader-bg"`, `data-preset="${o.preset}"`];
-  if (o.speed !== 1) attrs.push(`data-speed="${o.speed}"`);
-  if (o.intensity !== 0.5) attrs.push(`data-intensity="${o.intensity}"`);
-  if (o.angle !== 0) attrs.push(`data-angle="${o.angle}"`);
-  if (o.interactive) attrs.push(`data-interactive="true"`);
-  if (o.colors) attrs.push(`data-colors="${o.colors}"`);
-  const overlay = o.overlay ? `\n  <div data-sw-part="overlay" class="bg-black/30"></div>` : '';
-  return `<section class="relative grid min-h-[60vh] place-items-center" ${attrs.join(' ')}>${overlay}
-  <div class="sw-container text-center text-white">
-    <h1 class="text-4xl font-bold">Your headline</h1>
-    <p class="mt-3 opacity-90">A short supporting line over the animated background.</p>
-  </div>
-</section>`;
+/** Build the simplified copy-paste `data-sw-component="shader-bg"` markup: preset + angle + the three
+ *  colors, with a placeholder for the author's own content. */
+function buildMarkup(o: { preset: string; angle: number; colors: string }): string {
+  return `<div data-sw-component="shader-bg" data-preset="${o.preset}" data-angle="${o.angle}" data-colors="${o.colors}">
+  YOUR HTML CODE HERE
+</div>`;
 }
 
 /** A single static preset card (full-width banner), blitted from the shared offscreen renderer. */
@@ -113,51 +111,59 @@ function Knob({ label, value, min, max, step, onChange, fmt }: {
 /**
  * The Background preset PICKER — a live WebGL gallery over the same 30 presets the site runtime ships
  * (one shared offscreen GL context). Left: a scrollable column of preset cards. Right: the live large
- * preview + settings (speed/intensity/angle/interactivity, a color scheme = CI colors / quick palette /
- * custom, and an optional legibility overlay), and the ready-to-paste `data-sw-component="shader-bg"`
- * markup. Read-only — copy the markup into your page source.
+ * preview, a compact settings row (angle + the three color slots, each a literal color OR the
+ * theme-tracking AUTO token), and the ready-to-paste simplified `data-sw-component="shader-bg"` markup
+ * (preset + angle + colors, with a content placeholder). Read-only — copy the markup into your page.
+ * (The runtime still honours data-speed/-intensity/-interactive when hand-authored; the picker keeps
+ * the authoring surface minimal and previews at the runtime defaults.)
  */
 export function BackgroundPicker({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Markup copied — paste it into your page'));
   const [preset, setPreset] = useState(SHADER_BG_PRESETS[0]!.key);
-  const [speed, setSpeed] = useState(1);
-  const [intensity, setIntensity] = useState(0.5);
   const [angle, setAngle] = useState(0);
-  const [interactive, setInteractive] = useState(false);
-  const [overlay, setOverlay] = useState(false);
-  // Color scheme: 'ci' = the project CI tokens (default, no data-colors); 'custom' = the 3 colors below
-  // (set directly or via a quick palette), emitted as data-colors.
-  const [colorMode, setColorMode] = useState<'ci' | 'custom'>('ci');
-  const [colA, setColA] = useState('#6366f1');
-  const [colB, setColB] = useState('#22d3ee');
-  const [colC, setColC] = useState('#0b1220');
+  // The three color slots — default to the project's CI brand tokens (theme-aware); each can be switched
+  // to a Custom color or the theme-tracking Auto token.
+  const [slots, setSlots] = useState<[Slot, Slot, Slot]>([
+    { mode: 'primary', color: '#6366f1' },
+    { mode: 'secondary', color: '#22d3ee' },
+    { mode: 'neutral', color: '#0b1220' },
+  ]);
 
   const noGl = !shaderRenderer();
 
-  // Two stable palette refs so toggling/editing one mode never churns the other (no preview stutter
-  // or thumbnail re-blit when switching back to CI colors). CI tokens don't change during a session.
-  const ciPal = useMemo(() => ciPalette(), []);
-  const customPal = useMemo(() => paletteFromColors(colA, colB, colC), [colA, colB, colC]);
-  const palette = colorMode === 'custom' ? customPal : ciPal;
-  const colorsAttr = colorMode === 'custom' ? `${colA},${colB},${colC}` : null;
-  const markup = buildMarkup({ preset, speed, intensity, angle, interactive, colors: colorsAttr, overlay });
+  // Track the editor light/dark theme so an `auto` slot re-resolves live when the user flips it.
+  const [isDark, setIsDark] = useState(editorIsDark());
+  useEffect(() => {
+    const mo = new MutationObserver(() => setIsDark(editorIsDark()));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => mo.disconnect();
+  }, []);
 
+  const tokens = useMemo(() => slots.map(slotToken) as [string, string, string], [slots]);
+  const palette = useMemo(() => paletteFromSlots(tokens, isDark), [tokens, isDark]);
+  const markup = buildMarkup({ preset, angle, colors: tokens.join(',') });
+
+  function setSlot(i: number, patch: Partial<Slot>) {
+    setSlots((prev) =>
+      prev.map((s, idx) => {
+        if (idx !== i) return s;
+        const next = { ...s, ...patch };
+        // Switching TO custom from a CI token seeds the swatch with that token's default color, so the
+        // picker doesn't jump to a stale/unrelated hue.
+        if (patch.mode === 'custom' && s.mode !== 'custom') {
+          next.color = DEFAULT_BRAND_COLORS[s.mode as MandatoryColorToken] ?? s.color;
+        }
+        return next;
+      }) as [Slot, Slot, Slot],
+    );
+  }
   function applyPalette(colors: [string, string, string]) {
-    setColA(colors[0]);
-    setColB(colors[1]);
-    setColC(colors[2]);
-    setColorMode('custom');
-  }
-  function setCustomColor(setter: (v: string) => void, v: string) {
-    setter(v);
-    setColorMode('custom');
+    setSlots(colors.map((c) => ({ mode: 'custom' as const, color: c })) as [Slot, Slot, Slot]);
   }
 
-  // Live large preview: one RAF loop blitting the selected preset (animated) from the shared renderer.
+  // Live large preview: one RAF loop blitting the selected preset (animated at the runtime defaults).
   const bigRef = useRef<HTMLCanvasElement>(null);
-  const mouse = useRef<[number, number]>([0, 0]);
-  const pointer = useRef<[number, number] | null>(null);
   useEffect(() => {
     const cv = bigRef.current;
     const r = shaderRenderer();
@@ -171,17 +177,14 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
     const frame = (now: number) => {
       const dt = Math.min((now - last) / 1000 || 0, 0.05);
       last = now;
-      if (speed > 0) time += dt * speed;
-      const tgt: [number, number] = interactive && pointer.current ? pointer.current : [0, 0];
-      mouse.current[0] += (tgt[0] - mouse.current[0]) * 0.08;
-      mouse.current[1] += (tgt[1] - mouse.current[1]) * 0.08;
+      time += dt * PREVIEW_SPEED;
       const w = Math.max(2, Math.round(cv.clientWidth * DPR));
       const h = Math.max(2, Math.round(cv.clientHeight * DPR));
       if (cv.width !== w || cv.height !== h) {
         cv.width = w;
         cv.height = h;
       }
-      if (r.draw(preset, w, h, { time, mouse: mouse.current, intensity, angle: angleRad, interact: interactive ? 1 : 0, ...palette })) {
+      if (r.draw(preset, w, h, { time, mouse: [0, 0], intensity: PREVIEW_INTENSITY, angle: angleRad, interact: 0, ...palette })) {
         ctx.drawImage(r.canvas, 0, 0, w, h);
       }
       raf = requestAnimationFrame(frame);
@@ -189,7 +192,7 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
     // `palette` is a useMemo ref that changes only when its inputs do — sufficient as the palette dep.
-  }, [preset, speed, intensity, angle, interactive, palette]);
+  }, [preset, angle, palette]);
 
   const selectedName = SHADER_BG_PRESETS.find((p) => p.key === preset)?.name;
 
@@ -204,7 +207,7 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
               {SHADER_BG_PRESETS.map((p) => (
-                <PresetCard key={p.key} presetKey={p.key} palette={palette} intensity={intensity} active={p.key === preset} onSelect={() => setPreset(p.key)} />
+                <PresetCard key={p.key} presetKey={p.key} palette={palette} intensity={PREVIEW_INTENSITY} active={p.key === preset} onSelect={() => setPreset(p.key)} />
               ))}
             </div>
           )}
@@ -212,51 +215,21 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
 
         {/* RIGHT — large preview + settings + markup */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          <div
-            className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-900"
-            onPointerMove={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              if (r.height) pointer.current = [(e.clientX - r.left - r.width * 0.5) / r.height, (r.height * 0.5 - (e.clientY - r.top)) / r.height];
-            }}
-            onPointerLeave={() => {
-              pointer.current = null;
-            }}
-          >
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
             <canvas ref={bigRef} className="block h-full w-full" />
             <span className="absolute left-3 bottom-2 text-xs font-semibold text-white drop-shadow">{selectedName}</span>
           </div>
 
           <div className={`${glassPanel} grid shrink-0 gap-x-6 gap-y-3 rounded-xl p-3 text-sm md:grid-cols-2`}>
-            {/* knobs */}
+            {/* angle */}
             <div className="flex min-w-0 flex-col gap-2.5">
-              <Knob label="Speed" value={speed} min={0} max={4} step={0.1} onChange={setSpeed} fmt={(v) => `${v}×`} />
-              <Knob label="Intensity" value={intensity} min={0} max={1} step={0.05} onChange={setIntensity} />
               <Knob label="Angle" value={angle} min={-360} max={360} step={1} onChange={setAngle} fmt={(v) => `${v}°`} />
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
-                <span className="text-slate-600 dark:text-slate-300">Pointer-interactive (morphs on hover)</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
-                <span className="text-slate-600 dark:text-slate-300" title="A scrim above the background, below your text, for legibility.">Add text-legibility overlay</span>
-              </label>
             </div>
 
-            {/* color scheme */}
+            {/* colors — three slots, each a CI brand token, a Custom color, or the theme-tracking Auto */}
             <div className="flex min-w-0 flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Color scheme</span>
-                <button
-                  type="button"
-                  onClick={() => setColorMode('ci')}
-                  aria-pressed={colorMode === 'ci'}
-                  className={`rounded-md px-2 py-0.5 text-[11px] transition ${colorMode === 'ci' ? 'bg-indigo-100 dark:bg-indigo-500/15 font-semibold text-indigo-700 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'}`}
-                  title="Use the project's corporate-identity colors (no data-colors attribute)"
-                >
-                  CI colors
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Colors</span>
+              <div className="flex flex-wrap gap-1.5" title="Quick palettes set all three to custom colors">
                 {QUICK_PALETTES.map((p) => (
                   <button
                     key={p.name}
@@ -268,11 +241,35 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
                   />
                 ))}
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <input type="color" value={colA} onChange={(e) => setCustomColor(setColA, e.target.value)} aria-label="Brand 1" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
-                <input type="color" value={colB} onChange={(e) => setCustomColor(setColB, e.target.value)} aria-label="Brand 2" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
-                <input type="color" value={colC} onChange={(e) => setCustomColor(setColC, e.target.value)} aria-label="Accent / ink" className="h-8 w-9 rounded border border-slate-200 dark:border-slate-700" />
-                <span className="min-w-0 text-[11px] text-slate-400 dark:text-slate-500">{colorMode === 'custom' ? 'custom — saved as data-colors' : 'using your CI colors'}</span>
+              <div className="flex flex-col gap-1.5">
+                {(['Color 1', 'Color 2', 'Color 3'] as const).map((label, i) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <span className="w-12 shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{label}</span>
+                    <select
+                      value={slots[i]!.mode}
+                      aria-label={label}
+                      onChange={(e) => setSlot(i, { mode: e.target.value as SlotMode })}
+                      className="min-w-0 flex-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-[11px] text-slate-700 dark:text-slate-200"
+                    >
+                      <optgroup label="Brand (theme-aware)">
+                        {CI_TOKENS.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </optgroup>
+                      <option value="auto">auto — track theme (light/dark)</option>
+                      <option value="custom">custom color…</option>
+                    </select>
+                    {slots[i]!.mode === 'custom' && (
+                      <input
+                        type="color"
+                        value={slots[i]!.color}
+                        onChange={(e) => setSlot(i, { color: e.target.value })}
+                        aria-label={`${label} custom color`}
+                        className="h-7 w-8 shrink-0 rounded border border-slate-200 dark:border-slate-700"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

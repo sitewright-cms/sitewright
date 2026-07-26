@@ -349,6 +349,17 @@ export const SHADER_BG_PRESET_KEYS: readonly string[] = SHADER_BG_PRESETS.map((p
 /** The default preset when `data-preset` is missing or unknown. */
 export const DEFAULT_SHADER_PRESET = 'mesh-gradient';
 
+/**
+ * The `auto` color token — a `data-colors` slot value that TRACKS THE CURRENT THEME: it resolves to
+ * white in a light theme and near-black in a dark theme, re-evaluated live when the theme flips. Any of
+ * the three slots may be `auto` (e.g. `data-colors="accent,auto,#123"`). Single-sourced here so the
+ * published runtime (shader-bg.ts), the editor picker (shader-engine.ts), and the authoring docs agree.
+ */
+export const SHADER_AUTO_TOKEN = 'auto';
+/** Resolved value of an `auto` slot per theme (light surface / dark surface). */
+export const SHADER_AUTO_LIGHT = '#ffffff';
+export const SHADER_AUTO_DARK = '#0b0b14';
+
 /** The first preset, used as the ultimate fallback (the list is always non-empty). */
 const FIRST_PRESET = SHADER_BG_PRESETS[0] as ShaderPreset;
 

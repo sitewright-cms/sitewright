@@ -1,8 +1,8 @@
-// Delegated ripple ("waves") runtime for the admin UI. The published-site runtime
-// (packages/blocks/src/ripple.ts) binds `pointerdown` to each `.waves-effect` once at load —
-// fine for static HTML, but the editor is a React SPA whose buttons/rows mount and unmount
-// constantly. So we delegate from a single document-level listener: on pointerdown we walk up
-// to the nearest `.waves-effect` and spawn the ripple there. Same visual + class protocol.
+// Delegated ripple ("waves") runtime for the admin UI: one document-level listener; on pointerdown
+// we walk up to the nearest `.waves-effect` and spawn the ripple there — so React SPA buttons/rows
+// that mount and unmount constantly need no re-bind. The published-site runtime
+// (packages/blocks/src/ripple.ts) now uses the SAME delegated model; this stays a separate copy only
+// because the editor bundle doesn't ship blocks' runtime strings. Same visual + class protocol.
 //
 // Invariants (mirroring the publish runtime):
 // - The ripple span is built with createElement and positioned via inline numeric styles only

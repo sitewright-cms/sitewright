@@ -29,14 +29,15 @@ export const RIPPLE_CSS = [
   '}',
 ].join('\n');
 
-// The runtime. On pointerdown on a `.waves-effect`, build one ripple span sized to
+// The runtime. On pointerdown on (or inside) a `.waves-effect`, build one ripple span sized to
 // cover the element from the click point, animate it, and remove it on animationend
 // (or after a timeout fallback). Pure DOM construction — no innerHTML.
+// DELEGATED (one document-level listener, no per-element bind): elements injected AFTER init —
+// the modal's auto close button, any runtime-built control — ripple without a re-scan hook.
 export const RIPPLE_JS = `(function(){
   'use strict';
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  function spawn(e){
-    var el=e.currentTarget;
+  function spawn(el,e){
     var rect=el.getBoundingClientRect();
     var x=(e.clientX!=null?e.clientX:rect.left+rect.width/2)-rect.left;
     var y=(e.clientY!=null?e.clientY:rect.top+rect.height/2)-rect.top;
@@ -51,8 +52,11 @@ export const RIPPLE_JS = `(function(){
     span.addEventListener('animationend',remove,{once:true});
     setTimeout(remove,800);
   }
-  function bind(el){el.addEventListener('pointerdown',spawn);}
-  Array.prototype.forEach.call(document.querySelectorAll('.waves-effect'),bind);
+  document.addEventListener('pointerdown',function(e){
+    var t=e.target;
+    var el=t&&t.closest?t.closest('.waves-effect'):null;
+    if(el)spawn(el,e);
+  },{passive:true});
 })();`;
 
 const RIPPLE_MARKER = 'waves-effect';

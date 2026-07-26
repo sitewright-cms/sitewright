@@ -538,6 +538,11 @@ const MODAL_JS = `(function(){
     if(root.getAttribute('data-closebutton')!=='false'&&!panel.querySelector('[data-sw-part="autoclose"]')){
       var x=document.createElement('button');
       x.type='button';
+      // waves ripple on press (the delegated ripple runtime picks late-injected elements up; it SHIPS
+      // whenever a modal does — see the effect-runtimes ripple gate). waves-light: the button face is
+      // the primary colour, dark in both schemes. The modal CSS's higher-specificity position:absolute
+      // beats .waves-effect's position:relative, so the overhang placement is untouched.
+      x.className='waves-effect waves-light';
       x.setAttribute('data-sw-part','autoclose');
       x.setAttribute('aria-label',root.getAttribute('data-close-label')||swt('close','Close'));
       x.innerHTML=CLOSE_SVG;
@@ -581,9 +586,10 @@ const TABS_CSS = [
   // Hover → primary; the active tab (over the primary pill) keeps the on-primary text colour even on hover.
   '[data-sw-component="tabs"] [data-sw-part="tab"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
   '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:var(--sw-color-primary-content,#fff)}',
-  // Press ripple ("waves") on the buttons — self-contained so it ships with the Tabs
-  // bundle (the shared .waves-effect runtime only binds elements present at load, but
-  // the tab buttons are generated at runtime). Primary tint inactive, on-primary tint over the pill.
+  // Press ripple ("waves") on the buttons — self-contained so it ships WITH the Tabs bundle (the
+  // shared .waves-effect runtime is a separate marker-gated chunk that a tabs-only page doesn't
+  // link; its listener is delegated now, but the CSS/JS still wouldn't be present). Primary tint
+  // inactive, on-primary tint over the pill.
   '[data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;transform:scale(0);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 28%,transparent);animation:sw-tab-ripple .6s ease-out forwards}',
   '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"] .sw-ripple{background:color-mix(in srgb,var(--sw-color-primary-content,#fff) 50%,transparent)}',
   '@keyframes sw-tab-ripple{to{transform:scale(1);opacity:0}}',

@@ -1,33 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Globe } from 'lucide-react';
 import type { Project, Branding } from '../api';
 import { Modal } from './ui/Modal';
 import { BrandLogo } from './ui/BrandLogo';
+import { ProjectIcon } from './ui/ProjectIcon';
 import { SearchField } from './ui/SearchField';
 import { DEFAULT_BRANDING } from '../lib/use-branding';
 import { glassCard, primaryButton, gradientSurface, gradientHover } from '../theme';
-
-/** A project's favicon (from `identity.icon`), falling back to a placeholder globe when unset or broken. */
-function ProjectIcon({ src, active }: { src?: string; active: boolean }) {
-  const [broken, setBroken] = useState(false);
-  const box = `flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
-    active ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700/60'
-  }`;
-  if (src && !broken) {
-    return (
-      <span className={box}>
-        {/* no-referrer: an owner-set external favicon URL must not receive a Referer beacon (belt-and-
-            suspenders over the global same-origin referrer-policy header). */}
-        <img src={src} alt="" className="h-full w-full object-contain" onError={() => setBroken(true)} loading="lazy" referrerPolicy="no-referrer" />
-      </span>
-    );
-  }
-  return (
-    <span className={box} aria-hidden>
-      <Globe className={`h-4 w-4 ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`} />
-    </span>
-  );
-}
 
 /** Strip the scheme + trailing slash from a URL for a compact display (e.g. `https://acme.com/` → `acme.com`). */
 function prettyUrl(url: string): string {
@@ -106,7 +84,13 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
                   }`}
                   onClick={() => onOpen(p)}
                 >
-                  <ProjectIcon src={p.iconUrl} active={active} />
+                  <ProjectIcon
+                    src={p.iconUrl}
+                    boxClassName={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
+                      active ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700/60'
+                    }`}
+                    iconClassName={`h-4 w-4 ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`}
+                  />
                   <span className="flex min-w-0 flex-col">
                     <span className="flex items-center gap-2">
                       <span className="truncate font-medium">{p.name}</span>

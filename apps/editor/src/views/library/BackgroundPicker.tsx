@@ -10,10 +10,10 @@ import { PLATFORM_BG_EVENT } from '../PlatformBackground';
 import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-// The preview animates at the runtime's own defaults (data-speed 1, data-intensity 0.5) — those attrs
-// aren't authored by this picker, so what you see is what the pasted markup produces.
-const PREVIEW_SPEED = 1;
-const PREVIEW_INTENSITY = 0.5;
+// Runtime defaults for the optional knobs — an attribute is emitted only when it DIFFERS from these, so
+// the default sample stays minimal (just preset/angle/colors) but a changed knob shows up in the markup.
+const DEFAULT_SPEED = 1;
+const DEFAULT_INTENSITY = 0.5;
 
 // The CI palette tokens a slot can bind to (theme-aware, follow the project's brand). Kept short — the
 // common brand roles. A slot can also be a literal Custom color or the theme-tracking Auto token.
@@ -35,10 +35,24 @@ const QUICK_PALETTES: { name: string; colors: [string, string, string] }[] = [
   { name: 'Ember', colors: ['#f97316', '#ef4444', '#fff7ed'] },
 ];
 
-/** Build the simplified copy-paste `data-sw-component="shader-bg"` markup: preset + angle + the three
- *  colors, with a placeholder for the author's own content. */
-function buildMarkup(o: { preset: string; angle: number; colors: string }): string {
-  return `<div data-sw-component="shader-bg" data-preset="${o.preset}" data-angle="${o.angle}" data-colors="${o.colors}">
+/** Build the copy-paste `data-sw-component="shader-bg"` markup with a content placeholder. preset/angle/
+ *  colors are always present; speed/intensity/interactive appear only when set off their defaults, and an
+ *  optional legibility overlay child — so the default sample stays minimal but every knob is authorable. */
+function buildMarkup(o: {
+  preset: string;
+  angle: number;
+  colors: string;
+  speed: number;
+  intensity: number;
+  interactive: boolean;
+  overlay: boolean;
+}): string {
+  const attrs = [`data-sw-component="shader-bg"`, `data-preset="${o.preset}"`, `data-angle="${o.angle}"`, `data-colors="${o.colors}"`];
+  if (o.speed !== DEFAULT_SPEED) attrs.push(`data-speed="${o.speed}"`);
+  if (o.intensity !== DEFAULT_INTENSITY) attrs.push(`data-intensity="${o.intensity}"`);
+  if (o.interactive) attrs.push(`data-interactive="true"`);
+  const overlay = o.overlay ? `\n  <div data-sw-part="overlay" class="bg-black/30"></div>` : '';
+  return `<div ${attrs.join(' ')}>${overlay}
   YOUR HTML CODE HERE
 </div>`;
 }
@@ -113,18 +127,22 @@ function Knob({ label, value, min, max, step, onChange, fmt }: {
 /**
  * The Background preset PICKER — a live WebGL gallery over the same 30 presets the site runtime ships
  * (one shared offscreen GL context). Left: a scrollable column of preset cards. Right: the live large
- * preview, a compact settings row (angle + the three color slots, each a literal color OR the
- * theme-tracking AUTO token), and the ready-to-paste simplified `data-sw-component="shader-bg"` markup
- * (preset + angle + colors, with a content placeholder). Read-only — copy the markup into your page.
- * (The runtime still honours data-speed/-intensity/-interactive when hand-authored; the picker keeps
- * the authoring surface minimal and previews at the runtime defaults.)
+ * preview, a settings panel (speed / intensity / angle / pointer-interactive / legibility overlay + the
+ * three color slots, each a CI token, a Custom color, or the theme-tracking AUTO token), and the
+ * ready-to-paste `data-sw-component="shader-bg"` markup. Read-only — copy the markup into your page. The
+ * sample stays minimal (preset/angle/colors + a content placeholder) and gains data-speed/-intensity/
+ * -interactive / the overlay child only when those knobs are changed off their defaults.
  */
 export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose: () => void; isInstanceAdmin?: boolean }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Markup copied — paste it into your page'));
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [preset, setPreset] = useState(SHADER_BG_PRESETS[0]!.key);
+  const [speed, setSpeed] = useState(DEFAULT_SPEED);
+  const [intensity, setIntensity] = useState(DEFAULT_INTENSITY);
   const [angle, setAngle] = useState(0);
+  const [interactive, setInteractive] = useState(false);
+  const [overlay, setOverlay] = useState(false);
   // The three color slots — default to the project's CI brand tokens (theme-aware); each can be switched
   // to a Custom color or the theme-tracking Auto token.
   const [slots, setSlots] = useState<[Slot, Slot, Slot]>([
@@ -145,7 +163,7 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
 
   const tokens = useMemo(() => slots.map(slotToken) as [string, string, string], [slots]);
   const palette = useMemo(() => paletteFromSlots(tokens, isDark), [tokens, isDark]);
-  const markup = buildMarkup({ preset, angle, colors: tokens.join(',') });
+  const markup = buildMarkup({ preset, angle, colors: tokens.join(','), speed, intensity, interactive, overlay });
 
   function setSlot(i: number, patch: Partial<Slot>) {
     setSlots((prev) =>
@@ -181,8 +199,18 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
     }
   }
 
-  // Live large preview: one RAF loop blitting the selected preset (animated at the runtime defaults).
+  // Live large preview: one RAF loop blitting the selected preset (animated) from the shared renderer,
+  // honouring the current speed / intensity / angle and — when Pointer-interactive is on — the eased
+  // cursor position.
   const bigRef = useRef<HTMLCanvasElement>(null);
+  const mouse = useRef<[number, number]>([0, 0]);
+  const pointer = useRef<[number, number] | null>(null);
+  // The knob/palette values the RAF loop reads each frame. Kept in a live ref (updated every render) so
+  // dragging a slider updates the animation WITHOUT tearing the loop down and restarting it — restarting
+  // would reset the time base (`time`/`last`) and make the preview stutter mid-drag. Only a preset change
+  // restarts the loop (a genuinely different shader deserves a fresh phase).
+  const live = useRef({ speed, intensity, angle, interactive, palette });
+  live.current = { speed, intensity, angle, interactive, palette };
   useEffect(() => {
     const cv = bigRef.current;
     const r = shaderRenderer();
@@ -192,26 +220,28 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
     let raf = 0;
     let last = 0;
     let time = 0.8;
-    const angleRad = (angle * Math.PI) / 180;
     const frame = (now: number) => {
+      const { speed, intensity, angle, interactive, palette } = live.current;
       const dt = Math.min((now - last) / 1000 || 0, 0.05);
       last = now;
-      time += dt * PREVIEW_SPEED;
+      if (speed > 0) time += dt * speed;
+      const tgt: [number, number] = interactive && pointer.current ? pointer.current : [0, 0];
+      mouse.current[0] += (tgt[0] - mouse.current[0]) * 0.08;
+      mouse.current[1] += (tgt[1] - mouse.current[1]) * 0.08;
       const w = Math.max(2, Math.round(cv.clientWidth * DPR));
       const h = Math.max(2, Math.round(cv.clientHeight * DPR));
       if (cv.width !== w || cv.height !== h) {
         cv.width = w;
         cv.height = h;
       }
-      if (r.draw(preset, w, h, { time, mouse: [0, 0], intensity: PREVIEW_INTENSITY, angle: angleRad, interact: 0, ...palette })) {
+      if (r.draw(preset, w, h, { time, mouse: mouse.current, intensity, angle: (angle * Math.PI) / 180, interact: interactive ? 1 : 0, ...palette })) {
         ctx.drawImage(r.canvas, 0, 0, w, h);
       }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-    // `palette` is a useMemo ref that changes only when its inputs do — sufficient as the palette dep.
-  }, [preset, angle, palette]);
+  }, [preset]);
 
   const selectedName = SHADER_BG_PRESETS.find((p) => p.key === preset)?.name;
 
@@ -254,7 +284,7 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
               {SHADER_BG_PRESETS.map((p) => (
-                <PresetCard key={p.key} presetKey={p.key} palette={palette} intensity={PREVIEW_INTENSITY} active={p.key === preset} onSelect={() => setPreset(p.key)} />
+                <PresetCard key={p.key} presetKey={p.key} palette={palette} intensity={intensity} active={p.key === preset} onSelect={() => setPreset(p.key)} />
               ))}
             </div>
           )}
@@ -262,15 +292,34 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
 
         {/* RIGHT — large preview + settings + markup */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+          <div
+            className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-900"
+            onPointerMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              if (r.height) pointer.current = [(e.clientX - r.left - r.width * 0.5) / r.height, (r.height * 0.5 - (e.clientY - r.top)) / r.height];
+            }}
+            onPointerLeave={() => {
+              pointer.current = null;
+            }}
+          >
             <canvas ref={bigRef} className="block h-full w-full" />
             <span className="absolute left-3 bottom-2 text-xs font-semibold text-white drop-shadow">{selectedName}</span>
           </div>
 
           <div className={`${glassPanel} grid shrink-0 gap-x-6 gap-y-3 rounded-xl p-3 text-sm md:grid-cols-2`}>
-            {/* angle */}
+            {/* knobs — speed / intensity / angle + interactivity / overlay */}
             <div className="flex min-w-0 flex-col gap-2.5">
+              <Knob label="Speed" value={speed} min={0} max={4} step={0.1} onChange={setSpeed} fmt={(v) => `${v}×`} />
+              <Knob label="Intensity" value={intensity} min={0} max={1} step={0.05} onChange={setIntensity} />
               <Knob label="Angle" value={angle} min={-360} max={360} step={1} onChange={setAngle} fmt={(v) => `${v}°`} />
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
+                <span className="text-slate-600 dark:text-slate-300">Pointer-interactive (morphs on hover)</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
+                <span className="text-slate-600 dark:text-slate-300" title="A scrim above the background, below your text, for legibility.">Add text-legibility overlay</span>
+              </label>
             </div>
 
             {/* colors — three slots, each a CI brand token, a Custom color, or the theme-tracking Auto */}

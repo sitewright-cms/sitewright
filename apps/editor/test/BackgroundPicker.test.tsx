@@ -19,22 +19,54 @@ function open(props: Partial<Parameters<typeof BackgroundPicker>[0]> = {}) {
 
 const markup = (): string => screen.getByRole('code').textContent ?? '';
 
-describe('BackgroundPicker — simplified markup + AUTO color slots', () => {
+describe('BackgroundPicker — minimal markup, AUTO color slots + knobs', () => {
   beforeEach(() => {
     document.documentElement.dataset.theme = 'light';
   });
 
-  it('defaults to the project CI brand tokens and emits the simplified markup with a content placeholder', () => {
+  it('defaults to the project CI brand tokens and emits the minimal markup with a content placeholder', () => {
     open();
     const m = markup();
     // Brand-tracking default (theme-aware CI tokens), NOT a hardcoded palette.
     expect(m).toContain('<div data-sw-component="shader-bg" data-preset="mesh-gradient" data-angle="0" data-colors="primary,secondary,neutral">');
     expect(m).toContain('YOUR HTML CODE HERE');
-    // the simplified sample does NOT carry the dropped knobs
+    // With every knob at its default the sample stays minimal — an attribute appears ONLY when its knob
+    // is moved off the default (asserted below), so the paste-ready default has no noise.
     expect(m).not.toContain('data-speed');
     expect(m).not.toContain('data-intensity');
     expect(m).not.toContain('data-interactive');
     expect(m).not.toContain('data-sw-part="overlay"');
+  });
+
+  it('emits data-speed / data-intensity only when moved off their defaults', () => {
+    open();
+    fireEvent.change(screen.getByRole('slider', { name: /speed/i }), { target: { value: '2' } });
+    fireEvent.change(screen.getByRole('slider', { name: /intensity/i }), { target: { value: '0.8' } });
+    const m = markup();
+    expect(m).toContain('data-speed="2"');
+    expect(m).toContain('data-intensity="0.8"');
+  });
+
+  it('drops data-speed again once the knob is returned to its default (round-trip invariant)', () => {
+    open();
+    const speed = screen.getByRole('slider', { name: /speed/i });
+    fireEvent.change(speed, { target: { value: '2' } });
+    expect(markup()).toContain('data-speed="2"');
+    // Back to the runtime default (1) → the attribute disappears, keeping the sample minimal.
+    fireEvent.change(speed, { target: { value: '1' } });
+    expect(markup()).not.toContain('data-speed');
+  });
+
+  it('emits data-interactive when Pointer-interactive is enabled', () => {
+    open();
+    fireEvent.click(screen.getByLabelText(/pointer-interactive/i));
+    expect(markup()).toContain('data-interactive="true"');
+  });
+
+  it('adds the legibility overlay child when the overlay is enabled', () => {
+    open();
+    fireEvent.click(screen.getByLabelText(/text-legibility overlay/i));
+    expect(markup()).toContain('<div data-sw-part="overlay" class="bg-black/30"></div>');
   });
 
   it('sets a slot to the AUTO token via its mode select', () => {
@@ -62,7 +94,7 @@ describe('BackgroundPicker — simplified markup + AUTO color slots', () => {
 
   it('reflects the chosen angle in the markup', () => {
     open();
-    const angle = screen.getByRole('slider') as HTMLInputElement;
+    const angle = screen.getByRole('slider', { name: /angle/i }) as HTMLInputElement;
     fireEvent.change(angle, { target: { value: '135' } });
     expect(markup()).toContain('data-angle="135"');
   });
@@ -79,7 +111,7 @@ describe('BackgroundPicker — simplified markup + AUTO color slots', () => {
     const put = vi.spyOn(api, 'putInstanceSettings').mockResolvedValue({} as never);
     open({ isInstanceAdmin: true });
     fireEvent.change(screen.getByLabelText('Color 2'), { target: { value: 'auto' } });
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '90' } });
+    fireEvent.change(screen.getByRole('slider', { name: /angle/i }), { target: { value: '90' } });
     fireEvent.click(screen.getByRole('button', { name: /use as platform background/i }));
     await waitFor(() =>
       expect(put).toHaveBeenCalledWith({ platformBackground: { preset: 'mesh-gradient', angle: 90, colors: ['primary', 'auto', 'neutral'] } }),

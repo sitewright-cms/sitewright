@@ -79,7 +79,16 @@ export const SCROLLSPY_JS = `(function(){
       if(h&&h.length>1){
         var id=decodeId(h.slice(1));
         var el=id?document.getElementById(id):null;
-        if(el){if(!byId[id]){byId[id]={el:el,links:[]};order.push(id);}byId[id].links.push(a);}
+        // Only a REAL, laid-out section is a spy target. Exclude two non-section cases that both report a
+        // CONSTANT rect.top of 0 (never laid out) — left in, such a target looks permanently "scrolled
+        // past" the trigger line and, being last in DOM order, hijacks the active state so the real last
+        // section's link (e.g. #faq) never lights up:
+        //   • a <dialog> — a MODAL-OPEN trigger (the nav-link runtime opens it via showModal(), same
+        //     tagName check), never a scroll destination; AND
+        //   • any element with no layout box right now (display:none: a closed dialog, an inactive tab
+        //     panel, an off-canvas region). A below-the-fold section is still laid out (has client rects),
+        //     so it is correctly kept — only genuinely unrendered targets are dropped.
+        if(el&&el.tagName!=='DIALOG'&&el.getClientRects().length){if(!byId[id]){byId[id]={el:el,links:[]};order.push(id);}byId[id].links.push(a);}
       }else if(samePage(a)){sentinels.push(a);}
     });
     if(order.length===0)return; // dormant: no in-page sections → leave route highlighting alone

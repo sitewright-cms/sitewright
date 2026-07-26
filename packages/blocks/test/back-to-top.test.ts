@@ -14,10 +14,18 @@ describe('back-to-top', () => {
   it('is a wide-but-short FAB (4.5rem × 2.5rem) with a proportional chevron', () => {
     expect(BACK_TO_TOP_CSS).toContain('width:4.5rem;height:2.5rem');
     expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top] svg{width:1.4rem;height:1.4rem}');
-    // fixed bottom-centre, above content but below the consent/preloader floats; hidden on mobile
-    expect(BACK_TO_TOP_CSS).toContain('position:fixed');
+    // fixed BOTTOM-RIGHT corner (not centred), above content but below the consent/preloader floats;
+    // hidden on mobile
+    expect(BACK_TO_TOP_CSS).toContain('position:fixed;right:1.5rem;bottom:1.5rem');
+    expect(BACK_TO_TOP_CSS).not.toContain('left:50%');
     expect(BACK_TO_TOP_CSS).toContain('z-index:9996');
     expect(BACK_TO_TOP_CSS).toContain('@media (max-width:639.98px)');
+  });
+
+  it('lifts a bottom-right/bottom banner above the FAB slot (the Banner DEFAULT is the same corner, z-index 9997)', () => {
+    expect(BACK_TO_TOP_CSS).toContain(
+      'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:5rem}',
+    );
   });
 
   it('the slide transition is scoped to `.btn` so it outranks the utility-sheet `.btn` transition (no pop)', () => {

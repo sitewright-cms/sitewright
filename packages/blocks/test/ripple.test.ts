@@ -33,10 +33,13 @@ describe('ripple runtime', () => {
     expect(RIPPLE_JS).not.toContain('innerHTML');
   });
 
-  it('binds on pointerdown and cleans up the span', () => {
-    expect(RIPPLE_JS).toContain("addEventListener('pointerdown',spawn)");
+  it('listens DELEGATED on the document (late-injected elements — e.g. the modal auto close — ripple too)', () => {
+    expect(RIPPLE_JS).toContain("document.addEventListener('pointerdown'");
+    expect(RIPPLE_JS).toContain(".closest?t.closest('.waves-effect')");
     expect(RIPPLE_JS).toContain('removeChild(span)');
     expect(RIPPLE_JS).toContain("addEventListener('animationend',remove,{once:true})");
+    // no per-element bind — a querySelectorAll init scan would miss runtime-injected elements
+    expect(RIPPLE_JS).not.toContain('querySelectorAll');
   });
 
   it('cannot break out of a <script> block', () => {

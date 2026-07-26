@@ -1,7 +1,7 @@
 // BACK-TO-TOP — a platform-injected button that appears after the first viewport of scroll and
 // scrolls the page back to the top. ON BY DEFAULT; ships (markup + CSS + JS) unless the site sets
 // `website.effects.backToTop` to false. The button is a LARGE vendored `.btn.btn-primary` (solid CI
-// face) carrying the `sw-btn-shape-square` icon shape; it sits fixed BOTTOM-CENTRE (hidden on mobile)
+// face) carrying the `sw-btn-shape-square` icon shape; it sits fixed BOTTOM-RIGHT (hidden on mobile)
 // and SLIDES up (show) / down (hide) — a pure transform slide, NO opacity fade.
 
 // chevron-up (Lucide). aria-hidden — the button itself carries the accessible label.
@@ -16,19 +16,26 @@ export function backToTopHtml(enabled: boolean | undefined): string {
 
 // --- CSS --------------------------------------------------------------------
 export const BACK_TO_TOP_CSS = [
-  // Fixed BOTTOM-CENTER, above page content. The `translate` prop carries BOTH the -50% horizontal
-  // centring AND the vertical slide (an INDIVIDUAL prop, so it composes with the .btn's transform-based
-  // hover scale instead of clobbering it). Hidden = faded + slid DOWN; the runtime adds `.sw-visible`
-  // after the first viewport of scroll → it slides UP into view. `[data-…].btn` beats the base `.btn`
-  // position. HIDDEN ON MOBILE (a small viewport scrolls fast + has little room for a floating button).
-  // Wide, short FAB — explicit width 4.5rem × height 2.5rem (the square-shape's aspect-ratio:1 is
-  // overridden when BOTH dims are set) + padding:0 so the chevron centres cleanly. SLIDE-ONLY: hidden =
-  // slid FULLY below the viewport (NO opacity), .sw-visible = slid home. `visibility:hidden` (delayed to
-  // the end of the slide-out) keeps the hidden button out of the TAB ORDER + a11y tree; on show the delay
-  // is 0 so it becomes focusable at once. `[data-…].btn` beats the base `.btn` sizing.
-  '[data-sw-back-to-top].btn{position:fixed;left:50%;bottom:1.5rem;z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:-50% calc(100% + 2rem);pointer-events:none}',
-  '[data-sw-back-to-top].sw-visible{visibility:visible;translate:-50% 0;pointer-events:auto}',
+  // Fixed BOTTOM-RIGHT, above page content. `translate` carries the vertical slide as an INDIVIDUAL
+  // prop, so it composes with the .btn's transform-based hover scale instead of clobbering it. Hidden =
+  // slid DOWN below the viewport; the runtime adds `.sw-visible` after the first viewport of scroll →
+  // it slides UP into view. `[data-…].btn` beats the base `.btn` position. HIDDEN ON MOBILE (a small
+  // viewport scrolls fast + has little room for a floating button). Wide, short FAB — explicit width
+  // 4.5rem × height 2.5rem (the square-shape's aspect-ratio:1 is overridden when BOTH dims are set) +
+  // padding:0 so the chevron centres cleanly. SLIDE-ONLY: hidden = slid FULLY below the viewport (NO
+  // opacity), .sw-visible = slid home. `visibility:hidden` (delayed to the end of the slide-out) keeps
+  // the hidden button out of the TAB ORDER + a11y tree; on show the delay is 0 so it becomes focusable
+  // at once. `[data-…].btn` beats the base `.btn` sizing.
+  '[data-sw-back-to-top].btn{position:fixed;right:1.5rem;bottom:1.5rem;z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:0 calc(100% + 2rem);pointer-events:none}',
+  '[data-sw-back-to-top].sw-visible{visibility:visible;translate:0 0;pointer-events:auto}',
   '@media (max-width:639.98px){[data-sw-back-to-top].btn{display:none}}',
+  // CORNER AVOIDANCE: the Banner component's DEFAULT placement is the same bottom-right corner
+  // (right:1rem;bottom:1rem, z-index 9997 — ABOVE the FAB), so an un-positioned banner would cover the
+  // button. When THIS page carries the FAB, lift bottom-right-ish banners above its slot (FAB top edge
+  // = 1.5rem + 2.5rem; +1rem gap → 5rem). Ships only with the FAB (this sheet); the higher specificity
+  // beats the banner's own positional rules; engines without :has() keep today's overlap (they degrade,
+  // never break). bottom-left/top-*/center/inline banners are untouched.
+  'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:5rem}',
   // The slide transition is !important so it OWNS the `translate` easing: any competing `.btn{transition}`
   // rule (the base-css baseline, or a compiled utility) could otherwise clobber `translate` (transition is
   // a single shorthand — last declaration wins) → the button POPS instead of slides. !important on this

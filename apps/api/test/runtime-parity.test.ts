@@ -72,6 +72,15 @@ describe('effect-runtime registry — self-consistency', () => {
     expect(previewBodyEffectScripts('<p>plain</p>')).toEqual([]);
   });
 
+  it('a MODAL page ships the ripple runtime even with no authored waves marker (the injected auto close ripples)', () => {
+    const modalOnly = '<dialog data-sw-component="modal" id="m"><p>hi</p></dialog>';
+    expect(publishBodyEffectFiles(modalOnly).map((f) => f.script)).toContain('ripple.js');
+    expect(previewBodyEffectScripts(modalOnly).join('')).toContain('waves-effect');
+    // a non-modal component does NOT drag ripple in
+    const carouselOnly = '<div data-sw-component="carousel"><div data-sw-part="slide">s</div></div>';
+    expect(publishBodyEffectFiles(carouselOnly).map((f) => f.script)).not.toContain('ripple.js');
+  });
+
   it('emits a single combined <noscript> un-hide for every first-paint-hiding runtime (svg-anim + entrance)', () => {
     const ns = bodyEffectNoscript(ALL_MARKERS);
     expect(ns).toContain('<noscript><style>');

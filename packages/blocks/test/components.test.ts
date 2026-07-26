@@ -323,6 +323,9 @@ describe('component registry', () => {
     // The runtime builds a top-right close button (brand-primary square, white icon) and reads the
     // two opt-out switches off the root.
     expect(js).toContain("setAttribute('data-sw-part','autoclose')");
+    // The close carries the waves-ripple markers — the DELEGATED ripple runtime (shipped alongside
+    // every Modal page via the effect-runtimes gate) picks the late-injected button up for free.
+    expect(js).toContain("className='waves-effect waves-light'");
     expect(js).toContain("getAttribute('data-closebutton')!=='false'");
     expect(js).toContain("getAttribute('data-backdrop-close')!=='false'");
     // Authored close buttons (any number) are wired too.

@@ -38,8 +38,11 @@ describe('PlatformBackground', () => {
   it('renders the canvas + adds the sw-platform-bg class once the config loads', async () => {
     vi.spyOn(api, 'loginConfig').mockResolvedValue({ oidcProviders: [], branding: {} as never, platformBackground: CONFIG });
     render(<PlatformBackground />);
-    await waitFor(() => expect(canvas()).not.toBeNull());
-    expect(hasClass()).toBe(true);
+    // The class toggles in a post-commit effect, so wait on the class itself (the assertion target) —
+    // once it's on, the config-driven canvas has necessarily committed too. Waiting on the canvas alone
+    // races the effect and flakes under load.
+    await waitFor(() => expect(hasClass()).toBe(true));
+    expect(canvas()).not.toBeNull();
   });
 
   it('is inert (no canvas, no class) when no platform background is configured', async () => {

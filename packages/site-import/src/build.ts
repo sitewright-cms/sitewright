@@ -5,6 +5,7 @@ import {
   CorporateIdentitySchema,
   PROJECT_FORMAT_VERSION,
   WebsiteSettingsSchema,
+  siteUrlIssue,
   type CorporateIdentity,
   type Dataset,
   type Entry,
@@ -403,6 +404,16 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       diagnostics.push({ code: 'widget-consent-registered', message: `registered 3rd-party widget script(s) as functional consent integrations (gated behind the cookie banner): ${added.map((i) => i.name).join(', ')}` });
     }
   }
+  // Prefill the production URL with the CLONED site's own live origin — so a clone's Website Settings →
+  // production URL, canonical/og:url, and sitemap all point at the source site out of the box (the user
+  // edits it once they deploy their own domain). Only for a CRAWL intake (a zip/HTML upload has the
+  // synthetic `https://import.local/` baseUrl — clean per the validator but meaningless, so never persist
+  // it) and only when that origin passes the same validator the settings form uses (a subpath/query
+  // origin is skipped, not forced). `http` or `https` — both are valid site URLs.
+  if (website && !website.siteUrl && workSite.origin.kind === 'crawl' && !siteUrlIssue(workSite.baseUrl)) {
+    website = WebsiteSettingsSchema.parse({ ...website, siteUrl: workSite.baseUrl });
+  }
+
   // Entry ids must be unique across the WHOLE bundle (the content store keys entries by `entityId` per
   // project). Per-page dataset extraction only dedupes within a dataset, so a dataset folded on multiple
   // pages collides — re-key the duplicates globally before validation.

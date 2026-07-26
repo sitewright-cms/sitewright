@@ -27,8 +27,16 @@ function page(title: string, main: string, headExtra = ''): string {
   return `<html><head><title>${title}</title>${headExtra}</head><body>${HEADER}<main>${main}</main>${FOOTER}</body></html>`;
 }
 
-function site(pages: { sourceUrl: string; html: string }[]): CapturedSite {
-  return { baseUrl: 'https://ex.com/', pages, assets: new Map(), origin: { kind: 'crawl', label: 'ex.com' } };
+function site(
+  pages: { sourceUrl: string; html: string }[],
+  opts: { baseUrl?: string; originKind?: 'crawl' | 'upload' } = {},
+): CapturedSite {
+  return {
+    baseUrl: opts.baseUrl ?? 'https://ex.com/',
+    pages,
+    assets: new Map(),
+    origin: { kind: opts.originKind ?? 'crawl', label: 'ex.com' },
+  };
 }
 
 const HOME_HEAD = '<meta property="og:site_name" content="Acme"><meta property="og:image" content="https://ex.com/og.jpg"><meta name="theme-color" content="#0a7">';
@@ -79,6 +87,31 @@ describe('buildImportBundle (integration)', () => {
     // Stats.
     expect(result.stats.imagesHosted).toBeGreaterThanOrEqual(1);
     expect(result.stats.scriptsDropped).toBeGreaterThanOrEqual(1);
+
+    // Production URL prefilled with the cloned site's own live origin.
+    expect(bundle.project.website?.siteUrl).toBe('https://ex.com/');
+  });
+
+  it('skips the siteUrl prefill for a ZIP/HTML UPLOAD (synthetic import.local origin) and a non-clean crawl origin', async () => {
+    // Upload intake: baseUrl is the synthetic `https://import.local/` — clean per the validator but a
+    // meaningless placeholder, so it must NOT be persisted as the production URL.
+    const upload = await buildImportBundle(
+      site([{ sourceUrl: 'https://import.local/', html: page('Acme', '<h1>Hi</h1>', HOME_HEAD) }], {
+        baseUrl: 'https://import.local/',
+        originKind: 'upload',
+      }),
+      { media: stubMedia() },
+    );
+    expect(upload.bundles[0]!.project.website?.siteUrl).toBeUndefined();
+
+    // A crawl origin that fails the validator (has a query string) → skipped, not forced.
+    const dirty = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/?ref=1', html: page('Acme', '<h1>Hi</h1>', HOME_HEAD) }], {
+        baseUrl: 'https://ex.com/?ref=1',
+      }),
+      { media: stubMedia() },
+    );
+    expect(dirty.bundles[0]!.project.website?.siteUrl).toBeUndefined();
   });
 
   it('publishes captured pages (draft stubs) with a swImport rewrite marker', async () => {

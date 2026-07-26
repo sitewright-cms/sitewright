@@ -217,6 +217,7 @@ import {
   listProjectAccessForUser,
   listProjectClientUserIds,
   listProjectMembers,
+  projectCardsFor,
   login,
   reapOrphanedClients,
   registerAccount,
@@ -1665,7 +1666,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // shows the forced screen for a feature the server isn't enforcing.
         forcePasswordChange ? isPasswordChangeRequired(db, userId) : Promise.resolve(false),
       ]);
-    const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
+    // The favicon + production URL per project, for the project selector (one batched query).
+    const cards = await projectCardsFor(db, access.map((a) => a.projectId));
+    const projects = access.map((a) => {
+      const card = cards.get(a.projectId);
+      return {
+        id: a.projectId,
+        name: a.projectName,
+        slug: a.projectSlug,
+        role: a.role,
+        ...(card?.iconUrl ? { iconUrl: card.iconUrl } : {}),
+        ...(card?.siteUrl ? { siteUrl: card.siteUrl } : {}),
+      };
+    });
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
     return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, projects });
@@ -2096,8 +2109,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get('/projects', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const access = await listProjectAccessForUser(db, userId);
-    // Map to the project shape the editor expects (id/name/slug) plus the caller's role.
-    const list = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
+    // The favicon + production URL for each project, batch-read in one query, for the project selector.
+    const cards = await projectCardsFor(db, access.map((a) => a.projectId));
+    // Map to the project shape the editor expects (id/name/slug + role) plus the selector display card.
+    const list = access.map((a) => {
+      const card = cards.get(a.projectId);
+      return {
+        id: a.projectId,
+        name: a.projectName,
+        slug: a.projectSlug,
+        role: a.role,
+        ...(card?.iconUrl ? { iconUrl: card.iconUrl } : {}),
+        ...(card?.siteUrl ? { siteUrl: card.siteUrl } : {}),
+      };
+    });
     return reply.send({ projects: list });
   });
 

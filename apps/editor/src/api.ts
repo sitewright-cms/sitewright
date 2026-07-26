@@ -382,6 +382,10 @@ export interface Project {
   name: string;
   slug: string;
   role: ProjectRole;
+  /** The site's favicon (`identity.icon`) — a `/media/…` ref or absolute https URL — for the selector. */
+  iconUrl?: string;
+  /** The site's production/live URL (`website.siteUrl`), shown in the selector when set. */
+  siteUrl?: string;
 }
 /** A soft-deleted project awaiting restore or permanent reap (the admin "deleted projects" list). */
 export interface DeletedProject {

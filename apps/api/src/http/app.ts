@@ -1900,6 +1900,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         secondary: stored.brandSecondary ?? DEFAULT_BRAND_SECONDARY,
         logoUrl,
       },
+      // The admin-set WebGL background (or null), needed pre-auth so the login screen renders it too.
+      platformBackground: stored.platformBackground ?? null,
     });
   });
 

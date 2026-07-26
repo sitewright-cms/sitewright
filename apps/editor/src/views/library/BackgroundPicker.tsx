@@ -5,6 +5,8 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
 import { DEFAULT_BRAND_COLORS, type MandatoryColorToken } from '@sitewright/schema';
+import { api } from '../../api';
+import { PLATFORM_BG_EVENT } from '../PlatformBackground';
 import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
@@ -117,9 +119,10 @@ function Knob({ label, value, min, max, step, onChange, fmt }: {
  * (The runtime still honours data-speed/-intensity/-interactive when hand-authored; the picker keeps
  * the authoring surface minimal and previews at the runtime defaults.)
  */
-export function BackgroundPicker({ onClose }: { onClose: () => void }) {
+export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose: () => void; isInstanceAdmin?: boolean }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Markup copied — paste it into your page'));
+  const [savingPlatform, setSavingPlatform] = useState(false);
   const [preset, setPreset] = useState(SHADER_BG_PRESETS[0]!.key);
   const [angle, setAngle] = useState(0);
   // The three color slots — default to the project's CI brand tokens (theme-aware); each can be switched
@@ -162,6 +165,22 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
     setSlots(colors.map((c) => ({ mode: 'custom' as const, color: c })) as [Slot, Slot, Slot]);
   }
 
+  // Admin-only: set/clear the CURRENT config as the platform-wide background (behind the whole editor +
+  // login). Persisted as an instance setting; the live PlatformBackground canvas refetches on the event.
+  async function setPlatform(value: { preset: string; angle: number; colors: [string, string, string] } | null) {
+    if (savingPlatform) return;
+    setSavingPlatform(true);
+    try {
+      await api.putInstanceSettings({ platformBackground: value });
+      window.dispatchEvent(new Event(PLATFORM_BG_EVENT));
+      toast.show(value ? 'Set as the platform background' : 'Platform background cleared');
+    } catch {
+      toast.show('Could not update the platform background');
+    } finally {
+      setSavingPlatform(false);
+    }
+  }
+
   // Live large preview: one RAF loop blitting the selected preset (animated at the runtime defaults).
   const bigRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -197,7 +216,35 @@ export function BackgroundPicker({ onClose }: { onClose: () => void }) {
   const selectedName = SHADER_BG_PRESETS.find((p) => p.key === preset)?.name;
 
   return (
-    <Modal title="Animated backgrounds" size="screen" onClose={onClose}>
+    <Modal
+      title="Animated backgrounds"
+      size="screen"
+      onClose={onClose}
+      headerExtra={
+        isInstanceAdmin ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={savingPlatform}
+              onClick={() => void setPlatform({ preset, angle, colors: tokens })}
+              title="Use this background platform-wide — behind the whole editor and the login screen (admins only)"
+              className={`${ghostButton} px-3 py-1.5 text-xs font-semibold disabled:opacity-50`}
+            >
+              Use as platform background
+            </button>
+            <button
+              type="button"
+              disabled={savingPlatform}
+              onClick={() => void setPlatform(null)}
+              title="Remove the platform-wide background"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50"
+            >
+              Clear platform background
+            </button>
+          </div>
+        ) : undefined
+      }
+    >
       <div className="flex h-full min-h-0 gap-4 p-4">
         {/* LEFT — single-column scrollable preset cards */}
         <div className="flex w-[280px] min-h-0 shrink-0 flex-col">

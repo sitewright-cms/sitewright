@@ -11,6 +11,7 @@ import type {
   MediaAsset,
   MediaFolderRecord,
   Page,
+  PlatformBackground,
   PageTranslation,
   ProjectSettings,
   SmtpInput,
@@ -58,6 +59,7 @@ export type {
   FormSubmission,
   InstanceSettingsInput,
   InstanceSettingsPublic,
+  PlatformBackground,
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
@@ -714,7 +716,7 @@ export const api = {
   // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers and the
   // admin-panel branding (so the pre-auth screen skins itself).
   loginConfig: () =>
-    request<{ oidcProviders: { id: string; label: string }[]; branding: Branding }>('GET', '/auth/config'),
+    request<{ oidcProviders: { id: string; label: string }[]; branding: Branding; platformBackground: PlatformBackground | null }>('GET', '/auth/config'),
   // The (full) URL to begin an OIDC login — the browser navigates here (a redirect to the IdP).
   oidcStartUrl: (id: string) => `${BASE}/auth/oidc/${encodeURIComponent(id)}/start`,
   me: () =>

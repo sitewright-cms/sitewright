@@ -210,6 +210,39 @@ describe('admin settings API', () => {
       expect(s.backupRetention).toBe(5);
     });
 
+    it('round-trips the platform WebGL background + serves it publicly on /auth/config; null clears it', async () => {
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      const bg = { preset: 'mesh-gradient', angle: 135, colors: ['primary', 'auto', '#123456'] };
+
+      const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { platformBackground: bg } });
+      expect(put.statusCode).toBe(200);
+      expect((put.json() as { settings: { platformBackground?: unknown } }).settings.platformBackground).toEqual(bg);
+
+      // Served pre-auth (no session) so the login screen can render it.
+      const pub = await app.inject({ method: 'GET', url: '/auth/config' });
+      expect(pub.statusCode).toBe(200);
+      expect((pub.json() as { platformBackground: unknown }).platformBackground).toEqual(bg);
+
+      // Clearing it (null) removes it; /auth/config then reports null.
+      const cleared = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { platformBackground: null } });
+      expect((cleared.json() as { settings: { platformBackground?: unknown } }).settings.platformBackground).toBeUndefined();
+      const pub2 = await app.inject({ method: 'GET', url: '/auth/config' });
+      expect((pub2.json() as { platformBackground: unknown }).platformBackground).toBeNull();
+    });
+
+    it('rejects a platform background with an injection-shaped color slot (400)', async () => {
+      const admin = await registerAdmin(app);
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/admin/settings',
+        cookies: { sw_session: admin.t },
+        // a slot containing a quote/space/angle-bracket must fail the strict hex-or-token pattern
+        payload: { platformBackground: { preset: 'mesh-gradient', angle: 0, colors: ['primary', 'secondary', '"><script>'] } },
+      });
+      expect(put.statusCode).toBe(400);
+    });
+
     it('forbids the bearer (API-key) path entirely on admin routes', async () => {
       // A made-up bearer must be rejected as session-only (403), not 401: the route
       // refuses the bearer path before any key lookup, so no admin account is needed.

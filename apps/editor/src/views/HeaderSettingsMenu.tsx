@@ -23,8 +23,6 @@ interface HeaderSettingsMenuProps {
   onExportProject?: () => void;
   /** Agency-staff-only: duplicate the current project in-instance (absent → item hidden). */
   onDuplicateProject?: () => void;
-  /** Owner/agency-only: import an external website into the current project (absent → item hidden). */
-  onImportWebsite?: () => void;
   /** Owner-only: open the Project Settings modal (rename project + slug; absent → item hidden). */
   onProjectSettings?: () => void;
   onSystemSettings: () => void;
@@ -49,7 +47,6 @@ export function HeaderSettingsMenu({
   onPublishDeploy,
   onExportProject,
   onDuplicateProject,
-  onImportWebsite,
   onProjectSettings,
   onSystemSettings,
   onClients,
@@ -84,8 +81,8 @@ export function HeaderSettingsMenu({
   const owner = inProject && !isClient;
   // Two groups: PROJECT (project-scoped actions, any qualifying member) and ADMINISTRATION (instance-admin
   // only: System Settings + the platform "Administrators" panel). Publish & Deploy is available to ANY
-  // project member (invited clients publish their own site). Owner/agency-only: Clone a website with AI +
-  // PROJECT MEMBERS (invite/manage other users on the project). Account actions (Account Settings + Logout)
+  // project member (invited clients publish their own site). Owner/agency-only: PROJECT MEMBERS
+  // (invite/manage other users on the project). Account actions (Account Settings + Logout)
   // live under the adjacent user icon (UserDropdown).
   type MenuItem = { label: string; onClick: () => void; danger?: boolean };
   type Row = { kind: 'header'; label: string } | { kind: 'divider' } | { kind: 'item'; item: MenuItem };
@@ -95,7 +92,6 @@ export function HeaderSettingsMenu({
   if (inProject) projectItems.push({ label: 'Publish & Deploy Options', onClick: onPublishDeploy });
   if (inProject && onExportProject) projectItems.push({ label: 'Export project (.zip)', onClick: onExportProject });
   if (inProject && onDuplicateProject) projectItems.push({ label: 'Duplicate project', onClick: onDuplicateProject });
-  if (owner && onImportWebsite) projectItems.push({ label: 'Clone a website with AI', onClick: onImportWebsite });
   if (owner) projectItems.push({ label: 'Project Members', onClick: onClients });
 
   const adminItems: MenuItem[] = [];

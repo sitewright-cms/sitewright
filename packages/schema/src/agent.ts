@@ -535,8 +535,9 @@ render a GPU animated background BEHIND its content, themed by the CI colors. Ch
 \`data-preset\` (default \`mesh-gradient\`; also e.g. \`silk-flow\`, \`gradient-flow\`, \`plasma\`, \`voronoi-cells\`,
 \`mist-layers\` — 30 in all, see get_components). Optional knobs: \`data-speed\` (0–4; \`"0"\` = a single static
 frame), \`data-intensity\` (0–1; lower = subtler behind text), \`data-angle\` (degrees), \`data-interactive="true"\`
-(the cursor morphs it on hover), and \`data-colors\` to remap the three palette slots (CI token names like
-\`accent,primary,base-100\` or literal colors). Give the section a height (min-height/padding); content renders
+(the cursor morphs it on hover), and \`data-colors\` to remap the three palette slots — each a CI token name
+(\`accent,primary,base-100\`), a literal color, or \`auto\` (tracks the theme: white in light / near-black in
+dark, e.g. \`accent,auto,#123\`). Give the section a height (min-height/padding); content renders
 above it automatically — never author a \`<canvas>\` or add a WebGL/three.js library, the runtime ships when
 the marker is seen. For legible text add a \`data-sw-part="overlay"\` scrim (e.g. \`class="bg-black/30"\`) and/or
 lower \`data-intensity\`. Falls back to a static CI gradient with no JS, re-themes on a light/dark switch,

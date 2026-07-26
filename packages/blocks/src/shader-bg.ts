@@ -21,8 +21,9 @@
 //   data-angle        rotation of the whole field in degrees, -360–360 (default 0)
 //   data-interactive  "true" to let the pointer morph the effect (default off; ignored under reduced-motion)
 //   data-colors       override the 3 palette slots, comma-separated — CI token names ("accent,primary,
-//                     base-content") or literal colors ("#fff,rgb(0,0,0),steelblue"); defaults to
-//                     primary,secondary,neutral
+//                     base-content"), literal colors ("#fff,rgb(0,0,0),steelblue"), or the special
+//                     "auto" token (tracks the theme: white in light / near-black in dark, re-read on
+//                     theme flip); defaults to primary,secondary,neutral
 //
 // Behaviour: one WebGL context per instance; animation pauses when the element is offscreen
 // (IntersectionObserver) or the tab is hidden (visibilitychange); `prefers-reduced-motion` renders a
@@ -35,6 +36,8 @@ import {
   SHADER_MAIN,
   SHADER_BG_PRESETS,
   DEFAULT_SHADER_PRESET,
+  SHADER_AUTO_LIGHT,
+  SHADER_AUTO_DARK,
 } from './shader-bg-presets.js';
 
 // --- CSS --------------------------------------------------------------------
@@ -59,6 +62,7 @@ export const SHADER_BG_CSS = [
 const RUNTIME = `(function(){
   "use strict";
   var VERT=__VERT__, PRELUDE=__PRELUDE__, MAIN=__MAIN__, PRESETS=__PRESETS__, DEF=__DEF__;
+  var AUTO_LIGHT=__AUTO_LIGHT__, AUTO_DARK=__AUTO_DARK__;
   var hosts=document.querySelectorAll('[data-sw-component="shader-bg"]');
   if(!hosts.length)return;
   var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -80,7 +84,17 @@ const RUNTIME = `(function(){
     var n=s.replace(/[^0-9.,]/g,'').split(',');
     return [(+n[0]||0)/255,(+n[1]||0)/255,(+n[2]||0)/255];
   }
+  // Is the active theme dark? Prefer the explicit data-sw-theme flag on <html> (what the theme toggle
+  // stamps), then a 'dark' class, then the OS preference — so 'auto' tracks whatever drives the palette.
+  function isDark(){ var t=document.documentElement; var v=t.getAttribute('data-sw-theme');
+    if(v)return v==='dark'; if((' '+(t.className||'')+' ').indexOf(' dark ')>=0)return true;
+    return !!(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches); }
   function slot(entry, defToken){
+    // "auto" = the current theme BASE SURFACE token (--sw-color-base-100) — theme-aware where themes
+    // exist AND page-consistent where they do not (a themes-disabled site keeps its static light surface,
+    // so a dark-OS visitor does not get a spurious black patch). Falls back to plain white/near-black by
+    // the detected theme only when base-100 is not defined. readColors re-runs this on each theme flip.
+    if(entry&&entry.toLowerCase()==='auto'){ return toRGB('var(--sw-color-base-100, '+(isDark()?AUTO_DARK:AUTO_LIGHT)+')'); }
     if(entry){ return (entry.charAt(0)==='#'||entry.indexOf('(')>=0) ? toRGB(entry) : toRGB('var(--sw-color-'+entry+')'); }
     return toRGB('var(--sw-color-'+defToken+', '+FALLBACK[defToken]+')');
   }
@@ -189,4 +203,6 @@ export const SHADER_BG_JS = RUNTIME.replace('__VERT__', () => JSON.stringify(SHA
   .replace('__PRELUDE__', () => JSON.stringify(SHADER_PRELUDE))
   .replace('__MAIN__', () => JSON.stringify(SHADER_MAIN))
   .replace('__PRESETS__', () => JSON.stringify(PRESET_GLSL))
-  .replace('__DEF__', () => JSON.stringify(DEFAULT_SHADER_PRESET));
+  .replace('__DEF__', () => JSON.stringify(DEFAULT_SHADER_PRESET))
+  .replace('__AUTO_LIGHT__', () => JSON.stringify(SHADER_AUTO_LIGHT))
+  .replace('__AUTO_DARK__', () => JSON.stringify(SHADER_AUTO_DARK));

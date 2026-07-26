@@ -241,4 +241,22 @@ describe('branding (platform name / colors / logo)', () => {
     // Absent logo → hasLogo omitted (falsy).
     expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES }).hasLogo).toBeUndefined();
   });
+
+  it('validates the platform background (hex/token/auto slots) and rejects injection-shaped values', () => {
+    const ok = { preset: 'mesh-gradient', angle: 135, colors: ['primary', 'auto', '#123456'] };
+    expect(InstanceSettingsInputSchema.parse({ platformBackground: ok }).platformBackground).toEqual(ok);
+    expect(InstanceSettingsInputSchema.parse({ platformBackground: null }).platformBackground).toBeNull();
+    // a slot with a space/quote/angle-bracket, an out-of-range angle, or a bad preset → rejected
+    expect(() => InstanceSettingsInputSchema.parse({ platformBackground: { preset: 'p', angle: 0, colors: ['a', 'b', '"><x'] } })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformBackground: { preset: 'p', angle: 999, colors: ['a', 'b', 'c'] } })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformBackground: { preset: 'Bad Preset', angle: 0, colors: ['a', 'b', 'c'] } })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformBackground: { preset: 'p', angle: 0, colors: ['a', 'b'] } })).toThrow(); // needs 3
+  });
+
+  it('surfaces the platform background as-is in the masked (public) view', () => {
+    const bg = { preset: 'plasma', angle: 0, colors: ['#fff', 'accent', 'auto'] } as const;
+    const masked = maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, platformBackground: { ...bg, colors: [...bg.colors] } });
+    expect(masked.platformBackground).toEqual(bg);
+    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES }).platformBackground).toBeUndefined();
+  });
 });

@@ -28,6 +28,27 @@ export const PlatformLogoSchema = z.object({
 });
 export type PlatformLogo = z.infer<typeof PlatformLogoSchema>;
 
+/**
+ * One shader palette slot for the platform WebGL background: a hex color, a CI-token name, or the
+ * theme-tracking `auto` token. Strictly bounded (hex OR a lowercase token) as defence-in-depth — the
+ * value is resolved CLIENT-SIDE via the CSSOM color probe (`el.style.color = value` → getComputedStyle,
+ * see shader-engine.ts `cssToRGB`), never written into HTML/CSS text — so no whitespace/parens/quotes/
+ * HTML chars are allowed, keeping any future stringly-typed sink safe too.
+ */
+const ShaderColorSlotSchema = z.string().regex(/^(#[0-9a-fA-F]{3,8}|[a-z][a-z0-9-]{0,31})$/, 'a hex color or a color token');
+
+/**
+ * The admin-set platform WebGL background (behind the whole editor + login). A shader preset + rotation +
+ * three color slots. Optional/clearable (unset → the static gradient shell). Non-secret — served publicly
+ * (pre-login) via /auth/config so the login screen renders it too.
+ */
+export const PlatformBackgroundSchema = z.object({
+  preset: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/, 'a shader preset key'),
+  angle: z.number().int().min(-360).max(360),
+  colors: z.tuple([ShaderColorSlotSchema, ShaderColorSlotSchema, ShaderColorSlotSchema]),
+});
+export type PlatformBackground = z.infer<typeof PlatformBackgroundSchema>;
+
 /** True if `value` contains an ASCII control character (mirrors DeployTargetSchema). */
 function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
@@ -240,6 +261,8 @@ export const InstanceSettingsStoredSchema = z.object({
   brandPrimary: CssColorSchema.optional(),
   brandSecondary: CssColorSchema.optional(),
   platformLogo: PlatformLogoSchema.optional(),
+  /** Admin-set WebGL background behind the whole editor + login (unset → the static gradient shell). */
+  platformBackground: PlatformBackgroundSchema.optional(),
   /** Site-wide default image DELIVERY format for {{sw-image}} ('webp' → single <img>; 'avif' → a
    *  <picture> with an AVIF tier). A project's website.imageDelivery overrides it. Unset → 'webp'. */
   defaultImageFormat: z.enum(['webp', 'avif']).optional(),
@@ -361,6 +384,7 @@ export const InstanceSettingsInputSchema = z.object({
   platformName: PlatformNameSchema.nullable().optional(),
   brandPrimary: CssColorSchema.nullable().optional(),
   brandSecondary: CssColorSchema.nullable().optional(),
+  platformBackground: PlatformBackgroundSchema.nullable().optional(),
   platformLogo: PlatformLogoSchema.nullable().optional(),
   // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined leaves it.
   defaultImageFormat: z.enum(['webp', 'avif']).nullable().optional(),
@@ -451,6 +475,8 @@ export interface InstanceSettingsPublic {
   brandPrimary?: string;
   brandSecondary?: string;
   hasLogo?: boolean;
+  /** The admin-set platform WebGL background (non-secret; returned as-is), or absent when unset. */
+  platformBackground?: PlatformBackground;
   /** Site-wide default image delivery format ('webp' | 'avif'), or absent when using 'webp'. */
   defaultImageFormat?: 'webp' | 'avif';
   /** HSTS policy (not a secret), or absent when unset (HSTS off). */
@@ -504,6 +530,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.brandPrimary !== undefined) result.brandPrimary = stored.brandPrimary;
   if (stored.brandSecondary !== undefined) result.brandSecondary = stored.brandSecondary;
   if (stored.platformLogo !== undefined) result.hasLogo = true;
+  if (stored.platformBackground !== undefined) result.platformBackground = stored.platformBackground;
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;

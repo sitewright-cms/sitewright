@@ -85,7 +85,7 @@ function LibraryCard({ card, accent }: { card: LibraryCardDef; accent: Accent })
  * and a large icon per entry. Every card opens a searchable gallery / builder modal — all read-only;
  * it never mutates the project. The modals render inside the panel, so they elevate above it.
  */
-export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
+export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId?: string; isInstanceAdmin?: boolean } = {}) {
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
   const [daisyOpen, setDaisyOpen] = useState(false);
@@ -213,7 +213,7 @@ export function LibraryPanel({ projectId }: { projectId?: string } = {}) {
       {daisyOpen && <SectionModal section={DAISY_SECTION} onClose={() => setDaisyOpen(false)} />}
       {iconsOpen && <IconsFlagsGallery onClose={() => setIconsOpen(false)} />}
       {fontsOpen && <FontsLibraryModal onClose={() => setFontsOpen(false)} />}
-      {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
+      {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} isInstanceAdmin={isInstanceAdmin} />}
       {texOpen && <TexturePicker onClose={() => setTexOpen(false)} projectId={projectId} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}

@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { ToastProvider } from '../src/views/ui/Toast';
 import { BackgroundPicker } from '../src/views/library/BackgroundPicker';
+import { api } from '../src/api';
 
 // WebGL is unavailable in jsdom, so shaderRenderer() returns null and the canvas RAF loops bail — the
 // settings + markup surface (what these tests exercise) still renders. Tests focus on the authored
 // markup, which is the picker's actual output.
 
-function open() {
+function open(props: Partial<Parameters<typeof BackgroundPicker>[0]> = {}) {
   return render(
     <ToastProvider>
-      <BackgroundPicker onClose={() => {}} />
+      <BackgroundPicker onClose={() => {}} {...props} />
     </ToastProvider>,
   );
 }
@@ -64,5 +65,33 @@ describe('BackgroundPicker — simplified markup + AUTO color slots', () => {
     const angle = screen.getByRole('slider') as HTMLInputElement;
     fireEvent.change(angle, { target: { value: '135' } });
     expect(markup()).toContain('data-angle="135"');
+  });
+
+  it('shows the platform-background admin buttons ONLY for an instance admin', () => {
+    open({ isInstanceAdmin: false });
+    expect(screen.queryByRole('button', { name: /use as platform background/i })).toBeNull();
+    open({ isInstanceAdmin: true });
+    expect(screen.getByRole('button', { name: /use as platform background/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /clear platform background/i })).toBeInTheDocument();
+  });
+
+  it('"Use as platform background" PUTs the current config (preset + angle + slot tokens)', async () => {
+    const put = vi.spyOn(api, 'putInstanceSettings').mockResolvedValue({} as never);
+    open({ isInstanceAdmin: true });
+    fireEvent.change(screen.getByLabelText('Color 2'), { target: { value: 'auto' } });
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: /use as platform background/i }));
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith({ platformBackground: { preset: 'mesh-gradient', angle: 90, colors: ['primary', 'auto', 'neutral'] } }),
+    );
+    put.mockRestore();
+  });
+
+  it('"Clear platform background" PUTs null', async () => {
+    const put = vi.spyOn(api, 'putInstanceSettings').mockResolvedValue({} as never);
+    open({ isInstanceAdmin: true });
+    fireEvent.click(screen.getByRole('button', { name: /clear platform background/i }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith({ platformBackground: null }));
+    put.mockRestore();
   });
 });

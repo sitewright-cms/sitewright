@@ -213,6 +213,26 @@ html[data-theme='dark'],
 [data-theme='dark'] body {
   color: #e2e8f0;
 }
+
+/* Admin-set WebGL platform background (PlatformBackground.tsx). The fixed canvas sits at the very back
+   (behind all content); when it's active the `sw-platform-bg` class on <html> yields the static gradient
+   shell (both html + body, light + dark) so the animation shows through. The canvas is opaque and the
+   preset's theme-tracking base color keeps content legible above it. */
+.sw-platform-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+html.sw-platform-bg,
+html.sw-platform-bg body,
+html.sw-platform-bg[data-theme='dark'],
+html.sw-platform-bg[data-theme='dark'] body {
+  background: transparent;
+}
 * {
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: color-mix(in srgb, var(--sw-brand-1) 35%, transparent) transparent;

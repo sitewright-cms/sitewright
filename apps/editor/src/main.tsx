@@ -9,6 +9,7 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import './styles.css';
 import { App } from './App';
+import { PlatformBackground } from './views/PlatformBackground';
 import { ToastProvider } from './views/ui/Toast';
 import { recordRunningBuild } from './buildId';
 import { initColorMode } from './lib/color-mode';
@@ -27,6 +28,9 @@ if (!root) throw new Error('#root not found');
 createRoot(root).render(
   <StrictMode>
     <ToastProvider>
+      {/* Behind everything (incl. the pre-auth login screen) — self-contained; no-op unless an admin
+          has set a platform background. */}
+      <PlatformBackground />
       <App />
     </ToastProvider>
   </StrictMode>,

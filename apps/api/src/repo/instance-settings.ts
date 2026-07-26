@@ -371,6 +371,7 @@ export class InstanceSettingsRepository {
     mergeNullable(input.brandPrimary, current.brandPrimary, (v) => { next.brandPrimary = v; });
     mergeNullable(input.brandSecondary, current.brandSecondary, (v) => { next.brandSecondary = v; });
     mergeNullable(input.platformLogo, current.platformLogo, (v) => { next.platformLogo = v; });
+    mergeNullable(input.platformBackground, current.platformBackground, (v) => { next.platformBackground = v; });
     // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined keeps.
     mergeNullable(input.defaultImageFormat, current.defaultImageFormat, (v) => { next.defaultImageFormat = v; });
     mergeNullable(input.backupRetention, current.backupRetention, (v) => { next.backupRetention = v; });

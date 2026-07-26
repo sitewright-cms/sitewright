@@ -139,6 +139,23 @@ const PLATFORM_DEFAULTS = `
 /* Foundational box model (kept unlayered so it always wins). */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Smooth in-page scrolling for the document viewport — anchor jumps, fragment navigation, and any
+   scrollTo/scrollIntoView that leaves behavior at its "auto" default all ease instead of snapping. In
+   the weak sw-normalize layer so an author can opt a site back to instant with scroll-behavior:auto. The
+   UNLAYERED prefers-reduced-motion override below always wins, so motion-sensitive visitors get instant
+   jumps AND the reduced-motion screenshot/compare render contexts (which emulate reduce) stay
+   deterministic — their lazy-load/measurement scrolls are not animated.
+   PUBLISHED-ONLY, by design: both preview surfaces set html{overflow:hidden} and scroll the BODY via a
+   synchronous window.scrollTo bridge (see previewScrollCss / preview-site-runtime), so html is never the
+   scroller there and this default has NO visible effect in preview — verify it on PUBLISHED output, and
+   don't "fix" its absence in the editor preview. */
+@layer sw-normalize {
+  html { scroll-behavior: smooth; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
 /* Links inherit their surrounding text colour (never the unbranded UA blue) AND carry
    NO underline by default — the universal default for a code-first/agent CMS, and what
    modern designs (Tailwind/component-lib sites, the common clone target) actually ship:

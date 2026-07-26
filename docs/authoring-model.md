@@ -110,24 +110,31 @@ stay the atoms; Widgets are managed molecules built from them.
 
 ## Roadmap: Widgets + nested datasets
 
+> **Status: DELIVERED.** Nested `list`/`object` datasets and the Widget mechanism below have shipped —
+> this section is kept as design context. The **current** field-type set is the 15 types in
+> `packages/schema/src/dataset.ts` `FieldTypeSchema` (see below); the MCP `get_guide("datasets")` is the
+> authoritative agent-facing reference.
+
 Widgets depend on two pieces of new capability, built in this order:
 
 ### 1. Nested datasets (`list` / `object` field types)
 
-Today a Dataset field is a scalar (`text/richtext/number/boolean/date/image/reference/select/json`),
-so a dataset models a *flat* collection. A Widget config wants one editable object with **top-level
-settings AND a nested array** — e.g. a hero is `{ show_navigation, show_indicators, autoplay,
-interval, slides: [{ image, caption, link }, …] }`.
+A Dataset field's `type` is one of the **15** supported types —
+`text`, `richtext`, `number`, `boolean`, `date`, `time`, `datetime`, `image`, `file`, `folder`,
+`reference`, `select`, `json`, and the two NESTED types `list` (an ordered, repeatable group of
+sub-fields) and `object` (a named sub-group). The nested types carry their own child `fields`, so a
+single entry can model a Widget config with **top-level settings AND a nested array** — e.g. a hero is
+`{ show_navigation, show_indicators, autoplay, interval, slides: [{ image, caption, link }, …] }`.
 
-The keystone is a **`list` field type** (an ordered, repeatable group of sub-fields); `object` (a
-named sub-group) is a natural sibling. The `json` field already *stores* nesting — what's missing is
-the **schema** for it and a **structured editor**. Scope:
+The keystone was a **`list` field type** (an ordered, repeatable group of sub-fields); `object` (a
+named sub-group) is its sibling. (The `json` field stores nesting too, but as an opaque value.) What
+this section scoped — and what now ships:
 
-- `FieldSchema` becomes recursive (`list`/`object` carry child `fields`), with hard **depth + size
-  guards** (this is attacker-adjacent authored input).
+- `FieldSchema` is recursive (`list`/`object` carry child `fields`), with hard **depth + size
+  guards** (`MAX_FIELD_DEPTH` / `MAX_FIELD_NODES` — attacker-adjacent authored input).
 - `EntryEditorModal` renders recursively: nested groups, and for `list` — add / remove / **reorder**
   rows, including nested image pickers.
-- The `localized` flag must work recursively.
+- The `localized` flag works recursively.
 - Render binding reaches nested arrays (`{{#each hero.slides}}`); a **singleton** dataset (one entry =
   one config object) is the shape a Widget uses.
 
@@ -147,12 +154,12 @@ consumer.
 - The editor surfaces a Widget with no-code editing affordances (its dataset UI + options); a Snippet
   stays copy-only.
 
-### Phasing
+### Phasing _(all shipped — kept as the original build order)_
 
-1. **Dataset-driven hero** — flat `hero_slides` dataset + seed; slides editable via today's UI. Ships now.
-2. **Save-time provisioning** — the `provides` manifest, reconciled on any save (paste/agent-safe).
-3. **Nested `list`/`object` field types + recursive editor** — fold the hero into a singleton config
-   Widget (settings + slides), and make nested datasets a first-class capability.
+1. **Dataset-driven hero** _(shipped)_ — flat `hero_slides` dataset + seed; slides editable via the UI.
+2. **Save-time provisioning** _(shipped)_ — the `provides` manifest, reconciled on any save (paste/agent-safe).
+3. **Nested `list`/`object` field types + recursive editor** _(shipped)_ — the hero folds into a singleton
+   config Widget (settings + slides), and nested datasets are a first-class capability.
 
 > See also: `docs/architecture.md` (decision log — note D2/D3 describe the retired block-tree; the
 > platform is now code-first/Handlebars), `docs/i18n-content-model.md`, and the `component-catalog`.

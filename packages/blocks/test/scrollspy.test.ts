@@ -47,6 +47,10 @@ describe('SCROLLSPY_JS', () => {
     expect(SCROLLSPY_JS).toContain('getElementById(id)');
     // a hashless self-link is the top sentinel
     expect(SCROLLSPY_JS).toContain('samePage');
+    // a link targeting a <dialog> (modal trigger) OR any not-currently-laid-out element (display:none:
+    // closed dialog, inactive tab panel) is excluded — such a target's rect.top is a constant 0 and
+    // would hijack the active state; a below-the-fold section still has client rects, so it's kept
+    expect(SCROLLSPY_JS).toContain("el.tagName!=='DIALOG'&&el.getClientRects().length");
   });
 
   it('measures the real fixed header for the offset and resolves the rem token as a fallback', () => {

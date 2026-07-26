@@ -21,6 +21,18 @@ describe('authorContentCspOrigins — author iframe + gated-script origins', () 
   it('reads an already-gated iframe (data-sw-consent-src) too — order independent', () => {
     expect(authorContentCspOrigins('<iframe data-sw-consent-src="https://www.youtube.com/embed/x" data-sw-consent-cat="marketing"></iframe>').frame).toContain('www.youtube.com');
   });
+  it('reads a LAZY iframe (data-src, the lazyload runtime) into frame-src — else it renders then CSP-blocks at reveal', () => {
+    expect(authorContentCspOrigins('<iframe data-src="https://www.youtube-nocookie.com/embed/x" class="skeleton loading"></iframe>').frame).toContain('www.youtube-nocookie.com');
+  });
+  it('reads data-src even when an inert placeholder src coexists (src="", about:blank) — attrs are independent, not ?? fallback', () => {
+    expect(authorContentCspOrigins('<iframe src="" data-src="https://www.youtube-nocookie.com/embed/x"></iframe>').frame).toContain('www.youtube-nocookie.com');
+    expect(authorContentCspOrigins('<iframe src="about:blank" data-src="https://www.youtube-nocookie.com/embed/x"></iframe>').frame).toContain('www.youtube-nocookie.com');
+    expect(authorContentCspOrigins('<video src="/poster-placeholder.mp4" data-src="https://cdn.example.com/promo.mp4"></video>').media).toContain('cdn.example.com');
+  });
+  it('reads a LAZY video/source (data-src) into media-src', () => {
+    expect(authorContentCspOrigins('<video data-src="https://cdn.example.com/promo.mp4"></video>').media).toContain('cdn.example.com');
+    expect(authorContentCspOrigins('<video><source data-src="https://cdn.example.com/promo.mp4" type="video/mp4"></video>').media).toContain('cdn.example.com');
+  });
   it('ignores same-origin/relative iframes and non-https schemes', () => {
     expect(authorContentCspOrigins('<iframe src="/local"></iframe><iframe src="http://insecure.example/x"></iframe>').frame).toEqual([]);
   });
@@ -73,6 +85,24 @@ describe('gateAuthorIframes — hold cross-origin author iframes', () => {
     const boolForm = gateAuthorIframes('<iframe src="https://x.example/v" data-sw-consent></iframe>');
     expect(hasBareMarker(boolForm)).toBe(false);
     expect(boolForm).toContain(`data-sw-consent-cat="${DEFAULT_EMBED_CATEGORY}"`); // no value → default category
+  });
+  it('gates a LAZY iframe (data-src) the same as src — the lazy runtime must not bypass consent', () => {
+    const out = gateAuthorIframes('<iframe data-src="https://www.youtube-nocookie.com/embed/x" class="skeleton loading" title="v"></iframe>');
+    expect(out).toContain('data-sw-consent-src="https://www.youtube-nocookie.com/embed/x"');
+    expect(out).not.toContain('data-src=');
+    expect(out).toContain('class="skeleton loading"');
+  });
+  it('gates the placeholder-src + external-data-src combo (src="about:blank"/"") — the external lazy target wins, both attrs stripped', () => {
+    for (const placeholder of ['about:blank', '']) {
+      const out = gateAuthorIframes(`<iframe src="${placeholder}" data-src="https://www.youtube-nocookie.com/embed/x"></iframe>`);
+      expect(out).toContain('data-sw-consent-src="https://www.youtube-nocookie.com/embed/x"');
+      expect(out).not.toContain('data-src=');
+      expect(out).not.toContain(`src="${placeholder}"`);
+    }
+    // both external → the lazy target (the URL the runtime would actually load) is the one held
+    const both = gateAuthorIframes('<iframe src="https://player.vimeo.com/video/1" data-src="https://www.youtube-nocookie.com/embed/x"></iframe>');
+    expect(both).toContain('data-sw-consent-src="https://www.youtube-nocookie.com/embed/x"');
+    expect(both).not.toContain('data-src=');
   });
   it('leaves data-sw-consent-skip, same-origin, and already-gated iframes untouched', () => {
     const skip = '<iframe src="https://x.example/v" data-sw-consent-skip></iframe>';

@@ -161,6 +161,13 @@
 .sw-toggle[aria-checked='true'] {
   --input-color: var(--sw-brand-1);
 }
+/* Dark editor chrome: daisyUI derives the UNCHECKED toggle's track/knob from --color-base-content at
+   low opacity — and the base vars are deliberately NOT inverted in dark mode (they keep the Library
+   previews light), so that translucent near-black track is almost invisible on the dark panels. Give
+   the unchecked state an explicit readable track; the checked state keeps the brand colour above. */
+[data-theme='dark'] .sw-toggle:not(:checked):not([aria-checked='true']) {
+  --input-color: rgb(148 163 184 / 0.75); /* slate-400 @ 75% */
+}
 
 /* Error focus ring (rose, brand-INDEPENDENT). Defined AFTER .sw-brand-focus so that on an input
    carrying both classes (a glassInput in an invalid state) this wins on equal specificity — keeping

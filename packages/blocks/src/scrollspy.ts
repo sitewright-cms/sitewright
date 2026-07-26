@@ -90,11 +90,23 @@ export const SCROLLSPY_JS = `(function(){
   // The fixed-header offset in PX. The cached #main-nav element is re-MEASURED each frame (not re-queried)
   // so a shrinking / breakpoint-varying header stays correct — only while it is actually fixed/sticky.
   // Else resolve the --sw-header-h token (authored in rem, which parseFloat alone cannot resolve to px).
+  // The trigger line must ALSO sit at/below where an anchor jump RESTS a section: anchors land at the
+  // root's scroll-padding-top (the --sw-header-h TOKEN, deliberately sized a touch ABOVE the real bar —
+  // and a shrink-mode header measures smaller still once scrolled). With the line at the smaller
+  // MEASURED height, clicking a nav anchor rested its own section just BELOW the line and the link
+  // never activated — so the line is the MAX of the measured bar and the resolved scroll-padding.
   function offset(){
-    if(navEl){var p=getComputedStyle(navEl).position;if(p==='fixed'||p==='sticky')return navEl.getBoundingClientRect().height;}
-    var v=(getComputedStyle(root).getPropertyValue('--sw-header-h')||'').trim();
-    if(v){var n=parseFloat(v);if(isFinite(n))return (/rem$/.test(v))?n*(parseFloat(getComputedStyle(root).fontSize)||16):n;}
-    return 0;
+    var line=0;
+    if(navEl){var p=getComputedStyle(navEl).position;if(p==='fixed'||p==='sticky')line=navEl.getBoundingClientRect().height;}
+    if(line===0){
+      var v=(getComputedStyle(root).getPropertyValue('--sw-header-h')||'').trim();
+      if(v){var n=parseFloat(v);if(isFinite(n))line=(/rem$/.test(v))?n*(parseFloat(getComputedStyle(root).fontSize)||16):n;}
+    }
+    // Computed px for absolute lengths; 'auto' → NaN (skipped). A PERCENTAGE is NOT resolved to px by
+    // getComputedStyle here ("8%" stays "8%") — parseFloat would read it as 8px, so skip it like 'auto'.
+    var spv=getComputedStyle(root).scrollPaddingTop;
+    if(!/%$/.test(spv)){var sp=parseFloat(spv);if(isFinite(sp)&&sp>line)line=sp;}
+    return line;
   }
   function paint(g,set,key){
     if(key===g.key)return; // no change → no DOM writes
@@ -112,7 +124,7 @@ export const SCROLLSPY_JS = `(function(){
   var ticking=false;
   function update(){
     ticking=false;
-    var line=offset()+1;
+    var line=offset()+2; // +2: sub-pixel settle of a smooth anchor scroll must still cross the line
     var atBottom=(window.innerHeight+scrollPos())>=(scrollMax()-2);
     for(var s=0;s<governed.length;s++){
       var g=governed[s],set,key;

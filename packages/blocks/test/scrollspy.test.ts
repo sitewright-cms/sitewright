@@ -55,6 +55,15 @@ describe('SCROLLSPY_JS', () => {
     expect(SCROLLSPY_JS).toContain('/rem$/'); // rem→px resolution (parseFloat alone cannot)
   });
 
+  it('the trigger line also covers the anchor REST position (scroll-padding-top)', () => {
+    // Anchors rest at the root's scroll-padding-top (the --sw-header-h TOKEN, sized a touch above the
+    // real bar; a shrink header measures smaller still). A line at only the measured height left a
+    // clicked section resting just BELOW it → its own nav link never activated. The line is the MAX of
+    // the measured bar and the resolved scroll-padding, +2 for the smooth scroll's sub-pixel settle.
+    expect(SCROLLSPY_JS).toContain('scrollPaddingTop');
+    expect(SCROLLSPY_JS).toContain('offset()+2');
+  });
+
   it('handles the bottom-of-page edge case (a short final section still activates)', () => {
     expect(SCROLLSPY_JS).toContain('scrollHeight');
     expect(SCROLLSPY_JS).toContain('innerHeight');

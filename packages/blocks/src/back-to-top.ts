@@ -49,11 +49,14 @@ export const BACK_TO_TOP_JS = `(function(){
   function update(){
     ticking=false;
     var doc=document.documentElement;
-    var y=window.pageYOffset||doc.scrollTop||0;
+    // Scroll metrics from whatever actually scrolls: the viewport on a published site, but the BODY in
+    // the editor preview (html{overflow:hidden} → body{overflow-y:auto}) — there doc.scrollHeight is
+    // just the VIEWPORT height, which made atBottom permanently true and the button never show.
+    var y=window.pageYOffset||doc.scrollTop||document.body.scrollTop||0;
     var vh=window.innerHeight||600;
     // Hide within ~80px of the page bottom — that's the FAB's footprint (bottom:1.5rem + 2.5rem tall),
     // so it slides away before it would overlap the footer instead of covering it.
-    var atBottom=(y+vh)>=((doc.scrollHeight||0)-80);
+    var atBottom=(y+vh)>=(Math.max(doc.scrollHeight||0,document.body.scrollHeight||0)-80);
     var want=y>vh && !atBottom;
     if(want!==shown){shown=want;b.classList.toggle('sw-visible',shown);}
   }
@@ -62,7 +65,9 @@ export const BACK_TO_TOP_JS = `(function(){
     var reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
     try{window.scrollTo({top:0,behavior:reduce?'auto':'smooth'});}catch(e){window.scrollTo(0,0);}
   });
-  window.addEventListener('scroll',onScroll,{passive:true});
+  // capture:true so a BODY scroll (the editor preview's scroll container) still reaches this — a scroll
+  // event on a non-root scroller does NOT fire a bubbling window listener, but the capture phase sees it.
+  window.addEventListener('scroll',onScroll,{passive:true,capture:true});
   window.addEventListener('resize',onScroll,{passive:true});
   update();
 })();`;

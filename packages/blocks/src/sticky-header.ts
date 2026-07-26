@@ -87,11 +87,11 @@ export const STICKY_HEADER_JS = `(function(){
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
   function measure(){headerH=nav?nav.getBoundingClientRect().height:72;}
-  var lastY=window.pageYOffset||root.scrollTop||0;
+  var lastY=window.pageYOffset||root.scrollTop||document.body.scrollTop||0;
   var scrolled=false, hidden=false, ticking=false;
   function update(){
     ticking=false;
-    var y=window.pageYOffset||root.scrollTop||0;
+    var y=window.pageYOffset||root.scrollTop||document.body.scrollTop||0;
     var s=y>4;
     if(s!==scrolled){scrolled=s;root.classList.toggle('sw-scrolled',s);}
     if(hide){
@@ -101,7 +101,10 @@ export const STICKY_HEADER_JS = `(function(){
     lastY=y;
   }
   function onScroll(){if(!ticking){ticking=true;window.requestAnimationFrame(update);}}
-  window.addEventListener('scroll',onScroll,{passive:true});
+  // capture:true so a BODY scroll (the editor preview's scroll container) still reaches this even on a
+  // surface without the preview scroll bridge — same hardening as the back-to-top/scrollspy runtimes;
+  // the rAF ticking guard coalesces a bridge-redispatched + captured pair into one update.
+  window.addEventListener('scroll',onScroll,{passive:true,capture:true});
   window.addEventListener('resize',function(){measure();onScroll();},{passive:true});
   measure();
   update();

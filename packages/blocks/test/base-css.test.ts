@@ -69,6 +69,27 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(platform).toMatch(/\*,\s*\*::before,\s*\*::after\s*{\s*box-sizing: border-box;/);
     });
 
+    describe('smooth in-page scrolling (default, reduced-motion aware)', () => {
+      it('sets html scroll-behavior:smooth in the weak sw-normalize layer (author can opt back to auto)', () => {
+        expect(css).toContain('html { scroll-behavior: smooth; }');
+        const idx = css.indexOf('html { scroll-behavior: smooth; }');
+        const layerOpen = css.lastIndexOf('@layer sw-normalize {', idx);
+        expect(layerOpen).toBeGreaterThan(-1);
+        expect(idx).toBeGreaterThan(layerOpen);
+      });
+      it('disables smooth under prefers-reduced-motion via an UNLAYERED override (wins over the layered default; keeps reduced-motion render/measurement instant)', () => {
+        expect(css).toContain('@media (prefers-reduced-motion: reduce) {');
+        const media = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce) {'));
+        expect(media).toMatch(/html\s*{\s*scroll-behavior:\s*auto;\s*}/);
+        // UNLAYERED: the smooth rule's layer must be CLOSED before the media block (a layer-closing
+        // brace between them) — else a layered reduce-override couldn't beat the layered smooth default.
+        const mediaIdx = css.indexOf('@media (prefers-reduced-motion: reduce) {');
+        const priorLayer = css.lastIndexOf('@layer sw-normalize {', mediaIdx);
+        expect(priorLayer).toBeGreaterThan(-1);
+        expect(css.slice(priorLayer, mediaIdx)).toContain('}\n}');
+      });
+    });
+
     it('ships the content container + a full-bleed break-out utility (in the weak layer)', () => {
       expect(css).toContain('.sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: var(--sw-container-gutter, 2rem); }');
       // .sw-bleed cancels exactly the container gutter so a band spans the container edge-to-edge.

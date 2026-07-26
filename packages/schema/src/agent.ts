@@ -933,6 +933,13 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    rows by slug — so after rename_dataset, any entry you re-put (e.g. to add a field) must carry the NEW slug
    in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
    rename, or set the "dataset" field to the new slug explicitly.
+   FIELD TYPES — a dataset field's \`type\` is one of: text, richtext, number, boolean, date, time, datetime,
+   image, file, folder, reference, select, json, list, object. PICK THE MOST SPECIFIC one rather than dumping
+   everything into text/richtext: a price/count → number, a toggle → boolean, a publish/launch day → date (add
+   a clock → time / datetime), a photo or download → image / file, a whole media folder → folder, a fixed set
+   of choices → select (config.options), a link to another collection → reference (config.dataset), a
+   repeatable group of sub-fields (slides, features) → list, a named sub-group → object (both carry child
+   \`fields\`). get_guide("datasets") has the exact put_content shapes + per-type config for all 15.
 4b. SHARED LAYOUTS -> TEMPLATE: when several imported pages share ONE layout — legal pages (Imprint +
    Privacy Policy = a titled rich-text card), or repeated service/detail/blog pages — do NOT author them as
    N standalone pages. Create ONE template (put_content "template" { id, name, source }) and render each page

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS, buildCapabilitiesIndex, CAPABILITY_MAP, WRITE_KINDS } from '../src/agent.js';
 import { NAV_SLOTS } from '../src/page.js';
+import { FieldTypeSchema } from '../src/dataset.js';
 import { SW_HELPERS } from '../src/authoring-reference.js';
 
 describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
@@ -87,6 +88,16 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     for (const probe of ['swImport', 'rewritten:false', 'status:"draft"', 'import_image', 'inert <div>']) {
       expect(body).toContain(probe);
     }
+  });
+
+  it('the import/nativize guide enumerates EVERY dataset field type + points at the datasets guide', () => {
+    // The clone/nativize agent reads the import guide; it must know the FULL field-type palette so it
+    // picks the most specific type (datetime/folder/reference/list…) instead of dumping all into text.
+    const body = AGENT_GUIDES.import.body;
+    for (const t of FieldTypeSchema.options) {
+      expect(body, `import guide is missing field type "${t}"`).toMatch(new RegExp(`\\b${t}\\b`));
+    }
+    expect(body).toContain('get_guide("datasets")');
   });
 
   it('preserves the original feature content (each section lives in core or a guide)', () => {
@@ -179,6 +190,13 @@ describe('datasets guide — the write shape a weak agent gets wrong', () => {
   it('the core bootstrap also flags the values gotcha + points at the guide', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('data.values');
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("datasets")');
+  });
+  it('enumerates EVERY dataset field type (drift guard against FieldTypeSchema)', () => {
+    // If a new type is added to the enum, the MCP-agent-facing guide MUST mention it so agents know it
+    // exists (word-boundary so `time` isn't spuriously satisfied by `datetime`).
+    for (const t of FieldTypeSchema.options) {
+      expect(body, `datasets guide is missing field type "${t}"`).toMatch(new RegExp(`\\b${t}\\b`));
+    }
   });
 });
 

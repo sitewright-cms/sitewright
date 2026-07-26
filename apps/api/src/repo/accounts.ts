@@ -1,9 +1,10 @@
 import { newId } from '../id.js';
-import { and, eq, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   aiUsage,
   apiKeys,
+  content,
   contentRevisions,
   invites,
   mfaLoginTickets,
@@ -338,6 +339,40 @@ export async function listProjectAccessForUser(db: Database, userId: string): Pr
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
     // a soft-deleted project drops out of every member's list (access is revoked while deleted).
     .where(and(eq(projectMembers.userId, userId), isNull(projects.deletedAt)));
+}
+
+/** A lightweight per-project display card for the project selector: the site's favicon ref + production
+ *  URL, both read from the project's `settings` row. Absent when the project has no settings row yet. */
+export interface ProjectCard {
+  /** `identity.icon` (a `/media/…` ref or absolute https URL), if the site has a favicon set. */
+  iconUrl?: string;
+  /** `website.siteUrl` (the production/live URL), if set. */
+  siteUrl?: string;
+}
+
+/**
+ * Batch-reads the favicon + production URL for a set of projects in ONE query (the project selector shows
+ * them next to each project). Reads the singleton `settings` row's JSON directly — no per-project context.
+ * A malformed/absent row simply yields no card for that project (never throws — a bad settings blob must
+ * not break the whole list).
+ */
+export async function projectCardsFor(db: Database, projectIds: string[]): Promise<Map<string, ProjectCard>> {
+  const out = new Map<string, ProjectCard>();
+  if (projectIds.length === 0) return out;
+  const rows = await db
+    .select({ projectId: content.projectId, data: content.data })
+    .from(content)
+    // The settings singleton always lives at scope '' (only `entry` rows use a non-empty scope); pin it
+    // for consistency with every other content reader and defence against a future scope-bearing kind.
+    .where(and(eq(content.kind, 'settings'), eq(content.scope, ''), eq(content.entityId, 'settings'), inArray(content.projectId, projectIds)));
+  for (const row of rows) {
+    const d = row.data as { identity?: { icon?: unknown }; website?: { siteUrl?: unknown } } | null;
+    const card: ProjectCard = {};
+    if (typeof d?.identity?.icon === 'string' && d.identity.icon) card.iconUrl = d.identity.icon;
+    if (typeof d?.website?.siteUrl === 'string' && d.website.siteUrl) card.siteUrl = d.website.siteUrl;
+    if (card.iconUrl || card.siteUrl) out.set(row.projectId, card);
+  }
+  return out;
 }
 
 export interface ProjectMemberView {

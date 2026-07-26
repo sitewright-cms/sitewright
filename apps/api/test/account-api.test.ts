@@ -140,3 +140,40 @@ describe('account management (/account/email, /account/password)', () => {
     expect(p.statusCode).toBe(403);
   });
 });
+
+describe('project selector cards (favicon + production URL on /me and /projects)', () => {
+  let harness: Harness;
+  beforeEach(async () => {
+    harness = await makeHarness();
+  });
+  afterEach(async () => {
+    await harness.close();
+  });
+
+  it('surfaces identity.icon → iconUrl and website.siteUrl → siteUrl per project; omits them when unset', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    const withCard = await client.createProject('Acme', 's-acme');
+    const bare = await client.createProject('Bare', 's-bare');
+
+    // Give one project a favicon + production URL; leave the other with default (bare) settings.
+    const put = await client.project(withCard).putContent('settings', 'settings', {
+      identity: { name: 'Acme', icon: '/media/s-acme/logo.png' },
+      website: { siteUrl: 'https://acme.com' },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    expect(put.statusCode).toBe(200);
+
+    for (const url of ['/me', '/projects']) {
+      const res = await client.get(url);
+      expect(res.statusCode).toBe(200);
+      const projects = res.json().projects as Array<{ id: string; iconUrl?: string; siteUrl?: string }>;
+      const acme = projects.find((p) => p.id === withCard)!;
+      const bareP = projects.find((p) => p.id === bare)!;
+      expect(acme.iconUrl).toBe('/media/s-acme/logo.png');
+      expect(acme.siteUrl).toBe('https://acme.com');
+      // A project without a favicon / production URL carries neither field.
+      expect(bareP.iconUrl).toBeUndefined();
+      expect(bareP.siteUrl).toBeUndefined();
+    }
+  });
+});

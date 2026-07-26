@@ -1,10 +1,38 @@
 import { useMemo, useState } from 'react';
+import { Globe } from 'lucide-react';
 import type { Project, Branding } from '../api';
 import { Modal } from './ui/Modal';
 import { BrandLogo } from './ui/BrandLogo';
 import { SearchField } from './ui/SearchField';
 import { DEFAULT_BRANDING } from '../lib/use-branding';
 import { glassCard, primaryButton, gradientSurface, gradientHover } from '../theme';
+
+/** A project's favicon (from `identity.icon`), falling back to a placeholder globe when unset or broken. */
+function ProjectIcon({ src, active }: { src?: string; active: boolean }) {
+  const [broken, setBroken] = useState(false);
+  const box = `flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
+    active ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700/60'
+  }`;
+  if (src && !broken) {
+    return (
+      <span className={box}>
+        {/* no-referrer: an owner-set external favicon URL must not receive a Referer beacon (belt-and-
+            suspenders over the global same-origin referrer-policy header). */}
+        <img src={src} alt="" className="h-full w-full object-contain" onError={() => setBroken(true)} loading="lazy" referrerPolicy="no-referrer" />
+      </span>
+    );
+  }
+  return (
+    <span className={box} aria-hidden>
+      <Globe className={`h-4 w-4 ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`} />
+    </span>
+  );
+}
+
+/** Strip the scheme + trailing slash from a URL for a compact display (e.g. `https://acme.com/` → `acme.com`). */
+function prettyUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+}
 
 interface ProjectSelectorModalProps {
   projects: Project[];
@@ -31,14 +59,17 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q));
+    const matched = q
+      ? projects.filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q) || (p.siteUrl ?? '').toLowerCase().includes(q))
+      : projects;
+    // Alphabetical by name (case/locale-insensitive), stable — the list is a flat A→Z picker.
+    return [...matched].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [projects, query]);
 
   return (
     <Modal
       title={branding.name}
-      size="md"
+      size="lg"
       onClose={onClose}
       headerLeft={<BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-6 w-6 text-slate-900 dark:text-slate-100" />}
       headerExtra={
@@ -64,32 +95,41 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
           autoFocus
         />
         <ul className="flex max-h-[55vh] flex-col gap-2 overflow-auto">
-          {filtered.map((p) => (
-            <li key={p.id}>
-              <button
-                className={`group w-full rounded-2xl px-4 py-3 text-left transition ${
-                  p.id === currentId ? gradientSurface : `${glassCard} ${gradientHover}`
-                }`}
-                onClick={() => onOpen(p)}
-              >
-                <span className="font-medium">{p.name}</span>{' '}
-                <span className={`text-sm ${p.id === currentId ? 'text-white/80' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/80'}`}>
-                  /{p.slug}
-                </span>
-                {p.role === 'member' && (
-                  <span
-                    className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      p.id === currentId
-                        ? 'bg-white/20 text-white'
-                        : 'bg-indigo-100/80 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 group-hover:bg-white/20 group-hover:text-white'
-                    }`}
-                  >
-                    member
+          {filtered.map((p) => {
+            const active = p.id === currentId;
+            const subtitle = p.siteUrl ? prettyUrl(p.siteUrl) : `/${p.slug}`;
+            return (
+              <li key={p.id}>
+                <button
+                  className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
+                    active ? gradientSurface : `${glassCard} ${gradientHover}`
+                  }`}
+                  onClick={() => onOpen(p)}
+                >
+                  <ProjectIcon src={p.iconUrl} active={active} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate font-medium">{p.name}</span>
+                      {p.role === 'member' && (
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            active
+                              ? 'bg-white/20 text-white'
+                              : 'bg-indigo-100/80 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 group-hover:bg-white/20 group-hover:text-white'
+                          }`}
+                        >
+                          member
+                        </span>
+                      )}
+                    </span>
+                    <span className={`truncate text-sm ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/80'}`}>
+                      {subtitle}
+                    </span>
                   </span>
-                )}
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
           {filtered.length === 0 && (
             <li className="py-2 text-sm text-slate-400 dark:text-slate-500">
               {query ? 'No projects match your search.' : canCreate ? 'No projects yet — create your first one.' : 'No projects yet.'}

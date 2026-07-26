@@ -34,11 +34,21 @@ describe('back-to-top', () => {
   it('runtime: passive scroll-to-top, shows after a screen, HIDES at the page bottom — no breakout', () => {
     expect(BACK_TO_TOP_JS.startsWith('(function(){')).toBe(true);
     expect(BACK_TO_TOP_JS).toContain('scrollTo');
-    expect(BACK_TO_TOP_JS).toContain('{passive:true}');
+    expect(BACK_TO_TOP_JS).toContain('{passive:true');
     // hides near the very bottom so it never covers the footer
-    expect(BACK_TO_TOP_JS).toContain('scrollHeight');
     expect(BACK_TO_TOP_JS).toContain('atBottom');
     expect(BACK_TO_TOP_JS).not.toContain('`');
+    expect(BACK_TO_TOP_JS).not.toContain('${');
     expect(BACK_TO_TOP_JS).not.toContain('</script');
+  });
+
+  it('runtime works on the editor preview BODY scroller, not just the viewport', () => {
+    // The preview scrolls on <body> (html{overflow:hidden}): there documentElement.scrollHeight is only
+    // the VIEWPORT height, so a doc-only bottom check made atBottom permanently true → button never
+    // shown. The runtime must take the max of both scrollHeights, read body.scrollTop as a position
+    // fallback, and listen with capture:true (a body scroll never reaches a bubbling window listener).
+    expect(BACK_TO_TOP_JS).toContain('Math.max(doc.scrollHeight||0,document.body.scrollHeight||0)');
+    expect(BACK_TO_TOP_JS).toContain('document.body.scrollTop');
+    expect(BACK_TO_TOP_JS).toContain('{passive:true,capture:true}');
   });
 });

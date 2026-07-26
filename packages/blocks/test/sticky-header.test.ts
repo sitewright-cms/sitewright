@@ -54,6 +54,10 @@ describe('STICKY_HEADER_JS', () => {
     expect(STICKY_HEADER_JS).toContain('sw-nav-hidden');
     expect(STICKY_HEADER_JS).toContain('{passive:true}');
     expect(STICKY_HEADER_JS).toContain('requestAnimationFrame');
+    // body-scroller hardening (same as back-to-top/scrollspy): capture-phase scroll listener +
+    // body.scrollTop position fallback, so the runtime works even without the preview scroll bridge
+    expect(STICKY_HEADER_JS).toContain('{passive:true,capture:true}');
+    expect(STICKY_HEADER_JS).toContain('document.body.scrollTop');
     // the hide-reveal threshold MEASURES the real header (no hardcoded height → matches any breakpoint/custom header)
     expect(STICKY_HEADER_JS).toContain("getElementById('main-nav')");
     expect(STICKY_HEADER_JS).toContain('getBoundingClientRect');

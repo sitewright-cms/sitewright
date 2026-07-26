@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, downloadProjectExport, eventsUrl, setUnauthorizedHandler } from '../src/api';
+import { api, ApiError, downloadProjectExport, eventsUrl, previewDocUrl, snippetPreviewUrl, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -209,6 +209,12 @@ describe('api client', () => {
     expect(res.item.id).toBe('home');
     expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/page/home');
     expect(eventsUrl('p')).toBe('/projects/p/events');
+  });
+
+  it('builds the sandboxed preview-document and snippet-preview URLs', () => {
+    expect(previewDocUrl('acme', 'tok123')).toBe('/preview/acme/tok123');
+    expect(snippetPreviewUrl('p', 'hero', 'project')).toBe('/projects/p/snippets/hero/preview?scope=project');
+    expect(snippetPreviewUrl('p', 'hero/x', 'global')).toBe('/projects/p/snippets/hero%2Fx/preview?scope=global');
   });
 
   it('creates a project (POST with body, no org)', async () => {
@@ -680,58 +686,6 @@ describe('api client', () => {
     let err: string | undefined;
     await api.deployTargetStream('p', 't1', { onError: (m) => (err = m) });
     expect(err).toMatch(/deploy failed/);
-  });
-
-  it('importWebsiteStream POSTs the crawl body + unwraps the report from the done frame', async () => {
-    const enc = new TextEncoder();
-    const frames = [
-      'event: progress\ndata: {"phase":"crawl","fetched":1}\n\n',
-      'event: done\ndata: {"report":{"pagesImported":2,"pagesFound":2,"mediaSelfHosted":0,"scriptsDropped":1,"chromeExtracted":false,"truncated":false,"warnings":[]}}\n\n',
-    ];
-    let i = 0;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
-    } as unknown as Response);
-
-    const progress: unknown[] = [];
-    let report: { pagesImported?: number } | undefined;
-    await api.importWebsiteStream('p', { url: 'https://x.com', maxPages: 10 }, { onProgress: (e) => progress.push(e), onDone: (r) => (report = r) });
-
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/import/website/stream?foundation=1'); // AI-clone flow → foundation pipeline
-    expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({ url: 'https://x.com', maxPages: 10 });
-    expect(progress).toEqual([{ phase: 'crawl', fetched: 1 }]);
-    expect(report?.pagesImported).toBe(2);
-  });
-
-  it('importUploadStream POSTs the file as multipart form data', async () => {
-    const enc = new TextEncoder();
-    const frames = ['event: done\ndata: {"report":{"pagesImported":1,"pagesFound":1,"mediaSelfHosted":0,"scriptsDropped":0,"chromeExtracted":false,"truncated":false,"warnings":[]}}\n\n'];
-    let i = 0;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
-    } as unknown as Response);
-
-    let report: { pagesImported?: number } | undefined;
-    await api.importUploadStream('p', new File(['PK'], 'site.zip', { type: 'application/zip' }), { onDone: (r) => (report = r) });
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/import/upload/stream?foundation=1'); // AI-clone flow → foundation pipeline
-    expect(init.method).toBe('POST');
-    expect(init.body).toBeInstanceOf(FormData);
-    expect((init.body as FormData).get('file')).toBeInstanceOf(File);
-    expect(report?.pagesImported).toBe(1);
-  });
-
-  it('importWebsiteStream surfaces a preflight error (e.g. 403) via onError', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({ error: 'only the project owner can import a website' }) } as Response);
-    let err: string | undefined;
-    await api.importWebsiteStream('p', { url: 'https://x.com' }, { onError: (m) => (err = m) });
-    expect(err).toMatch(/only the project owner/);
   });
 
   it('publishes and reads publish status', async () => {

@@ -31,6 +31,13 @@ type PinnedStub = (url: string) => Promise<{ status: number; contentType: string
 
 function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub; cacheSourceRefs?: (slug: string, pages: unknown[], onProgress: (e: unknown) => void, signal: AbortSignal) => Promise<{ captured: number; total: number; capped: boolean }> } = {}): Built {
   const app = Fastify();
+  // Mirror app.ts's TWO async global onSend hooks (security headers + gzip). Load-bearing for the
+  // double-send regression tests: each async hook defers the header write by a microtask hop, which
+  // is exactly the window where a handler that resolves `undefined` after a manual reply.send()
+  // lets Fastify's wrapThenable fire a SECOND send → an uncaught ERR_HTTP_HEADERS_SENT that kills
+  // the whole process (crashes the vitest worker → fails the file). Handlers must `return reply`.
+  app.addHook('onSend', async (_req, _reply, payload) => payload);
+  app.addHook('onSend', async (_req, _reply, payload) => payload);
   void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
   const createMediaAsset = vi.fn(async () => ({ url: '/media/x/1.jpg' }));
@@ -112,6 +119,33 @@ describe('POST /projects/:id/import/upload/stream', () => {
     const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
     expect(importBundle).toHaveBeenCalledTimes(1);
     expect(res.payload).toContain('event: done');
+  });
+
+  // Same double-send regression guard as the agent-route concurrent-retry test, for THIS route's own
+  // acquireSlot-failure branch (a "return;" regression here crashes the vitest worker via the async
+  // onSend hooks in makeApp).
+  it('survives a concurrent upload retry (409) while the first import is still running', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const buildBundle = (async () => {
+      await gate;
+      return {
+        bundles: [{ project: { identity: { name: 'X', colors: {} } as never, settings: { defaultLocale: 'en', locales: ['en'] } }, pages: [{ id: 'h', path: '', title: 'H', source: '<p>ok</p>' }], templates: [], datasets: [], entries: [] }],
+        diagnostics: [] as [],
+        stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
+      };
+    }) as never;
+    const { app } = track(makeApp({ buildBundle }));
+    const first = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
+    const p1 = app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload: first.payload, headers: first.headers });
+    await ticks();
+    const second = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
+    const r2 = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload: second.payload, headers: second.headers });
+    expect(r2.statusCode).toBe(409);
+    release();
+    const r1 = await p1;
+    expect(r1.payload).toContain('event: done');
+    await ticks(10); // drain pending sends so a delayed double-send crash lands in THIS test
   });
 
   it('rejects an unsupported upload with 400 (before streaming)', async () => {
@@ -206,6 +240,25 @@ describe('POST /projects/:id/agent/import-website (non-streaming, agent-callable
     const { app } = track(makeApp({ role: 'member' }));
     const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
     expect(res.statusCode).toBe(403);
+  });
+
+  // Regression for the 2026-07-25 :2003 process crash: a client-side-timed-out import retried while
+  // the first crawl was still running; the retry's 409 was sent manually inside acquireSlot and the
+  // handler then resolved `undefined` (bare return) — wrapThenable double-sent while the async onSend
+  // chain was mid-flight → uncaught ERR_HTTP_HEADERS_SENT took the whole server down. The async
+  // onSend hooks in makeApp make this test crash the worker if the bare-return pattern regresses.
+  it('survives a concurrent retry (409) while a slow crawl is still running', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { app } = track(makeApp({ crawl: async () => { await gate; return onePageCrawl(); } }));
+    const p1 = app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    await ticks();
+    const r2 = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    expect(r2.statusCode).toBe(409);
+    release();
+    const r1 = await p1;
+    expect(r1.statusCode).toBe(200);
+    await ticks(10); // drain pending sends so a delayed double-send crash lands in THIS test
   });
 });
 

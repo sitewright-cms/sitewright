@@ -18,8 +18,6 @@ interface ProjectSelectorModalProps {
   canCreate?: boolean;
   /** Open the New Project modal (the selector closes first). */
   onNew: () => void;
-  /** Create a new project then open the import wizard against it (the selector closes first). */
-  onNewFromWebsite: () => void;
   /** Import a project export zip as a brand-new project (the selector closes first). */
   onImportZip: () => void;
 }
@@ -29,7 +27,7 @@ interface ProjectSelectorModalProps {
  * NEW PROJECT button. Shown automatically on first load and reachable anytime by
  * clicking the project name in the header.
  */
-export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onNewFromWebsite, onImportZip }: ProjectSelectorModalProps) {
+export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onImportZip }: ProjectSelectorModalProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -49,9 +47,6 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
           <div className="flex gap-2">
             <button type="button" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100" onClick={onImportZip}>
               Import zip
-            </button>
-            <button type="button" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100" onClick={onNewFromWebsite}>
-              From website
             </button>
             <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
               New project

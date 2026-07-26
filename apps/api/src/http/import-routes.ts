@@ -420,7 +420,12 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     return report;
   }
 
-  /** Claim the per-project lock + a global slot; sends the 409/429 and returns false if unavailable. */
+  /** Claim the per-project lock + a global slot; sends the 409/429 and returns false if unavailable.
+   *  Callers MUST `return reply` (never a bare `return`) on the false branch: the 409/429 is sent
+   *  manually here, and an async handler that resolves `undefined` while that send's async onSend
+   *  chain is still in flight lets Fastify's wrapThenable fire a SECOND send — an uncaught
+   *  ERR_HTTP_HEADERS_SENT that kills the process (took :2003 down on 2026-07-25). Returning the
+   *  reply adopts its thenable, resolving the handler only after the response has fully ended. */
   function acquireSlot(reply: FastifyReply, projectId: string): boolean {
     if (activeImports.has(projectId)) {
       reply.code(409).send({ error: 'an import is already in progress for this project' });
@@ -449,7 +454,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const { url } = parsed.data;
     if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) return reply.code(400).send({ error: 'only public https URLs can be imported' });
 
-    if (!acquireSlot(reply, project.id)) return;
+    if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
@@ -500,7 +505,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const { url } = parsed.data;
     if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) return reply.code(400).send({ error: 'only public https URLs can be imported' });
 
-    if (!acquireSlot(reply, project.id)) return; // sends 409/429
+    if (!acquireSlot(reply, project.id)) return reply; // sends 409/429
     const foundation = parsed.data.foundation ?? true;
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
@@ -561,7 +566,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
       throw err;
     }
 
-    if (!acquireSlot(reply, project.id)) return;
+    if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());

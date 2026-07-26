@@ -20,7 +20,6 @@ import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost'
 import { UserMenu } from './views/UserMenu';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
-import { ImportWebsiteModal } from './views/ImportWebsiteModal';
 import { ImportProjectModal } from './views/ImportProjectModal';
 import { DuplicateProjectModal } from './views/DuplicateProjectModal';
 import { ProjectSettingsModal } from './views/ProjectSettingsModal';
@@ -111,15 +110,9 @@ function MainApp({
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [importZipOpen, setImportZipOpen] = useState(false);
-  // After a new project is created, either open its editor ('open') or open the import wizard ('import').
-  const [newProjectIntent, setNewProjectIntent] = useState<'open' | 'import'>('open');
-  // The project the import wizard targets (existing project or a freshly-created one), if open.
-  const [importFor, setImportFor] = useState<Project | null>(null);
   // The project the Duplicate modal targets, if open.
   const [duplicateFor, setDuplicateFor] = useState<Project | null>(null);
   const [settingsFor, setSettingsFor] = useState<Project | null>(null);
-  // Bumped after an import so an already-open project re-mounts and refetches its new content.
-  const [projectNonce, setProjectNonce] = useState(0);
   // The Publish & Deploy Options modal (header overflow); `publishRefresh` bumps PublishBar so its
   // preview-token link stays current after the options are saved.
   const [publishModalTab, setPublishModalTab] = useState<'publish' | 'deploy' | null>(null);
@@ -338,7 +331,6 @@ function MainApp({
           onPublishDeploy={() => setPublishModalTab('publish')}
           onExportProject={inProject ? () => downloadProjectExport(inProject.id) : undefined}
           onDuplicateProject={inProject && canCreateProjects ? () => setDuplicateFor(inProject) : undefined}
-          onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
           onProjectSettings={inProject && !isClient ? () => setSettingsFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
@@ -370,7 +362,7 @@ function MainApp({
           </button>
         </main>
       )}
-      {stage.name === 'project' && <ProjectView key={`${stage.project.id}:${projectNonce}`} project={stage.project} tab={tab} />}
+      {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} />}
 
       {selectorOpen && (
         <ProjectSelectorModal
@@ -382,12 +374,6 @@ function MainApp({
           onOpen={openProject}
           onNew={() => {
             setSelectorOpen(false);
-            setNewProjectIntent('open');
-            setNewProjectOpen(true);
-          }}
-          onNewFromWebsite={() => {
-            setSelectorOpen(false);
-            setNewProjectIntent('import');
             setNewProjectOpen(true);
           }}
           onImportZip={() => {
@@ -412,25 +398,10 @@ function MainApp({
           onClose={() => setNewProjectOpen(false)}
           onCreated={(project) => {
             setNewProjectOpen(false);
-            // Re-resolve the list (so the selector is current) and either open the project or import into it.
+            // Re-resolve the list (so the selector is current), then open the new project.
             void refresh();
             setProjects((prev) => (prev.some((p) => p.id === project.id) ? prev : [...prev, project]));
-            if (newProjectIntent === 'import') setImportFor(project);
-            else openProject(project);
-          }}
-        />
-      )}
-      {importFor && (
-        <ImportWebsiteModal
-          projectId={importFor.id}
-          projectName={importFor.name}
-          onClose={() => setImportFor(null)}
-          onImported={() => {
-            const target = importFor;
-            setImportFor(null);
-            void refresh();
-            setProjectNonce((n) => n + 1); // force the project view to refetch the imported content
-            openProject(target);
+            openProject(project);
           }}
         />
       )}

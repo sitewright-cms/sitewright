@@ -590,17 +590,6 @@ export interface ImportProgressEvent {
   url?: string;
 }
 
-/** The `done` report of a website import. */
-export interface ImportReport {
-  pagesImported: number;
-  pagesFound: number;
-  mediaSelfHosted: number;
-  scriptsDropped: number;
-  chromeExtracted: boolean;
-  truncated: boolean;
-  warnings: string[];
-}
-
 /** The `done` report of a project-zip import (a brand-new project was created). */
 export interface ProjectImportReport {
   projectId: string;
@@ -1201,47 +1190,6 @@ export const api = {
       },
       { signal },
     ),
-
-  /**
-   * Import an external website by CRAWLING a live URL, streaming progress over SSE. Owner-only.
-   * `onDone` receives the import report; preflight errors (403/400/409/429) arrive via `onError`.
-   */
-  importWebsiteStream: (
-    projectId: string,
-    body: { url: string; maxPages?: number; maxDepth?: number },
-    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ImportReport) => void; onError?: (message: string) => void },
-    signal?: AbortSignal,
-  ): Promise<void> =>
-    // foundation=1 → the AI-clone pipeline: native theme/fonts/chrome, foreign CSS/JS discarded.
-    streamSse<ImportProgressEvent, { report: ImportReport }>(
-      `${BASE}/projects/${projectId}/import/website/stream?foundation=1`,
-      {
-        onProgress: handlers.onProgress,
-        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
-        onError: handlers.onError,
-      },
-      { signal, init: { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } },
-    ),
-
-  /** Import an external website by UPLOADING a ZIP/HTML bundle, streaming progress over SSE. Owner-only. */
-  importUploadStream: (
-    projectId: string,
-    file: File,
-    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ImportReport) => void; onError?: (message: string) => void },
-    signal?: AbortSignal,
-  ): Promise<void> => {
-    const form = new FormData();
-    form.append('file', file);
-    return streamSse<ImportProgressEvent, { report: ImportReport }>(
-      `${BASE}/projects/${projectId}/import/upload/stream?foundation=1`,
-      {
-        onProgress: handlers.onProgress,
-        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
-        onError: handlers.onError,
-      },
-      { signal, init: { body: form } },
-    );
-  },
 
   /**
    * Import a whole-project export ZIP as a BRAND-NEW project (staff-only), streaming progress over SSE.

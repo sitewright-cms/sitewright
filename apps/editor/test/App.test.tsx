@@ -116,9 +116,8 @@ describe('App shell', () => {
     });
     render(<App />);
     const selector = await screen.findByRole('dialog');
-    // A client (platformRole null/absent) is not agency staff → no project-creation buttons.
+    // A client (platformRole null/absent) is not agency staff → no project-creation button.
     expect(within(selector).queryByRole('button', { name: 'New project' })).toBeNull();
-    expect(within(selector).queryByRole('button', { name: 'From website' })).toBeNull();
     fireEvent.click(within(selector).getByRole('button', { name: /Client Co/ }));
     await screen.findByText(/PROJECT Client Co/);
     // Invited clients now get the full editor: the side panels + the section tablist are present.
@@ -132,8 +131,6 @@ describe('App shell', () => {
     const menu = await screen.findByRole('menu', { name: 'Settings' });
     expect(within(menu).getByRole('menuitem', { name: 'Publish & Deploy Options' })).toBeInTheDocument();
     expect(within(menu).queryByRole('menuitem', { name: 'Clients' })).toBeNull();
-    // Website cloning is an agency action — not offered to a client.
-    expect(within(menu).queryByRole('menuitem', { name: 'Clone a website with AI' })).toBeNull();
   });
 
   it('the header project name re-opens the selector', async () => {

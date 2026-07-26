@@ -113,8 +113,9 @@ function markerCategory(attrs: string): ConsentCategory | null {
 /**
  * CSP origins an author HTML body contributes: each cross-origin `<iframe>` (gated or not) → `frame-src`;
  * each cross-origin `<video>`/`<audio>`/`<source>` → `media-src`; each gated `<script type="text/plain"
- * data-sw-consent …>` with an https `src` → `script-src`+`connect-src`. Reads both un-gated `src` and the
- * already-gated `data-sw-consent-src` so it is order-independent.
+ * data-sw-consent …>` with an https `src` → `script-src`+`connect-src`. Reads un-gated `src`, the
+ * already-gated `data-sw-consent-src`, AND the lazyload runtime's deferred `data-src` (which becomes the
+ * live `src` on scroll-in — without it here, a lazy iframe/video renders then gets CSP-blocked at reveal).
  */
 export function authorContentCspOrigins(html: string | null | undefined): Pick<CspOrigins, 'frame' | 'script' | 'connect' | 'media'> {
   const frame = new Set<string>();
@@ -122,15 +123,22 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
   const connect = new Set<string>();
   const media = new Set<string>();
   if (typeof html === 'string' && html.length > 0) {
+    // Each attribute is evaluated INDEPENDENTLY (no ?? fallback): a lazy iframe commonly carries BOTH a
+    // same-origin/about:blank placeholder `src` AND the real external `data-src` — precedence on `src`
+    // would silently drop the data-src host from the CSP (blocked at reveal).
     for (const m of html.matchAll(IFRAME_TAG_RE)) {
       const attrs = m[1] ?? '';
-      const h = externalHttpsHost(attrValue(attrs, 'src') ?? attrValue(attrs, 'data-sw-consent-src'));
-      if (h) frame.add(h);
+      for (const v of [attrValue(attrs, 'src'), attrValue(attrs, 'data-sw-consent-src'), attrValue(attrs, 'data-src')]) {
+        const h = externalHttpsHost(v);
+        if (h) frame.add(h);
+      }
     }
     for (const m of html.matchAll(MEDIA_TAG_RE)) {
       const attrs = m[1] ?? '';
-      const h = externalHttpsHost(attrValue(attrs, 'src'));
-      if (h) media.add(h);
+      for (const v of [attrValue(attrs, 'src'), attrValue(attrs, 'data-src')]) {
+        const h = externalHttpsHost(v);
+        if (h) media.add(h);
+      }
     }
     for (const m of html.matchAll(SCRIPT_OPEN_TAG_RE)) {
       const attrs = m[1] ?? '';
@@ -149,6 +157,8 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
  * Neutralize cross-origin author `<iframe>`s so they don't load until consent: move `src` → a held
  * `data-sw-consent-src`, and read the INPUT category override (`data-sw-consent="x"`, else `defaultCategory`)
  * to stamp the OUTPUT as `data-sw-consent-cat` — the input `data-sw-consent` marker is REMOVED (see below).
+ * A LAZY iframe (`data-src`, the lazyload runtime's deferred URL) is gated the same way — the lazyload
+ * runtime would otherwise set its `src` on scroll-in with no consent check, silently bypassing the gate.
  * Same-origin/relative iframes, an explicit `data-sw-consent-skip` opt-out, and already-gated iframes pass
  * through untouched. Caller invokes this ONLY when the consent manager is enabled (consent off → iframes load
  * normally, their origin still allow-listed via {@link authorContentCspOrigins}). Idempotent.
@@ -158,17 +168,24 @@ export function gateAuthorIframes(html: string, opts: { defaultCategory?: Consen
   const def = opts.defaultCategory ?? DEFAULT_EMBED_CATEGORY;
   return html.replace(IFRAME_TAG_RE, (full, attrs: string) => {
     if (hasFlag(attrs, 'data-sw-consent-skip') || hasFlag(attrs, 'data-sw-consent-src')) return full; // opt-out / already gated
-    const src = attrValue(attrs, 'src');
+    // An external LAZY target wins over `src`: a lazy iframe commonly pairs the real external
+    // `data-src` with a same-origin/about:blank placeholder `src` — precedence on `src` would leave
+    // that combination completely ungated (the lazyload runtime then sets the src with no consent).
+    const direct = attrValue(attrs, 'src');
+    const lazy = attrValue(attrs, 'data-src');
+    const src = lazy && externalHttpsHost(lazy) ? lazy : direct;
     if (!src || !externalHttpsHost(src)) return full; // same-origin / relative / non-https → leave as-is
     const cat = markerCategory(attrs) ?? def;
-    // Strip BOTH `src` AND the author's `data-sw-consent` marker (valued `="<cat>"` OR the rare value-less
-    // boolean form). The category is preserved in `data-sw-consent-cat` below; leaving ANY `data-sw-consent`
-    // on the held iframe would violate the runtime invariant "data-sw-consent appears only on the mount" — the
-    // mount's own selectors (`[data-sw-consent][data-sw-enhanced]`, `querySelectorAll('[data-sw-consent]')`)
-    // would then match the iframe and style it as a fixed full-screen banner. The `-skip`/`-cat`/`-src`/`-note`
-    // variants (a `-` follows `data-sw-consent`, so neither pattern can match the prefix boundary) are untouched.
+    // Strip `src` (and a lazy `data-src`) AND the author's `data-sw-consent` marker (valued `="<cat>"` OR
+    // the rare value-less boolean form). The category is preserved in `data-sw-consent-cat` below; leaving
+    // ANY `data-sw-consent` on the held iframe would violate the runtime invariant "data-sw-consent appears
+    // only on the mount" — the mount's own selectors (`[data-sw-consent][data-sw-enhanced]`,
+    // `querySelectorAll('[data-sw-consent]')`) would then match the iframe and style it as a fixed
+    // full-screen banner. The `-skip`/`-cat`/`-src`/`-note` variants (a `-` follows `data-sw-consent`, so
+    // neither pattern can match the prefix boundary) are untouched.
     const stripped = attrs
       .replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+      .replace(/\s+data-src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
       .replace(/\s+data-sw-consent\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
       .replace(/\s+data-sw-consent(?=[\s/>]|$)/i, '');
     // `src` may be SINGLE-quoted or unquoted (raw `website.head`/import HTML isn't attribute-escaped), so it can

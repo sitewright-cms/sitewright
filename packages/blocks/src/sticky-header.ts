@@ -69,6 +69,10 @@ export function stickyHeaderCss(mode: StickyHeaderMode | 'none' | null | undefin
     base.push(
       '@media (prefers-reduced-motion:no-preference){#main-nav,#main-nav .navbar{transition:min-height .3s ease,padding .3s ease,box-shadow .3s ease}}',
     );
+    // Measurement guard for the runtime's anchor-rest sync: it force-toggles `sw-scrolled` to measure the
+    // SHRUNK bar before first paint-relevant use, and this suppresses the shrink transitions during that
+    // forced toggle so the measurement can never flash a reverse animation.
+    base.push('html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}');
   }
   return base.join('');
 }
@@ -82,11 +86,35 @@ export const STICKY_HEADER_JS = `(function(){
   var root=document.documentElement;
   var nav=document.getElementById('main-nav');
   var hide=/\\bsw-header-hide-on-scroll\\b/.test(document.body.className||'');
+  var shrink=/\\bsw-header-shrink\\b/.test(document.body.className||'');
   // The hide-reveal threshold = the REAL header height (measured, not assumed) so it matches the
   // breakpoint-aware offset token AND a custom header. Measuring here only sizes the scroll threshold,
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
   function measure(){headerH=nav?nav.getBoundingClientRect().height:72;}
+  // SHRINK anchor-rest sync: an anchor jump computes its target from scroll-padding-top at CLICK time,
+  // but by the time the smooth scroll rests the bar has CONDENSED — the static token (sized for the
+  // full bar) then leaves a strip of the PREVIOUS section visible under the bar. Pin scroll-padding-top
+  // to the bar's SCROLLED height (measured via a forced sw-scrolled toggle under the sw-measure
+  // transition guard, all within one synchronous task — nothing paints) so sections rest FLUSH under
+  // the bar the visitor actually sees at rest. Pinned on BOTH the root (the published site's scroller)
+  // AND the body (the editor preview's scroll container — html{overflow:hidden} there, so root
+  // scroll-padding is inert); each inline style beats its stylesheet token. The layout spacer
+  // (.sw-top-padding) keeps the full-height token, so nothing reflows.
+  function syncAnchorRest(){
+    if(!shrink||!nav)return;
+    var h;
+    if(root.classList.contains('sw-scrolled')){h=nav.getBoundingClientRect().height;}
+    else{
+      root.classList.add('sw-measure');
+      root.classList.add('sw-scrolled');
+      h=nav.getBoundingClientRect().height;
+      root.classList.remove('sw-scrolled');
+      void nav.offsetHeight;
+      root.classList.remove('sw-measure');
+    }
+    if(h){root.style.scrollPaddingTop=h+'px';document.body.style.scrollPaddingTop=h+'px';}
+  }
   var lastY=window.pageYOffset||root.scrollTop||document.body.scrollTop||0;
   var scrolled=false, hidden=false, ticking=false;
   function update(){
@@ -105,7 +133,16 @@ export const STICKY_HEADER_JS = `(function(){
   // surface without the preview scroll bridge — same hardening as the back-to-top/scrollspy runtimes;
   // the rAF ticking guard coalesces a bridge-redispatched + captured pair into one update.
   window.addEventListener('scroll',onScroll,{passive:true,capture:true});
-  window.addEventListener('resize',function(){measure();onScroll();},{passive:true});
+  // Resize work (measure + the forced-toggle anchor-rest sync = up to 3 synchronous layouts) is
+  // rAF-throttled like scroll — a continuous drag-resize fires resize per frame or faster.
+  var rzTicking=false;
+  function onResize(){
+    if(rzTicking)return;
+    rzTicking=true;
+    window.requestAnimationFrame(function(){rzTicking=false;measure();syncAnchorRest();update();});
+  }
+  window.addEventListener('resize',onResize,{passive:true});
   measure();
+  syncAnchorRest();
   update();
 })();`;

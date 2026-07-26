@@ -41,6 +41,10 @@ describe('stickyHeaderCss', () => {
     expect(css).toContain('html.sw-scrolled #main-nav .navbar{min-height:3.25rem');
     expect(css).toContain('@media (prefers-reduced-motion:no-preference)');
     expect(css).not.toContain('sw-nav-hidden');
+    // the runtime's forced-measure transition guard ships only with shrink (the only mode that measures)
+    expect(css).toContain('html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}');
+    expect(stickyHeaderCss('pinned')).not.toContain('sw-measure');
+    expect(stickyHeaderCss('hide-on-scroll')).not.toContain('sw-measure');
   });
 });
 
@@ -58,6 +62,13 @@ describe('STICKY_HEADER_JS', () => {
     // body.scrollTop position fallback, so the runtime works even without the preview scroll bridge
     expect(STICKY_HEADER_JS).toContain('{passive:true,capture:true}');
     expect(STICKY_HEADER_JS).toContain('document.body.scrollTop');
+    // SHRINK anchor-rest sync: pins scroll-padding-top to the measured SCROLLED bar (via the
+    // sw-measure transition guard) so anchors rest flush — no strip of the previous section shows
+    // under the condensed bar. Re-synced on resize.
+    expect(STICKY_HEADER_JS).toContain('sw-header-shrink');
+    expect(STICKY_HEADER_JS).toContain('sw-measure');
+    expect(STICKY_HEADER_JS).toContain("style.scrollPaddingTop=h+'px'");
+    expect(STICKY_HEADER_JS).toContain('measure();syncAnchorRest();update()'); // rAF-throttled resize path
     // the hide-reveal threshold MEASURES the real header (no hardcoded height → matches any breakpoint/custom header)
     expect(STICKY_HEADER_JS).toContain("getElementById('main-nav')");
     expect(STICKY_HEADER_JS).toContain('getBoundingClientRect');

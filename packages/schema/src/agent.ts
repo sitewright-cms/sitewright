@@ -352,8 +352,12 @@ own fields) / datetimepicker-field.
 LAZY-LOAD (images, backgrounds, iframes): the platform ships its own tiny runtime when it sees
 data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is no longer needed)
 — never add a lazy-load library. Put the URL in data-* via {{sw-url …}} or as a literal path.
+PREFER the platform's data-* deferral over the browser's loading="lazy" for anything HEAVY or
+third-party: native lazy is DISTANCE-based (browsers fetch a "lazy" iframe/img that sits within a
+multi-thousand-px threshold of the viewport — on a typical page that means AT LOAD), while data-src
+loads only ~200px before the element actually scrolls into view.
 - Plain image — simplest, works without JS: <img src="…" loading="lazy" alt="…" width="…" height="…">
-  (the image pipeline adds a blur-up LQIP placeholder).
+  (the image pipeline adds a blur-up LQIP placeholder). Fine for self-hosted images.
 - Deferred swap with a blur-up fade — put the URL in data-src (+ data-srcset for responsive) INSTEAD
   of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
   height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
@@ -365,7 +369,12 @@ data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is
   resumes on re-enter). This is the ONLY correct way to embed a muted-autoplay promo video in a modal —
   a plain autoplay <video> with a real src downloads the whole file on PAGE LOAD even through
   preload="none", so a closed modal costs a full download; data-src defers it.
-- IFRAME, no-JS-safe alternative: native <iframe src="…" loading="lazy" title="…" width height>.
+- IFRAME / THIRD-PARTY EMBED (YouTube, maps, any external widget): data-src is REQUIRED, not
+  loading="lazy" — a src-bearing "lazy" embed still fetches the third party's whole player at page
+  load (distance threshold), stalling the preloader and wrecking pagespeed. <iframe data-src="…"
+  title="…" class="skeleton loading …" width height> shows the shimmer until it scrolls near, exactly
+  like the JS placeholders most originals use. (Published CSP allow-lists data-src hosts the same as
+  src.) Reserve plain src + loading="lazy" for the rare frame that MUST exist without JS.
 - SKELETON while loading (whenever the media has a fixed HEIGHT): wrap it in a DaisyUI .skeleton box
   so an animated shimmer shows until it loads, then the media fades in over it —
   <div class="skeleton h-64 w-full overflow-hidden rounded-box"><img data-src="…" alt="…" width="800"
@@ -1133,20 +1142,26 @@ against this list BEFORE you publish it:
   SELF-HOSTED in the media library and the platform serves it INLINE + frameable — so it DISPLAYS in a
   lazy \`<iframe>\` (the importer already keeps a captured modal PDF as one). To author/replicate it by hand,
   put a lazy iframe pointing at the hosted PDF inside the native \`<dialog data-sw-component="modal">\` (find
-  the asset with list_media): \`<iframe src="/media/….pdf" title="Company Profile" loading="lazy"
-  class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>\` — loading="lazy" + \`.skeleton\`
-  \`.loading\` (the platform-required loading placeholder for every iframe) + a min-height so the frame has
-  size before it paints. A NON-PDF document (doc/xls/…) can't render inline → present it as a LINK/BUTTON
+  the asset with list_media): \`<iframe data-src="/media/….pdf" title="Company Profile"
+  class="skeleton loading w-full border-0" style="min-height:80vh"></iframe>\` — \`data-src\` (the platform's
+  in-view lazy runtime; opening the modal counts as scrolling in, so the PDF downloads only when the modal
+  opens) + \`.skeleton\` \`.loading\` (the platform-required loading placeholder for every iframe) + a
+  min-height so the frame has size before it paints. A NON-PDF document (doc/xls/…) can't render inline → present it as a LINK/BUTTON
   instead: \`<a href="/media/….docx" target="_blank" rel="noopener" class="btn btn-primary">{{sw-icon
   "file-text"}} View document</a>\`.
 - LAZY-LOAD + LOADING PLACEHOLDERS (platform rule — apply everywhere). EVERY \`<iframe>\` you author (maps,
-  video, PDF, embeds) MUST carry \`loading="lazy"\` + BOTH \`skeleton\` AND \`loading\` classes
-  (\`class="skeleton loading …"\`) — \`.skeleton\` is the shimmer placeholder shown until the frame paints, and
-  the platform NEUTRALISES \`.loading\`'s collapsing-spinner behaviour on media (iframe/img/video/embed/object)
-  so the two compose safely; the importer already adds them to kept embeds. EVERY LARGE / below-the-fold
-  \`<img>\`, video, or off-screen media element MUST carry \`loading="lazy"\` + \`class="skeleton loading …"\` too
-  (small above-the-fold logos / nav icons stay eager and need no placeholder). A blank grey box where the
-  original shows a map / video / image = a missing lazy placeholder.
+  video, PDF, embeds) MUST defer via the PLATFORM's lazy runtime — put the URL in \`data-src\` (NO \`src\`)
+  — plus BOTH \`skeleton\` AND \`loading\` classes (\`class="skeleton loading …"\`). Do NOT rely on
+  \`loading="lazy"\` for an iframe/third-party embed: native lazy is DISTANCE-based (browsers fetch it when
+  it is within a multi-thousand-px threshold — on a typical page that means AT PAGE LOAD), so the third
+  party's whole player still loads eagerly, stalls the preloader, and hurts pagespeed; \`data-src\` loads it
+  only ~200px before it scrolls into view — the behaviour the original's own JS placeholder had.
+  \`.skeleton\` is the shimmer placeholder shown until the frame loads, and the platform NEUTRALISES
+  \`.loading\`'s collapsing-spinner behaviour on media (iframe/img/video/embed/object) so the two compose
+  safely. EVERY LARGE / below-the-fold \`<img>\`, video, or off-screen media element MUST defer too —
+  \`data-src\` (best, blur-up fade) or \`loading="lazy"\` (acceptable for self-hosted images only) +
+  \`class="skeleton loading …"\` (small above-the-fold logos / nav icons stay eager and need no placeholder).
+  A blank grey box where the original shows a map / video / image = a missing lazy placeholder.
 - FONTS ARE SELF-HOSTED + LIVE IN CI SETTINGS (identity.typography.heading/body), NOT in criticalCss. The
   importer now LOCALLY hosts the page's Google Fonts (and any @font-face fonts) automatically and wires
   identity.typography.heading/body — asset-backed slots that drive \`--sw-font-heading\`/\`--sw-font-body\` and

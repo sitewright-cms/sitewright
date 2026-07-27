@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToastProvider } from '../src/views/ui/Toast';
 import { BackgroundPicker } from '../src/views/library/BackgroundPicker';
 import { api } from '../src/api';

@@ -36,6 +36,7 @@ import {
   RICH_HIGHLIGHT_CLASSES,
   RICH_SIZE_CLASSES,
   RICH_ALIGN_CLASSES,
+  sanitizeRichHtml,
   type RichCmd,
   type RichSwatch,
   type CiSwatch,
@@ -96,9 +97,14 @@ type OpenMenu = null | { id: string; kind: RichCmd['kind'] };
  * standard palette AND the project's CI brand colours), CI fonts, headings, lists, alignment, indentation,
  * links, tables, a divider, clear-formatting, and a raw HTML-source toggle. Visual formatting is emitted as
  * EXISTING Tailwind utility classes (colour/size/highlight/align/indent) and marks/blocks as semantic HTML —
- * never inline styles. The value is sanitized server-side at render by `{{sw-rich}}` (the same boundary as
- * `data-sw-html`), so this surface only has to produce clean markup, not enforce safety. The on-page
- * `data-sw-html` toolbar (preview-bridge.ts) mirrors this exact command set.
+ * never inline styles. The on-page `data-sw-html` toolbar (preview-bridge.ts) mirrors this exact command set.
+ *
+ * The stored value is also sanitized at RENDER by `{{sw-html}}` / `data-sw-html`, but that boundary protects
+ * the PUBLISHED site — not this editor. A dataset value can be written by a lower-privileged actor (an invited
+ * client, an API key, or the agent loop, all of which hold `content:write`) and is then loaded into THIS
+ * contentEditable, on the app origin that carries the viewing admin's session cookie. So the same allowlist
+ * runs before innerHTML here. `sanitizeRichHtml` is idempotent and permits everything this toolbar emits
+ * (class/href/target/rel/src/alt/width/height), so a round-trip of editor-authored content is a no-op.
  */
 export function RichTextField({
   value,
@@ -152,7 +158,7 @@ export function RichTextField({
   // through a ref keeps the dependency on `source` alone.
   useEffect(() => {
     const el = ref.current;
-    if (el && !source) el.innerHTML = valueRef.current ?? '';
+    if (el && !source) el.innerHTML = sanitizeRichHtml(valueRef.current ?? '');
   }, [source]);
 
   const emit = () => {

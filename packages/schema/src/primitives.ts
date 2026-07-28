@@ -198,11 +198,17 @@ function isPrivateIPv4(host: string): boolean {
   );
 }
 
-/** Decode an IPv4-mapped IPv6 host (`::ffff:7f00:1` or `::ffff:127.0.0.1`) to dotted IPv4, else null. */
+/**
+ * Decode an IPv6 host that EMBEDS an IPv4 address in its low 32 bits to dotted IPv4, else null. Covers
+ * IPv4-mapped (`::ffff:7f00:1` / `::ffff:127.0.0.1`) and the deprecated IPv4-COMPATIBLE form
+ * (`::10.0.0.1` / `::0a00:1`), which some stacks still route. 6to4 and NAT64 also embed an IPv4 but are
+ * caught by their own prefix checks in {@link targetsPrivateHost}.
+ */
 function ipv4MappedToDotted(host: string): string | null {
-  const m = /^::ffff:(.+)$/.exec(host);
+  const m = /^::(?:ffff:)?(.+)$/.exec(host);
   const tail = m?.[1];
   if (tail === undefined) return null;
+  if (tail.includes(':') && !/^[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(tail)) return null; // a longer v6 tail, not an embedded v4
   if (tail.includes('.')) return tail; // already dotted (e.g. ::ffff:127.0.0.1)
   const groups = tail.split(':'); // hex form: two 16-bit groups (e.g. 7f00:1)
   if (groups.length !== 2) return null;
@@ -215,9 +221,12 @@ function ipv4MappedToDotted(host: string): string | null {
 /**
  * True if `url`'s host is localhost / link-local / a private (RFC 1918/6598) range —
  * i.e. not a public host. Unparseable → treated as private (blocked). A string-level
- * SSRF guard (DNS-rebinding to a private IP isn't covered — defense-in-depth, used
- * for any server-fetched or browser-posted author-supplied URL). IPv4-mapped IPv6
- * (`::ffff:a.b.c.d`) is decoded so it can't smuggle a private IPv4 past the checks.
+ * SSRF guard: it judges the URL STRING and never resolves DNS, so a hostname with a
+ * private A record passes. Treat it as a cheap pre-filter, NOT a boundary — anything
+ * that fetches a user-supplied URL server-side must go through the connect-pinned
+ * fetcher (`pinnedFetch` / `pinnedFetchDetailed`), which resolves once, rejects private
+ * addresses and connects to the pinned IP. IPv6 forms that embed an IPv4 (IPv4-mapped,
+ * IPv4-compatible, 6to4, NAT64) are decoded so they can't smuggle a private v4 through.
  */
 export function targetsPrivateHost(url: string): boolean {
   let host: string;

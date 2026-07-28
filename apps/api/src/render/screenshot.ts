@@ -52,21 +52,54 @@ export function isPrivateIp(ip: string): boolean {
   if (v === 6) {
     const ip6 = bare.toLowerCase().split('%')[0]!; // drop any %zone-id
     if (ip6 === '::1' || ip6 === '::') return true; // loopback / unspecified
-    // IPv4-mapped, dotted-decimal form (::ffff:a.b.c.d) → judge by the embedded v4.
-    const mapped = ip6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped?.[1]) return isPrivateIp(mapped[1]);
-    // IPv4-mapped, hex-group form (::ffff:7f00:1 === 127.0.0.1) → expand + judge by the embedded v4.
-    const hex = ip6.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-    if (hex) {
-      const hi = parseInt(hex[1]!, 16);
-      const lo = parseInt(hex[2]!, 16);
-      return isPrivateIp(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+    // Several IPv6 forms EMBED an IPv4 address, so a private v4 can ride inside a v6 literal that none
+    // of the textual prefix checks below would catch. Expand to the 8 groups once and judge the embedded
+    // address by the v4 rules — this covers IPv4-mapped (both the dotted and hex-group spellings),
+    // the deprecated IPv4-compatible `::a.b.c.d`, 6to4, and NAT64.
+    const g = ipv6Groups(ip6);
+    if (g) {
+      const embedded = (hi: number, lo: number): string => `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+      // 6to4 (2002::/16) — the IPv4 sits in groups 1-2 and is what the tunnel actually reaches.
+      if (g[0] === 0x2002) return isPrivateIp(embedded(g[1]!, g[2]!));
+      // NAT64: the well-known 64:ff9b::/96 and the RFC 8215 local-use 64:ff9b:1::/48 both put the
+      // translated IPv4 in the LAST 32 bits — on a NAT64 network this reaches that v4 directly.
+      if (g[0] === 0x0064 && g[1] === 0xff9b) return isPrivateIp(embedded(g[6]!, g[7]!));
+      // IPv4-mapped ::ffff:0:0/96 and IPv4-compatible ::/96 (deprecated but still routed by some stacks).
+      if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && (g[5] === 0xffff || g[5] === 0)) {
+        return isPrivateIp(embedded(g[6]!, g[7]!));
+      }
     }
     if (ip6.startsWith('fc') || ip6.startsWith('fd')) return true; // unique-local fc00::/7
     if (/^fe[89ab]/.test(ip6)) return true; // link-local fe80::/10
     return false;
   }
   return true; // not a literal IP that we recognise → caller resolves the host; bare unknown → block
+}
+
+/**
+ * Expand an IPv6 literal to its 8 16-bit groups, resolving `::` compression and a trailing dotted-quad
+ * tail (`::ffff:127.0.0.1`, `64:ff9b::10.0.0.1`). Returns null if it does not parse — callers treat that
+ * as "no embedded IPv4 to judge" and fall through to the textual prefix checks.
+ */
+function ipv6Groups(ip6: string): number[] | null {
+  let s = ip6;
+  // Unrolled (no nested quantifier) so the match is plainly linear; octet RANGES are checked below.
+  const dotted = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(s);
+  if (dotted) {
+    const q = dotted[1]!.split('.').map(Number);
+    if (q.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    s = s.slice(0, dotted.index) + `${(((q[0]! << 8) | q[1]!) >>> 0).toString(16)}:${(((q[2]! << 8) | q[3]!) >>> 0).toString(16)}`;
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null; // more than one '::' is not a valid literal
+  const parse = (part: string): number[] => (part === '' ? [] : part.split(':').map((h) => parseInt(h, 16)));
+  const head = parse(halves[0] ?? '');
+  const groups =
+    halves.length === 2
+      ? [...head, ...new Array<number>(Math.max(0, 8 - head.length - parse(halves[1] ?? '').length)).fill(0), ...parse(halves[1] ?? '')]
+      : head;
+  if (groups.length !== 8 || groups.some((n) => !Number.isInteger(n) || n < 0 || n > 0xffff)) return null;
+  return groups;
 }
 
 /** Decide whether the headless browser may issue `url`. `allowHostPort` is the API's own loopback origin. */

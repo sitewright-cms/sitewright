@@ -167,6 +167,7 @@ import {
   DEFAULT_PROJECT_ZIP_LIMITS,
 } from '../import/unpack-project-zip.js';
 import { rewriteMediaSlug } from '../import/rewrite-slug.js';
+import { pinnedFetchDetailed, type PinnedResult } from '../import/pinned-fetch.js';
 import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
@@ -546,7 +547,9 @@ const RegisterBody = z.object({
   orgName: z.string().min(1).max(120).optional(),
 });
 const LoginBody = z.object({
-  email: z.string().email(),
+  // 254 = the RFC 5321 ceiling for a deliverable address. Bounded so an absurd value can't drive pointless
+  // scrypt work, and so the failed-attempt throttle's per-account key has a bounded input.
+  email: z.string().email().max(254),
   password: z.string().min(1).max(200),
 });
 // Self-service account changes. Both re-authenticate with the current password (a live session
@@ -920,6 +923,13 @@ export interface AppOptions {
   /** Stock-image search/import service. Defaults to the live providers; tests inject a fake. */
   stockService?: StockServiceLike;
   /**
+   * The outbound fetcher for `media/import-url`. Defaults to {@link pinnedFetchDetailed} — the
+   * connect-pinned, SSRF-validated transport shared with the website importer. Tests inject a fake
+   * (there is no global `fetch` to stub: pinning deliberately bypasses it to kill the DNS-rebinding
+   * TOCTOU window that a resolve-then-fetch guard leaves open).
+   */
+  importUrlFetch?: typeof pinnedFetchDetailed;
+  /**
    * The platform's public ORIGIN (e.g. `https://cms.agency.com`; origin-only, no path). Sourced from
    * `SW_PUBLIC_URL`. Uses: baked into exported `Form` blocks so the static site posts submissions back
    * here; the OIDC redirect base; and — when set — the canonical OAuth/MCP issuer + `resource` (see
@@ -1046,6 +1056,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
   const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
   const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
+  // The SSRF-safe outbound for `media/import-url` (see that route). Injectable for tests only.
+  const importUrlFetch = opts.importUrlFetch ?? pinnedFetchDetailed;
   const aiQuota = opts.aiQuota ?? {};
   // Isolated template renderer (child-process worker pool). Injected in tests; in
   // production server.ts constructs one. Absent → the render route returns 503.
@@ -1549,12 +1561,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // and writes a whole project's content + media).
   let activeProjectImports = 0;
 
-  // Brute-force protection for the LOGIN routes: a per-IP FAILED-attempt throttle (successful logins
-  // never consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read
-  // live per request. Flood protection for the whole auth surface is the GLOBAL 200/min limiter.
+  // Brute-force protection for the LOGIN routes: a FAILED-attempt throttle (successful logins never
+  // consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read live per
+  // request. Flood protection for the whole auth surface is the GLOBAL 200/min limiter.
+  //
+  // TWO budgets, because either alone has a hole:
+  //  - per-IP bounds one source guessing many accounts;
+  //  - per-ACCOUNT bounds many sources guessing ONE account — a rotating-IP/botnet attack, which the IP
+  //    key cannot see at all.
+  // The account budget is a MULTIPLE of the per-IP one on purpose. A per-account lockout is itself a
+  // griefing vector (anyone who knows an email can burn its budget), so it is a backstop against
+  // distributed guessing, not a primary lockout — and the window is short (60s), so an account griefed
+  // this way recovers on its own. The 429 body is IDENTICAL for both, so it never reveals whether an
+  // account exists or is under attack.
+  const ACCOUNT_FAILURE_MULTIPLIER = 5;
+  const ipKey = (ip: string): string => `ip:${ip}`;
+  // Normalized to match `login()`'s lookup, so "A@X.com " and "a@x.com" share one budget, then HASHED to a
+  // fixed-width key. Hashing matters because this key is caller-supplied text (an IP is not): it keeps a
+  // bucket's memory constant no matter what was submitted, and keeps plaintext emails out of the throttle
+  // map. Truncated to ~132 bits — far past any collision concern for a 60s counter.
+  const accountKey = (account: string): string =>
+    `account:${createHash('sha256').update(account.trim().toLowerCase()).digest('base64url').slice(0, 22)}`;
   const authFailLimit = (): Promise<number> => instanceSettingsRepo.getAuthMaxFailures();
-  async function loginThrottleBlocked(reply: FastifyReply, ip: string): Promise<boolean> {
-    if (!loginThrottle.isBlocked(ip, await authFailLimit())) return false;
+  /** Record ONE failed sign-in against both budgets (the account key only when we know who was targeted). */
+  function recordLoginFailure(ip: string, account?: string): void {
+    loginThrottle.recordFailure(ipKey(ip));
+    if (account) loginThrottle.recordFailure(accountKey(account));
+  }
+  async function loginThrottleBlocked(reply: FastifyReply, ip: string, account?: string): Promise<boolean> {
+    const max = await authFailLimit();
+    const blocked =
+      loginThrottle.isBlocked(ipKey(ip), max) ||
+      (account !== undefined && loginThrottle.isBlocked(accountKey(account), max * ACCOUNT_FAILURE_MULTIPLIER));
+    if (!blocked) return false;
     reply.code(429).send({ error: 'too many failed sign-in attempts — please wait a minute and try again' });
     return true;
   }
@@ -1600,12 +1639,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post('/auth/login', async (req, reply) => {
     const body = LoginBody.parse(req.body);
-    if (await loginThrottleBlocked(reply, req.ip)) return reply;
+    if (await loginThrottleBlocked(reply, req.ip, body.email)) return reply;
     let userId: string;
     try {
       userId = await login(db, body.email, body.password);
     } catch (err) {
-      loginThrottle.recordFailure(req.ip); // count only FAILED credential checks
+      // Count only FAILED credential checks. An UNKNOWN email accrues against its account key exactly
+      // like a real one, so the throttle never becomes an account-existence oracle.
+      recordLoginFailure(req.ip, body.email);
       throw err;
     }
     // Password OK. If the user has a CONFIRMED TOTP factor, don't issue a session yet — hand back a
@@ -1624,15 +1665,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // per-IP failed-attempt throttle bounds brute force. Generic failures — never reveal which factor failed.
   app.post('/auth/login/totp', async (req, reply) => {
     const body = LoginTotpBody.parse(req.body);
+    // Step 2 carries an opaque ticket, not an email, so the account budget can only be consulted once the
+    // ticket resolves — the IP budget still gates the unresolved case.
     if (await loginThrottleBlocked(reply, req.ip)) return reply;
     const userId = await mfaRepo.resolveLoginTicket(body.ticket);
     if (!userId) {
-      loginThrottle.recordFailure(req.ip);
+      recordLoginFailure(req.ip);
       throw new UnauthorizedError('invalid or expired login request — please sign in again');
     }
+    if (await loginThrottleBlocked(reply, req.ip, userId)) return reply;
     const ok = (await mfaRepo.verifyTotpCode(userId, body.code)) || (await mfaRepo.consumeRecoveryCode(userId, body.code));
     if (!ok) {
-      loginThrottle.recordFailure(req.ip);
+      recordLoginFailure(req.ip, userId);
       throw new UnauthorizedError('invalid code');
     }
     await mfaRepo.consumeLoginTicket(body.ticket);
@@ -3655,10 +3699,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     );
 
     // Import a remote URL INTO the library (download + self-host), so a field that pasted a URL can
-    // keep the published export self-contained. SSRF-guarded like the stock downloader: https-only,
-    // private-host rejection, no redirects (a 3xx to a private host can't bypass the check), size cap
-    // + timeout. Raster images are optimized (createMediaAsset); SVG is sanitized + stored as a vector
-    // image (createSvgAsset); anything else is stored as-is (download-only).
+    // keep the published export self-contained. Raster images are optimized (createMediaAsset); SVG is
+    // sanitized + stored as a vector image (createSvgAsset); anything else is stored as-is.
+    //
+    // SSRF: the binding guard is `pinnedFetchDetailed` — resolve ONCE, reject if any resolved address is
+    // private, then connect to the PINNED IP, re-guarding every redirect hop. The cheap `targetsPrivateHost`
+    // string check below stays as a fast pre-filter (it answers the obvious literal/`localhost` cases with a
+    // precise message, without a DNS round-trip) but it is NOT the boundary: it cannot see where a hostname
+    // actually resolves, so on its own it let any name with a private A record through. That mattered here
+    // more than on a blind fetch — this route STORES the response as a retrievable media asset, and it is
+    // reachable by the `import_image` MCP tool, i.e. by an agent loop reading untrusted third-party content.
     const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
     app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rl(20) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
@@ -3671,41 +3721,46 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.code(400).send({ error: 'only public https URLs can be imported' });
       }
 
-      // The abort timer stays armed across the BODY read too (a server that trickles the body must not
-      // hold a worker open) — clearTimeout is in the OUTER finally, mirroring the stock downloader.
-      let buffer: Buffer;
-      let contentType: string;
-      let oversize = false;
+      // Redirects and the size cap (content-length pre-check AND a streaming backstop) live inside the
+      // pinned fetcher, so there is no path around the guard. `timeoutMs` there is a per-socket INACTIVITY
+      // timeout, so it alone would let a server trickle bytes and hold a worker open indefinitely — the
+      // AbortController adds the hard whole-operation deadline (spanning redirects + the body read) that
+      // this route had before. clearTimeout is in the finally so the timer never outlives the request.
+      // The pinned fetcher resolves rather than rejects on every failure it knows about; the catch is a
+      // backstop so an unexpected throw still answers 400 (never a 500 leaking a stack to the caller).
+      let fetched: PinnedResult;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), IMPORT_TIMEOUT_MS);
       try {
-        // Follow redirects MANUALLY (most image URLs 302 to a CDN), re-checking EVERY hop against the
-        // SSRF guard — a redirect must never become a way to reach a private/internal host or downgrade
-        // off https. (The initial `url` was already checked above.)
-        let current = url;
-        let res = await fetch(current, { signal: controller.signal, redirect: 'manual' });
-        for (let hop = 0; res.status >= 300 && res.status < 400 && res.headers.get('location'); hop++) {
-          if (hop >= MAX_IMPORT_REDIRECTS) return reply.code(400).send({ error: 'too many redirects' });
-          const next = new URL(res.headers.get('location')!, current).href; // resolve relative against the current hop
-          if (!/^https:\/\//i.test(next) || targetsPrivateHost(next)) {
-            return reply.code(400).send({ error: 'a redirect to a non-public URL was blocked' });
-          }
-          current = next;
-          res = await fetch(next, { signal: controller.signal, redirect: 'manual' });
-        }
-        if (!res.ok) return reply.code(400).send({ error: `download failed (${res.status})` });
-        if (Number(res.headers.get('content-length') ?? '0') > MAX_UPLOAD_BYTES) {
-          return reply.code(413).send({ error: 'file exceeds size limit' });
-        }
-        contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
-        buffer = Buffer.from(await res.arrayBuffer());
-        oversize = buffer.length > MAX_UPLOAD_BYTES;
+        fetched = await importUrlFetch(url, {
+          timeoutMs: IMPORT_TIMEOUT_MS,
+          maxBytes: MAX_UPLOAD_BYTES,
+          maxRedirects: MAX_IMPORT_REDIRECTS,
+          signal: controller.signal,
+        });
       } catch {
         return reply.code(400).send({ error: 'could not fetch the URL' });
       } finally {
         clearTimeout(timer);
       }
-      if (oversize) return reply.code(413).send({ error: 'file exceeds size limit' });
+      if (!fetched.ok) {
+        switch (fetched.reason) {
+          case 'blocked':
+            // The host, or a redirect target, is not a public https address. Deliberately does NOT say
+            // which hop or what it resolved to — that would be an internal-DNS oracle.
+            return reply.code(400).send({ error: 'a non-public URL was blocked (host or redirect target)' });
+          case 'redirects':
+            return reply.code(400).send({ error: 'too many redirects' });
+          case 'oversize':
+            return reply.code(413).send({ error: 'file exceeds size limit' });
+          case 'status':
+            return reply.code(400).send({ error: `download failed (${fetched.status})` });
+          default:
+            return reply.code(400).send({ error: 'could not fetch the URL' });
+        }
+      }
+      const contentType = fetched.contentType;
+      const buffer = Buffer.from(fetched.bytes);
 
       const isSvg = contentType === 'image/svg+xml' || contentType === 'image/svg';
       if (isSvg && buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });

@@ -24,13 +24,35 @@ describe('isPrivateIp', () => {
       '::ffff:0a00:0001', // IPv4-mapped 10.0.0.1 (hex group)
       '[::1]', // bracketed (as URL.hostname yields)
       '[::ffff:7f00:1]',
+      // IPv6 forms that EMBED an IPv4 — each reaches the embedded address on a network that routes it,
+      // so a private v4 must not be smuggled through inside a v6 literal.
+      '::10.0.0.1', // IPv4-COMPATIBLE (deprecated) — 10.0.0.1
+      '::0a00:0001', // same, hex-group spelling
+      '2002:0a00:0001::', // 6to4 wrapping 10.0.0.1
+      '2002:7f00:1::', // 6to4 wrapping 127.0.0.1
+      '2002:a9fe:a9fe::', // 6to4 wrapping 169.254.169.254 (cloud metadata)
+      '64:ff9b::a00:1', // NAT64 well-known prefix wrapping 10.0.0.1
+      '64:ff9b::10.0.0.1', // same, dotted tail
+      '64:ff9b:1::a00:1', // NAT64 local-use prefix (RFC 8215)
     ]) {
       expect(isPrivateIp(ip), ip).toBe(true);
     }
   });
 
   it('allows public addresses', () => {
-    for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34', '172.32.0.1', '2606:4700:4700::1111', '[2606:4700:4700::1111]']) {
+    for (const ip of [
+      '8.8.8.8',
+      '1.1.1.1',
+      '93.184.216.34',
+      '172.32.0.1',
+      '2606:4700:4700::1111',
+      '[2606:4700:4700::1111]',
+      // The embedding forms must stay usable when what they wrap is PUBLIC — the rule is "judge the
+      // embedded address", not "reject the prefix".
+      '::ffff:8.8.8.8',
+      '2002:5db8:d822::', // 6to4 wrapping 93.184.216.34
+      '64:ff9b::8.8.8.8', // NAT64 wrapping 8.8.8.8
+    ]) {
       expect(isPrivateIp(ip), ip).toBe(false);
     }
   });

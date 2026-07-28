@@ -24,6 +24,23 @@ interface Redirect {
   redirect: string;
 }
 
+/**
+ * Why a pinned fetch failed. Callers that surface an error to a user (rather than silently dropping the
+ * resource) need to tell "we refused this host" from "the remote 404'd" — without leaking which internal
+ * address a name resolved to. `blocked` deliberately covers non-https, unparseable, private-resolving AND
+ * unresolvable hosts, at ANY redirect hop: collapsing them keeps the response from being an oracle for
+ * internal DNS.
+ */
+export type PinnedFailure =
+  | { ok: false; reason: 'blocked' }
+  | { ok: false; reason: 'redirects' }
+  | { ok: false; reason: 'status'; status: number }
+  | { ok: false; reason: 'oversize' }
+  | { ok: false; reason: 'network' };
+
+/** A pinned fetch outcome: the response, or a {@link PinnedFailure} describing why it was refused. */
+export type PinnedResult = ({ ok: true } & PinnedResponse) | PinnedFailure;
+
 const MAX_REDIRECTS = 5;
 
 /** A pinned connect/transport failure (TLS/network error or timeout) — the caller should try the NEXT
@@ -33,12 +50,15 @@ const CONNECT_FAILED = Symbol('pinned-connect-failed');
 export interface PinnedOptions {
   timeoutMs?: number;
   maxBytes?: number;
+  /** Redirect hops to follow before giving up. Defaults to {@link MAX_REDIRECTS}. */
+  maxRedirects?: number;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   /** Injectable resolver (tests); defaults to the real DNS lookup. */
   resolve?: (host: string) => Promise<{ address: string; family: number }[]>;
-  /** @internal test seam — override the single-hop fetch to exercise the redirect-follow loop. */
-  _fetchOnce?: (url: string, opts: PinnedOptions) => Promise<PinnedResponse | Redirect | null>;
+  /** @internal test seam — override the single-hop fetch to exercise the redirect-follow loop. A bare
+   *  `null` (the pre-PinnedFailure shape) is still accepted and read as a transport failure. */
+  _fetchOnce?: (url: string, opts: PinnedOptions) => Promise<PinnedResponse | Redirect | PinnedFailure | null>;
 }
 
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -61,29 +81,42 @@ async function defaultResolve(host: string): Promise<{ address: string; family: 
  * loop / too many hops, a non-OK transport, or an oversize/timed-out body.
  */
 export async function pinnedFetch(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResponse | null> {
-  const once = opts._fetchOnce ?? pinnedFetchOnce;
-  let url = rawUrl;
-  const seen = new Set<string>();
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    if (seen.has(url)) return null; // redirect loop
-    seen.add(url);
-    const r = await once(url, opts);
-    if (!r) return null;
-    if ('redirect' in r) { url = r.redirect; continue; } // re-pinned + re-guarded on the next iteration
-    return r;
-  }
-  return null; // too many redirects
+  const r = await pinnedFetchDetailed(rawUrl, opts);
+  return r.ok ? { status: r.status, contentType: r.contentType, bytes: r.bytes } : null;
 }
 
-/** One pinned hop: a 2xx PinnedResponse, a {@link Redirect} (3xx with a resolvable Location), or null. */
-async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResponse | Redirect | null> {
+/**
+ * As {@link pinnedFetch}, but reports WHY a fetch was refused (see {@link PinnedFailure}) instead of
+ * collapsing every failure to null — for callers that answer a user and must distinguish "we refused
+ * this host" from "the remote 404'd" or "too big". Identical guarantees: same guard, same pinning.
+ */
+export async function pinnedFetchDetailed(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResult> {
+  const once = opts._fetchOnce ?? pinnedFetchOnce;
+  const maxRedirects = opts.maxRedirects ?? MAX_REDIRECTS;
+  let url = rawUrl;
+  const seen = new Set<string>();
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    if (seen.has(url)) return { ok: false, reason: 'redirects' }; // redirect loop
+    seen.add(url);
+    const r = await once(url, opts);
+    if (r === null) return { ok: false, reason: 'network' }; // legacy `_fetchOnce` seam shape
+    if ('ok' in r) return r; // a PinnedFailure from this hop — surfaced verbatim
+    if ('redirect' in r) { url = r.redirect; continue; } // re-pinned + re-guarded on the next iteration
+    return { ok: true, ...r };
+  }
+  return { ok: false, reason: 'redirects' }; // too many redirects
+}
+
+/** One pinned hop: a 2xx PinnedResponse, a {@link Redirect} (3xx with a resolvable Location), or a
+ *  {@link PinnedFailure}. */
+async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResponse | Redirect | PinnedFailure> {
   let u: URL;
   try {
     u = new URL(rawUrl);
   } catch {
-    return null;
+    return { ok: false, reason: 'blocked' };
   }
-  if (u.protocol !== 'https:') return null;
+  if (u.protocol !== 'https:') return { ok: false, reason: 'blocked' };
 
   const host = u.hostname.replace(/^\[|\]$/g, ''); // unbracket IPv6 literals
   // Candidate connect addresses, each already private-IP-guarded. A literal-IP host has exactly one; a
@@ -91,16 +124,16 @@ async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promis
   let candidates: { ip: string; family: number }[];
   const litFamily = isIP(host);
   if (litFamily) {
-    if (isPrivateIp(host)) return null;
+    if (isPrivateIp(host)) return { ok: false, reason: 'blocked' };
     candidates = [{ ip: host, family: litFamily }];
   } else {
     let ips: { address: string; family: number }[];
     try {
       ips = await (opts.resolve ?? defaultResolve)(host);
     } catch {
-      return null;
+      return { ok: false, reason: 'blocked' };
     }
-    if (ips.length === 0 || ips.some((r) => isPrivateIp(r.address))) return null;
+    if (ips.length === 0 || ips.some((r) => isPrivateIp(r.address))) return { ok: false, reason: 'blocked' };
     // Try EVERY resolved address, IPv4 FIRST: a dual-stack host whose first DNS record is an AAAA would
     // otherwise fail outright in an IPv4-only egress environment — the cause of "every image self-host
     // failed" while the box has (IPv4) internet. Falling through to the next address on a connect error
@@ -120,16 +153,16 @@ async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promis
   for (const cand of candidates) {
     const r = await connectPinned(cand.ip, cand.family, u, host, port, timeoutMs, maxBytes, opts);
     if (r !== CONNECT_FAILED) return r;
-    if (opts.signal?.aborted) return null;
+    if (opts.signal?.aborted) return { ok: false, reason: 'network' };
   }
-  return null;
+  return { ok: false, reason: 'network' };
   /* v8 ignore stop */
 }
 
 /* v8 ignore start */
 /** A single pinned TLS GET to one address. Resolves to CONNECT_FAILED (transport error/timeout — the
- *  caller should try the next address), a {@link Redirect}, a {@link PinnedResponse} (2xx), or null (a
- *  definitive HTTP-status / oversize / abort failure). */
+ *  caller should try the next address), a {@link Redirect}, a {@link PinnedResponse} (2xx), or a
+ *  {@link PinnedFailure} (a definitive HTTP-status / oversize / abort failure). */
 function connectPinned(
   ip: string,
   family: number,
@@ -139,10 +172,10 @@ function connectPinned(
   timeoutMs: number,
   maxBytes: number,
   opts: PinnedOptions,
-): Promise<PinnedResponse | Redirect | null | typeof CONNECT_FAILED> {
+): Promise<PinnedResponse | Redirect | PinnedFailure | typeof CONNECT_FAILED> {
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v: PinnedResponse | Redirect | null | typeof CONNECT_FAILED): void => {
+    const finish = (v: PinnedResponse | Redirect | PinnedFailure | typeof CONNECT_FAILED): void => {
       if (!done) {
         done = true;
         resolve(v);
@@ -170,17 +203,17 @@ function connectPinned(
         if (status >= 300 && status < 400) {
           const loc = res.headers.location;
           res.destroy();
-          if (!loc) return finish(null);
-          try { return finish({ redirect: new URL(loc, u).href }); } catch { return finish(null); }
+          if (!loc) return finish({ ok: false, reason: 'status', status });
+          try { return finish({ redirect: new URL(loc, u).href }); } catch { return finish({ ok: false, reason: 'status', status }); }
         }
         if (status < 200 || status >= 300) {
           res.destroy();
-          return finish(null);
+          return finish({ ok: false, reason: 'status', status });
         }
         const contentType = String(res.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
         if (Number(res.headers['content-length'] ?? '0') > maxBytes) {
           res.destroy();
-          return finish(null);
+          return finish({ ok: false, reason: 'oversize' });
         }
         const chunks: Buffer[] = [];
         let total = 0;
@@ -188,13 +221,13 @@ function connectPinned(
           total += c.length;
           if (total > maxBytes) {
             res.destroy();
-            finish(null);
+            finish({ ok: false, reason: 'oversize' });
             return;
           }
           chunks.push(c);
         });
         res.on('end', () => finish({ status, contentType, bytes: new Uint8Array(Buffer.concat(chunks)) }));
-        res.on('error', () => finish(null));
+        res.on('error', () => finish({ ok: false, reason: 'network' }));
       },
     );
     req.on('error', () => finish(CONNECT_FAILED)); // TLS/network/connect error → try the next address
@@ -205,11 +238,11 @@ function connectPinned(
     if (opts.signal) {
       if (opts.signal.aborted) {
         req.destroy();
-        finish(null);
+        finish({ ok: false, reason: 'network' });
       } else {
         opts.signal.addEventListener('abort', () => {
           req.destroy();
-          finish(null);
+          finish({ ok: false, reason: 'network' });
         }, { once: true });
       }
     }

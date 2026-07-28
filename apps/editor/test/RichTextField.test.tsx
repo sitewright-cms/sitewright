@@ -151,4 +151,46 @@ describe('RichTextField', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit HTML source' })); // → wysiwyg
     expect(screen.getByRole('textbox', { name: 'body' }).innerHTML).toContain('Keep me');
   });
+
+  // A dataset value can be written by a LOWER-privileged actor (invited client / API key / agent loop)
+  // and is loaded here on the app origin, under the viewing admin's session. So the same allowlist that
+  // guards the published site runs before innerHTML.
+  describe('sanitizes the stored value before it reaches innerHTML', () => {
+    const html = (value: string): string => {
+      render(<RichTextField value={value} onChange={() => {}} ariaLabel="body" />);
+      return screen.getByRole('textbox', { name: 'body' }).innerHTML;
+    };
+
+    it('strips inline event handlers', () => {
+      const out = html('<p>hi</p><img src="x" onerror="alert(1)">');
+      expect(out).not.toMatch(/onerror/i);
+      expect(out).toContain('hi');
+    });
+
+    it('strips script elements', () => {
+      expect(html('<p>ok</p><script>alert(1)</script>')).not.toMatch(/<script/i);
+    });
+
+    it('strips javascript: hrefs', () => {
+      expect(html('<a href="javascript:alert(1)">x</a>')).not.toMatch(/javascript:/i);
+    });
+
+    it('strips authored data-sw-* markers (they must never reach the platform runtime)', () => {
+      expect(html('<div data-sw-component="cart">x</div>')).not.toMatch(/data-sw-component/i);
+    });
+
+    it('is a NO-OP for the markup this toolbar actually emits (no silent content loss)', () => {
+      const authored =
+        '<h2 class="text-2xl">Title</h2><p class="text-center">a <strong>b</strong> <em>c</em> ' +
+        '<a href="/page" target="_blank" rel="noopener noreferrer">link</a></p>' +
+        '<ul><li>one</li><li>two</li></ul>' +
+        '<img src="/media/site/abc-photo.png" alt="p" width="120" height="80">' +
+        '<table><tbody><tr><td colspan="2">cell</td></tr></tbody></table>';
+      const out = html(authored);
+      for (const fragment of ['text-2xl', 'text-center', '<strong>b</strong>', '<em>c</em>', 'target="_blank"',
+        'rel="noopener noreferrer"', '<li>one</li>', 'width="120"', 'height="80"', 'colspan="2"']) {
+        expect(out, fragment).toContain(fragment);
+      }
+    });
+  });
 });

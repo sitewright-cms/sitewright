@@ -75,6 +75,50 @@ describe('PATCH /projects/:id — rename name + slug', () => {
     expect((await client.get(`/projects/${projectId}`)).json().project.slug).toBe('site');
   });
 
+  it('renames despite ORPHANED entries, and migrates their media refs too', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('dataset', 'items', { id: 'items', name: 'Items', slug: 'items', fields: [{ name: 'img', type: 'text' }] });
+    await proj.putContent('entry', 'row1', { id: 'row1', dataset: 'items', values: { img: '/media/site/abc/a.png' } });
+    // Rename the dataset WITHOUT cascade: `row1` keeps `dataset: "items"` while no such dataset exists.
+    // This is how a real project accumulated 336 orphans — and re-putting such a row through the
+    // AUTHORING path throws ("references unknown dataset"), which used to abort the project rename
+    // half-way, after settings + pages had already been committed to the new slug.
+    const ren = await client.inject({ method: 'POST', url: `${proj.base}/datasets/items/rename`, payload: { slug: 'items2', cascade: false } });
+    expect(ren.statusCode).toBe(200);
+
+    const res = await client.inject({ method: 'PATCH', url: `/projects/${projectId}`, payload: { slug: 'renamed' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().project.slug).toBe('renamed');
+    // The orphan's media reference migrated as well: the rewrite covers every row of the project, not
+    // an allow-list of kinds, and does not re-validate fields it is not touching.
+    const got = await client.get(`${proj.base}/content/entry/row1?dataset=items`);
+    expect(got.statusCode).toBe(200);
+    expect(got.json().item.values.img).toBe('/media/renamed/abc/a.png');
+  });
+
+  it('a REJECTED rename leaves the project completely intact — slug AND media references', async () => {
+    const proj = client.project(projectId);
+    const source = '<img src="/media/site/abc/a.png" alt="x">';
+    await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', source });
+    await proj.putContent('settings', 'settings', {
+      identity: { name: 'Site', logo: '/media/site/abc/a.png' },
+      settings: { locale: 'en' },
+    });
+    await client.createProject('Other', 'taken');
+
+    const res = await client.inject({ method: 'PATCH', url: `/projects/${projectId}`, payload: { slug: 'taken' } });
+    expect(res.statusCode).toBe(409);
+
+    // The invariant that matters: a failed rename must not leave content pointing at a slug the project
+    // does not have. Before the fix the rewrite ran BEFORE the row flip, so a late failure stranded
+    // pages + settings on the new slug and every image 404ed.
+    expect((await client.get(`/projects/${projectId}`)).json().project.slug).toBe('site');
+    expect((await proj.getContent('page', 'home')).json().item.source).toBe(source);
+    expect((await proj.getContent('settings', 'settings')).json().item.identity.logo).toBe('/media/site/abc/a.png');
+    // …and no stray media directory is left behind for the slug that was never claimed.
+    expect(existsSync(join(mediaRoot, 'taken'))).toBe(false);
+  });
+
   it('rejects a slug held by a SOFT-DELETED project with the finer, actionable message', async () => {
     const goneId = await client.createProject('Gone', 'gone');
     expect((await client.inject({ method: 'DELETE', url: `/projects/${goneId}` })).statusCode).toBe(204); // soft-delete keeps the slug

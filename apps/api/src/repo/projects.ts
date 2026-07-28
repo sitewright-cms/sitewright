@@ -2,6 +2,7 @@ import { newId } from '../id.js';
 import { desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
+  agentGrants,
   aiUsage,
   apiKeys,
   content,
@@ -86,26 +87,38 @@ export class ProjectRepository {
     return project;
   }
 
-  /** A project by id; throws NotFound if absent. (The caller must have already resolved access.) */
-  async get(id: string): Promise<Project> {
-    const [project] = await this.db.select().from(projects).where(eq(projects.id, id));
+  /** A project by id; throws NotFound if absent. (The caller must have already resolved access.)
+   *  Pass `exec` to read through an enclosing transaction rather than the pooled handle. */
+  async get(id: string, exec?: Database): Promise<Project> {
+    const [project] = await (exec ?? this.db).select().from(projects).where(eq(projects.id, id));
     if (!project) throw new NotFoundError('project not found');
     return project;
   }
 
   /**
    * Rename a project's display NAME and/or its SLUG. The name is cosmetic; a slug change is only the DB
-   * row here — the CALLER must first rewrite the `/media/<slug>/…` references + move the media binaries
-   * (media URLs embed the slug), then flip the row via this method LAST so a mid-flight failure leaves the
-   * old, consistent slug. Rejects a slug already held by any project (incl. a soft-deleted one, which keeps
+   * row here — media URLs embed the slug, so the CALLER must copy the media binaries first and then run
+   * {@link ContentRepository.rewriteMediaSlug} and this method INSIDE ONE TRANSACTION (pass it as `exec`).
+   * Ordering alone is not enough: doing the rewrite first and flipping the row "last" still strands the
+   * content on the new slug if the flip fails, which is how a project lost every image reference.
+   * Rejects a slug already held by any project (incl. a soft-deleted one, which keeps
    * its slug until reaped). A no-op patch returns the current project.
    */
-  async rename(id: string, patch: { name?: string; slug?: string }): Promise<Project> {
-    const current = await this.get(id);
+  async rename(id: string, patch: { name?: string; slug?: string }, exec?: Database): Promise<Project> {
+    // A slug rename must commit ATOMICALLY with the `/media/<slug>/` reference rewrite (see
+    // ContentRepository.rewriteMediaSlug) — otherwise a failure between the two leaves the project's
+    // pages/settings pointing at a slug the project does not have, i.e. every image broken. Callers
+    // doing both pass the enclosing transaction here so the two land or fail together.
+    const db = exec ?? this.db;
+    // Read through the SAME executor: inside a transaction, querying the outer handle would read
+    // outside it (and can block on the write lock the transaction already holds).
+    const current = await this.get(id, db);
     if (current.deletedAt) throw new NotFoundError('project not found');
     const slug = patch.slug ?? current.slug;
     if (patch.slug && patch.slug !== current.slug) {
-      const [dup] = await this.db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.slug, patch.slug));
+      // Re-checked INSIDE the caller's transaction (not just in the route's preflight) so a concurrent
+      // rename racing between the preflight and here cannot mint two projects on one slug.
+      const [dup] = await db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.slug, patch.slug));
       if (dup) {
         throw new ConflictError(
           dup.deletedAt
@@ -115,7 +128,7 @@ export class ProjectRepository {
       }
     }
     const name = patch.name ?? current.name;
-    await this.db.update(projects).set({ name, slug }).where(eq(projects.id, id));
+    await db.update(projects).set({ name, slug }).where(eq(projects.id, id));
     return { ...current, name, slug };
   }
 
@@ -155,11 +168,18 @@ export class ProjectRepository {
   async remove(id: string): Promise<void> {
     await this.get(id); // NotFound if absent
     await this.db.transaction(async (tx) => {
+      // EVERY table carrying an FK to `projects` must be cleared here: there is no ON DELETE CASCADE,
+      // so a table missed here makes the final delete fail with SQLITE_CONSTRAINT_FOREIGNKEY and the
+      // project becomes PERMANENTLY un-reapable (this is exactly how `agent_grants` was missed). The
+      // `reap covers every FK child` test in test/project-reap.test.ts introspects the schema and fails
+      // if a new referencing table is added without being deleted here — keep that test passing rather
+      // than relying on this comment.
       await tx.delete(content).where(eq(content.projectId, id));
       await tx.delete(contentRevisions).where(eq(contentRevisions.projectId, id));
       await tx.delete(formSubmissions).where(eq(formSubmissions.projectId, id));
       await tx.delete(aiUsage).where(eq(aiUsage.projectId, id));
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
+      await tx.delete(agentGrants).where(eq(agentGrants.projectId, id));
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
       await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));
       await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.projectId, id));

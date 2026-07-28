@@ -816,8 +816,6 @@ const UpdateProjectBody = z
   .object({ name: z.string().min(1).max(200).optional(), slug: ProjectSlug.optional() })
   .refine((b) => b.name !== undefined || b.slug !== undefined, 'nothing to update');
 // Content kinds whose serialized value can embed a `/media/<slug>/…` reference (credentials/folders can't).
-const MEDIA_REF_KINDS = ['settings', 'page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'media', 'form'] as const;
-
 const CreateApiKeyBody = z.object({
   name: z.string().min(1).max(120),
   // The token's base role; the repo refuses to mint above the creator's role.
@@ -2461,11 +2459,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (project.deletedAt) throw new NotFoundError('project not found');
     const ctx = { userId, projectId: project.id, role, actor: 'user' as const };
     const slugChanged = body.slug !== undefined && body.slug !== project.slug;
+    // A slug rename touches THREE things — the media directory, every `/media/<slug>/` reference in the
+    // project's content, and the project row itself. They must agree: a project whose slug says one thing
+    // while its pages say another has every image broken, with no way for the owner to recover. So the two
+    // DB mutations commit in ONE transaction, and the only step before it (the file copy) is one whose
+    // failure leaves the database completely untouched.
+    let updated: Awaited<ReturnType<ProjectRepository['rename']>>;
     if (slugChanged && body.slug) {
-      // Pre-check the slug is free BEFORE touching media, so a collision fails cleanly (rename() re-checks
-      // authoritatively). A soft-deleted project still holds its slug until reaped — name that case so the
-      // owner has a path to resolution, matching projects.rename()'s message.
-      const existing = await projects.getBySlug(body.slug).catch(() => null);
+      const newSlug = body.slug;
+      // ---- PREFLIGHT — every user-correctable failure is raised here, BEFORE anything is mutated.
+      // A soft-deleted project still holds its slug until reaped; name that case so the owner has a path
+      // to resolution. rename() re-checks inside the transaction, closing the race this pre-check leaves.
+      const existing = await projects.getBySlug(newSlug).catch(() => null);
       if (existing) {
         throw new ConflictError(
           existing.deletedAt
@@ -2473,20 +2478,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             : 'a project with this slug already exists',
         );
       }
-      await mediaStorage?.copyProjectMedia(project.slug, body.slug);
-      const from = `/media/${project.slug}/`, to = `/media/${body.slug}/`;
-      for (const kind of MEDIA_REF_KINDS) {
-        for (const item of await contentRepo.list(ctx, kind)) {
-          const s = JSON.stringify(item);
-          if (!s.includes(from)) continue;
-          const rewritten = JSON.parse(s.split(from).join(to)) as { id: string };
-          await contentRepo.put(ctx, kind, rewritten.id, rewritten, { op: 'put', note: 'project slug rename' });
-        }
+      // Files first: the rewrite below repoints content at `/media/<newSlug>/`, so those files have to
+      // exist by the time it commits. A failure here has touched no content and no project row.
+      await mediaStorage?.copyProjectMedia(project.slug, newSlug);
+      try {
+        updated = await db.transaction(async (tx) => {
+          const exec = tx as unknown as typeof db;
+          await contentRepo.rewriteMediaSlug(ctx, project.slug, newSlug, exec);
+          return projects.rename(project.id, { name: body.name, slug: newSlug }, exec);
+        });
+      } catch (err) {
+        // The transaction rolled back, so the project is intact — but the copied directory is not part of
+        // that rollback. Drop it, or a retry would find a populated target dir and the operator would be
+        // left guessing whether the previous attempt half-succeeded.
+        await mediaStorage
+          ?.removeProject(newSlug)
+          .catch((cleanupErr: unknown) => app.log.warn({ err: cleanupErr, project: project.id, slug: newSlug }, 'could not remove the copied media dir after a failed slug rename'));
+        throw err;
       }
+    } else {
+      updated = await projects.rename(project.id, { name: body.name, slug: body.slug });
     }
-    // Flip the row (atomic slug claim — rename() re-checks the collision) BEFORE the identity-name sync, so a
-    // colliding rename fails without leaving the on-site company name changed but the project row unchanged.
-    const updated = await projects.rename(project.id, { name: body.name, slug: body.slug });
     // Keep the on-site company name (identity.name) in sync with the display name.
     if (body.name && body.name !== project.name) {
       const settings = (await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as { identity?: Record<string, unknown> } | null;

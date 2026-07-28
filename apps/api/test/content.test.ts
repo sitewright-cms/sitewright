@@ -212,4 +212,43 @@ describe('ContentRepository', () => {
     expect(full.media.map((m) => m.id)).toEqual(['doc1']);
     expect(full.mediaFolders.map((f) => f.path)).toEqual(['docs']);
   });
+
+  describe('rewriteMediaSlug (project slug rename)', () => {
+    it('repoints every kind, including rows the authoring path would reject', async () => {
+      await content.put(pctxA, 'page', 'home', { ...page, source: '<img src="/media/site-a/x/a.png">' });
+      await content.put(pctxA, 'dataset', 'items', { id: 'items', name: 'Items', slug: 'items', fields: [{ name: 'img', type: 'text' }] });
+      await content.put(pctxA, 'entry', 'row1', { id: 'row1', dataset: 'items', values: { img: '/media/site-a/x/a.png' } });
+      // Orphan the entry: `put` would now refuse it ("references unknown dataset"), so a rewrite built
+      // on `put` could never migrate this row — it would throw and strand the rename half-applied.
+      await content.renameDataset(pctxA, 'items', 'items2', { cascade: false });
+
+      const changed = await content.rewriteMediaSlug(pctxA, 'site-a', 'site-z');
+      expect(changed).toBe(2);
+      expect(await content.get(pctxA, 'page', 'home')).toMatchObject({ source: '<img src="/media/site-z/x/a.png">' });
+      expect(await content.get(pctxA, 'entry', 'row1', 'items')).toMatchObject({ values: { img: '/media/site-z/x/a.png' } });
+    });
+
+    it('participates in the CALLER transaction — an abort leaves every reference untouched', async () => {
+      const source = '<img src="/media/site-a/x/a.png">';
+      await content.put(pctxA, 'page', 'home', { ...page, source });
+
+      // Stands in for the project-row flip failing (e.g. losing a slug race) AFTER the rewrite. The
+      // whole point of the fix: that failure must take the rewrite down with it.
+      await expect(
+        db.transaction(async (tx) => {
+          await content.rewriteMediaSlug(pctxA, 'site-a', 'site-z', tx as unknown as Database);
+          throw new Error('slug flip failed');
+        }),
+      ).rejects.toThrow('slug flip failed');
+
+      expect(await content.get(pctxA, 'page', 'home')).toMatchObject({ source });
+    });
+
+    it('leaves OTHER projects alone', async () => {
+      await content.put(pctxA, 'page', 'home', { ...page, source: '<img src="/media/site-a/x/a.png">' });
+      await content.put(pctxB, 'page', 'home', { ...page, source: '<img src="/media/site-a/x/a.png">' });
+      await content.rewriteMediaSlug(pctxA, 'site-a', 'site-z');
+      expect(await content.get(pctxB, 'page', 'home')).toMatchObject({ source: '<img src="/media/site-a/x/a.png">' });
+    });
+  });
 });

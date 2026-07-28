@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { and, desc, eq, isNull, isNotNull, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   CorporateIdentitySchema,
@@ -733,6 +733,56 @@ export class ContentRepository {
       templatesUpdated: templatesToUpdate.length,
       referencesUpdated: refDatasets.length,
     };
+  }
+
+  /**
+   * PROJECT SLUG RENAME — repoint every `/media/<oldSlug>/…` URL in this project's content at
+   * `/media/<newSlug>/…`. Returns how many rows were rewritten.
+   *
+   * Deliberately ONE raw UPDATE rather than a read → {@link put} → write loop over an allow-list of
+   * kinds, because that loop was actively unsafe:
+   *
+   * - `put` enforces AUTHORING invariants (an entry must reference a live dataset; dataset slugs must
+   *   be unique). Those are correct for a person editing one record and WRONG for a mechanical URL
+   *   migration: any pre-existing invalid row — e.g. an entry orphaned by an older dataset rename —
+   *   made the loop throw PART-WAY, after earlier kinds had already been committed. That is precisely
+   *   how a project ended up with its settings + pages pointing at a slug it did not have, every image
+   *   404ing, and no way back. A migration must not re-run authoring validation over untouched fields.
+   * - A per-kind allow-list silently drifts as kinds are added. Rewriting this project's whole
+   *   `content` table covers every kind, including future ones.
+   *
+   * `instr()` rather than LIKE so the match is literal — a slug is never read as a wildcard pattern.
+   * `scope` is untouched: only `entry.dataset` determines an entry's scope, and this never edits it.
+   *
+   * MUST be called inside the same transaction as {@link ProjectRepository.rename} so the references
+   * and the project's slug can never disagree. See the PATCH /projects/:id route.
+   */
+  async rewriteMediaSlug(ctx: ProjectContext, oldSlug: string, newSlug: string, exec?: Executor): Promise<number> {
+    const db = exec ?? this.db;
+    const from = `/media/${oldSlug}/`;
+    const to = `/media/${newSlug}/`;
+    const pending = async (): Promise<number> => {
+      const rows = (await db.all(
+        sql`select count(*) as n from content where project_id = ${ctx.projectId} and instr(data, ${from}) > 0`,
+      )) as Array<{ n: number }>;
+      return Number(rows[0]?.n ?? 0);
+    };
+    const before = await pending();
+    await db.run(
+      sql`update content set data = replace(data, ${from}, ${to}), updated_at = ${Date.now()}
+          where project_id = ${ctx.projectId} and instr(data, ${from}) > 0`,
+    );
+    // POST-CONDITION — the guard that makes a half-rename impossible. If ANY row still references the
+    // old slug the rewrite did not fully apply, so the rename is not safe to commit: throwing here
+    // aborts the enclosing transaction, and the project keeps BOTH its old slug and its working
+    // references rather than being left in the broken in-between state.
+    const remaining = await pending();
+    if (remaining > 0) {
+      throw new ConflictError(
+        `could not repoint ${remaining} media reference(s) from "${oldSlug}" to "${newSlug}" — the rename was rolled back and the project is unchanged`,
+      );
+    }
+    return before;
   }
 
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */

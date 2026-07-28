@@ -64,7 +64,11 @@ Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, 
 ```bash
 corepack enable           # provides pnpm
 pnpm install
-pnpm verify               # typecheck + lint + test + build
+pnpm verify               # the full merge gate — run this before you push
 ```
 
 Requires Node >= 22 (see `.nvmrc`).
+
+`pnpm verify` runs `scripts/verify.mjs`: dependency audit → generated-file drift checks → typecheck →
+lint → build → test, in that order, stopping at the first failure. **CI runs the same script**, so a
+green `pnpm verify` is a green build — add new gates to that script, never as a separate CI step.

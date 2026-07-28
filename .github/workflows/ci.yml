@@ -37,14 +37,14 @@ jobs:
       contents: read
     steps:
       # Third-party actions are pinned to commit SHAs (supply-chain hardening).
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
         # Reads the pnpm version from package.json "packageManager".
-        uses: pnpm/action-setup@0c17529a66aca453f9227af23103ed11469b1e47 # v4.0.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node
-        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -52,64 +52,13 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # Fails the build on high/critical advisories.
-      #
-      # `pnpm.auditConfig.ignoreGhsas` is EMPTY and should stay that way: an
-      # exemption silently outlives the advisory that justified it (all three
-      # former entries did — one had already stopped matching the tree). Fix by
-      # pinning in pnpm.overrides instead, so the audit keeps telling the truth.
-      #
-      # Two advisories remain, both BELOW the gate, neither reachable here:
-      # - GHSA-g7r4-m6w7-qqqr (esbuild <0.28.1, low): arbitrary file read via the
-      #   esbuild DEV SERVER, on Windows. Reached only through vitest -> vite, so
-      #   it is test-tooling that never runs in prod, and we run Linux. A blanket
-      #   esbuild override is not viable (vite pins 0.25; 0.28 drops transpile
-      #   support for our editor browser targets) — re-check on the next vite bump.
-      # - GHSA-8988-4f7v-96qf (@opentelemetry/core <2.8.0, moderate): unbounded
-      #   allocation parsing W3C Baggage headers, via lighthouse -> @sentry/node.
-      #   Sentry pins otel 1.x, so clearing it means forcing a MAJOR into a
-      #   third-party dep; Lighthouse runs against our OWN locally-served build and
-      #   never parses attacker-supplied baggage. Revisit when Sentry ships otel 2.
-      - name: Audit dependencies
-        # `pnpm audit` (pnpm 9) calls npm's quick-audit endpoint, which npm RETIRED
-        # (HTTP 410 -> ERR_PNPM_AUDIT_BAD_RESPONSE). That is an npm-side infra change,
-        # not a vulnerability, and there is nothing to act on until pnpm ships support
-        # for the bulk advisory endpoint. Treat ONLY that specific transport error as a
-        # (warned) skip; a real high/critical advisory still fails the build.
-        run: |
-          set +e
-          out="$(pnpm audit --audit-level high 2>&1)"; code=$?
-          printf '%s\n' "$out"
-          if [ "$code" -ne 0 ] && printf '%s' "$out" | grep -q 'ERR_PNPM_AUDIT_BAD_RESPONSE'; then
-            echo "::warning::pnpm audit skipped — npm retired the audit endpoint (410); re-enable when pnpm uses the bulk advisory endpoint"
-            exit 0
-          fi
-          exit $code
-
-      # Guard against hand-edits / upstream drift of the generated brand-icons set.
-      - name: Check generated brand icons are up to date
-        run: pnpm --filter @sitewright/blocks gen:brand-icons:check
-
-      # Same guard for the generated country-flag set (flag-icons + circle-flags).
-      - name: Check generated flag icons are up to date
-        run: pnpm --filter @sitewright/blocks gen:flag-icons:check
-
-      # Same guard for the vendored component runtimes (Embla carousel / GLightbox bundles).
-      - name: Check generated vendor component runtimes are up to date
-        run: pnpm --filter @sitewright/blocks gen:vendor:check
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      # Build before test: some integration tests assert on built output.
-      - name: Build
-        run: pnpm build
-
-      - name: Test (with coverage gate)
-        run: pnpm test
+      # ONE gate step: `scripts/verify.mjs` is shared with `pnpm verify`, so what a contributor runs
+      # locally and what CI enforces cannot drift. That drift is what kept turning main red — the old
+      # `pnpm verify` skipped the dependency audit and the generated-file drift checks, which together
+      # account for most of this repo's historical CI failures. Add gates in the SCRIPT, not here.
+      # It emits ::group:: sections + per-gate timings, so the log stays as readable as separate steps.
+      - name: Verify (audit, generated-file drift, typecheck, lint, build, test)
+        run: pnpm verify
 
   # Snapshot functionality (the MCP `preview_page` screenshots) can't run in the hermetic unit suite —
   # it needs a real browser. The image ships a heavily-slimmed Chromium (headless-shell only, Mesa/LLVM
@@ -123,13 +72,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@0c17529a66aca453f9227af23103ed11469b1e47 # v4.0.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node
-        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm

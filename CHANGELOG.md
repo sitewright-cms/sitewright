@@ -9,6 +9,59 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-28
+
+### Added
+
+- **Animated platform background** — an admin can set a WebGL shader background that renders behind the
+  whole editor **and** the login screen (served pre-auth from `GET /auth/config`, so the sign-in page is
+  skinned too). The picker keeps its Speed / Intensity / interactive / overlay controls, and a new **AUTO**
+  colour token makes a background track the active light/dark theme surface instead of pinning one colour.
+- **Project favicon in the editor header** — the top-nav brand mark becomes the open project's favicon
+  (with a generic-globe fallback), and the project selector drops the slug and is sized like the tabs. The
+  selector list gained the favicon, the live URL, sorting, and more width; a clone now prefills its
+  production URL.
+- **Smooth in-page scrolling by default**, and the agent reference now enumerates all 15 dataset field
+  types so an MCP client can pick the right one without guessing.
+
+### Changed
+
+- **Back-to-top moves to the bottom-right corner**, and a modal's auto-close gained the waves ripple.
+- The Clone-with-AI modal was removed — clones run through the MCP `import_website` → `clone_site` tools.
+
+### Fixed
+
+- **A concurrent import retry no longer kills the server** — a double-send in an async route raised
+  `ERR_HTTP_HEADERS_SENT` and took the process down.
+- **Scroll behaviour, platform-wide** — back-to-top was dead in the preview; scrollspy missed its own
+  anchor target and let a nav link pointing at a `<dialog>` or hidden element hijack the active state;
+  anchors now rest flush under the shrink header.
+- **Lazy `data-src` embeds keep their CSP + consent gating**, and the authoring guides now mandate the
+  platform lazy attribute for iframes.
+
+### Security
+
+Findings from a full security review of the platform ([#754]).
+
+- **SSRF with data exfiltration via `media/import-url`** (also reachable as the `import_image` MCP tool).
+  The route's guard was a string-level check that never resolved DNS, so any hostname with a private A
+  record passed — and the response was stored as a retrievable media asset, making it a read of internal
+  services rather than a blind request. It now uses the connect-pinned fetcher (resolve once, reject
+  private, connect to the pinned IP, re-guard every redirect hop) that the rest of the codebase already
+  used. Refusal reasons are deliberately collapsed so the response can't be an internal-DNS oracle.
+- **Rich-text values are sanitized before they reach the editor DOM.** A dataset value can be written by a
+  lower-privileged actor (an invited client, an API key, the agent loop) and was loaded into the editor
+  with the viewing admin's session; the published-site allowlist now runs there too. The editor CSP had
+  been the only barrier.
+- **The private-address guard now judges IPv6 forms that embed an IPv4** — NAT64, IPv4-compatible and
+  6to4 could smuggle a private v4 past it.
+- **Login brute-force protection gained a per-account budget** on top of the per-IP one, bounding a
+  rotating-IP attack on a single account. Deliberately loose, so it is a backstop rather than a lockout an
+  attacker could weaponise; failed sign-ins remain indistinguishable for known and unknown addresses.
+- **Dependencies: 11 advisories (2 high) → 2 (0 high)**, with the audit exemption list emptied — all three
+  entries were stale or were plain HIGHs that were simply fixable. Fixes are pinned in `pnpm.overrides` so
+  the audit keeps telling the truth; the two remaining are documented with why they are unreachable.
+
 ## [0.4.0] — 2026-07-25
 
 ### Added
@@ -145,6 +198,10 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.5.0...HEAD
+[#754]: https://github.com/sitewright-cms/sitewright/pull/754
+[0.5.0]: https://github.com/sitewright-cms/sitewright/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/sitewright-cms/sitewright/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/sitewright-cms/sitewright/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sitewright-cms/sitewright/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sitewright-cms/sitewright/releases/tag/v0.1.0

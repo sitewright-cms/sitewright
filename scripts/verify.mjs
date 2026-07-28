@@ -47,6 +47,17 @@ const GATES = [
 ];
 
 const ci = process.env.GITHUB_ACTIONS === 'true';
+
+// `actions/setup-node` registers an `eslint-stylish` problem matcher, which turns every line of lint
+// output into a GitHub annotation. This repo carries ~250 deliberately-accepted `security/*` WARNINGS
+// (object-injection sinks and friends), so that matcher only ever produces noise — it fills the run's
+// 10-annotation display budget on green builds and buries anything that actually matters. Lint ERRORS
+// still fail this script loudly, with the file and rule in the log. The `tsc` matcher is left alone:
+// those are real failures worth pinning to a line.
+if (ci) {
+  console.log('::remove-matcher owner=eslint-stylish::');
+  console.log('::remove-matcher owner=eslint-compact::');
+}
 // Collapsible sections keep the CI log readable now that the gates are one step; locally they are just
 // a heading. Timings are printed either way so a slow gate is obvious without opening the run.
 const open = (n) => console.log(ci ? `::group::${n}` : `\n── ${n} ──`);

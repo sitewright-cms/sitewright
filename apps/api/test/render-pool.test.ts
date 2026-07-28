@@ -22,8 +22,13 @@ describe('RenderPool', () => {
     expect(out).toEqual(['R:a', 'R:b', 'R:c', 'R:d']);
   });
 
+  // `renderTimeoutMs` governs BOTH renders here, and the second one has to fork a brand-new worker and
+  // load its module before it can reply — so this budget must cover process startup on a loaded CI runner,
+  // not just the reply. At 100ms it was a coin flip and became the single most common CI failure. The
+  // first render costs the full budget (`__SLEEP__` never replies, so the timeout is what ends it), so
+  // keep it generous but not extravagant. Do NOT tighten this to "make the test fast".
   it('times out a stuck render, then the respawned worker still serves', async () => {
-    pool = new RenderPool({ size: 1, workerPath, renderTimeoutMs: 100 });
+    pool = new RenderPool({ size: 1, workerPath, renderTimeoutMs: 2000 });
     await expect(pool.render('__SLEEP__', {})).rejects.toThrow(RenderUnavailableError);
     expect(await pool.render('after', {})).toBe('R:after');
   });

@@ -16,7 +16,7 @@
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
     "set-version": "node scripts/set-version.mjs",
     "export-example": "node scripts/export-example.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test"
+    "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

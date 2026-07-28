@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FolderOpen } from 'lucide-react';
 import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
@@ -31,7 +32,7 @@ import { BrandLogo } from './views/ui/BrandLogo';
 import { ProjectIcon } from './views/ui/ProjectIcon';
 import { parseLiveTarget } from './lib/live-target';
 import { parsePreviewTarget } from './lib/preview-target';
-import { gradientSurface, gradientHover } from './theme';
+import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 
@@ -368,11 +369,22 @@ function MainApp({
       <UpdateBanner />
       {header}
       {stage.name === 'home' && (
-        <main className="mx-auto max-w-3xl px-6 py-16 text-center text-slate-400 dark:text-slate-500">
-          <p>Pick a project to get started.</p>
-          <button className="mt-3 text-sm text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setSelectorOpen(true)}>
-            Open the project selector
-          </button>
+        // The empty SPA (signed in, no project open). A real frosted card carries the invitation
+        // rather than muted loose text, so the landing state matches every other editor surface —
+        // and the call to action is a real primary button (brand gradient + ripple), not a link.
+        <main className="mx-auto max-w-xl px-6 py-16">
+          <section className={`${glassCard} p-8 text-center`}>
+            <span className={`${accentChip} mb-4`} aria-hidden>
+              <FolderOpen className="h-4 w-4" />
+            </span>
+            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pick a project to get started</h1>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+              Open one of your projects to start editing — or create a new one from the selector.
+            </p>
+            <button className={`${primaryButton} mt-6`} onClick={() => setSelectorOpen(true)}>
+              Open the project selector
+            </button>
+          </section>
         </main>
       )}
       {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} />}

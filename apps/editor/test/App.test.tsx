@@ -81,6 +81,25 @@ describe('App shell', () => {
     expect(within(dialog).getByRole('button', { name: /Globex/ })).toBeInTheDocument();
   });
 
+  it('the empty home state is a card with a real heading + gradient/ripple button that re-opens the selector', async () => {
+    render(<App />);
+    const selector = await screen.findByRole('dialog', { name: 'SiteWright' });
+    fireEvent.click(within(selector).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // The invitation is a real heading on the card, not loose muted text.
+    expect(screen.getByRole('heading', { name: 'Pick a project to get started' })).toBeInTheDocument();
+
+    // The call to action is a real primary button: the brand gradient plus the `waves-effect` hook
+    // the delegated ripple runtime (lib/ripple.ts) keys off — not a text link.
+    const cta = screen.getByRole('button', { name: 'Open the project selector' });
+    expect(cta.className).toContain('sw-brand-gradient');
+    expect(cta.className).toContain('waves-effect');
+
+    fireEvent.click(cta);
+    expect(await screen.findByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
+  });
+
   it('gates the whole app behind the forced password screen when mustChangePassword is set', async () => {
     me.mockResolvedValue({ userId: 'u', email: 'admin@x.test', isInstanceAdmin: true, mustChangePassword: true, projects });
     render(<App />);

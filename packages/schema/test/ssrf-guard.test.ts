@@ -42,8 +42,18 @@ describe('targetsPrivateHost', () => {
       'https://[::ffff:a00:1]/x', // ::ffff:10.0.0.1
       'https://[::ffff:c0a8:101]/x', // ::ffff:192.168.1.1
       'https://[::ffff:a9fe:a9fe]/x', // ::ffff:169.254.169.254 (metadata)
+      // The deprecated IPv4-COMPATIBLE form (no `ffff:`) — still routed by some stacks.
+      'https://[::10.0.0.1]/x',
+      'https://[::a00:1]/x', // same, hex-group spelling
+      'https://[::7f00:1]/x', // ::127.0.0.1
     ]) {
       expect(targetsPrivateHost(u), u).toBe(true);
+    }
+  });
+
+  it('still ALLOWS embedding forms that wrap a PUBLIC v4 (judge the address, not the prefix)', () => {
+    for (const u of ['https://[::ffff:8.8.8.8]/x', 'https://[::ffff:808:808]/x']) {
+      expect(targetsPrivateHost(u), u).toBe(false);
     }
   });
 

@@ -86,6 +86,79 @@ describe('login failed-attempt throttle', () => {
     await a.close();
   });
 
+  // The per-IP budget alone cannot see a rotating-IP/botnet attack on ONE account, so there is a second,
+  // deliberately looser budget keyed by the account.
+  it('429s a DISTRIBUTED attack on one account (many IPs, same email) once the account budget is spent', async () => {
+    const adb = await makeTestDb();
+    const a = await createApp({ db: adb });
+    await a.ready();
+    await registerAccount(adb, 'admin@x.test', 'Pw-secret-1', { platformRole: 'admin' });
+    const login = await a.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@x.test', password: 'Pw-secret-1' } });
+    const cookie = login.cookies.find((c) => c.name === 'sw_session')!.value;
+    // cap 2 per IP → account budget is 2 * 5 = 10, keeping the burst small.
+    await a.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: cookie }, payload: { authMaxFailures: 2 } });
+
+    const attempt = (ip: string, email: string) =>
+      a.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'whatever' }, remoteAddress: ip });
+
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i += 1) codes.push((await attempt(`10.1.0.${i + 1}`, 'victim@x.test')).statusCode);
+    // Each IP is fresh, so the per-IP budget never trips — only the account budget can produce this 429.
+    expect(codes.slice(0, 10).every((c) => c === 401)).toBe(true);
+    expect(codes[10]).toBe(429);
+
+    // Scoped to the ACCOUNT: a different email from a fresh IP is unaffected (not a global lockout).
+    expect((await attempt('10.9.9.9', 'someone-else@x.test')).statusCode).toBe(401);
+    await a.close();
+  }, 20_000);
+
+  // If case/whitespace variants each got their own bucket, the account budget would be trivially bypassed.
+  it('normalizes the account key, so case/whitespace variants share ONE budget', async () => {
+    const adb = await makeTestDb();
+    const a = await createApp({ db: adb });
+    await a.ready();
+    await registerAccount(adb, 'admin@x.test', 'Pw-secret-1', { platformRole: 'admin' });
+    const login = await a.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@x.test', password: 'Pw-secret-1' } });
+    const cookie = login.cookies.find((c) => c.name === 'sw_session')!.value;
+    await a.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: cookie }, payload: { authMaxFailures: 2 } });
+
+    // Same address, different CASINGS, 11 different IPs → still one account budget (10) → 429.
+    // (A leading/trailing-space variant never gets this far: `z.string().email()` 400s it before the
+    // throttle sees it, so the `.trim()` in the key is belt-and-braces rather than the active defence.)
+    const spellings = ['victim@x.test', 'Victim@x.test', 'VICTIM@X.TEST', 'vIcTiM@x.TeSt'];
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const email = spellings[i % spellings.length]!;
+      codes.push((await a.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'no' }, remoteAddress: `10.4.0.${i + 1}` })).statusCode);
+    }
+    expect(codes[10]).toBe(429);
+    await a.close();
+  }, 20_000);
+
+  it('rejects an over-long email before it can reach the throttle or a password hash', async () => {
+    const email = `${'a'.repeat(300)}@x.test`;
+    const res = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'whatever' } });
+    expect(res.statusCode).toBe(400); // schema rejection, not 401 — never reaches scrypt or the throttle map
+  });
+
+  it('a successful sign-in is unaffected by another account being throttled', async () => {
+    const adb = await makeTestDb();
+    const a = await createApp({ db: adb });
+    await a.ready();
+    await registerAccount(adb, 'admin@x.test', 'Pw-secret-1', { platformRole: 'admin' });
+    const login = await a.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@x.test', password: 'Pw-secret-1' } });
+    const cookie = login.cookies.find((c) => c.name === 'sw_session')!.value;
+    await a.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: cookie }, payload: { authMaxFailures: 2 } });
+    await registerAccount(adb, 'real@x.test', 'Pw-secret-1');
+
+    for (let i = 0; i < 11; i += 1) {
+      await a.inject({ method: 'POST', url: '/auth/login', payload: { email: 'victim@x.test', password: 'nope' }, remoteAddress: `10.2.0.${i + 1}` });
+    }
+    const ok = await a.inject({ method: 'POST', url: '/auth/login', payload: { email: 'real@x.test', password: 'Pw-secret-1' }, remoteAddress: '10.3.0.1' });
+    expect(ok.statusCode).toBe(200);
+    await a.close();
+  }, 20_000);
+
   it('still enforces rl(20) on DELETE /projects/:id (a route with its own per-route cap)', async () => {
     const client: TestClient = await harness.signup();
     const url = `/projects/proj-${randomUUID()}`;

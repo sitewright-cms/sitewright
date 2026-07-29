@@ -13,13 +13,24 @@ describe('SiteWright Components reference stays in sync with the registries', ()
     expect(componentTabs.map((g) => g.title)).toEqual(COMPONENT_CATALOG.map((c) => c.type));
   });
 
-  it('folds the directive-only effect galleries in as tabs (Animation / ScrollSpy / Lazy-load / Ripple)', () => {
-    for (const id of ['effect-animation', 'effect-scrollspy', 'effect-lazyload', 'effect-ripple']) {
+  it('folds the directive-only effect galleries in as tabs (Animation / ScrollSpy / Lazy-load / Ripple / Border beam)', () => {
+    for (const id of ['effect-animation', 'effect-scrollspy', 'effect-lazyload', 'effect-ripple', 'effect-border']) {
       const g = SW_COMPONENT_GROUPS.find((x) => x.id === id);
       expect(g, id).toBeTruthy();
       expect(g!.entries.length, id).toBeGreaterThan(0);
       // each folded entry is copy-paste (a syntax + example), not a component skeleton
       for (const e of g!.entries) expect(e.example, `${id}/${e.id}`).toBeTruthy();
+    }
+  });
+
+  // The border beam is a CLASS, not a data-sw-component — so nothing derives it from a registry and
+  // it can only be found here if it is written here. Pin the class + every knob an author needs.
+  it('the Border beam tab names the class and all five knobs', () => {
+    const g = SW_COMPONENT_GROUPS.find((x) => x.id === 'effect-border')!;
+    const text = g.entries.map((e) => `${e.description} ${e.example}`).join(' ');
+    expect(text).toContain('sw-border-beam');
+    for (const knob of ['--sw-beam-color', '--sw-beam-track', '--sw-beam-width', '--sw-beam-speed', '--sw-beam-arc']) {
+      expect(text, knob).toContain(knob);
     }
   });
 

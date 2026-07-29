@@ -8,7 +8,7 @@
 import { COMPONENT_CATALOG, type ComponentCatalogEntry } from '@sitewright/schema';
 import { GLOBAL_WIDGETS, type Widget } from '@sitewright/core';
 import type { ReferenceEntry, ReferenceGroup } from './reference';
-import { ANIMATION_ITEMS, SCROLLSPY_ITEMS, LAZYLOAD_ITEMS, RIPPLE_ITEMS, type LibraryItem } from './catalog';
+import { ANIMATION_ITEMS, SCROLLSPY_ITEMS, LAZYLOAD_ITEMS, RIPPLE_ITEMS, BORDER_ITEMS, type LibraryItem } from './catalog';
 
 /** One component → a tab: skeleton + worked examples + parts + options + no-JS + notes. */
 function componentToGroup(c: ComponentCatalogEntry): ReferenceGroup {
@@ -118,4 +118,5 @@ export const SW_COMPONENT_GROUPS: ReferenceGroup[] = [
   libraryItemsToGroup('effect-scrollspy', 'ScrollSpy', 'Highlight the nav link whose in-page section is scrolled into view via data-sw-scrollspy (or the site-wide toggle in Website settings).', SCROLLSPY_ITEMS),
   libraryItemsToGroup('effect-lazyload', 'Lazy-load', 'Defer offscreen images with data-bg / lazyload.', LAZYLOAD_ITEMS),
   libraryItemsToGroup('effect-ripple', 'Ripple', 'Material “waves” click ripple via waves-effect.', RIPPLE_ITEMS),
+  libraryItemsToGroup('effect-border', 'Border beam', 'A light travelling around an element’s edge (the rotating / “lighthouse” border) in the brand primary, via sw-border-beam — a per-element ornament, not a site-wide scheme.', BORDER_ITEMS),
 ];

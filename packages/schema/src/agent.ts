@@ -476,6 +476,19 @@ Effects compose with ANY face — three kinds:
  • face — the effect DEFINES the look, picking it IS the face: \`two-tone\`,\`gradient-move\`,\`frost\`,\`ghost-gradient\`.
 Also ACCENT \`sw-btn-accent-<primary|secondary|accent|neutral>\`, SHAPE \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle=icon-only). Any axis = a class on the button OR website.effects.{buttonEffect,buttonAccent,buttonShape}. \`magnetic\`/\`spotlight\` (+ripple) load a tiny runtime. Prefer these over hand-rolled hover CSS.
 
+BORDER BEAM — \`sw-border-beam\` puts a light travelling around ANY box's edge (the rotating / "lighthouse"
+border) over a faint static ring, in the brand primary, dark-mode aware. Put the class on the ONE element
+you are decorating — a slider \`.sw-caption\`, a featured card, a pricing tier, an image frame — there is no
+site-wide form. It needs no runtime and never covers the box's content or intercepts clicks: the ring is a
+masked pseudo-element, so a frosted/translucent caption stays see-through. Tune with arbitrary properties
+on the same element: \`--sw-beam-color\` (default primary) · \`--sw-beam-track\` (the always-on ring, default
+a 20% tint; \`transparent\` = beam only) · \`--sw-beam-width\` (default 2px) · \`--sw-beam-speed\` (default 4s) ·
+\`--sw-beam-arc\` (comet length, default 90deg). Pair it with a \`rounded-*\` class — the ring inherits the
+radius. The bold hero-caption look is
+\`<div class="sw-caption sw-border-beam rounded-xl [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\`.
+It repaints a gradient each frame, so use it on a hero accent, NOT on every card in a grid; under
+prefers-reduced-motion the beam parks (the border stays). Prefer it over hand-rolled conic-gradient CSS.
+
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
 so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away
 on scroll-down, back on scroll-up), or \`shrink\` (condenses past a threshold). 'none' (default) = a normal
@@ -1504,6 +1517,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'animated WebGL / shader background', where: 'get_components (data-sw-component="shader-bg")' },
   { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
   { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
+  { need: 'rotating / animated / glowing border on a caption, card or image', where: 'the sw-border-beam class — get_guide("effects")' },
   { need: 'icons (Lucide) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon}}, brand:<slug>, {{sw-flag}}' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },

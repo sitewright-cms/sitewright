@@ -71,6 +71,20 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(AGENT_GUIDES.nav.body).toContain('merge:true');
   });
 
+  // MCP agents only ever learn about a plain CSS class if a guide names it — there is no registry to
+  // derive it from (unlike COMPONENT_CATALOG). Pin both the guide text and the capability index entry,
+  // which is what an agent searches when the user asks for "an animated border".
+  it('the effects guide teaches sw-border-beam, and the capability map routes to it', () => {
+    const body = AGENT_GUIDES.effects.body;
+    expect(body).toContain('sw-border-beam');
+    for (const knob of ['--sw-beam-color', '--sw-beam-track', '--sw-beam-width', '--sw-beam-speed', '--sw-beam-arc']) {
+      expect(body, knob).toContain(knob);
+    }
+    const hit = CAPABILITY_MAP.find((c) => c.where.includes('sw-border-beam'));
+    expect(hit, 'no CAPABILITY_MAP entry points at sw-border-beam').toBeTruthy();
+    expect(hit!.need).toMatch(/border/i);
+  });
+
   it('every guide has a title, summary, and non-trivial body', () => {
     expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
     for (const t of GUIDE_TOPICS) {

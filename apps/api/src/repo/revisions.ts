@@ -217,6 +217,32 @@ export class RevisionsRepository {
     return row ? (row as Revision) : null;
   }
 
+  /**
+   * Move an entry history from one dataset scope to another — the history half of a dataset slug rename.
+   *
+   * Entry revisions are keyed by the owning dataset SLUG (mirroring `content.scope`), so re-scoping the
+   * live rows without re-scoping their history silently detached it: the entity moved to the new slug
+   * while every snapshot stayed under the old one, and the History panel — which asks by the CURRENT
+   * slug — showed an entity with no past. Nothing errored; the versions were simply gone from the UI.
+   *
+   * Moves EVERY entry revision in the old scope, including `delete` tombstones, so restoring an entry
+   * that was deleted before the rename still works (it restores into the renamed dataset). Runs in the
+   * caller's transaction so history and content commit together.
+   */
+  async rescopeEntries(ctx: ProjectContext, oldScope: string, newScope: string, exec?: Database): Promise<void> {
+    if (oldScope === newScope) return;
+    await (exec ?? this.db)
+      .update(contentRevisions)
+      .set({ scope: newScope })
+      .where(
+        and(
+          eq(contentRevisions.projectId, ctx.projectId),
+          eq(contentRevisions.kind, 'entry'),
+          eq(contentRevisions.scope, oldScope),
+        ),
+      );
+  }
+
   /** Housekeeping: drop revisions older than the retention window. */
   async sweepOld(now: Date = new Date()): Promise<void> {
     const { retentionDays } = await this.policyValues();

@@ -256,6 +256,7 @@ import {
 } from '../repo/invites.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
+import { checkProjectIntegrity } from '../repo/integrity.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
@@ -2698,6 +2699,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       });
       // `token` is the ONLY time the raw secret is returned — clients store it now.
       return reply.code(201).send({ token, key });
+    },
+  );
+
+  // Referential-integrity report for the project's content — rows that exist but cannot be reached
+  // (orphaned entries, scope/dataset disagreement, stranded entry history). READ-ONLY: it never
+  // repairs anything, because "unreachable" is not always "unwanted" and the operator should decide.
+  // The write paths that could orphan a row are closed and guarded in code; this catches drift those
+  // guards cannot see — a hand-edited database, a restored backup, a future migration.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/integrity',
+    { config: rl(30) },
+    async (req, reply) => {
+      const { project } = await resolveProject(req, 'content:read');
+      return reply.send(await checkProjectIntegrity(db, project.id));
     },
   );
 

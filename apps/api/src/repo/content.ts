@@ -726,6 +726,10 @@ export class ContentRepository {
       // one (in place) — a plain writeRow would compute the new scope, miss the old-scope row, and insert
       // a duplicate. rescopeEntry re-keys the single existing row.
       for (const e of entriesToUpdate) await this.rescopeEntry(exec, ctx, e.id, oldSlug, e);
+      // History is keyed by the same dataset slug, so it has to move WITH the rows. Without this the
+      // entities land on the new slug while every snapshot stays on the old one, and the History panel
+      // — which asks by the current slug — shows no past at all.
+      await this.revisions?.rescopeEntries(ctx, oldSlug, renamed.slug, exec);
       for (const { p, source } of pagesToUpdate) await this.writeRow(exec, ctx, 'page', p.id, { ...p, source });
       for (const { t, source } of templatesToUpdate) await this.writeRow(exec, ctx, 'template', t.id, { ...t, source });
       for (const d of refDatasets) await this.writeRow(exec, ctx, 'dataset', d.id, d);

@@ -145,6 +145,28 @@ describe('remote MCP transport (/mcp)', () => {
     expect(MCP_RL_MAX).toBeGreaterThanOrEqual(600); // the ceiling a parallel-agent fleet needs
   }, 60_000);
 
+  // The positive half of the agent-lane gate (rate-limit.test.ts pins the negative half: a forged bearer
+  // never lifts anything). A key earns the lane by AUTHENTICATING, so the very first call is measured at
+  // the ordinary cap and every one after it at the raised one.
+  it('opens the agent lane only AFTER the key has authenticated', async () => {
+    const { token, projectId } = await setup();
+    const url = `/projects/${projectId}/content/page`;
+    const auth = { authorization: `Bearer ${token}` };
+
+    // A FRESH app has never seen this token: first request → the ordinary route cap.
+    const cold = await app.inject({ method: 'GET', url, headers: auth });
+    expect(cold.statusCode).toBe(200); // it authenticates HERE, which is what marks it verified
+    expect(cold.headers['x-ratelimit-limit']).toBe('120');
+
+    // …and from the next request on, the raised ceiling.
+    const warm = await app.inject({ method: 'GET', url, headers: auth });
+    expect(warm.headers['x-ratelimit-limit']).toBe('600');
+
+    // A DIFFERENT, unissued token gets nothing, even against the same route.
+    const forged = await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${'swk_' + '1'.repeat(64)}` } });
+    expect(forged.headers['x-ratelimit-limit']).toBe('120');
+  });
+
   it('429s as a JSON-RPC envelope once the cap IS reached', async () => {
     const { token } = await setup();
     // The cap must still exist and, when hit, come back as a JSON-RPC error envelope with retry-after —

@@ -19,6 +19,12 @@ import { issuerOf } from './oauth-routes.js';
  * cannot starve the shared global bucket that the editor and site traffic run on.
  */
 export const MCP_RL_MAX = 600;
+/**
+ * What an UNVERIFIED caller gets on `/mcp` — every request here needs a valid bearer, so before one is
+ * proven live there is no reason to hand out the fleet ceiling. `rlAgent` raises this to MCP_RL_MAX once
+ * the token has authenticated, so a real agent is unaffected past its first call.
+ */
+const MCP_RL_BASE = 120;
 
 function bearerOf(req: FastifyRequest): string | undefined {
   const header = req.headers.authorization;
@@ -47,6 +53,8 @@ export function registerMcpRoutes(
   app: FastifyInstance,
   opts: {
     rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+    /** Like `rl`, but lifts the cap for a VERIFIED API key only (see app.ts). */
+    rlAgent: (max: number) => { rateLimit: { max: (req: FastifyRequest) => number; timeWindow: string } };
     /** The instance's public origin (`SW_PUBLIC_URL`); used to build the OAuth challenge's
      *  resource-metadata URL correctly behind a TLS-terminating proxy. See `issuerOf`. */
     publicUrl?: string;
@@ -165,7 +173,7 @@ export function registerMcpRoutes(
     const message = status === 429 ? 'rate limit exceeded — honor the retry-after header and back off' : 'internal error';
     void rpcError(reply, status, message, rpcIdOf(req.body));
   };
-  app.post('/mcp', { config: opts.rl(MCP_RL_MAX), errorHandler: mcpErrorHandler }, handle);
+  app.post('/mcp', { config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination
   // (DELETE) — 405 so a spec-compliant host doesn't open and wait on a stream that never arrives
   // (and we never buffer a streaming body via .text()).

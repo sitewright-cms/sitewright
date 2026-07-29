@@ -52,16 +52,26 @@ describe('POST /projects/:id/datasets/:id/rename', () => {
     expect((await get('dataset', 'ds2')).json().item.fields[0].config.target).toBe('features'); // reference retargeted
   });
 
-  it('cascade:false renames only the dataset, leaving references on the old slug', async () => {
+  it('cascade:false leaves PAGE references alone but still moves the entries it OWNS', async () => {
     const { t, pid, put, get } = await setup();
     await put('dataset', 'ds1', { id: 'ds1', name: 'Items', slug: 'items', fields: [] });
     await put('entry', 'e1', { id: 'e1', dataset: 'items', values: {} });
+    await put('page', 'home', { id: 'home', path: '', title: 'Home', source: '<div>{{#each dataset.items}}<p>x</p>{{/each}}</div>' });
+
     const res = await app.inject({ method: 'POST', url: `/projects/${pid}/datasets/ds1/rename`, cookies: { sw_session: t }, payload: { slug: 'features', cascade: false } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ newSlug: 'features', cascaded: false, entriesUpdated: 0 });
+    // Entries are OWNED, so they move regardless of `cascade` — they are still counted as updated.
+    expect(res.json()).toMatchObject({ newSlug: 'features', cascaded: false, entriesUpdated: 1, pagesUpdated: 0 });
     expect((await get('dataset', 'ds1')).json().item.slug).toBe('features');
-    // cascade:false leaves the entry under its ORIGINAL dataset scope ('items') — unmoved.
-    expect((await get('entry', 'e1', 'items')).json().item.dataset).toBe('items'); // intentionally NOT cascaded
+
+    // The entry followed its dataset…
+    expect((await get('entry', 'e1', 'features')).json().item.dataset).toBe('features');
+    // …and is NOT still sitting under the old scope, invisible to every list and to publish. Leaving it
+    // there is what silently stranded 336 rows in a real project; no flag may produce that state.
+    expect((await get('entry', 'e1', 'items')).statusCode).toBe(404);
+
+    // What cascade:false actually opts out of: the author's own markup is left for them to fix.
+    expect((await get('page', 'home')).json().item.source).toContain('dataset.items');
   });
 
   it('rejects renaming to a slug another dataset already uses (409)', async () => {

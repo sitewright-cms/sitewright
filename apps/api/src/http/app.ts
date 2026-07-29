@@ -2633,9 +2633,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  // Rename a dataset's SLUG with an optional cascade (default ON): rewrite every entry's `dataset` field
-  // + every page/template source's `dataset.<slug>` refs so loops don't break. content:write (it edits
-  // pages). `cascade:false` renames only the dataset (the editor's plain "Rename" — leaves refs dangling).
+  // Rename a dataset's SLUG. Its ENTRIES always move with it (they are owned, not referencing — an entry
+  // left on the old slug is unreachable, not "dangling"). `cascade` (default ON) additionally rewrites
+  // EXTERNAL refs: page/template `dataset.<slug>` sources + other datasets' reference targets, so loops
+  // don't break. `cascade:false` is the editor's "leave page/template references" escape hatch, for an
+  // author who wants to fix their own markup — it can no longer strand entries. content:write (edits pages).
   const RenameDatasetBody = z.object({ slug: DatasetSlugSchema, name: z.string().min(1).max(200).optional(), cascade: z.boolean().default(true) });
   app.post<{ Params: { projectId: string; id: string } }>(
     '/projects/:projectId/datasets/:id/rename',

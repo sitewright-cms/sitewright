@@ -5,6 +5,7 @@ import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
 import { ConflictError, NotFoundError, ForbiddenError, type ProjectContext } from '../src/repo/context.js';
 import type { Database } from '../src/db/client.js';
+import { content as contentTable } from '../src/db/schema.js';
 
 let db: Database;
 let content: ContentRepository;
@@ -214,18 +215,21 @@ describe('ContentRepository', () => {
   });
 
   describe('rewriteMediaSlug (project slug rename)', () => {
-    it('repoints every kind, including rows the authoring path would reject', async () => {
+    it('repoints every kind, including LEGACY rows the authoring path would reject', async () => {
       await content.put(pctxA, 'page', 'home', { ...page, source: '<img src="/media/site-a/x/a.png">' });
-      await content.put(pctxA, 'dataset', 'items', { id: 'items', name: 'Items', slug: 'items', fields: [{ name: 'img', type: 'text' }] });
-      await content.put(pctxA, 'entry', 'row1', { id: 'row1', dataset: 'items', values: { img: '/media/site-a/x/a.png' } });
-      // Orphan the entry: `put` would now refuse it ("references unknown dataset"), so a rewrite built
-      // on `put` could never migrate this row — it would throw and strand the rename half-applied.
-      await content.renameDataset(pctxA, 'items', 'items2', { cascade: false });
+      // A legacy orphan planted directly — `put` refuses to create one now ("references unknown
+      // dataset"), but deployed databases hold them. A rewrite built on `put` could never migrate this
+      // row: it would throw and strand the rename half-applied.
+      const now = new Date();
+      await db.insert(contentTable).values({
+        id: 'legacy-orphan', projectId: pctxA.projectId, kind: 'entry', entityId: 'row1', scope: 'ghost',
+        data: { id: 'row1', dataset: 'ghost', values: { img: '/media/site-a/x/a.png' } }, createdAt: now, updatedAt: now,
+      });
 
       const changed = await content.rewriteMediaSlug(pctxA, 'site-a', 'site-z');
       expect(changed).toBe(2);
       expect(await content.get(pctxA, 'page', 'home')).toMatchObject({ source: '<img src="/media/site-z/x/a.png">' });
-      expect(await content.get(pctxA, 'entry', 'row1', 'items')).toMatchObject({ values: { img: '/media/site-z/x/a.png' } });
+      expect(await content.get(pctxA, 'entry', 'row1', 'ghost')).toMatchObject({ values: { img: '/media/site-z/x/a.png' } });
     });
 
     it('participates in the CALLER transaction — an abort leaves every reference untouched', async () => {

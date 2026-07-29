@@ -200,13 +200,16 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     // The data-driven pattern: point {{#each}} at any dataset slug. Inside the loop fields are read
     // directly ({{title}}, not {{values.title}}). Renders the {{else}} placeholder until the dataset
     // has entries. On a translated page `dataset.projects` auto-resolves `projects_<locale>`.
+    // The caption here is a full-bleed gradient STRIP, not the centered `.sw-caption` pill, so the
+    // platform default doesn't reach it — its generous side padding (px-12) is authored, and matches
+    // the pill's roomier look rather than hugging the slide edge.
     source: `{{!-- Data-bound slider: one slide per entry in the "projects" dataset. --}}
 <div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoplay="true" data-interval="5000" aria-label="Featured projects">
   <div data-sw-part="track">
     {{#each dataset.projects}}
     <figure data-sw-part="slide" class="relative">
       <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/9] w-full object-cover" loading="lazy" />
-      <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-6 pb-10 pt-16 text-white">
+      <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-12 pb-10 pt-16 text-white">
         <span class="text-xs font-semibold uppercase tracking-wider opacity-70">{{category}}</span>
         <span class="block text-xl font-bold">{{title}}</span>
       </figcaption>

@@ -650,12 +650,22 @@ export class ContentRepository {
   }
 
   /**
-   * Rename a dataset's `slug` (its reference handle; the entity `id`/key is unchanged). When `cascade`,
-   * also rewrite — in ONE transaction — every place that referenced the OLD slug: each entry's `dataset`
-   * field, each page/template `source` (`dataset.<slug>` paths + `dataset="<slug>"` picker args), and any
-   * other dataset's `reference` field whose `config.target` pointed at it. Without `cascade`, only the
-   * dataset's own slug changes (entries/pages are left pointing at the old slug — the caller is warned).
-   * Events fire AFTER commit so live-preview reloads against committed state. Returns per-kind counts.
+   * Rename a dataset's `slug` (its reference handle; the entity `id`/key is unchanged).
+   *
+   * ENTRIES ALWAYS MOVE WITH THE DATASET — `cascade` does NOT govern them. An entry is not a thing that
+   * *refers* to a dataset, it is a thing the dataset *owns*: its row `scope` IS the dataset slug, and
+   * that is the only handle by which it can ever be listed, read, exported or rendered. Leaving entries
+   * on the old slug therefore does not "keep a reference the author will fix later" — it makes them
+   * permanently invisible, reachable by no query and no UI. That is exactly how one project accumulated
+   * 336 unreachable entry rows. There is deliberately no flag that can produce that state.
+   *
+   * `cascade` governs only EXTERNAL references — things whose owner is somebody else and which an author
+   * may legitimately want to fix by hand: page/template `source` (`dataset.<slug>` paths and
+   * `dataset="<slug>"` picker args) and other datasets' `reference` fields whose `config.target` pointed
+   * here. Those break loudly (a loop renders nothing) rather than silently.
+   *
+   * All of it commits in ONE transaction. Events fire AFTER commit so live-preview reloads against
+   * committed state. Returns per-kind counts.
    */
   async renameDataset(
     ctx: ProjectContext,
@@ -681,14 +691,17 @@ export class ContentRepository {
       throw new ConflictError(`a dataset with slug "${renamed.slug}" already exists`);
     }
 
+    // Owned children — moved unconditionally. See the note on `cascade` above: an entry left on the old
+    // slug is not a dangling reference, it is an unreachable row.
     const entriesToUpdate: Entry[] = [];
+    for (const e of (await this.list(ctx, 'entry')) as Entry[]) {
+      if (e.dataset === oldSlug) entriesToUpdate.push({ ...e, dataset: renamed.slug });
+    }
+
     const pagesToUpdate: Array<{ p: Page; source: string }> = [];
     const templatesToUpdate: Array<{ t: Template; source: string }> = [];
     const refDatasets: Dataset[] = [];
     if (opts.cascade) {
-      for (const e of (await this.list(ctx, 'entry')) as Entry[]) {
-        if (e.dataset === oldSlug) entriesToUpdate.push({ ...e, dataset: renamed.slug });
-      }
       for (const p of (await this.list(ctx, 'page')) as Page[]) {
         if (typeof p.source === 'string' && sourceReferencesDataset(p.source, oldSlug)) {
           pagesToUpdate.push({ p, source: rewriteDatasetRefsInSource(p.source, oldSlug, renamed.slug) });

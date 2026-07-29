@@ -49,6 +49,9 @@ export interface TestClient {
 
 export interface Harness {
   readonly app: FastifyInstance;
+  /** The underlying DB — for tests that must plant rows the product itself can no longer create
+   *  (e.g. legacy orphans that predate a guard) or assert directly against storage. */
+  readonly db: Awaited<ReturnType<typeof makeTestDb>>;
   /** Registers a fresh user and returns a client scoped to them. `admin: true` promotes the user to the
    *  persisted `platform_role='admin'` (instance admin) — the only way to grant admin now. */
   signup(opts?: { email?: string; password?: string; admin?: boolean }): Promise<TestClient>;
@@ -143,5 +146,5 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
     return client;
   }
 
-  return { app, signup, close: () => app.close() };
+  return { app, db, signup, close: () => app.close() };
 }

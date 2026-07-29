@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
+import { content as contentTable } from '../src/db/schema.js';
 
 // Integration: PATCH /projects/:id renames a project's NAME and/or SLUG. A slug change rewrites every
 // `/media/<slug>/…` reference in content AND moves the on-disk media dir, so nothing 404s.
@@ -75,23 +76,31 @@ describe('PATCH /projects/:id — rename name + slug', () => {
     expect((await client.get(`/projects/${projectId}`)).json().project.slug).toBe('site');
   });
 
-  it('renames despite ORPHANED entries, and migrates their media refs too', async () => {
+  it('renames despite LEGACY orphaned entries, and migrates their media refs too', async () => {
     const proj = client.project(projectId);
-    await proj.putContent('dataset', 'items', { id: 'items', name: 'Items', slug: 'items', fields: [{ name: 'img', type: 'text' }] });
-    await proj.putContent('entry', 'row1', { id: 'row1', dataset: 'items', values: { img: '/media/site/abc/a.png' } });
-    // Rename the dataset WITHOUT cascade: `row1` keeps `dataset: "items"` while no such dataset exists.
-    // This is how a real project accumulated 336 orphans — and re-putting such a row through the
-    // AUTHORING path throws ("references unknown dataset"), which used to abort the project rename
-    // half-way, after settings + pages had already been committed to the new slug.
-    const ren = await client.inject({ method: 'POST', url: `${proj.base}/datasets/items/rename`, payload: { slug: 'items2', cascade: false } });
-    expect(ren.statusCode).toBe(200);
+    // Plant an orphan directly: an entry under a dataset scope that does not exist. The product can no
+    // longer create one (see no-orphan-entries.test.ts), but databases in the field already hold them —
+    // one project had 336 — so a rename must still migrate them rather than choke. Re-putting such a row
+    // through the AUTHORING path throws ("references unknown dataset"), which is precisely what used to
+    // abort a project rename half-way, after settings + pages were committed to the new slug.
+    const now = new Date();
+    await harness.db.insert(contentTable).values({
+      id: 'legacy-orphan-row',
+      projectId,
+      kind: 'entry',
+      entityId: 'row1',
+      scope: 'ghost_dataset',
+      data: { id: 'row1', dataset: 'ghost_dataset', values: { img: '/media/site/abc/a.png' } },
+      createdAt: now,
+      updatedAt: now,
+    });
 
     const res = await client.inject({ method: 'PATCH', url: `/projects/${projectId}`, payload: { slug: 'renamed' } });
     expect(res.statusCode).toBe(200);
     expect(res.json().project.slug).toBe('renamed');
     // The orphan's media reference migrated as well: the rewrite covers every row of the project, not
     // an allow-list of kinds, and does not re-validate fields it is not touching.
-    const got = await client.get(`${proj.base}/content/entry/row1?dataset=items`);
+    const got = await client.get(`${proj.base}/content/entry/row1?dataset=ghost_dataset`);
     expect(got.statusCode).toBe(200);
     expect(got.json().item.values.img).toBe('/media/renamed/abc/a.png');
   });

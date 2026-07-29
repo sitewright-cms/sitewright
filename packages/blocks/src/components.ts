@@ -172,6 +172,12 @@ const CAROUSEL_CSS = [
   // that default — a caption is a headline, not a paragraph. Both are overridable with a px-*/text-left
   // utility; box-sizing is border-box (modern-normalize), so the padding eats into the 42rem cap.
   ':where([data-sw-block="Carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 3.5rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  // A slider caption comes in TWO shapes and BOTH centre by default. The pill above is one; the other is
+  // a <figcaption> — the full-bleed gradient strip across the bottom of an image slide. It carries none of
+  // the pill's paint (it brings its own gradient), so it gets the ONE thing that makes a caption a caption:
+  // centred text. Zero-specificity, so `text-left` on the element still wins for a deliberately
+  // left-aligned bar. Scoped to a SLIDE so a <figcaption> elsewhere in the component is untouched.
+  ':where([data-sw-block="Carousel"] [data-sw-part="slide"] figcaption){text-align:center}',
   // Frosted dots pill + thicker glyph — the hero polish, applied to any SINGLE-item slider (the default
   // look); multi-item rows keep the plain dots. Zero-specificity so an authored utility still wins.
   ':where([data-sw-block="Carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]){backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',

@@ -212,6 +212,10 @@ describe('component registry', () => {
     expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*text-align:center/);
     // Generous SIDE padding (4× the vertical) is what makes it read as a pill and not a text box.
     expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*padding:\.85rem 3\.5rem/);
+    // BOTH caption shapes centre by default — the pill AND the <figcaption> gradient strip over an image
+    // slide. The strip is the one that kept getting missed: it carries no .sw-caption class, so the pill
+    // rule never reaches it. Zero-specificity, so an authored text-left still wins.
+    expect(css).toContain(':where([data-sw-block="Carousel"] [data-sw-part="slide"] figcaption){text-align:center}');
     // Frosted dots pill + thicker glyph now apply to any SINGLE-item slider (:not multi), not just kenburns.
     expect(css).toMatch(/:not\(\[data-sw-multi="true"\]\)\) :where\(\[data-sw-part="dots"\]\)\{[^}]*backdrop-filter/);
   });

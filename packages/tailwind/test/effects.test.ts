@@ -213,15 +213,24 @@ describe('sw-border-beam (box ornament)', () => {
     expect(css).toContain('pointer-events: none'); // never eats a click meant for the caption
   });
 
-  it('defaults the beam + its track to the dark-mode-aware brand primary', async () => {
+  it('defaults the beam to the dark-mode-aware brand primary, over NO track', async () => {
     const css = await beam();
     expect(css).toContain('var(--sw-beam-color, var(--sw-color-primary');
-    expect(css).toContain('var(--sw-beam-track, color-mix(in oklab, var(--sw-beam-color, var(--sw-color-primary');
+    // track off by default — only the travelling light is lit, the rest of the edge is bare
+    expect(css).toContain('var(--sw-beam-track, transparent)');
+  });
+
+  it('a semi-transparent track can be set as an arbitrary property (the documented recipe)', async () => {
+    // The library/guide ship this exact underscore form as copy-paste — Tailwind turns the underscores
+    // back into spaces, so it must survive the compile as real color-mix, not a mangled literal.
+    const css = await beam('[--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]');
+    // only the UNDERSCORES become spaces; the commas the author typed stay tight
+    expect(css).toContain('--sw-beam-track: color-mix(in oklab,var(--sw-color-primary) 25%,transparent)');
   });
 
   it('exposes the width / speed / arc knobs as overridable vars', async () => {
     const css = await beam();
-    expect(css).toContain('var(--sw-beam-width, 2px)');
+    expect(css).toContain('var(--sw-beam-width, 8px)');
     expect(css).toContain('var(--sw-beam-speed, 4s)');
     expect(css).toContain('var(--sw-beam-arc, 90deg)');
     // and an arbitrary-property override on the same element compiles to a real declaration

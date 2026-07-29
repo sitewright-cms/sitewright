@@ -561,15 +561,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords:
           'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient caption slider hero card frame highlight attention marquee border',
         description:
-          'A light travels around the edge of a box — the rotating / "lighthouse" border — over a faint static ring, in your brand primary (it follows the built-in dark theme too). Put sw-border-beam on the ONE element you want to decorate: a slider caption, a featured card, a pricing tier, an image frame. Unlike the nav/button schemes there is no site-wide form and no Website setting — it is a per-element ornament. The ring is drawn OUTSIDE the content (a masked pseudo-element), so a frosted or translucent caption stays see-through and clicks still reach the link underneath. Pair it with a rounded-* class — the ring follows the element\'s own rounding. Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the always-on ring under the beam, default a 20% tint — set transparent for beam only), --sw-beam-width (default 2px), --sw-beam-speed (one lap, default 4s), --sw-beam-arc (how long the comet is, default 90deg). It repaints a gradient every frame, so use it as a hero accent rather than on every card in a grid. Under prefers-reduced-motion the beam parks in place and the border stays.',
+          'A light travels around the edge of a box — the rotating / "lighthouse" border — in your brand primary (it follows the built-in dark theme too). The default IS the hero look: an 8px beam and no static ring, so only the moving light is lit. Put sw-border-beam on the ONE element you want to decorate: a slider caption, a featured card, a pricing tier, an image frame. Unlike the nav/button schemes there is no site-wide form and no Website setting — it is a per-element ornament. The ring is drawn OUTSIDE the content (a masked pseudo-element), so a frosted or translucent caption stays see-through and clicks still reach the link underneath. Pair it with a rounded-* class — the ring follows the element\'s own rounding. Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the always-on ring under the beam — default transparent; give it a semi-transparent tint to light the whole edge), --sw-beam-width (default 8px; 2-3px for a fine card edge), --sw-beam-speed (one lap, default 4s), --sw-beam-arc (how long the comet is, default 90deg). It repaints a gradient every frame, so use it as a hero accent rather than on every card in a grid. Under prefers-reduced-motion the beam parks in place and the border stays.',
         example:
-          '{{! Slider caption with the bold hero look (thick beam, no static ring): }}\n' +
-          '<div class="sw-caption sw-border-beam rounded-xl\n' +
-          '            [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\n' +
+          '{{! The default IS the hero caption look — 8px beam, no track, nothing to configure: }}\n' +
+          '<div class="sw-caption sw-border-beam rounded-xl">\n' +
           '  <b>RENEWABLE ENERGY</b>\n' +
           '</div>\n' +
-          '\n{{! Subtle default (2px + faint ring) on a featured card, in the accent colour: }}\n' +
-          '<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-color:var(--sw-color-accent)]">\n' +
+          '\n{{! A finer card edge: a thinner beam running along a semi-transparent primary track }}\n' +
+          '{{! (Tailwind turns the underscores back into spaces): }}\n' +
+          '<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-width:3px]\n' +
+          '            [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\n' +
           '  <h3>Most popular</h3>\n' +
           '</div>',
         note: 'Needs no JavaScript. Put it on a block/flex box (not an inline <span>). Very old browsers without @property support show the same border with the beam parked — nothing breaks. Want a different look? --sw-beam-arc:360deg makes the whole ring a rotating gradient instead of a comet.',

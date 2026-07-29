@@ -89,6 +89,33 @@ describe('SitePreview', () => {
     expect(await screen.findByText('Link copied')).toBeInTheDocument();
   });
 
+  // REGRESSION: the "Link copied" revert used a bare setTimeout with no cleanup. Left pending, it fired
+  // ~1.5s later on an unmounted tree — and in jsdom that landed AFTER the test environment was torn down,
+  // throwing `ReferenceError: window is not defined` as an unhandled error. Vitest then failed the whole
+  // run with all 840 tests green and no failing test named, so it read as an inexplicable CI flake.
+  it('cancels the pending "Link copied" revert when unmounted mid-timer', async () => {
+    stubEventSource();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true });
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { unmount } = render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    const btn = await screen.findByRole('button', { name: 'Copy preview link' });
+    await act(async () => {
+      btn.click();
+    });
+    // the revert timer the click scheduled (1500ms — the only one at that delay)
+    const i = setSpy.mock.calls.findIndex(([, ms]) => ms === 1500);
+    expect(i, 'no 1500ms revert timer was scheduled').toBeGreaterThanOrEqual(0);
+    // eslint-disable-next-line security/detect-object-injection -- `i` is a findIndex result on this same spy's call list, not external input
+    const timerId = setSpy.mock.results[i]!.value;
+
+    unmount();
+
+    expect(clearSpy).toHaveBeenCalledWith(timerId);
+    setSpy.mockRestore();
+    clearSpy.mockRestore();
+  });
+
   it('shows the agent pill only when a connection exists', async () => {
     stubEventSource();
     agentPresence.mockResolvedValue({ connected: 2 });

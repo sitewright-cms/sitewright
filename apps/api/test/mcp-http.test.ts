@@ -8,6 +8,7 @@ import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
+import { MCP_RL_MAX } from '../src/http/mcp-routes.js';
 
 let app: FastifyInstance;
 let db: Database;
@@ -119,26 +120,48 @@ describe('remote MCP transport (/mcp)', () => {
     expect(got.statusCode).toBe(200);
   });
 
-  it('sustains >30 calls/min (introspect is cached, not re-billed per call) and 429s as a JSON-RPC envelope', async () => {
+  it('sustains a fleet-sized burst (introspect is cached, not re-billed per call)', async () => {
     const { token } = await setup();
-    // Before the scope cache, EVERY /mcp POST spent one GET /api-key/self from the same per-token
-    // bucket (30/min) — call #31 died as `mcp_unavailable` while /mcp's own cap was 120. Now the
-    // introspect result is cached, so the full /mcp allowance is usable; the eventual 429 (the /mcp
-    // route's own cap) must be a JSON-RPC error envelope with retry-after, not a bare HTTP body.
-    let firstLimited: InjectRes | undefined;
+    // Two ceilings have bitten here. (1) Before the scope cache, EVERY /mcp POST spent one
+    // GET /api-key/self from the same per-token bucket (30/min) — call #31 died as `mcp_unavailable`.
+    // (2) The /mcp cap itself was 120/min, and because the bucket is keyed by the BEARER TOKEN it is
+    // shared by every agent using that key — roughly two concurrent workers before the rest 429'd mid-run.
+    // (3) Raising /mcp alone did NOT fix (2): every tool call re-enters the app in-process on the same
+    // bearer, so the CONTENT route's own bucket became the wall instead — MEASURED, list_pages started
+    // failing at call ~121 with the 429 surfaced as a TOOL error, the worst shape (an opaque failure the
+    // model must interpret, which also counts toward the loop's flail ceiling). `rlAgent` lifts the
+    // hot-loop authoring routes for API-key traffic so `/mcp` is the binding limit again.
+    // Hence a REST-BACKED tool here, not the cached-introspect get_scope: only list_pages exercises the
+    // inner route that actually broke.
     let ok = 0;
-    for (let i = 0; i < 130; i++) {
-      const res = await mcp(token, { jsonrpc: '2.0', id: i + 10, method: 'tools/call', params: { name: 'get_scope', arguments: {} } });
-      if (res.statusCode === 200) ok++;
-      else if (res.statusCode === 429) { firstLimited = res; break; }
-      else expect.fail(`unexpected status ${res.statusCode} on call ${i + 1}`);
+    for (let i = 0; i < 150; i++) {
+      const res = await mcp(token, { jsonrpc: '2.0', id: i + 10, method: 'tools/call', params: { name: 'list_pages', arguments: {} } });
+      if (res.statusCode !== 200) expect.fail(`unexpected status ${res.statusCode} on call ${i + 1}`);
+      const body = res.json() as { result?: { isError?: boolean; content?: Array<{ text: string }> } };
+      if (body.result?.isError) expect.fail(`tool error on call ${i + 1}: ${body.result.content?.[0]?.text ?? ''}`);
+      ok++;
     }
-    expect(ok).toBeGreaterThan(30); // the old introspect ceiling — must be gone
+    expect(ok).toBe(150);
+    expect(MCP_RL_MAX).toBeGreaterThanOrEqual(600); // the ceiling a parallel-agent fleet needs
+  }, 60_000);
+
+  it('429s as a JSON-RPC envelope once the cap IS reached', async () => {
+    const { token } = await setup();
+    // The cap must still exist and, when hit, come back as a JSON-RPC error envelope with retry-after —
+    // a bare HTTP body surfaces in a stateless MCP host as an undefined RPC error. Exhausting the real
+    // bucket means MCP_RL_MAX+1 calls, so this one is deliberately slow; it is derived from the constant
+    // rather than a literal so raising the cap can never silently stop testing the envelope.
+    let firstLimited: InjectRes | undefined;
+    for (let i = 0; i <= MCP_RL_MAX + 1; i++) {
+      const res = await mcp(token, { jsonrpc: '2.0', id: i + 10, method: 'tools/call', params: { name: 'get_scope', arguments: {} } });
+      if (res.statusCode === 429) { firstLimited = res; break; }
+      if (res.statusCode !== 200) expect.fail(`unexpected status ${res.statusCode} on call ${i + 1}`);
+    }
     expect(firstLimited, 'expected to reach the /mcp route cap').toBeDefined();
     const body = firstLimited!.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string } };
     expect(body.jsonrpc).toBe('2.0');
     expect(body.error?.code).toBe(-32000);
     expect(body.error?.message).toContain('retry-after');
     expect(firstLimited!.headers['retry-after']).toBeDefined();
-  });
+  }, 120_000);
 });

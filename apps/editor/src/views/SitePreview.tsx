@@ -10,6 +10,8 @@ const CHANGE_DEBOUNCE_MS = 250;
 const WORKING_LULL_MS = 12_000;
 /** Reconcile the connection count periodically (covers a connect/expiry with no edit event). */
 const PRESENCE_POLL_MS = 30_000;
+/** How long the copy-link button reads "Copied!" before reverting. */
+const COPIED_LABEL_MS = 1500;
 
 /**
  * The always-on whole-site PREVIEW shell (opened via `?preview=projectId`). A same-origin,
@@ -37,6 +39,11 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
   const workingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The "Copied!" label reverts on a timer. Held in a ref so it can be cancelled: a timer that outlives
+  // the component fires setCopied on a dead tree — harmless in the browser, but in jsdom it lands after
+  // the test environment is torn down and throws `window is not defined` as an UNHANDLED error, which
+  // fails the whole vitest run with every test still green (and no failing test named).
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The on-page AI assistant: available only when configured (platform or per-project) + the user can write.
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -191,9 +198,14 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     if (!shareUrl) return;
     void navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), COPIED_LABEL_MS);
     });
   };
+  // Cancel a pending "Copied!" revert on unmount (see the ref's note).
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
 
   const showPill = working || connectedCount > 0;
 

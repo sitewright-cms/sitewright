@@ -4,6 +4,22 @@ import { createSitewrightMcpServer, staticAuth, SitewrightClient, SitewrightApiE
 import { hashApiToken } from '../auth/api-keys.js';
 import { issuerOf } from './oauth-routes.js';
 
+/**
+ * Per-minute ceiling on `/mcp` calls. The rate-limit bucket is keyed by the BEARER TOKEN (see the
+ * app-wide `keyGenerator`), so this is not "one agent's budget" — it is the budget shared by every
+ * agent using that token, and an agent fleet is the normal case here: several agents, each driving a
+ * DIFFERENT project, all authenticated with the same key. One agent mid-clone comfortably sustains
+ * 30-60 tool calls/min (read a page, write it, screenshot, audit, repeat), so the old 120 gave out
+ * after roughly two concurrent workers and 429'd the rest mid-run.
+ *
+ * 600/min ≈ 10 calls/sec — headroom for ~10 concurrent agents at full tilt, while staying a real,
+ * finite ceiling: a runaway loop still trips it, and the 429 comes back as a proper JSON-RPC envelope
+ * with retry-after (see `mcpErrorHandler`) so a well-behaved host backs off rather than failing hard.
+ * `/mcp` has its OWN isolated counter store (any route with `config.rateLimit` does), so raising it
+ * cannot starve the shared global bucket that the editor and site traffic run on.
+ */
+export const MCP_RL_MAX = 600;
+
 function bearerOf(req: FastifyRequest): string | undefined {
   const header = req.headers.authorization;
   const match = header ? /^Bearer\s+(\S+)$/i.exec(header) : null;
@@ -149,7 +165,7 @@ export function registerMcpRoutes(
     const message = status === 429 ? 'rate limit exceeded — honor the retry-after header and back off' : 'internal error';
     void rpcError(reply, status, message, rpcIdOf(req.body));
   };
-  app.post('/mcp', { config: opts.rl(120), errorHandler: mcpErrorHandler }, handle);
+  app.post('/mcp', { config: opts.rl(MCP_RL_MAX), errorHandler: mcpErrorHandler }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination
   // (DELETE) — 405 so a spec-compliant host doesn't open and wait on a stream that never arrives
   // (and we never buffer a streaming body via .text()).

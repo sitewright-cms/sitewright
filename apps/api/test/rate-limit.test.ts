@@ -68,6 +68,26 @@ describe('rate limiting', () => {
     expect(codes.slice(200).every((c) => c === 404)).toBe(true);
   });
 
+  // An API KEY is the agent-fleet lane: several agents, each on a different project, sharing one key.
+  // Their hot loop (content read/write + preview) is lifted via `rlAgent`; everything else — including
+  // the routes that bill an external API or guard a secret — must keep its normal cap for a bearer too.
+  it('lifts the hot-loop AUTHORING routes for an API key but NOT the strict ones', async () => {
+    const bearer = { authorization: 'Bearer swk_0000000000000000000000000000000000000000000000000000000000000000' };
+    // A lifted route advertises the agent ceiling to a bearer (the 401 comes from AUTH, after the limiter
+    // hook has already stamped the headers — what matters here is which bucket it was measured against).
+    const lifted = await app.inject({ method: 'GET', url: '/projects/none/content/page', headers: bearer });
+    expect(lifted.headers['x-ratelimit-limit']).toBe('600');
+    // …and the SAME route for a browser (no bearer) keeps the ordinary session cap.
+    const browser = await app.inject({ method: 'GET', url: '/projects/none/content/page' });
+    expect(browser.headers['x-ratelimit-limit']).toBe('120');
+    // A route that was NOT opted in keeps its own cap for a bearer — proving the lift is a per-route
+    // decision, not a tier-wide one. `/revisions` is the sharpest probe: it sits at the SAME rl(120) tier
+    // as the lifted content read, so if this ever reads 600 the lift has leaked into `rl()` itself and the
+    // routes that bill an external API (stock search) or guard a secret/SSRF surface went with it.
+    const notLifted = await app.inject({ method: 'GET', url: '/projects/none/revisions', headers: bearer });
+    expect(notLifted.headers['x-ratelimit-limit']).toBe('120');
+  });
+
   it('serves >200 signed-preview asset requests without 429 (isolated bucket)', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 220; i += 1) {

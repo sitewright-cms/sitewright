@@ -26,9 +26,16 @@ export type LoopErrorCode = 'provider' | 'quota' | 'tool' | 'max_iterations' | '
  *   resetting the consecutive counter while it never actually accomplishes anything. A healthy session
  *   almost never accumulates this many failures (a capable model fails ~0 times), so the ceiling is
  *   safe; if it does trip a productive run the user just sends "continue".
+ *
+ * The TOTAL ceiling is deliberately generous (raised 6 → 11): the failures that actually accrue in a
+ * long, PRODUCTIVE session are mostly environmental rather than model incompetence — a 429 from a
+ * shared rate-limit bucket while other agents work the same key, a transient render/screenshot slot,
+ * a validation error the model then fixes. Six was low enough that a real multi-hour build could trip
+ * it after making genuine progress, and the "stuck" message then blames the model, which misleads.
+ * Eleven still ends a true flail quickly (the consecutive guard fires at 4 turns regardless).
  */
 const MAX_CONSECUTIVE_FAILED_TURNS = 4;
-const MAX_TOTAL_TOOL_FAILURES = 6;
+export const MAX_TOTAL_TOOL_FAILURES = 11;
 
 export interface LoopOptions {
   provider: AgentProvider;

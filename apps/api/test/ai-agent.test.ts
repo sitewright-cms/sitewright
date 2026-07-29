@@ -11,7 +11,7 @@ import { registerAccount } from '../src/repo/accounts.js';
 import { AnthropicAgentProvider } from '../src/ai/anthropic-agent.js';
 import { OpenAiAgentProvider, isOpenRouterUrl } from '../src/ai/openai-agent.js';
 import { buildAgentProvider } from '../src/ai/build-provider.js';
-import { runAgentLoop } from '../src/ai/agent-loop.js';
+import { runAgentLoop, MAX_TOTAL_TOOL_FAILURES } from '../src/ai/agent-loop.js';
 import { parseSseStream, type SseEvent } from '../src/ai/sse-parse.js';
 import type { AgentMessage, AgentProvider, AgentStreamEvent, AgentTurnRequest } from '../src/ai/agent-provider.js';
 
@@ -746,14 +746,16 @@ describe('agent loop — error + termination branches', () => {
   });
 
   it('does NOT trip the total cap for a productive session with failures BELOW the ceiling', async () => {
-    // 5 failing writes (MAX_TOTAL_TOOL_FAILURES - 1) interleaved with successful reads must complete —
+    // MAX_TOTAL_TOOL_FAILURES - 1 failing writes interleaved with successful reads must complete —
     // proves the total cap doesn't punish a session that hits the odd error while making progress.
+    // Derived from the constant, so raising the ceiling keeps testing the just-under case.
+    const belowCeiling = MAX_TOTAL_TOOL_FAILURES - 1;
     let turn = 0;
     const provider: AgentProvider = {
       model: 'm',
       async *runTurn() {
         turn++;
-        if (turn > 5) {
+        if (turn > belowCeiling) {
           yield { type: 'text_delta', text: 'done' };
           yield { type: 'stop', reason: 'end_turn' };
           return;
@@ -799,9 +801,11 @@ describe('agent loop — error + termination branches', () => {
     const { events, result } = await run(provider, readsOkWritesFail);
     expect(result.state).toBe('error');
     expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'stuck' }));
-    // One failing write per turn ⇒ bails on the 6th (MAX_TOTAL_TOOL_FAILURES), never via the consecutive
+    // One failing write per turn ⇒ bails on the MAX_TOTAL_TOOL_FAILURES-th, never via the consecutive
     // guard (a read succeeds every turn), proving interleaved reads can't keep it alive forever.
-    expect(events.filter((e) => e.type === 'tool_result' && (e as { ok?: boolean }).ok === false).length).toBe(6);
+    expect(events.filter((e) => e.type === 'tool_result' && (e as { ok?: boolean }).ok === false).length).toBe(
+      MAX_TOTAL_TOOL_FAILURES,
+    );
   });
 });
 

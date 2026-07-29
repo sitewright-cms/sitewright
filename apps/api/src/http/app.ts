@@ -308,6 +308,13 @@ const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 // (NOT an exemption). The one expensive path — on-demand thumbnail GENERATION — stays bounded independently
 // by the `?size`/`?format` allow-list clamp (finite, immutably-cached outputs) + ensureThumb's optimize queue.
 const MEDIA_ASSET_RL_MAX = 1000;
+// Global-bucket ceiling for API-KEY (bearer) traffic — the agent-fleet lane. See the rate-limit
+// registration for why this has to exceed the `/mcp` cap rather than sit under it.
+const API_KEY_RL_MAX = 1500;
+// Per-route ceiling for API-KEY traffic on the hot-loop AUTHORING routes (see `rlAgent`). Matches the
+// `/mcp` cap: every one of those calls lands on a content route, so a lower number here would just move
+// the wall inward and surface as a TOOL failure instead of a clean, retry-able 429 at the MCP boundary.
+const AGENT_RL_MAX = 600;
 // The signed whole-site preview route serves the (version-cached, coalesced) HTML doc AND its per-page
 // assets under one route; its own bucket keeps that fan-out off the shared global cap.
 const PREVIEW_SITE_RL_MAX = 600;
@@ -1342,13 +1349,43 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return match ? match[1] : undefined;
   }
 
+  /**
+   * Rate-limit config for a HOT-LOOP AUTHORING route — one an agent fleet hammers (content read/write,
+   * the draft preview). Browser/session traffic keeps the route's normal `max`; API-KEY (bearer) traffic
+   * is lifted to AGENT_RL_MAX.
+   *
+   * This is deliberately OPT-IN per route rather than a blanket lift inside `rl()`. The 60/120 tiers also
+   * contain routes that must NOT be opened up for a bearer: stock-image search (bills an external API per
+   * call), the SMTP/deploy/AI-config endpoints, media import-url (an SSRF surface), and the low tiers are
+   * security throttles outright. Raising a cap has to be a decision someone made about THAT route, and
+   * `rlAgent` at the call site is what makes it greppable.
+   */
+  const rlAgent = (max: number) => ({
+    rateLimit: {
+      max: (req: FastifyRequest) => (bearerToken(req) ? Math.max(max, AGENT_RL_MAX) : max),
+      timeWindow: RL_WINDOW,
+    },
+  });
+
   // Rate limiting: a generous global cap keyed per-user (session) or per-IP, with
   // stricter caps on expensive/sensitive routes (each route sets its own via config).
   // NOTE: behind a reverse proxy, enable Fastify `trustProxy` so req.ip is the real
   // client IP rather than the proxy's.
   await app.register(rateLimit, {
     global: true,
-    max: 200,
+    // Browser traffic keeps the modest per-session cap. API-KEY (bearer) traffic gets a much higher one,
+    // because it is where an agent FLEET lives: several agents, each on a different project, sharing one
+    // project key. Raising the `/mcp` route cap alone does nothing for them — every MCP tool call
+    // re-enters the app IN-PROCESS via app.inject carrying the same bearer, so the real ceiling was this
+    // global bucket, not `/mcp`. MEASURED: with /mcp at 600 and this at 200, a REST-backed tool
+    // (list_pages) still died at call ~121 with `Error 429: rate limit exceeded` surfaced as a TOOL
+    // failure — which is the worst shape for it, since tool failures also count toward the agent loop's
+    // flail ceiling (MAX_TOTAL_TOOL_FAILURES). One tool call costs ~1.6 injects, so this is set above
+    // 2× MCP_RL_MAX to keep `/mcp` the binding limit — the one that answers with a proper JSON-RPC 429
+    // + retry-after that a host can back off on. Still finite: a runaway agent is stopped, just later.
+    // Session cookies and anonymous IPs are unaffected. The server-side agent loop's own in-flight
+    // tokens remain fully exempt via `allowList` below.
+    max: (req) => (bearerToken(req) ? API_KEY_RL_MAX : 200),
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
     keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
@@ -2600,7 +2637,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // to flood the site-wide settings (criticalCss/head/scripts) write.
   app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind',
-    { config: rl(120) },
+    { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
@@ -2619,7 +2656,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get<{ Params: ContentParams; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
-    { config: rl(120) },
+    { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
@@ -2634,7 +2671,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.put<{ Params: ContentParams; Querystring: { merge?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
-    { bodyLimit: CONTENT_BODY_LIMIT, config: rl(60) },
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);
@@ -2673,7 +2710,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.delete<{ Params: ContentParams; Querystring: { dataset?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
-    { config: rl(60) },
+    { config: rlAgent(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:delete');
       const kind = parseGenericKind(req.params.kind);
@@ -3076,7 +3113,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // shared pure renderer. Tenant-scoped; any project member may preview.
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/preview',
-    { bodyLimit: PREVIEW_BODY_LIMIT, config: rl(120) },
+    { bodyLimit: PREVIEW_BODY_LIMIT, config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
       const page = PageSchema.parse(req.body);

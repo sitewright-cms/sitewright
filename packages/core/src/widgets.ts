@@ -80,7 +80,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     // height via an inline style (validator-safe — a quoted `style` value is HTML-escaped, no breakout);
     // when blank the class-based default (86vh full-bleed / 60vh contained) applies.
     source: `{{#sw-pick-entry dataset.hero @root.page.data.hero_config}}
-<div class="relative overflow-hidden {{#if full_bleed}}{{#unless height}}h-[86vh] min-h-[560px]{{/unless}}{{else}}rounded-3xl {{#unless height}}h-[60vh] min-h-[420px] max-h-[640px]{{/unless}}{{/if}}"{{#if height}} style="height:{{height}}"{{/if}} data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
+<div class="relative overflow-hidden {{#if full_bleed}}{{#unless height}}h-[86vh] min-h-[560px]{{/unless}}{{else}}rounded-3xl {{#unless height}}h-[60vh] min-h-[420px] max-h-[640px]{{/unless}}{{/if}}"{{#if height}} style="height:{{height}}"{{/if}} data-sw-component="carousel" data-sw-block="Carousel" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
   <div data-sw-part="track">
     {{#each slides}}
     <div data-sw-part="slide">

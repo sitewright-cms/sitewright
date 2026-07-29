@@ -112,7 +112,7 @@ const CAROUSEL_CSS = [
   ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]){position:absolute;border:0;color:#fff;cursor:pointer;z-index:1;justify-content:center}',
   // Chevron DEFAULT size (zero-specificity): the arrow markup passes an EMPTY class — `{{sw-icon
   // "chevron-left" ""}}` → `<svg class="">` — so no utility competes and the base CSS owns the glyph size:
-  // 1.5rem for circle, overridden to 2.75rem for the edge look below (both zero-spec, edge later in source
+  // 1.5rem for circle, overridden to 2rem for the edge look below (both zero-spec, edge later in source
   // wins). NOTE: a BARE `{{sw-icon "chevron-left"}}` would default to the helper's `h-5 w-5` class, which
   // (being a real class) outranks these :where() rules — hence the explicit "". An authored size utility
   // likewise still overrides both.
@@ -124,8 +124,9 @@ const CAROUSEL_CSS = [
   // explicit data-arrows="edge|circle" wins, else (including an absent OR unrecognized value) data-sw-multi
   // decides — so exactly one ALWAYS applies (a typo'd data-arrows degrades to the default, never unstyled):
   //  • EDGE = DEFAULT for a single full-width slide (hero/image slideshow): a WIDE full-height tab
-  //    (up to 8rem) with a strong edge-darkening gradient + a LARGE chevron (2.75rem), matching the
-  //    original hand-built hero arrows; soft opacity + icon-scale/slide transition on hover.
+  //    (up to 8rem) with a strong edge-darkening gradient + a large chevron (2rem, growing to 2.5rem
+  //    on hover), matching the original hand-built hero arrows; soft opacity + icon-scale/slide
+  //    transition on hover.
   //  • CIRCLE = multi-item / peek layouts (or data-arrows="circle"): the compact translucent disc,
   //    right for card rows / tickers where a full-height tab would swamp the slides.
   // The chevron stays centered in both (svg margin:auto below). The EDGE chevron size is owned by the
@@ -142,12 +143,15 @@ const CAROUSEL_CSS = [
   ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"])::before{background:linear-gradient(to right,rgb(0 0 0/.8),rgb(0 0 0/.4) 45%,transparent)}',
   ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"])::before{background:linear-gradient(to left,rgb(0 0 0/.8),rgb(0 0 0/.4) 45%,transparent)}',
   ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]):hover::before{opacity:1}',
-  // Chevron: above the gradient layers; scales+slides on hover, slides FURTHER on press (:active).
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{position:relative;z-index:1;width:2.75rem;height:2.75rem;filter:drop-shadow(0 2px 8px rgb(0 0 0/.6));transition:transform .3s ease}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):hover svg{transform:scale(1.1) translateX(-.35rem)}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):hover svg{transform:scale(1.1) translateX(.35rem)}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):active svg{transform:scale(1.05) translateX(-.8rem)}',
-  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):active svg{transform:scale(1.05) translateX(.8rem)}',
+  // Chevron: above the gradient layers; 2rem at rest, growing to 2.5rem (scale 1.25) and sliding
+  // outward on hover, sliding FURTHER on press (:active). The growth is a TRANSFORM, not an animated
+  // width/height: only transform is composited (no per-frame layout of the flex-centred svg), and the
+  // rule already transitions transform for the slide.
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{position:relative;z-index:1;width:2rem;height:2rem;filter:drop-shadow(0 2px 8px rgb(0 0 0/.6));transition:transform .3s ease}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):hover svg{transform:scale(1.25) translateX(-.35rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):hover svg{transform:scale(1.25) translateX(.35rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="prev"]):active svg{transform:scale(1.2) translateX(-.8rem)}',
+  ':where([data-sw-block="Carousel"][data-arrows="edge"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"]):not([data-sw-multi="true"])) :where([data-sw-part="next"]):active svg{transform:scale(1.2) translateX(.8rem)}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"],[data-sw-part="next"]){top:50%;transform:translateY(-50%);width:2.75rem;height:2.75rem;border-radius:9999px;background:rgb(0 0 0/.45)}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"]){left:.75rem}',
   ':where([data-sw-block="Carousel"][data-arrows="circle"],[data-sw-block="Carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="next"]){right:.75rem}',
@@ -163,8 +167,11 @@ const CAROUSEL_CSS = [
   // for any .sw-caption inside a slider. Author utilities (a light pill, a wider box, no blur) override
   // it; centering the pill within the slide stays the wrapper's job — the hero layouts already wrap the
   // caption in an `absolute inset-0 flex items-center justify-center` box, so a bare .sw-caption there
-  // becomes a centered frosted pill with no extra classes.
-  ':where([data-sw-block="Carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 1.75rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  // becomes a centered frosted pill with no extra classes. Generous HORIZONTAL padding (3.5rem, 4× the
+  // vertical) is what makes it read as a pill rather than a text box, and `text-align:center` is part of
+  // that default — a caption is a headline, not a paragraph. Both are overridable with a px-*/text-left
+  // utility; box-sizing is border-box (modern-normalize), so the padding eats into the 42rem cap.
+  ':where([data-sw-block="Carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 3.5rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
   // Frosted dots pill + thicker glyph — the hero polish, applied to any SINGLE-item slider (the default
   // look); multi-item rows keep the plain dots. Zero-specificity so an authored utility still wins.
   ':where([data-sw-block="Carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]){backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',

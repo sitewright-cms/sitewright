@@ -88,7 +88,10 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 <section id="fade"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" aria-label="Fade slider">
   <div data-sw-part="track">${slidesImg}</div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
-<section id="slide"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="Slide slider">
+<section id="slide"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" aria-label="Slide slider">
+  <div data-sw-part="track">${slidesImg}</div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
+</div></section>
+<section id="noloop"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="false" aria-label="No-loop slider">
   <div data-sw-part="track">${slidesImg}</div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
 <section id="items"><div class="relative [--sw-items:2.5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" aria-label="Cards">
@@ -106,13 +109,13 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-green-200">B</div></figure>
   </div>
 </div></section>
-<section id="hero"><div class="relative h-72" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-kenburns aria-label="Hero">
+<section id="hero"><div class="relative h-72" data-sw-component="carousel" data-sw-block="Carousel" data-kenburns aria-label="Hero">
   <div data-sw-part="track">
     <div data-sw-part="slide"><div class="sw-kenburns" style="background-color:#c00"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">One</div></div>
     <div data-sw-part="slide"><div class="sw-kenburns" style="background-color:#0c0"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">Two</div></div>
   </div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
-<section id="scroll"><div class="relative [--sw-items:2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="2" aria-label="Ticker">
+<section id="scroll"><div class="relative [--sw-items:2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoscroll="true" data-autoscroll-speed="2" aria-label="Ticker">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="px-2"><div class="h-16 bg-red-100">1</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-16 bg-green-100">2</div></figure>
@@ -212,8 +215,9 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   expect(rootBox.y + rootBox.height - (dBox.y + dBox.height)).toBeLessThan(30); // near the bottom edge
   await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
 
-  // Arrow + keyboard navigation move the active snap; prev is disabled at the start (no loop).
-  await expect(prev).toBeDisabled();
+  // Arrow + keyboard navigation move the active snap. Looping is the DEFAULT, so neither arrow is
+  // ever disabled here — this fixture sets no data-loop at all. (The opt-out is covered below.)
+  await expect(prev).toBeEnabled();
   // Press the next arrow via raw mouse events: the down-stroke must spawn the default
   // ripple ("waves") inside the button; releasing completes the click → snap 1.
   // Raw mouse coords are viewport-relative and DON'T auto-scroll — bring it on screen first.
@@ -231,15 +235,41 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   await next.focus();
   await page.keyboard.press('ArrowRight');
   await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
-  await expect(next).toBeDisabled(); // end reached, no loop
-  await expect(prev).toBeFocused(); // focus handed off the now-disabled arrow, not dropped to <body>
+  await expect(next).toBeEnabled(); // last slide, but it LOOPS by default — the arrow stays live
+  await page.keyboard.press('ArrowRight');
+  await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true'); // wrapped past the end
   await page.keyboard.press('ArrowLeft');
-  await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true'); // and wrapped back before the start
 
   await page.screenshot({ path: testInfo.outputPath('carousel-fade-defaults.png'), clip: rootBox });
 });
 
-test('slide effect translates the strip; data-loop wraps backwards from the first slide', async ({ page }) => {
+test('data-loop="false" opts OUT: the arrows disable at each end and hand off focus', async ({ page }) => {
+  const root = page.locator('#noloop [data-sw-block="Carousel"]');
+  await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
+  const prev = root.locator('[data-sw-part="prev"]');
+  const next = root.locator('[data-sw-part="next"]');
+  const dots = root.locator('[data-sw-part="dots"] button');
+
+  // Start of a non-looping track: back is a dead end.
+  await expect(prev).toBeDisabled();
+  await expect(next).toBeEnabled();
+
+  await next.click();
+  await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(prev).toBeEnabled(); // no longer at the start
+
+  // Walk to the last slide with the keyboard, holding focus on `next` so the handoff is observable.
+  await next.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
+  await expect(next).toBeDisabled(); // end reached — no wrap
+  // Disabling a FOCUSED button would strand keyboard navigation on <body>; the runtime hands focus
+  // to the opposite arrow first (APG carousel pattern).
+  await expect(prev).toBeFocused();
+});
+
+test('slide effect translates the strip; a slider wraps backwards from the first slide', async ({ page }) => {
   const root = page.locator('#slide [data-sw-block="Carousel"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
 

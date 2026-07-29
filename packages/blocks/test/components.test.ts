@@ -161,6 +161,15 @@ describe('component registry', () => {
     expect(none.js).toBe('');
   });
 
+  it('Carousel LOOPS by default — data-loop is an opt-OUT, and the arrows follow Embla, not the attribute', () => {
+    const { js } = componentAssets(['Carousel']);
+    // The shipped (minified) runtime must read data-loop as `!== "false"`. Asserted on the build
+    // OUTPUT, not the entry source, because only this string reaches a published site — and the
+    // Playwright behaviour test that exercises a real wrap-around does not run in CI.
+    expect(js).toMatch(/\("data-loop",""\)!=="false"/);
+    expect(js).not.toMatch(/\("data-loop",""\)==="true"/);
+  });
+
   it('Carousel arrows: EDGE (gradient, full-height) by default, CIRCLE for multi-item / data-arrows="circle"', () => {
     const { css } = componentAssets(['Carousel']);
     // The runtime stamps data-sw-multi from --sw-items; the CSS branches the arrow LOOK on it, with an
@@ -175,15 +184,22 @@ describe('component registry', () => {
     // The two selector sets are zero-specificity (each :where(...)), so an authored utility still wins.
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="edge"]');
     expect(css).toContain(':where([data-sw-block="Carousel"][data-arrows="circle"]');
-    // EDGE arrows match the original hand-built hero: a WIDE tab (up to 8rem), a LARGE 2.75rem chevron,
+    // EDGE arrows match the original hand-built hero: a WIDE tab (up to 8rem), a 2rem chevron,
     // a LIGHT base gradient that DARKENS on hover (a cross-faded ::before, since gradients can't transition),
     // and a chevron that slides FURTHER on press (:active).
     expect(css).toContain('width:clamp(4.5rem,8vw,8rem)');
     expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?\)\{left:0;background:linear-gradient\(to right,rgb\(0 0 0\/\.5\)/); // light base
     expect(css).toMatch(/\[data-arrows="edge"\][\s\S]*?\)::before\{background:linear-gradient\(to right,rgb\(0 0 0\/\.8\)/); // darker ::before
     expect(css).toMatch(/:hover::before\{opacity:1\}/); // hover fades the darker layer in
-    expect(css).toMatch(/:active svg\{transform:scale\(1\.05\) translateX\(-\.8rem\)\}/); // press slides further
-    expect(css).toMatch(/\[data-arrows="edge"\][^{]*svg\{position:relative;z-index:1;width:2\.75rem;height:2\.75rem/);
+    expect(css).toMatch(/:active svg\{transform:scale\(1\.2\) translateX\(-\.8rem\)\}/); // press slides further
+    expect(css).toMatch(/\[data-arrows="edge"\][^{]*svg\{position:relative;z-index:1;width:2rem;height:2rem/);
+    // …and GROWS 2rem → 2.5rem on hover. The growth is a scale, so the two numbers have to agree:
+    // 2rem × 1.25 = 2.5rem. Asserted as that product, not as a literal, so a future resize can't
+    // silently drift the hover size away from the intended 2.5rem.
+    const rest = Number(/svg\{position:relative;z-index:1;width:([\d.]+)rem/.exec(css)![1]);
+    const grow = Number(/\[data-sw-part="prev"\]\):hover svg\{transform:scale\(([\d.]+)\)/.exec(css)![1]);
+    expect(rest).toBe(2);
+    expect(rest * grow).toBeCloseTo(2.5, 5);
     // Default (circle / bare) chevron size lives in the common zero-spec rule at 1.5rem.
     expect(css).toMatch(/:where\(\[data-sw-part="prev"\],\[data-sw-part="next"\]\) svg\{width:1\.5rem;height:1\.5rem\}/);
   });
@@ -194,6 +210,8 @@ describe('component registry', () => {
     expect(css).toContain(':where([data-sw-block="Carousel"] .sw-caption){');
     expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*backdrop-filter:blur/);
     expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*text-align:center/);
+    // Generous SIDE padding (4× the vertical) is what makes it read as a pill and not a text box.
+    expect(css).toMatch(/:where\(\[data-sw-block="Carousel"\] \.sw-caption\)\{[^}]*padding:\.85rem 3\.5rem/);
     // Frosted dots pill + thicker glyph now apply to any SINGLE-item slider (:not multi), not just kenburns.
     expect(css).toMatch(/:not\(\[data-sw-multi="true"\]\)\) :where\(\[data-sw-part="dots"\]\)\{[^}]*backdrop-filter/);
   });

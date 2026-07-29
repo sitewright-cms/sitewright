@@ -79,7 +79,12 @@ function enhance(root) {
     return v === null || v === '' ? fallback : v;
   };
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var loop = attr('data-loop', '') === 'true';
+  // Looping is the DEFAULT (a slideshow that dead-ends at the last slide is almost never what an
+  // author wants, and autoplay/auto-scroll are only endless with it) — opt out with data-loop="false".
+  // Same opt-out shape as data-click-next below. Embla itself silently declines to loop when there
+  // are too few slides to fill the loop points, so an underfull row degrades to the non-looping
+  // behaviour — which is why the arrow-disabling in sync() asks Embla, not this variable.
+  var loop = attr('data-loop', '') !== 'false';
 
   // Interactive descendants keep their own meaning in click-to-slide mode: clicks on these
   // never advance the carousel, and (matching that) presses on them never ripple the slide.
@@ -310,17 +315,20 @@ function enhance(root) {
     for (var s = 0; s < slides.length; s++) {
       if (active.indexOf(s) !== -1) slides[s].setAttribute('data-active', '');
     }
-    if (!loop) {
-      var pDis = !embla.canScrollPrev();
-      var nDis = !embla.canScrollNext();
-      // Disabling a focused button drops keyboard focus to <body>, stranding arrow-key
-      // navigation (the keydown listener lives on the root). Per the APG carousel pattern,
-      // hand focus to the opposite arrow before it happens.
-      if (prev && pDis && document.activeElement === prev && next && !nDis) next.focus();
-      if (next && nDis && document.activeElement === next && prev && !pDis) prev.focus();
-      if (prev) prev.disabled = pDis;
-      if (next) next.disabled = nDis;
-    }
+    // End-of-track arrow disabling, asked of EMBLA rather than of the authored data-loop: while a
+    // loop is genuinely running canScrollPrev/Next never go false, so this is a no-op there. That
+    // matters because Embla DECLINES a requested loop when there are too few slides to fill the loop
+    // points (it rebuilds the engine with loop:false) — gating on the attribute instead would leave
+    // such a slider with two arrows that look live at both ends. A single-snap slider disables both.
+    var pDis = !embla.canScrollPrev();
+    var nDis = !embla.canScrollNext();
+    // Disabling a focused button drops keyboard focus to <body>, stranding arrow-key
+    // navigation (the keydown listener lives on the root). Per the APG carousel pattern,
+    // hand focus to the opposite arrow before it happens.
+    if (prev && pDis && document.activeElement === prev && next && !nDis) next.focus();
+    if (next && nDis && document.activeElement === next && prev && !pDis) prev.focus();
+    if (prev) prev.disabled = pDis;
+    if (next) next.disabled = nDis;
   }
   // data-item-align on the ENHANCED container: only meaningful when the row FITS (no scrolling) —
   // then justify-content distributes the underfull items. When the track OVERFLOWS, Embla's `align`

@@ -62,7 +62,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     // layer is the cover: bind it with data-sw-bg — a CI gradient shows until an image is set.
     source: `{{!-- Single full-screen hero slider. Swap the gradients for images by setting the
   page.data.hero_slide_* values (data-sw-bg), or point the track at a dataset (see slider-dataset). --}}
-<div class="relative h-[80vh] min-h-[460px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade" data-loop="true" data-autoplay="true" data-interval="6000" data-kenburns aria-label="Highlights">
+<div class="relative h-[80vh] min-h-[460px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade" data-autoplay="true" data-interval="6000" data-kenburns aria-label="Highlights">
   <div data-sw-part="track">
     <figure data-sw-part="slide">
       <div class="sw-kenburns bg-gradient-to-br from-primary to-secondary" data-sw-bg="page.data.hero_slide_1"></div>
@@ -95,13 +95,13 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     category: 'slider',
     description:
       'One-card-at-a-time content slider (testimonials/quotes): slide effect, looping, arrows + dot indicators.',
-    demonstrates: ['carousel', 'data-effect=slide', 'data-loop', 'sw-icon', 'parts:prev/next/dots'],
+    demonstrates: ['carousel', 'data-effect=slide', 'data-arrows=circle', 'sw-icon', 'parts:prev/next/dots'],
     // data-effect="slide" translates the strip (vs the default crossfade); arrows + dots are optional
     // parts — omit a part to drop that control. Slide spacing is padding INSIDE the slide, never margin.
     // data-arrows="circle" keeps the compact disc arrows: a single-item slider defaults to the full-height
     // gradient EDGE arrows (right for image heroes), but a bordered CONTENT card wants the small discs.
     source: `{{!-- Single-item content slider. Each slide is one full-width card. --}}
-<div class="relative overflow-hidden rounded-3xl border border-base-200" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-arrows="circle" aria-label="What clients say">
+<div class="relative overflow-hidden rounded-3xl border border-base-200" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-arrows="circle" aria-label="What clients say">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="bg-base-100 px-10 py-14 text-center">
       <p class="mx-auto max-w-2xl text-xl leading-relaxed">&ldquo;They shipped twice as fast as our last agency, and the handover was flawless.&rdquo;</p>
@@ -116,8 +116,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       <figcaption class="mt-6 text-sm font-semibold text-base-content/60">Priya S. &middot; Marketing Lead</figcaption>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-left:bold" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-right:bold" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide" class="!bg-base-300 !text-base-content">{{sw-icon "caret-double-right:bold" ""}}</button>
   <div data-sw-part="dots" aria-hidden="true" class="text-primary"></div>
 </div>`,
   },
@@ -130,7 +130,9 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     demonstrates: ['carousel', '--sw-items', 'data-effect=slide', 'data-item-align', 'gap-as-padding'],
     // --sw-items (Tailwind arbitrary property) sets slides-per-view; a fractional value leaves a card
     // peeking. REQUIRES data-effect="slide". data-item-align="center" centres the active card with a
-    // peek on both sides (first/last clamp to the edges). Author the gap as padding INSIDE each slide.
+    // peek on both sides. (The row LOOPS by default, so it never runs out of cards at either end;
+    // containScroll's clamp-first-left/last-right only applies once you set data-loop="false".)
+    // Author the gap as padding INSIDE each slide.
     source: `{{!-- Multi-item carousel: responsive slides-per-view with a peek. --}}
 <div class="relative [--sw-items:1.15] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="Recent work">
   <div data-sw-part="track" class="overflow-hidden rounded-3xl">
@@ -159,8 +161,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
     </figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-left:bold" ""}}</button>
-  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-right:bold" ""}}</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
 </div>`,
   },
   {
@@ -169,12 +171,13 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     category: 'slider',
     description:
       'A continuously scrolling logo wall built on the carousel auto-scroll ticker (pauses on hover/focus).',
-    demonstrates: ['carousel', 'data-autoscroll', 'data-autoscroll-speed', 'data-loop', '--sw-items', 'sw-icon brand:'],
-    // data-autoscroll turns stepped slides into a steady marquee (pair with data-loop + data-effect="slide").
+    demonstrates: ['carousel', 'data-autoscroll', 'data-autoscroll-speed', '--sw-items', 'sw-icon brand:'],
+    // data-autoscroll turns stepped slides into a steady marquee (pair with data-effect="slide"; the
+    // endless wrap comes from looping, which is on by default — never set data-loop="false" on a ticker).
     // The logos here are brand glyphs via {{sw-icon "brand:…"}} (no media needed); swap them for your own
     // <img> logos or a {{#sw-folder}} of an "Partners" media folder.
     source: `{{!-- Logo wall: a continuous auto-scroll ticker. --}}
-<div class="relative overflow-hidden [--sw-items:2] sm:[--sw-items:3] md:[--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="1.2" aria-label="Tools we work with">
+<div class="relative overflow-hidden [--sw-items:2] sm:[--sw-items:3] md:[--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoscroll="true" data-autoscroll-speed="1.2" aria-label="Tools we work with">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="px-4"><div class="grid h-24 place-items-center text-base-content/70">{{sw-icon "brand:react" "h-9 w-auto"}}</div></figure>
     <figure data-sw-part="slide" class="px-4"><div class="grid h-24 place-items-center text-base-content/70">{{sw-icon "brand:nextdotjs" "h-9 w-auto"}}</div></figure>
@@ -198,7 +201,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     // directly ({{title}}, not {{values.title}}). Renders the {{else}} placeholder until the dataset
     // has entries. On a translated page `dataset.projects` auto-resolves `projects_<locale>`.
     source: `{{!-- Data-bound slider: one slide per entry in the "projects" dataset. --}}
-<div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoplay="true" data-interval="5000" aria-label="Featured projects">
+<div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoplay="true" data-interval="5000" aria-label="Featured projects">
   <div data-sw-part="track">
     {{#each dataset.projects}}
     <figure data-sw-part="slide" class="relative">

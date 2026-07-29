@@ -94,10 +94,10 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     ],
     attributes: [
       { name: 'data-effect', on: 'root', description: '"fade" (default — crossfade) or "slide" (translating strip; REQUIRED for --sw-items/peek layouts).' },
-      { name: 'data-loop', on: 'root', description: '"true" to wrap from the last slide to the first (also makes autoplay/auto-scroll endless).' },
+      { name: 'data-loop', on: 'root', description: 'Wrapping from the last slide back to the first is the DEFAULT (and is what makes autoplay/auto-scroll endless) — opt OUT with data-loop="false", which instead disables the prev/next arrow at each end. Omit the attribute for the usual looping slideshow. A loop needs enough slides to fill the row: an underfull multi-item layout silently falls back to the non-looping behaviour.' },
       { name: 'data-autoplay', on: 'root', description: '"true" to auto-advance in steps (pauses on hover/focus; disabled under prefers-reduced-motion).' },
       { name: 'data-interval', on: 'root', description: 'Autoplay step interval in ms (default 5000).' },
-      { name: 'data-autoscroll', on: 'root', description: '"true" for a CONTINUOUS ticker scroll instead of steps (marquee/logo-wall; wins over data-autoplay; pair with data-loop="true" and data-effect="slide").' },
+      { name: 'data-autoscroll', on: 'root', description: '"true" for a CONTINUOUS ticker scroll instead of steps (marquee/logo-wall; wins over data-autoplay; pair with data-effect="slide", and leave looping at its default so the ticker never dead-ends).' },
       { name: 'data-autoscroll-speed', on: 'root', description: 'Auto-scroll speed in px per frame (default 2).' },
       { name: 'data-wheel', on: 'root', description: '"true" to navigate with mouse-wheel / trackpad gestures.' },
       { name: 'data-autoheight', on: 'root', description: '"true" to animate the track height to the in-view slide (slides of different heights). Requires data-effect="slide" — incompatible with the default fade effect.' },
@@ -107,7 +107,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-kenburns', on: 'root', description: '"Standard hero" motion: the active slide\'s `.sw-kenburns` layer (a `<div data-sw-bg>` OR an `<img>`) slowly pans/zooms (alternating per slide) and its `.sw-caption` rises in. Keyframes ship with the component (no per-site CSS). Present (bare or `="on"`) enables the drift; `="off"` keeps the cover layout + caption motion but no zoom/pan. Pair with full-height slides each containing a `.sw-kenburns` background/image + a `.sw-caption` overlay. The `hero-slider` Widget ({{> hero-slider}}) is the ready-made, data-backed version (its Ken-Burns toggle drives this on/off).' },
       { name: 'data-click-next', on: 'root', description: 'Click/tap anywhere on a slide advances the carousel (the navigation-less pattern, with ripple feedback). DEFAULT ON for the hero/full-screen EDGE style (a single full-width slider) — opt out with data-click-next="false". A multi-item row or a data-arrows="circle" content slider keeps it OPT-IN — set data-click-next="true". Clicks on links/buttons/inputs inside a slide keep their own meaning; a drag never counts as a click; the root becomes keyboard-focusable so arrow keys still work.' },
     ],
-    skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000">
+    skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-autoplay="true" data-interval="6000">
   <div data-sw-part="track">
     <figure data-sw-part="slide">Slide one content</figure>
     <figure data-sw-part="slide">Slide two content</figure>
@@ -118,11 +118,11 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
 </div>`,
     noJs: 'The track is a CSS scroll-snap row — fully swipeable/scrollable; arrows and dots stay hidden so no inert controls show.',
     notes:
-      'Slides-per-view is the --sw-items CSS variable on the root (Tailwind arbitrary properties): class="[--sw-items:1.15]" shows a peek of the next slide, class="[--sw-items:1] md:[--sw-items:3]" is a responsive 3-up — both REQUIRE data-effect="slide" (fade stacks full-width slides). Give slides internal padding (e.g. px-2) for gaps. For a FIXED-HEIGHT slider (hero), set the height ONCE on the ROOT (e.g. class="h-[60vh]") plus overflow-hidden to clip cleanly — the slides fill it automatically (no per-slide height); omit a root height for content/auto-height sliders. To drop a control, omit its part. Arrows and dots get a Material-style press ripple automatically (unbounded — it travels past the control; under data-click-next the WRAPPER ripples on slide presses; suppressed under prefers-reduced-motion; tap-highlight is transparent throughout). The runtime also adds role="region" + aria-roledescription="carousel" and a hidden live region announcing the active slide (silent while auto-rotating) — keep an aria-label on the root. The runtime stamps `data-active` on the slide(s) in the selected snap — a pure CSS styling hook: the attribute flip restarts matching keyframes, so per-activation effects (caption entrance, Ken Burns zoom on a background div) are authored as `[data-sw-part="slide"][data-active] .caption { animation: ... }`. Animate transform/inner elements only — the fade effect owns slide opacity. Hero sliders: slides can be plain divs with data-sw-bg backgrounds (no <img>) at a fixed height; a single-item slider ALREADY gets full-height gradient edge arrows + a frosted centered .sw-caption pill by default (set data-arrows="circle" for compact discs; every default is zero-specificity so utility classes still restyle it). DaisyUI\'s `carousel`/`carousel-item` classes are a plain scroll-snap STRIP (no arrows, dots, autoplay, or looping — its documented "buttons" are #anchor hacks). Use the DaisyUI classes as a layout primitive for a swipeable card row; use THIS component for any real slideshow.',
+      'Two behaviours are ON without any attribute: the slider LOOPS (opt out with data-loop="false") and, in the single-full-width-slide hero style, a click anywhere on a slide advances it (opt out with data-click-next="false"). Slides-per-view is the --sw-items CSS variable on the root (Tailwind arbitrary properties): class="[--sw-items:1.15]" shows a peek of the next slide, class="[--sw-items:1] md:[--sw-items:3]" is a responsive 3-up — both REQUIRE data-effect="slide" (fade stacks full-width slides). Give slides internal padding (e.g. px-2) for gaps. For a FIXED-HEIGHT slider (hero), set the height ONCE on the ROOT (e.g. class="h-[60vh]") plus overflow-hidden to clip cleanly — the slides fill it automatically (no per-slide height); omit a root height for content/auto-height sliders. To drop a control, omit its part. Arrows and dots get a Material-style press ripple automatically (unbounded — it travels past the control; under data-click-next the WRAPPER ripples on slide presses; suppressed under prefers-reduced-motion; tap-highlight is transparent throughout). The runtime also adds role="region" + aria-roledescription="carousel" and a hidden live region announcing the active slide (silent while auto-rotating) — keep an aria-label on the root. The runtime stamps `data-active` on the slide(s) in the selected snap — a pure CSS styling hook: the attribute flip restarts matching keyframes, so per-activation effects (caption entrance, Ken Burns zoom on a background div) are authored as `[data-sw-part="slide"][data-active] .caption { animation: ... }`. Animate transform/inner elements only — the fade effect owns slide opacity. Hero sliders: slides can be plain divs with data-sw-bg backgrounds (no <img>) at a fixed height; a single-item slider ALREADY gets full-height gradient edge arrows (a 2rem double-caret that grows to 2.5rem on hover) + a frosted .sw-caption pill — centered text with generous 3.5rem side padding — by default (set data-arrows="circle" for compact discs; every default is zero-specificity so utility classes still restyle it). DaisyUI\'s `carousel`/`carousel-item` classes are a plain scroll-snap STRIP (no arrows, dots, autoplay, or looping — its documented "buttons" are #anchor hacks). Use the DaisyUI classes as a layout primitive for a swipeable card row; use THIS component for any real slideshow.',
     examples: [
       {
         label: 'Full-screen hero (Ken Burns)',
-        code: `<div class="relative h-[80vh] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade" data-loop="true" data-autoplay="true" data-kenburns aria-label="Highlights">
+        code: `<div class="relative h-[80vh] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade" data-autoplay="true" data-kenburns aria-label="Highlights">
   <div data-sw-part="track">
     <figure data-sw-part="slide">
       <div class="sw-kenburns bg-gradient-to-br from-primary to-secondary" data-sw-bg="page.data.hero_1"></div>
@@ -145,14 +145,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
       {
         label: 'Logo-wall ticker (auto-scroll)',
-        code: `<div class="relative [--sw-items:2] md:[--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="1.2">
+        code: `<div class="relative [--sw-items:2] md:[--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoscroll="true" data-autoscroll-speed="1.2">
   <div data-sw-part="track"><figure data-sw-part="slide" class="px-4">{{sw-icon "brand:react" "h-9 w-auto"}}</figure>…</div>
 </div>`,
-        note: 'Continuous marquee (pair data-autoscroll + data-loop + data-effect="slide"); pauses on hover/focus. Recipe: {{> slider-logowall}}.',
+        note: 'Continuous marquee (pair data-autoscroll + data-effect="slide"); pauses on hover/focus. Recipe: {{> slider-logowall}}.',
       },
       {
         label: 'Bound to a dataset',
-        code: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true">
+        code: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide">
   <div data-sw-part="track">
     {{#each dataset.projects}}
     <figure data-sw-part="slide"><img src="{{sw-url image}}" alt="{{title}}" loading="lazy" /></figure>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import {
   DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_AGENT_SESSION_HOURS,
@@ -24,6 +25,7 @@ import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTe
 import { modelPlaceholder } from './AiConfig';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
+import { DatabaseIntegrityModal } from './settings/DatabaseIntegrityModal';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
@@ -156,6 +158,7 @@ export function InstanceSettings() {
   const [logLevel, setLogLevel] = useState<LogLevel>(DEFAULT_LOG_LEVEL);
   const [backupRetention, setBackupRetention] = useState(DEFAULT_BACKUP_RETENTION);
   const [storage, setStorage] = useState<{ dbBytes: number; backups: { count: number; bytes: number } } | null>(null);
+  const [integrityOpen, setIntegrityOpen] = useState(false);
   const [purgeKeep, setPurgeKeep] = useState(1);
   const [purging, setPurging] = useState(false);
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
@@ -540,6 +543,7 @@ export function InstanceSettings() {
     <>
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
     <Tabs ariaLabel="System settings sections" active={tab} onSelect={setTab} tabs={SETTINGS_TABS} />
+    {integrityOpen && <DatabaseIntegrityModal onClose={() => setIntegrityOpen(false)} />}
     <form onSubmit={save} className="flex flex-col gap-6">
     <div className={panelCls('general')}>
 
@@ -1230,6 +1234,20 @@ export function InstanceSettings() {
           </button>
           {purgeMsg && <span className="text-sm text-slate-600 dark:text-slate-300">{purgeMsg}</span>}
         </div>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Database integrity
+          <SectionHelp tip="Sweeps every project for rows that exist but cannot be reached — dataset entries whose dataset is gone, storage scopes that disagree with their own record, version history stranded under a deleted dataset, broken page/template/collection references — plus SQLite's own structural check and any dangling foreign key. The scan only READS. Anything it can repair is offered as an explicit action, never applied automatically." />
+        </legend>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          An on-demand check. Nothing runs on a schedule and nothing is repaired without you asking — unreachable
+          rows are often recoverable content, so the decision stays yours.
+        </p>
+        <button type="button" className={primaryButton} onClick={() => setIntegrityOpen(true)}>
+          <ShieldCheck className="h-4 w-4" aria-hidden /> Check database integrity
+        </button>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

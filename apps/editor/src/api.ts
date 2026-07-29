@@ -286,6 +286,75 @@ export interface AgentAttachment {
   name?: string;
 }
 
+// ---- Database integrity (System Settings → Ops → "Check database integrity"). Mirrors
+// apps/api/src/repo/integrity.ts; see it for what each code means and why repairs are opt-in.
+
+export type IntegritySeverity = 'error' | 'warning' | 'info';
+
+export type IntegrityActionId =
+  | 'recreate_dataset'
+  | 'reassign_entries'
+  | 'fix_entry_scope'
+  | 'delete_orphan_entries'
+  | 'delete_orphan_history';
+
+export interface IntegrityAction {
+  id: IntegrityActionId;
+  label: string;
+  /** Removes rows — the UI must confirm before running it. */
+  destructive: boolean;
+  detail: string;
+}
+
+export interface IntegrityIssue {
+  code: string;
+  severity: IntegritySeverity;
+  projectId: string | null;
+  projectSlug: string | null;
+  /** The grouping key — usually the dataset slug the rows point at. */
+  subject: string;
+  count: number;
+  sample: string[];
+  detail: string;
+  actions: IntegrityAction[];
+}
+
+export interface IntegrityCheckResult {
+  id: string;
+  label: string;
+  status: 'ok' | 'issues';
+  scanned: number;
+  issueCount: number;
+}
+
+export interface DatabaseIntegrityReport {
+  ok: boolean;
+  durationMs: number;
+  projectsScanned: number;
+  checks: IntegrityCheckResult[];
+  issues: IntegrityIssue[];
+}
+
+export interface IntegrityProgress {
+  step: number;
+  total: number;
+  label: string;
+  project?: string;
+}
+
+export interface IntegrityActionInput {
+  action: IntegrityActionId;
+  projectId: string;
+  subject: string;
+  targetDataset?: string;
+}
+
+export interface IntegrityActionResult {
+  action: IntegrityActionId;
+  changed: number;
+  message: string;
+}
+
 /** The result of an AI provider connectivity check (verify credentials + model). */
 export interface AiTestResult {
   ok: boolean;
@@ -1244,6 +1313,24 @@ export const api = {
   /** Reap pre-migration DB snapshots, keeping the newest `keepLast` (≥1). Never touches the DB itself. */
   purgeBackups: (keepLast: number) =>
     request<{ removed: number; count: number; bytes: number }>('POST', '/admin/backups/purge', { keepLast }),
+
+  /**
+   * Sweep the whole database for rows that exist but cannot be reached. READ-ONLY — it never repairs.
+   * Streams one `progress` frame per check (a full sweep visits every content row of every project),
+   * then `done` with the report. Pass a signal so closing the modal aborts the scan.
+   */
+  checkDatabaseIntegrity: (
+    handlers: {
+      onProgress?: (p: IntegrityProgress) => void;
+      onDone?: (report: DatabaseIntegrityReport) => void;
+      onError?: (message: string) => void;
+    },
+    signal?: AbortSignal,
+  ) => streamSse<IntegrityProgress, DatabaseIntegrityReport>('/admin/integrity/stream', handlers, { signal }),
+
+  /** Apply ONE repair from an integrity report. The server re-derives the target set before acting. */
+  repairIntegrity: (input: IntegrityActionInput) =>
+    request<IntegrityActionResult>('POST', '/admin/integrity/repair', input),
 
   // --- web forms (definitions live as `form` content) ---
   listForms: (projectId: string) =>

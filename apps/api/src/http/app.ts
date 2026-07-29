@@ -256,7 +256,7 @@ import {
 } from '../repo/invites.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
-import { checkProjectIntegrity } from '../repo/integrity.js';
+import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } from '../repo/integrity.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
@@ -2086,6 +2086,56 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!opts.dataDir) return reply.send({ removed: 0, count: 0, bytes: 0 });
     const result = await purgeBackups(backupsDir(opts.dataDir), keepLast, (m) => app.log.info({ userId }, m));
     app.log.info({ userId, removed: result.removed, keepLast }, 'backups purged');
+    return reply.send(result);
+  });
+
+  // ---- Database integrity: an operator-run sweep for rows that exist but cannot be reached, plus the
+  // narrow set of repairs safe to offer for what it finds. Admin-only. The check NEVER writes; repairs
+  // are a separate, explicit call. Nothing here runs on a schedule — an automatic repair would turn a
+  // display bug into data loss, so the decision stays with a person.
+  //
+  // Streamed over SSE because a full sweep touches every content row of every project: the client shows
+  // real per-check progress instead of an indefinite spinner. `event: progress` per check, then
+  // `event: done` with the report, or `event: error`.
+  app.post('/admin/integrity/stream', { config: rl(10) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    reply.hijack();
+    const raw = reply.raw;
+    raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no', // no proxy buffering, so each check flushes as it completes
+    });
+    const send = (event: string, data: unknown): void => {
+      raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    try {
+      const report = await checkDatabaseIntegrity(db, (p) => send('progress', p));
+      app.log.info({ userId, ok: report.ok, issues: report.issues.length, ms: report.durationMs }, 'database integrity check');
+      send('done', report);
+    } catch (err) {
+      app.log.error({ userId, errMsg: err instanceof Error ? err.message : String(err) }, 'database integrity check failed');
+      send('error', { message: 'the integrity check could not complete' });
+    } finally {
+      raw.end();
+    }
+  });
+
+  const IntegrityActionBody = z.object({
+    action: z.enum(['recreate_dataset', 'reassign_entries', 'fix_entry_scope', 'delete_orphan_entries', 'delete_orphan_history']),
+    projectId: z.string().min(1).max(64),
+    subject: z.string().max(200),
+    targetDataset: z.string().max(200).optional(),
+  });
+
+  // Apply ONE repair. Each action re-derives its target set from the live DB (a report can be minutes
+  // old), and destructive ones tombstone every row first so they stay restorable from History.
+  app.post('/admin/integrity/repair', { config: rl(20) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    const body = IntegrityActionBody.parse(req.body);
+    const result = await runIntegrityAction(db, contentRepo, userId, body);
+    app.log.warn({ userId, ...body, changed: result.changed }, 'database integrity repair applied');
     return reply.send(result);
   });
 

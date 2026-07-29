@@ -71,13 +71,29 @@ describe('rate limiting', () => {
   // An API KEY is the agent-fleet lane: several agents, each on a different project, sharing one key.
   // Their hot loop (content read/write + preview) is lifted via `rlAgent`; everything else — including
   // the routes that bill an external API or guard a secret — must keep its normal cap for a bearer too.
+  // ★ The agent lane opens for a token PROVEN live, never for one merely PRESENTED. Gating on the
+  // presence of an `Authorization: Bearer` header would hand the raised ceiling to any anonymous caller
+  // who invents one — including on `/auth/login`, which has no route-level cap and so rides the global
+  // bucket. Every assertion here is about an UNAUTHENTICATED request keeping the low limit.
+  it('never lifts any limit for an unauthenticated caller, however it forges the bearer', async () => {
+    const forged = { authorization: 'Bearer swk_0000000000000000000000000000000000000000000000000000000000000000' };
+    // a hot-loop authoring route: forged bearer gets the ordinary cap, not AGENT_RL_MAX
+    const lifted = await app.inject({ method: 'GET', url: '/projects/none/content/page', headers: forged });
+    expect(lifted.headers['x-ratelimit-limit']).toBe('120');
+    // the GLOBAL bucket (what /auth/login and every route without its own config rides)
+    const login = await app.inject({ method: 'POST', url: '/auth/login', headers: forged, payload: { email: 'a@b.co', password: 'x' } });
+    expect(login.headers['x-ratelimit-limit']).toBe('200');
+    // …identical to the same request with no Authorization header at all
+    const anon = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'a@b.co', password: 'x' } });
+    expect(anon.headers['x-ratelimit-limit']).toBe('200');
+    // /mcp likewise: unverified callers stay at the base cap
+    const mcp = await app.inject({ method: 'POST', url: '/mcp', headers: { ...forged, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} } });
+    expect(mcp.headers['x-ratelimit-limit']).toBe('120');
+  });
+
   it('lifts the hot-loop AUTHORING routes for an API key but NOT the strict ones', async () => {
     const bearer = { authorization: 'Bearer swk_0000000000000000000000000000000000000000000000000000000000000000' };
-    // A lifted route advertises the agent ceiling to a bearer (the 401 comes from AUTH, after the limiter
-    // hook has already stamped the headers — what matters here is which bucket it was measured against).
-    const lifted = await app.inject({ method: 'GET', url: '/projects/none/content/page', headers: bearer });
-    expect(lifted.headers['x-ratelimit-limit']).toBe('600');
-    // …and the SAME route for a browser (no bearer) keeps the ordinary session cap.
+    // A browser (no bearer) gets the ordinary session cap on the lifted route.
     const browser = await app.inject({ method: 'GET', url: '/projects/none/content/page' });
     expect(browser.headers['x-ratelimit-limit']).toBe('120');
     // A route that was NOT opted in keeps its own cap for a bearer — proving the lift is a per-route

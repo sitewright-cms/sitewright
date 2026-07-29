@@ -260,6 +260,7 @@ import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } fro
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
+import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes } from './oauth-routes.js';
@@ -1350,9 +1351,51 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   /**
+   * Tokens PROVEN to resolve to a live API key, so the limiter can tell an agent from an attacker.
+   *
+   * The rate-limit hook runs BEFORE authentication, so it cannot resolve a key itself — that would put a
+   * DB lookup on every unauthenticated request, which is an amplifier, not a defence. So the auth path
+   * records each success here and the limiter merely reads it. Consequences, both wanted:
+   *   - An UNAUTHENTICATED request never reaches the raised lane, no matter what `Authorization` header
+   *     it invents. Gating on the mere PRESENCE of a bearer (the first cut of this) handed the higher
+   *     ceiling to anyone who typed the word "Bearer" — including on `/auth/login`, which has no
+   *     route-level cap of its own and so rides the global bucket.
+   *   - A real agent's FIRST call is measured at the ordinary cap and every one after it at the raised
+   *     one, since each success re-marks the token.
+   * Keyed by SHA-256, never the raw token (the DB stores hashes too), with a TTL and a size bound so a
+   * flood of distinct valid keys can't grow it without limit.
+   */
+  const VERIFIED_KEY_TTL_MS = 5 * 60_000;
+  const VERIFIED_KEY_MAX = 5_000;
+  const verifiedApiKeys = new Map<string, number>();
+  function markApiKeyVerified(token: string): void {
+    const hash = hashApiToken(token);
+    verifiedApiKeys.delete(hash); // re-insert so Map iteration order is LRU-ish for the eviction below
+    verifiedApiKeys.set(hash, Date.now() + VERIFIED_KEY_TTL_MS);
+    if (verifiedApiKeys.size > VERIFIED_KEY_MAX) {
+      const oldest = verifiedApiKeys.keys().next();
+      if (!oldest.done) verifiedApiKeys.delete(oldest.value);
+    }
+  }
+  /** Whether THIS request carries a bearer that recently authenticated. Cheap: one hash + one Map get. */
+  function isVerifiedApiKey(req: FastifyRequest): boolean {
+    const token = bearerToken(req);
+    // eslint-disable-next-line security/detect-possible-timing-attacks -- an is-it-absent check, not a credential comparison. Nothing here grants access: it picks a rate-limit ceiling from a set of ALREADY-verified hashes. Authentication happens later, in apiKeysRepo.resolve.
+    if (token === undefined) return false;
+    const hash = hashApiToken(token);
+    const expires = verifiedApiKeys.get(hash);
+    if (expires === undefined) return false;
+    if (expires <= Date.now()) {
+      verifiedApiKeys.delete(hash);
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Rate-limit config for a HOT-LOOP AUTHORING route — one an agent fleet hammers (content read/write,
-   * the draft preview). Browser/session traffic keeps the route's normal `max`; API-KEY (bearer) traffic
-   * is lifted to AGENT_RL_MAX.
+   * the draft preview). Browser/session traffic and UNVERIFIED callers keep the route's normal `max`;
+   * a verified API key is lifted to AGENT_RL_MAX.
    *
    * This is deliberately OPT-IN per route rather than a blanket lift inside `rl()`. The 60/120 tiers also
    * contain routes that must NOT be opened up for a bearer: stock-image search (bills an external API per
@@ -1362,7 +1405,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    */
   const rlAgent = (max: number) => ({
     rateLimit: {
-      max: (req: FastifyRequest) => (bearerToken(req) ? Math.max(max, AGENT_RL_MAX) : max),
+      max: (req: FastifyRequest) => (isVerifiedApiKey(req) ? Math.max(max, AGENT_RL_MAX) : max),
       timeWindow: RL_WINDOW,
     },
   });
@@ -1385,7 +1428,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // + retry-after that a host can back off on. Still finite: a runaway agent is stopped, just later.
     // Session cookies and anonymous IPs are unaffected. The server-side agent loop's own in-flight
     // tokens remain fully exempt via `allowList` below.
-    max: (req) => (bearerToken(req) ? API_KEY_RL_MAX : 200),
+    max: (req) => (isVerifiedApiKey(req) ? API_KEY_RL_MAX : 200),
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
     keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
@@ -1531,6 +1574,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const key = await apiKeysRepo.resolve(bearer);
       if (!key) throw new UnauthorizedError('invalid or expired API key');
+      markApiKeyVerified(bearer); // the limiter's agent lane opens only for a token proven live here
       // The key is bound to one project; reject any other route (no cross-project
       // reach). 404 — not 403 — so a key cannot probe which projects exist.
       if (key.projectId !== req.params.projectId) {
@@ -2210,6 +2254,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     const key = await apiKeysRepo.resolve(bearer);
     if (!key) throw new UnauthorizedError('invalid or expired API key');
+    markApiKeyVerified(bearer);
     return reply.send({
       projectId: key.projectId,
       role: key.role,
@@ -2899,7 +2944,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, publicUrl: opts.publicUrl, rl });
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
-  registerMcpRoutes(app, { rl, publicUrl: opts.publicUrl });
+  registerMcpRoutes(app, { rl, rlAgent, publicUrl: opts.publicUrl });
 
   app.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/export',

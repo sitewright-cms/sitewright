@@ -125,9 +125,31 @@ describe('nav/button effect utilities', () => {
     expect(accent).toContain('--sw-btn-fx: var(--sw-color-primary');
   });
 
-  it('ships the pulse @keyframes only when sw-btn-fx-pulse is used', async () => {
-    expect(await compile('<button class="btn sw-btn-fx-pulse">x</button>')).toContain('@keyframes sw-btn-pulse');
-    expect(await compile('<button class="btn">x</button>')).not.toContain('sw-btn-pulse');
+  // REGRESSION (measured): a @utility body is a STYLE RULE body, and CSS nesting forbids @keyframes
+  // there — the browser ignores it and Lightning CSS strips it from the minified build. sw-btn-pulse /
+  // -jelly / -shine / -sparkle all shipped that way and NONE of them animated in production, while the
+  // old unminified-only assertion here still passed. Both halves below are needed: the structural check
+  // catches the mistake at authoring time, the compile check proves it survives the shipped pipeline.
+  it('every animation an effect references resolves to a TOP-LEVEL @keyframes', () => {
+    const names = new Set([...EFFECT_UTILITIES.matchAll(/animation:\s*([a-z][\w-]*)/g)].map((m) => m[1]!));
+    expect(names.size).toBeGreaterThan(0);
+    for (const name of names) {
+      const at = EFFECT_UTILITIES.indexOf(`@keyframes ${name} `);
+      expect(at, `no @keyframes for "${name}"`).toBeGreaterThanOrEqual(0);
+      const before = EFFECT_UTILITIES.slice(0, at);
+      const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+      expect(depth, `@keyframes ${name} is nested ${depth} level(s) deep — it will be dropped`).toBe(0);
+    }
+  });
+
+  it('the keyframes survive the PRODUCTION (minified) compile', async () => {
+    const css = await compileUtilityCss(
+      ['<button class="btn sw-btn-fx-pulse">x</button><div class="sw-border-beam">c</div>'],
+      theme,
+      { minify: true },
+    );
+    expect(css).toContain('@keyframes sw-btn-pulse');
+    expect(css).toContain('@keyframes sw-beam-spin');
   });
 
   it('works site-wide (on <body>) AND per-element (on the .menu / the button)', async () => {
@@ -171,5 +193,72 @@ describe('nav/button effect utilities', () => {
     // the UNGUARDED descendant form that used to leak box-solid into the custom menu is gone
     // (only `.sw-nav-box-solid .menu:not(...) a` and the per-element `.sw-nav-box-solid.menu a` remain)
     expect(css).not.toMatch(/\.sw-nav-box-solid \.menu a/);
+  });
+});
+
+describe('sw-border-beam (box ornament)', () => {
+  const beam = (extra = '') => compile(`<div class="sw-border-beam ${extra}">caption</div>`);
+
+  it('paints a conic beam on ::before and MASKS it to a frame (interior stays transparent)', async () => {
+    const css = await beam();
+    expect(css).toContain('.sw-border-beam');
+    expect(css).toContain('&::before');
+    expect(css).toContain('conic-gradient(from var(--sw-beam-angle)');
+    // the two-layer mask + `exclude` is what punches the middle out — without it the pseudo would
+    // cover the caption's content instead of ringing it.
+    expect(css).toContain('mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)');
+    expect(css).toContain('mask-composite: exclude');
+    expect(css).toContain('-webkit-mask-composite: xor'); // Safari's spelling of the same op
+    expect(css).toContain('border-radius: inherit'); // follows the host's rounding
+    expect(css).toContain('pointer-events: none'); // never eats a click meant for the caption
+  });
+
+  it('defaults the beam + its track to the dark-mode-aware brand primary', async () => {
+    const css = await beam();
+    expect(css).toContain('var(--sw-beam-color, var(--sw-color-primary');
+    expect(css).toContain('var(--sw-beam-track, color-mix(in oklab, var(--sw-beam-color, var(--sw-color-primary');
+  });
+
+  it('exposes the width / speed / arc knobs as overridable vars', async () => {
+    const css = await beam();
+    expect(css).toContain('var(--sw-beam-width, 2px)');
+    expect(css).toContain('var(--sw-beam-speed, 4s)');
+    expect(css).toContain('var(--sw-beam-arc, 90deg)');
+    // and an arbitrary-property override on the same element compiles to a real declaration
+    expect(await beam('[--sw-beam-width:3px]')).toContain('--sw-beam-width: 3px');
+  });
+
+  // The utility sets `position: relative` to become the ring's containing block — but slider captions
+  // and hero overlays are routinely `absolute`. Tailwind emits the custom utility BEFORE the core
+  // layout utilities, so the author's position wins (and an absolute host is a containing block
+  // anyway, so the ring still draws). Pin the order: a Tailwind upgrade that flipped it would silently
+  // yank every beamed caption back into the flow.
+  it('an author position utility still wins over the ring’s position: relative', async () => {
+    const css = await compileUtilityCss(
+      ['<div class="sw-border-beam absolute bottom-4 rounded-xl">c</div>'],
+      theme,
+      { minify: true },
+    );
+    expect(css).toContain('.sw-border-beam{position:relative}');
+    expect(css.indexOf('.absolute{')).toBeGreaterThan(css.indexOf('.sw-border-beam{'));
+  });
+
+  it('registers the angle so it INTERPOLATES (an unregistered custom property would jump)', async () => {
+    const css = await beam();
+    expect(css).toMatch(/@property --sw-beam-angle\s*\{[^}]*syntax: "<angle>"/);
+    expect(css).toMatch(/@property --sw-beam-angle\s*\{[^}]*inherits: false/); // never leaks to children
+  });
+
+  it('gates the lap behind prefers-reduced-motion, and the RULE tree-shakes when unused', async () => {
+    const css = await beam();
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\) \{\s*&::before \{\s*animation: sw-beam-spin/,
+    );
+    // the ring itself is NOT inside the media query — reduced motion parks the beam, it does not
+    // remove the border.
+    expect(css.indexOf('conic-gradient')).toBeLessThan(css.indexOf('prefers-reduced-motion'));
+    // a page that doesn't use the class gets no rule (the @keyframes + @property registration are
+    // unconditional by necessity — see the keyframes note in effects.ts)
+    expect(await compile('<div class="rounded-xl">x</div>')).not.toContain('.sw-border-beam');
   });
 });

@@ -137,6 +137,43 @@ export const RIPPLE_ITEMS: LibraryItem[] = [
   },
 ];
 
+/** Box ornaments — decoration for a single element (not a site-wide scheme like sw-nav-* / sw-btn-*). */
+export const BORDER_ITEMS: LibraryItem[] = [
+  {
+    id: 'beam-default',
+    name: 'Border beam (rotating border)',
+    keywords:
+      'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient card frame highlight sw-border-beam',
+    description:
+      'A light travels around the edge of the box over a faint static ring, in your brand primary (dark-mode aware). Put sw-border-beam on the one element you are decorating and pair it with a rounded-* class — the ring follows the rounding, stays outside the content, and never blocks clicks. No JavaScript.',
+    example: '<div class="sw-border-beam rounded-2xl p-6">\n  <h3>Most popular</h3>\n</div>',
+  },
+  {
+    id: 'beam-caption',
+    name: 'Hero / slider caption beam',
+    keywords: 'border beam caption slider hero thick bold sw-caption lighthouse rotating border width track',
+    description:
+      'The bold hero look: a thick beam and no static ring, so only the travelling light shows. Works over a frosted or translucent caption because the ring is masked to the edge.',
+    example:
+      '<div class="sw-caption sw-border-beam rounded-xl\n' +
+      '            [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\n' +
+      '  <b>RENEWABLE ENERGY</b>\n' +
+      '</div>',
+  },
+  {
+    id: 'beam-knobs',
+    name: 'Beam knobs (colour, width, speed, arc)',
+    keywords: 'border beam variable custom colour color width speed arc comet length slow fast accent',
+    description:
+      'Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the ring under the beam — transparent for beam only), --sw-beam-width (2px), --sw-beam-speed (one lap, 4s), --sw-beam-arc (comet length, 90deg — use 360deg to make the whole ring a rotating gradient). It repaints every frame, so use it as an accent, not on every card in a grid; reduced motion parks the beam and keeps the border.',
+    example:
+      '<div class="sw-border-beam rounded-full px-6 py-3\n' +
+      '            [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-width:4px] [--sw-beam-arc:140deg]">\n' +
+      '  Limited offer\n' +
+      '</div>',
+  },
+];
+
 /** A DaisyUI component reference (id derives from the name; `daisyui` keyword is implicit). */
 const daisy = (name: string, keywords: string, description: string, example: string): LibraryItem => ({
   id: `daisy-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,

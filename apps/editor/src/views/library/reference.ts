@@ -518,9 +518,9 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
   },
   {
     id: 'effects',
-    title: 'Nav & button effects',
+    title: 'Nav, button & box effects',
     blurb:
-      'CI-themed, contrast-safe hover/active schemes. Pick them in Website settings (no code, site-wide) or add a sw-nav-* / sw-btn-* class per element. The CSS tree-shakes per scheme.',
+      'CI-themed, contrast-safe hover/active schemes. Pick them in Website settings (no code, site-wide) or add a sw-nav-* / sw-btn-* class per element. Box ornaments like sw-border-beam go on the single element they decorate. The CSS tree-shakes per scheme.',
     entries: [
       {
         id: 'fx-nav',
@@ -553,6 +553,26 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<button class="btn btn-primary sw-btn-fx-lift sw-btn-shape-pill">Get started</button>\n' +
           '<a class="btn btn-outline btn-primary sw-btn-fx-fill-slide" href="/contact">Contact</a>',
         note: 'FACE and EFFECT are independent — a solid btn-primary, a hollow btn-outline and a transparent btn-ghost can all wear the same effect. Reveal effects shine on a hollow face; face-kind effects (two-tone / gradient-move / frost / ghost-gradient) paint their own. Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only; ripple + magnetic/spotlight load a tiny runtime automatically.',
+      },
+      {
+        id: 'fx-border-beam',
+        syntax: 'sw-border-beam · --sw-beam-color / -track / -width / -speed / -arc',
+        name: 'Border beam (rotating border)',
+        keywords:
+          'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient caption slider hero card frame highlight attention marquee border',
+        description:
+          'A light travels around the edge of a box — the rotating / "lighthouse" border — over a faint static ring, in your brand primary (it follows the built-in dark theme too). Put sw-border-beam on the ONE element you want to decorate: a slider caption, a featured card, a pricing tier, an image frame. Unlike the nav/button schemes there is no site-wide form and no Website setting — it is a per-element ornament. The ring is drawn OUTSIDE the content (a masked pseudo-element), so a frosted or translucent caption stays see-through and clicks still reach the link underneath. Pair it with a rounded-* class — the ring follows the element\'s own rounding. Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the always-on ring under the beam, default a 20% tint — set transparent for beam only), --sw-beam-width (default 2px), --sw-beam-speed (one lap, default 4s), --sw-beam-arc (how long the comet is, default 90deg). It repaints a gradient every frame, so use it as a hero accent rather than on every card in a grid. Under prefers-reduced-motion the beam parks in place and the border stays.',
+        example:
+          '{{! Slider caption with the bold hero look (thick beam, no static ring): }}\n' +
+          '<div class="sw-caption sw-border-beam rounded-xl\n' +
+          '            [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\n' +
+          '  <b>RENEWABLE ENERGY</b>\n' +
+          '</div>\n' +
+          '\n{{! Subtle default (2px + faint ring) on a featured card, in the accent colour: }}\n' +
+          '<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-color:var(--sw-color-accent)]">\n' +
+          '  <h3>Most popular</h3>\n' +
+          '</div>',
+        note: 'Needs no JavaScript. Put it on a block/flex box (not an inline <span>). Very old browsers without @property support show the same border with the beam parked — nothing breaks. Want a different look? --sw-beam-arc:360deg makes the whole ring a rotating gradient instead of a comet.',
       },
       {
         id: 'fx-sticky-header',

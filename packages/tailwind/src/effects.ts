@@ -252,9 +252,22 @@ export const EFFECT_UTILITIES = `
   ${on('')} { color: ${P}; transform: translateY(-1px); }
 }
 
-/* Blob morph keyframes — top-level (referenced only by @utility sw-nav-blob's animation, so Lightning
-   CSS keeps them iff that scheme ships and prunes them otherwise → they still tree-shake). */
+/* ── @keyframes — ALL of them live HERE, at the TOP LEVEL, never inside an @utility ───────────────
+   A @utility body becomes the body of a STYLE RULE, and CSS nesting does not allow @keyframes inside
+   a style rule: the browser drops it, and Lightning CSS strips it from the minified build entirely.
+   Either way the effect's \`animation:\` then names keyframes that do not exist and simply does not run
+   — silently, with the utility's other declarations still applying, so it looks styled-but-static.
+   (Measured: sw-btn-pulse / -jelly / -shine / -sparkle shipped nested and none of them ever animated.)
+   A test asserts every \`animation:\` name in this file resolves to a top-level @keyframes AND survives
+   the production (minified) compile.
+   The cost of top level is that these ship on every page — ~0.5KB total, unlike the \`@utility\` rules
+   they belong to, which do tree-shake. That is the price of them working at all; keep them small. */
 @keyframes sw-nav-blob { 0%, 100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; } 50% { border-radius: 58% 42% 38% 62% / 56% 51% 49% 44%; } }
+@keyframes sw-btn-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, ${FX} 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 14px color-mix(in oklab, ${FX} 0%, transparent); } }
+@keyframes sw-btn-jelly { 0% { transform: scale(1,1); } 25% { transform: scale(1.12,.88); } 50% { transform: scale(.9,1.1); } 70% { transform: scale(1.05,.95); } 100% { transform: scale(1,1); } }
+@keyframes sw-btn-shine { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
+@keyframes sw-btn-sparkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+@keyframes sw-beam-spin { to { --sw-beam-angle: 360deg; } }
 
 /* ── button EFFECTS (sw-btn-fx-<name>) — the HOVER/MOTION axis, orthogonal to the FACE (the daisyUI
    variant btn-primary / btn-ghost / btn-outline / … that owns the RESTING look). Effects layer on the
@@ -281,7 +294,6 @@ export const EFFECT_UTILITIES = `
   ${btnFx(':hover')} { box-shadow: 0 0 0 5px color-mix(in oklab, ${FX} 22%, transparent); }
   @media (prefers-reduced-motion: no-preference) {
     ${btnFx(':not(:hover)')} { animation: sw-btn-pulse 2.2s ease-out infinite; }
-    @keyframes sw-btn-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, ${FX} 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 14px color-mix(in oklab, ${FX} 0%, transparent); } }
   }
 }
 @utility sw-btn-fx-ring {
@@ -306,7 +318,6 @@ export const EFFECT_UTILITIES = `
 @utility sw-btn-fx-jelly {
   @media (prefers-reduced-motion: no-preference) {
     ${btnFx(':hover')} { animation: sw-btn-jelly .55s; }
-    @keyframes sw-btn-jelly { 0% { transform: scale(1,1); } 25% { transform: scale(1.12,.88); } 50% { transform: scale(.9,1.1); } 70% { transform: scale(1.05,.95); } 100% { transform: scale(1,1); } }
   }
 }
 @utility sw-btn-fx-icon-spin {
@@ -335,7 +346,6 @@ export const EFFECT_UTILITIES = `
 @utility sw-btn-fx-shine {
   @media (prefers-reduced-motion: no-preference) {
     ${btnFx('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .4) 50%, transparent 65%); background-size: 250% 100%; animation: sw-btn-shine 2.6s linear infinite; }
-    @keyframes sw-btn-shine { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
   }
 }
 @utility sw-btn-fx-sparkle {
@@ -345,7 +355,6 @@ export const EFFECT_UTILITIES = `
   @media (prefers-reduced-motion: no-preference) {
     ${btnFx(':hover::before')} { animation: sw-btn-sparkle .8s ease infinite; }
     ${btnFx(':hover::after')} { animation: sw-btn-sparkle .8s ease .28s infinite; }
-    @keyframes sw-btn-sparkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
   }
 }
 /* reveal family — an accent animation reveals on HOVER. Unlike the old "hollow" family these NEVER paint
@@ -464,4 +473,55 @@ export const EFFECT_UTILITIES = `
 @utility sw-btn-accent-secondary { ${btnAccent()} { --sw-btn-fx: var(--sw-color-secondary, var(--color-secondary)); --sw-btn-fx-content: var(--sw-color-secondary-content, var(--color-secondary-content)); } }
 @utility sw-btn-accent-accent { ${btnAccent()} { --sw-btn-fx: var(--sw-color-accent, var(--color-accent)); --sw-btn-fx-content: var(--sw-color-accent-content, var(--color-accent-content)); } }
 @utility sw-btn-accent-neutral { ${btnAccent()} { --sw-btn-fx: var(--sw-color-neutral, var(--color-neutral)); --sw-btn-fx-content: var(--sw-color-neutral-content, var(--color-neutral-content)); } }
+
+/* ── BOX ornaments (sw-border-*) — decoration for ANY box, tied to neither a .menu nor a .btn ─────
+   Unlike the axes above, these carry no site-wide/per-element duality: the class goes on the ONE
+   element it decorates (a slider .sw-caption, a pricing card, a featured image, a badge).
+
+   Border Beam — a light travels around the element's edge over a faint static track (the "lighthouse"
+   look). The ring is ONE pseudo-element the size of the box, painted with a conic-gradient and then
+   MASKED so only a \`--sw-beam-width\` frame survives: two mask layers (one clipped to the content-box,
+   one to the border-box) composited with \`exclude\` punch the middle out. That keeps the interior fully
+   TRANSPARENT — the beam sits over a frosted/backdrop-blurred caption or a photo without covering it,
+   which a border-image or a second opaque layer could not do.
+   The travel is the registered \`--sw-beam-angle\` animating 0→360deg (a custom property must be
+   @property-registered to be interpolatable; unregistered it would jump discretely once per cycle).
+
+   KNOBS — set them with Tailwind arbitrary properties on the same element, e.g.
+   \`class="sw-border-beam [--sw-beam-width:3px] [--sw-beam-speed:6s]"\`:
+     --sw-beam-color  the beam (default: the brand primary, dark-mode aware)
+     --sw-beam-track  the always-on ring under it (default: a 20% tint of the beam; \`transparent\` = off)
+     --sw-beam-width  ring thickness (default 2px)     --sw-beam-speed  one lap (default 4s)
+     --sw-beam-arc    comet length in degrees (default 90deg — a quarter of the perimeter)
+   \`border-radius: inherit\` makes the ring follow the element's own rounding, so pair it with rounded-*.
+   REDUCED MOTION: the lap is dropped and the beam rests at its 0deg position — still a gradient-lit
+   border, no travel. NO @property support (Firefox <128 / Safari <16.4): same static resting state.
+   Costs a repaint per frame (a gradient, not a transform), so it is opt-in per element by design —
+   decorate the hero caption, not every card in a grid. */
+@property --sw-beam-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@utility sw-border-beam {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* purely decorative: never intercept a click meant for the caption's link/button underneath */
+    pointer-events: none;
+    padding: var(--sw-beam-width, 2px);
+    border-radius: inherit;
+    background:
+      conic-gradient(from var(--sw-beam-angle), transparent 0deg,
+        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .4),
+        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .6),
+        transparent var(--sw-beam-arc, 90deg)),
+      linear-gradient(var(--sw-beam-track, color-mix(in oklab, var(--sw-beam-color, ${P}) 20%, transparent)) 0 0);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &::before { animation: sw-beam-spin var(--sw-beam-speed, 4s) linear infinite; }
+  }
+}
 `;

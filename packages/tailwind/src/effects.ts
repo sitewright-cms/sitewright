@@ -478,8 +478,9 @@ export const EFFECT_UTILITIES = `
    Unlike the axes above, these carry no site-wide/per-element duality: the class goes on the ONE
    element it decorates (a slider .sw-caption, a pricing card, a featured image, a badge).
 
-   Border Beam — a light travels around the element's edge over a faint static track (the "lighthouse"
-   look). The ring is ONE pseudo-element the size of the box, painted with a conic-gradient and then
+   Border Beam — a light travels around the element's edge (the "lighthouse" look), by DEFAULT with no
+   static track at all: only the moving light is lit, the rest of the edge is bare. The ring is ONE
+   pseudo-element the size of the box, painted with a conic-gradient and then
    MASKED so only a \`--sw-beam-width\` frame survives: two mask layers (one clipped to the content-box,
    one to the border-box) composited with \`exclude\` punch the middle out. That keeps the interior fully
    TRANSPARENT — the beam sits over a frosted/backdrop-blurred caption or a photo without covering it,
@@ -490,8 +491,12 @@ export const EFFECT_UTILITIES = `
    KNOBS — set them with Tailwind arbitrary properties on the same element, e.g.
    \`class="sw-border-beam [--sw-beam-width:3px] [--sw-beam-speed:6s]"\`:
      --sw-beam-color  the beam (default: the brand primary, dark-mode aware)
-     --sw-beam-track  the always-on ring under it (default: a 20% tint of the beam; \`transparent\` = off)
-     --sw-beam-width  ring thickness (default 2px)     --sw-beam-speed  one lap (default 4s)
+     --sw-beam-track  the always-on ring UNDER the beam (default \`transparent\` — beam only). Give it a
+                      semi-transparent brand tint to also draw the rest of the edge, e.g.
+                      \`[--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]\`
+                      (Tailwind turns the underscores back into spaces).
+     --sw-beam-width  ring thickness (default 8px — the bold hero look; 2-3px for a fine card edge)
+     --sw-beam-speed  one lap (default 4s)
      --sw-beam-arc    comet length in degrees (default 90deg — a quarter of the perimeter)
    \`border-radius: inherit\` makes the ring follow the element's own rounding, so pair it with rounded-*.
    REDUCED MOTION: the lap is dropped and the beam rests at its 0deg position — still a gradient-lit
@@ -507,14 +512,14 @@ export const EFFECT_UTILITIES = `
     inset: 0;
     /* purely decorative: never intercept a click meant for the caption's link/button underneath */
     pointer-events: none;
-    padding: var(--sw-beam-width, 2px);
+    padding: var(--sw-beam-width, 8px);
     border-radius: inherit;
     background:
       conic-gradient(from var(--sw-beam-angle), transparent 0deg,
         var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .4),
         var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .6),
         transparent var(--sw-beam-arc, 90deg)),
-      linear-gradient(var(--sw-beam-track, color-mix(in oklab, var(--sw-beam-color, ${P}) 20%, transparent)) 0 0);
+      linear-gradient(var(--sw-beam-track, transparent) 0 0);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;

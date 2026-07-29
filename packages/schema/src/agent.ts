@@ -477,15 +477,18 @@ Effects compose with ANY face — three kinds:
 Also ACCENT \`sw-btn-accent-<primary|secondary|accent|neutral>\`, SHAPE \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle=icon-only). Any axis = a class on the button OR website.effects.{buttonEffect,buttonAccent,buttonShape}. \`magnetic\`/\`spotlight\` (+ripple) load a tiny runtime. Prefer these over hand-rolled hover CSS.
 
 BORDER BEAM — \`sw-border-beam\` puts a light travelling around ANY box's edge (the rotating / "lighthouse"
-border) over a faint static ring, in the brand primary, dark-mode aware. Put the class on the ONE element
-you are decorating — a slider \`.sw-caption\`, a featured card, a pricing tier, an image frame — there is no
-site-wide form. It needs no runtime and never covers the box's content or intercepts clicks: the ring is a
-masked pseudo-element, so a frosted/translucent caption stays see-through. Tune with arbitrary properties
-on the same element: \`--sw-beam-color\` (default primary) · \`--sw-beam-track\` (the always-on ring, default
-a 20% tint; \`transparent\` = beam only) · \`--sw-beam-width\` (default 2px) · \`--sw-beam-speed\` (default 4s) ·
-\`--sw-beam-arc\` (comet length, default 90deg). Pair it with a \`rounded-*\` class — the ring inherits the
-radius. The bold hero-caption look is
-\`<div class="sw-caption sw-border-beam rounded-xl [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\`.
+border) in the brand primary, dark-mode aware. The DEFAULT is the bold hero look — an 8px beam over NO
+static ring, so only the moving light is lit — i.e. \`<div class="sw-caption sw-border-beam rounded-xl">\`
+needs no configuration at all. Put the class on the ONE element you are decorating — a slider
+\`.sw-caption\`, a featured card, a pricing tier, an image frame — there is no site-wide form. It needs no
+runtime and never covers the box's content or intercepts clicks: the ring is a masked pseudo-element, so a
+frosted/translucent caption stays see-through. Tune with arbitrary properties on the same element:
+\`--sw-beam-color\` (default primary) · \`--sw-beam-track\` (the always-on ring under the beam, default
+\`transparent\`) · \`--sw-beam-width\` (default 8px) · \`--sw-beam-speed\` (default 4s) · \`--sw-beam-arc\` (comet
+length, default 90deg). For a FINER card edge, thin the beam and light the whole edge with a
+semi-transparent brand track (underscores become spaces):
+\`<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-width:3px] [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\`.
+Pair it with a \`rounded-*\` class — the ring inherits the radius.
 It repaints a gradient each frame, so use it on a hero accent, NOT on every card in a grid; under
 prefers-reduced-motion the beam parks (the border stays). Prefer it over hand-rolled conic-gradient CSS.
 

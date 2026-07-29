@@ -143,21 +143,23 @@ export const BORDER_ITEMS: LibraryItem[] = [
     id: 'beam-default',
     name: 'Border beam (rotating border)',
     keywords:
-      'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient card frame highlight sw-border-beam',
+      'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient card frame highlight caption hero sw-border-beam',
     description:
-      'A light travels around the edge of the box over a faint static ring, in your brand primary (dark-mode aware). Put sw-border-beam on the one element you are decorating and pair it with a rounded-* class — the ring follows the rounding, stays outside the content, and never blocks clicks. No JavaScript.',
-    example: '<div class="sw-border-beam rounded-2xl p-6">\n  <h3>Most popular</h3>\n</div>',
+      'A light travels around the edge of the box, in your brand primary (dark-mode aware). Out of the box it is the bold hero look — an 8px beam and NO static ring, so only the travelling light is lit and the rest of the edge stays bare. Put sw-border-beam on the one element you are decorating and pair it with a rounded-* class — the ring follows the rounding, stays outside the content, and never blocks clicks. Works over a frosted or translucent caption because it is masked to the edge. No JavaScript.',
+    example:
+      '<div class="sw-caption sw-border-beam rounded-xl">\n  <b>RENEWABLE ENERGY</b>\n</div>',
   },
   {
-    id: 'beam-caption',
-    name: 'Hero / slider caption beam',
-    keywords: 'border beam caption slider hero thick bold sw-caption lighthouse rotating border width track',
+    id: 'beam-track',
+    name: 'Beam with a tinted track',
+    keywords:
+      'border beam track ring static edge semi-transparent translucent tint color-mix primary thin fine card sw-beam-track sw-beam-width',
     description:
-      'The bold hero look: a thick beam and no static ring, so only the travelling light shows. Works over a frosted or translucent caption because the ring is masked to the edge.',
+      'Add --sw-beam-track to light the WHOLE edge under the beam instead of only the moving comet — a semi-transparent brand tint reads as a fine border that the beam runs along. Pair it with a slimmer --sw-beam-width for a card or badge, where the 8px default would be chunky. Any colour works; color-mix against the primary keeps it on-CI in both light and dark. Tailwind turns the underscores back into spaces.',
     example:
-      '<div class="sw-caption sw-border-beam rounded-xl\n' +
-      '            [--sw-beam-width:8px] [--sw-beam-track:transparent] [--sw-beam-speed:2.5s]">\n' +
-      '  <b>RENEWABLE ENERGY</b>\n' +
+      '<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-width:3px]\n' +
+      '            [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\n' +
+      '  <h3>Most popular</h3>\n' +
       '</div>',
   },
   {
@@ -165,7 +167,7 @@ export const BORDER_ITEMS: LibraryItem[] = [
     name: 'Beam knobs (colour, width, speed, arc)',
     keywords: 'border beam variable custom colour color width speed arc comet length slow fast accent',
     description:
-      'Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the ring under the beam — transparent for beam only), --sw-beam-width (2px), --sw-beam-speed (one lap, 4s), --sw-beam-arc (comet length, 90deg — use 360deg to make the whole ring a rotating gradient). It repaints every frame, so use it as an accent, not on every card in a grid; reduced motion parks the beam and keeps the border.',
+      'Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the ring under the beam — default transparent, i.e. beam only), --sw-beam-width (8px), --sw-beam-speed (one lap, 4s), --sw-beam-arc (comet length, 90deg — use 360deg to make the whole ring a rotating gradient). It repaints every frame, so use it as an accent, not on every card in a grid; reduced motion parks the beam and keeps the border.',
     example:
       '<div class="sw-border-beam rounded-full px-6 py-3\n' +
       '            [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-width:4px] [--sw-beam-arc:140deg]">\n' +

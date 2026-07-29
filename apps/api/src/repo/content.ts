@@ -111,7 +111,7 @@ const MAX_LOCALE_BATCH = 5000;
 // Per-bundle caps (defense-in-depth alongside the route body limit).
 const MAX_BUNDLE = { pages: 2000, templates: 500, datasets: 500, entries: 50_000 } as const;
 
-function schemaFor(kind: ContentKind): z.ZodTypeAny {
+export function schemaFor(kind: ContentKind): z.ZodTypeAny {
   const schema = SCHEMAS.get(kind);
   if (!schema) throw new NotFoundError(`unknown content kind: ${kind}`);
   return schema;

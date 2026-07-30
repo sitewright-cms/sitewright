@@ -136,6 +136,30 @@ export interface RegionCompareResult {
   regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
 }
 
+/** Options for {@link SitewrightClient.importWebsite}; every one is server-defaulted when omitted. */
+export interface ImportWebsiteOptions {
+  foundation?: boolean;
+  inferDatasets?: boolean;
+  renderMode?: 'auto' | 'always';
+  /** Block until the import finishes instead of returning a job id. Usually a bad idea — a real crawl
+   *  outlives a tool call, which is the whole reason the async path exists. */
+  wait?: boolean;
+  maxPages?: number;
+  maxDepth?: number;
+}
+
+/** An async import job's state (GET /projects/:id/agent/import-website/:jobId). */
+export interface ImportJobView {
+  id: string;
+  url: string;
+  status: 'running' | 'done' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+  progress: string[];
+  report?: Record<string, unknown>;
+  error?: string;
+}
+
 /** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
 export interface WriteReceipt {
   kind: string;
@@ -586,12 +610,13 @@ export class SitewrightClient {
 
   /** Import a PUBLIC https image by URL: the server downloads, optimizes, and self-hosts it. */
   /** Crawl + import a public website URL into the connected project (the first step of a clone). */
-  async importWebsite(url: string, foundation?: boolean, inferDatasets?: boolean): Promise<ImportWebsiteResult> {
-    return this.request('POST', this.projectPath('/agent/import-website'), {
-      url,
-      ...(foundation !== undefined ? { foundation } : {}),
-      ...(inferDatasets !== undefined ? { inferDatasets } : {}),
-    });
+  async importWebsite(url: string, opts: ImportWebsiteOptions = {}): Promise<ImportWebsiteResult> {
+    return this.request('POST', this.projectPath('/agent/import-website'), { url, ...opts });
+  }
+
+  /** Poll an async import started by {@link importWebsite}. */
+  async importStatus(jobId: string): Promise<ImportJobView> {
+    return this.request('GET', this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}`));
   }
 
   async importImageUrl(url: string, folder?: string): Promise<unknown> {

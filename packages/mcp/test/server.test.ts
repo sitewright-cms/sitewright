@@ -132,6 +132,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
+    importWebsite: vi.fn(async () => ({ ok: true, jobId: 'imp_1', status: 'running' })),
+    importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'https://x.test/', status: 'running', startedAt: Date.now() - 120_000, progress: ['crawl: 7 pages'] })),
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
@@ -1240,6 +1242,55 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(text(res)).toContain('"failed": []');
     await mcp.callTool({ name: 'delete_content_bulk', arguments: { kind: 'entry', ids: ['row_1'], dataset: 'team' } });
     expect(calls(client).deleteContentBulk).toHaveBeenCalledWith('entry', ['row_1'], 'team');
+  });
+
+  // A real crawl outlives any tool call, so import_website hands back a job id and the agent polls. The
+  // summaries must make that unmistakable — a model that reads "ok" as "finished" starts nativizing pages
+  // that do not exist yet, and one that re-runs the import duplicates the whole crawl.
+  describe('import_website / import_status (async)', () => {
+    it('forwards the options and reports a STARTED job, not a finished import', async () => {
+      const client = fakeClient();
+      const res = await (await connect(client, writeScope)).callTool({
+        name: 'import_website',
+        arguments: { url: 'https://x.test/', renderMode: 'always', maxPages: 10 },
+      });
+      expect(calls(client).importWebsite).toHaveBeenCalledWith('https://x.test/', expect.objectContaining({ renderMode: 'always', maxPages: 10 }));
+      expect(text(res)).toMatch(/IMPORT STARTED \(job imp_1\)/);
+      expect(text(res)).toMatch(/import_status/);
+      expect(text(res)).not.toMatch(/IMPORTED ✓/); // never reads as complete
+    });
+
+    it('reports a RUNNING job with its elapsed time and latest progress, and says not to restart', async () => {
+      const client = fakeClient();
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1');
+      expect(text(res)).toMatch(/IMPORT RUNNING \(2m elapsed\)/);
+      expect(text(res)).toMatch(/crawl: 7 pages/);
+      expect(text(res)).toMatch(/do NOT start a second import/);
+    });
+
+    it('reports a FAILED job with its reason', async () => {
+      const client = fakeClient({ importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'failed', startedAt: 0, progress: [], error: 'dns exploded' })) });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/IMPORT FAILED — dns exploded/);
+    });
+
+    it('hands back the NATIVIZE instructions once the job is done', async () => {
+      const client = fakeClient({
+        importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'done', startedAt: 0, progress: [], report: { pagesImported: 22, mediaSelfHosted: 100, warnings: ['a'] } })),
+      });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/WEBSITE IMPORTED ✓ — 22 page\(s\)/);
+      expect(text(res)).toMatch(/NOW NATIVIZE/);
+      expect(text(res)).toMatch(/Importer notes \(1\)/);
+    });
+
+    it('needs content:write — a read-only token is refused and no crawl starts', async () => {
+      const ro = fakeClient();
+      const rej = await (await connect(ro, readScope)).callTool({ name: 'import_website', arguments: { url: 'https://x.test/' } });
+      expect(rej.isError).toBe(true);
+      expect(calls(ro).importWebsite).not.toHaveBeenCalled();
+    });
   });
 
   it('add_language forwards the locale (atomic scaffold) with a write token', async () => {

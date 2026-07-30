@@ -8,6 +8,28 @@ describe('detectImportedEffects', () => {
     expect(detectImportedEffects({ cssText: '', pageHtml: '<div class="page-loader"><span class="dot"></span><span class="dot"></span></div>' }).preloaderEffect).toBe('dots');
   });
 
+  // Measured against the real business.na source: a spinning RING that imported as `bars`, because the
+  // old classifier searched the whole site (css + scripts + every page's markup) for the word "bar".
+  it('classifies a spinning RING as a spinner even when the page says "bar" elsewhere', () => {
+    const cssText = [
+      '.loader{border:1.1em solid rgba(255,255,255,.2);border-left:1.1em solid #fff;border-radius:50%;animation:load8 1.1s infinite linear}',
+      '@keyframes load8{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}',
+      '.navbar .bar{height:2px}', // an unrelated rule that used to decide the answer
+    ].join('\n');
+    const pageHtml = '<div class="preloader"><div class="loader"></div></div><div class="menu-bar">bars</div>';
+    expect(detectImportedEffects({ cssText, pageHtml }).preloaderEffect).toBe('spinner');
+  });
+
+  it('only reads the LOADER\'s own rules and markup, not the rest of the site', () => {
+    // The word "bar"/"dot" outside the loader's subtree must not classify it.
+    const far = '<div class="preloader"><div class="loader"></div></div>' + '<p>x</p>'.repeat(200) + '<div class="progress-bar"></div>';
+    expect(detectImportedEffects({ cssText: '.preloader{position:fixed}', pageHtml: far }).preloaderEffect).toBe('spinner');
+    // …but a bar INSIDE the loader still wins.
+    expect(
+      detectImportedEffects({ cssText: '.preloader{position:fixed}', pageHtml: '<div class="preloader"><span class="progress-bar"></span></div>' }).preloaderEffect,
+    ).toBe('bars');
+  });
+
   it('does NOT invent a preloader from a stray utility class', () => {
     expect(detectImportedEffects({ cssText: '.btn.loader{}', pageHtml: '<span class="loader"></span>' }).preloaderEffect).toBeUndefined();
   });

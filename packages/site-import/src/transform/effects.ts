@@ -24,6 +24,40 @@ export interface EffectSignals {
   preloaderRemoved?: boolean;
 }
 
+/** Names a LOADER — used both to pick out its CSS rules and to find its markup. */
+const LOADER_TOKEN = /(?:preloader|pre-loader|page-?loader|loading-overlay|loading-screen|site-loader|loader-wrapper|spinner-wrapper|\bloader\b|\bspinner\b)/;
+const LOADER_TOKEN_G = /(?:preloader|pre-loader|page-?loader|loading-overlay|loading-screen|site-loader|loader-wrapper|spinner-wrapper|\bloader\b|\bspinner\b)/g;
+
+/**
+ * Which of the three native preloader shapes the source's loader is.
+ *
+ * The style used to be guessed from the WHOLE haystack — every stylesheet, script and page's markup —
+ * where `\bbars?\b` matches the word "bar" in any unrelated class, label or script on the site. A plain
+ * spinning ring imported as `bars`. Two changes: only the loader's OWN rules and its OWN markup subtree
+ * are read, and a positive SPINNER signature wins over a name match — a round element
+ * (`border-radius:50%`) or a rotating animation is a spinner whatever else the rules mention.
+ */
+function classifyPreloader(css: string, pageHtml: string): 'spinner' | 'dots' | 'bars' {
+  // `selector { … }` blocks whose selector names a loader.
+  let loaderCss = '';
+  for (const m of css.matchAll(/([^{}]{0,300})\{([^{}]{0,2000})\}/g)) {
+    if (LOADER_TOKEN.test(m[1] ?? '')) loaderCss += `${m[1] ?? ''}{${m[2] ?? ''}}\n`;
+  }
+  // A window after each loader mention in the markup — its children, without needing a DOM.
+  let loaderHtml = '';
+  for (const m of pageHtml.matchAll(LOADER_TOKEN_G)) loaderHtml += `${pageHtml.slice(m.index, m.index + 500)}\n`;
+
+  // ROUND or SPINNING is a spinner, decided first: a bars loader is neither.
+  const animations = [...loaderCss.matchAll(/animation(?:-name)?\s*:\s*([a-z0-9_-]+)/gi)].map((a) => a[1] ?? '');
+  const rotates = animations.some((n) => new RegExp(`@keyframes\\s+${n}\\b[^}]*rotate`, 'i').test(css));
+  if (/border-radius\s*:\s*(?:50%|100%)/.test(loaderCss) || /rotate\s*\(/.test(loaderCss) || rotates) return 'spinner';
+
+  const scope = `${loaderCss}\n${loaderHtml}`;
+  if (/progress-bar|loading-bar|\bbars?\b/.test(scope)) return 'bars';
+  if (/\bdots?\b|three-dots|dot-/.test(scope)) return 'dots';
+  return 'spinner'; // a preloader we can see but can't describe — the platform default
+}
+
 /**
  * Map the source's dynamic behaviours to native `website.effects` fields.
  *  • preloader  → `preloaderEffect` (a loading overlay that hides on load) — the importer already REMOVES the
@@ -38,9 +72,9 @@ export function detectImportedEffects(sig: EffectSignals): DetectedEffects {
 
   // — Preloader: a full-screen loading overlay. The transform's own removal is the AUTHORITATIVE signal
   //   (its markup is gone from pageHtml by now); also match SPECIFIC markers in the retained CSS as a
-  //   fallback (avoid a stray ".loader" utility). Infer the style from any surviving marker; default spinner.
+  //   fallback (avoid a stray ".loader" utility).
   if (sig.preloaderRemoved || /\bpreloader\b|pre-loader|page-loader|pageloader|loading-overlay|loading-screen|site-loader|preload-wrapper|spinner-wrapper|loader-wrapper/.test(hay)) {
-    out.preloaderEffect = /progress-bar|loading-bar|\bbars?\b/.test(hay) ? 'bars' : /\bdots?\b|three-dots|dot-/.test(hay) ? 'dots' : 'spinner';
+    out.preloaderEffect = classifyPreloader(css, sig.pageHtml.toLowerCase());
   }
 
   // — Button ripple (Materialize/Material "waves", MDC ripple) → nearest native reveal effect.

@@ -81,7 +81,7 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): WebsiteSettings | undefined {
+function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string, hadBackToTop = false): WebsiteSettings | undefined {
   const input: Record<string, unknown> = {};
   if (chrome.mainNav) input.mainNav = chrome.mainNav;
   if (chrome.footer) input.footer = chrome.footer;
@@ -89,11 +89,16 @@ function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): We
   if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
   if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
   if (scripts) input.scripts = scripts; // <script src> links to the self-hosted imported JS (after the body)
-  // Enable the platform BACK-TO-TOP explicitly (it's the replacement for the foreign back-to-top buttons
-  // stripped from the page bodies; default-on, but set so it's clearly enabled in the editor's settings).
-  const effects: Record<string, unknown> = { backToTop: true };
+  // The platform BACK-TO-TOP replaces a foreign back-to-top button the transform stripped — so enable it
+  // only when there WAS one. It used to be set unconditionally, on the theory that it is a harmless
+  // default; it is not. A source with no back-to-top control got one anyway, which is a visible
+  // divergence the fidelity gate can't see (it is a scroll-triggered overlay, absent from a screenshot),
+  // and the author has no reason to suspect a control they never authored. `back-to-top-removed` is the
+  // honest signal: the transform emits it exactly when it removed one.
+  const effects: Record<string, unknown> = {};
+  if (hadBackToTop) effects.backToTop = true;
   if (chrome.preloaderEffect) effects.preloaderEffect = chrome.preloaderEffect;
-  input.effects = effects;
+  if (Object.keys(effects).length > 0) input.effects = effects;
   return WebsiteSettingsSchema.parse(input);
 }
 
@@ -381,7 +386,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // The foreign stylesheet <link> IS wired into website.head even in FOUNDATION mode — the nativize capture
   // needs it to read real computed styles (see the cssUrl note above); nativize strips it at finalize. Only
   // foreign SCRIPTS stay discarded in foundation mode (the extractor replaces chrome/theme; JS isn't needed).
-  let website = buildWebsite(chrome, cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined);
+  const hadBackToTop = diagnostics.some((d) => d.code === 'back-to-top-removed');
+  let website = buildWebsite(chrome, cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined, hadBackToTop);
   let bundleIdentity = identity;
   let bundlePages = routeRes.pages;
   if (opts.foundation) {

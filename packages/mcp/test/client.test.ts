@@ -458,11 +458,20 @@ describe('SitewrightClient — optional-argument branches', () => {
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{}' },
     );
     await client.importWebsite('https://x.test');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // neither key — server defaults apply
-    await client.importWebsite('https://x.test', true);
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // no keys — server defaults apply
+    await client.importWebsite('https://x.test', { foundation: true });
     expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true });
-    await client.importWebsite('https://x.test', true, true);
-    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true, inferDatasets: true });
+    await client.importWebsite('https://x.test', { foundation: true, inferDatasets: true, renderMode: 'always' });
+    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true, inferDatasets: true, renderMode: 'always' });
+  });
+
+  it('polls an async import job by id', async () => {
+    const job = { id: 'imp_1', url: 'https://x.test', status: 'running', startedAt: 1, progress: ['crawl: 3 pages'] };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(job) },
+    );
+    await expect(client.importStatus('imp_1')).resolves.toEqual(job);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/agent/import-website/imp_1');
   });
 
   it('POSTs a bulk delete as a whole list (+ dataset only when scoping entries)', async () => {

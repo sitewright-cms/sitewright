@@ -211,11 +211,11 @@ describe('POST /projects/:id/agent/import-website (non-streaming, agent-callable
     stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
   });
 
-  it('imports a crawled site to completion and returns JSON (owner), foundation ON by default', async () => {
+  it('imports a crawled site to completion and returns JSON (wait:true), foundation ON by default', async () => {
     const seen: Array<{ foundation?: boolean }> = [];
     const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen.push(opts); return okBundle(); }) as never;
     const { app, importBundle } = track(makeApp({ buildBundle }));
-    const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', wait: true } });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload).ok).toBe(true);
     expect(importBundle).toHaveBeenCalledTimes(1);
@@ -226,7 +226,7 @@ describe('POST /projects/:id/agent/import-website (non-streaming, agent-callable
     const seen: Array<{ foundation?: boolean }> = [];
     const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen.push(opts); return okBundle(); }) as never;
     const { app } = track(makeApp({ buildBundle }));
-    await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', foundation: false } });
+    await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', foundation: false, wait: true } });
     expect(seen[0]?.foundation).toBeUndefined();
   });
 
@@ -251,14 +251,69 @@ describe('POST /projects/:id/agent/import-website (non-streaming, agent-callable
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const { app } = track(makeApp({ crawl: async () => { await gate; return onePageCrawl(); } }));
-    const p1 = app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    const p1 = app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', wait: true } });
     await ticks();
-    const r2 = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+    const r2 = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', wait: true } });
     expect(r2.statusCode).toBe(409);
     release();
     const r1 = await p1;
     expect(r1.statusCode).toBe(200);
     await ticks(10); // drain pending sends so a delayed double-send crash lands in THIS test
+  });
+
+  // A real crawl outlives any tool call. The route used to run it INSIDE the request, so the caller saw a
+  // timeout while the import went on to succeed — with no job id, no progress, and no way to tell whether
+  // a retry would duplicate the work.
+  describe('async (the default)', () => {
+    it('answers 202 with a job id immediately, then reports the result on poll', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const { app } = track(makeApp({ crawl: async () => { await gate; return onePageCrawl(); } }));
+
+      const started = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+      expect(started.statusCode).toBe(202); // returned BEFORE the crawl finished
+      const { jobId, status } = JSON.parse(started.payload) as { jobId: string; status: string };
+      expect(status).toBe('running');
+      expect(jobId).toMatch(/^imp_/);
+
+      const running = await app.inject({ method: 'GET', url: `/projects/pa/agent/import-website/${jobId}` });
+      expect(JSON.parse(running.payload).status).toBe('running');
+
+      release();
+      await ticks(20);
+      const done = await app.inject({ method: 'GET', url: `/projects/pa/agent/import-website/${jobId}` });
+      const body = JSON.parse(done.payload) as { status: string; report?: { pagesImported?: number } };
+      expect(body.status).toBe('done');
+      expect(body.report?.pagesImported).toBe(1);
+    });
+
+    it('holds the per-project import slot for the DETACHED job, so a retry still 409s', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const { app } = track(makeApp({ crawl: async () => { await gate; return onePageCrawl(); } }));
+      expect((await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } })).statusCode).toBe(202);
+      // The request is long gone, but the import is not — a second one must still be refused.
+      expect((await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } })).statusCode).toBe(409);
+      release();
+      await ticks(20);
+      // …and the slot is released once it finishes.
+      expect((await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/', wait: true } })).statusCode).toBe(200);
+    });
+
+    it('records a FAILED crawl on the job instead of losing it with the request', async () => {
+      const { app } = track(makeApp({ crawl: async () => { throw new Error('dns exploded'); } }));
+      const started = await app.inject({ method: 'POST', url: '/projects/pa/agent/import-website', payload: { url: 'https://ex.com/' } });
+      const { jobId } = JSON.parse(started.payload) as { jobId: string };
+      await ticks(20);
+      const body = JSON.parse((await app.inject({ method: 'GET', url: `/projects/pa/agent/import-website/${jobId}` })).payload) as { status: string; error: string };
+      expect(body.status).toBe('failed');
+      expect(body.error).toMatch(/dns exploded/);
+    });
+
+    it('404s an unknown job id', async () => {
+      const { app } = track(makeApp());
+      expect((await app.inject({ method: 'GET', url: '/projects/pa/agent/import-website/imp_nope' })).statusCode).toBe(404);
+    });
   });
 });
 

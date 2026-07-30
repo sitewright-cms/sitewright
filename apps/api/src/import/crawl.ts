@@ -33,6 +33,16 @@ export interface CrawlOptions {
   sameOriginOnly: boolean;
   maxBytesTotal: number;
   maxStylesheets: number;
+  /**
+   * When to run the headless render.
+   *  - `'auto'` (default) — only for a page that has no real content without JS: a client-rendered SPA
+   *    shell, or a bare embed wrapper. Cheap, and right for most sites.
+   *  - `'always'` — render EVERY page. For a SERVER-RENDERED site that builds part of its chrome in
+   *    JavaScript: `auto` sees real content, skips the render, and stores the pre-JS DOM — so a header
+   *    or footer assembled at runtime is simply absent from the import, with nothing reporting it.
+   *    Costs a browser navigation per page, so it stays opt-in.
+   */
+  renderMode?: 'auto' | 'always';
 }
 
 export interface CrawlResult {
@@ -152,7 +162,7 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
         // A client-rendered shell (SPA) OR a bare embed WRAPPER (a page whose real content is a single
         // dominant <iframe>, e.g. an Arena/preview host) has no real content when fetched — re-render it
         // headless so its runtime-built DOM is captured and the wrapper's framed document is followed.
-        if (deps.render && (looksClientRendered(html) || embedWrapperFrame(html))) {
+        if (deps.render && (opts.renderMode === 'always' || looksClientRendered(html) || embedWrapperFrame(html))) {
           const rendered = await deps.render(res.url, { signal: deps.signal });
           if (rendered) html = rendered;
         }

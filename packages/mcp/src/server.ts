@@ -27,7 +27,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult } from './client.js';
+import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -179,6 +179,15 @@ function toolError(text: string): ToolResult {
 
 /** Render the website-import report as a readable next-step summary (the `import_website` tool result). */
 function summarizeImport(r: ImportWebsiteResult): string {
+  // The async start: a job id, not a result. Say so plainly, or a model reads "ok:true" as "finished"
+  // and starts nativizing pages that do not exist yet.
+  if (typeof r.jobId === 'string') {
+    return [
+      `IMPORT STARTED (job ${r.jobId}) — it is running in the background and takes MINUTES on a real site.`,
+      `Poll import_status({ jobId: "${r.jobId}" }) every ~30s until status is "done" (or "failed"). Do NOT re-run import_website — a second import of the same URL would duplicate the work.`,
+      'When it is done, its report tells you what landed; then read get_guide("import") once and nativize.',
+    ].join('\n');
+  }
   const warnings = Array.isArray(r.warnings) ? r.warnings : [];
   return [
     `WEBSITE IMPORTED ✓ — ${r.pagesImported ?? 0} page(s) imported (${r.mediaSelfHosted ?? 0} media asset(s) self-hosted).`,
@@ -187,6 +196,17 @@ function summarizeImport(r: ImportWebsiteResult): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/** Render an async import job's state for the poller. */
+function summarizeImportJob(j: ImportJobView): string {
+  if (j.status === 'running') {
+    const last = j.progress.at(-1);
+    const mins = Math.round((Date.now() - j.startedAt) / 60_000);
+    return `IMPORT RUNNING (${mins}m elapsed)${last ? ` — ${last}` : ''}. Poll again in ~30s; do NOT start a second import.`;
+  }
+  if (j.status === 'failed') return `IMPORT FAILED — ${j.error ?? 'unknown error'}. Check the URL, then you may retry import_website.`;
+  return summarizeImport({ ok: true, ...(j.report ?? {}) } as ImportWebsiteResult);
 }
 
 /** Render the autonomous clone run's verdict as a readable per-page summary (the `ai_clone` tool result). */
@@ -1056,9 +1076,29 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           .describe(
             'Guess DATASETS from repeated markup (a card grid → a dataset + one entry per card). Default FALSE and normally leave it so: shape-matching misses a listing whose cards are not identical, names fields after the markup instead of the meaning, and concatenates text split across inline elements — you author better datasets by reading the page. Set true only to see what it would guess.',
           ),
+        renderMode: z
+          .enum(['auto', 'always'])
+          .optional()
+          .describe(
+            'When to run the headless render. "auto" (default) renders only a page with no content without JS (an SPA shell / embed wrapper). Use "always" when the imported pages come back MISSING chrome the live site clearly has — a header or footer a server-rendered site assembles in JavaScript is invisible to "auto", which sees real content and skips the render. Costs a browser navigation per page.',
+          ),
+        maxPages: z.number().int().min(1).max(200).optional(),
+        maxDepth: z.number().int().min(0).max(5).optional(),
       },
     },
-    gate('content:write', ({ url, foundation, inferDatasets }) => client.importWebsite(url, foundation, inferDatasets).then(summarizeImport)),
+    gate('content:write', ({ url, foundation, inferDatasets, renderMode, maxPages, maxDepth }) =>
+      client.importWebsite(url, { foundation, inferDatasets, renderMode, maxPages, maxDepth }).then(summarizeImport),
+    ),
+  );
+
+  server.registerTool(
+    'import_status',
+    {
+      description:
+        'Poll a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. A real crawl takes MINUTES, so import_website hands back a jobId immediately and you check here (roughly every 30s) rather than blocking. NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
+      inputSchema: { jobId: z.string().min(1).max(64) },
+    },
+    gate('content:write', ({ jobId }) => client.importStatus(jobId).then(summarizeImportJob)),
   );
 
   server.registerTool(

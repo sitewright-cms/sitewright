@@ -839,7 +839,11 @@ NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: eac
 in a menu — "header" (the Main Navigation),
 "mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
 title); nav.dropdown:true folds the page's CHILD pages into a dropdown under it. SORT ORDER is the page's
-TOP-LEVEL "order" (ascending, ties by title) — NOT nav.order, a legacy fallback that "order" always beats. The menus
+TOP-LEVEL "order" (ascending, ties by title) — NOT nav.order, a legacy fallback that "order" always beats.
+ONE order governs EVERY menu: there is deliberately no per-slot ordinal. If a menu must run in a different
+order from the page tree (a footer that lists the feature pages first and Blog last, while the header lists
+Blog 5th), do NOT try to force it through nav — HAND-WRITE that menu in its slot as an explicit list of
+{{sw-url}} links. An auto-nav slot is for "the page tree, rendered"; anything else is authored markup. The menus
 are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each
 nav.custom}}, each item exposing path, children (sub-pages, when nav.dropdown is on), newTab, external, and
 the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — use it to build a bespoke
@@ -895,7 +899,12 @@ INNER markup of the Main Navigation / Footer slots.
 IMPORTED PAGES. An external site is imported either by the owner in the editor OR by YOU calling
 \`import_website(url)\` (the first step when asked to clone a URL — the server crawls, renders the live
 page, follows an embed/preview wrapper to the real site, self-hosts images + fonts, and creates the
-scaffold; do NOT ask the user to paste HTML). Each page then lands as a FAITHFUL replica: literal HTML in
+scaffold; do NOT ask the user to paste HTML). It is ASYNC — it hands back a jobId at once and the crawl
+runs for MINUTES; poll \`import_status({jobId})\` about every 30s and do NOT launch a second import while one
+is running (that duplicates the whole crawl). If the imported pages come back MISSING chrome the live site
+clearly has — a header or footer the site assembles in JavaScript — re-import with \`renderMode:"always"\`:
+the default only renders a page that has no content at all without JS, so a server-rendered page with a
+JS-built nav is stored pre-JS. Each page then lands as a FAITHFUL replica: literal HTML in
 \`source\` (no Handlebars), the foreign CSS
 folded into the website criticalCss/head slots, the shared header/footer hoisted into the mainNav/footer
 slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
@@ -1554,7 +1563,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
-  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. It creates NO datasets: you author every collection yourself (inferDatasets:true opts into the old markup guessing).", capability: 'content:write' },
+  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },
+  { name: 'import_status', description: "Poll a website import started by import_website: running | done | failed, the latest progress line, and the report once finished. Never start a second import while one is running.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },

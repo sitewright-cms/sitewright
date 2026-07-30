@@ -80,7 +80,7 @@ describe('buildImportBundle (integration)', () => {
     expect(bundle.project.website?.mainNav).toContain('/media/test/');
     expect(bundle.project.website?.footer).toContain('© Acme');
     expect(bundle.project.website?.mainNav).not.toContain('<script');
-    expect(bundle.project.website?.effects?.backToTop).toBe(true); // platform back-to-top enabled
+    // No back-to-top in this fixture → the platform one is NOT switched on (see the dedicated test below).
     expect(home.source).toContain('Welcome');
     expect(home.source).not.toContain('© Acme');
 
@@ -190,6 +190,24 @@ describe('buildImportBundle (integration)', () => {
     expect(() => validateTemplate(home.source!)).not.toThrow();
     expect(result.diagnostics.some((d) => d.code === 'dataset-inferred')).toBe(true);
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+  });
+
+  // The platform back-to-top is a REPLACEMENT for a foreign one the transform stripped. It used to be
+  // switched on unconditionally, so a source with no back-to-top control got one anyway — a divergence no
+  // screenshot can catch (it only appears once you scroll) and that the author never authored.
+  it('enables the platform back-to-top ONLY when the source actually had one', async () => {
+    const plain = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1>', HOME_HEAD) }]),
+      { media: stubMedia() },
+    );
+    expect(plain.bundles[0]!.project.website?.effects?.backToTop).toBeUndefined();
+
+    const withButton = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1><a href="#top" class="back-to-top">Top</a>', HOME_HEAD) }]),
+      { media: stubMedia() },
+    );
+    expect(withButton.bundles[0]!.project.website?.effects?.backToTop).toBe(true);
+    expect(withButton.diagnostics.some((d) => d.code === 'back-to-top-removed')).toBe(true);
   });
 
   it('inlines the full CSS as a <style> in the page source (accurate replica)', async () => {

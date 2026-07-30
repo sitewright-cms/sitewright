@@ -373,11 +373,15 @@ export class SitewrightClient {
     this.scope = scope;
   }
 
-  async listContent(kind: string, dataset?: string): Promise<unknown[]> {
-    const res = await this.request<{ items: unknown[] }>(
-      'GET',
-      this.projectPath(`/content/${encodeURIComponent(kind)}${datasetQuery(dataset)}`),
-    );
+  /**
+   * List a kind. `summary` drops the heavy body fields (a page's `source` + `data`, a template/snippet
+   * `source`, an entry's `values`) and describes them under `_summary` instead — a full page list carries
+   * every page's Handlebars source, which on a real imported site exceeds the tool-output ceiling.
+   */
+  async listContent(kind: string, dataset?: string, opts: { summary?: boolean } = {}): Promise<unknown[]> {
+    const q = datasetQuery(dataset);
+    const suffix = opts.summary ? `${q ? `${q}&` : '?'}summary=1` : q;
+    const res = await this.request<{ items: unknown[] }>('GET', this.projectPath(`/content/${encodeURIComponent(kind)}${suffix}`));
     return res.items;
   }
 

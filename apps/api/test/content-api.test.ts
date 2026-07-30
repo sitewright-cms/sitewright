@@ -428,3 +428,42 @@ describe('content API — page patch/merge (?merge=1) + import-marker preservati
     expect((item.data as { swImport?: unknown }).swImport ?? null).toBeNull();
   });
 });
+
+// A full page list carries every page's Handlebars source — 337 KB on a 22-page imported site, past the
+// MCP tool-output ceiling, so listing the pages of a real site was impossible. `?summary=1` drops the
+// heavy body fields and describes them instead.
+describe('content API — list summary (?summary=1)', () => {
+  const list = (t: string, projectId: string, kind: string, summary = false) =>
+    app.inject({ method: 'GET', url: `/projects/${projectId}/content/${kind}${summary ? '?summary=1' : ''}`, cookies: { sw_session: t } });
+
+  it('omits source + data and describes them, keeping the metadata', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'listsum');
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/page/about`, cookies: { sw_session: t },
+      payload: { id: 'about', path: 'about', title: 'About', status: 'published', source: '<h1>hi</h1>', data: { heading: 'A' } },
+    });
+    const full = (list_ => list_.json() as { items: Array<Record<string, unknown>> })(await list(t, projectId, 'page'));
+    const about = full.items.find((p) => p.id === 'about')!;
+    expect(about.source).toBe('<h1>hi</h1>'); // default is unchanged — existing callers keep the body
+
+    const sum = (await list(t, projectId, 'page', true)).json() as { items: Array<Record<string, unknown>> };
+    const s = sum.items.find((p) => p.id === 'about')!;
+    expect(s.title).toBe('About');
+    expect(s.status).toBe('published');
+    expect(s.source).toBeUndefined();
+    expect(s.data).toBeUndefined();
+    expect((s._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ source: { bytes: 11 }, data: { keys: ['heading'] } });
+  });
+
+  it('still applies the dataset scope for entries while summarising', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'listsument');
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/dataset/team`, cookies: { sw_session: t }, payload: { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'name', type: 'text' }] } });
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/entry/a?dataset=team`, cookies: { sw_session: t }, payload: { id: 'a', dataset: 'team', values: { name: 'Ann' } } });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry?dataset=team&summary=1`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const items = (res.json() as { items: Array<Record<string, unknown>> }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]!.values).toBeUndefined();
+    expect((items[0]!._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ values: { keys: ['name'] } });
+  });
+});

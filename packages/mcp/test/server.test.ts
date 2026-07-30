@@ -1118,7 +1118,8 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
   it('list_pages forwards to listContent(page)', async () => {
     const client = fakeClient();
     const res = await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: {} });
-    expect(calls(client).listContent).toHaveBeenCalledWith('page');
+    // list_pages now requests the SUMMARY projection (metadata only) — the full body is get_page's job.
+    expect(calls(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -1126,9 +1127,9 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const client = fakeClient();
     const mcp = await connect(client, readScope);
     await mcp.callTool({ name: 'list_content', arguments: { kind: 'dataset' } });
-    expect(calls(client).listContent).toHaveBeenCalledWith('dataset', undefined);
+    expect(calls(client).listContent).toHaveBeenCalledWith('dataset', undefined, { summary: undefined });
     await mcp.callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team' } });
-    expect(calls(client).listContent).toHaveBeenCalledWith('entry', 'team');
+    expect(calls(client).listContent).toHaveBeenCalledWith('entry', 'team', { summary: undefined });
   });
 
   it('get_content forwards kind + id (+ dataset for an entry)', async () => {
@@ -1366,5 +1367,31 @@ describe('inspect_source', () => {
     const err = await (await connect(boom, readScope)).callTool({ name: 'inspect_source', arguments: { pageId: 'home', selectors: ['h1'] } });
     expect(err.isError).toBe(true);
     expect(text(err)).toBe('Error: render failed');
+  });
+});
+
+// A full page list carries every page's Handlebars source — 337 KB on a 22-page imported site, past the
+// tool-output ceiling — so list_pages defaults to metadata only and get_page fetches the one body needed.
+describe('list_pages summary', () => {
+  it('asks the API for the SUMMARY projection by default', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: {} });
+    expect(callsOf(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: true });
+  });
+
+  it('includeSource:true opts back into the full bodies', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: { includeSource: true } });
+    expect(callsOf(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: false });
+  });
+
+  it('list_content stays FULL by default and takes an explicit summary flag', async () => {
+    const a = fakeClient();
+    await (await connect(a, readScope)).callTool({ name: 'list_content', arguments: { kind: 'template' } });
+    expect(callsOf(a).listContent).toHaveBeenCalledWith('template', undefined, { summary: undefined });
+
+    const b = fakeClient();
+    await (await connect(b, readScope)).callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team', summary: true } });
+    expect(callsOf(b).listContent).toHaveBeenCalledWith('entry', 'team', { summary: true });
   });
 });

@@ -466,8 +466,12 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   // ---------------------------------------------------------------- reads (content:read)
   server.registerTool(
     'list_pages',
-    { description: 'List the project’s pages.' },
-    gate(null, () => client.listContent('page')),
+    {
+      description:
+        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large).',
+      inputSchema: { includeSource: z.boolean().optional() },
+    },
+    gate(null, ({ includeSource }: { includeSource?: boolean }) => client.listContent('page', undefined, { summary: !includeSource })),
   );
 
   server.registerTool(
@@ -484,10 +488,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_content',
     {
       description:
-        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together.",
-      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional() },
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit.",
+      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional(), summary: z.boolean().optional() },
     },
-    gate(null, ({ kind, dataset }) => client.listContent(kind, dataset)),
+    gate(null, ({ kind, dataset, summary }: { kind: string; dataset?: string; summary?: boolean }) => client.listContent(kind, dataset, { summary })),
   );
 
   server.registerTool(

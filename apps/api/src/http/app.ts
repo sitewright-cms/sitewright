@@ -275,6 +275,7 @@ import {
   type Settings,
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
+import { summarizeContentList } from '../repo/content-summary.js';
 import { RevisionsRepository } from '../repo/revisions.js';
 import {
   ConflictError,
@@ -2715,22 +2716,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
   // to flood the site-wide settings (criticalCss/head/scripts) write.
-  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string } }>(
+  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string; summary?: string } }>(
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
       const items = await contentRepo.list(ctx, kind);
+      // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
+      // an entry's `values`) and describes them instead. A full page list carries every page's Handlebars
+      // source — 337 KB for a 22-page imported site, past the MCP tool-output ceiling — so listing the
+      // pages of a real site was impossible without it. Opt-IN here (no change for existing callers); the
+      // MCP `list_pages` tool opts in by default because `get_page` already exists for the body.
+      const wantSummary = req.query.summary === '1' || req.query.summary === 'true';
+      const project = (list: unknown[]): unknown[] => (wantSummary ? summarizeContentList(kind, list) : list);
       // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
       // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
       // Validated against the slug charset; ignored for every other (project-global) kind.
       if (kind === 'entry' && req.query.dataset !== undefined) {
         const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
         if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
-        return reply.send({ items: items.filter((it) => (it as { dataset?: string }).dataset === parsed.data) });
+        return reply.send({ items: project(items.filter((it) => (it as { dataset?: string }).dataset === parsed.data)) });
       }
-      return reply.send({ items });
+      return reply.send({ items: project(items) });
     },
   );
 

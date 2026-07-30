@@ -356,11 +356,24 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // Neutralize any `</style` in the (platform + owner-set critical) CSS too — defense-in-depth symmetry
     // with `inlineStyles` below, now that these also pass through the CSS minify transform.
     (rawFidelity ? '' : `<style>${mc(css).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`) +
-    (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
     // (defense-in-depth; mirrors the inlineScripts guard below). Minify BEFORE the neutralize so the
     // escaped `<\/style` sentinel is never fed to the CSS parser.
     (inlineStyles ?? []).map((style) => `<style>${mc(style).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`).join('') +
+    // AUTHOR criticalCss comes AFTER the platform's component/effect sheets, so an author rule WINS a
+    // specificity TIE with them. It used to sit before, and the component sheets are written with
+    // attribute selectors of exactly the weight an author naturally writes — so ties were common and the
+    // platform silently won every one. The author's rule was present in the served CSS and simply never
+    // applied, with nothing reporting it: one clone lost `gap`, `flex-wrap`, `display`, `background`,
+    // `padding` AND `border-radius` on a single tabs component that way, surfacing as three separate
+    // user-visible defects. The only workaround was `!important` on every property the component also
+    // sets — which the design guide tells authors not to reach for.
+    // NOT done with @layer: the platform base sheet ships UNLAYERED rules (.btn, img/video, iframe, form
+    // invalid states), so layering just the component sheets would make all of those start beating
+    // component CSS — a far larger behaviour change than the one being fixed.
+    // Tailwind's utility sheet still loads AFTER this, so a utility class still beats criticalCss (the
+    // normal Tailwind mental model) — only the platform-vs-author tie flips.
+    (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // RAW-FIDELITY replicas also skip the platform's compiled utility sheet (styles.css) — its Tailwind
     // utilities collide with the imported site's same-named classes (e.g. `.w-100` = 100 spacing units
     // here vs. the site's `width:100%`), which would clobber the imported layout.

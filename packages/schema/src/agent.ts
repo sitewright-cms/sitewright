@@ -409,14 +409,19 @@ ANIMATIONS (entrance / scroll-reveal): add data-sw-animation on an element to re
   data-sw-delay="200"           start delay in ms (default 0).
   data-sw-duration="600"        length in ms (default 450, max 20000).
   data-sw-easing="ease-out"     curve: linear | ease | ease-in | ease-out | ease-in-out (default ease-out-ish).
-  data-sw-threshold="0.5"       fraction of the element (0-1) that must be in view before it reveals
-                                (default 0.2). Higher = triggers LATER / more in view; lower = earlier.
+  data-sw-offset="150"          move the reveal LINE to 150px inside the viewport bottom (default: 20% up
+                                from the bottom). Height-independent — use this to tune WHEN things reveal.
+  data-sw-threshold="0.5"       ESCAPE HATCH: additionally require this fraction of the ELEMENT (0-1) to be
+                                visible. Default 0 (no element-fraction gate) — deliberately, because the
+                                ratio a tall element can reach is capped at viewportH/elementH, so a section
+                                taller than the viewport reveals late and one ~5x taller never reveals at
+                                all. Prefer data-sw-offset; only set this for a genuine "N% of THIS element".
   data-sw-once="true"           play ONCE. Default REPLAYS: the reveal resets when the element fully leaves
                                 the viewport and re-plays on re-entry (from any scroll direction).
 The platform detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any
 animation library, CDN links, or scripts (they'd be rejected anyway). Content stays visible
 without JS and motion respects prefers-reduced-motion. data-sw-duration/-delay/-easing/-once are
-SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold is entrance-only. Stagger lists
+SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold/-offset are entrance-only. Stagger lists
 by increasing data-sw-delay per item (e.g. 0/100/200).
 
 PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
@@ -1070,7 +1075,11 @@ desktop compare.
 
 SIGNATURE CHROME CSS → website.criticalCss (NOT a slot <style>): a chrome slot REJECTS <style> blocks and
 inline style="…", so the header/footer's site-wide CSS lives in website.criticalCss (emitted unlayered,
-site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules in criticalCss. For a
+site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules in criticalCss.
+criticalCss is emitted AFTER the platform's component/effect sheets, so your rule WINS a specificity tie
+with them — you do NOT need \`!important\` to restyle a \`data-sw-part\` (a Tailwind utility class still
+wins over criticalCss, which is the normal mental model). If a rule still doesn't apply, it is a real
+specificity difference, not the cascade order — raise the selector rather than reaching for !important. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
 on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do
@@ -1474,9 +1483,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'search_textures', description: "Find transparent background textures (tileable PNG overlays) to set as an element background. Pass one or more terms, comma- or whitespace-separated; returns matching names + ready-to-paste CSS (colour comes from a var(--sw-color-*) token; resolves in preview + exports)." },
   { name: 'get_reference', description: "The authoring reference for writing a page source: the {{sw-*}} helpers, the data-sw-* directives, the binding namespaces, and the loop variables (derived from the engine, can't drift)." },
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
-  { name: 'list_pages', description: "List the project's pages." },
+  { name: 'list_pages', description: "List the project's pages — METADATA only (source + data omitted, described under `_summary`), because a full listing of a real site exceeds the output limit. Use get_page for the one body you need; includeSource:true forces the full (large) listing." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
-  { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows)." },
+  { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows). Pass summary:true to omit heavy bodies (source/data/values) when you only need to see WHAT exists." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },

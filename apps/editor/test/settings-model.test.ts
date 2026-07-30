@@ -25,6 +25,7 @@ const full: SettingsBundle = {
     // values survive (and aren't clobbered by the fill-missing defaults).
     colors: { primary: '#0a7', secondary: '#0bd', accent: '#f50', neutral: '#123', 'base-100': '#fefefe', 'base-content': '#111' },
     typography: { fontFamilies: { body: 'Inter' } },
+    cssTokens: { 'grad-hero': 'linear-gradient(135deg,#06f,#0cf)', z1: '0 2px 5px rgba(0,0,0,.2)' },
   },
   website: {
     siteUrl: 'https://acme.com',
@@ -476,5 +477,46 @@ describe('settings model — translations', () => {
   it('omits the catalog entirely when there are no (non-blank) translations', () => {
     const b = bundle({ blank: { en: '' } });
     expect(toBundle(toForm(b), b).website?.translations).toBeUndefined();
+  });
+});
+
+// cssTokens is now an EDITED form field, not a carried-through one — so the round trip must preserve
+// it, an edit must reach the bundle, and clearing every row must actually delete it (a carry-through
+// would silently resurrect the old value and make deletion impossible in the UI).
+describe('settings model — cssTokens', () => {
+  it('surfaces stored tokens as editable rows and round-trips them', () => {
+    const form = toForm(full);
+    expect(form.cssTokens.map((r) => [r.key, r.value])).toEqual([
+      ['grad-hero', 'linear-gradient(135deg,#06f,#0cf)'],
+      ['z1', '0 2px 5px rgba(0,0,0,.2)'],
+    ]);
+    expect(toBundle(form, full).identity.cssTokens).toEqual(full.identity.cssTokens);
+  });
+
+  it('persists an added token and drops one whose value was cleared', () => {
+    const form = toForm(full);
+    const edited = {
+      ...form,
+      cssTokens: [
+        ...form.cssTokens.filter((r) => r.key !== 'z1'),
+        { id: 'new', key: 'ease-out', value: 'cubic-bezier(.16,1,.3,1)' },
+        { id: 'blank', key: 'unset-me', value: '   ' }, // blank = unset, never persisted
+      ],
+    };
+    expect(toBundle(edited, full).identity.cssTokens).toEqual({
+      'grad-hero': 'linear-gradient(135deg,#06f,#0cf)',
+      'ease-out': 'cubic-bezier(.16,1,.3,1)',
+    });
+  });
+
+  it('DELETES the record when the author removes every row', () => {
+    const cleared = toBundle({ ...toForm(full), cssTokens: [] }, full);
+    expect(cleared.identity.cssTokens).toBeUndefined();
+  });
+
+  it('leaves a project that never used them absent, not an empty object', () => {
+    const base = empty();
+    expect(toForm(base).cssTokens).toEqual([]);
+    expect(toBundle(toForm(base), base).identity.cssTokens).toBeUndefined();
   });
 });

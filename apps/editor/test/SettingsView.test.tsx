@@ -185,3 +185,33 @@ describe('SettingsView', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 });
+
+// The CSS-tokens card is the UI half of identity.cssTokens: without it, a token an AGENT writes is
+// invisible and uneditable in the editor, and the only feedback on a refused value is a Zod error at
+// save time. Its inline message must agree with the schema — both consult isSafeCssTokenValue.
+describe('SettingsView — CSS tokens', () => {
+  it('lists stored tokens as editable rows and saves an edit', async () => {
+    getSettings.mockResolvedValue({
+      item: { ...bundle, identity: { ...bundle.identity, cssTokens: { 'grad-hero': 'linear-gradient(135deg,#06f,#0cf)' } } },
+    });
+    renderView();
+    const value = await screen.findByLabelText('linear-gradient(135deg,#06f,#0cf) 1');
+    expect(value).toHaveValue('linear-gradient(135deg,#06f,#0cf)');
+    fireEvent.change(value, { target: { value: 'linear-gradient(90deg,#000,#fff)' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+    await waitFor(() => expect(putSettings).toHaveBeenCalled());
+    expect(putSettings.mock.calls[0]![1].identity.cssTokens).toEqual({ 'grad-hero': 'linear-gradient(90deg,#000,#fff)' });
+  });
+
+  it('explains a REFUSED value inline instead of failing at save time', async () => {
+    getSettings.mockResolvedValue({ item: { ...bundle, identity: { ...bundle.identity, cssTokens: { g: '#fff' } } } });
+    renderView();
+    const value = await screen.findByLabelText('linear-gradient(135deg,#06f,#0cf) 1');
+    fireEvent.change(value, { target: { value: 'url(https://evil.test/x.png)' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/url\(\) and other resource functions/);
+    expect(value).toHaveAttribute('aria-invalid', 'true');
+    // …and a value the schema accepts clears the warning.
+    fireEvent.change(value, { target: { value: '0 2px 5px rgba(0,0,0,.2)' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});

@@ -196,7 +196,12 @@ export const CssStringSchema = z.string().max(200).regex(CSS_VALUE_SAFE, 'invali
 const CSS_RICH_BREAKOUT = /[;{}<>\\\n\r\t\f\x00\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/;
 const CSS_RICH_COMMENT = /\/\*|\*\//;
 /** Function names that fetch a resource or evaluate an expression — denied at a token boundary,
- *  through an optional vendor prefix (`-webkit-image-set(`, `-moz-element(`). */
+ *  through an optional vendor prefix (`-webkit-image-set(`, `-moz-element(`).
+ *  The optional `-[a-z]+-` prefix backtracks at worst LINEARLY per start position (one greedy run
+ *  looking for its closing `-`), so the whole scan is quadratic — not exponential — and every caller
+ *  feeds it a value already capped at 300 chars ({@link CssTokenValueSchema}, and the importer's own
+ *  per-value bound), which puts the adversarial worst case in the tens of thousands of steps. */
+// eslint-disable-next-line security/detect-unsafe-regex -- bounded input + linear per-position backtracking (see above)
 const CSS_RICH_FETCH = /(?:^|[^\w-])(?:-[a-z]+-)?(?:url|src|image|image-set|element|expression)\s*\(/i;
 const CSS_RICH_ATRULE = /@import/i;
 

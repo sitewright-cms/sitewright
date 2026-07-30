@@ -688,6 +688,13 @@ ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extr
 \`origins\`, and — if the SDK injects its OWN widget iframe like a chat bubble — its frame-src hosts in
 \`frameOrigins\`). On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
 origins — no manual allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
+NOT a tracker? Do NOT enable the consent manager just to allow an origin, and NEVER plant a
+\`type="text/plain" data-sw-consent\` script or a commented-out <iframe> to get one past the scanner. Put it
+in \`website.cspOrigins\` — { script?, connect?, frame?, font?, style?, media? }, bare hostnames (optionally
+one leading \`*.\`), merged whether or not the consent manager is on. That is the right home for a custom
+form endpoint, a captcha, a fonts/CDN host or a maps embed. NOTE the CSP is only ENFORCED on
+platform-hosted origins (as a response header) — an exported site ships no enforcing policy at all, and the
+draft preview is isolated by its sandbox, so "works in preview, blocked live" means a missing cspOrigins entry.
 EMBEDS / IFRAMES: there is NO embed helper — just paste the provider's normal <iframe …> (YouTube, Vimeo,
 Maps, Calendly, …). With the manager enabled, ANY cross-origin iframe is automatically HELD behind an
 "Allow once / Always allow" placeholder until consent, and its frame-src CSP origin is derived automatically.
@@ -1552,6 +1559,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'reusable page layout shared across pages', where: 'get_guide("templates")' },
   { need: 'site header / footer / sidebar (chrome on every page)', where: 'the website.mainNav/footer/sidebar* settings slots — get_guide("nav")' },
   { need: 'compare my build to the original + PROVE fidelity', where: 'compare_to_source (see) · compare_regions (2× crisp chrome crops) · fidelity_check (the PASS/FAIL gate)' },
+  { need: 'a third party is BLOCKED on the published site (captcha, fonts CDN, maps, my own API)', where: 'website.cspOrigins { script?, connect?, frame?, font?, style?, media? } — bare hostnames; do NOT enable the consent manager just for this. Only enforced on platform-hosted origins.' },
   { need: "MEASURE the original's real values (font-size, padding, colour, gradient, radius, shadow, transform)", where: 'inspect_source({ pageId, selectors }) — computed styles + rects off the LIVE original; side:"build" measures your clone the same way' },
   { need: 'read chrome/markup a site builds in JavaScript (the stored import has none)', where: 'inspect_source({ pageId, selectors, html:true }) — returns the SETTLED outerHTML' },
   { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },

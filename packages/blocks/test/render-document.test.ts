@@ -306,3 +306,29 @@ describe('renderDocument — cascade order (author criticalCss vs platform compo
     expect(doc).toContain('.author-marker{gap:10px}');
   });
 });
+
+// The site's content policy is enforced ONLY on platform-hosted origins, as a response header. In the
+// document it is INERT: a strict `default-src 'self'` shipping inside every exported site protects nobody
+// the platform is responsible for, while silently breaking web fonts, analytics beacons and embedded maps
+// on a customer's own server — and they can't remove it without editing every built file.
+describe('renderDocument — the CSP travels as an INERT meta, never an enforcing one', () => {
+  it('emits name="sw-csp", never http-equiv', () => {
+    const policy = "default-src 'self'; frame-src 'self' https://www.youtube.com";
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', metaCsp: policy });
+    expect(doc).toContain('name="sw-csp"');
+    expect(doc).not.toContain('http-equiv="Content-Security-Policy"');
+    // the policy itself is intact (attribute-escaped) so the hosted origin can reconstruct the header
+    expect(doc).toContain('https://www.youtube.com');
+  });
+
+  it('emits nothing at all when there is no policy to carry', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
+    expect(doc).not.toContain('sw-csp');
+    expect(doc).not.toContain('Content-Security-Policy');
+  });
+
+  it('escapes the policy into the attribute (it can never break out of the meta)', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', metaCsp: 'default-src \'self\'; report-to "x"><script>alert(1)</script>' });
+    expect(doc).not.toContain('<script>alert(1)</script>');
+  });
+});

@@ -29,6 +29,9 @@ export interface CspOrigins {
 
 const EMPTY: CspOrigins = { script: [], frame: [], connect: [], img: [], style: [], font: [], media: [] };
 
+/** `website.cspOrigins` — the author's own extra origins, per directive (all optional). */
+export type SiteCspOrigins = Partial<Record<keyof CspOrigins, readonly string[]>>;
+
 /**
  * Curated, versioned origin bundles per preset. Maintained in-repo — the owner picks a preset and never
  * types a URL. Bare hostnames (a single leading `*.` wildcard allowed); the builders prepend `https://`.
@@ -249,10 +252,23 @@ export function consentRuntimeIntegrations(consent: Consent | undefined): Consen
  * {@link authorContentCspOrigins}) are added independently — a held iframe still needs its frame-src origin
  * whether or not the manager is enabled.
  */
-export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): CspOrigins {
+export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}, siteOrigins?: SiteCspOrigins): CspOrigins {
   const acc: Record<keyof CspOrigins, Set<string>> = { script: new Set(), frame: new Set(), connect: new Set(), img: new Set(), style: new Set(), font: new Set(), media: new Set() };
   const mergeBundle = (b: Partial<CspOrigins>): void => (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => (b[k] ?? []).forEach((h) => acc[k].add(h)));
   mergeBundle(extraOrigins);
+  // `website.cspOrigins` — the author's OWN allow-list, merged unconditionally (NOT gated on the consent
+  // manager). Consent integrations describe trackers that must be held until the visitor agrees; a form
+  // endpoint or a captcha is neither, and gating the ability to name one behind a site-wide cookie banner
+  // is what pushed authors into planting scanner-bait tags instead. Re-validated here (defence in depth
+  // over the schema regex) so a bad value from a direct DB write can't break out of the directive.
+  if (siteOrigins) {
+    (Object.keys(acc) as (keyof CspOrigins)[]).forEach((k) => {
+      for (const h of siteOrigins[k] ?? []) if (CSP_HOST_TOKEN_RE.test(h)) acc[k].add(h);
+    });
+    // A script host is useless without being able to TALK to it — mirror script → connect, exactly as the
+    // advanced integration `origins` already do, so `{script:['x.test']}` doesn't silently half-work.
+    for (const h of siteOrigins.script ?? []) if (CSP_HOST_TOKEN_RE.test(h)) acc.connect.add(h);
+  }
   for (const i of consent?.enabled === true ? consent.integrations ?? [] : []) {
     const preset = i.preset ?? 'custom';
     mergeBundle(preset === 'ga4' || preset === 'gtm' ? CONSENT_PRESET_ORIGINS[preset] : EMPTY);
@@ -293,8 +309,8 @@ const https = (hosts: string[]): string => hosts.map((h) => `https://${h}`).join
  * is nothing to widen (caller then leaves the strict `default-src 'self'` default in place). Adds ONLY the
  * specific https origins; never 'unsafe-inline'/'unsafe-eval'/'*'. Keeps frame-ancestors 'none'.
  */
-export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}): string | undefined {
-  const o = consentCspOrigins(consent, extraOrigins);
+export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: Partial<CspOrigins> = {}, siteOrigins?: SiteCspOrigins): string | undefined {
+  const o = consentCspOrigins(consent, extraOrigins, siteOrigins);
   if (!hasAny(o)) return undefined;
   // `script-src` includes `'unsafe-inline'` so the OWNER'S authored JS (inline `<script>` in a page body or
   // website.head/scripts) runs on the sites the user actually ships to — their own server (export), the
@@ -319,7 +335,9 @@ export function buildSiteCspHeader(consent: Consent | undefined, extraOrigins: P
 
 /**
  * The baked `<meta http-equiv>` CSP for the published HTML (static-export parity on strict external hosts).
- * Same allow-list as the header MINUS frame-ancestors (a meta CSP ignores it). `undefined` when nothing to widen.
+ * Same allow-list as the header MINUS frame-ancestors. Shipped in the document as an INERT
+ * `<meta name="sw-csp">` (browsers ignore it) and promoted to a real header only on a platform-hosted
+ * origin — see siteCspHeaderFromHtml. `undefined` when there is nothing to widen.
  *
  * `extraScriptSrc` appends extra `script-src` source expressions (e.g. `'sha256-…'` hashes) to the directive.
  * Its ONLY caller is the DRAFT whole-site preview build, which injects an inline first-party runtime (the
@@ -333,8 +351,9 @@ export function buildConsentMetaCsp(
   consent: Consent | undefined,
   extraOrigins: Partial<CspOrigins> = {},
   extraScriptSrc: readonly string[] = [],
+  siteOrigins?: SiteCspOrigins,
 ): string | undefined {
-  const header = buildSiteCspHeader(consent, extraOrigins);
+  const header = buildSiteCspHeader(consent, extraOrigins, siteOrigins);
   if (!header) return undefined;
   // Defence-in-depth: every source expression must be one CSP token — a `; ` (or space) inside an item
   // would splice a NEW directive on reassembly. Today's only caller passes a `'sha256-<base64>'` literal
@@ -366,7 +385,7 @@ export function buildConsentMetaCsp(
 export function siteCspHeaderFromHtml(html: string): string | undefined {
   const titleAt = html.indexOf('<title');
   const head = titleAt === -1 ? html : html.slice(0, titleAt);
-  const m = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/i.exec(head);
+  const m = /<meta name="sw-csp" content="([^"]*)"/i.exec(head);
   if (!m || !m[1]) return undefined;
   const decoded = m[1]
     .replace(/&#39;/g, "'")

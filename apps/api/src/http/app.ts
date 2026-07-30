@@ -5137,12 +5137,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const safePath = path.replace(/[\r\n\0]/g, '');
           return reply.redirect(`${siteBase}${safePath}/${query}`, 301);
         }
-        // Per-site CSP widening (PAGE responses only): a consent-enabled site WITH third-party integrations
-        // bakes a `<meta http-equiv CSP>` into its HTML; reconstruct the RESPONSE-HEADER form from it (the
-        // meta = header minus frame-ancestors). This costs only a string scan — no settings read — and is
-        // guaranteed consistent with the served HTML. It RELAXES the strict `default-src 'self'` default to
-        // EXACTLY the registered origins for BOTH the subdomain and the path form (they share this handler);
-        // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
+        // Per-site CSP (PAGE responses only). The CSP is enforced HERE, as a response header, and ONLY on
+        // platform-hosted origins — this is where the platform has something to protect (many tenants on one
+        // parent domain, adjacent to the editor origin). The build ships the policy in the document as an
+        // INERT `<meta name="sw-csp">`, which browsers ignore, so an EXPORTED site and the sandboxed draft
+        // preview carry no enforcement at all; this promotes it to the real header for hosted traffic.
+        // Reading it from the served HTML costs only a string scan — no settings read, no extra disk read —
+        // and is guaranteed consistent with the page actually being served. It RELAXES the strict
+        // `default-src 'self'` floor to EXACTLY the site's registered origins for both the subdomain and the
+        // path form (they share this handler); route-scoped, so the editor/app origin CSP is untouched.
         const metaCsp = siteCspHeaderFromHtml(html);
         if (viaSubdomain) {
           // Isolated subdomain origin: the OWNER's authored inline JS RUNS. An embed page carries the
@@ -5156,9 +5159,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('x-frame-options', 'DENY');
         } else if (metaCsp) {
           // Path-form fallback on the cookie-bearing app origin (only reached when no sites domain is
-          // configured — else we 301'd to the subdomain above). `metaCsp` derives ONLY from the PLATFORM's
-          // baked meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via website.head, which
-          // lands after <title>), so we can safely KEEP the consented frame-src/script-src origins while
+          // configured — else we 301'd to the subdomain above). The policy derives ONLY from the PLATFORM's
+          // own `name="sw-csp"` meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via
+          // website.head, which lands after <title>), so we can safely KEEP the consented origins while
           // STRIPPING script `'unsafe-inline'` — author inline JS can never run on the app origin. The
           // platform meta's script-src is always the literal `script-src 'self' 'unsafe-inline'[ <origins>]`.
           reply

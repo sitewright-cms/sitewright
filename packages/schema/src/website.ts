@@ -862,6 +862,39 @@ const WebsiteSettingsObject = z.object({
    */
   consent: ConsentSchema.optional(),
   /**
+   * EXTRA CSP ORIGINS the published site may load from / talk to, beyond the strict `'self'` floor.
+   *
+   * Only meaningful on a PLATFORM-HOSTED origin, which is the one place the policy is actually enforced
+   * (as a response header — an exported site ships no enforcing CSP at all). Use it when the site talks to
+   * a third party that is NOT a consent-gated tracker: a custom form endpoint, a captcha, a fonts/CDN host,
+   * a maps embed.
+   *
+   * Before this existed the only ways to widen the policy were to enable the whole CONSENT MANAGER (which
+   * injects a cookie banner site-wide — a heavy, visible change to make for a CSP entry) or to plant tags
+   * whose sole purpose was to be scanned: a `<script type="text/plain" data-sw-consent src>` for
+   * script/connect, and an `<iframe>` INSIDE AN HTML COMMENT for frame-src, since the scanner is a regex
+   * over the raw HTML. Both worked and neither was defensible.
+   *
+   * Bare hostnames, optionally one leading `*.` — no scheme, path or port (the publisher prepends
+   * `https://`). Merged unconditionally, independent of the consent manager.
+   */
+  cspOrigins: z
+    .object({
+      /** `script-src` — a third-party script host (also allow-listed for `connect-src`). */
+      script: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+      /** `connect-src` — fetch/XHR/WebSocket targets: your own API, a form endpoint, an analytics beacon. */
+      connect: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+      /** `frame-src` — embedded iframes: a captcha challenge, a map, a video player, a booking widget. */
+      frame: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+      /** `font-src` — a web-font host (self-hosted fonts need nothing here). */
+      font: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+      /** `style-src` — an external stylesheet host. */
+      style: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+      /** `media-src` — externally hosted video/audio. */
+      media: z.array(z.string().max(253).regex(CSP_HOST_RE, 'each origin is a bare hostname (optionally *.), no scheme/path')).max(20).optional(),
+    })
+    .optional(),
+  /**
    * Nav/button EFFECT schemes applied site-wide (the no-code picker). Rendered as `<body>` classes;
    * the CSS tree-shakes per scheme. Authors keep full freedom (per-element scheme classes + custom
    * CSS via `criticalCss`). See {@link WebsiteEffectsSchema}.

@@ -126,7 +126,10 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   head?: string;
   customScripts?: string;
-  /** Consent-derived `<meta http-equiv="Content-Security-Policy">` content (static-export parity). Omit = none. */
+  /**
+   * The site's content policy, emitted as an INERT `<meta name="sw-csp">` — browsers ignore it; a
+   * platform-HOSTED origin promotes it to a real response header. Omit = none.
+   */
   metaCsp?: string;
   /**
    * Project-wide critical CSS, inlined in `<head>` after the brand styles
@@ -340,7 +343,20 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // Consent-derived CSP for static-export parity (so a strict external host allows the consented
     // third-party origins); platform-local serving ALSO sets it as a response header. Omitted when no
     // consent integrations are configured, so a consent-off site is byte-identical.
-    (metaCsp ? `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(metaCsp)}" />\n` : '') +
+    // The site's content policy travels with the document as an INERT `name="sw-csp"` meta — browsers
+    // ignore it; only a PLATFORM-HOSTED origin promotes it to a real `content-security-policy` RESPONSE
+    // HEADER (siteCspHeaderFromHtml), where the platform actually has something to protect: many tenants
+    // on one parent domain, next to the editor origin.
+    // It used to be an ENFORCING `http-equiv` meta, which meant a strict `default-src 'self'` shipped
+    // inside every EXPORTED site too. On a customer's own server that protects nobody the platform is
+    // responsible for, while `font-src 'self'` / `connect-src 'self'` / `frame-src 'self'` silently break
+    // ordinary things they'd expect to work — web fonts, an analytics beacon, an embedded map — and they
+    // cannot remove it without editing every built file. (It never bought much anyway: `script-src`
+    // carries `'unsafe-inline'` so the owner's own JS runs, so inline-script injection was not blocked.)
+    // Same reasoning applies to the signed draft preview, which is already isolated by `sandbox
+    // allow-scripts` — an opaque origin, which is what actually keeps author content away from the editor
+    // session; the origin allow-list added nothing there but false failures.
+    (metaCsp ? `<meta name="sw-csp" content="${escapeAttr(metaCsp)}" />\n` : '') +
     // No-flash color-scheme init FIRST (sync, pre-paint): re-applies a returning visitor's stored
     // scheme before the document renders. External (publish) or inlined (sandboxed preview).
     // RAW-HTML pages omit ALL platform JS (this theme init + the component runtimes below).

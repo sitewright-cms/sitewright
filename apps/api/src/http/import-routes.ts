@@ -91,6 +91,13 @@ function wantsFoundation(req: FastifyRequest): boolean {
   return q === '1' || q === 'true';
 }
 
+/** Opt-in `?inferDatasets=1`: guess DATASETS from repeated markup. Off by default — mechanical inference
+ *  produced junk collections more often than real ones, so authoring them is the agent's job now. */
+function wantsInferDatasets(req: FastifyRequest): boolean {
+  const q = (req.query as { inferDatasets?: string } | undefined)?.inferDatasets;
+  return q === '1' || q === 'true';
+}
+
 const ImportWebsiteBody = z.object({
   url: z.string().url().max(2048),
   maxPages: z.number().int().min(1).max(IMPORT_PAGE_CEIL).optional(),
@@ -98,8 +105,9 @@ const ImportWebsiteBody = z.object({
 });
 
 // Agent-callable import: same body + an explicit `foundation` toggle (ON by default — a clone wants the
-// native foundation scaffold, not a raw-CSS literal import).
-const AgentImportBody = ImportWebsiteBody.extend({ foundation: z.boolean().optional() });
+// native foundation scaffold, not a raw-CSS literal import) and `inferDatasets` (OFF by default — an
+// agent reading the page authors far better datasets than markup-shape guessing).
+const AgentImportBody = ImportWebsiteBody.extend({ foundation: z.boolean().optional(), inferDatasets: z.boolean().optional() });
 
 /** Website slots that are RAW (unsanitized) or validated — all must be script-free after import. */
 const SCRIPTABLE_SLOTS = ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
@@ -384,9 +392,12 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     media: MediaPort,
     onProgress: (e: unknown) => void,
     extra: { truncated: boolean; warnings: string[] },
-    foundation = false,
+    // Named rather than positional: two independent opt-ins that would otherwise be a pair of
+    // indistinguishable booleans at every call site.
+    mode: { foundation?: boolean; inferDatasets?: boolean } = {},
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
+    const foundation = mode.foundation ?? false;
     onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
     const result = await buildBundle(site, {
       media,
@@ -394,6 +405,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
       importedAt: new Date().toISOString(),
       fetchWebfont: fetchWebfontFaces,
       ...(foundation ? { foundation: true } : {}),
+      ...(mode.inferDatasets ? { inferDatasets: true } : {}),
     });
     const bundle = result.bundles[0];
     if (!bundle) throw new Error('the import produced no content');
@@ -456,6 +468,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
+    const inferDatasets = wantsInferDatasets(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
@@ -480,7 +493,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
             },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
-          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
+          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },
         log,
@@ -507,6 +520,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply; // sends 409/429
     const foundation = parsed.data.foundation ?? true;
+    const inferDatasets = parsed.data.inferDatasets ?? false;
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
@@ -528,7 +542,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         },
       );
       if (crawlResult.site.pages.length === 0) return reply.code(422).send({ error: 'no pages could be crawled from the URL' });
-      const report = await convertAndImport(ctx, project, crawlResult.site, media, noop, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
+      const report = await convertAndImport(ctx, project, crawlResult.site, media, noop, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
       return reply.send({ ok: true, ...report });
     } finally {
       releaseSlot(project.id);
@@ -568,6 +582,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
+    const inferDatasets = wantsInferDatasets(req);
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
@@ -577,7 +592,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         async (onProgress) => {
           const fetcher = makeFetcher(abort.signal);
           const media = makeMediaPort(ctx, project.slug, fetcher);
-          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, foundation, abort.signal);
+          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },
         log,

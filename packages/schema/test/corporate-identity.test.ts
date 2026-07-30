@@ -255,4 +255,26 @@ describe('typography.named (custom font slots)', () => {
     // prototype-pollution key
     expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { __proto__: { family: 'serif', weight: 400 } } } })).toThrow();
   });
+
+  // cssTokens: the free-form escape hatch for values colors/spacing/radii cannot express.
+  it('stores free-form cssTokens (gradients, shadows, var() chains) that a plain token value rejects', () => {
+    const cssTokens = {
+      'grad-hero': 'linear-gradient(135deg,#06f,#0cf)',
+      z1: '0 2px 5px rgba(0,0,0,.2)',
+      'ease-out': 'cubic-bezier(.16,1,.3,1)',
+    };
+    expect(CorporateIdentitySchema.parse({ name: 'A', cssTokens }).cssTokens).toEqual(cssTokens);
+    // The same value under `spacing` is rejected — that record's charset bans parentheses, which is
+    // exactly why cssTokens exists rather than widening the categorized records.
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', spacing: { g: 'linear-gradient(#fff,#000)' } })).not.toThrow();
+  });
+
+  it('rejects a cssToken that could escape its declaration or fetch a resource', () => {
+    for (const bad of ['red; } body{display:none', 'url(https://evil.test/x.png)', 'red /*', 'linear-gradient(#fff', '@import "x"']) {
+      expect(() => CorporateIdentitySchema.parse({ name: 'A', cssTokens: { t: bad } })).toThrow();
+    }
+    // and a prototype-pollution key (JSON.parse, so it is a real OWN key — an object literal's
+    // `__proto__` would just set the prototype and never reach the record).
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', cssTokens: JSON.parse('{"__proto__":"1px"}') })).toThrow();
+  });
 });

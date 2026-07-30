@@ -9,6 +9,7 @@ import {
   extractContentWidth,
   extractColors,
   extractHeaderDecor,
+  extractRootVars,
   extractTypography,
   foundationCriticalCss,
   isIconFont,
@@ -261,6 +262,67 @@ describe('foundationCriticalCss', () => {
   });
 });
 
+// The source's :root custom properties are TRANSCRIBED into criticalCss under their ORIGINAL names, so
+// a declaration copied out of the original (background:var(--bn-grad)) still resolves once foundation
+// mode discards the foreign stylesheet. Transcription, not inference — no attempt to interpret a var.
+describe('extractRootVars', () => {
+  it('carries :root vars over verbatim, including values no categorized token could hold', () => {
+    const css = ':root{--bn-grad:linear-gradient(135deg,#06f,#0cf);--z1:0 2px 5px rgba(0,0,0,.2);--ease:cubic-bezier(.16,1,.3,1)}';
+    const out = extractRootVars(css);
+    expect(out).toContain('--bn-grad:linear-gradient(135deg,#06f,#0cf);');
+    expect(out).toContain('--z1:0 2px 5px rgba(0,0,0,.2);');
+    expect(out).toContain('--ease:cubic-bezier(.16,1,.3,1);');
+    expect(out.startsWith(':root{')).toBe(true);
+  });
+
+  it('reads html{} and a :root selector LIST, and lets a later declaration win', () => {
+    expect(extractRootVars('html{--a:1px}')).toContain('--a:1px');
+    expect(extractRootVars(':root,[data-theme=light]{--a:2px}')).toContain('--a:2px');
+    expect(extractRootVars(':root{--a:1px}\n:root{--a:9px}')).toContain('--a:9px');
+  });
+
+  it('ignores vars declared OUTSIDE :root — flattening a component-scoped var to global changes behaviour', () => {
+    const out = extractRootVars('.card{--pad:8px}:root{--gap:4px}');
+    expect(out).toContain('--gap:4px');
+    expect(out).not.toContain('--pad');
+  });
+
+  it('rewrites a url() to the hosted /media ref and DROPS an unresolved foreign hotlink', () => {
+    const map = new Map([['https://ex.com/a.png', '/media/s/main/a.png']]);
+    const out = extractRootVars(":root{--hosted:url('https://ex.com/a.png');--foreign:url('https://other.com/b.png')}", map);
+    expect(out).toContain("--hosted:url('/media/s/main/a.png')");
+    expect(out).not.toContain('other.com');
+  });
+
+  it('drops a value that could escape the declaration or fetch, and returns empty with no vars', () => {
+    // `}` would close the :root block we are building; `expression()` evaluates.
+    expect(extractRootVars(':root{--ok:1px;--bad:red /*}')).not.toContain('--bad');
+    expect(extractRootVars(':root{--bad:expression(alert(1))}')).toBe('');
+    expect(extractRootVars('body{color:red}')).toBe('');
+  });
+
+  it('bounds how much foreign CSS can land in criticalCss — by count, per-value length AND total bytes', () => {
+    const many = ':root{' + Array.from({ length: 300 }, (_, i) => `--v${i}:${i}px`).join(';') + '}';
+    const out = extractRootVars(many);
+    expect(out.match(/--v\d+:/g)).toHaveLength(120); // MAX_ROOT_VARS
+    // An over-long single value is skipped rather than truncated (a half declaration is invalid CSS).
+    expect(extractRootVars(`:root{--big:${'a'.repeat(400)}}`)).toBe('');
+    // The BYTE budget is the bound that matters: criticalCss is capped at 32 KB by the schema, so an
+    // unbounded transcription would make WebsiteSettingsSchema REJECT the settings and fail the import.
+    const fat = ':root{' + Array.from({ length: 120 }, (_, i) => `--v${i}:${'a'.repeat(280)}`).join(';') + '}';
+    const fatOut = extractRootVars(fat);
+    expect(fatOut.length).toBeLessThan(6_200); // ~34 KB unbounded → held to the budget
+    expect(fatOut.endsWith(';}')).toBe(true); // …and cut at a declaration boundary, never mid-value
+    // The whole emitted criticalCss therefore stays well inside the 32 KB schema cap.
+    expect(foundationCriticalCss('#fff', undefined, fatOut).length).toBeLessThan(32_000);
+  });
+
+  it('is spliced into criticalCss FIRST, so the platform rules below can still override it', () => {
+    const css = foundationCriticalCss('#fff', undefined, ':root{--bn-grad:red}');
+    expect(css.indexOf('--bn-grad:red')).toBeLessThan(css.indexOf('.bp-hero'));
+  });
+});
+
 describe('extractContentWidth', () => {
   it('reads a width-ish CSS var (the reliable signal)', () => {
     expect(extractContentWidth(':root{--template-width:1400px}body{x:1}')).toBe('1400px');
@@ -409,7 +471,10 @@ describe('configurePageNav', () => {
     ];
     configurePageNav(pages);
     const byId = Object.fromEntries(pages.map((p) => [p.id, p])) as Record<string, Page>;
-    expect(byId.home!.nav).toMatchObject({ slots: ['header'], order: 0, title: 'Home' });
+    // Sibling order is the page-tree `order`; `nav` carries no legacy copy of it any more.
+    expect(byId.home!.nav).toMatchObject({ slots: ['header'], title: 'Home' });
+    expect(byId.home!.nav).not.toHaveProperty('order');
+    expect(byId.home!.order).toBe(0);
     expect(byId.about!.nav).toMatchObject({ dropdown: true });
     expect(byId.services!.nav).toMatchObject({ dropdown: true });
     // children carry NO nav object (they nest via parent) — empty slots would be rejected on PUT
@@ -431,7 +496,10 @@ describe('configurePageNav', () => {
     ];
     configurePageNav(pages);
     const byId = Object.fromEntries(pages.map((p) => [p.id, p])) as Record<string, Page>;
-    expect(byId.home!.nav).toMatchObject({ slots: ['header'], order: 0, title: 'Home' });
+    // Sibling order is the page-tree `order`; `nav` carries no legacy copy of it any more.
+    expect(byId.home!.nav).toMatchObject({ slots: ['header'], title: 'Home' });
+    expect(byId.home!.nav).not.toHaveProperty('order');
+    expect(byId.home!.order).toBe(0);
     expect(byId.home!.nav).not.toHaveProperty('dropdown'); // home's "children" ARE the menu, not a dropdown under it
     expect(byId.about!.nav).toMatchObject({ slots: ['header'], dropdown: true });
     expect(byId.services!.nav).toMatchObject({ slots: ['header'], dropdown: true });

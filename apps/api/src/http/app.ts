@@ -2568,7 +2568,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
         '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
         '</section>\n',
-      nav: { slots: ['header'], order: 0 },
+      order: 0,
+      nav: { slots: ['header'] },
     });
     return reply.code(201).send({ project });
   });
@@ -2830,6 +2831,53 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (scope === undefined) return reply; // 400 already sent (entry requires ?dataset=)
       await contentRepo.remove(ctx, kind, req.params.entityId, scope);
       return reply.code(204).send();
+    },
+  );
+
+  // BULK delete — one call removes up to BULK_DELETE_MAX entities of one kind. Cleaning up after a
+  // mechanical import (dozens of junk datasets/entries, a batch of scaffolded pages) meant one DELETE
+  // per id: slow interactively, and for an agent a rate-limit wall that made "undo this import" cost
+  // more turns than the import itself. POST (not DELETE-with-a-body) because a body on DELETE is
+  // under-specified and our own client trips Fastify's empty-body check on it.
+  //
+  // PARTIAL SUCCESS is the contract: each id is attempted independently and the response reports both
+  // lists, so one bad id (already gone, wrong dataset) can't abort the other 99. Deletes run
+  // SEQUENTIALLY — `remove` writes a restore tombstone per entity, and serialising keeps that history
+  // write ordered and the per-request DB work bounded.
+  const BULK_DELETE_MAX = 200;
+  const BulkDeleteBody = z.object({
+    ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX),
+    /** Required when kind is `entry` — entry ids are unique only within their dataset. */
+    dataset: z.string().optional(),
+  });
+  app.post<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+    '/projects/:projectId/content/:kind/bulk-delete',
+    { config: rlAgent(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:delete');
+      const kind = parseGenericKind(req.params.kind);
+      const body = BulkDeleteBody.parse(req.body);
+      const scope = entryScope(kind, body.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent (entry requires a dataset)
+      // Duplicates would double-count `deleted` and report a phantom not-found on the second pass.
+      const ids = [...new Set(body.ids)];
+      const deleted: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const id of ids) {
+        try {
+          await contentRepo.remove(ctx, kind, id, scope);
+          deleted.push(id);
+        } catch (err) {
+          // Only DOMAIN errors carry a message meant for a caller ("page not found", "the settings
+          // singleton cannot be deleted") — the same allowlist the global error handler applies. An
+          // unexpected failure is LOGGED and reported generically, so a DB/driver message (table and
+          // column names, constraint text) can't ride out through a per-id report.
+          const domain = err instanceof NotFoundError || err instanceof ForbiddenError || err instanceof ConflictError;
+          if (!domain) req.log.error({ err, kind, entityId: id }, 'bulk delete failed');
+          failed.push({ id, error: domain ? (err as Error).message : 'delete failed' });
+        }
+      }
+      return reply.send({ deleted, failed, requested: ids.length });
     },
   );
 

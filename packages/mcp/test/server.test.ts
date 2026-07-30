@@ -19,6 +19,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     deleteContent: vi.fn(async () => undefined),
+    deleteContentBulk: vi.fn(async (_k: string, ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
     addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
     removeLocale: vi.fn(async (locale: string) => ({ locale, removed: 3 })),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
@@ -1229,6 +1230,18 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(calls(client).deleteContent).toHaveBeenCalledWith('entry', 'row_1', 'team');
   });
 
+  it('delete_content_bulk forwards the whole id list (+ dataset for entries) and returns the per-id result', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, deleteScope);
+    const res = await mcp.callTool({ name: 'delete_content_bulk', arguments: { kind: 'dataset', ids: ['x', 'y'] } });
+    expect(calls(client).deleteContentBulk).toHaveBeenCalledWith('dataset', ['x', 'y'], undefined);
+    // The partial-success report reaches the agent, so it can see what did NOT go.
+    expect(text(res)).toContain('"requested": 2');
+    expect(text(res)).toContain('"failed": []');
+    await mcp.callTool({ name: 'delete_content_bulk', arguments: { kind: 'entry', ids: ['row_1'], dataset: 'team' } });
+    expect(calls(client).deleteContentBulk).toHaveBeenCalledWith('entry', ['row_1'], 'team');
+  });
+
   it('add_language forwards the locale (atomic scaffold) with a write token', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
@@ -1262,12 +1275,14 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     for (const tool of [
       { name: 'delete_page', arguments: { id: 'home' } },
       { name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } },
+      { name: 'delete_content_bulk', arguments: { kind: 'dataset', ids: ['x'] } },
     ]) {
       const client = fakeClient();
       const res = await (await connect(client, writeScope)).callTool(tool);
       expect(res.isError).toBe(true);
       expect(text(res)).toMatch(/content:delete/);
       expect(calls(client).deleteContent).not.toHaveBeenCalled();
+      expect(calls(client).deleteContentBulk).not.toHaveBeenCalled();
     }
   });
 

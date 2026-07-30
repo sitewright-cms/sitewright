@@ -995,6 +995,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'delete_content_bulk',
+    {
+      description:
+        'Delete MANY entities of one kind in ONE call: { kind, ids:[…] } — plus `dataset` (the owning dataset slug) when kind is "entry". Use this instead of looping delete_content when clearing up after an import (junk datasets, a batch of entries or scaffolded pages): one call instead of N, so you do not burn turns or hit the write rate limit. Up to 200 ids. PARTIAL SUCCESS is normal — each id is attempted on its own and the result is { deleted:[…], failed:[{id,error}], requested }, so an id that is already gone does not abort the rest. Deleting a DATASET also deletes its entries. Everything stays restorable from version history. Needs the content:delete capability.',
+      inputSchema: {
+        kind: GENERIC_KIND,
+        ids: z.array(z.string()).min(1).max(200).describe('The entity ids to delete (duplicates are collapsed).'),
+        dataset: z.string().optional().describe('ENTRY only: the owning dataset slug (entry ids are unique only within their dataset).'),
+      },
+    },
+    gate('content:delete', ({ kind, ids, dataset }) => client.deleteContentBulk(kind, ids, dataset)),
+  );
+
+  server.registerTool(
     'add_language',
     {
       description:
@@ -1033,9 +1047,18 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Crawl + IMPORT a public https website URL into THIS project — the FIRST step of cloning/nativizing a site. The server fetches and RENDERS the live page(s) itself (executing JS, following an embed/preview wrapper to the real framed site), self-hosts the images + fonts, and creates the imported `swImport` scaffold pages. Call this FIRST whenever you are asked to clone/nativize/reproduce a URL and the project has no imported pages yet; then nativize (get_guide("import") → author → visual_audit → publish_project). NEVER tell the user you cannot fetch websites or ask them to paste HTML — this tool imports the live page for you. Foundation (native scaffold) is on by default.',
-      inputSchema: { url: z.string().url().max(2048), foundation: z.boolean().optional() },
+      inputSchema: {
+        url: z.string().url().max(2048),
+        foundation: z.boolean().optional(),
+        inferDatasets: z
+          .boolean()
+          .optional()
+          .describe(
+            'Guess DATASETS from repeated markup (a card grid → a dataset + one entry per card). Default FALSE and normally leave it so: shape-matching misses a listing whose cards are not identical, names fields after the markup instead of the meaning, and concatenates text split across inline elements — you author better datasets by reading the page. Set true only to see what it would guess.',
+          ),
+      },
     },
-    gate('content:write', ({ url, foundation }) => client.importWebsite(url, foundation).then(summarizeImport)),
+    gate('content:write', ({ url, foundation, inferDatasets }) => client.importWebsite(url, foundation, inferDatasets).then(summarizeImport)),
   );
 
   server.registerTool(

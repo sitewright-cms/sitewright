@@ -47,7 +47,6 @@ export interface PageSettingsValues {
   status: 'draft' | 'published';
   navSlots: NavSlot[];
   navTitle: string;
-  navOrder: number;
   /** Show this page's CHILD pages in a dropdown under its nav item. */
   navDropdown: boolean;
   /** Parent page id ('' = top-level). */
@@ -86,7 +85,6 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     status: page.status ?? 'published',
     navSlots: page.nav?.slots ?? [],
     navTitle: page.nav?.title ?? '',
-    navOrder: page.nav?.order ?? 0,
     navDropdown: page.nav?.dropdown ?? false,
     parent: page.parent ?? '',
     template: page.template ?? '',
@@ -108,10 +106,14 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
         // Menu label: persisted when set (the modal mirrors the title into it for new pages, and the
         // field is required); if ever left blank the menu falls back to the page title at render.
         ...(v.navTitle.trim() ? { title: v.navTitle.trim() } : {}),
-        order: v.navOrder,
         ...(v.navDropdown ? { dropdown: true } : {}),
       }
     : undefined;
+  // Sibling order comes from the PAGE TREE (`order`, set by dragging the pages list) — the legacy
+  // `nav.order` is no longer written or edited here. A page still carrying only the legacy value has
+  // it PROMOTED to `order`: the same number, so the page keeps its exact position, and one fewer
+  // page reading through the fallback. Both fields share the schema's 0..100_000 int bounds.
+  const order = page.order ?? page.nav?.order;
   // A link placeholder: keep it routing-transparent (path:'', no code/SEO); persist only the
   // name (title), the link target + new-tab, the parent, nav placement, locale, and status.
   if (page.kind === 'link') {
@@ -121,6 +123,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
       title: v.title,
       path: '',
       nav,
+      order,
       parent: v.parent || undefined,
       locale: v.locale || undefined,
       status: v.status,
@@ -156,6 +159,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     path: v.path,
     status: v.status,
     nav,
+    order,
     parent: v.parent || undefined,
     source,
     template,
@@ -597,9 +601,9 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             </p>
           )}
           {/* The menu label is ALWAYS shown and required — every page in a menu needs a label. It
-              mirrors / defaults to the page title, so it's pre-filled but overridable. (The Order
-              field moved to Advanced for concrete pages; a link placeholder keeps its Order here
-              because it has no Advanced section.) */}
+              mirrors / defaults to the page title, so it's pre-filled but overridable. (There is no
+              Order field: menu position follows the PAGES list — drag a page, or select it and use
+              Arrow Up/Down — which is the single source of sibling order.) */}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
@@ -622,21 +626,6 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 <span className="mt-1 text-slate-400 dark:text-slate-500">Only used when the page is in a menu (tick one above).</span>
               )}
             </label>
-            {isLink && (
-              <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
-                Order
-                <input
-                  aria-label="Nav order"
-                  type="number"
-                  className={glassInput}
-                  value={v.navOrder}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    if (!Number.isNaN(n)) patch({ navOrder: n });
-                  }}
-                />
-              </label>
-            )}
             {v.navSlots.length > 0 && (
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input
@@ -767,24 +756,6 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                     Raw HTML
                     <SectionHelp tip="Render this page’s source as free-form HTML — no platform CSS or JS is injected (the page brings its own styling and scripts)." />
                   </span>
-                </label>
-
-                {/* Menu order lives here (an occasional tweak) — usually you just drag pages in the list. */}
-                <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
-                  <span className="flex items-center gap-1.5">
-                    Menu order
-                    <SectionHelp tip="Position among sibling menu items (lower numbers come first). Usually set by dragging pages in the sidebar list instead." />
-                  </span>
-                  <input
-                    type="number"
-                    aria-label="Nav order"
-                    className={`mt-1.5 w-32 font-normal ${glassInput}`}
-                    value={v.navOrder}
-                    onChange={(e) => {
-                      const n = parseInt(e.target.value, 10);
-                      if (!Number.isNaN(n)) patch({ navOrder: n });
-                    }}
-                  />
                 </label>
               </div>
             )}

@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   AssetRefSchema,
   CssColorSchema,
+  CssTokenValueSchema,
   IdSchema,
   NavTargetSchema,
   RoutePathSchema,
   SlugSchema,
   TokenValueSchema,
+  isSafeCssTokenValue,
   safeRecord,
 } from '../src/primitives.js';
 import { z } from 'zod';
@@ -108,3 +110,75 @@ describe('safeRecord', () => {
   });
 });
 
+
+// `identity.cssTokens` values. DELIBERATELY wider than TokenValueSchema — parentheses and commas are
+// allowed so a gradient/shadow/var() chain can be a token at all — which makes every case below a
+// SECURITY assertion, not a formatting one. `isSafeCssTokenValue` is the shared predicate behind the
+// schema, the renderer's emitter and the importer's :root transcription; testing it here covers all three.
+describe('CssTokenValueSchema / isSafeCssTokenValue', () => {
+  const ACCEPTED = [
+    'linear-gradient(135deg,#06f 0%,#0cf 100%)',
+    '0 2px 5px rgba(0,0,0,.2), 0 1px 1px rgba(0,0,0,.1)',
+    'cubic-bezier(.16,1,.3,1)',
+    'color-mix(in oklab, var(--sw-color-primary) 25%, transparent)',
+    'calc(100% - var(--sw-space-lg))',
+    "'Inter', ui-sans-serif, system-ui",
+    '#0a7',
+    'clamp(1rem, 2vw + .5rem, 2rem)',
+  ];
+  it.each(ACCEPTED)('accepts the rich value %s', (v) => {
+    expect(CssTokenValueSchema.parse(v)).toBe(v);
+    expect(isSafeCssTokenValue(v)).toBe(true);
+  });
+
+  const REJECTED: Array<[string, string]> = [
+    ['semicolon ends the declaration', 'red; color: blue'],
+    ['closing brace escapes the rule', 'red} body{display:none'],
+    ['opening brace starts a rule', 'red{'],
+    ['angle brackets could close a <style>', '</style><script>alert(1)</script>'],
+    ['backslash can rebuild a blocked char as a hex escape', 'red\\3b color:blue'],
+    ['an open comment swallows the rest of the block', 'red /*'],
+    ['a close comment re-opens the stylesheet', '*/ body{display:none} /*'],
+    ['url() fetches', 'url(https://evil.test/x.png)'],
+    ['url() with padding still fetches', '  url( "https://evil.test/x.png" )'],
+    ['image-set() fetches', 'image-set("https://evil.test/a.png" 1x)'],
+    ['-webkit-image-set() fetches', '-webkit-image-set(url(https://evil.test/a.png) 1x)'],
+    ['src() fetches', 'src("https://evil.test/f.woff2")'],
+    ['image() fetches', 'image("https://evil.test/a.png")'],
+    ['element() references another element', 'element(#secret)'],
+    ['expression() evaluates script in legacy IE', 'expression(alert(1))'],
+    ['@import pulls a stylesheet', '@import "https://evil.test/x.css"'],
+    ['an unclosed function consumes the stylesheet', 'linear-gradient(#fff,#000'],
+    ['a stray close paren unbalances the block', 'red)'],
+    ['nested parens must still balance', 'calc((1px + 2px)'],
+    ['a newline can straddle a comment', 'red\n  color: blue'],
+    ['NUL', 'red\u0000'],
+    // Vendor-prefixed aliases of the blocked functions — a bare-name check walks straight past these.
+    ['-webkit-image-set() is still image-set()', '-webkit-image-set(url(https://evil.test/a.png) 1x)'],
+    ['-moz-element() is still element()', '-moz-element(#secret)'],
+    ['case does not matter', 'URL(https://evil.test/x.png)'],
+    ['whitespace before the paren does not help', 'url\t(https://evil.test/x.png)'],
+    ['nested inside an allowed function', 'linear-gradient(#fff, url(https://evil.test/x.png))'],
+    ['hidden in a var() fallback', 'var(--x, url(https://evil.test/x.png))'],
+    // Invisible format characters exist only to make a blocked construct read as something else.
+    ['zero-width space inside a function name', 'u\u200brl(https://evil.test/x.png)'],
+    ['byte-order mark', 'red\ufeff'],
+    ['bidi override', 'red\u202e'],
+  ];
+  it.each(REJECTED)('rejects a value where %s', (_why, v) => {
+    expect(() => CssTokenValueSchema.parse(v)).toThrow();
+    expect(isSafeCssTokenValue(v)).toBe(false);
+  });
+
+  it('allows a function NAME that merely CONTAINS a blocked one (no false positives)', () => {
+    // `blurl(` ends in "url(" but is not `url(`; the guard anchors on a token boundary.
+    for (const ok of ['blurl(2px)', 'my-url-thing(1)', 'oklch(0.7 0.1 200)']) {
+      expect(isSafeCssTokenValue(ok)).toBe(true);
+    }
+  });
+
+  it('bounds the length', () => {
+    expect(() => CssTokenValueSchema.parse('a'.repeat(301))).toThrow();
+    expect(CssTokenValueSchema.parse('a'.repeat(300))).toHaveLength(300);
+  });
+});

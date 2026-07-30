@@ -423,7 +423,7 @@ function cleanConsent(c: Consent): Consent {
 
 /**
  * Assemble a settings bundle from the form, omitting empty optionals. `base` is the
- * originally-loaded bundle: fields the form does NOT surface (spacing, radii,
+ * originally-loaded bundle: fields the form does NOT surface (spacing, radii, cssTokens,
  * typography.scale — e.g. set via the CLI/MCP) are carried through so a GUI save
  * never silently drops them.
  */
@@ -495,9 +495,11 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(hasNamed ? { named } : {}),
     });
   }
-  // Carry through token fields the form doesn't expose.
+  // Carry through token fields the form doesn't expose. `cssTokens` especially: it is the agent's/CLI's
+  // store for free-form `--sw-*` values (gradients, shadow ramps), so a GUI save must not delete it.
   identity = put(identity, 'spacing', baseId?.spacing);
   identity = put(identity, 'radii', baseId?.radii);
+  identity = put(identity, 'cssTokens', baseId?.cssTokens);
 
   // website — only include the section when something is set
   let website: WebsiteSettings | undefined;

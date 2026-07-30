@@ -12,7 +12,7 @@
 //   • CSS     — emit reusable site CSS (body background + .bp-hero band texture + .bp-card elevation)
 //               into criticalCss; KEEP the foreign stylesheet link in head (the nativize capture needs it; stripped at finalize); DISCARD scripts.
 import type { CorporateIdentity, FontSlot, Page, WebsiteSettings } from '@sitewright/schema';
-import { CorporateIdentitySchema, WebsiteSettingsSchema, RESERVED_FONT_SLOT_NAMES } from '@sitewright/schema';
+import { CorporateIdentitySchema, WebsiteSettingsSchema, RESERVED_FONT_SLOT_NAMES, isSafeCssTokenValue } from '@sitewright/schema';
 import type { ImportDiagnostic } from '../types.js';
 import { rewriteCssUrls } from './css.js';
 import { detectImportedEffects } from './effects.js';
@@ -325,11 +325,77 @@ export function extractBodyBgImage(cssText: string, assetMap: ReadonlyMap<string
   return /url\(\s*['"]?(?:\/media\/|data:)/i.test(rewritten) ? rewritten : '';
 }
 
+/**
+ * How much of the source's `:root` may land in criticalCss: a count, a per-value length, AND a total
+ * byte budget. The budget is the one that matters — `criticalCss` is capped at 32 KB by the schema, and
+ * blowing it would make `WebsiteSettingsSchema.parse` reject the settings and FAIL THE WHOLE IMPORT, so
+ * count × length alone (36 KB worst case) is not a safe bound. 6 KB fits ~60–100 real-world variables
+ * and leaves the platform CSS plus the author's own rules comfortable room underneath the cap.
+ */
+const MAX_ROOT_VARS = 120;
+const MAX_ROOT_VAR_LEN = 300;
+const MAX_ROOT_VARS_BYTES = 6_000;
+
+/**
+ * TRANSCRIBE the source's own `:root`/`html` custom properties into the clone, VERBATIM and under their
+ * ORIGINAL names (`--bn-grad`, `--z1`, `--brand-transition`).
+ *
+ * Foundation mode discards the foreign stylesheet, and with it every `--var` the site's design system was
+ * built on — so a value the author copies out of the original (`background: var(--bn-grad)`) resolves to
+ * nothing in the clone and the section renders flat. The palette/fonts/width extractors already read a
+ * FEW of these vars, but only the ones they can interpret; everything else — gradients, elevation ramps,
+ * easing curves — was simply lost, and had to be hand-retyped into criticalCss.
+ *
+ * This is TRANSCRIPTION, not inference: no attempt is made to guess what a var means or to map it onto a
+ * platform token. It is copied if it is safe to copy, and skipped otherwise. Skipped:
+ *   · declarations outside `:root`/`html` — a component-scoped var flattened to global is a real behaviour
+ *     change, whereas a missing one is simply the status quo;
+ *   · anything `isSafeCssTokenValue` rejects (it lands verbatim in a stylesheet the platform serves);
+ *   · a `url()` that does not rewrite to a self-hosted `/media` ref or an inline `data:` — never a hotlink
+ *     back to the source site.
+ * Bounded to {@link MAX_ROOT_VARS} declarations so a sprawling foreign framework can't bloat criticalCss.
+ */
+export function extractRootVars(cssText: string, assetMap?: ReadonlyMap<string, string>): string {
+  const seen = new Map<string, string>();
+  // Only `:root` / `html` blocks (optionally in a selector list, e.g. `:root, [data-theme=light] {`).
+  // Later declarations win, mirroring the cascade — the Map insertion order keeps the first POSITION.
+  // The boundary is a LOOKBEHIND, not a consumed `}`: consuming it would hide a rule that immediately
+  // follows another (the common case). It also pins the selector to top level — a `:root` nested inside
+  // `@media (prefers-color-scheme: dark){…}` is preceded by `{` and is skipped, so a conditional
+  // override never gets flattened into the unconditional block.
+  for (const block of cssText.matchAll(/(?<=^|\})\s*([^{}]*?(?::root|\bhtml)\b[^{}]*?)\{([^{}]*)\}/gi)) {
+    for (const decl of (block[2] ?? '').matchAll(/--([a-zA-Z0-9_-]+)\s*:\s*([^;]+)/g)) {
+      const name = decl[1];
+      const raw = decl[2]?.trim();
+      if (!name || !raw || raw.length > MAX_ROOT_VAR_LEN) continue;
+      const value = assetMap && /url\(/i.test(raw) ? rewriteCssUrls(raw, assetMap) : raw;
+      // A url() must have resolved to something we host; an unresolved foreign hotlink is dropped whole.
+      if (/url\(/i.test(value) && !/url\(\s*['"]?(?:\/media\/|data:)/i.test(value)) continue;
+      // isSafeCssTokenValue denies url() by name, so a legitimately-hosted image var is checked on the
+      // REMAINDER (with its url()s elided) rather than being rejected for containing one at all.
+      if (!isSafeCssTokenValue(value.replace(/url\([^)]*\)/gi, 'X'))) continue;
+      seen.set(name, value);
+    }
+  }
+  const lines: string[] = [];
+  let bytes = 0;
+  for (const [k, v] of [...seen].slice(0, MAX_ROOT_VARS)) {
+    const decl = `--${k}:${v};`;
+    // Stop at the budget rather than truncating mid-declaration (which would emit invalid CSS).
+    if ((bytes += Buffer.byteLength(decl, 'utf8')) > MAX_ROOT_VARS_BYTES) break;
+    lines.push(decl);
+  }
+  return lines.length ? `:root{${lines.join('')}}` : '';
+}
+
 /** Reusable site CSS: page background, the `.bp-hero` colored-band texture, and `.bp-card` elevation.
- *  `bodyImage` (when given) is the source's REAL body background-image; else the generic NOISE texture. */
-export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string): string {
+ *  `bodyImage` (when given) is the source's REAL body background-image; else the generic NOISE texture.
+ *  `rootVars` (when given) is the source's own `:root` custom-property block, transcribed verbatim and
+ *  emitted FIRST so an author rule below can still override any of it. */
+export function foundationCriticalCss(bg = '#e9e9ec', bodyImage?: string, rootVars?: string): string {
   const image = bodyImage && bodyImage.trim() ? bodyImage.trim() : NOISE;
   return [
+    ...(rootVars && rootVars.trim() ? [rootVars.trim()] : []),
     `body{background-color:${isColor(bg) ? bg : '#e9e9ec'};background-image:${image};}`,
     `.bp-hero{position:relative;overflow:hidden;}`,
     `.bp-hero::before{content:"";position:absolute;inset:0;background-image:${SQUARES};background-size:420px 280px;background-position:center;pointer-events:none;}`,
@@ -519,9 +585,10 @@ export function configurePageNav(pages: Page[], siteName?: string): void {
   for (const p of topLevel) {
     const o = order++;
     p.order = o;
+    // No `nav.order`: the page-tree `order` set just above IS the sort key (it wins the read
+    // fallback anyway, so writing both only left two copies to drift apart).
     p.nav = {
       slots: ['header'],
-      order: o,
       // A dropdown only when this top-level page has children of its OWN — home never does (its
       // "children" ARE the top-level pages, i.e. the menu itself, not a dropdown under it).
       ...(!isHome(p) && childParentIds.has(p.id) ? { dropdown: true } : {}),
@@ -591,7 +658,9 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   delete websiteIn.sidebarLeft;
   delete websiteIn.sidebarRight;
   const bodyImage = input.assetMap ? extractBodyBgImage(input.cssText, input.assetMap) : '';
-  websiteIn.criticalCss = foundationCriticalCss(colors['base-200'], bodyImage);
+  // Carry the source's own design-system variables over so `var(--…)` values copied from the original
+  // still resolve after the foreign stylesheet is discarded.
+  websiteIn.criticalCss = foundationCriticalCss(colors['base-200'], bodyImage, extractRootVars(input.cssText, input.assetMap));
   const contentWidth = extractContentWidth(input.cssText);
   if (contentWidth) websiteIn.containerWidth = contentWidth; // match the source's content width (default is 1200)
   const headerDecor = input.assetMap ? extractHeaderDecor(input.cssText, input.assetMap) : {};

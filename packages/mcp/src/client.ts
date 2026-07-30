@@ -136,6 +136,17 @@ export interface RegionCompareResult {
   regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
 }
 
+/**
+ * Outcome of a BULK delete (POST /projects/:id/content/:kind/bulk-delete). Partial success is normal:
+ * `deleted` + `failed` together account for every requested id (after de-duplication).
+ */
+export interface BulkDeleteResult {
+  deleted: string[];
+  failed: Array<{ id: string; error: string }>;
+  /** How many DISTINCT ids were attempted. */
+  requested: number;
+}
+
 /** One measured element from `inspect_source`. */
 export interface InspectNode {
   tag: string;
@@ -411,6 +422,17 @@ export class SitewrightClient {
     );
   }
 
+  /**
+   * Delete MANY entities of one kind in a single call. Each id is attempted independently, so the
+   * result reports what went and what didn't rather than aborting the batch on the first bad id.
+   */
+  async deleteContentBulk(kind: string, ids: readonly string[], dataset?: string): Promise<BulkDeleteResult> {
+    return this.request<BulkDeleteResult>('POST', this.projectPath(`/content/${encodeURIComponent(kind)}/bulk-delete`), {
+      ids,
+      ...(dataset === undefined ? {} : { dataset }),
+    });
+  }
+
   /** Add a translation-target language: appends the locale AND scaffolds an inherited variant of
    *  every default-language page, atomically (the editor's "Add language" path). */
   async addLocale(locale: string): Promise<{ locale: string; created: number; pages: unknown[] }> {
@@ -548,10 +570,11 @@ export class SitewrightClient {
 
   /** Import a PUBLIC https image by URL: the server downloads, optimizes, and self-hosts it. */
   /** Crawl + import a public website URL into the connected project (the first step of a clone). */
-  async importWebsite(url: string, foundation?: boolean): Promise<ImportWebsiteResult> {
+  async importWebsite(url: string, foundation?: boolean, inferDatasets?: boolean): Promise<ImportWebsiteResult> {
     return this.request('POST', this.projectPath('/agent/import-website'), {
       url,
       ...(foundation !== undefined ? { foundation } : {}),
+      ...(inferDatasets !== undefined ? { inferDatasets } : {}),
     });
   }
 

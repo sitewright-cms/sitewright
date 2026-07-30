@@ -75,10 +75,10 @@ const PageFields = z
      */
     parent: IdSchema.optional(),
     /**
-     * Sibling sort order within the same parent (ascending; ties broken by title). Set by
-     * drag-reordering the pages list; the canonical page-tree order, independent of nav
-     * membership. The list and the auto-nav both prefer this, falling back to the legacy
-     * `nav.order` then title when it is absent.
+     * Sibling sort order within the same parent (ascending; ties broken by title). THE sort key:
+     * one page-tree order, independent of nav membership, driving both the pages list and every
+     * auto-nav menu. Set by drag-reordering the pages list (or Arrow Up/Down); a writer that wants
+     * an explicit position sets this. Absent → 0, so untouched pages fall back to title order.
      */
     order: z.number().int().min(0).max(100_000).optional(),
     /**
@@ -106,7 +106,15 @@ const PageFields = z
           .min(1)
           .max(NAV_SLOTS.length)
           .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates'),
-        /** Sort order within a slot (ascending; ties broken by title). */
+        /**
+         * @deprecated LEGACY sort order — use the page's top-level `order` instead.
+         *
+         * Nothing writes this any more (the editor's number inputs are gone; the importer and the
+         * new-project scaffold set `order`). It is still READ as a fallback, so a page written
+         * before the page tree became canonical — or by an older agent — keeps its position:
+         * effective order is `order ?? nav.order ?? 0`. Since `order` always wins, setting BOTH
+         * silently does nothing; the editor promotes a legacy value to `order` on the next save.
+         */
         order: z.number().int().min(0).max(100_000).optional(),
         /** Show this page's CHILD pages (pages whose `parent` is this page) in a dropdown under its nav item. */
         dropdown: z.boolean().optional(),

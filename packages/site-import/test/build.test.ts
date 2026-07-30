@@ -157,11 +157,27 @@ describe('buildImportBundle (integration)', () => {
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
   });
 
-  it('infers a dataset + {{#each}} loop from a repeated card grid', async () => {
+  it('infers a dataset + {{#each}} loop from a repeated card grid, but ONLY when asked', async () => {
     const cards = Array.from({ length: 5 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
+    const html = page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD);
+
+    // DEFAULT: no inference. Shape-matching guessed junk collections more often than real ones (it
+    // misses a listing whose cards differ, names fields after markup, and concatenates split text), so
+    // the repeated markup is imported verbatim and an agent authors the real dataset from what it MEANS.
+    const off = await buildImportBundle(site([{ sourceUrl: 'https://ex.com/', html }]), { media: stubMedia() });
+    const offBundle = off.bundles[0]!;
+    const offHome = offBundle.pages.find((p) => p.path === '')!;
+    expect(offBundle.datasets).toEqual([]);
+    expect(offBundle.entries).toEqual([]);
+    expect(offHome.source).toContain('Person 0'); // the literal cards survive
+    expect(offHome.source).not.toContain('{{#each dataset.');
+    expect(offHome.source).not.toContain('@@SWDS'); // and no sentinel leaks either
+    expect(off.diagnostics.some((d) => d.code === 'dataset-inferred')).toBe(false);
+    expect(() => validateTemplate(offHome.source!)).not.toThrow();
+
     const result = await buildImportBundle(
-      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
-      { media: stubMedia() },
+      site([{ sourceUrl: 'https://ex.com/', html }]),
+      { media: stubMedia(), inferDatasets: true },
     );
     const bundle = result.bundles[0]!;
     expect(bundle.datasets).toHaveLength(1);
@@ -217,7 +233,7 @@ describe('buildImportBundle (integration)', () => {
     const cards = Array.from({ length: 6 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
-      { media: stubMedia(), limits: { maxSourceBytes: 40 } }, // tiny → fitSource drops the grid container
+      { media: stubMedia(), inferDatasets: true, limits: { maxSourceBytes: 40 } }, // tiny → fitSource drops the grid container
     );
     const bundle = result.bundles[0]!;
     const home = bundle.pages.find((p) => p.path === '')!;

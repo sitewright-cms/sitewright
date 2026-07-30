@@ -467,3 +467,80 @@ describe('content API — list summary (?summary=1)', () => {
     expect((items[0]!._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ values: { keys: ['name'] } });
   });
 });
+
+// One call clears N entities. Looping delete_content was slow interactively and, for an agent, a
+// rate-limit wall that made "undo this import" cost more turns than the import.
+describe('bulk delete', () => {
+  const bulk = (t: string, projectId: string, kind: string, payload: { ids: string[]; dataset?: string }) =>
+    app.inject({ method: 'POST', url: `/projects/${projectId}/content/${kind}/bulk-delete`, cookies: { sw_session: t }, payload });
+
+  async function seedPages(t: string, projectId: string, ids: string[]) {
+    for (const id of ids) {
+      await app.inject({
+        method: 'PUT', url: `/projects/${projectId}/content/page/${id}`, cookies: { sw_session: t },
+        payload: { id, path: id, title: id },
+      });
+    }
+  }
+
+  it('deletes many in one call and reports each id', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk1');
+    await seedPages(t, projectId, ['a', 'b', 'c']);
+    const res = await bulk(t, projectId, 'page', { ids: ['a', 'b'] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ deleted: ['a', 'b'], failed: [], requested: 2 });
+    // Only the named ids went; home + c remain.
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } })).json() as { items: Array<{ id: string }> }).items;
+    expect(left.map((p) => p.id).sort()).toEqual(['c', 'home']);
+  });
+
+  it('is PARTIAL: one bad id does not abort the batch', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk2');
+    await seedPages(t, projectId, ['a', 'b']);
+    const body = (await bulk(t, projectId, 'page', { ids: ['a', 'ghost', 'b'] })).json() as { deleted: string[]; failed: Array<{ id: string; error: string }> };
+    expect(body.deleted).toEqual(['a', 'b']);
+    expect(body.failed).toHaveLength(1);
+    expect(body.failed[0]!.id).toBe('ghost');
+    expect(body.failed[0]!.error).toMatch(/not found/i); // the reason is reported, never swallowed
+  });
+
+  it('collapses duplicate ids so they cannot double-count or report a phantom miss', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk3');
+    await seedPages(t, projectId, ['a']);
+    expect((await bulk(t, projectId, 'page', { ids: ['a', 'a', 'a'] })).json()).toEqual({ deleted: ['a'], failed: [], requested: 1 });
+  });
+
+  it('scopes ENTRY deletes to their dataset (ids are unique only within one) and 400s without it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk4');
+    const put = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    for (const slug of ['team', 'faq']) {
+      await put(`/content/dataset/${slug}`, { id: slug, name: slug, slug, fields: [{ name: 'v', type: 'text' }] });
+      await put(`/content/entry/row_1?dataset=${slug}`, { id: 'row_1', dataset: slug, values: { v: slug } });
+    }
+    // Same entry id in both datasets — an unscoped bulk delete must be refused, not guessed.
+    expect((await bulk(t, projectId, 'entry', { ids: ['row_1'] })).statusCode).toBe(400);
+    expect((await bulk(t, projectId, 'entry', { ids: ['row_1'], dataset: 'team' })).json()).toMatchObject({ deleted: ['row_1'] });
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry`, cookies: { sw_session: t } })).json() as { items: Array<{ dataset: string }> }).items;
+    expect(left.map((e) => e.dataset)).toEqual(['faq']); // the other dataset's row_1 is untouched
+  });
+
+  it('rejects an empty or oversized id list, and a member without content:delete', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk5');
+    expect((await bulk(t, projectId, 'page', { ids: [] })).statusCode).toBe(400);
+    expect((await bulk(t, projectId, 'page', { ids: Array.from({ length: 201 }, (_, i) => `p${i}`) })).statusCode).toBe(400);
+    // An outsider has no access to the project at all.
+    await registerAccount(db, 'stranger@acme.test', 'Pw-secret-1');
+    const other = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'stranger@acme.test', password: 'Pw-secret-1' } }));
+    expect((await bulk(other, projectId, 'page', { ids: ['home'] })).statusCode).toBe(403);
+  });
+
+  it('deleting a DATASET takes its entries with it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk6');
+    const put = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    await put('/content/dataset/team', { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'v', type: 'text' }] });
+    await put('/content/entry/row_1?dataset=team', { id: 'row_1', dataset: 'team', values: { v: 'x' } });
+    expect((await bulk(t, projectId, 'dataset', { ids: ['team'] })).json()).toMatchObject({ deleted: ['team'] });
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry`, cookies: { sw_session: t } })).json() as { items: unknown[] }).items;
+    expect(left).toEqual([]);
+  });
+});

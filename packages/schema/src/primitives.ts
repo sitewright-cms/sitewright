@@ -171,6 +171,71 @@ export const TokenValueSchema = z.union([
 /** A CSS string value (e.g. a font-family stack) with no declaration break-out characters. */
 export const CssStringSchema = z.string().max(200).regex(CSS_VALUE_SAFE, 'invalid CSS value');
 
+// ── Rich CSS token values (`identity.cssTokens`) ──────────────────────────────────────────────
+// A DELIBERATELY WIDER value alphabet than TokenValueSchema, which bans parentheses and so cannot
+// express the two things authors most want to tokenise: a gradient and a shadow ramp
+// (`linear-gradient(135deg,#f00,#00f)`, `0 2px 5px rgba(0,0,0,.2)`). Widening is scoped to
+// FUNCTION SYNTAX; every break-out route stays shut:
+//   · `;{}<>` and backslash — a value must not end its declaration, escape its rule, or rebuild a
+//     blocked character via a `\3b`-style hex escape. Whitespace controls + NUL are blocked so a
+//     value can't straddle a comment or a line.
+//   · `/*` and `*/` — a comment opened inside a value would swallow the rest of the `:root{…}` block
+//     (including its closing brace), silently eating every declaration that follows.
+//   · Fetching/computing functions by name — `url()`, `src()`, `image()`, `image-set()`, `element()`
+//     and IE's `expression()`, each also matched through an OPTIONAL VENDOR PREFIX so the
+//     `-webkit-image-set()` / `-moz-element()` aliases can't walk straight past a bare-name check.
+//     Those are the ones that can make a network request (an exfiltration channel) or evaluate script
+//     from a stylesheet. `var()`, `calc()`, `rgb()/hsl()/oklch()`, `linear-gradient()` stay available.
+//   · Invisible FORMAT characters (zero-width, bidi overrides, BOM). No CSS value legitimately needs
+//     one, and they exist only to make a blocked construct read as something else in review.
+//   · `@import` — inert inside a declaration (an at-rule needs a rule position, which `;{}` guard),
+//     but denied by name so it can never travel further than intended.
+//   · UNBALANCED parentheses — an unclosed function consumes tokens past the end of the declaration
+//     and, like an open comment, would absorb the rest of the stylesheet.
+// eslint-disable-next-line no-control-regex -- intentionally denying NUL/control chars
+const CSS_RICH_BREAKOUT = /[;{}<>\\\n\r\t\f\x00\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/;
+const CSS_RICH_COMMENT = /\/\*|\*\//;
+/** Function names that fetch a resource or evaluate an expression — denied at a token boundary,
+ *  through an optional vendor prefix (`-webkit-image-set(`, `-moz-element(`). */
+const CSS_RICH_FETCH = /(?:^|[^\w-])(?:-[a-z]+-)?(?:url|src|image|image-set|element|expression)\s*\(/i;
+const CSS_RICH_ATRULE = /@import/i;
+
+/** True when every `(` in the value has a matching `)` and none closes before it opens. */
+function parensBalanced(v: string): boolean {
+  let depth = 0;
+  for (const ch of v) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')' && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/**
+ * THE single predicate for "this arbitrary CSS value is safe to emit into a stylesheet we control".
+ * Exported so the schema boundary, the renderer's brand-CSS emitter and the importer's `:root`
+ * transcription all enforce the SAME rule — three hand-copied regexes would drift, and the strictest
+ * copy silently dropping values is exactly the failure this replaces. Widening it is a security change.
+ */
+export function isSafeCssTokenValue(v: string): boolean {
+  return !CSS_RICH_BREAKOUT.test(v) && !CSS_RICH_COMMENT.test(v) && !CSS_RICH_FETCH.test(v) && !CSS_RICH_ATRULE.test(v) && parensBalanced(v);
+}
+
+/**
+ * A RICH design-token value — an arbitrary CSS value (gradient, shadow, transition, `var()` chain)
+ * stored under `identity.cssTokens` and emitted as `--sw-<key>`. See the guard notes above for what
+ * stays blocked and why; it is intentionally broader than {@link TokenValueSchema}, so treat any
+ * further widening as a security change.
+ */
+export const CssTokenValueSchema = z
+  .string()
+  .min(1)
+  .max(300)
+  .refine((v) => !CSS_RICH_BREAKOUT.test(v), 'must not contain ; { } < > backslash or control characters')
+  .refine((v) => !CSS_RICH_COMMENT.test(v), 'must not contain a CSS comment')
+  .refine((v) => !CSS_RICH_FETCH.test(v), 'must not use url(), src(), image(), image-set(), element() or expression()')
+  .refine((v) => !CSS_RICH_ATRULE.test(v), 'must not contain @import')
+  .refine(parensBalanced, 'unbalanced parentheses');
+
 /**
  * A space-separated list of Tailwind utility classes for a block's root element.
  * The charset covers real-world utilities — modifiers (`md:`, `hover:`), arbitrary

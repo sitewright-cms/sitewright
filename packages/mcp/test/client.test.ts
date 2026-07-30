@@ -440,14 +440,31 @@ describe('SitewrightClient — optional-argument branches', () => {
     expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1' }); // no alt key
   });
 
-  it('includes foundation in the import-website body only when passed', async () => {
+  it('includes foundation / inferDatasets in the import-website body only when passed', async () => {
     const { client, calls } = await introspected((input) =>
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{}' },
     );
     await client.importWebsite('https://x.test');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // no foundation key
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // neither key — server defaults apply
     await client.importWebsite('https://x.test', true);
     expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true });
+    await client.importWebsite('https://x.test', true, true);
+    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true, inferDatasets: true });
+  });
+
+  it('POSTs a bulk delete as a whole list (+ dataset only when scoping entries)', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 200, body: JSON.stringify({ deleted: ['a'], failed: [{ id: 'b', error: 'page not found' }], requested: 2 }) },
+    );
+    const res = await client.deleteContentBulk('page', ['a', 'b']);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/page/bulk-delete');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ ids: ['a', 'b'] }); // no dataset key for a global kind
+    // The partial-success report is returned verbatim — a failed id is never swallowed.
+    expect(res).toEqual({ deleted: ['a'], failed: [{ id: 'b', error: 'page not found' }], requested: 2 });
+    await client.deleteContentBulk('entry', ['row_1'], 'team');
+    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ ids: ['row_1'], dataset: 'team' });
   });
 
   it('folds non-empty zod formErrors into the thrown error, and stays clean when there are none', async () => {

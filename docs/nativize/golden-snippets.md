@@ -43,9 +43,10 @@ CI colors from `--primary-color`/`--secondary-color` → `identity.colors`.
   <!-- mobile: a dropdown iterating the same nav.header -->
 </div></div>
 ```
-Page nav config (so `nav.header` is correct): top pages `nav.slots:['header','mobile']` + `nav.order`;
-dropdown parents `nav.dropdown:true`; CHILDREN carry NO `nav` object (empty slots is rejected on PUT) —
-they nest via `parent` + page `order`; set the home item's label with `nav.title:"Home"`.
+Page nav config (so `nav.header` is correct): top pages `nav.slots:['header','mobile']` + the page's
+top-level `order` (the single sort key — `nav.order` is a legacy read-only fallback); dropdown parents
+`nav.dropdown:true`; CHILDREN carry NO `nav` object (empty slots is rejected on PUT) — they nest via
+`parent` + page `order`; set the home item's label with `nav.title:"Home"`.
 
 ## P1 · Service-detail `template` (hero + 2-col intro + projects loop + View→PDF modal + CTA) — R3,R16,R17
 ```hbs

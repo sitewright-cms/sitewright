@@ -86,7 +86,8 @@ In \`source\`:
   \`--sw-color-<role>\` (e.g. \`var(--sw-color-primary)\`, \`var(--sw-color-base-100)\`,
   \`var(--sw-color-base-content)\`), plus \`--sw-font-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\` from
   your CI — so custom CSS stays on-brand AND dark-mode-safe. (DaisyUI's own \`--color-<role>\` variables
-  resolve to the same values; use either.)
+  resolve to the same values; use either.) colors/spacing/radii are OPEN records, and
+  \`identity.cssTokens\` holds ANY value (gradient, shadow, easing) as \`--sw-<key>\` — get_guide("design").
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`). {{ company.mapUrl }} is a Google Maps embed URL
   for an <iframe src>; {{ company.bookingUrl }} is an external booking/reservation/appointment link
@@ -142,8 +143,9 @@ In \`source\`:
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
-description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. PUT A NEW PAGE IN THE MAIN MENU by
+description, image (the OG/share image), parent (a parent page's id — makes this a sub-page),
+\`order\` (sibling sort key; top-level, NOT nav.order), nav
+{ slots:["header"|"footer"|"mobile"], title, dropdown }. PUT A NEW PAGE IN THE MAIN MENU by
 default: set nav.slots to include "header" and ALWAYS give a short nav.title (its menu label). \`path\` is the page's OWN
 SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
 is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
@@ -190,8 +192,8 @@ get_components (contracts + skeletons) before laying out a page.
 USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
 thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag}} flags; search_icons finds
 names. Don't ship an icon-less contact / footer / feature / stats section.
-DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
-often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
+DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
+\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
 or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
 replacing over deleting when in doubt.
@@ -220,6 +222,10 @@ LAYOUT RHYTHM (use on every section):
 - In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
 - Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
 - Custom CSS grids: size flexible tracks minmax(0,1fr), NOT bare 1fr — a wide child (a carousel scroll-strip, an unbroken word) makes a 1fr track grow past the viewport and the whole page scrolls sideways; minmax(0,1fr) lets the track shrink and clip instead.
+
+DESIGN TOKENS — where a reusable value LIVES. \`identity.colors\`/\`spacing\`/\`radii\` are OPEN records: add your own key and you get \`--sw-color-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\`, and a custom COLOUR key additionally gets a Tailwind \`--color-<key>\`, so \`bg-<key>\`/\`text-<key>\`/\`border-<key>\` compile as real utilities. Each of those records is typed by what it MEANS (a colour, a length), so a gradient, an elevation ramp or a shared easing curve does not fit — put those in \`identity.cssTokens\`, an open record of ANY CSS value emitted as \`--sw-<key>\`:
+put_content("settings","settings",{ identity:{ cssTokens:{ "grad-hero":"linear-gradient(135deg,#06f,#0cf)", "z1":"0 2px 5px rgba(0,0,0,.2)", "ease-out":"cubic-bezier(.16,1,.3,1)" } } }, merge:true)
+then use var(--sw-grad-hero) / var(--sw-z1) anywhere CSS is allowed (criticalCss, a <style> block, an inline style, a Tailwind arbitrary value like [box-shadow:var(--sw-z1)]). Define a repeated value ONCE here rather than retyping the literal on every page or burying it in criticalCss where nothing validates it. cssTokens generate NO utility class (they are values, not roles) — always reach them through var(). A token may reference another (var(--sw-color-primary), color-mix(), calc()); url() and the other resource-fetching functions are REJECTED, so images belong in the media library.
 
 COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
 
@@ -823,7 +829,8 @@ Main Navigation slot (website.mainNav). The notes below explain how it works so 
 NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
 in a menu — "header" (the Main Navigation),
 "mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
-title); nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus
+title); nav.dropdown:true folds the page's CHILD pages into a dropdown under it. SORT ORDER is the page's
+TOP-LEVEL "order" (ascending, ties by title) — NOT nav.order, a legacy fallback that "order" always beats. The menus
 are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each
 nav.custom}}, each item exposing path, children (sub-pages, when nav.dropdown is on), newTab, external, and
 the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — use it to build a bespoke
@@ -926,21 +933,34 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 2. COLORS: replace the foreign palette (fixed hexes, --primary-color vars, named colour classes) with the
    MATCHING theme tokens (primary, secondary, base-100/200/300, base-content) so light AND dark work; set
    the brand from the imported identity (see "SET THE BRAND" in the core instructions) to the source's colours.
+   The import TRANSCRIBES the source's own :root custom properties into website.criticalCss under their
+   ORIGINAL names, so a declaration copied from the original (background:var(--bn-grad)) still resolves
+   after the foreign stylesheet is discarded — read them with inspect_source / get_content("settings").
+   Treat them as scaffolding: map what you can onto theme tokens, and promote a value worth KEEPING into
+   identity.cssTokens (--sw-<key>) rather than leaving it in criticalCss.
 3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
    PREFER page.children FOR AN OVERVIEW OF REAL PAGES: when a grid lists pages that ALREADY EXIST as child
    pages (a services index linking to /services/*, a blog/team index), iterate {{#each page.children}} —
    each child exposes navTitle/title, path (wrap href in {{sw-url path}}), image ({{sw-url image}}),
-   description, and its own data — instead of duplicating those pages into a dataset (the import infers a
-   dataset because it can't tell; consolidate + delete the redundant dataset). page.children is the CURRENT
+   description, and its own data — instead of duplicating those pages into a dataset. page.children is the CURRENT
    page's direct children (fits the index page itself, e.g. the services index). For a grid on a DIFFERENT
    page (e.g. the HOME page showing the pages under /services) use {{#each pages.services._attributes.children}}
    (the pages binding reaches ANY page's children by slug — a node's own fields live under ._attributes; same
    item shape as page.children). Reserve datasets
    for content that is NOT already a page. Loop fields stay BARE (no data-sw-* inside the children loop).
-   The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
-   rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
+   THE IMPORT CREATES NO DATASETS — every collection on a cloned site is YOURS to author. Read the page,
+   decide what is really a collection and what its fields mean, then write the dataset + its entries
+   (put_content kind:"dataset", then one kind:"entry" per row) and replace the repeated markup with the
+   loop. Name it for the CONTENT ("services", "faq_passengers"), not for its shape. This used to be
+   guessed from markup: shape-matching skipped any listing whose cards were not identical, named fields
+   after the markup, and concatenated text split across inline elements — so the guesses had to be found
+   and deleted more often than kept. (import_website still takes inferDatasets:true if you want to see
+   what it would guess; leave it off.) If you inherit generically-named datasets from an older import,
+   rename_dataset gives them meaningful slugs — it CASCADES (rewrites every entry + page/template
+   reference in one step) — and delete_content_bulk({kind:"dataset", ids:[…]}) clears the junk in one
+   call instead of one delete per id. A dataset
    slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it
    "faq_passengers", NEVER "faq-passengers" (a hyphen parses as subtraction and breaks the loop; the tool
    rejects it). Do NOT change a dataset's slug via put_content: that renames only the dataset and orphans
@@ -1513,13 +1533,14 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
+  { name: 'delete_content_bulk', description: "Delete MANY entities of one kind in ONE call ({ kind, ids }, up to 200). Partial success is reported per id. Use it for import clean-up instead of looping delete_content.", capability: 'content:delete' },
   { name: 'add_language', description: "Add a translation-target language — atomically registers the locale AND scaffolds an inherited translated page for every existing page. The only correct way to add a language.", capability: 'content:write' },
   { name: 'remove_language', description: "Remove a translation-target language: drops the locale and cascade-deletes its whole page subtree (the default language can't be removed).", capability: 'content:delete' },
   { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
-  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL.", capability: 'content:write' },
+  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. It creates NO datasets: you author every collection yourself (inferDatasets:true opts into the old markup guessing).", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
@@ -1551,7 +1572,9 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'icons (Lucide) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon}}, brand:<slug>, {{sw-flag}}' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
-  { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values)' },
+  { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },
+  { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values). On a CLONE these are yours to author: import_website infers none.' },
+  { need: 'clear out many entities at once (junk datasets/entries, scaffolded pages)', where: 'delete_content_bulk({ kind, ids }) — one call, up to 200 ids, per-id result; needs content:delete' },
   { need: 'multiple languages / translations', where: 'get_guide("i18n") + the add_language tool' },
   { need: 'shopping cart / products / add-to-cart', where: 'get_guide("shop")' },
   { need: 'cookie / consent banner + gated 3rd-party embeds', where: 'get_guide("consent")' },

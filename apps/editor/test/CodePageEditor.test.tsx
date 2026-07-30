@@ -113,9 +113,10 @@ describe('CodePageEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'draft' }));
     fireEvent.click(screen.getByLabelText('Nav: Main navigation'));
     fireEvent.click(screen.getByLabelText('Show in dropdown'));
-    // Nav order now lives under Advanced (an occasional tweak) — expand it to reach the field.
+    // There is no order field any more — sibling order is the page-tree `order`, set by dragging the
+    // pages list. The old number input wrote the legacy `nav.order`, which `order` always beats.
     fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
-    fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
+    expect(screen.queryByLabelText('Nav order')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' })); // applies to the DRAFT
     expect(screen.getAllByRole('dialog')).toHaveLength(1); // settings closed, editor stays
 
@@ -124,7 +125,7 @@ describe('CodePageEditor', () => {
     const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.status).toBe('draft');
     // The menu label is guaranteed when a page joins a menu — it falls back to the page title ("Home").
-    expect(saved.nav).toEqual({ slots: ['header'], title: 'Home', order: 3, dropdown: true });
+    expect(saved.nav).toEqual({ slots: ['header'], title: 'Home', dropdown: true });
     expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
   });
 

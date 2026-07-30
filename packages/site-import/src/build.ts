@@ -28,7 +28,7 @@ import { parseGoogleFontRefs } from './transform/webfonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
-import { inferDatasets, uniquifyEntryIds } from './transform/datasets.js';
+import { inferDatasets, uniquifyEntryIds, type DatasetInference } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedAsset, CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
@@ -131,6 +131,10 @@ function collectHostedFonts(refs: ReadonlyMap<string, CapturedAsset>, assetMap: 
   }
   return out;
 }
+
+/** The "inferred nothing" result, used when dataset inference is off (the default). A fresh object per
+ *  call — the arrays/Map are the caller's to own, never a shared instance the next page could see. */
+const emptyInference = (): DatasetInference => ({ datasets: [], entries: [], markers: new Map() });
 
 export async function buildImportBundle(site: CapturedSite, opts: TransformOptions): Promise<ImportResult> {
   const limits = resolveLimits(opts.limits);
@@ -292,7 +296,12 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     };
     // Conservative dataset inference (runs BEFORE the transform so its sentinel markers serialize as
     // plain text); each marker is swapped for the generated {{#each}} loop after the page transform.
-    const inf = inferDatasets(x.doc, ctx, usedSlugs, usedEntryIds, `@@SWDS${transformed}_`);
+    // OPT-IN (`opts.inferDatasets`): guessing collections from markup shape produced junk datasets more
+    // often than real ones — see the flag's doc on TransformOptions. Off → the repeated markup is
+    // imported verbatim and an agent authors the real dataset from what the page MEANS.
+    const inf = opts.inferDatasets
+      ? inferDatasets(x.doc, ctx, usedSlugs, usedEntryIds, `@@SWDS${transformed}_`)
+      : emptyInference();
     const { source: rawSource, diagnostics: pageDiags } = transformBody(x.doc, ctx);
     // Splice each loop in, but ONLY keep the dataset if its marker survived the transform AND the swap
     // leaves the page validateTemplate-clean (the marker can be dropped by fitSource or land inside a

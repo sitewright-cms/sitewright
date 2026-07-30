@@ -217,6 +217,40 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
     expect((await put(t, projectId, 'snippet', 'card', { id: 'card', name: 'card', source: '<div onclick="{{x}}">x</div>' })).statusCode).toBe(400);
   });
 
+  // Render is deliberately LENIENT about an unknown helper (an inert comment, so one retired helper
+  // can't 400 a whole page). But that marker is invisible inside an attribute, which is exactly where
+  // the missing-arithmetic case lands — so the WRITE is where it has to be caught.
+  it('rejects a call to a helper that does not exist, naming it and pointing at the attribute case', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const bad = await put(t, projectId, 'page', 'home', {
+      ...page,
+      source: '<section>{{#each dataset.x}}<div data-sw-delay="{{multiply @index 90}}"></div>{{/each}}</section>',
+    });
+    expect(bad.statusCode).toBe(400);
+    const msg = (bad.json() as { error: string }).error;
+    expect(msg).toMatch(/multiply/);          // names the offender
+    expect(msg).toMatch(/inside an attribute/); // and why it would have been invisible
+    expect(msg).toMatch(/sw-stagger/);        // and what to use instead
+    // The supported form saves.
+    expect(
+      (await put(t, projectId, 'page', 'home', {
+        ...page,
+        source: '<section>{{#each dataset.x}}<div data-sw-delay="{{sw-stagger @index 90}}"></div>{{/each}}</section>',
+      })).statusCode,
+    ).toBe(200);
+  });
+
+  it('rejects an unknown helper in a CHROME slot too — it would show on every page', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+    const bad = await put(t, projectId, 'settings', 'settings', {
+      ...base,
+      website: { footer: '<div class="footer">{{bogusHelper company.name}}</div>' },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/Footer.*bogusHelper/i);
+  });
+
   it('LOUDLY rejects a skeleton landmark in a chrome slot (slot-named) but allows neutral slot content', async () => {
     const { t, projectId } = await setup('owner@acme.test');
     const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
@@ -465,6 +499,97 @@ describe('content API — list summary (?summary=1)', () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.values).toBeUndefined();
     expect((items[0]!._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ values: { keys: ['name'] } });
+  });
+});
+
+// A write used to echo the whole stored entity — for settings that is criticalCss + four chrome slots
+// + identity, ~9 KB, even for a one-field ?merge=1 patch. `?receipt=1` returns what a writer actually
+// needs instead: did it land, and on what.
+describe('write receipt', () => {
+  const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+  const bigCss = `.x{color:red}${'/* pad */'.repeat(400)}`;
+
+  it('replaces the ~9 KB echo with a short receipt naming the changed keys', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt1');
+    const url = `/projects/${projectId}/content/settings/settings`;
+    // Seed a realistically FAT settings entity.
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { criticalCss: bigCss } } });
+
+    const echo = await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { criticalCss: bigCss, head: '<meta>' } } });
+    const receipt = await app.inject({
+      method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { website: { footer: '<div>f</div>' } },
+    });
+    expect(receipt.statusCode).toBe(200);
+    const body = receipt.json() as { kind: string; id: string; bytes: number; created: boolean; changed: string[] };
+    expect(body).toMatchObject({ kind: 'settings', id: 'settings', created: false, changed: ['website'] });
+    expect(body.bytes).toBeGreaterThan(3_000); // it still REPORTS the size it no longer sends
+    // The whole point: the receipt is orders of magnitude smaller than the echo it replaces.
+    expect(receipt.payload.length).toBeLessThan(200);
+    expect(echo.payload.length).toBeGreaterThan(3_000);
+  });
+
+  it('still MERGES correctly — a receipt write is a normal write', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt2');
+    const url = `/projects/${projectId}/content/settings/settings`;
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { head: '<meta>' } } });
+    await app.inject({ method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { website: { footer: '<div>f</div>' } } });
+    const stored = (await app.inject({ method: 'GET', url, cookies: { sw_session: t } })).json() as { item: { website: Record<string, string> } };
+    expect(stored.item.website.footer).toBe('<div>f</div>');
+    expect(stored.item.website.head).toBe('<meta>'); // the omitted slot survived
+  });
+
+  it('reports an empty `changed` for a NO-OP patch — the signal the echo never gave', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt3');
+    const url = `/projects/${projectId}/content/page/home`;
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...page, title: 'Home' } });
+    const noop = await app.inject({ method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { id: 'home', title: 'Home' } });
+    expect((noop.json() as { changed: string[] }).changed).toEqual([]);
+  });
+
+  it('marks a CREATE, and defaults to the full echo so existing callers are untouched', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt4');
+    const url = `/projects/${projectId}/content/page/about`;
+    const created = await app.inject({
+      method: 'PUT', url: `${url}?receipt=1`, cookies: { sw_session: t }, payload: { id: 'about', path: 'about', title: 'About' },
+    });
+    const body = created.json() as { created: boolean; changed: string[] };
+    expect(body.created).toBe(true);
+    expect(body.changed).toEqual(expect.arrayContaining(['id', 'path', 'title']));
+    // No flag → the entity, exactly as before.
+    const plain = await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { id: 'about', path: 'about', title: 'About 2' } });
+    expect((plain.json() as { item: { title: string } }).item.title).toBe('About 2');
+  });
+
+  it('reads an ENTRY under its dataset scope, so an update is not reported as a create', async () => {
+    // An entry lives under its dataset slug, not the project-global scope. A scope-less prior read would
+    // miss it and every entry write would claim created:true with every key "changed".
+    const { t, projectId } = await setup('owner@acme.test', 'rcptentry');
+    const put = (url: string, payload: Record<string, unknown>) =>
+      app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    await put('/content/dataset/team', { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'v', type: 'text' }] });
+
+    const created = await put('/content/entry/row_1?receipt=1', { id: 'row_1', dataset: 'team', values: { v: 'a' } });
+    expect((created.json() as { created: boolean }).created).toBe(true);
+
+    const updated = await put('/content/entry/row_1?receipt=1', { id: 'row_1', dataset: 'team', values: { v: 'b' } });
+    const body = updated.json() as { created: boolean; changed: string[] };
+    expect(body.created).toBe(false);       // the existing row WAS found
+    expect(body.changed).toEqual(['values']); // and only the field that moved is listed
+  });
+
+  it('still carries data.swImport across a full page replace when a receipt is requested', async () => {
+    // The receipt path reuses the SAME prior-value read as the swImport carry — a regression here would
+    // make a cloned page permanently un-auditable.
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt5');
+    const url = `/projects/${projectId}/content/page/home`;
+    await app.inject({
+      method: 'PUT', url, cookies: { sw_session: t },
+      payload: { ...page, data: { swImport: { sourceUrl: 'https://x.test/' } } },
+    });
+    await app.inject({ method: 'PUT', url: `${url}?receipt=1`, cookies: { sw_session: t }, payload: { ...page, title: 'Renamed' } });
+    const stored = (await app.inject({ method: 'GET', url, cookies: { sw_session: t } })).json() as { item: { title: string; data?: { swImport?: unknown } } };
+    expect(stored.item.title).toBe('Renamed');
+    expect(stored.item.data?.swImport).toEqual({ sourceUrl: 'https://x.test/' });
   });
 });
 

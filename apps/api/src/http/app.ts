@@ -91,6 +91,7 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   validateTemplate,
+  findUnknownHelpers,
   findSkeletonLandmark,
   TemplateError,
   mediaForRender,
@@ -276,6 +277,7 @@ import {
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
 import { summarizeContentList } from '../repo/content-summary.js';
+import { writeReceipt } from '../repo/write-receipt.js';
 import { RevisionsRepository } from '../repo/revisions.js';
 import {
   ConflictError,
@@ -546,10 +548,33 @@ const CHROME_HTML_SLOTS: ReadonlyArray<readonly [slot: string, label: string]> =
  * (`<footer>`/`<nav>`/…) in a chrome slot was accepted silently and then dropped at render (the old
  * chrome kept showing), with no error to the user or agent. Now it fails LOUDLY (400) naming the slot.
  */
+/**
+ * Reject a call to a helper the engine doesn't have — at SAVE, where the author can still fix it.
+ *
+ * Render stays lenient on purpose (an unknown helper becomes an inert comment rather than 400ing the
+ * page), but that marker is only *discoverable* in body text: inside an attribute
+ * (`data-sw-delay="{{multiply @index 90}}"`) it is invisible garbage that nothing reports. So the write
+ * is where this has to be caught. The message names the helper and points at it.
+ */
+function rejectUnknownHelpers(source: string, label?: string): void {
+  const [first] = findUnknownHelpers(source);
+  if (!first) return;
+  const where = first.inAttribute ? ' (inside an attribute value, where it would render as invisible garbage)' : '';
+  throw new TemplateError(
+    `${label ? `the "${label}" ` : ''}template calls {{${first.name} …}}, which is not a helper${where}. ` +
+      'Check the spelling against get_reference (or the Template reference in the editor). ' +
+      'There is no arithmetic helper — to stagger a loop use {{sw-stagger @index 90}}.',
+    { line: first.line, column: first.column },
+  );
+}
+
 function validateSourceOnSave(kind: string, body: unknown): void {
   if (SOURCE_KINDS.has(kind)) {
     const source = (body as { source?: unknown } | null | undefined)?.source;
-    if (typeof source === 'string' && source.trim() !== '') validateTemplate(source);
+    if (typeof source === 'string' && source.trim() !== '') {
+      validateTemplate(source);
+      rejectUnknownHelpers(source);
+    }
     return;
   }
   if (kind === 'settings') {
@@ -580,6 +605,7 @@ function validateSourceOnSave(kind: string, body: unknown): void {
         }
         throw err;
       }
+      rejectUnknownHelpers(val, label); // a typo'd helper in the chrome shows on EVERY page
     }
   }
 }
@@ -2758,12 +2784,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.put<{ Params: ContentParams; Querystring: { merge?: string } }>(
+  app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);
+      // `?receipt=1` returns a SHORT confirmation instead of echoing the stored entity back. A settings
+      // write echoed ~9 KB of criticalCss + chrome slots + identity on EVERY call, including a one-field
+      // `?merge=1` patch — measured at ~60 k tokens of pure echo across one clone. Opt-IN so the editor
+      // (which re-hydrates from the response) is unaffected; the MCP tools opt in, since an agent that
+      // wants the entity back can just call get_content.
+      const wantReceipt = req.query.receipt === '1' || req.query.receipt === 'true';
+      // The stored value BEFORE this write, loaded at most once and only when something needs it.
+      let prior: unknown;
+      let priorLoaded = false;
+      const loadPrior = async (): Promise<unknown> => {
+        if (!priorLoaded) {
+          priorLoaded = true;
+          // An ENTRY is stored under its dataset SLUG, not the project-global '' scope — read it the same
+          // way `put` keys it (from the body), or the lookup misses and a receipt would report a CREATE
+          // over an existing row. Merge and the swImport carry are settings/page only, so they are always ''.
+          const scope = kind === 'entry' ? String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '') : '';
+          prior = await contentRepo.get(ctx, kind, req.params.entityId, scope).catch((err: unknown) => {
+            if (err instanceof NotFoundError) return undefined;
+            throw err;
+          });
+        }
+        return prior;
+      };
       // `?merge=1` PATCHES the existing entity instead of replacing it: the body is a FRAGMENT that is
       // deep-merged into the current value (siblings the fragment omits are kept). Enabled for the kinds
       // where a full replace from a stale/partial snapshot silently DESTROYS data:
@@ -2780,12 +2829,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (kind !== 'settings' && kind !== 'page') {
           return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings" and "page" kinds, not "${kind}"` });
         }
-        const current = await contentRepo
-          .get(ctx, kind, req.params.entityId)
-          .catch((err: unknown) => {
-            if (err instanceof NotFoundError) return null;
-            throw err;
-          });
+        const current = (await loadPrior()) ?? null;
         // Merge needs a base. Settings are seeded on project create and can't be deleted, so that case is a
         // defensive guard; a page merge legitimately misses when the id is wrong or the page is new. Either
         // way return an ACTIONABLE 404 rather than letting a fragment fall through to a full write and fail
@@ -2808,15 +2852,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // body OMITS the key entirely; an explicit `data.swImport: null` still clears it (a page that is no
       // longer import-derived can say so).
       if (kind === 'page' && !wantMerge) {
-        const stored = await contentRepo.get(ctx, 'page', req.params.entityId).catch((err: unknown) => {
-          if (err instanceof NotFoundError) return null; // creating a new page — nothing to carry
-          throw err;
-        });
-        body = carryImportMarker(stored, body);
+        body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
       }
+      // A receipt reports what actually CHANGED, so the prior value must be read before the write.
+      if (wantReceipt) await loadPrior();
       const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
+      if (wantReceipt) return reply.send(writeReceipt(kind, req.params.entityId, prior, item));
       return reply.send({ item });
     },
   );

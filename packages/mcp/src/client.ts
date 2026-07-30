@@ -136,6 +136,16 @@ export interface RegionCompareResult {
   regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
 }
 
+/** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
+export interface WriteReceipt {
+  kind: string;
+  id: string;
+  bytes: number;
+  created: boolean;
+  /** Top-level keys that actually differ from before the write. EMPTY means the write changed nothing. */
+  changed: string[];
+}
+
 /**
  * Outcome of a BULK delete (POST /projects/:id/content/:kind/bulk-delete). Partial success is normal:
  * `deleted` + `failed` together account for every requested id (after de-duplication).
@@ -404,15 +414,21 @@ export class SitewrightClient {
     return res.item;
   }
 
-  async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean } = {}): Promise<unknown> {
+  async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean; receipt?: boolean } = {}): Promise<unknown> {
     // `merge` PATCHES: the body is a fragment deep-merged into the existing entity (settings + page) so a
     // partial write can't revert the fields it omits. Default (no flag) still REPLACES the whole entity.
-    const res = await this.request<{ item: unknown }>(
+    //
+    // `receipt` asks for a SHORT confirmation ({kind,id,bytes,created,changed}) instead of the stored
+    // entity. Agent tools default it ON: echoing settings back cost ~9 KB per write for no benefit — an
+    // agent that wants the entity has get_content, and `changed` says more than the echo did (an empty
+    // list means the patch was a no-op). The response shape differs, so the caller decides.
+    const query = [opts.merge ? 'merge=1' : '', opts.receipt ? 'receipt=1' : ''].filter(Boolean).join('&');
+    const res = await this.request<{ item: unknown } | WriteReceipt>(
       'PUT',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${opts.merge ? '?merge=1' : ''}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${query ? `?${query}` : ''}`),
       data,
     );
-    return res.item;
+    return opts.receipt ? res : (res as { item: unknown }).item;
   }
 
   async deleteContent(kind: string, entityId: string, dataset?: string): Promise<void> {

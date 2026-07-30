@@ -83,6 +83,19 @@ describe('SitewrightClient', () => {
     expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/settings/settings'); // no query by default
   });
 
+  it('asks for a RECEIPT instead of the entity echo, and returns it verbatim', async () => {
+    const receipt = { kind: 'settings', id: 'settings', bytes: 9123, created: false, changed: ['website'] };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(receipt) },
+    );
+    // receipt alone…
+    await expect(client.putContent('page', 'home', { id: 'home' }, { receipt: true })).resolves.toEqual(receipt);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/page/home?receipt=1');
+    // …and combined with merge (both flags in one query).
+    await client.putContent('settings', 'settings', { website: {} }, { merge: true, receipt: true });
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/settings/settings?merge=1&receipt=1');
+  });
+
   it('treats 204 as a void delete', async () => {
     const { client } = await introspected((input) =>
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 204 },

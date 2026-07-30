@@ -220,6 +220,7 @@ LAYOUT RHYTHM (use on every section):
 - Depth via ALTERNATING surfaces: give consecutive sections bg-base-100 -> bg-base-200 -> bg-base-100 (never all-white/all-one-colour). Use base-300 for card borders on top. This one move reads as "designed".
 - Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
 - In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
+- Fonts follow the ELEMENT: h1-h6 get the heading face, everything else the body face. To break that (a slogan or sidebar title that should read in the body face, or a <p>/<span> that should carry the display face) add the \`font-body\` / \`font-heading\` utility — plus \`font-<name>\` for any custom named slot.
 - Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
 - Custom CSS grids: size flexible tracks minmax(0,1fr), NOT bare 1fr — a wide child (a carousel scroll-strip, an unbroken word) makes a 1fr track grow past the viewport and the whole page scrolls sideways; minmax(0,1fr) lets the track shrink and clip instead.
 
@@ -260,7 +261,7 @@ THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are 
 
 IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty boxes/placeholder greys read as unfinished. Keep a consistent aspect per group (aspect-[4/3], aspect-video, aspect-square) + object-cover + rounded-2xl; galleries -> data-sw-component="lightbox". Never distort an image.
 
-MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200). Animating everything cheapens it.
+MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200) — inside an {{#each}} use data-sw-delay="{{sw-stagger @index 90}}". Animating everything cheapens it.
 
 CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? every section's content wrapped in .sw-container (one aligned width throughout)? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
 `,
@@ -428,7 +429,15 @@ The platform detects data-sw-animation and ships its own tiny runtime automatica
 animation library, CDN links, or scripts (they'd be rejected anyway). Content stays visible
 without JS and motion respects prefers-reduced-motion. data-sw-duration/-delay/-easing/-once are
 SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold/-offset are entrance-only. Stagger lists
-by increasing data-sw-delay per item (e.g. 0/100/200).
+by increasing data-sw-delay per item (e.g. 0/100/200). Inside a LOOP, compute it with {{sw-stagger}} —
+templates have no arithmetic, so {{multiply @index 90}} is NOT a thing (an unknown helper renders as a
+visible comment marker and, in an attribute, one you would never see):
+  {{#each dataset.services}}
+    <div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}">…</div>
+  {{/each}}
+{{sw-stagger @index [step=100] [max=600]}} caps the total on purpose — a 40-item grid whose last card
+waits 3.6s reads as a broken page; past the cap the rest land together. For a long list lower the STEP
+(60-80) rather than raising the cap.
 
 PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
 any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
@@ -1178,6 +1187,11 @@ Embed the form with {{sw-form "<id>"}}. Match the ORIGINAL form's field layout +
 
 COMMON FIDELITY MISSES — these keep happening even when the port "looks close". Self-audit EVERY page
 against this list BEFORE you publish it:
+- HEADINGS DEFAULT TO THE HEADING FONT. The platform styles h1-h6 with --sw-font-heading, so an <h1>-<h6>
+  the SOURCE sets in its body face renders in the wrong font while the markup looks perfectly right, and
+  nothing flags it. Add the \`font-body\` utility to those headings (and \`font-heading\` to a non-heading
+  element that should carry the display face) — \`font-<name>\` also works for a custom named slot. Check
+  this wherever the original uses a heading tag for a slogan, a sidebar title or a card label.
 - EVERYTHING REPEATED IS A DATASET. A card grid, a team list, job vacancies, AND a second group next to a
   first (e.g. "Associate Directors" beside "Directors") ALL become datasets + {{#each}} — so a client adds/
   removes items without touching page code. Do NOT hard-code the second group, or a "short" list, inline.
@@ -1529,9 +1543,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
   { name: 'put_page', description: "Create or REPLACE a page (id taken from page.id) — a total replace; omitted fields are deleted. For partial edits use patch_page.", capability: 'content:write' },
-  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Use instead of put_page for partial edits.", capability: 'content:write' },
+  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Use instead of put_page for partial edits. Returns a RECEIPT whose `changed` list is EMPTY when the patch was a no-op.", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
-  { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
+  { name: 'put_content', description: "Create or replace a content entity of the given kind (`merge:true` PATCHES settings). Returns a RECEIPT — { kind, id, bytes, created, changed } — not the entity.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
   { name: 'delete_content_bulk', description: "Delete MANY entities of one kind in ONE call ({ kind, ids }, up to 200). Partial success is reported per id. Use it for import clean-up instead of looping delete_content.", capability: 'content:delete' },
   { name: 'add_language', description: "Add a translation-target language — atomically registers the locale AND scaffolds an inherited translated page for every existing page. The only correct way to add a language.", capability: 'content:write' },
@@ -1569,7 +1583,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
   { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
   { need: 'rotating / animated / glowing border on a caption, card or image', where: 'the sw-border-beam class — get_guide("effects")' },
-  { need: 'icons (Lucide) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon}}, brand:<slug>, {{sw-flag}}' },
+  { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, {{sw-flag}}; search_icons finds names' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
   { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },
@@ -1592,7 +1606,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
 export const WRITE_KINDS: readonly { kind: string; tool: string; shape: string }[] = [
   { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write (a TOTAL replace); prefer over put_content' },
   { kind: 'page (partial edit)', tool: 'patch_page({ page })', shape: '{ id, …only the fields to change } — merges into the stored page; use for any partial edit so a replace cannot wipe source/status/data.swImport' },
-  { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data })', shape: 'read-modify-write the WHOLE settings entity (identity + website slots)' },
+  { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data, merge:true })', shape: 'with merge:true send ONLY the fields you are changing (e.g. just website.footer) — a full read-modify-write reverts any slot your snapshot missed' },
   { kind: 'dataset', tool: 'put_content({ kind:"dataset", id, data })', shape: '{ name, slug (UNDERSCORE id), fields:[{name,type,required?}] } — get_guide("datasets")' },
   { kind: 'entry', tool: 'put_content({ kind:"entry", id, dataset, data })', shape: '{ values:{ <field>:… } } — row data goes under `values`; pass the `dataset` slug arg' },
   { kind: 'form', tool: 'put_content({ kind:"form", id, data })', shape: 'form definition (fields, endpoint) — get_guide("templates")' },

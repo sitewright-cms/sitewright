@@ -346,7 +346,7 @@ describe('createSitewrightMcpServer — snippet authoring (was unreachable)', ()
       arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<div>x</div>' } },
     });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything(), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything(), { merge: undefined, receipt: true });
   });
 });
 
@@ -874,7 +874,7 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
       recipient: 'sales@acme.com',
     };
     const res = await mcp.callTool({ name: 'put_content', arguments: { kind: 'form', id: 'contact', data: formData } });
-    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData, { merge: undefined });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData, { merge: undefined, receipt: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -912,21 +912,21 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const mcp = await connect(client, writeScope);
     // A dataset payload that (like a weak model) leaves out the "redundant" id the schema demands.
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'services', data: { name: 'Services', slug: 'services', fields: [] } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('dataset', 'services', expect.objectContaining({ id: 'services', name: 'Services', slug: 'services' }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('dataset', 'services', expect.objectContaining({ id: 'services', name: 'Services', slug: 'services' }), { merge: undefined, receipt: true });
   });
 
   it('put_content backfills an entry’s id AND dataset from the args', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'entry', id: 'leak', dataset: 'services', data: { values: { title: 'Leak detection' } } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('entry', 'leak', expect.objectContaining({ id: 'leak', dataset: 'services', values: { title: 'Leak detection' } }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('entry', 'leak', expect.objectContaining({ id: 'leak', dataset: 'services', values: { title: 'Leak detection' } }), { merge: undefined, receipt: true });
   });
 
   it('put_content parses a JSON-STRING data payload (models that stringify the object)', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: JSON.stringify({ name: 'CTA', source: '<div>hi</div>' }) } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.objectContaining({ id: 'cta', name: 'CTA', source: '<div>hi</div>' }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.objectContaining({ id: 'cta', name: 'CTA', source: '<div>hi</div>' }), { merge: undefined, receipt: true });
   });
 
   it('put_content does NOT inject an id into the settings singleton (it has no id field)', async () => {
@@ -934,21 +934,21 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: { identity: { name: 'Acme' } } } });
     // The settings body is written through verbatim — no stray `id` field injected.
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { identity: { name: 'Acme' } }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { identity: { name: 'Acme' } }, { merge: undefined, receipt: true });
   });
 
   it('put_content forwards merge:true so a settings patch PATCHES instead of replacing', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: { website: { footer: '<div>x</div>' } }, merge: true } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { website: { footer: '<div>x</div>' } }, { merge: true });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { website: { footer: '<div>x</div>' } }, { merge: true, receipt: true });
   });
 
   it('put_content leaves an explicit, matching data.id untouched (no clobber)', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<b>x</b>' } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'cta', name: 'CTA', source: '<b>x</b>' }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'cta', name: 'CTA', source: '<b>x</b>' }, { merge: undefined, receipt: true });
   });
 
   it('put_content does NOT rewrite a MISMATCHED explicit data.id (the server’s ConflictError must still fire)', async () => {
@@ -957,7 +957,7 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     // A wrong-but-present id is passed through verbatim (id arg 'cta' ≠ data.id 'other') so the API's
     // entityKey guard raises ConflictError rather than the MCP layer silently "fixing" it.
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'other', name: 'X', source: '<b/>' } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'other', name: 'X', source: '<b/>' }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'other', name: 'X', source: '<b/>' }, { merge: undefined, receipt: true });
   });
 });
 
@@ -975,7 +975,7 @@ describe('createSitewrightMcpServer — tool wiring', () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     const res = await mcp.callTool({ name: 'put_page', arguments: { page } });
-    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('page', 'home', page);
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('page', 'home', page, { receipt: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -1325,7 +1325,7 @@ describe('patch_page', () => {
     const mcp = await connect(client, writeScope);
     const res = await mcp.callTool({ name: 'patch_page', arguments: { page: { id: 'home', nav: { title: 'Home', slots: ['header'] } } } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', { id: 'home', nav: { title: 'Home', slots: ['header'] } }, { merge: true });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', { id: 'home', nav: { title: 'Home', slots: ['header'] } }, { merge: true, receipt: true });
   });
 
   it('is gated on content:write, and put_page stays a REPLACE (no merge flag)', async () => {
@@ -1337,7 +1337,7 @@ describe('patch_page', () => {
 
     const writer = fakeClient();
     await (await connect(writer, writeScope)).callTool({ name: 'put_page', arguments: { page } });
-    expect(callsOf(writer).putContent).toHaveBeenCalledWith('page', page.id, page);
+    expect(callsOf(writer).putContent).toHaveBeenCalledWith('page', page.id, page, { receipt: true });
   });
 });
 

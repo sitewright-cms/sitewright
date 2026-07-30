@@ -931,20 +931,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'put_page',
     {
       description:
-        'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead.',
+        'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page; call get_page if you need the stored page back.',
       inputSchema: { page: PageSchema },
     },
-    gate('content:write', ({ page }) => client.putContent('page', page.id, page)),
+    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { receipt: true })),
   );
 
   server.registerTool(
     'patch_page',
     {
       description:
-        'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first.',
+        'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page: `changed` lists the top-level keys that actually differ, so an EMPTY list means your patch was a no-op (wrong id, or the value was already set). Call get_page if you need the stored page back.',
       inputSchema: { page: PagePatchSchema },
     },
-    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true })),
+    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true, receipt: true })),
   );
 
   server.registerTool(
@@ -957,7 +957,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'put_content',
     {
       description:
-        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide. For SETTINGS, pass `merge:true` to PATCH just the fields you send (e.g. only `website.footer`) without resending the whole object — safer than a full replace, which reverts any slot your snapshot missed.',
+        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide. For SETTINGS, pass `merge:true` to PATCH just the fields you send (e.g. only `website.footer`) without resending the whole object — safer than a full replace, which reverts any slot your snapshot missed. Returns a RECEIPT — { kind, id, bytes, created, changed } — instead of echoing the entity (settings alone was ~9 KB per write): `changed` lists the top-level keys that actually differ, so an EMPTY list means the write changed nothing. Use get_content when you need the stored entity.',
       inputSchema: {
         kind: GENERIC_KIND,
         id: z.string(),
@@ -971,7 +971,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
       const normalized = normalizePutData(kind, id, dataset, data);
       try {
-        return await client.putContent(kind, id, normalized, { merge });
+        return await client.putContent(kind, id, normalized, { merge, receipt: true });
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed
         // the payload wrong can self-correct next turn instead of looping on the same validation error.

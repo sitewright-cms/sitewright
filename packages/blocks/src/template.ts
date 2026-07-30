@@ -502,6 +502,23 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(body);
   });
+  // {{sw-stagger @index 90 [max]}} → the reveal DELAY in ms for item `@index` of a loop: `index * step`,
+  // capped at `max` (default 600ms). The effects guide has always recommended staggering a list by an
+  // increasing `data-sw-delay`, but inside `{{#each}}` there was no way to DERIVE one — the engine has no
+  // arithmetic, so `{{multiply @index 90}}` emitted the literal text `<!-- sw:unknown-helper multiply -->`
+  // into the attribute. This is the one arithmetic the recipe needs, so it ships as a purpose-built helper
+  // rather than a general `multiply` (which would invite expression-building in templates).
+  //
+  // The CAP is the point of the third argument: without it a 40-item grid delays its last card by 3.6s, so
+  // the "animation" reads as a broken page. Everything past the cap simply lands together.
+  hb.registerHelper('sw-stagger', (index: unknown, step: unknown, max: unknown) => {
+    const i = typeof index === 'number' && Number.isFinite(index) ? Math.max(0, Math.floor(index)) : 0;
+    const s = typeof step === 'number' && Number.isFinite(step) ? Math.max(0, Math.floor(step)) : 100;
+    // A Handlebars helper called with fewer args still receives the options hash last, so a non-number
+    // `max` means "not supplied" → the default cap.
+    const cap = typeof max === 'number' && Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 600;
+    return Math.min(i * s, cap);
+  });
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';
@@ -976,6 +993,76 @@ export function registeredHelperNames(): string[] {
  */
 export function registeredSwHelpers(): string[] {
   return registeredHelperNames().filter((name) => name.startsWith('sw-'));
+}
+
+/** Every registered helper name, cached — `registeredHelperNames()` builds a whole Handlebars instance. */
+let helperNameSet: Set<string> | null = null;
+
+/** One `{{name …}}` call naming a helper the engine does not register, with its position in the source. */
+export interface UnknownHelperUse {
+  name: string;
+  line: number;
+  column: number;
+  /** True when the call sits inside a tag (an attribute value) — where the render-time marker is INVISIBLE. */
+  inAttribute: boolean;
+}
+
+/**
+ * Find `{{someHelper arg}}` calls naming a helper that does not exist.
+ *
+ * This is a SAVE-TIME check, deliberately NOT part of {@link validateTemplate} — that runs on every
+ * render, and turning an unknown helper into a render failure is precisely what the graceful
+ * `helperMissing` fallback exists to prevent (one retired helper must not 400 a whole page). So: strict
+ * where the author can still fix it, lenient where it would only break a visitor's page.
+ *
+ * It exists because the render-time fallback is only *discoverable* in body text. Inside an attribute
+ * (`data-sw-delay="{{multiply @index 90}}"`) the emitted `<!-- … -->` marker is not a comment at all —
+ * it is attribute garbage, invisible in the page and reported by nothing. That is a real bug that
+ * shipped: the effects guide recommends staggering a loop, templates have no arithmetic, and the
+ * resulting `{{multiply}}` was only ever found by grepping the built artifact.
+ *
+ * A mustache counts as a CALL only when it has arguments — a bare `{{name}}` is a data path (missing →
+ * empty, unchanged), and `{{#block}}` / `{{>partial}}` / `{{^inverse}}` / `{{!comment}}` are skipped.
+ * Subexpressions `(name …)` are checked too.
+ */
+export function findUnknownHelpers(source: string): UnknownHelperUse[] {
+  helperNameSet ??= new Set(registeredHelperNames());
+  const known = helperNameSet;
+  const out: UnknownHelperUse[] = [];
+  const seen = new Set<string>();
+  // `name` then at least one argument. Handlebars has no other reading of a path followed by a token,
+  // so this can't misfire on a plain binding.
+  const CALL = /^([A-Za-z_$][\w$.:-]*)\s+\S/;
+  const SUBEXPR = /\(\s*([A-Za-z_$][\w$.:-]*)\s+\S/g;
+
+  let inTag = false;
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith('{{', i)) {
+      const close = source.indexOf('}}', i + 2);
+      if (close === -1) break; // unclosed — validateTemplate reports it properly
+      const inner = source.slice(i + 2, close).replace(/^\{/, '').trim();
+      if (!/^[#/!>^]|^else\b/.test(inner)) {
+        const names = [CALL.exec(inner)?.[1], ...[...inner.matchAll(SUBEXPR)].map((m) => m[1])];
+        for (const name of names) {
+          if (name === undefined || known.has(name)) continue;
+          const key = `${name}@${i}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ name, ...lineCol(source, i), inAttribute: inTag });
+        }
+      }
+      i = close + 2;
+      continue;
+    }
+    const ch = source[i];
+    // Coarse tag tracking — enough to tell "inside a tag" from body text. Mustaches never contain a
+    // bare `<`/`>` that could desync it (validateTemplate rejects raw output and unquoted attributes).
+    if (ch === '<') inTag = true;
+    else if (ch === '>') inTag = false;
+    i += 1;
+  }
+  return out;
 }
 
 /** The minimal shape of a dataset entry the loop helper recognises (mirrors @sitewright/schema's Entry). */

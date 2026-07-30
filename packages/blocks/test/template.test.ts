@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderTemplate, validateTemplate, findSkeletonLandmark, TemplateError, type TemplateContext } from '../src/template.js';
+import { findUnknownHelpers, renderTemplate, validateTemplate, findSkeletonLandmark, TemplateError, type TemplateContext } from '../src/template.js';
 
 const ctx: TemplateContext = {
   company: { name: 'Acme & Co', address: { city: 'Berlin' } },
@@ -284,6 +284,43 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
   it('{{sw-truncate}} clips long text', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
+  });
+
+  // The engine has NO arithmetic, so the effects guide's own stagger recipe ("increase data-sw-delay per
+  // item") was unwritable inside {{#each}} — `{{multiply @index 90}}` emitted the literal text
+  // `<!-- sw:unknown-helper multiply -->` into the attribute. sw-stagger is that one computation.
+  describe('{{sw-stagger}}', () => {
+    const each = (tpl: string, n: number): string =>
+      renderTemplate(`{{#each page.items}}${tpl}{{/each}}`, { page: { items: Array.from({ length: n }, (_, i) => i) } });
+
+    it('yields index x step for each item of a loop', () => {
+      expect(each('[{{sw-stagger @index 90}}]', 4)).toBe('[0][90][180][270]');
+    });
+
+    it('CAPS the delay so a long list does not animate seconds late', () => {
+      // Default cap 600: without it item 39 would be delayed 3.5s and the page reads as stuck.
+      expect(each('[{{sw-stagger @index 90}}]', 10)).toBe('[0][90][180][270][360][450][540][600][600][600]');
+      expect(renderTemplate('{{sw-stagger 40 90}}', {})).toBe('600');
+      // …and the cap is overridable.
+      expect(renderTemplate('{{sw-stagger 40 90 2000}}', {})).toBe('2000');
+      expect(renderTemplate('{{sw-stagger 3 100 250}}', {})).toBe('250');
+    });
+
+    it('defaults the step, and degrades to 0 rather than NaN on junk input', () => {
+      expect(renderTemplate('{{sw-stagger 3}}', {})).toBe('300'); // default step 100
+      // A missing/garbage index or step must never emit NaN into an attribute.
+      for (const tpl of ['{{sw-stagger page.nope 90}}', '{{sw-stagger "x" 90}}', '{{sw-stagger 2 page.nope}}']) {
+        expect(renderTemplate(tpl, { page: {} })).toMatch(/^\d+$/);
+      }
+      expect(renderTemplate('{{sw-stagger -5 90}}', {})).toBe('0'); // negative index clamps, never a negative delay
+    });
+
+    it('is usable exactly as the guide shows it — inside a data-sw-delay attribute', () => {
+      const out = each('<div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}"></div>', 2);
+      expect(out).toContain('data-sw-delay="0"');
+      expect(out).toContain('data-sw-delay="90"');
+      expect(out).not.toContain('unknown-helper');
+    });
   });
 
   it('{{sw-json}} pretty-prints any value (HTML-escaped) and is empty/safe for nothing or a cycle', () => {
@@ -965,5 +1002,67 @@ describe('graceful missing helper (no whole-page 400 on a typo/retired helper)',
   it('does not let the helper name break out of the comment (sanitised to an identifier)', () => {
     // The parser only accepts identifier chars in a helper name anyway; belt-and-suspenders on output.
     expect(renderTemplate('{{sw-foo.bar x}}', { x: 1 } as unknown as TemplateContext)).toContain('<!-- sw:unknown-helper');
+  });
+});
+
+// SAVE-TIME detection of a helper that does not exist. Render stays lenient (an inert comment, so one
+// retired helper can't 400 a whole page) — but that marker is only DISCOVERABLE in body text; inside an
+// attribute it is invisible garbage nothing reports. This is the loud half.
+describe('findUnknownHelpers', () => {
+  it('flags a call to a helper the engine does not register, with its position', () => {
+    const out = findUnknownHelpers('<p>x</p>\n<div data-sw-delay="{{multiply @index 90}}"></div>');
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ name: 'multiply', line: 2, inAttribute: true });
+  });
+
+  it('knows body text from an attribute — the attribute case is the invisible one', () => {
+    expect(findUnknownHelpers('<p>{{bogus 1}}</p>')[0]).toMatchObject({ name: 'bogus', inAttribute: false });
+    expect(findUnknownHelpers('<img alt="{{bogus 1}}">')[0]).toMatchObject({ name: 'bogus', inAttribute: true });
+  });
+
+  it('accepts every REGISTERED helper, including the new sw-stagger', () => {
+    for (const ok of [
+      '{{sw-stagger @index 90}}',
+      '{{sw-truncate page.t 20}}',
+      '{{sw-url page.link}}',
+      '{{sw-date "now" "YYYY"}}',
+      '{{sw-icon "check:thin" "h-4 w-4"}}',
+      '{{lookup page.data "k"}}',
+    ]) {
+      expect(findUnknownHelpers(ok)).toEqual([]);
+    }
+  });
+
+  it('does NOT flag a plain binding, a block, a partial, a comment or an inverse', () => {
+    // A bare path with no arguments is data, not a call — a missing one renders empty, as it always has.
+    for (const ok of [
+      '{{page.title}}',
+      '{{ company.name }}',
+      '{{@index}}',
+      '{{#each dataset.x}}{{title}}{{/each}}',
+      '{{#if page.data.a}}y{{else}}n{{/if}}',
+      '{{> nav-header}}',
+      '{{! a comment }}',
+      '{{^}}',
+    ]) {
+      expect(findUnknownHelpers(ok)).toEqual([]);
+    }
+  });
+
+  it('looks inside SUBEXPRESSIONS, where a typo is easiest to miss', () => {
+    expect(findUnknownHelpers('{{sw-truncate (bogus page.t) 20}}')[0]).toMatchObject({ name: 'bogus' });
+    expect(findUnknownHelpers('{{sw-truncate (sw-label page.t) 20}}')).toEqual([]);
+  });
+
+  it('reports every distinct site, and survives a malformed template without throwing', () => {
+    expect(findUnknownHelpers('{{a 1}}{{b 2}}{{a 3}}').map((u) => u.name)).toEqual(['a', 'b', 'a']);
+    expect(() => findUnknownHelpers('<p>{{unclosed 1')).not.toThrow(); // validateTemplate owns that error
+  });
+
+  it('is consistent with the RENDER-time fallback — same calls, different severity', () => {
+    // What save rejects is exactly what render would turn into a marker.
+    const src = '<p>{{multiply 1 2}}</p>';
+    expect(findUnknownHelpers(src)).toHaveLength(1);
+    expect(renderTemplate(src, {})).toContain('sw:unknown-helper multiply');
   });
 });

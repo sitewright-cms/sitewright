@@ -15,8 +15,10 @@ open to watch your changes live), then call get_scope again to confirm before co
 
 GET THE TOOL ARGUMENTS RIGHT — a call missing a required argument is rejected and wastes a turn.
 The writes you'll use most (argument names matter):
-- put_page({ page: { id, path, title, source } }) — the TYPED way to create/replace a page. Prefer
-  this for pages (NOT put_content).
+- put_page({ page: { id, path, title, source } }) — the TYPED way to create/REPLACE a page. Prefer
+  this for pages (NOT put_content). It is a TOTAL replace: every field you omit is DELETED.
+- patch_page({ page: { id, …only the fields you're changing } }) — for any PARTIAL page edit (a nav
+  label, one data key). put_page would DELETE everything you omit, including data.swImport.
 - put_content({ kind, id, data }) — for the OTHER kinds (settings, dataset, entry, form, template,
   snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
   matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
@@ -1076,7 +1078,9 @@ NOT express a transform as a Tailwind ARBITRARY-VALUE class ([transform:skewX(-2
 [transform:matrix(1,0,-0.46,1,0,0)]) — the class extractor can choke on the commas/parens and the rule
 silently never renders (a flat tab where the original is skewed). MEASURE the original (its computed
 transform, gradient stops, letter-spacing, border-radius, fill colour, font) and reproduce those NUMBERS —
-don't eyeball. Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
+don't eyeball. HOW: \`inspect_source({ pageId, selectors:[…] })\` returns the original's real computed
+styles + rects for whatever you select (add \`html:true\` for its settled markup, \`side:'build'\` to
+measure your own clone the same way and diff). Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
 named slot like --sw-font-secondary), not a hard-coded family.
 STICKY HEADER: if the source header is FIXED/pinned (or shrinks on scroll), set website.effects.stickyHeader
 ("pinned" | "shrink" | "hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the
@@ -1197,6 +1201,11 @@ against this list BEFORE you publish it:
   { source, family, weight, assetId? } — source, family AND weight are ALL required) or use the platform font
   picker, NEVER an external stylesheet. Use criticalCss only for a genuine per-element override the CI settings
   can't express (e.g. a script font on ONE brand title, via var(--sw-font-*)).
+  A \`source:'system'\` slot takes EITHER a generic keyword (\`sans-serif\`/\`serif\`/\`monospace\`) OR a NAMED
+  web-safe face — \`{ source:'system', family:'Verdana', weight:400 }\` renders
+  \`--sw-font-body:"Verdana", <matching generic stack>\`. So when the original uses a system face (a
+  \`src:local("Verdana")\` @font-face, or a plain \`font-family:Georgia\` with no webfont), set the NAME —
+  do not approximate it with a generic keyword, and do not override \`--sw-font-body\` in criticalCss.
 - USE CI VARIABLES EVERYWHERE — chrome included. The company name, slogan, phone, email, address, and social
   links in the header/footer and page bodies are \`{{company.name}}\` / \`{{company.slogan}}\` / \`{{company.*}}\`,
   NEVER a hard-coded "Acme Ltd" literal. For a copyright YEAR use \`{{sw-date "now" "YYYY"}}\` (always the
@@ -1261,7 +1270,7 @@ against this list BEFORE you publish it:
   \`{{> hero-slider}}\` widget, which is already marked up correctly.
 
 FINE POLISH — match the original EXACTLY, by MEASUREMENT (the last-mile "looks close but a bit off" misses;
-sample the original's real values, don't approximate to the nearest token):
+sample the original's real values with \`inspect_source\`, don't approximate to the nearest token):
 - MATCH THE ACTUAL ELEMENT COLOUR — do NOT brand-ify. A submit/CTA button, a banner, a card header bar, a
   section band that is GREY (or black, or any NON-brand colour) in the original STAYS that colour — do NOT
   swap it to \`btn-primary\`/the brand red just because it's a button. A near-black bar (#000) is not the
@@ -1475,6 +1484,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
   { name: 'visual_audit', description: "THE visual acceptance TERMINATOR for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
+  { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },
   { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). Lab-only (no CrUX field data): performance is a throttled lab score (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
@@ -1482,7 +1492,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
-  { name: 'put_page', description: "Create or replace a page (id taken from page.id).", capability: 'content:write' },
+  { name: 'put_page', description: "Create or REPLACE a page (id taken from page.id) — a total replace; omitted fields are deleted. For partial edits use patch_page.", capability: 'content:write' },
+  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Use instead of put_page for partial edits.", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
@@ -1532,12 +1543,15 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'reusable page layout shared across pages', where: 'get_guide("templates")' },
   { need: 'site header / footer / sidebar (chrome on every page)', where: 'the website.mainNav/footer/sidebar* settings slots — get_guide("nav")' },
   { need: 'compare my build to the original + PROVE fidelity', where: 'compare_to_source (see) · compare_regions (2× crisp chrome crops) · fidelity_check (the PASS/FAIL gate)' },
+  { need: "MEASURE the original's real values (font-size, padding, colour, gradient, radius, shadow, transform)", where: 'inspect_source({ pageId, selectors }) — computed styles + rects off the LIVE original; side:"build" measures your clone the same way' },
+  { need: 'read chrome/markup a site builds in JavaScript (the stored import has none)', where: 'inspect_source({ pageId, selectors, html:true }) — returns the SETTLED outerHTML' },
   { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },
 ];
 
 /** How each writable content kind is written (tool + the one shape gotcha most likely to trip a write). */
 export const WRITE_KINDS: readonly { kind: string; tool: string; shape: string }[] = [
-  { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write; prefer over put_content' },
+  { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write (a TOTAL replace); prefer over put_content' },
+  { kind: 'page (partial edit)', tool: 'patch_page({ page })', shape: '{ id, …only the fields to change } — merges into the stored page; use for any partial edit so a replace cannot wipe source/status/data.swImport' },
   { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data })', shape: 'read-modify-write the WHOLE settings entity (identity + website slots)' },
   { kind: 'dataset', tool: 'put_content({ kind:"dataset", id, data })', shape: '{ name, slug (UNDERSCORE id), fields:[{name,type,required?}] } — get_guide("datasets")' },
   { kind: 'entry', tool: 'put_content({ kind:"entry", id, dataset, data })', shape: '{ values:{ <field>:… } } — row data goes under `values`; pass the `dataset` slug arg' },

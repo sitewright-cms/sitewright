@@ -22,6 +22,20 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
     removeLocale: vi.fn(async (locale: string) => ({ locale, removed: 3 })),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
+    inspectSource: vi.fn(async () => ({
+      side: 'source' as const,
+      url: 'https://orig.test/',
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      title: 'Original',
+      viewport: { width: 1440, height: 900 },
+      documentHeight: 4200,
+      results: [
+        { selector: '#main-nav a', count: 7, nodes: [{ tag: 'a', rect: { x: 294.4, y: 8, width: 82.7, height: 42.8, pageY: 8 }, styles: { 'font-size': '16px', padding: '11.2px 20.8px' } }] },
+        { selector: '.missing', count: 0, nodes: [] },
+        { selector: 'a[', count: -1, nodes: [] },
+      ],
+    })),
     compareToSource: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
@@ -1284,5 +1298,73 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const all = fakeClient();
     await (await connect(all, readScope)).callTool({ name: 'list_submissions', arguments: { formId: 'c', limit: 1, offset: 2 } });
     expect(calls(all).listSubmissions).toHaveBeenCalledWith({ formId: 'c', limit: 1, offset: 2 });
+  });
+});
+
+// patch_page exists because put_page is a TOTAL replace: `{id, path, title, nav}` silently deleted the
+// page's source/status/description/order/parent AND data.swImport (the marker every fidelity tool needs).
+describe('patch_page', () => {
+  it('sends the fragment with merge:true so omitted fields survive', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({ name: 'patch_page', arguments: { page: { id: 'home', nav: { title: 'Home', slots: ['header'] } } } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', { id: 'home', nav: { title: 'Home', slots: ['header'] } }, { merge: true });
+  });
+
+  it('is gated on content:write, and put_page stays a REPLACE (no merge flag)', async () => {
+    const reader = fakeClient();
+    const r = await (await connect(reader, readScope)).callTool({ name: 'patch_page', arguments: { page: { id: 'home', title: 'X' } } });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/content:write/);
+    expect(callsOf(reader).putContent).not.toHaveBeenCalled();
+
+    const writer = fakeClient();
+    await (await connect(writer, writeScope)).callTool({ name: 'put_page', arguments: { page } });
+    expect(callsOf(writer).putContent).toHaveBeenCalledWith('page', page.id, page);
+  });
+});
+
+// inspect_source is the only tool that returns NUMBERS off the live original — the measurement the import
+// guide keeps asking for but previously shipped no way to obtain.
+describe('inspect_source', () => {
+  it('measures the original and flags selectors that matched nothing / were invalid', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'inspect_source', arguments: { pageId: 'home', selectors: ['#main-nav a', '.missing', 'a['] } });
+    expect(res.isError).toBeFalsy();
+    const out = text(res);
+    expect(out).toMatch(/LIVE ORIGINAL/);
+    expect(out).toMatch(/1440×900|1440×900/);
+    expect(out).toMatch(/NO MATCH: \.missing/);
+    expect(out).toMatch(/INVALID selector syntax.*a\[/);
+    expect(out).toContain('font-size'); // the measured values themselves come back
+    expect(callsOf(client).inspectSource).toHaveBeenCalledWith('home', { selectors: ['#main-nav a', '.missing', 'a['] });
+  });
+
+  it('forwards the optional knobs only when given', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({
+      name: 'inspect_source',
+      arguments: { pageId: 'home', selectors: ['h1'], styles: ['backdrop-filter'], html: true, viewport: 'mobile', side: 'build' },
+    });
+    expect(callsOf(client).inspectSource).toHaveBeenCalledWith('home', {
+      selectors: ['h1'], styles: ['backdrop-filter'], html: true, viewport: 'mobile', side: 'build',
+    });
+  });
+
+  it('needs content:read and surfaces an API failure as a tool error', async () => {
+    const noCaps = fakeClient();
+    const res = await (await connect(noCaps, { projectId: 'p', role: 'member', capabilities: [] })).callTool({
+      name: 'inspect_source', arguments: { pageId: 'home', selectors: ['h1'] },
+    });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/content:read/);
+    expect(callsOf(noCaps).inspectSource).not.toHaveBeenCalled();
+
+    const boom = fakeClient({ inspectSource: vi.fn(async () => { throw new Error('render failed'); }) });
+    const err = await (await connect(boom, readScope)).callTool({ name: 'inspect_source', arguments: { pageId: 'home', selectors: ['h1'] } });
+    expect(err.isError).toBe(true);
+    expect(text(err)).toBe('Error: render failed');
   });
 });

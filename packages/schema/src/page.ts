@@ -21,7 +21,7 @@ export type NavSlot = (typeof NAV_SLOTS)[number];
  * in which case `collection` must be set — and a `collection` requires the `[param]`. Both
  * directions are enforced.
  */
-const PageObject = z
+const PageFields = z
   .object({
     id: IdSchema,
     path: PageSlugSchema,
@@ -169,8 +169,9 @@ const PageObject = z
         newTab: z.boolean().optional(),
       })
       .optional(),
-  })
-  .superRefine((page, ctx) => {
+  });
+
+const PageObject = PageFields.superRefine((page, ctx) => {
     if (page.kind === 'link') {
       if (!page.link) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['link'], message: 'a link (placeholder) page requires a link definition' });
@@ -212,6 +213,20 @@ const PageObject = z
 // no production data to migrate, so the schema is the single shape of record (no back-compat preprocess).
 export const PageSchema = PageObject;
 export type Page = z.infer<typeof PageSchema>;
+
+/**
+ * A PARTIAL page for patch writes (`PUT …/content/page/:id?merge=1`, MCP `patch_page`): every field is
+ * optional except `id`, and the fragment is deep-merged into the stored page before the FULL
+ * {@link PageSchema} validates the result. Derived from the same field object as `PageSchema`, so it can
+ * never drift from it.
+ *
+ * Exists because a page write is otherwise a total REPLACE: sending `{id, path, title, nav}` to relabel a
+ * nav entry silently deleted `source`, `status`, `description`, `order`, `parent` and `data.swImport`.
+ * The cross-field rules (link pages need a `link`, `[param]` paths need a `collection`) deliberately do NOT
+ * run on the fragment — they are checked on the MERGED page, where they are actually meaningful.
+ */
+export const PagePatchSchema = PageFields.partial().extend({ id: IdSchema });
+export type PagePatch = z.infer<typeof PagePatchSchema>;
 
 /**
  * True for a navigation-placeholder page (`kind:'link'`): no own route/HTML — a nav item that links

@@ -12,6 +12,7 @@ import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
@@ -233,6 +234,48 @@ export async function captureBehaviour(
 
 /** A high-res region crop, lossless WebP, base64. */
 export interface RegionShot { base64: string; mimeType: 'image/webp'; width: number; height: number }
+/**
+ * MEASURE a rendered page: settled markup + real computed styles + real rects for the given selectors.
+ * Backs the `inspect_source` tool — the read-only counterpart to the image/score tools, and the only way
+ * to get a NUMBER out of the live original (which the import guide keeps telling the agent to do). Also
+ * the only view of chrome a site builds in JavaScript, since the importer stores the pre-JS body.
+ *
+ * Same SSRF-pinned render path + shared settle as every other capture here, so the numbers match what
+ * `compare_regions` / `visual_audit` show. Unlike those, failures THROW: a silent empty result would read
+ * as "the original has no header", which is exactly the wrong thing to tell an agent that is measuring.
+ */
+export async function captureUrlInspect(
+  url: string,
+  opts: { mode: CaptureMode; selectors: string[]; styles?: string[]; html?: boolean; viewport?: ViewportName; signal?: AbortSignal },
+): Promise<InspectResult> {
+  const browser = await getBrowser();
+  const vp = SCREENSHOT_VIEWPORTS[opts.viewport ?? 'laptop'];
+  return withRenderSlot(async () => {
+    const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
+    try {
+      // Freeze animations for the same reason the fidelity capture does: a mid-transition element reports a
+      // transform/opacity that is true for one frame only, and the agent would copy that transient value.
+      await settlePage(page, { freeze: true });
+      // Measurements are viewport-relative, so scroll back to the top after the settle's scroll-load pass —
+      // otherwise every `rect.y` is offset by wherever the scroll happened to stop.
+      await page.evaluate(() => (globalThis as unknown as { scrollTo: (x: number, y: number) => void }).scrollTo(0, 0)).catch(() => {});
+      await page.waitForTimeout(120).catch(() => {});
+      return (await page.evaluate(INSPECT_EXTRACT, {
+        selectors: opts.selectors,
+        styles: opts.styles?.length ? opts.styles : [...INSPECT_DEFAULT_STYLES],
+        html: opts.html === true,
+        limits: {
+          maxNodesPerSelector: INSPECT_LIMITS.maxNodesPerSelector,
+          maxHtmlChars: INSPECT_LIMITS.maxHtmlChars,
+          maxTextChars: INSPECT_LIMITS.maxTextChars,
+        },
+      })) as InspectResult;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+}
+
 /** Default regions for the high-res chrome compare: the nav header and the footer. */
 export const DEFAULT_COMPARE_REGIONS: Record<string, string> = { header: '#main-nav, header, nav', footer: '#footer, footer' };
 

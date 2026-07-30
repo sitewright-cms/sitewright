@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   PageSchema,
+  PagePatchSchema,
   TemplateSchema,
   SnippetSchema,
   PageTranslationSchema,
@@ -793,6 +794,43 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'inspect_source',
+    {
+      description:
+        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. The page must have an import source.",
+      inputSchema: {
+        pageId: z.string(),
+        selectors: z.array(z.string()).min(1).max(20).describe('CSS selectors to measure, e.g. ["#main-nav a", ".hero h1", "footer"]'),
+        styles: z.array(z.string()).max(40).optional().describe('Extra CSS properties beyond the default set (e.g. ["backdrop-filter","writing-mode"]).'),
+        html: z.boolean().optional().describe('Also return each match\'s settled outerHTML (scripts/styles stripped, truncated).'),
+        viewport: z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']).optional().describe('Measurement viewport (default laptop · 1440x900).'),
+        side: z.enum(['source', 'build']).optional().describe('Which page to measure: the live original (default) or your build.'),
+      },
+    },
+    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the \u201Ccontent:read\u201D capability.`);
+      }
+      try {
+        const r = await client.inspectSource(pageId, { selectors, ...(styles?.length ? { styles } : {}), ...(html ? { html } : {}), ...(viewport ? { viewport } : {}), ...(side ? { side } : {}) });
+        const missing = r.results.filter((x) => x.count === 0).map((x) => x.selector);
+        const invalid = r.results.filter((x) => x.count === -1).map((x) => x.selector);
+        const notes = [
+          `Measured the ${r.side === 'build' ? 'BUILD' : 'LIVE ORIGINAL'} (${r.url}) at ${r.viewport.width}\u00d7${r.viewport.height}; document height ${r.documentHeight}px.`,
+          'Every rect/px below is true AT THIS VIEWPORT only \u2014 re-measure at another width before porting responsive rules.',
+          invalid.length ? `INVALID selector syntax (count -1): ${invalid.join(', ')}` : '',
+          missing.length ? `NO MATCH: ${missing.join(', ')} \u2014 the element may be named differently here, or built by JS under another hook; try a broader selector.` : '',
+        ].filter(Boolean);
+        return { content: [{ type: 'text', text: `${notes.join('\n')}\n\n${JSON.stringify(r.results, null, 1)}` }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'compare_regions',
     {
       description:
@@ -887,8 +925,22 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   // create/update without the irreversible power to remove pages or content.
   server.registerTool(
     'put_page',
-    { description: 'Create or replace a page. The page id is taken from page.id.', inputSchema: { page: PageSchema } },
+    {
+      description:
+        'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead.',
+      inputSchema: { page: PageSchema },
+    },
     gate('content:write', ({ page }) => client.putContent('page', page.id, page)),
+  );
+
+  server.registerTool(
+    'patch_page',
+    {
+      description:
+        'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first.',
+      inputSchema: { page: PagePatchSchema },
+    },
+    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true })),
   );
 
   server.registerTool(

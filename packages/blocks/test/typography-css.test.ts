@@ -47,10 +47,39 @@ describe('typographyCss', () => {
     expect(css).toMatch(/--sw-font-body:[^;]*serif/);
   });
 
-  it('never emits CSS-breaking output (unknown system family falls back)', () => {
-    const css = typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'bogus', weight: 400 } });
-    expect(css).not.toContain('bogus');
-    expect(css).toMatch(/--sw-font-body:[^;]*sans-serif/);
+  it('never emits CSS-breaking output (an unsafe family falls back to the generic stack)', () => {
+    // Only a family that can't pass SAFE_FAMILY is dropped — it could otherwise break out of the
+    // declaration. A merely UNRECOGNISED-but-safe name is a legitimate named face (see below).
+    for (const family of ['a;}body{display:none', 'x"/**/;color:red', 'ünïcode']) {
+      const css = typographyCss({ fontFamilies: {}, body: { source: 'system', family, weight: 400 } });
+      expect(css).not.toContain(family);
+      expect(css).toMatch(/--sw-font-body:[^;]*sans-serif/);
+    }
+  });
+
+  // REGRESSION: a `system` slot used to accept ONLY serif/sans-serif/monospace — any named face fell
+  // through to the default sans stack and was silently dropped. The site importer emits exactly such
+  // slots (`src:local("Verdana")` → {source:'system', family:'Verdana'}), so an imported site rendered
+  // its entire body copy in the wrong font with nothing reporting it.
+  it('honours a NAMED system family and trails the matching generic stack', () => {
+    const verdana = typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'Verdana', weight: 400 } });
+    expect(verdana).toMatch(/--sw-font-body:"Verdana", ui-sans-serif[^;]*sans-serif;/);
+
+    // a known serif face trails the SERIF stack, not the default sans one
+    const georgia = typographyCss({ fontFamilies: {}, heading: { source: 'system', family: 'Georgia', weight: 700 } });
+    expect(georgia).toMatch(/--sw-font-heading:"Georgia", ui-serif[^;]*serif;/);
+
+    // case-insensitive category lookup
+    const times = typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'times new roman', weight: 400 } });
+    expect(times).toMatch(/--sw-font-body:"times new roman", ui-serif/);
+
+    // a multi-word face with a space is quoted intact
+    const trebuchet = typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'Trebuchet MS', weight: 400 } });
+    expect(trebuchet).toContain('--sw-font-body:"Trebuchet MS", ui-sans-serif');
+
+    // the three GENERIC keywords still resolve to their bare curated stacks (never quoted)
+    expect(typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'serif', weight: 400 } })).toMatch(/--sw-font-body:ui-serif/);
+    expect(typographyCss({ fontFamilies: {}, body: { source: 'system', family: 'monospace', weight: 400 } })).toMatch(/--sw-font-body:ui-monospace/);
   });
 
   it('emits @font-face (LOCAL media urls) per weight for an asset slot', () => {

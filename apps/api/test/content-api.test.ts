@@ -312,16 +312,16 @@ describe('content API — settings patch/merge (?merge=1)', () => {
     expect(item.website?.footer).toBe('<div>NEW</div>');
   });
 
-  it('rejects ?merge=1 for a non-settings kind', async () => {
-    const { t, projectId } = await setup('owner@acme.test', 'mergepage');
+  it('rejects ?merge=1 for a kind that is neither settings nor page', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergekind');
     const res = await app.inject({
       method: 'PUT',
-      url: `/projects/${projectId}/content/page/home?merge=1`,
+      url: `/projects/${projectId}/content/dataset/team?merge=1`,
       cookies: { sw_session: t },
-      payload: { title: 'Home' },
+      payload: { name: 'Team' },
     });
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" kind/i);
+    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" and "page" kinds/i);
   });
 
   it('returns an actionable 404 when there is no settings row to merge into', async () => {
@@ -331,5 +331,100 @@ describe('content API — settings patch/merge (?merge=1)', () => {
     const res = await put(t, projectId, 'settings', { website: { footer: '<div>x</div>' } }, true);
     expect(res.statusCode).toBe(404);
     expect((res.json() as { error: string }).error).toMatch(/no settings to merge into/i);
+  });
+});
+
+// A page write used to be a TOTAL replace with no partial option, so the routine act of setting a nav
+// label (`{id, path, title, nav}`) silently deleted `source`, `status`, `description`, `order`, `parent`
+// AND `data.swImport` — the marker every fidelity tool requires, making the page permanently un-auditable.
+describe('content API — page patch/merge (?merge=1) + import-marker preservation', () => {
+  const putPage = (t: string, projectId: string, id: string, payload: object, merge = false) =>
+    app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/${id}${merge ? '?merge=1' : ''}`,
+      cookies: { sw_session: t },
+      payload,
+    });
+  const getPage = async (t: string, projectId: string, id: string) =>
+    (await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/${id}`, cookies: { sw_session: t } })).json() as {
+      item: Record<string, unknown>;
+    };
+
+  const full = {
+    id: 'about',
+    path: 'about',
+    title: 'About',
+    status: 'published',
+    description: 'All about us',
+    order: 3,
+    source: '<h1 data-sw-text="t">About</h1>',
+    data: { swImport: { sourceUrl: 'https://example.test/about', rewritten: true }, heading: 'About' },
+  };
+
+  it('PATCHES only the fields sent, keeping source/status/description/order/data', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge');
+    expect((await putPage(t, projectId, 'about', full)).statusCode).toBe(200);
+
+    const patched = await putPage(t, projectId, 'about', { id: 'about', nav: { title: 'About Us', slots: ['header'] } }, true);
+    expect(patched.statusCode).toBe(200);
+
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.nav as { title: string }).title).toBe('About Us');
+    expect(item.source).toBe(full.source); // ← the whole point: a total replace would have dropped these
+    expect(item.status).toBe('published');
+    expect(item.description).toBe('All about us');
+    expect(item.order).toBe(3);
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport);
+    expect((item.data as { heading?: string }).heading).toBe('About'); // sibling data key survives
+  });
+
+  it('merges data key-by-key but replaces arrays wholesale', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge2');
+    await putPage(t, projectId, 'about', { ...full, nav: { title: 'About', slots: ['header', 'footer'] } });
+    await putPage(t, projectId, 'about', { id: 'about', data: { heading: 'Changed' }, nav: { slots: ['mobile'] } }, true);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { heading?: string }).heading).toBe('Changed');
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport); // untouched sibling
+    expect((item.nav as { slots: string[] }).slots).toEqual(['mobile']); // array REPLACED, not appended
+    expect((item.nav as { title: string }).title).toBe('About'); // sibling object key kept
+  });
+
+  it('404s with an actionable message when the page does not exist yet', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge404');
+    const res = await putPage(t, projectId, 'ghost', { id: 'ghost', title: 'Ghost' }, true);
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toMatch(/no page "ghost" to merge into/i);
+  });
+
+  it('validates the MERGED page — an unsafe source in the patch is rejected', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemergeunsafe');
+    await putPage(t, projectId, 'about', full);
+    // a bare {{x}} in a URL attribute (must be {{sw-url x}}) — the same rule a full write is held to
+    const bad = await putPage(t, projectId, 'about', { id: 'about', source: '<a href="{{path}}">x</a>' }, true);
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('carries data.swImport across a FULL replace that omits it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemarker');
+    await putPage(t, projectId, 'about', full);
+    // exactly the call that used to destroy the marker
+    expect(
+      (await putPage(t, projectId, 'about', { id: 'about', path: 'about', title: 'About', nav: { title: 'About Us', slots: ['header'] } })).statusCode,
+    ).toBe(200);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport);
+    // the rest of the replace still applied normally (this is NOT a merge)
+    expect(item.source).toBeUndefined();
+    expect((item.data as { heading?: string }).heading).toBeUndefined();
+  });
+
+  it('lets an explicit data.swImport:null clear the marker (a page that is no longer import-derived)', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemarkerclear');
+    await putPage(t, projectId, 'about', full);
+    expect(
+      (await putPage(t, projectId, 'about', { id: 'about', path: 'about', title: 'About', data: { swImport: null } })).statusCode,
+    ).toBe(200);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { swImport?: unknown }).swImport ?? null).toBeNull();
   });
 });

@@ -11,6 +11,25 @@ const SYSTEM_FAMILIES: Array<{ value: string; label: string }> = [
   { value: 'monospace', label: 'Monospace' },
 ];
 
+/**
+ * NAMED system faces — pre-installed on virtually every desktop, so they need no asset. The renderer
+ * quotes the name and trails the matching generic stack (see typography-css `familyStack`). Offered
+ * because a `system` slot is NOT limited to the three generics: the site importer routinely detects a
+ * named face (`src:local("Verdana")`) and writes one, and it was previously unselectable here.
+ */
+const NAMED_SYSTEM_FAMILIES: Array<{ value: string; label: string }> = [
+  { value: 'Arial', label: 'Arial' },
+  { value: 'Verdana', label: 'Verdana' },
+  { value: 'Tahoma', label: 'Tahoma' },
+  { value: 'Trebuchet MS', label: 'Trebuchet MS' },
+  { value: 'Georgia', label: 'Georgia' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+  { value: 'Courier New', label: 'Courier New' },
+];
+
+/** Every family the picker offers directly (used to decide whether a stored value needs a "(custom)" row). */
+const OFFERED_FAMILIES = [...SYSTEM_FAMILIES, ...NAMED_SYSTEM_FAMILIES];
+
 const WEIGHTS: Array<{ value: number; label: string }> = [
   { value: 100, label: '100 · Thin' },
   { value: 200, label: '200 · Extra Light' },
@@ -106,8 +125,15 @@ export function FontSlotEditor({
                 {f.label}
               </option>
             ))}
+            <optgroup label="Web-safe">
+              {NAMED_SYSTEM_FAMILIES.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </optgroup>
             {/* A custom system family set via CLI/MCP (e.g. `cursive`) stays selectable. */}
-            {!isAsset && !SYSTEM_FAMILIES.some((f) => f.value === slot.family) && (
+            {!isAsset && !OFFERED_FAMILIES.some((f) => f.value === slot.family) && (
               <option value={slot.family}>{slot.family} (custom)</option>
             )}
             {isAsset && <option value="__asset__">{slot.family} (library)</option>}

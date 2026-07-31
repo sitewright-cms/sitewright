@@ -598,11 +598,11 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         syntax: 'Website settings → Sticky header · class="sw-top-padding" · --sw-header-h · html.sw-scrolled',
         name: 'Sticky header (sw-top-padding)',
         keywords:
-          'sticky fixed header nav top pinned hide shrink scroll offset padding sw-top-padding overlay hero bleed entrance animation slide fade appearance sw-header-h sw-scrolled',
+          'sticky fixed header nav top pinned hide shrink condense scroll offset padding sw-top-padding overlay hero bleed entrance animation slide fade appearance sw-header-h sw-scrolled',
         description:
-          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls — Pinned (always visible), Hide on scroll down, or Shrink on scroll. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar — UNLESS that section already has enough top padding to clear the ~75px bar (e.g. pt-24 / py-24 = 96px), then you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset reads the --sw-header-h token (preset to the default header height, 4.5rem mobile / 4.75rem desktop); override it with :root{--sw-header-h:5rem} in Custom CSS for a custom header. State hooks for your own scroll CSS: html.sw-scrolled (set once scrolled — shrink + hide) and html.sw-nav-hidden (hide-on-scroll only — the bar is translated off-screen). The ENTRANCE animation is author-controlled — write it in Custom CSS (see the example).',
+          'Set Website settings → Sticky header to fix the top navigation to the viewport so it stays visible as the page scrolls. The modes are POSITIONAL only — Pinned (always visible) or Hide on scroll down. There is no Shrink mode: how the bar LOOKS once scrolled (condense, colour, shadow) is always your own CSS keyed on html.sw-scrolled, because a condense has to know which row of YOUR header collapses. A fixed header is out of flow, so you OPT IN to the offset: add class sw-top-padding to the first section of a page to push its content below the bar — UNLESS that section already has enough top padding to clear the ~75px bar (e.g. pt-24 / py-24 = 96px), then you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section flush and put sw-top-padding on an inner element instead (the background bleeds, the text clears the header). The offset reads the --sw-header-h token, which is a HARDCODED default sized for the stock header (4.5rem mobile / 4.75rem desktop) and is NOT measured from yours — a taller custom header must override it with :root{--sw-header-h:<real height>} in Custom CSS, or sw-top-padding under-pads and your headings sit behind the bar. State hooks for your own scroll CSS: html.sw-scrolled (set once the page is scrolled — on every site, in every mode) and html.sw-nav-hidden (hide-on-scroll only — the bar is translated off-screen). The ENTRANCE animation is author-controlled — write it in Custom CSS (see the example).',
         example:
-          '{{! Website settings → Sticky header: Shrink. Add sw-top-padding ONLY where the first }}\n' +
+          '{{! Website settings → Sticky header: Pinned. Add sw-top-padding ONLY where the first }}\n' +
           '{{! section does not already clear the bar (pages with pt-24 / py-24 need nothing): }}\n' +
           '<section class="sw-top-padding">…first section, cleared below the fixed header…</section>\n' +
           '\n{{! Full-bleed hero that bleeds under the header — offset the inner text only: }}\n' +
@@ -616,8 +616,21 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '  [data-sw-preloader].loading ~ #main-nav{visibility:hidden}\n' +
           '  [data-sw-preloader]:not(.loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\n' +
           '}\n' +
-          '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */',
-        note: 'Pinned is pure CSS; Hide on scroll / Shrink load a tiny runtime automatically. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically. For the entrance, use animation (not transition) so it does not clobber the Shrink mode’s own header transition — and note a transform on #main-nav makes it the containing block for position:fixed children, so a full-height nav drawer/overlay must set its own h-dvh (the default mobile drawer already does).',
+          '/* No preloader? just: #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both} */\n' +
+          '\n/* Custom CSS → SCROLL-SHRINK: the platform toggles html.sw-scrolled, you style it. */\n' +
+          '/* Keep --sw-header-h at the FULL height so content never reflows as the bar condenses. */\n' +
+          '@media (prefers-reduced-motion:no-preference){\n' +
+          '  #main-nav,#main-nav .navbar{transition:min-height .3s ease,padding .3s ease,box-shadow .3s ease}\n' +
+          '}\n' +
+          'html.sw-scrolled #main-nav{box-shadow:0 2px 10px rgba(15,23,42,.08)}\n' +
+          'html.sw-scrolled #main-nav .navbar{min-height:3.25rem;padding-top:.125rem;padding-bottom:.125rem}\n' +
+          '\n/* Custom two-row header? Collapse the logo row, keep the menu row (desktop only — */\n' +
+          '/* on mobile the menu row is usually hidden, so collapsing would leave an empty bar): */\n' +
+          '@media (min-width:1024px){\n' +
+          '  .my-logo-row{overflow:hidden;max-height:140px;transition:max-height .4s ease,opacity .4s ease}\n' +
+          '  html.sw-scrolled .my-logo-row{max-height:0;opacity:0;margin:0}\n' +
+          '}',
+        note: 'The tiny scroll runtime loads on EVERY site, so html.sw-scrolled is always available — even with the header set to Off. The header sits at z-index 30 (below the mobile drawer + back-to-top/consent floats). Anchor (#section) jumps land below the fixed header automatically, and stay correct however far your CSS collapses the bar: the runtime measures the SCROLLED height and pins scroll-padding-top to it. For the entrance, use animation (not transition) so it does not clobber any header transition your own shrink CSS sets — and note a transform on #main-nav makes it the containing block for position:fixed children, so a full-height nav drawer/overlay must set its own h-dvh (the default mobile drawer already does).',
       },
       {
         id: 'fx-scrollspy',

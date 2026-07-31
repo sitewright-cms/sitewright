@@ -250,19 +250,23 @@ describe('renderDocument — document shell', () => {
       }
     });
 
-    it('hide-on-scroll slides the header out; shrink condenses it — each its own state rule', () => {
+    it('hide-on-scroll slides the header out; the retired shrink renders exactly as pinned', () => {
       const hide = renderDocument(page, { brand, stickyHeader: 'hide-on-scroll' });
       expect(hide).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}');
       expect(hide).not.toContain('html.sw-scrolled #main-nav .navbar');
 
+      // `shrink` is retired: it keeps its positioning (an existing site must not un-stick) and loses
+      // the `.navbar` condense, which only ever worked for the stock DaisyUI recipe.
       const shrink = renderDocument(page, { brand, stickyHeader: 'shrink' });
-      expect(shrink).toContain('html.sw-scrolled #main-nav .navbar');
+      const pinnedDoc = renderDocument(page, { brand, stickyHeader: 'pinned' });
+      expect(shrink).toBe(pinnedDoc);
+      expect(shrink).not.toContain('.navbar');
       expect(shrink).not.toContain('sw-nav-hidden');
 
-      // 'pinned' is pure positioning — no scroll-state rule at all
-      const pinned = renderDocument(page, { brand, stickyHeader: 'pinned' });
+      // 'pinned' is pure positioning — the platform styles no scroll response of its own
+      const pinned = pinnedDoc;
       expect(pinned).not.toContain('sw-nav-hidden');
-      expect(pinned).not.toContain('sw-scrolled');
+      expect(pinned).not.toContain('html.sw-scrolled #main-nav{');
     });
 
     it('omits the sticky CSS on a raw-fidelity page (no platform CSS)', () => {

@@ -12,7 +12,7 @@ import { themeCss, themeHtmlAttr, lightContentTokensCss, type ThemeMode } from '
 import { previewStyles } from './preview-css.js';
 import { typographyCss, fontPreloads, type FontAsset } from './typography-css.js';
 import { stickyHeaderCss } from './sticky-header.js';
-import type { StickyHeaderMode } from '@sitewright/schema';
+import type { StickyHeaderSetting } from '@sitewright/schema';
 
 /** Media context for the document shell — the only render-time inputs the code-first shell reads. */
 export interface RenderContext {
@@ -74,7 +74,7 @@ export interface RenderDocumentOptions extends RenderContext {
    * emitted into the base `<style>` here — at first paint, so there's no layout shift. The 'hide-on-
    * scroll'/'shrink' scroll-state runtime is wired by the caller (publish/preview), gated on the mode.
    */
-  stickyHeader?: StickyHeaderMode | 'none';
+  stickyHeader?: StickyHeaderSetting;
   /**
    * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
    * injected around the page body in this source order:

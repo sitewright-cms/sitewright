@@ -568,31 +568,66 @@ export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
 
 /**
  * STICKY (fixed) TOP-HEADER modes — the no-code "make the `#main-nav` landmark stick to the top"
- * picker. 'none' (or absent) = today's static in-flow header (scrolls away with the page; zero
- * overhead). The other modes set the header `position:fixed` and emit the `--sw-header-h` offset
- * token consumed by the opt-in `.sw-top-padding` utility (clears content under the fixed header) +
- * `scroll-padding-top` (in-page anchors land below it). See {@link stickyHeaderUsesRuntime} and the
+ * picker. These are POSITIONAL only. 'none' (or absent) = a static in-flow header (scrolls away with
+ * the page). The other modes set `position:fixed` and emit the `.sw-top-padding` spacer (clears
+ * content under the fixed header) + `scroll-padding-top` (in-page anchors land below it).
+ *   - pinned         — fixed + always visible.
+ *   - hide-on-scroll — fixed; slides up out of view on scroll-down, back in on scroll-up.
+ *
+ * The platform deliberately ships NO "how the bar looks once you scroll" mode. Such an effect can only
+ * be generic if it is STRUCTURE-INDEPENDENT — sliding the whole landmark is; condensing it is not,
+ * since that requires knowing which row collapses. Any visual scroll response (shrink, colour change,
+ * shadow, logo swap) is therefore AUTHORED, keyed on `html.sw-scrolled` — a hook the runtime now sets
+ * on EVERY site regardless of mode. `--sw-header-h` is likewise emitted everywhere as the published
+ * bar height. See {@link LEGACY_STICKY_HEADER_MODES} for the retired `shrink` mode, and the
  * CSS/runtime in @sitewright/blocks sticky-header.ts.
- *   - pinned         — fixed + always visible. PURE CSS (no runtime).
- *   - hide-on-scroll — fixed; slides up out of view on scroll-down, back in on scroll-up. Needs JS.
- *   - shrink         — fixed; condenses (compact padding + shadow) past a scroll threshold. Needs JS.
  */
-export const STICKY_HEADER_MODES = ['pinned', 'hide-on-scroll', 'shrink'] as const;
+export const STICKY_HEADER_MODES = ['pinned', 'hide-on-scroll'] as const;
 export type StickyHeaderMode = (typeof STICKY_HEADER_MODES)[number];
-const STICKY_HEADER_CHOICES = ['none', ...STICKY_HEADER_MODES] as const;
+
+/**
+ * RETIRED mode values. Still ACCEPTED by the schema — never reject stored settings, because a
+ * `WebsiteSettingsSchema.parse` failure takes the whole project down, not just the header — but NOT
+ * offered in the picker, and normalized away at render by {@link normalizeStickyHeader}.
+ *
+ * `shrink` condensed a DaisyUI `.navbar`'s padding past a scroll threshold. That privileged ONE header
+ * recipe: the platform can only ship a scroll effect that is STRUCTURE-INDEPENDENT, and "condense"
+ * isn't — it needs to know which row collapses. On a hand-authored header the mode was selected, named
+ * "shrink", and did nothing, which read as a platform bug rather than as "this is your job". Sliding
+ * the whole landmark (`hide-on-scroll`) IS structure-independent, so it stays. Visual response to
+ * scrolling is now uniformly the author's, keyed on the universal `html.sw-scrolled` hook.
+ */
+export const LEGACY_STICKY_HEADER_MODES = ['shrink'] as const;
+
+const STICKY_HEADER_CHOICES = ['none', ...STICKY_HEADER_MODES, ...LEGACY_STICKY_HEADER_MODES] as const;
+
+/**
+ * A `stickyHeader` value AS STORED — the offered modes plus 'none' plus any retired value still
+ * accepted by the schema. Render-side entry points take THIS (they run {@link normalizeStickyHeader}
+ * themselves); use {@link StickyHeaderMode} only for a value already known to be live.
+ */
+export type StickyHeaderSetting = (typeof STICKY_HEADER_CHOICES)[number];
+
 export const STICKY_HEADER_LABELS: Record<StickyHeaderMode, string> = {
   pinned: 'Pinned (always visible)',
   'hide-on-scroll': 'Hide on scroll down',
-  shrink: 'Shrink on scroll',
 };
 
 /**
- * The fixed-header modes whose OWN built-in CSS depends on a scroll-state class:
- * `html.sw-nav-hidden` (hide-on-scroll direction) and `html.sw-scrolled` (the shrink/shadow threshold).
- * Retained as documentation of which modes the platform styles itself — it is NO LONGER the runtime
- * gate, see {@link stickyHeaderUsesRuntime}.
+ * Resolve a stored `stickyHeader` value to a live mode. A retired value keeps its POSITIONING (the
+ * part the platform legitimately owns) and loses only its recipe-specific styling: `shrink` → `pinned`.
+ * So an existing site stays fixed and keeps `html.sw-scrolled`; it just no longer gets the built-in
+ * `.navbar` condense, which it could only ever have used with the stock recipe anyway.
  */
-export const JS_STICKY_HEADER_MODES = ['hide-on-scroll', 'shrink'] as const;
+export function normalizeStickyHeader(
+  mode: string | null | undefined,
+): StickyHeaderMode | 'none' | undefined {
+  if (!mode) return undefined;
+  if (mode === 'shrink') return 'pinned';
+  return (STICKY_HEADER_MODES as readonly string[]).includes(mode) || mode === 'none'
+    ? (mode as StickyHeaderMode | 'none')
+    : undefined;
+}
 
 /**
  * Whether to ship the sticky-header JS runtime. ALWAYS TRUE — `html.sw-scrolled` is a UNIVERSAL
@@ -606,10 +641,11 @@ export const JS_STICKY_HEADER_MODES = ['hide-on-scroll', 'shrink'] as const;
  * (including a static one), can key scroll-state styling off the class.
  *
  * The runtime is rAF-throttled with a passive listener and degrades by itself: it reads the body class
- * to decide whether to also track hide-on-scroll direction or the shrink anchor-rest sync, so with no
- * mode selected it only toggles `sw-scrolled`. The parameter is kept for call-site clarity.
+ * to decide whether to also track the hide-on-scroll direction, so with no mode selected it only
+ * toggles `sw-scrolled`. Takes NO argument — the decision no longer depends on the mode, and a call
+ * site passing one would imply otherwise. Kept as a named predicate so re-gating stays a one-line change.
  */
-export function stickyHeaderUsesRuntime(_mode?: string | null | undefined): boolean {
+export function stickyHeaderUsesRuntime(): boolean {
   return true;
 }
 
@@ -651,9 +687,11 @@ export const WebsiteEffectsSchema = z.object({
   /** Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll). */
   backToTop: z.boolean().optional(),
   /**
-   * STICKY top-header mode — fixes the `#main-nav` landmark to the top ('none' = today's static
-   * header). Sets `position:fixed` + the `--sw-header-h` offset token (consumed by `.sw-top-padding`);
-   * 'hide-on-scroll'/'shrink' also ship the scroll-state runtime. See {@link STICKY_HEADER_MODES}.
+   * STICKY top-header mode — POSITIONING only; fixes the `#main-nav` landmark to the top ('none' = a
+   * static header). Sets `position:fixed` + the `.sw-top-padding` spacer + the anchor offset. The
+   * `--sw-header-h` token and the `html.sw-scrolled` runtime ship for EVERY site regardless of this
+   * value, so any header can author its own scroll response. Accepts the retired `shrink` (normalized
+   * to `pinned`). See {@link STICKY_HEADER_MODES} and {@link LEGACY_STICKY_HEADER_MODES}.
    */
   stickyHeader: z.enum(STICKY_HEADER_CHOICES).optional(),
   /**
@@ -689,8 +727,11 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
   const btnShape =
     effects.buttonShape && effects.buttonShape !== DEFAULT_BUTTON_SHAPE ? `sw-btn-shape-${effects.buttonShape}` : '';
   // The sticky-header mode rides on `<body>` too — the JS runtime reads it to pick its scroll behavior
-  // (the CSS is emitted by renderDocument, keyed on the mode, not on this class).
-  const header = effects.stickyHeader && effects.stickyHeader !== 'none' ? `sw-header-${effects.stickyHeader}` : '';
+  // (the CSS is emitted by renderDocument, keyed on the mode, not on this class). NORMALIZED first, so a
+  // stored retired value emits the class of the mode it resolves to (`shrink` → `sw-header-pinned`)
+  // rather than a dead `sw-header-shrink` that nothing styles or reads.
+  const headerMode = normalizeStickyHeader(effects.stickyHeader);
+  const header = headerMode && headerMode !== 'none' ? `sw-header-${headerMode}` : '';
   // The site-wide scrollspy flag rides on `<body>` too — the runtime reads `sw-scrollspy` to govern the
   // `#main-nav` landmark (its desktop + mobile menus). A custom on-page nav uses the per-element attribute.
   const spy = effects.scrollSpy ? 'sw-scrollspy' : '';

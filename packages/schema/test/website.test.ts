@@ -21,7 +21,8 @@ import {
   PRELOADER_EFFECTS,
   STICKY_HEADER_MODES,
   STICKY_HEADER_LABELS,
-  JS_STICKY_HEADER_MODES,
+  LEGACY_STICKY_HEADER_MODES,
+  normalizeStickyHeader,
   stickyHeaderUsesRuntime,
   scrollSpyUsesRuntime,
   MAX_TRANSLATION_ENTRIES,
@@ -409,29 +410,44 @@ describe('WebsiteSettingsSchema', () => {
       for (const n of NAV_EFFECTS) expect(NAV_EFFECT_LABELS[n]).toBeTruthy();
     });
 
-    it('sticky header: schema accepts each mode + "none"; rejects unknown; classes + runtime gate', () => {
-      // every mode round-trips through the schema, plus the explicit 'none'
+    it('sticky header: positional modes + "none"; retired shrink still parses and normalizes to pinned', () => {
+      // every OFFERED mode round-trips through the schema, plus the explicit 'none'
       for (const stickyHeader of STICKY_HEADER_MODES)
         expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader } }).effects?.stickyHeader).toBe(stickyHeader);
       expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'none' } }).effects?.stickyHeader).toBe('none');
       expect(() => WebsiteSettingsSchema.parse({ effects: { stickyHeader: 'floaty' } })).toThrow();
+      // The modes offered are POSITIONAL only — no "how the bar looks once scrolled" mode, because such
+      // an effect can only ship generically if it is structure-independent.
+      expect(STICKY_HEADER_MODES).toEqual(['pinned', 'hide-on-scroll']);
+      // …but a RETIRED value must still PARSE. Dropping it from the enum would make the whole
+      // WebsiteSettingsSchema reject a stored settings object, taking the project down, not just the header.
+      for (const legacy of LEGACY_STICKY_HEADER_MODES) {
+        expect(WebsiteSettingsSchema.parse({ effects: { stickyHeader: legacy } }).effects?.stickyHeader).toBe(legacy);
+        expect(STICKY_HEADER_MODES as readonly string[]).not.toContain(legacy);
+      }
+      // It normalizes to the mode it resolves to, keeping its POSITIONING and losing only the
+      // recipe-specific styling — so an existing site stays fixed rather than silently un-sticking.
+      expect(normalizeStickyHeader('shrink')).toBe('pinned');
+      expect(normalizeStickyHeader('hide-on-scroll')).toBe('hide-on-scroll');
+      expect(normalizeStickyHeader('none')).toBe('none');
+      expect(normalizeStickyHeader(undefined)).toBeUndefined();
+      expect(normalizeStickyHeader('floaty')).toBeUndefined();
       // the mode rides on the <body> effect class; 'none'/absent emits nothing
       expect(websiteEffectsClasses({ stickyHeader: 'pinned' })).toBe('sw-header-pinned');
       expect(websiteEffectsClasses({ stickyHeader: 'hide-on-scroll' })).toBe('sw-header-hide-on-scroll');
       expect(websiteEffectsClasses({ stickyHeader: 'none' })).toBe('');
-      // composes with the other effect classes, header last
-      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink' })).toBe('sw-nav-box-solid sw-header-shrink');
+      // a retired value emits the class of the mode it resolves to — never a dead `sw-header-shrink`
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink' })).toBe('sw-nav-box-solid sw-header-pinned');
       // The runtime ships for EVERY site: `html.sw-scrolled` is a universal authoring hook, not a
-      // private detail of the two modes the platform happens to style itself. A custom header gets
-      // nothing from `shrink` (its built-in CSS condenses a DaisyUI `.navbar`) and must author its own
-      // collapse against the class — which was unreachable while the runtime was gated on the mode.
-      for (const m of JS_STICKY_HEADER_MODES) expect(stickyHeaderUsesRuntime(m)).toBe(true);
-      expect(stickyHeaderUsesRuntime('pinned')).toBe(true);
-      expect(stickyHeaderUsesRuntime('none')).toBe(true);
-      expect(stickyHeaderUsesRuntime(undefined)).toBe(true);
-      // every mode has a non-empty picker label
+      // private detail of the modes the platform happens to style itself. A hand-authored header must
+      // author its own collapse against the class — which was unreachable while the runtime was gated.
+      // It takes NO argument: the decision no longer depends on the mode, and a parameter would imply
+      // otherwise at the call site.
+      expect(stickyHeaderUsesRuntime()).toBe(true);
+      expect(stickyHeaderUsesRuntime).toHaveLength(0);
+      // every offered mode has a non-empty picker label; retired values have none (not offerable)
       for (const m of STICKY_HEADER_MODES) expect(STICKY_HEADER_LABELS[m]).toBeTruthy();
-      for (const m of JS_STICKY_HEADER_MODES) expect(STICKY_HEADER_MODES).toContain(m);
+      expect(Object.keys(STICKY_HEADER_LABELS).sort()).toEqual([...STICKY_HEADER_MODES].sort());
     });
 
     it('scrollSpy is an optional site-wide boolean → the sw-scrollspy body class + the runtime gate', () => {
@@ -445,7 +461,7 @@ describe('WebsiteSettingsSchema', () => {
       expect(websiteEffectsClasses({})).toBe('');
       // composes with the other effect classes, scrollspy last
       expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink', scrollSpy: true })).toBe(
-        'sw-nav-box-solid sw-header-shrink sw-scrollspy',
+        'sw-nav-box-solid sw-header-pinned sw-scrollspy',
       );
       // the runtime gate is just the flag (a per-element data-sw-scrollspy is scanned separately)
       expect(scrollSpyUsesRuntime(true)).toBe(true);

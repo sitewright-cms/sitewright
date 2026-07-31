@@ -623,7 +623,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // STICKY-HEADER runtime — ships only for the JS-backed fixed-header modes (hide-on-scroll /
     // shrink), which toggle scroll-state classes. 'pinned' is pure CSS (no runtime); the fixed
     // positioning + offset token are emitted by renderDocument (gated on the mode) for every mode.
-    const usesStickyHeaderRuntime = stickyHeaderUsesRuntime(website?.effects?.stickyHeader);
+    const usesStickyHeaderRuntime = stickyHeaderUsesRuntime();
     // SCROLLSPY runtime — ships when the site-wide toggle is on (effects.scrollSpy, governs #main-nav)
     // OR a page/slot/snippet uses a per-element `data-sw-scrollspy` (same only-used-ships discipline as
     // cart/nav-effects). The marker substring `sw-scrollspy` matches BOTH the attribute and the body

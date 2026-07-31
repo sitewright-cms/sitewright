@@ -3,10 +3,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { STICKY_HEADER_JS } from '../src/sticky-header.js';
 
-// Behavioral coverage for the runtime's SHRINK anchor-rest sync (string-contains assertions can't
+// Behavioral coverage for the runtime's GENERIC anchor-rest sync (string-contains assertions can't
 // prove the forced-measure ordering): run the REAL shipped runtime in a DOM with a stubbed #main-nav
-// whose measured height depends on the html.sw-scrolled state — 76px full, 52px condensed — exactly
-// how the real bar responds to the shrink CSS.
+// whose measured height depends on the html.sw-scrolled state — 76px full, 52px condensed. That
+// collapse is now AUTHOR CSS rather than a built-in mode, which is exactly what the sync has to
+// measure: it forces the class and reads whatever the author's own rules produce.
 const FULL = 76;
 const SHRUNK = 52;
 
@@ -27,7 +28,7 @@ const run = (): void => {
   (0, eval)(STICKY_HEADER_JS);
 };
 
-describe('Sticky-header runtime behavior (jsdom) — shrink anchor-rest sync', () => {
+describe('Sticky-header runtime behavior (jsdom) — generic anchor-rest sync', () => {
   beforeEach(() => {
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
@@ -42,7 +43,7 @@ describe('Sticky-header runtime behavior (jsdom) — shrink anchor-rest sync', (
   });
 
   it('pins scroll-padding-top (root AND body) to the SHRUNK bar height at init, leaving no state classes behind', () => {
-    mount('sw-header-shrink');
+    mount('sw-header-pinned');
     run();
     expect(document.documentElement.style.scrollPaddingTop).toBe(`${SHRUNK}px`);
     expect(document.body.style.scrollPaddingTop).toBe(`${SHRUNK}px`);
@@ -52,7 +53,7 @@ describe('Sticky-header runtime behavior (jsdom) — shrink anchor-rest sync', (
   });
 
   it('measures directly (no forced toggle) when the page initializes ALREADY scrolled', () => {
-    mount('sw-header-shrink', { preScrolled: true });
+    mount('sw-header-pinned', { preScrolled: true });
     const addSpy = vi.spyOn(document.documentElement.classList, 'add');
     run();
     expect(document.documentElement.style.scrollPaddingTop).toBe(`${SHRUNK}px`);
@@ -62,7 +63,7 @@ describe('Sticky-header runtime behavior (jsdom) — shrink anchor-rest sync', (
   });
 
   it('re-syncs on resize (rAF-throttled path runs measure + sync + update)', () => {
-    const nav = mount('sw-header-shrink');
+    const nav = mount('sw-header-pinned');
     run();
     expect(document.documentElement.style.scrollPaddingTop).toBe(`${SHRUNK}px`);
     // the bar grows (breakpoint change) — the stub now reports new heights
@@ -73,12 +74,20 @@ describe('Sticky-header runtime behavior (jsdom) — shrink anchor-rest sync', (
     expect(document.documentElement.classList.contains('sw-measure')).toBe(false);
   });
 
-  it('does NOT pin scroll-padding for hide-on-scroll or when no #main-nav exists', () => {
+  it('pins for EVERY positional mode; skips a static header and a missing #main-nav', () => {
+    // hide-on-scroll pins too now — the sync is generic. Harmless where the bar keeps its height (it
+    // measures the same value twice) and strictly better than the hardcoded token, since it uses the
+    // bar's REAL measured height.
     mount('sw-header-hide-on-scroll');
     run();
+    expect(document.documentElement.style.scrollPaddingTop).toBe('52px');
+    // A STATIC header emits no sw-header-* class: nothing overlays content, so nothing to offset.
+    mount('');
+    run();
     expect(document.documentElement.style.scrollPaddingTop).toBe('');
-    document.body.className = 'sw-header-shrink';
-    document.body.innerHTML = '<main></main>'; // no #main-nav
+    // …and with no #main-nav there is nothing to measure.
+    document.body.className = 'sw-header-pinned';
+    document.body.innerHTML = '<main></main>';
     run();
     expect(document.documentElement.style.scrollPaddingTop).toBe('');
   });

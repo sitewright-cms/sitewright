@@ -31,11 +31,16 @@ describe('stickyHeaderCss', () => {
     }
   });
 
-  it('pinned is pure positioning — no scroll-state rules, no transition', () => {
+  it('pinned is pure positioning — the platform styles no scroll response of its own', () => {
     const css = stickyHeaderCss('pinned');
     expect(css).not.toContain('sw-nav-hidden');
-    expect(css).not.toContain('sw-scrolled');
-    expect(css).not.toContain('transition');
+    // No rule of the platform's own keys off the scrolled state — that is the AUTHOR's layer now.
+    expect(css).not.toContain('html.sw-scrolled #main-nav{');
+    expect(css).not.toContain('.navbar');
+    // The only `transition` present is the measurement guard, which suppresses transitions during the
+    // runtime's forced sw-scrolled toggle. It ships for every fixed mode because the collapse it
+    // measures is author CSS that could be on any header.
+    expect(css).toContain('html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}');
   });
 
   it('hide-on-scroll slides via a transform, reveals on focus-within (a11y), motion reduced-motion gated', () => {
@@ -47,16 +52,24 @@ describe('stickyHeaderCss', () => {
     expect(css).not.toContain('sw-scrolled #main-nav .navbar'); // not the shrink rule
   });
 
-  it('shrink condenses the bar past the scroll threshold + a soft shadow, reduced-motion gated', () => {
+  it('the retired shrink mode is normalized to pinned — no built-in condense survives anywhere', () => {
     const css = stickyHeaderCss('shrink');
-    expect(css).toContain('html.sw-scrolled #main-nav{box-shadow');
-    expect(css).toContain('html.sw-scrolled #main-nav .navbar{min-height:3.25rem');
-    expect(css).toContain('@media (prefers-reduced-motion:no-preference)');
-    expect(css).not.toContain('sw-nav-hidden');
-    // the runtime's forced-measure transition guard ships only with shrink (the only mode that measures)
-    expect(css).toContain('html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}');
-    expect(stickyHeaderCss('pinned')).not.toContain('sw-measure');
-    expect(stickyHeaderCss('hide-on-scroll')).not.toContain('sw-measure');
+    // It keeps its POSITIONING, so an existing site does not silently un-stick…
+    expect(css).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}');
+    expect(css).toBe(stickyHeaderCss('pinned'));
+    // …and loses only the recipe-specific styling. The condense targeted `#main-nav .navbar`, i.e. it
+    // only ever worked for the stock DaisyUI recipe and silently did nothing for a hand-authored
+    // header while still appearing to be enabled. No mode may ship it now.
+    for (const mode of ['pinned', 'hide-on-scroll', 'shrink', 'none'] as const) {
+      expect(stickyHeaderCss(mode)).not.toContain('.navbar');
+      expect(stickyHeaderCss(mode)).not.toContain('min-height:3.25rem');
+    }
+    // The measurement guard is NOT shrink-specific any more: the anchor sync measures whatever the
+    // author's own html.sw-scrolled CSS does, so every fixed mode ships it.
+    expect(stickyHeaderCss('pinned')).toContain('sw-measure');
+    expect(stickyHeaderCss('hide-on-scroll')).toContain('sw-measure');
+    // …but a static header has no anchor offset to sync, so it stays out.
+    expect(stickyHeaderCss('none')).not.toContain('sw-measure');
   });
 });
 
@@ -74,10 +87,13 @@ describe('STICKY_HEADER_JS', () => {
     // body.scrollTop position fallback, so the runtime works even without the preview scroll bridge
     expect(STICKY_HEADER_JS).toContain('{passive:true,capture:true}');
     expect(STICKY_HEADER_JS).toContain('document.body.scrollTop');
-    // SHRINK anchor-rest sync: pins scroll-padding-top to the measured SCROLLED bar (via the
+    // GENERIC anchor-rest sync: pins scroll-padding-top to the measured SCROLLED bar (via the
     // sw-measure transition guard) so anchors rest flush — no strip of the previous section shows
-    // under the condensed bar. Re-synced on resize.
-    expect(STICKY_HEADER_JS).toContain('sw-header-shrink');
+    // under a collapsed bar. Re-synced on resize. It gates on ANY positional mode's body class, so a
+    // hand-authored collapse gets correct anchors too; matching the class (not the computed position)
+    // keeps it working before stylesheets land and under jsdom.
+    expect(STICKY_HEADER_JS).toContain('sw-header-[a-z-]+');
+    expect(STICKY_HEADER_JS).not.toContain('sw-header-shrink');
     expect(STICKY_HEADER_JS).toContain('sw-measure');
     expect(STICKY_HEADER_JS).toContain("style.scrollPaddingTop=h+'px'");
     expect(STICKY_HEADER_JS).toContain('measure();syncAnchorRest();update()'); // rAF-throttled resize path

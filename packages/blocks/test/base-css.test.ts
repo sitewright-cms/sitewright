@@ -42,6 +42,27 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(layerOpen).toBeGreaterThan(-1);
       expect(ruleIdx).toBeGreaterThan(layerOpen);
     });
+    // A site-wide underline offset. `text-underline-offset` INHERITS, so setting it once on the root
+    // reaches every underline the site can draw — the `underline` utility, daisyUI `.link`, `.prose`
+    // links, <ins>/<u>, a rich-text underline — with no list of selectors to go stale.
+    it('sets a 3px underline offset on the ROOT so it inherits to every underline', () => {
+      expect(css).toContain('html { text-underline-offset: 3px; }');
+      // Weak layer + inherited (not applied to the element) → an author rule AND a Tailwind
+      // `underline-offset-*` utility both still win where they are set.
+      const ruleIdx = css.indexOf('html { text-underline-offset: 3px; }');
+      const layerOpen = css.lastIndexOf('@layer sw-normalize {', ruleIdx);
+      const layerClose = css.indexOf('}', css.indexOf('}', ruleIdx) + 1);
+      expect(layerOpen).toBeGreaterThan(-1);
+      expect(ruleIdx).toBeGreaterThan(layerOpen);
+      expect(layerClose).toBeGreaterThan(ruleIdx);
+    });
+
+    it('does not force an underline ON — only its offset (links stay undecorated by default)', () => {
+      // The offset default must not disturb the platform's no-underline-by-default link policy.
+      expect(css).toContain('a { color: inherit; text-decoration: none; }');
+      expect(css).not.toContain('html { text-decoration: underline');
+    });
+
     it('keeps both the reset and .prose inside the weak sw-normalize layer (utilities win)', () => {
       const resetIdx = css.indexOf('fieldset { margin: 0; }');
       const layerOpen = css.lastIndexOf('@layer sw-normalize {', resetIdx);

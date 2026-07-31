@@ -171,6 +171,19 @@ const PLATFORM_DEFAULTS = `
   a { color: inherit; text-decoration: none; }
 }
 
+/* Underline OFFSET — a site-wide default of 3px wherever an underline IS drawn.
+   \`text-underline-offset\` is an INHERITED property, so one declaration on the root reaches every
+   underline the site can produce — the \`underline\` utility, daisyUI \`.link\`, \`.prose\` links, \`<ins>\`,
+   \`<u>\`, \`abbr[title]\`, a rich-text underline — without enumerating them, and without a rule that could
+   go stale when a new underline source appears. The UA default (\`auto\`) sits the rule close enough to the
+   baseline that descenders (g, j, p, y) collide with it; 3px clears them and is what \`.btn-link\` already
+   hardcoded, so this generalises an existing decision rather than inventing one.
+   In the weak sw-normalize layer, and inherited rather than applied, so BOTH an author rule and a
+   Tailwind \`underline-offset-*\` utility win on the element that sets them. */
+@layer sw-normalize {
+  html { text-underline-offset: 3px; }
+}
+
 /* Site-wide CONTENT CONTAINER — one knob (\`--sw-container\`, from the Website "Content width" setting)
    aligns + retunes every section's content. \`width:100%\` keeps it fluid; \`max-width\` caps it; auto
    inline margins centre it. The inline GUTTER is a STATIC \`2rem\` default (\`--sw-container-gutter\`) — a

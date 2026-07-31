@@ -414,6 +414,15 @@ const MODAL_CSS = [
 ].join('');
 
 const MODAL_JS = `(function(){
+  // DaisyUI modal class names are DROPPED by the author-class split below rather than relocated onto
+  // the body. DaisyUI's .modal is visibility:hidden unless it also carries .modal-open — which this
+  // runtime never adds, because it drives its own [open] panel animation — so moving it onto the body
+  // silently blanks every child while the dialog still opens full-viewport, with no console error.
+  // The rendered-site CSS build already EXCLUDES DaisyUI's modal component (see DAISY_EXCLUDED), so
+  // these tokens are normally inert; this is the belt-and-braces path for a project whose stylesheet
+  // carries them from somewhere else. hasOwnProperty (not a bare lookup) so a class literally named
+  // "constructor" can't match through the prototype.
+  var MODAL_DROP_CLASSES={modal:1,'modal-box':1,'modal-open':1,'modal-action':1,'modal-backdrop':1,'modal-toggle':1};
   var CLOSE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
   // Localized SYSTEM UI string from <html data-sw-i18n="{…}"> (CSP-safe attribute, set per page),
   // flooring to the English fallback. Parsed once.
@@ -530,7 +539,9 @@ const MODAL_JS = `(function(){
       // (usually a bg gradient) paints the body too.
       if(dialog.className){
         var wtoks=[],otoks=[],cls=Array.prototype.slice.call(dialog.classList);
-        for(var ci=0;ci<cls.length;ci++){(/^(?:[^:]+:)*(?:w|max-w|min-w)-/.test(cls[ci])?wtoks:otoks).push(cls[ci]);}
+        for(var ci=0;ci<cls.length;ci++){
+          if(Object.prototype.hasOwnProperty.call(MODAL_DROP_CLASSES,cls[ci]))continue;
+          (/^(?:[^:]+:)*(?:w|max-w|min-w)-/.test(cls[ci])?wtoks:otoks).push(cls[ci]);}
         if(wtoks.length){panel.className=wtoks.join(' ');}
         if(otoks.length){body.className=body.className?body.className+' '+otoks.join(' '):otoks.join(' ');}
         dialog.removeAttribute('class');

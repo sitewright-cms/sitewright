@@ -105,6 +105,34 @@ describe('compileUtilityCss', () => {
     expect(css).toContain('--color-base-100');
   });
 
+  it('excludes the DaisyUI modal + tab components that collide with the platform primitives', async () => {
+    // The clashing idiom an agent reaches for out of habit: DaisyUI modal/tab markup wrapped around
+    // the platform's own data-sw-component primitives.
+    const css = await compileUtilityCss(
+      [
+        '<dialog class="modal" data-sw-component="modal"><div class="modal-box">x</div></dialog>' +
+          '<div class="card"><div role="tablist" class="tabs"><button class="tab tab-active">t</button></div></div>',
+      ],
+      {},
+      { minify: false },
+    );
+    // DaisyUI's .modal is `visibility:hidden` without .modal-open — which the platform modal never
+    // adds — so shipping it silently empties a platform modal. Neither it nor .modal-box may appear.
+    expect(css).not.toMatch(/\.modal(\s|\{|,|-)/);
+    // Same collision against the tabs primitive.
+    expect(css).not.toMatch(/\.tab(\s|\{|,|-)/);
+    // The exclusion must be SURGICAL: `table` is a separate DaisyUI component whose name starts with
+    // "tab", and excluding `tab` must not take it with it.
+    const withTable = await compileUtilityCss(
+      ['<table class="table"><tr><td>x</td></tr></table>'],
+      {},
+      { minify: false },
+    );
+    expect(withTable).toMatch(/\.table(\s|\{|,)/);
+    // …and an unrelated component still ships, proving the layer itself is intact.
+    expect(css).toContain('.card');
+  });
+
   it('pulls in DaisyUI when only its surface colors are used (e.g. bg-base-200)', async () => {
     const css = await compileUtilityCss(['<div class="bg-base-200 text-base-content">x</div>'], {}, { minify: false });
     // The DaisyUI palette is supplied, so the surface-color utilities actually resolve.

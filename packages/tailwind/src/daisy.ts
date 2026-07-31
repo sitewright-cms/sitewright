@@ -11,6 +11,26 @@ const require = createRequire(import.meta.url);
 export const DAISY_PLUGIN_PATH = require.resolve('daisyui');
 
 /**
+ * DaisyUI components the rendered-site CSS deliberately does NOT ship, passed to the plugin's
+ * `exclude:` list. Names match DaisyUI's own component files (`components/<name>.css`).
+ *
+ * - `button` — the platform owns button styling (the `sw-btn-*` effect utilities + brand tokens).
+ * - `modal`, `tab` — these COLLIDE with the platform's own `data-sw-component="modal"` / `"tabs"`
+ *   primitives, and the collision fails SILENTLY. The modal JS splits the author's classes off the
+ *   `<dialog>` and re-applies the non-width ones to the panel body it builds; a DaisyUI `.modal`
+ *   landing there is `visibility:hidden` unless it also carries `.modal-open` (which the platform
+ *   never adds, since it drives its own `[open]` animation) — so the dialog opens full-viewport with
+ *   every child invisible and NO console error. An agent writing the DaisyUI idiom out of habit
+ *   (`<dialog class="modal"><div class="modal-box">`) produced exactly that. Excluding the component
+ *   makes those class names INERT rather than harmful: the platform primitive still works and the
+ *   stray class paints nothing. `.tab` is excluded for the same reason against the tabs primitive.
+ *   Nothing the platform ships uses them (no `modal-box` / `class="tab"` in global snippets,
+ *   templates or example bundles) — `compile.test.ts` pins both the exclusion and the fact that the
+ *   similarly-named `table` component SURVIVES it.
+ */
+export const DAISY_EXCLUDED: readonly string[] = ['button', 'modal', 'tab'];
+
+/**
  * DaisyUI v5's light-theme defaults — the full set of CSS vars its components reference. We
  * run DaisyUI with `themes: false` (it emits components but NO theme block), then supply these
  * vars ourselves, so brand colors override the palette with no cascade fight.

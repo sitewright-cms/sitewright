@@ -99,6 +99,20 @@ export interface TransformOptions {
    */
   foundation?: boolean;
   /**
+   * Opt-in: infer DATASETS from repeated markup (a card grid → a dataset + one entry per card, with the
+   * markup replaced by an `{{#each}}` loop). **Off by default.**
+   *
+   * Mechanical inference is lossy by construction: it only fires on structurally identical repeats, so a
+   * real listing with one featured card is missed; the fields it names come from the markup, not the
+   * content's meaning; and text spread across several inline elements is concatenated into one field
+   * (deliberately — the alternative dropped copy). The result was junk datasets the author had to find and
+   * delete, sitting next to real ones. An agent reading the page decides FAR better what a collection is
+   * and which fields it has, and authors the dataset + entries directly.
+   *
+   * Kept (behind this flag) for the non-agent path and for comparing against a hand-authored dataset.
+   */
+  inferDatasets?: boolean;
+  /**
    * Server-side downloader for a webfont family referenced via a Google-Fonts `<link>`/`@import` (a page
    * that loads its fonts from a CDN, with NO `@font-face` in its own CSS). Given a family + weights it
    * returns the woff2 bytes per weight; the engine self-hosts them (same pass as `@font-face` fonts) and

@@ -123,6 +123,8 @@ export interface SettingsForm {
   // identity — brand tokens
   colors: KeyedPair[];
   fonts: KeyedPair[];
+  /** Free-form CSS custom properties (`identity.cssTokens`) → `--sw-<key>`: gradients, shadows, easings. */
+  cssTokens: KeyedPair[];
   // identity — typography slots (heading + body font + weight), custom named slots, + self-hosted fonts
   heading: FontSlotForm;
   body: FontSlotForm;
@@ -300,6 +302,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     social: (id.social ?? []).map((s) => ({ id: rowId(), link: s.link, name: s.name ?? '', icon: s.icon ?? '' })),
     colors: colorsToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
+    cssTokens: recordToPairs(id.cssTokens),
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
     body: { ...DEFAULT_BODY, ...id.typography?.body },
     named: Object.entries(id.typography?.named ?? {}).map(([name, slot]) => ({ id: rowId(), name, slot: { ...slot } })),
@@ -495,7 +498,11 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(hasNamed ? { named } : {}),
     });
   }
-  // Carry through token fields the form doesn't expose.
+  // Free-form `--sw-<key>` values (gradients, shadow ramps, easings) — an EDITED record, so an emptied
+  // list must clear the stored one rather than fall back to `base` (which would make deletion impossible).
+  const cssTokens = pairsToRecord(form.cssTokens);
+  identity = put(identity, 'cssTokens', Object.keys(cssTokens).length ? cssTokens : undefined);
+  // Carry through token fields the form still doesn't expose.
   identity = put(identity, 'spacing', baseId?.spacing);
   identity = put(identity, 'radii', baseId?.radii);
 

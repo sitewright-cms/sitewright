@@ -14,7 +14,10 @@ const base: Page = {
   // Flat SEO fields managed by the modal: description, image, and (now) noindex.
   noindex: true,
   description: 'old description',
-  nav: { slots: ['header'], order: 2, dropdown: true },
+  // Sibling order is the page-tree `order` (the pages list sets it by drag / Arrow keys) — the modal
+  // no longer edits it, and `nav` carries no `order` of its own.
+  order: 2,
+  nav: { slots: ['header'], dropdown: true },
   parent: 'home',
   template: 'global:text',
 };
@@ -51,7 +54,8 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     const plain: Page = { id: 'p', path: 'p', title: 'P' };
     const values = { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navDropdown: false };
     const next = applyPageSettings(plain, values);
-    expect(next.nav).toEqual({ slots: ['header'], order: 0 }); // no `dropdown: false` noise
+    expect(next.nav).toEqual({ slots: ['header'] }); // no `dropdown: false` noise, no legacy `order`
+    expect(next.order).toBeUndefined(); // the modal never invents an order — the pages list owns it
     expect(next.description).toBeUndefined(); // nothing set → no empty field persisted
     expect(next.image).toBeUndefined();
   });
@@ -59,9 +63,25 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   it('persists a trimmed menu label, and a new-page draft carries the default header slot', () => {
     const plain: Page = { id: 'p', path: 'p', title: 'P' };
     const next = applyPageSettings(plain, { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navTitle: '  Services  ' });
-    expect(next.nav).toEqual({ slots: ['header'], title: 'Services', order: 0 });
+    expect(next.nav).toEqual({ slots: ['header'], title: 'Services' });
     // New pages default INTO the main navigation.
     expect(pageSettingsFromPage({ id: '__new__', path: '', title: '', nav: { slots: ['header'] } } as Page).navSlots).toEqual(['header']);
+  });
+
+  // `nav.order` is retired: nothing writes it, the page tree's top-level `order` is the sort key.
+  // Saving settings must not move a page that still carries only the legacy value.
+  it('promotes a legacy nav.order to the page-tree order, keeping the page in the same position', () => {
+    const legacy: Page = { id: 'p', path: 'p', title: 'P', nav: { slots: ['header'], order: 30 } };
+    const next = applyPageSettings(legacy, pageSettingsFromPage(legacy));
+    expect(next.order).toBe(30); // same number → same rank among siblings
+    expect(next.nav).toEqual({ slots: ['header'] }); // the legacy copy is gone, not duplicated
+  });
+
+  it('keeps the page-tree order when both are present (nav.order never wins, so it is dropped)', () => {
+    const both: Page = { id: 'p', path: 'p', title: 'P', order: 3, nav: { slots: ['header'], order: 30 } };
+    const next = applyPageSettings(both, pageSettingsFromPage(both));
+    expect(next.order).toBe(3); // `order ?? nav.order` — the effective value is unchanged
+    expect(next.nav?.order).toBeUndefined();
   });
 
   it('round-trips locale and preserves the translation group it does not edit', () => {
@@ -127,7 +147,8 @@ describe('PageSettingsModal — link placeholders (kind:"link")', () => {
     
     kind: 'link',
     link: { target: 'https://x.test', newTab: true },
-    nav: { slots: ['header'], order: 0, dropdown: true },
+    order: 0,
+    nav: { slots: ['header'], dropdown: true },
     parent: 'home',
   };
 
@@ -390,16 +411,24 @@ describe('PageSettingsModal — UX: status in header, collapsible Advanced, hint
     expect(screen.getByLabelText('Page template')).toBeInTheDocument();
   });
 
-  it('shows the menu label even with no nav slots, and keeps Order under Advanced', () => {
-    // `plain` has no nav slots — the menu label field is STILL shown (always visible), while the
-    // Order field has moved out of Navigation into the collapsed Advanced section.
+  it('shows the menu label even with no nav slots, and offers NO order field anywhere', () => {
+    // `plain` has no nav slots — the menu label field is STILL shown (always visible). There is no
+    // Order input at all any more: sibling order is the page-tree `order`, set by dragging the pages
+    // list (or Arrow Up/Down on a selected page). The old number field edited the legacy `nav.order`,
+    // which loses to `order` in the read fallback — so typing in it silently did nothing.
     render(<PageSettingsModal page={plain} projectId="p" initial={pageSettingsFromPage(plain)} pages={[home, plain]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
     expect(screen.getByLabelText('Nav menu label')).toBeInTheDocument();
     // A page in no menu: the label is shown but flagged as inert until the page joins a menu.
     expect(screen.getByText(/Only used when the page is in a menu/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Nav order')).toBeNull(); // not in Navigation, and Advanced is collapsed
+    expect(screen.queryByLabelText('Nav order')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
-    expect(screen.getByLabelText('Nav order')).toBeInTheDocument(); // now revealed under Advanced
+    expect(screen.queryByLabelText('Nav order')).toBeNull(); // gone from Advanced too
+  });
+
+  it('offers no order field on a link placeholder either (it has no Advanced section)', () => {
+    const ph: Page = { id: 'ph', path: '', title: 'More', kind: 'link', nav: { slots: ['header'], dropdown: true }, link: {} };
+    render(<PageSettingsModal page={ph} projectId="p" initial={pageSettingsFromPage(ph)} pages={[home, ph]} templates={[]} onClose={() => {}} onSubmit={() => {}} />);
+    expect(screen.queryByLabelText('Nav order')).toBeNull();
   });
 
   it('guarantees a menu label by falling back to the page title when a menu page is saved blank', () => {

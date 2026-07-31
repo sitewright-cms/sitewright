@@ -28,7 +28,7 @@ import { parseGoogleFontRefs } from './transform/webfonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
-import { inferDatasets, uniquifyEntryIds } from './transform/datasets.js';
+import { inferDatasets, uniquifyEntryIds, type DatasetInference } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedAsset, CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
@@ -81,7 +81,7 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): WebsiteSettings | undefined {
+function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string, hadBackToTop = false): WebsiteSettings | undefined {
   const input: Record<string, unknown> = {};
   if (chrome.mainNav) input.mainNav = chrome.mainNav;
   if (chrome.footer) input.footer = chrome.footer;
@@ -89,11 +89,16 @@ function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): We
   if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
   if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
   if (scripts) input.scripts = scripts; // <script src> links to the self-hosted imported JS (after the body)
-  // Enable the platform BACK-TO-TOP explicitly (it's the replacement for the foreign back-to-top buttons
-  // stripped from the page bodies; default-on, but set so it's clearly enabled in the editor's settings).
-  const effects: Record<string, unknown> = { backToTop: true };
+  // The platform BACK-TO-TOP replaces a foreign back-to-top button the transform stripped — so enable it
+  // only when there WAS one. It used to be set unconditionally, on the theory that it is a harmless
+  // default; it is not. A source with no back-to-top control got one anyway, which is a visible
+  // divergence the fidelity gate can't see (it is a scroll-triggered overlay, absent from a screenshot),
+  // and the author has no reason to suspect a control they never authored. `back-to-top-removed` is the
+  // honest signal: the transform emits it exactly when it removed one.
+  const effects: Record<string, unknown> = {};
+  if (hadBackToTop) effects.backToTop = true;
   if (chrome.preloaderEffect) effects.preloaderEffect = chrome.preloaderEffect;
-  input.effects = effects;
+  if (Object.keys(effects).length > 0) input.effects = effects;
   return WebsiteSettingsSchema.parse(input);
 }
 
@@ -131,6 +136,10 @@ function collectHostedFonts(refs: ReadonlyMap<string, CapturedAsset>, assetMap: 
   }
   return out;
 }
+
+/** The "inferred nothing" result, used when dataset inference is off (the default). A fresh object per
+ *  call — the arrays/Map are the caller's to own, never a shared instance the next page could see. */
+const emptyInference = (): DatasetInference => ({ datasets: [], entries: [], markers: new Map() });
 
 export async function buildImportBundle(site: CapturedSite, opts: TransformOptions): Promise<ImportResult> {
   const limits = resolveLimits(opts.limits);
@@ -292,7 +301,12 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     };
     // Conservative dataset inference (runs BEFORE the transform so its sentinel markers serialize as
     // plain text); each marker is swapped for the generated {{#each}} loop after the page transform.
-    const inf = inferDatasets(x.doc, ctx, usedSlugs, usedEntryIds, `@@SWDS${transformed}_`);
+    // OPT-IN (`opts.inferDatasets`): guessing collections from markup shape produced junk datasets more
+    // often than real ones — see the flag's doc on TransformOptions. Off → the repeated markup is
+    // imported verbatim and an agent authors the real dataset from what the page MEANS.
+    const inf = opts.inferDatasets
+      ? inferDatasets(x.doc, ctx, usedSlugs, usedEntryIds, `@@SWDS${transformed}_`)
+      : emptyInference();
     const { source: rawSource, diagnostics: pageDiags } = transformBody(x.doc, ctx);
     // Splice each loop in, but ONLY keep the dataset if its marker survived the transform AND the swap
     // leaves the page validateTemplate-clean (the marker can be dropped by fitSource or land inside a
@@ -372,7 +386,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // The foreign stylesheet <link> IS wired into website.head even in FOUNDATION mode — the nativize capture
   // needs it to read real computed styles (see the cssUrl note above); nativize strips it at finalize. Only
   // foreign SCRIPTS stay discarded in foundation mode (the extractor replaces chrome/theme; JS isn't needed).
-  let website = buildWebsite(chrome, cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined);
+  const hadBackToTop = diagnostics.some((d) => d.code === 'back-to-top-removed');
+  let website = buildWebsite(chrome, cssLink || undefined, opts.foundation ? undefined : scriptLinks || undefined, hadBackToTop);
   let bundleIdentity = identity;
   let bundlePages = routeRes.pages;
   if (opts.foundation) {

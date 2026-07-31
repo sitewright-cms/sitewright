@@ -80,7 +80,7 @@ describe('buildImportBundle (integration)', () => {
     expect(bundle.project.website?.mainNav).toContain('/media/test/');
     expect(bundle.project.website?.footer).toContain('© Acme');
     expect(bundle.project.website?.mainNav).not.toContain('<script');
-    expect(bundle.project.website?.effects?.backToTop).toBe(true); // platform back-to-top enabled
+    // No back-to-top in this fixture → the platform one is NOT switched on (see the dedicated test below).
     expect(home.source).toContain('Welcome');
     expect(home.source).not.toContain('© Acme');
 
@@ -157,11 +157,27 @@ describe('buildImportBundle (integration)', () => {
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
   });
 
-  it('infers a dataset + {{#each}} loop from a repeated card grid', async () => {
+  it('infers a dataset + {{#each}} loop from a repeated card grid, but ONLY when asked', async () => {
     const cards = Array.from({ length: 5 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
+    const html = page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD);
+
+    // DEFAULT: no inference. Shape-matching guessed junk collections more often than real ones (it
+    // misses a listing whose cards differ, names fields after markup, and concatenates split text), so
+    // the repeated markup is imported verbatim and an agent authors the real dataset from what it MEANS.
+    const off = await buildImportBundle(site([{ sourceUrl: 'https://ex.com/', html }]), { media: stubMedia() });
+    const offBundle = off.bundles[0]!;
+    const offHome = offBundle.pages.find((p) => p.path === '')!;
+    expect(offBundle.datasets).toEqual([]);
+    expect(offBundle.entries).toEqual([]);
+    expect(offHome.source).toContain('Person 0'); // the literal cards survive
+    expect(offHome.source).not.toContain('{{#each dataset.');
+    expect(offHome.source).not.toContain('@@SWDS'); // and no sentinel leaks either
+    expect(off.diagnostics.some((d) => d.code === 'dataset-inferred')).toBe(false);
+    expect(() => validateTemplate(offHome.source!)).not.toThrow();
+
     const result = await buildImportBundle(
-      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
-      { media: stubMedia() },
+      site([{ sourceUrl: 'https://ex.com/', html }]),
+      { media: stubMedia(), inferDatasets: true },
     );
     const bundle = result.bundles[0]!;
     expect(bundle.datasets).toHaveLength(1);
@@ -174,6 +190,24 @@ describe('buildImportBundle (integration)', () => {
     expect(() => validateTemplate(home.source!)).not.toThrow();
     expect(result.diagnostics.some((d) => d.code === 'dataset-inferred')).toBe(true);
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+  });
+
+  // The platform back-to-top is a REPLACEMENT for a foreign one the transform stripped. It used to be
+  // switched on unconditionally, so a source with no back-to-top control got one anyway — a divergence no
+  // screenshot can catch (it only appears once you scroll) and that the author never authored.
+  it('enables the platform back-to-top ONLY when the source actually had one', async () => {
+    const plain = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1>', HOME_HEAD) }]),
+      { media: stubMedia() },
+    );
+    expect(plain.bundles[0]!.project.website?.effects?.backToTop).toBeUndefined();
+
+    const withButton = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1><a href="#top" class="back-to-top">Top</a>', HOME_HEAD) }]),
+      { media: stubMedia() },
+    );
+    expect(withButton.bundles[0]!.project.website?.effects?.backToTop).toBe(true);
+    expect(withButton.diagnostics.some((d) => d.code === 'back-to-top-removed')).toBe(true);
   });
 
   it('inlines the full CSS as a <style> in the page source (accurate replica)', async () => {
@@ -217,7 +251,7 @@ describe('buildImportBundle (integration)', () => {
     const cards = Array.from({ length: 6 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
-      { media: stubMedia(), limits: { maxSourceBytes: 40 } }, // tiny → fitSource drops the grid container
+      { media: stubMedia(), inferDatasets: true, limits: { maxSourceBytes: 40 } }, // tiny → fitSource drops the grid container
     );
     const bundle = result.bundles[0]!;
     const home = bundle.pages.find((p) => p.path === '')!;

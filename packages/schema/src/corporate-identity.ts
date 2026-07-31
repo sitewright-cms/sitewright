@@ -4,6 +4,7 @@ import {
   ColorTokenKeySchema,
   CssColorSchema,
   CssStringSchema,
+  CssTokenValueSchema,
   IdSchema,
   KeyNameSchema,
   TokenValueSchema,
@@ -318,6 +319,24 @@ const CorporateIdentityObject = z.object({
     .optional(),
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
   radii: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
+  /**
+   * FREE-FORM CSS custom properties: token name → any CSS value, emitted verbatim as `--sw-<key>`
+   * in the same `:root` block as the colour/spacing/radius tokens.
+   *
+   * `colors`/`spacing`/`radii` are open records, but each is typed by what it MEANS — a colour, a
+   * length. The values a design system actually repeats are wider than that: a hero gradient, an
+   * elevation ramp, a shared transition curve. Those had nowhere to live, so they were hand-written
+   * into `website.criticalCss` where nothing validates them and no editor surfaces them.
+   *
+   * Values use {@link CssTokenValueSchema} — deliberately wider than a plain token (parentheses and
+   * commas are allowed, so `linear-gradient(…)` / `rgba(…)` / `var(…)` work) while still refusing
+   * anything that could break out of the declaration or fetch a resource. Keys may contain hyphens
+   * (`grad-hero`, `shadow-1`).
+   *
+   * Deliberately NOT fed to Tailwind's `@theme`: a gradient/shadow is not a colour or font ROLE, so
+   * it generates no utility class. Reference one with `var(--sw-grad-hero)`.
+   */
+  cssTokens: safeRecord(CssTokenValueSchema, ColorTokenKeySchema).optional(),
 });
 
 export const CorporateIdentitySchema = CorporateIdentityObject;
@@ -328,4 +347,4 @@ export type CorporateIdentity = z.infer<typeof CorporateIdentitySchema>;
  * brand-css compilers actually consume. A full `CorporateIdentity` is structurally
  * assignable to this, so callers pass the whole identity without a projection.
  */
-export type BrandTokens = Pick<CorporateIdentity, 'colors' | 'typography' | 'spacing' | 'radii'>;
+export type BrandTokens = Pick<CorporateIdentity, 'colors' | 'typography' | 'spacing' | 'radii' | 'cssTokens'>;

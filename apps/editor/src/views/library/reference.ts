@@ -121,13 +121,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-icon',
-        syntax: '{{sw-icon "name" ["classes"]}}',
+        syntax: '{{sw-icon "name[:weight]" ["classes"]}}',
         name: 'sw-icon',
-        keywords: 'svg lucide glyph icon brand logo social whatsapp github',
+        keywords: 'svg phosphor lucide glyph icon brand logo social whatsapp github weight thin bold duotone',
         description:
-          'Inlines a built-in icon as an SVG. A BARE name is a Lucide line glyph — browse names in the Library → Icons gallery (click one to copy its snippet). A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
+          'Inlines a built-in icon as an SVG. A BARE name is a PHOSPHOR glyph, FILLED by default — add ":weight" to pick thin, light, regular, bold, fill or duotone (e.g. "check:thin"). Browse names in the Library → Icons gallery (click one to copy its snippet). A familiar Lucide name still works: it renders its Phosphor twin where one is mapped, else a Lucide outline. A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
         args: [
-          { name: 'name', desc: 'A Lucide name (e.g. "arrow-right"), or "brand:slug" for a brand logo (e.g. "brand:x").' },
+          { name: 'name', desc: 'A Phosphor name with an optional weight (e.g. "arrow-right", "check:thin"), or "brand:slug" for a brand logo (e.g. "brand:x").' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
         example:
@@ -165,6 +165,24 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'N', desc: 'Maximum length (default 100).' },
         ],
         example: '<p>{{sw-truncate summary 80}}</p>',
+      },
+      {
+        id: 'h-stagger',
+        syntax: '{{sw-stagger @index [step] [max]}}',
+        name: 'sw-stagger',
+        keywords: 'stagger delay animation reveal index loop each sequence cascade arithmetic multiply',
+        description:
+          'The reveal DELAY in milliseconds for item @index of a loop — index x step, capped at max — so a grid animates in one item after another instead of all at once. Drop it straight into data-sw-delay inside an {{#each}}. The cap matters: without it a 40-item grid would delay its last card by several seconds and the animation reads as a stuck page; everything past the cap lands together. Templates have NO general arithmetic (there is no multiply/add helper, and an unknown helper renders as a comment marker), so this is the supported way to compute a per-item value.',
+        args: [
+          { name: '@index', desc: 'The loop index — pass @index inside any {{#each}}.' },
+          { name: 'step', desc: 'Milliseconds between consecutive items (default 100).' },
+          { name: 'max', desc: 'Upper bound on the delay (default 600).' },
+        ],
+        example:
+          '{{#each dataset.services}}\n' +
+          '  <div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}" class="card">{{title}}</div>\n' +
+          '{{/each}}',
+        note: 'Pair it with data-sw-animation — see the “scroll animations” entry. For a long list, lower the step (60-80ms) rather than raising the cap.',
       },
       {
         id: 'h-json',

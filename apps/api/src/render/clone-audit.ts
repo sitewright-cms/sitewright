@@ -46,22 +46,61 @@ export interface BehaviourFacts {
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
 
-/** STRUCTURE leg — pure over repo data (datasets, media, the audited page's source). */
+/** A client-edit directive: what makes rendered content editable in the client editor. */
+const EDIT_DIRECTIVE = /data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry/g;
+
+/** A static `{{> name}}` / `{{#> name}}` partial include (mirrors publish's PARTIAL_REF). */
+const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
+
+/**
+ * Count client-edit directives across the page's EFFECTIVE authored source: the passed source (which the
+ * caller has already template-resolved) PLUS every `{{> snippet}}` it composes, expanded transitively.
+ *
+ * Counting the page's OWN stored `source` alone is wrong and used to fail the gate for exactly the
+ * structures the import guide MANDATES: a page rendered from a `template` has an essentially empty
+ * `source` (its directives live in the template), and a page composing a `{{> snippet}}` keeps its
+ * directives in the snippet. Both render fully editable, and both used to score 0 and FAIL.
+ */
+export function countEditDirectives(source: string | null | undefined, snippets: Readonly<Record<string, string>> = {}): number {
+  let total = 0;
+  const seen = new Set<string>();
+  const queue: string[] = [];
+  const scan = (src: string | null | undefined): void => {
+    if (!src) return;
+    total += (src.match(EDIT_DIRECTIVE) || []).length;
+    for (const m of src.matchAll(PARTIAL_REF)) {
+      const name = m[1]!;
+      // Guard on `seen` (not on the queue) so a diamond/cyclic composition terminates and is counted once.
+      if (name in snippets && !seen.has(name)) {
+        seen.add(name);
+        queue.push(name);
+      }
+    }
+  };
+  scan(source);
+  while (queue.length) scan(snippets[queue.shift()!]);
+  return total;
+}
+
+/** STRUCTURE leg — pure over repo data (datasets, media, the audited page's EFFECTIVE source + snippets). */
 export function structuralChecks(input: {
   datasets: Array<{ id?: string; name?: string; slug?: string }>;
   media: Array<{ folder?: string }>;
+  /** The page's TEMPLATE-RESOLVED source (the `page.code` binding), not its raw stored `source`. */
   pageSource: string | null;
+  /** Every snippet available to the page, by name — so composed `{{> partial}}` directives count. */
+  snippets?: Readonly<Record<string, string>>;
 }): AuditCheck[] {
   // Test the USER-FACING name + slug (what rename_dataset actually changes) — NOT the immutable `id`, which
   // the importer sets ("items") and rename keeps, so a properly-renamed dataset (name "Featured Listings",
   // slug "featured_listings") whose id is still "items" must PASS.
   const generic = input.datasets.filter((d) => GENERIC_DS.test((d.name || '').trim()) || GENERIC_DS.test((d.slug || '').trim()));
   const imported = input.media.filter((m) => String(m.folder || '').startsWith('imported'));
-  const edits = ((input.pageSource || '').match(/data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry/g) || []).length;
+  const edits = countEditDirectives(input.pageSource, input.snippets ?? {});
   return [
     { leg: 'structure', id: 'datasets', label: 'datasets deduped + meaningfully named', pass: input.datasets.length === 0 || generic.length === 0, detail: `${generic.length} generic-named ("List"/"items") of ${input.datasets.length}` },
     { leg: 'structure', id: 'media-folders', label: 'media out of the transient imported/ tree', pass: imported.length === 0, detail: `${imported.length}/${input.media.length} assets still under imported/` },
-    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-*)', pass: edits > 0, detail: `${edits} edit directives on this page` },
+    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-*)', pass: edits > 0, detail: `${edits} edit directives on this page (template-resolved, including composed snippets)` },
   ];
 }
 

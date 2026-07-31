@@ -24,7 +24,10 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // preview-sparingly, snappy-chat, the explicit write-tool argument shapes that keep weaker models from
     // omitting required args, the chrome-slot vs page distinction, the get_capabilities discovery index,
     // and the dataset write-shape gotcha — core rules that shape EVERY session, not feature how-tos.)
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(18_800);
+    // 18_800 -> 19_200 when patch_page joined the core: put_page is a TOTAL replace that silently deletes
+    // omitted fields (data.swImport included, which makes a page un-auditable), so which of the two to
+    // reach for is a destructive-write rule that has to be in the always-loaded core, not a guide.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(19_200);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

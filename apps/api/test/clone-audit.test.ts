@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, type BehaviourFacts } from '../src/render/clone-audit.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
   carousels: 1, carouselsEnhanced: 1, dialogs: 1, headingFont: 'primary-font', bodyFont: 'text-font',
@@ -30,6 +30,51 @@ describe('structuralChecks', () => {
   it('fails when the page has no edit directives', () => {
     expect(structuralChecks({ datasets: [], media: [], pageSource: '<div>plain</div>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
     expect(structuralChecks({ datasets: [], media: [], pageSource: '<h1 data-sw-text="t">T</h1>' }).find((c) => c.id === 'editable')!.pass).toBe(true);
+  });
+
+  // REGRESSION: the check used to read the page's RAW stored source, so the two structures the import
+  // guide MANDATES both scored 0 and FAILED — a template-driven page (empty own source) and a page whose
+  // directives live in a composed {{> snippet}}. The caller now passes the template-RESOLVED source plus
+  // the snippet bodies.
+  it('counts directives from a composed {{> snippet}}, not just the page body', () => {
+    const snippets = { 'page-hero': '<h1 data-sw-text="header_title">T</h1><div data-sw-text="header_sub"></div>' };
+    const composed = structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>', snippets });
+    expect(composed.find((c) => c.id === 'editable')!.pass).toBe(true);
+    expect(composed.find((c) => c.id === 'editable')!.detail).toContain('2 edit directives');
+    // …and without the snippet bodies the very same page still reads as un-editable (the old behaviour).
+    expect(structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
+  });
+});
+
+describe('countEditDirectives', () => {
+  it('counts the page body, every directive kind, and {{sw-control}}', () => {
+    expect(countEditDirectives('<h1 data-sw-text="t">T</h1><img data-sw-src="i"><div data-sw-bg="b"></div>')).toBe(3);
+    expect(countEditDirectives('{{sw-control "x"}} {{ sw-control "y"}}')).toBe(2);
+    expect(countEditDirectives(null)).toBe(0);
+    expect(countEditDirectives('<div>nothing</div>')).toBe(0);
+  });
+
+  it('expands partials transitively and counts each snippet once', () => {
+    const snippets = {
+      outer: '<div data-sw-text="a"></div>{{> inner}}',
+      inner: '<div data-sw-html="b"></div>',
+      unused: '<div data-sw-text="never"></div>',
+    };
+    expect(countEditDirectives('{{> outer}}', snippets)).toBe(2);
+    // referenced twice → counted once (the snippet renders twice, but this gates on authored editability)
+    expect(countEditDirectives('{{> outer}}{{> outer}}', snippets)).toBe(2);
+  });
+
+  it('terminates on a cyclic composition instead of hanging', () => {
+    const snippets = { a: '<i data-sw-text="a"></i>{{> b}}', b: '<i data-sw-text="b"></i>{{> a}}' };
+    expect(countEditDirectives('{{> a}}', snippets)).toBe(2);
+  });
+
+  it('matches the {{~ }} and {{#> }} partial forms publish accepts', () => {
+    const snippets = { hero: '<h1 data-sw-text="t"></h1>' };
+    expect(countEditDirectives('{{~> hero}}', snippets)).toBe(1);
+    expect(countEditDirectives('{{#> hero}}{{/hero}}', snippets)).toBe(1);
+    expect(countEditDirectives('{{> missing}}', snippets)).toBe(0);
   });
 });
 

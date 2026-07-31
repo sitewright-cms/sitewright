@@ -68,7 +68,7 @@ describe('buildSite preview options', () => {
   });
 
   it('an embed page bakes script-src with unsafe-inline so owner + preview-runtime inline JS runs (no hash)', async () => {
-    // A cross-origin author <iframe> (e.g. a Maps embed) bakes a `<meta http-equiv=CSP>`. Its script-src now
+    // A cross-origin author <iframe> (e.g. a Maps embed) ships an inert `<meta name="sw-csp">`. Its script-src now
     // carries `'unsafe-inline'` so the OWNER's authored inline JS runs on the isolated published origins,
     // and the sandboxed preview runtime runs too. We deliberately DON'T add a per-runtime sha256 hash: a
     // hash makes `'unsafe-inline'` be IGNORED (blocking author scripts). So the meta is now IDENTICAL
@@ -78,7 +78,7 @@ describe('buildSite preview options', () => {
     ] as unknown as ProjectBundle['pages'];
     // The meta `content` is attribute-escaped (`'` → `&#39;`); decode it back to inspect directives.
     const metaCsp = (html: string): string | null => {
-      const m = html.match(/http-equiv="Content-Security-Policy" content="([^"]*)"/);
+      const m = html.match(/name="sw-csp" content="([^"]*)"/);
       return m ? m[1]!.replace(/&#39;/g, "'") : null;
     };
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: PREVIEW_SITE_RUNTIME_JS, bundle: bundle(embedPage) });

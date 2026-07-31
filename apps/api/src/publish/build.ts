@@ -1063,7 +1063,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `'unsafe-inline'` (for the OWNER's authored JS) — and per the CSP spec a hash in the source
           // list makes `'unsafe-inline'` be IGNORED, which would block author inline scripts in the
           // (sandboxed, opaque, safe) preview. The runtime runs via `'unsafe-inline'` instead.
-          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins),
+          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins, undefined, website?.cspOrigins),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

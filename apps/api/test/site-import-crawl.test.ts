@@ -143,4 +143,25 @@ describe('crawlSite', () => {
     await crawlSite('https://ex.com/', baseOpts, { fetchResource: fetcher(), isAllowed: async () => true, render });
     expect(render).not.toHaveBeenCalled();
   });
+
+  // The default is right for most sites and wrong for one shape: a SERVER-rendered page that builds part
+  // of its chrome in JavaScript. It has real content, so `auto` skips the render and the stored DOM has no
+  // header/footer — invisible, because nothing reports markup that was never there.
+  it('renderMode:"always" re-renders EVERY page, including server-rendered ones', async () => {
+    const render = vi.fn(async (url: string) => `<html><body>rendered ${url}<nav>built-by-js</nav></body></html>`);
+    const res = await crawlSite(
+      'https://ex.com/',
+      { ...baseOpts, renderMode: 'always' as const },
+      { fetchResource: fetcher(), isAllowed: async () => true, render },
+    );
+    expect(render).toHaveBeenCalledWith('https://ex.com/', expect.anything());
+    expect(render.mock.calls.length).toBe(res.site.pages.length); // every page, not just the entry
+    expect(res.site.pages[0]!.html).toContain('built-by-js'); // the JS-built chrome is what gets stored
+  });
+
+  it('renderMode:"auto" is the default and behaves exactly as before', async () => {
+    const render = vi.fn(async () => '<html><body>UNUSED</body></html>');
+    await crawlSite('https://ex.com/', { ...baseOpts, renderMode: 'auto' as const }, { fetchResource: fetcher(), isAllowed: async () => true, render });
+    expect(render).not.toHaveBeenCalled();
+  });
 });

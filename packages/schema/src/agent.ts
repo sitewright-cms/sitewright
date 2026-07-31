@@ -15,8 +15,10 @@ open to watch your changes live), then call get_scope again to confirm before co
 
 GET THE TOOL ARGUMENTS RIGHT — a call missing a required argument is rejected and wastes a turn.
 The writes you'll use most (argument names matter):
-- put_page({ page: { id, path, title, source } }) — the TYPED way to create/replace a page. Prefer
-  this for pages (NOT put_content).
+- put_page({ page: { id, path, title, source } }) — the TYPED way to create/REPLACE a page. Prefer
+  this for pages (NOT put_content). It is a TOTAL replace: every field you omit is DELETED.
+- patch_page({ page: { id, …only the fields you're changing } }) — for any PARTIAL page edit (a nav
+  label, one data key). put_page would DELETE everything you omit, including data.swImport.
 - put_content({ kind, id, data }) — for the OTHER kinds (settings, dataset, entry, form, template,
   snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
   matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
@@ -84,7 +86,8 @@ In \`source\`:
   \`--sw-color-<role>\` (e.g. \`var(--sw-color-primary)\`, \`var(--sw-color-base-100)\`,
   \`var(--sw-color-base-content)\`), plus \`--sw-font-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\` from
   your CI — so custom CSS stays on-brand AND dark-mode-safe. (DaisyUI's own \`--color-<role>\` variables
-  resolve to the same values; use either.)
+  resolve to the same values; use either.) colors/spacing/radii are OPEN records, and
+  \`identity.cssTokens\` holds ANY value (gradient, shadow, easing) as \`--sw-<key>\` — get_guide("design").
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`). {{ company.mapUrl }} is a Google Maps embed URL
   for an <iframe src>; {{ company.bookingUrl }} is an external booking/reservation/appointment link
@@ -140,8 +143,9 @@ In \`source\`:
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
-description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. PUT A NEW PAGE IN THE MAIN MENU by
+description, image (the OG/share image), parent (a parent page's id — makes this a sub-page),
+\`order\` (sibling sort key; top-level, NOT nav.order), nav
+{ slots:["header"|"footer"|"mobile"], title, dropdown }. PUT A NEW PAGE IN THE MAIN MENU by
 default: set nav.slots to include "header" and ALWAYS give a short nav.title (its menu label). \`path\` is the page's OWN
 SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
 is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
@@ -188,8 +192,8 @@ get_components (contracts + skeletons) before laying out a page.
 USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
 thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag}} flags; search_icons finds
 names. Don't ship an icon-less contact / footer / feature / stats section.
-DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
-often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
+DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
+\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
 or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
 replacing over deleting when in doubt.
@@ -216,8 +220,13 @@ LAYOUT RHYTHM (use on every section):
 - Depth via ALTERNATING surfaces: give consecutive sections bg-base-100 -> bg-base-200 -> bg-base-100 (never all-white/all-one-colour). Use base-300 for card borders on top. This one move reads as "designed".
 - Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
 - In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
+- Fonts follow the ELEMENT: h1-h6 get the heading face, everything else the body face. To break that (a slogan or sidebar title that should read in the body face, or a <p>/<span> that should carry the display face) add the \`font-body\` / \`font-heading\` utility — plus \`font-<name>\` for any custom named slot.
 - Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
 - Custom CSS grids: size flexible tracks minmax(0,1fr), NOT bare 1fr — a wide child (a carousel scroll-strip, an unbroken word) makes a 1fr track grow past the viewport and the whole page scrolls sideways; minmax(0,1fr) lets the track shrink and clip instead.
+
+DESIGN TOKENS — where a reusable value LIVES. \`identity.colors\`/\`spacing\`/\`radii\` are OPEN records: add your own key and you get \`--sw-color-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\`, and a custom COLOUR key additionally gets a Tailwind \`--color-<key>\`, so \`bg-<key>\`/\`text-<key>\`/\`border-<key>\` compile as real utilities. Each of those records is typed by what it MEANS (a colour, a length), so a gradient, an elevation ramp or a shared easing curve does not fit — put those in \`identity.cssTokens\`, an open record of ANY CSS value emitted as \`--sw-<key>\`:
+put_content("settings","settings",{ identity:{ cssTokens:{ "grad-hero":"linear-gradient(135deg,#06f,#0cf)", "z1":"0 2px 5px rgba(0,0,0,.2)", "ease-out":"cubic-bezier(.16,1,.3,1)" } } }, merge:true)
+then use var(--sw-grad-hero) / var(--sw-z1) anywhere CSS is allowed (criticalCss, a <style> block, an inline style, a Tailwind arbitrary value like [box-shadow:var(--sw-z1)]). Define a repeated value ONCE here rather than retyping the literal on every page or burying it in criticalCss where nothing validates it. cssTokens generate NO utility class (they are values, not roles) — always reach them through var(). A token may reference another (var(--sw-color-primary), color-mix(), calc()); url() and the other resource-fetching functions are REJECTED, so images belong in the media library.
 
 COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
 
@@ -252,7 +261,7 @@ THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are 
 
 IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty boxes/placeholder greys read as unfinished. Keep a consistent aspect per group (aspect-[4/3], aspect-video, aspect-square) + object-cover + rounded-2xl; galleries -> data-sw-component="lightbox". Never distort an image.
 
-MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200). Animating everything cheapens it.
+MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200) — inside an {{#each}} use data-sw-delay="{{sw-stagger @index 90}}". Animating everything cheapens it.
 
 CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? every section's content wrapped in .sw-container (one aligned width throughout)? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
 `,
@@ -407,15 +416,28 @@ ANIMATIONS (entrance / scroll-reveal): add data-sw-animation on an element to re
   data-sw-delay="200"           start delay in ms (default 0).
   data-sw-duration="600"        length in ms (default 450, max 20000).
   data-sw-easing="ease-out"     curve: linear | ease | ease-in | ease-out | ease-in-out (default ease-out-ish).
-  data-sw-threshold="0.5"       fraction of the element (0-1) that must be in view before it reveals
-                                (default 0.2). Higher = triggers LATER / more in view; lower = earlier.
+  data-sw-offset="150"          move the reveal LINE to 150px inside the viewport bottom (default: 20% up
+                                from the bottom). Height-independent — use this to tune WHEN things reveal.
+  data-sw-threshold="0.5"       ESCAPE HATCH: additionally require this fraction of the ELEMENT (0-1) to be
+                                visible. Default 0 (no element-fraction gate) — deliberately, because the
+                                ratio a tall element can reach is capped at viewportH/elementH, so a section
+                                taller than the viewport reveals late and one ~5x taller never reveals at
+                                all. Prefer data-sw-offset; only set this for a genuine "N% of THIS element".
   data-sw-once="true"           play ONCE. Default REPLAYS: the reveal resets when the element fully leaves
                                 the viewport and re-plays on re-entry (from any scroll direction).
 The platform detects data-sw-animation and ships its own tiny runtime automatically — do NOT add any
 animation library, CDN links, or scripts (they'd be rejected anyway). Content stays visible
 without JS and motion respects prefers-reduced-motion. data-sw-duration/-delay/-easing/-once are
-SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold is entrance-only. Stagger lists
-by increasing data-sw-delay per item (e.g. 0/100/200).
+SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold/-offset are entrance-only. Stagger lists
+by increasing data-sw-delay per item (e.g. 0/100/200). Inside a LOOP, compute it with {{sw-stagger}} —
+templates have no arithmetic, so {{multiply @index 90}} is NOT a thing (an unknown helper renders as a
+visible comment marker and, in an attribute, one you would never see):
+  {{#each dataset.services}}
+    <div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}">…</div>
+  {{/each}}
+{{sw-stagger @index [step=100] [max=600]}} caps the total on purpose — a 40-item grid whose last card
+waits 3.6s reads as a broken page; past the cap the rest land together. For a long list lower the STEP
+(60-80) rather than raising the cap.
 
 PARALLAX (scroll-linked): drive move/scale/fade/blur off scroll with data-sw-parallax-* attributes on
 any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
@@ -681,6 +703,13 @@ ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extr
 \`origins\`, and — if the SDK injects its OWN widget iframe like a chat bubble — its frame-src hosts in
 \`frameOrigins\`). On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
 origins — no manual allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
+NOT a tracker? Do NOT enable the consent manager just to allow an origin, and NEVER plant a
+\`type="text/plain" data-sw-consent\` script or a commented-out <iframe> to get one past the scanner. Put it
+in \`website.cspOrigins\` — { script?, connect?, frame?, font?, style?, media? }, bare hostnames (optionally
+one leading \`*.\`), merged whether or not the consent manager is on. That is the right home for a custom
+form endpoint, a captcha, a fonts/CDN host or a maps embed. NOTE the CSP is only ENFORCED on
+platform-hosted origins (as a response header) — an exported site ships no enforcing policy at all, and the
+draft preview is isolated by its sandbox, so "works in preview, blocked live" means a missing cspOrigins entry.
 EMBEDS / IFRAMES: there is NO embed helper — just paste the provider's normal <iframe …> (YouTube, Vimeo,
 Maps, Calendly, …). With the manager enabled, ANY cross-origin iframe is automatically HELD behind an
 "Allow once / Always allow" placeholder until consent, and its frame-src CSP origin is derived automatically.
@@ -809,7 +838,12 @@ Main Navigation slot (website.mainNav). The notes below explain how it works so 
 NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
 in a menu — "header" (the Main Navigation),
 "mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
-title); nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus
+title); nav.dropdown:true folds the page's CHILD pages into a dropdown under it. SORT ORDER is the page's
+TOP-LEVEL "order" (ascending, ties by title) — NOT nav.order, a legacy fallback that "order" always beats.
+ONE order governs EVERY menu: there is deliberately no per-slot ordinal. If a menu must run in a different
+order from the page tree (a footer that lists the feature pages first and Blog last, while the header lists
+Blog 5th), do NOT try to force it through nav — HAND-WRITE that menu in its slot as an explicit list of
+{{sw-url}} links. An auto-nav slot is for "the page tree, rendered"; anything else is authored markup. The menus
 are built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}} / {{#each
 nav.custom}}, each item exposing path, children (sub-pages, when nav.dropdown is on), newTab, external, and
 the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — use it to build a bespoke
@@ -865,7 +899,12 @@ INNER markup of the Main Navigation / Footer slots.
 IMPORTED PAGES. An external site is imported either by the owner in the editor OR by YOU calling
 \`import_website(url)\` (the first step when asked to clone a URL — the server crawls, renders the live
 page, follows an embed/preview wrapper to the real site, self-hosts images + fonts, and creates the
-scaffold; do NOT ask the user to paste HTML). Each page then lands as a FAITHFUL replica: literal HTML in
+scaffold; do NOT ask the user to paste HTML). It is ASYNC — it hands back a jobId at once and the crawl
+runs for MINUTES; poll \`import_status({jobId})\` about every 30s and do NOT launch a second import while one
+is running (that duplicates the whole crawl). If the imported pages come back MISSING chrome the live site
+clearly has — a header or footer the site assembles in JavaScript — re-import with \`renderMode:"always"\`:
+the default only renders a page that has no content at all without JS, so a server-rendered page with a
+JS-built nav is stored pre-JS. Each page then lands as a FAITHFUL replica: literal HTML in
 \`source\` (no Handlebars), the foreign CSS
 folded into the website criticalCss/head slots, the shared header/footer hoisted into the mainNav/footer
 slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
@@ -912,21 +951,34 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 2. COLORS: replace the foreign palette (fixed hexes, --primary-color vars, named colour classes) with the
    MATCHING theme tokens (primary, secondary, base-100/200/300, base-content) so light AND dark work; set
    the brand from the imported identity (see "SET THE BRAND" in the core instructions) to the source's colours.
+   The import TRANSCRIBES the source's own :root custom properties into website.criticalCss under their
+   ORIGINAL names, so a declaration copied from the original (background:var(--bn-grad)) still resolves
+   after the foreign stylesheet is discarded — read them with inspect_source / get_content("settings").
+   Treat them as scaffolding: map what you can onto theme tokens, and promote a value worth KEEPING into
+   identity.cssTokens (--sw-<key>) rather than leaving it in criticalCss.
 3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
 4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
    (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
    PREFER page.children FOR AN OVERVIEW OF REAL PAGES: when a grid lists pages that ALREADY EXIST as child
    pages (a services index linking to /services/*, a blog/team index), iterate {{#each page.children}} —
    each child exposes navTitle/title, path (wrap href in {{sw-url path}}), image ({{sw-url image}}),
-   description, and its own data — instead of duplicating those pages into a dataset (the import infers a
-   dataset because it can't tell; consolidate + delete the redundant dataset). page.children is the CURRENT
+   description, and its own data — instead of duplicating those pages into a dataset. page.children is the CURRENT
    page's direct children (fits the index page itself, e.g. the services index). For a grid on a DIFFERENT
    page (e.g. the HOME page showing the pages under /services) use {{#each pages.services._attributes.children}}
    (the pages binding reaches ANY page's children by slug — a node's own fields live under ._attributes; same
    item shape as page.children). Reserve datasets
    for content that is NOT already a page. Loop fields stay BARE (no data-sw-* inside the children loop).
-   The import auto-infers datasets with generic slugs (items/items2/…); give them meaningful slugs with the
-   rename_dataset tool — it CASCADES (rewrites every entry + page/template reference in one step). A dataset
+   THE IMPORT CREATES NO DATASETS — every collection on a cloned site is YOURS to author. Read the page,
+   decide what is really a collection and what its fields mean, then write the dataset + its entries
+   (put_content kind:"dataset", then one kind:"entry" per row) and replace the repeated markup with the
+   loop. Name it for the CONTENT ("services", "faq_passengers"), not for its shape. This used to be
+   guessed from markup: shape-matching skipped any listing whose cards were not identical, named fields
+   after the markup, and concatenated text split across inline elements — so the guesses had to be found
+   and deleted more often than kept. (import_website still takes inferDatasets:true if you want to see
+   what it would guess; leave it off.) If you inherit generically-named datasets from an older import,
+   rename_dataset gives them meaningful slugs — it CASCADES (rewrites every entry + page/template
+   reference in one step) — and delete_content_bulk({kind:"dataset", ids:[…]}) clears the junk in one
+   call instead of one delete per id. A dataset
    slug is a Handlebars PATH (dataset.<slug>), so it must be an UNDERSCORE identifier — name it
    "faq_passengers", NEVER "faq-passengers" (a hyphen parses as subtraction and breaks the loop; the tool
    rejects it). Do NOT change a dataset's slug via put_content: that renames only the dataset and orphans
@@ -1068,7 +1120,11 @@ desktop compare.
 
 SIGNATURE CHROME CSS → website.criticalCss (NOT a slot <style>): a chrome slot REJECTS <style> blocks and
 inline style="…", so the header/footer's site-wide CSS lives in website.criticalCss (emitted unlayered,
-site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules in criticalCss. For a
+site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules in criticalCss.
+criticalCss is emitted AFTER the platform's component/effect sheets, so your rule WINS a specificity tie
+with them — you do NOT need \`!important\` to restyle a \`data-sw-part\` (a Tailwind utility class still
+wins over criticalCss, which is the normal mental model). If a rule still doesn't apply, it is a real
+specificity difference, not the cascade order — raise the selector rather than reaching for !important. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
 on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do
@@ -1076,7 +1132,9 @@ NOT express a transform as a Tailwind ARBITRARY-VALUE class ([transform:skewX(-2
 [transform:matrix(1,0,-0.46,1,0,0)]) — the class extractor can choke on the commas/parens and the rule
 silently never renders (a flat tab where the original is skewed). MEASURE the original (its computed
 transform, gradient stops, letter-spacing, border-radius, fill colour, font) and reproduce those NUMBERS —
-don't eyeball. Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
+don't eyeball. HOW: \`inspect_source({ pageId, selectors:[…] })\` returns the original's real computed
+styles + rects for whatever you select (add \`html:true\` for its settled markup, \`side:'build'\` to
+measure your own clone the same way and diff). Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
 named slot like --sw-font-secondary), not a hard-coded family.
 STICKY HEADER: if the source header is FIXED/pinned (or shrinks on scroll), set website.effects.stickyHeader
 ("pinned" | "shrink" | "hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the
@@ -1138,6 +1196,11 @@ Embed the form with {{sw-form "<id>"}}. Match the ORIGINAL form's field layout +
 
 COMMON FIDELITY MISSES — these keep happening even when the port "looks close". Self-audit EVERY page
 against this list BEFORE you publish it:
+- HEADINGS DEFAULT TO THE HEADING FONT. The platform styles h1-h6 with --sw-font-heading, so an <h1>-<h6>
+  the SOURCE sets in its body face renders in the wrong font while the markup looks perfectly right, and
+  nothing flags it. Add the \`font-body\` utility to those headings (and \`font-heading\` to a non-heading
+  element that should carry the display face) — \`font-<name>\` also works for a custom named slot. Check
+  this wherever the original uses a heading tag for a slogan, a sidebar title or a card label.
 - EVERYTHING REPEATED IS A DATASET. A card grid, a team list, job vacancies, AND a second group next to a
   first (e.g. "Associate Directors" beside "Directors") ALL become datasets + {{#each}} — so a client adds/
   removes items without touching page code. Do NOT hard-code the second group, or a "short" list, inline.
@@ -1197,6 +1260,11 @@ against this list BEFORE you publish it:
   { source, family, weight, assetId? } — source, family AND weight are ALL required) or use the platform font
   picker, NEVER an external stylesheet. Use criticalCss only for a genuine per-element override the CI settings
   can't express (e.g. a script font on ONE brand title, via var(--sw-font-*)).
+  A \`source:'system'\` slot takes EITHER a generic keyword (\`sans-serif\`/\`serif\`/\`monospace\`) OR a NAMED
+  web-safe face — \`{ source:'system', family:'Verdana', weight:400 }\` renders
+  \`--sw-font-body:"Verdana", <matching generic stack>\`. So when the original uses a system face (a
+  \`src:local("Verdana")\` @font-face, or a plain \`font-family:Georgia\` with no webfont), set the NAME —
+  do not approximate it with a generic keyword, and do not override \`--sw-font-body\` in criticalCss.
 - USE CI VARIABLES EVERYWHERE — chrome included. The company name, slogan, phone, email, address, and social
   links in the header/footer and page bodies are \`{{company.name}}\` / \`{{company.slogan}}\` / \`{{company.*}}\`,
   NEVER a hard-coded "Acme Ltd" literal. For a copyright YEAR use \`{{sw-date "now" "YYYY"}}\` (always the
@@ -1261,7 +1329,7 @@ against this list BEFORE you publish it:
   \`{{> hero-slider}}\` widget, which is already marked up correctly.
 
 FINE POLISH — match the original EXACTLY, by MEASUREMENT (the last-mile "looks close but a bit off" misses;
-sample the original's real values, don't approximate to the nearest token):
+sample the original's real values with \`inspect_source\`, don't approximate to the nearest token):
 - MATCH THE ACTUAL ELEMENT COLOUR — do NOT brand-ify. A submit/CTA button, a banner, a card header bar, a
   section band that is GREY (or black, or any NON-brand colour) in the original STAYS that colour — do NOT
   swap it to \`btn-primary\`/the brand red just because it's a button. A near-black bar (#000) is not the
@@ -1465,9 +1533,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'search_textures', description: "Find transparent background textures (tileable PNG overlays) to set as an element background. Pass one or more terms, comma- or whitespace-separated; returns matching names + ready-to-paste CSS (colour comes from a var(--sw-color-*) token; resolves in preview + exports)." },
   { name: 'get_reference', description: "The authoring reference for writing a page source: the {{sw-*}} helpers, the data-sw-* directives, the binding namespaces, and the loop variables (derived from the engine, can't drift)." },
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
-  { name: 'list_pages', description: "List the project's pages." },
+  { name: 'list_pages', description: "List the project's pages — METADATA only (source + data omitted, described under `_summary`), because a full listing of a real site exceeds the output limit. Use get_page for the one body you need; includeSource:true forces the full (large) listing." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
-  { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows)." },
+  { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows). Pass summary:true to omit heavy bodies (source/data/values) when you only need to see WHAT exists." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
@@ -1475,6 +1543,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
   { name: 'visual_audit', description: "THE visual acceptance TERMINATOR for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
+  { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },
   { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). Lab-only (no CrUX field data): performance is a throttled lab score (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
@@ -1482,17 +1551,20 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
-  { name: 'put_page', description: "Create or replace a page (id taken from page.id).", capability: 'content:write' },
+  { name: 'put_page', description: "Create or REPLACE a page (id taken from page.id) — a total replace; omitted fields are deleted. For partial edits use patch_page.", capability: 'content:write' },
+  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Use instead of put_page for partial edits. Returns a RECEIPT whose `changed` list is EMPTY when the patch was a no-op.", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
-  { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
+  { name: 'put_content', description: "Create or replace a content entity of the given kind (`merge:true` PATCHES settings). Returns a RECEIPT — { kind, id, bytes, created, changed } — not the entity.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
+  { name: 'delete_content_bulk', description: "Delete MANY entities of one kind in ONE call ({ kind, ids }, up to 200). Partial success is reported per id. Use it for import clean-up instead of looping delete_content.", capability: 'content:delete' },
   { name: 'add_language', description: "Add a translation-target language — atomically registers the locale AND scaffolds an inherited translated page for every existing page. The only correct way to add a language.", capability: 'content:write' },
   { name: 'remove_language', description: "Remove a translation-target language: drops the locale and cascade-deletes its whole page subtree (the default language can't be removed).", capability: 'content:delete' },
   { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
-  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL.", capability: 'content:write' },
+  { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },
+  { name: 'import_status', description: "Poll a website import started by import_website: running | done | failed, the latest progress line, and the report once finished. Never start a second import while one is running.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
@@ -1521,10 +1593,12 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
   { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
   { need: 'rotating / animated / glowing border on a caption, card or image', where: 'the sw-border-beam class — get_guide("effects")' },
-  { need: 'icons (Lucide) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon}}, brand:<slug>, {{sw-flag}}' },
+  { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, {{sw-flag}}; search_icons finds names' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
-  { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values)' },
+  { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },
+  { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values). On a CLONE these are yours to author: import_website infers none.' },
+  { need: 'clear out many entities at once (junk datasets/entries, scaffolded pages)', where: 'delete_content_bulk({ kind, ids }) — one call, up to 200 ids, per-id result; needs content:delete' },
   { need: 'multiple languages / translations', where: 'get_guide("i18n") + the add_language tool' },
   { need: 'shopping cart / products / add-to-cart', where: 'get_guide("shop")' },
   { need: 'cookie / consent banner + gated 3rd-party embeds', where: 'get_guide("consent")' },
@@ -1532,13 +1606,17 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'reusable page layout shared across pages', where: 'get_guide("templates")' },
   { need: 'site header / footer / sidebar (chrome on every page)', where: 'the website.mainNav/footer/sidebar* settings slots — get_guide("nav")' },
   { need: 'compare my build to the original + PROVE fidelity', where: 'compare_to_source (see) · compare_regions (2× crisp chrome crops) · fidelity_check (the PASS/FAIL gate)' },
+  { need: 'a third party is BLOCKED on the published site (captcha, fonts CDN, maps, my own API)', where: 'website.cspOrigins { script?, connect?, frame?, font?, style?, media? } — bare hostnames; do NOT enable the consent manager just for this. Only enforced on platform-hosted origins.' },
+  { need: "MEASURE the original's real values (font-size, padding, colour, gradient, radius, shadow, transform)", where: 'inspect_source({ pageId, selectors }) — computed styles + rects off the LIVE original; side:"build" measures your clone the same way' },
+  { need: 'read chrome/markup a site builds in JavaScript (the stored import has none)', where: 'inspect_source({ pageId, selectors, html:true }) — returns the SETTLED outerHTML' },
   { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },
 ];
 
 /** How each writable content kind is written (tool + the one shape gotcha most likely to trip a write). */
 export const WRITE_KINDS: readonly { kind: string; tool: string; shape: string }[] = [
-  { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write; prefer over put_content' },
-  { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data })', shape: 'read-modify-write the WHOLE settings entity (identity + website slots)' },
+  { kind: 'page', tool: 'put_page({ page })', shape: '{ id, path, title, source } — the TYPED page write (a TOTAL replace); prefer over put_content' },
+  { kind: 'page (partial edit)', tool: 'patch_page({ page })', shape: '{ id, …only the fields to change } — merges into the stored page; use for any partial edit so a replace cannot wipe source/status/data.swImport' },
+  { kind: 'settings', tool: 'put_content({ kind:"settings", id:"settings", data, merge:true })', shape: 'with merge:true send ONLY the fields you are changing (e.g. just website.footer) — a full read-modify-write reverts any slot your snapshot missed' },
   { kind: 'dataset', tool: 'put_content({ kind:"dataset", id, data })', shape: '{ name, slug (UNDERSCORE id), fields:[{name,type,required?}] } — get_guide("datasets")' },
   { kind: 'entry', tool: 'put_content({ kind:"entry", id, dataset, data })', shape: '{ values:{ <field>:… } } — row data goes under `values`; pass the `dataset` slug arg' },
   { kind: 'form', tool: 'put_content({ kind:"form", id, data })', shape: 'form definition (fields, endpoint) — get_guide("templates")' },

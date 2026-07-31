@@ -3,15 +3,41 @@ import { motion } from 'motion/react';
 import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
 import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
-import { Building2, Palette, Type, Images, Mail, Share2 } from 'lucide-react';
+import { Building2, Palette, Type, Images, Mail, Share2, Braces } from 'lucide-react';
 import { BrandColorsEditor } from './BrandColorsEditor';
+import { TokenEditor } from './TokenEditor';
 import { SocialProfilesEditor } from './SocialProfilesEditor';
 import { FontSlotEditor } from './FontSlotEditor';
 import { CustomFontSlots } from './CustomFontSlots';
 import { BusinessTypeModal, BUSINESS_TYPE_DISABLED } from './BusinessTypeModal';
 import { SCHEMA_ORG_TYPES } from './schema-org-types';
+import { isSafeCssTokenValue } from '@sitewright/schema';
 import { AssetField } from '../files/AssetField';
 import { cardStagger } from './motion';
+
+/** Resource/computing functions the schema refuses by name — for WORDING only; the gate is the schema's. */
+const BLOCKED_FNS = ['url', 'src', 'image', 'image-set', 'element', 'expression'];
+
+/**
+ * Why a CSS token value would be REFUSED, in the author's words.
+ *
+ * `isSafeCssTokenValue` — the schema's own predicate — is the only thing that DECIDES; everything below
+ * merely picks a message for a value already known to be invalid, and falls back to a generic one. So
+ * this deliberately does NOT re-implement the guard's regex: a second copy would drift from the real
+ * rule and start explaining a rejection that didn't happen (or staying silent on one that did).
+ */
+function cssTokenError(value: string): string | null {
+  if (isSafeCssTokenValue(value)) return value.length > 300 ? 'Too long (max 300 characters).' : null;
+  const lower = value.toLowerCase();
+  if (BLOCKED_FNS.some((fn) => lower.includes(`${fn}(`))) {
+    return 'url() and other resource functions aren’t allowed — add images in the file manager instead.';
+  }
+  if (lower.includes('/*') || lower.includes('*/')) return 'CSS comments aren’t allowed in a token value.';
+  if (lower.includes('@import')) return '@import isn’t allowed in a token value.';
+  const depth = [...value].reduce((d, c) => d + (c === '(' ? 1 : c === ')' ? -1 : 0), 0);
+  if (depth !== 0 || value.includes(')(')) return 'Unbalanced parentheses.';
+  return 'Contains a character that isn’t allowed in a CSS value (; { } < > \\ or a line break).';
+}
 
 /** The human label for the current businessType: '' → default, 'disabled' → off, else its known
  *  label (or the raw custom @type). */
@@ -71,6 +97,24 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         tooltip="The six core colors below always exist and can’t be removed — they theme every page (and any DaisyUI components) automatically. Use them as bg-primary, text-base-content, etc."
       >
         <BrandColorsEditor rows={form.colors} onChange={(colors) => patch({ colors })} />
+      </GlassCard>
+
+      {/* Free-form CSS values. Brand colors covers colours and the theme covers fonts/spacing, but a
+          gradient, an elevation ramp or a shared easing curve fits none of those records — without a
+          home they get retyped on every page or buried in Critical CSS, where nothing validates them. */}
+      <GlassCard
+        title="CSS tokens"
+        icon={<Braces className="h-4 w-4" />}
+        tooltip="Reusable CSS values that aren’t a colour or a font — a gradient, a shadow, a transition curve. Each becomes a --sw-<name> variable you can use anywhere CSS is allowed: Critical CSS, a <style> block, an inline style, or a Tailwind arbitrary value like [box-shadow:var(--sw-z1)]. They don’t create utility classes; reach them with var(). Images aren’t allowed here — url() is rejected; use the file manager."
+      >
+        <TokenEditor
+          rows={form.cssTokens}
+          onChange={(cssTokens) => patch({ cssTokens })}
+          keyPlaceholder="grad-hero"
+          valuePlaceholder="linear-gradient(135deg,#06f,#0cf)"
+          addLabel="+ Add CSS token"
+          validateValue={cssTokenError}
+        />
       </GlassCard>
 
       <GlassCard

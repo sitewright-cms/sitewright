@@ -10,6 +10,7 @@ import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
+import { ImportJobRegistry } from '../import/jobs.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
 import { renderViaBrowser } from '../import/render.js';
 import { downloadGoogleFont } from '../fonts/service.js';
@@ -91,6 +92,19 @@ function wantsFoundation(req: FastifyRequest): boolean {
   return q === '1' || q === 'true';
 }
 
+/** Opt-in `?inferDatasets=1`: guess DATASETS from repeated markup. Off by default — mechanical inference
+ *  produced junk collections more often than real ones, so authoring them is the agent's job now. */
+function wantsInferDatasets(req: FastifyRequest): boolean {
+  const q = (req.query as { inferDatasets?: string } | undefined)?.inferDatasets;
+  return q === '1' || q === 'true';
+}
+
+/** Opt-in `?render=always`: run the headless render on EVERY page, not only a page that looks
+ *  client-rendered. For a server-rendered site that builds chrome in JS (see CrawlOptions.renderMode). */
+function renderModeOf(req: FastifyRequest): 'auto' | 'always' {
+  return (req.query as { render?: string } | undefined)?.render === 'always' ? 'always' : 'auto';
+}
+
 const ImportWebsiteBody = z.object({
   url: z.string().url().max(2048),
   maxPages: z.number().int().min(1).max(IMPORT_PAGE_CEIL).optional(),
@@ -98,8 +112,21 @@ const ImportWebsiteBody = z.object({
 });
 
 // Agent-callable import: same body + an explicit `foundation` toggle (ON by default — a clone wants the
-// native foundation scaffold, not a raw-CSS literal import).
-const AgentImportBody = ImportWebsiteBody.extend({ foundation: z.boolean().optional() });
+// native foundation scaffold, not a raw-CSS literal import) and `inferDatasets` (OFF by default — an
+// agent reading the page authors far better datasets than markup-shape guessing).
+const AgentImportBody = ImportWebsiteBody.extend({
+  foundation: z.boolean().optional(),
+  inferDatasets: z.boolean().optional(),
+  renderMode: z.enum(['auto', 'always']).optional(),
+  /** Block until the import finishes instead of returning a job id (the pre-async behaviour). */
+  wait: z.boolean().optional(),
+});
+
+/** A crawl that reached the URL but found no importable page — a 422, not a server fault. */
+class ImportEmptyError extends Error {}
+
+/** Async import jobs, per process. Created here so it lives exactly as long as the route plugin. */
+const importJobs = new ImportJobRegistry();
 
 /** Website slots that are RAW (unsanitized) or validated — all must be script-free after import. */
 const SCRIPTABLE_SLOTS = ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
@@ -384,9 +411,12 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     media: MediaPort,
     onProgress: (e: unknown) => void,
     extra: { truncated: boolean; warnings: string[] },
-    foundation = false,
+    // Named rather than positional: two independent opt-ins that would otherwise be a pair of
+    // indistinguishable booleans at every call site.
+    mode: { foundation?: boolean; inferDatasets?: boolean } = {},
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
+    const foundation = mode.foundation ?? false;
     onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
     const result = await buildBundle(site, {
       media,
@@ -394,6 +424,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
       importedAt: new Date().toISOString(),
       fetchWebfont: fetchWebfontFaces,
       ...(foundation ? { foundation: true } : {}),
+      ...(mode.inferDatasets ? { inferDatasets: true } : {}),
     });
     const bundle = result.bundles[0];
     if (!bundle) throw new Error('the import produced no content');
@@ -456,6 +487,8 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
+    const inferDatasets = wantsInferDatasets(req);
+    const renderMode = renderModeOf(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
@@ -469,7 +502,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
           const media = makeMediaPort(ctx, project.slug, fetcher);
           const crawlResult = await crawl(
             url,
-            { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
+            { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS, renderMode },
             {
               fetchResource: fetcher,
               // Cheap sync pre-filter for the discovery skip; pinnedFetch is the binding SSRF guard.
@@ -480,7 +513,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
             },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
-          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
+          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },
         log,
@@ -507,33 +540,73 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply; // sends 409/429
     const foundation = parsed.data.foundation ?? true;
+    const inferDatasets = parsed.data.inferDatasets ?? false;
+    const renderMode = parsed.data.renderMode ?? 'auto';
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
-    req.raw.on('close', () => abort.abort());
+    // ASYNC mode detaches the work from the request, so the caller's socket closing is NOT a cancellation
+    // — only an explicit abort is. In sync mode a dropped connection still cancels, as before.
+    const wait = parsed.data.wait ?? false;
+    if (!wait) req.raw.on('close', () => abort.abort());
 
-    try {
-      const noop = (): void => {};
+    const runImport = async (onProgress: (e: unknown) => void): Promise<Record<string, unknown>> => {
       const fetcher = makeFetcher(abort.signal);
       const media = makeMediaPort(ctx, project.slug, fetcher);
       const crawlResult = await crawl(
         url,
-        { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
+        { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS, renderMode },
         {
           fetchResource: fetcher,
           isAllowed: async (u) => !targetsPrivateHost(u),
           ...(render ? { render } : {}),
-          onProgress: noop,
+          onProgress,
           signal: abort.signal,
         },
       );
-      if (crawlResult.site.pages.length === 0) return reply.code(422).send({ error: 'no pages could be crawled from the URL' });
-      const report = await convertAndImport(ctx, project, crawlResult.site, media, noop, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation, abort.signal);
-      return reply.send({ ok: true, ...report });
-    } finally {
-      releaseSlot(project.id);
+      if (crawlResult.site.pages.length === 0) throw new ImportEmptyError('no pages could be crawled from the URL');
+      return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
+    };
+
+    // SYNCHRONOUS (`wait: true`) — the original behaviour, kept for a small site and for callers that
+    // would rather block than poll.
+    if (wait) {
+      try {
+        const noop = (): void => {};
+        const report = await runImport(noop);
+        return reply.send({ ok: true, ...report });
+      } catch (err) {
+        if (err instanceof ImportEmptyError) return reply.code(422).send({ error: err.message });
+        throw err;
+      } finally {
+        releaseSlot(project.id);
+      }
     }
+
+    // ASYNC (the DEFAULT) — a real crawl takes minutes, and an agent's tool call times out long before
+    // that. The old synchronous-only route reported "The operation timed out" while the import went on to
+    // SUCCEED server-side, leaving the caller with no job id, no progress and no way to know whether a
+    // retry would duplicate the work. Now the job id comes back immediately and the caller polls.
+    const job = importJobs.start(project.id, url, abort);
+    void runImport((e) => importJobs.progress(job.id, e))
+      .then((report) => importJobs.finish(job.id, report))
+      .catch((err: unknown) => importJobs.fail(job.id, err instanceof Error ? err.message : 'import failed'))
+      .finally(() => releaseSlot(project.id));
+    return reply.code(202).send({ ok: true, jobId: job.id, status: 'running', url, poll: `/projects/${project.id}/agent/import-website/${job.id}` });
   });
+
+  // Poll an async import. Terminal states keep their report/error for a while so a caller that polls a
+  // little late still gets the outcome rather than a bare 404.
+  app.get<{ Params: { projectId: string; jobId: string } }>(
+    '/projects/:projectId/agent/import-website/:jobId',
+    { config: rl(120) },
+    async (req, reply) => {
+      const { project } = await resolveProject(req, 'content:write');
+      const job = importJobs.get(project.id, req.params.jobId);
+      if (!job) return reply.code(404).send({ error: 'unknown import job (it may have expired — check list_pages for what landed)' });
+      return reply.send(job);
+    },
+  );
 
   // ──────────────────────────────── upload a ZIP/HTML bundle ────────────────────────────────
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/import/upload/stream', { config: rl(5) }, async (req, reply) => {
@@ -568,6 +641,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
+    const inferDatasets = wantsInferDatasets(req);
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
@@ -577,7 +651,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         async (onProgress) => {
           const fetcher = makeFetcher(abort.signal);
           const media = makeMediaPort(ctx, project.slug, fetcher);
-          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, foundation, abort.signal);
+          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },
         log,

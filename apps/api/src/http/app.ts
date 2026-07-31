@@ -91,6 +91,7 @@ import {
   resolveShopChannels,
   resolveFormEndpoints,
   validateTemplate,
+  findUnknownHelpers,
   findSkeletonLandmark,
   TemplateError,
   mediaForRender,
@@ -275,6 +276,8 @@ import {
   type Settings,
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
+import { summarizeContentList } from '../repo/content-summary.js';
+import { writeReceipt } from '../repo/write-receipt.js';
 import { RevisionsRepository } from '../repo/revisions.js';
 import {
   ConflictError,
@@ -285,7 +288,8 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
-import { captureUrlShots, captureUrlElements, captureUrlRegions, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
+import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
+import { INSPECT_LIMITS } from '../render/inspect-probe.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
 import { runPagespeedAudit, redactOrigin, rebaseFindingUrls, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
@@ -484,8 +488,42 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
   return kind;
 }
 
+/**
+ * An AbortController that fires when the client disconnects, so an in-flight browser render is torn down
+ * instead of holding a render slot for a request nobody is waiting for. Exported (and injectable) so the
+ * abort wiring itself is testable — inline `req.raw.on('close', …)` closures never are.
+ */
+export function abortOnClose(req: { raw: { on: (event: 'close', cb: () => void) => unknown } }): AbortController {
+  const abort = new AbortController();
+  req.raw.on('close', () => abort.abort());
+  return abort;
+}
+
 /** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
 const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
+
+/**
+ * Carry the importer's `data.swImport` provenance marker across a full page REPLACE.
+ *
+ * `put_page` is a total replace, so a legitimate partial write (e.g. `{id, path, title, nav}` to relabel a
+ * nav entry) silently deleted the marker — and with it the page's ability to be audited at all, since every
+ * fidelity tool refuses a page with no import source. The marker is importer-owned metadata the agent never
+ * authors, so re-attaching it is a repair, not a policy: an author who genuinely wants it gone sends an
+ * explicit `data.swImport: null`, which this leaves alone.
+ */
+export function carryImportMarker(current: unknown, next: unknown): unknown {
+  const prev = (current as { data?: Record<string, unknown> } | null | undefined)?.data?.swImport;
+  if (prev === undefined || !next || typeof next !== 'object' || Array.isArray(next)) return next;
+  const body = next as { data?: unknown };
+  const data = body.data;
+  // An explicit key (including `null`) is the author speaking — respect it.
+  if (data !== undefined && (!isPlainRecord(data) || Object.hasOwn(data, 'swImport'))) return next;
+  return { ...body, data: { ...(isPlainRecord(data) ? data : {}), swImport: prev } };
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 /**
  * The HTML chrome slots on `settings.website` that the SKELETON wraps in a semantic landmark (so their
  * content must be landmark-free + template-safe, exactly like a page `source`). `head`/`scripts` are
@@ -510,10 +548,33 @@ const CHROME_HTML_SLOTS: ReadonlyArray<readonly [slot: string, label: string]> =
  * (`<footer>`/`<nav>`/…) in a chrome slot was accepted silently and then dropped at render (the old
  * chrome kept showing), with no error to the user or agent. Now it fails LOUDLY (400) naming the slot.
  */
+/**
+ * Reject a call to a helper the engine doesn't have — at SAVE, where the author can still fix it.
+ *
+ * Render stays lenient on purpose (an unknown helper becomes an inert comment rather than 400ing the
+ * page), but that marker is only *discoverable* in body text: inside an attribute
+ * (`data-sw-delay="{{multiply @index 90}}"`) it is invisible garbage that nothing reports. So the write
+ * is where this has to be caught. The message names the helper and points at it.
+ */
+function rejectUnknownHelpers(source: string, label?: string): void {
+  const [first] = findUnknownHelpers(source);
+  if (!first) return;
+  const where = first.inAttribute ? ' (inside an attribute value, where it would render as invisible garbage)' : '';
+  throw new TemplateError(
+    `${label ? `the "${label}" ` : ''}template calls {{${first.name} …}}, which is not a helper${where}. ` +
+      'Check the spelling against get_reference (or the Template reference in the editor). ' +
+      'There is no arithmetic helper — to stagger a loop use {{sw-stagger @index 90}}.',
+    { line: first.line, column: first.column },
+  );
+}
+
 function validateSourceOnSave(kind: string, body: unknown): void {
   if (SOURCE_KINDS.has(kind)) {
     const source = (body as { source?: unknown } | null | undefined)?.source;
-    if (typeof source === 'string' && source.trim() !== '') validateTemplate(source);
+    if (typeof source === 'string' && source.trim() !== '') {
+      validateTemplate(source);
+      rejectUnknownHelpers(source);
+    }
     return;
   }
   if (kind === 'settings') {
@@ -544,6 +605,7 @@ function validateSourceOnSave(kind: string, body: unknown): void {
         }
         throw err;
       }
+      rejectUnknownHelpers(val, label); // a typo'd helper in the chrome shows on EVERY page
     }
   }
 }
@@ -2532,7 +2594,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
         '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
         '</section>\n',
-      nav: { slots: ['header'], order: 0 },
+      order: 0,
+      nav: { slots: ['header'] },
     });
     return reply.code(201).send({ project });
   });
@@ -2680,22 +2743,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
   // to flood the site-wide settings (criticalCss/head/scripts) write.
-  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string } }>(
+  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string; summary?: string } }>(
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
       const items = await contentRepo.list(ctx, kind);
+      // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
+      // an entry's `values`) and describes them instead. A full page list carries every page's Handlebars
+      // source — 337 KB for a 22-page imported site, past the MCP tool-output ceiling — so listing the
+      // pages of a real site was impossible without it. Opt-IN here (no change for existing callers); the
+      // MCP `list_pages` tool opts in by default because `get_page` already exists for the body.
+      const wantSummary = req.query.summary === '1' || req.query.summary === 'true';
+      const project = (list: unknown[]): unknown[] => (wantSummary ? summarizeContentList(kind, list) : list);
       // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
       // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
       // Validated against the slug charset; ignored for every other (project-global) kind.
       if (kind === 'entry' && req.query.dataset !== undefined) {
         const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
         if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
-        return reply.send({ items: items.filter((it) => (it as { dataset?: string }).dataset === parsed.data) });
+        return reply.send({ items: project(items.filter((it) => (it as { dataset?: string }).dataset === parsed.data)) });
       }
-      return reply.send({ items });
+      return reply.send({ items: project(items) });
     },
   );
 
@@ -2714,41 +2784,82 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.put<{ Params: ContentParams; Querystring: { merge?: string } }>(
+  app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);
+      // `?receipt=1` returns a SHORT confirmation instead of echoing the stored entity back. A settings
+      // write echoed ~9 KB of criticalCss + chrome slots + identity on EVERY call, including a one-field
+      // `?merge=1` patch — measured at ~60 k tokens of pure echo across one clone. Opt-IN so the editor
+      // (which re-hydrates from the response) is unaffected; the MCP tools opt in, since an agent that
+      // wants the entity back can just call get_content.
+      const wantReceipt = req.query.receipt === '1' || req.query.receipt === 'true';
+      // The stored value BEFORE this write, loaded at most once and only when something needs it.
+      let prior: unknown;
+      let priorLoaded = false;
+      const loadPrior = async (): Promise<unknown> => {
+        if (!priorLoaded) {
+          priorLoaded = true;
+          // An ENTRY is stored under its dataset SLUG, not the project-global '' scope — read it the same
+          // way `put` keys it (from the body), or the lookup misses and a receipt would report a CREATE
+          // over an existing row. Merge and the swImport carry are settings/page only, so they are always ''.
+          const scope = kind === 'entry' ? String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '') : '';
+          prior = await contentRepo.get(ctx, kind, req.params.entityId, scope).catch((err: unknown) => {
+            if (err instanceof NotFoundError) return undefined;
+            throw err;
+          });
+        }
+        return prior;
+      };
       // `?merge=1` PATCHES the existing entity instead of replacing it: the body is a FRAGMENT that is
-      // deep-merged into the current value (siblings the fragment omits are kept). Scoped to `settings`,
-      // the one big singleton where a partial write from a stale snapshot silently reverts other slots;
-      // for other kinds a partial write is meaningless (id-keyed rows), so it's rejected rather than
-      // silently full-replacing. The merged result still goes through the schema in contentRepo.put.
+      // deep-merged into the current value (siblings the fragment omits are kept). Enabled for the kinds
+      // where a full replace from a stale/partial snapshot silently DESTROYS data:
+      //   - `settings`, the big singleton (a partial write reverts every slot it omits), and
+      //   - `page`, where sending {id, path, title, nav} to relabel a nav entry used to wipe `source`,
+      //     `status`, `description`, `order`, `parent` AND `data.swImport` (the marker every fidelity
+      //     tool requires) with no warning.
+      // Other kinds are id-keyed rows small enough to resend whole, so a partial write there is rejected
+      // rather than silently full-replacing. The merged result still goes through the schema in
+      // contentRepo.put, so a bad patch fails exactly like a bad full write.
       const wantMerge = req.query.merge === '1' || req.query.merge === 'true';
       let body: unknown = req.body;
       if (wantMerge) {
-        if (kind !== 'settings') {
-          return reply.code(400).send({ error: 'merge (?merge=1) is only supported for the "settings" kind' });
+        if (kind !== 'settings' && kind !== 'page') {
+          return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings" and "page" kinds, not "${kind}"` });
         }
-        const current = await contentRepo
-          .get(ctx, 'settings', req.params.entityId)
-          .catch((err: unknown) => {
-            if (err instanceof NotFoundError) return null;
-            throw err;
-          });
-        // Merge needs a base. Settings are seeded on project create and can't be deleted, so this is a
-        // defensive guard — but return an ACTIONABLE 404 rather than letting a fragment fall through to a
-        // full write and fail Zod with a bare "identity: Required" the agent can't interpret.
+        const current = (await loadPrior()) ?? null;
+        // Merge needs a base. Settings are seeded on project create and can't be deleted, so that case is a
+        // defensive guard; a page merge legitimately misses when the id is wrong or the page is new. Either
+        // way return an ACTIONABLE 404 rather than letting a fragment fall through to a full write and fail
+        // Zod with a bare "identity: Required" / "path: Required" the agent can't interpret.
         if (!current) {
-          return reply.code(404).send({ error: 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)' });
+          return reply.code(404).send({
+            error:
+              kind === 'settings'
+                ? 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)'
+                : `no page "${req.params.entityId}" to merge into — create it with a full write first (without ?merge)`,
+          });
         }
         body = deepMerge(current, req.body);
       }
       validateSourceOnSave(req.params.kind, body); // fail fast on unsafe Handlebars source (in the MERGED body)
+      // A full page REPLACE must not silently drop `data.swImport`. It is importer-owned PROVENANCE the
+      // agent never authors, and every fidelity tool (visual_audit / clone_audit / compare_regions /
+      // compare_to_source / fidelity_check) refuses to run without it — so one routine metadata write used
+      // to make a cloned page permanently un-auditable with no warning. Carried over only when the incoming
+      // body OMITS the key entirely; an explicit `data.swImport: null` still clears it (a page that is no
+      // longer import-derived can say so).
+      if (kind === 'page' && !wantMerge) {
+        body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
+      }
+      // A receipt reports what actually CHANGED, so the prior value must be read before the write.
+      if (wantReceipt) await loadPrior();
       const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
+      if (wantReceipt) return reply.send(writeReceipt(kind, req.params.entityId, prior, item));
       return reply.send({ item });
     },
   );
@@ -2763,6 +2874,53 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (scope === undefined) return reply; // 400 already sent (entry requires ?dataset=)
       await contentRepo.remove(ctx, kind, req.params.entityId, scope);
       return reply.code(204).send();
+    },
+  );
+
+  // BULK delete — one call removes up to BULK_DELETE_MAX entities of one kind. Cleaning up after a
+  // mechanical import (dozens of junk datasets/entries, a batch of scaffolded pages) meant one DELETE
+  // per id: slow interactively, and for an agent a rate-limit wall that made "undo this import" cost
+  // more turns than the import itself. POST (not DELETE-with-a-body) because a body on DELETE is
+  // under-specified and our own client trips Fastify's empty-body check on it.
+  //
+  // PARTIAL SUCCESS is the contract: each id is attempted independently and the response reports both
+  // lists, so one bad id (already gone, wrong dataset) can't abort the other 99. Deletes run
+  // SEQUENTIALLY — `remove` writes a restore tombstone per entity, and serialising keeps that history
+  // write ordered and the per-request DB work bounded.
+  const BULK_DELETE_MAX = 200;
+  const BulkDeleteBody = z.object({
+    ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX),
+    /** Required when kind is `entry` — entry ids are unique only within their dataset. */
+    dataset: z.string().optional(),
+  });
+  app.post<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+    '/projects/:projectId/content/:kind/bulk-delete',
+    { config: rlAgent(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:delete');
+      const kind = parseGenericKind(req.params.kind);
+      const body = BulkDeleteBody.parse(req.body);
+      const scope = entryScope(kind, body.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent (entry requires a dataset)
+      // Duplicates would double-count `deleted` and report a phantom not-found on the second pass.
+      const ids = [...new Set(body.ids)];
+      const deleted: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const id of ids) {
+        try {
+          await contentRepo.remove(ctx, kind, id, scope);
+          deleted.push(id);
+        } catch (err) {
+          // Only DOMAIN errors carry a message meant for a caller ("page not found", "the settings
+          // singleton cannot be deleted") — the same allowlist the global error handler applies. An
+          // unexpected failure is LOGGED and reported generically, so a DB/driver message (table and
+          // column names, constraint text) can't ride out through a per-id report.
+          const domain = err instanceof NotFoundError || err instanceof ForbiddenError || err instanceof ConflictError;
+          if (!domain) req.log.error({ err, kind, entityId: id }, 'bulk delete failed');
+          failed.push({ id, error: domain ? (err as Error).message : 'delete failed' });
+        }
+      }
+      return reply.send({ deleted, failed, requested: ids.length });
     },
   );
 
@@ -5070,12 +5228,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const safePath = path.replace(/[\r\n\0]/g, '');
           return reply.redirect(`${siteBase}${safePath}/${query}`, 301);
         }
-        // Per-site CSP widening (PAGE responses only): a consent-enabled site WITH third-party integrations
-        // bakes a `<meta http-equiv CSP>` into its HTML; reconstruct the RESPONSE-HEADER form from it (the
-        // meta = header minus frame-ancestors). This costs only a string scan — no settings read — and is
-        // guaranteed consistent with the served HTML. It RELAXES the strict `default-src 'self'` default to
-        // EXACTLY the registered origins for BOTH the subdomain and the path form (they share this handler);
-        // route-scoped, so the editor/app origin CSP is untouched. No consent meta → strict default stays.
+        // Per-site CSP (PAGE responses only). The CSP is enforced HERE, as a response header, and ONLY on
+        // platform-hosted origins — this is where the platform has something to protect (many tenants on one
+        // parent domain, adjacent to the editor origin). The build ships the policy in the document as an
+        // INERT `<meta name="sw-csp">`, which browsers ignore, so an EXPORTED site and the sandboxed draft
+        // preview carry no enforcement at all; this promotes it to the real header for hosted traffic.
+        // Reading it from the served HTML costs only a string scan — no settings read, no extra disk read —
+        // and is guaranteed consistent with the page actually being served. It RELAXES the strict
+        // `default-src 'self'` floor to EXACTLY the site's registered origins for both the subdomain and the
+        // path form (they share this handler); route-scoped, so the editor/app origin CSP is untouched.
         const metaCsp = siteCspHeaderFromHtml(html);
         if (viaSubdomain) {
           // Isolated subdomain origin: the OWNER's authored inline JS RUNS. An embed page carries the
@@ -5089,9 +5250,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('x-frame-options', 'DENY');
         } else if (metaCsp) {
           // Path-form fallback on the cookie-bearing app origin (only reached when no sites domain is
-          // configured — else we 301'd to the subdomain above). `metaCsp` derives ONLY from the PLATFORM's
-          // baked meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via website.head, which
-          // lands after <title>), so we can safely KEEP the consented frame-src/script-src origins while
+          // configured — else we 301'd to the subdomain above). The policy derives ONLY from the PLATFORM's
+          // own `name="sw-csp"` meta (siteCspHeaderFromHtml ignores an author `<meta>` injected via
+          // website.head, which lands after <title>), so we can safely KEEP the consented origins while
           // STRIPPING script `'unsafe-inline'` — author inline JS can never run on the app origin. The
           // platform meta's script-src is always the literal `script-src 'self' 'unsafe-inline'[ <origins>]`.
           reply
@@ -5450,8 +5611,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         });
         // STRUCTURE leg: pure over repo data.
         const [datasets, media] = await Promise.all([contentRepo.list(ctx, 'dataset'), contentRepo.list(ctx, 'media')]);
+        // The editability check must see the page's EFFECTIVE source, not its raw stored one: a
+        // template-driven page has an empty `source` and a snippet-composing page keeps its directives in
+        // the partial, so counting `targetPage.source` failed every structure the import guide mandates.
+        // Resolve the template ref the same way preview/publish do, and hand over the snippet bodies so
+        // `{{> partial}}` directives are counted too.
+        let auditDefaultLocale = 'en';
+        try {
+          auditDefaultLocale = ((await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings).settings?.defaultLocale ?? 'en';
+        } catch (err) {
+          if (!(err instanceof NotFoundError)) throw err;
+        }
+        const auditCodeRef = resolveCodeRef(targetPage, allPages, auditDefaultLocale);
+        let effectiveSource = auditCodeRef.source ?? '';
+        if (auditCodeRef.template) {
+          const projectTemplates = isGlobalTemplate(auditCodeRef.template) ? [] : ((await contentRepo.list(ctx, 'template')) as Template[]);
+          const globals = isGlobalTemplate(auditCodeRef.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
+          // An unknown template ref is the page author's problem, not the audit's — fall back to the raw
+          // source so the audit still reports the other legs instead of 500ing.
+          try {
+            effectiveSource = resolveTemplateSource(auditCodeRef.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
+          } catch {
+            effectiveSource = targetPage.source ?? '';
+          }
+        }
+        const auditSnippets = {
+          ...(await globalSnippetPartials(contentRepo)),
+          ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+          ...WIDGET_PARTIALS,
+        };
         const audit = assembleAudit([
-          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string }>, pageSource: targetPage.source ?? null }),
+          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string }>, pageSource: effectiveSource || null, snippets: auditSnippets }),
           behaviouralChecks(behaviour),
           visualChecks(fidelity),
         ]);
@@ -5651,6 +5841,62 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const out: Record<string, { build?: RegionShot; source?: RegionShot }> = {};
         for (const name of Object.keys(regions)) out[name] = { build: build[name], source: source[name] };
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, regions: out });
+      },
+    );
+
+    // inspect_source: MEASURE a rendered page — settled markup + real computed styles + real rects for the
+    // selectors asked about. The read-only counterpart to the image/score tools above: those all return a
+    // picture or a number ABOUT A COMPARISON and each needs a built clone, so none of them can answer "what
+    // IS the original's nav-link padding" — which the import guide keeps telling the agent to go and measure.
+    // Also the only view of chrome a site builds in JAVASCRIPT: the importer stores the pre-JS body, so such
+    // a site's stored source contains no header/footer markup at all. Owner/member (content:read).
+    app.post<{
+      Params: { projectId: string; pageId: string };
+      Body: { selectors?: unknown; styles?: unknown; html?: unknown; viewport?: unknown; side?: unknown };
+    }>(
+      '/projects/:projectId/inspect-source/:pageId',
+      { config: rl(10) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const asStrings = (v: unknown): string[] =>
+          Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map((s) => s.trim()) : [];
+        const selectors = asStrings(req.body?.selectors).slice(0, INSPECT_LIMITS.maxSelectors);
+        if (selectors.length === 0) {
+          return reply.code(400).send({ error: 'selectors is required — a non-empty array of CSS selectors to measure' });
+        }
+        const side = req.body?.side === 'build' ? 'build' : 'source';
+        const vpRaw = req.body?.viewport;
+        const viewport = typeof vpRaw === 'string' && isScreenshotViewportName(vpRaw) ? vpRaw : undefined;
+        // A failed list must 500, not silently measure against an empty page set (same rule as clone_audit).
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const targetPage = byId.get(req.params.pageId) ?? null;
+        const fullRoute = targetPage ? pathToSlug(pagePath(targetPage, byId)) : undefined;
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page: targetPage as ComparePageInput | null,
+          route: fullRoute,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+        });
+        if ('error' in target) {
+          if (target.error === 'not-found') throw new NotFoundError('page not found');
+          return reply.code(400).send({ error: 'this page has no imported source URL to inspect' });
+        }
+        const abort = abortOnClose(req);
+        // Unlike the capture tools this does NOT swallow render failures: an empty result would read as
+        // "the original has no such element", which is precisely the wrong thing to tell a measuring agent.
+        const measured = await captureUrlInspect(side === 'build' ? target.buildUrl : target.sourceUrl, {
+          mode: side === 'build' ? 'loopback' : 'pinned',
+          selectors,
+          // Capped server-side too, not just in the MCP tool schema — this route is reachable directly.
+          styles: asStrings(req.body?.styles).slice(0, INSPECT_LIMITS.maxStyles),
+          html: req.body?.html === true,
+          ...(viewport ? { viewport } : {}),
+          signal: abort.signal,
+        });
+        return reply.send({ side, url: side === 'build' ? target.buildUrl : target.sourceUrl, sourceUrl: target.sourceUrl, route: target.route, ...measured });
       },
     );
 

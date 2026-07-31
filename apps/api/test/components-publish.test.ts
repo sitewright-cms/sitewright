@@ -227,8 +227,11 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(csp).toContain('https://www.google-analytics.com'); // connect-src
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp.split('; ').find((d) => d.startsWith('script-src'))).not.toContain("'unsafe-inline'");
-    // (b) the baked <meta> CSP gives static-export parity (same allow-list, minus frame-ancestors).
-    expect(index.body).toContain('http-equiv="Content-Security-Policy"');
+    // (b) the document carries the SAME allow-list as an INERT `name="sw-csp"` meta — the hosted origin
+    // promotes it to the header above; a browser ignores it, so an EXPORTED copy of this file enforces
+    // nothing (the customer owns that origin) and the sandboxed draft preview isn't constrained either.
+    expect(index.body).toContain('name="sw-csp"');
+    expect(index.body).not.toContain('http-equiv="Content-Security-Policy"'); // never browser-enforcing
     expect(index.body).toContain('https://www.googletagmanager.com');
     // (c) the consent config bakes the ga4 runtime descriptor for the runtime to inject on consent.
     expect(index.body).toContain('data-sw-consent-config');
@@ -254,7 +257,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     const csp = index.headers['content-security-policy'] as string;
     expect(csp).toContain("default-src 'self'"); // the strict onSend default
     expect(csp).not.toContain('googletagmanager'); // no widening
-    expect(index.body).not.toContain('http-equiv="Content-Security-Policy"'); // no baked meta
+    expect(index.body).not.toContain('name="sw-csp"'); // nothing to widen → no policy shipped at all
   });
 
   it('with consent ON, a pasted cross-origin <iframe> is HELD click-to-load + derives the frame-src CSP', async () => {
@@ -287,10 +290,11 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('width="640"'); // author attrs preserved
     // The consent runtime ships (it hydrates the held iframe) even though no integration is registered.
     expect(index.body).toContain('<script defer src="consent.js?v=');
-    // The per-page CSP (response header + baked meta) allows the iframe's frame-src — derived from the iframe.
+    // The per-page CSP allows the iframe's frame-src — derived from the iframe. ENFORCED as the hosted
+    // response header; the document's copy is the inert `name="sw-csp"` meta the header is built from.
     const csp = index.headers['content-security-policy'] as string;
     expect(csp).toContain("frame-src 'self' https://www.youtube.com");
-    expect(index.body).toContain('http-equiv="Content-Security-Policy"');
+    expect(index.body).toContain('name="sw-csp"');
   });
 
   it('with consent OFF, a pasted cross-origin <iframe> loads normally but its origin is allow-listed in the CSP', async () => {

@@ -9,6 +9,89 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-31
+
+Everything in this release came from one exercise: cloning a real site (business.na) end to end and
+logging every place the platform fought back. Twenty-one items were recorded; twenty are fixed here and
+in 0.5.0, and one was declined on purpose.
+
+### Added
+
+- **`inspect_source`** — measure the LIVE original: real computed styles, rects and settled markup for the
+  selectors you name. The only tool that returns NUMBERS for the source, and the only way to read chrome a
+  site builds in JavaScript (the stored import has none). `side:"build"` measures your clone the same way.
+- **`patch_page`** and `?merge=1` for pages — send only the fields you are changing. A page write was a
+  total replace, so relabelling a nav entry silently wiped `source`, `status`, `order`, `parent` and the
+  `data.swImport` marker every fidelity tool depends on.
+- **`delete_content_bulk({ kind, ids })`** — up to 200 ids in one call, with a per-id result, so clearing
+  up after an import is not one request (and one rate-limit slot) per row.
+- **Asynchronous website import.** `import_website` now returns a job id immediately and the crawl runs in
+  the background; poll the new **`import_status`** tool. A real crawl takes minutes, so the call used to
+  time out client-side while the import went on to succeed on the server — leaving no job id, no progress
+  and no safe way to retry.
+- **`renderMode: "always"`** on import — render every page, not only one that looks client-rendered. A
+  server-rendered site that assembles its header or footer in JavaScript was stored pre-JS, so that chrome
+  was simply missing from the import with nothing reporting it.
+- **`identity.cssTokens`** — free-form CSS custom properties (`--sw-<key>`) for the values the colour,
+  spacing and radius records cannot express: a gradient, an elevation ramp, a shared easing curve. Editable
+  in Corporate Identity → CSS tokens, with inline validation.
+- **`{{sw-stagger @index [step] [max]}}`** — the per-item reveal delay for a loop. The effects guide has
+  always recommended staggering a list, and templates have no arithmetic, so the recipe could not actually
+  be written. Capped by default, because a long grid whose last card waits seconds reads as a stuck page.
+- **`website.cspOrigins`** — allow-list a third-party origin (a captcha, a font host, a map) without
+  enabling the consent manager or planting a decoy tag.
+- **`?summary=1`** on content lists — metadata only, with the omitted bodies described. A 22-page site's
+  page list was 337 KB, past the tool-output ceiling, which made the first call of a clone impossible.
+
+### Changed
+
+- **Writes answer with a receipt** (`{ kind, id, bytes, created, changed }`) instead of echoing the stored
+  entity. A settings write returned ~9 KB every time, including a one-field patch. `changed` is a real
+  diff, so an empty list tells you the write was a no-op — something the echo never made obvious.
+- **Author `criticalCss` now wins a specificity tie** against the platform component sheets, instead of
+  silently losing every one.
+- **The scroll-reveal trigger** no longer gates on a fraction of the element, so a tall section reveals on
+  time; new `data-sw-offset` moves the line.
+- **A named system font is honoured.** A slot set to `Verdana`/`Georgia` was silently dropped to the
+  default sans — including slots the importer itself writes, so an imported site's body font came out wrong.
+- **`clone_audit`** counts editable directives across the template-resolved source and every composed
+  snippet, so a template- or snippet-driven page can pass the gate at all.
+- **The site CSP is enforced only where the platform is at risk.** It was baked into every exported page,
+  where it protects nobody the platform owns and breaks fonts, analytics and maps.
+- **Dataset inference is off by default.** Guessing collections from markup shape produced junk more often
+  than real datasets; an agent reading the page authors them far better. Still available behind a flag.
+- **`nav.order` is retired.** One page-tree `order` governs the pages list and every menu. The editor's two
+  number inputs are gone — they wrote a field that `order` always beat, so typing in them did nothing. A
+  legacy value is promoted on the next save, so nothing moves.
+- **The importer no longer forces a back-to-top control on.** It is enabled only when the source actually
+  had one — otherwise a clone gained a control the original never had, invisible to any screenshot.
+- **The imported preloader style is read from the loader itself**, not from the whole site, so a spinning
+  ring is no longer imported as a progress bar.
+- **The foundation import carries the source's `:root` custom properties** into `criticalCss` under their
+  original names, so a declaration copied from the original still resolves.
+
+### Fixed
+
+- **An unknown helper is rejected at save**, naming it and its position. Rendering stays lenient, but the
+  marker it emits is invisible inside an attribute — where the missing-arithmetic case landed — so nothing
+  reported it.
+- **The icon reference contradicted the engine**: it described a bare name as a Lucide line glyph when the
+  engine resolves a filled Phosphor glyph, so following the reference got the weight wrong every time.
+- **A named font slot, `page.data.swImport`, and omitted settings slots** survive the writes that used to
+  drop them.
+
+### Security
+
+- **`identity.cssTokens` values pass a deliberately narrow gate.** Function syntax is permitted so a
+  gradient can be a token at all, while anything that could leave the declaration (`;{}<>`, backslash,
+  control characters, comment markers, unbalanced parentheses) or fetch a resource (`url()`, `src()`,
+  `image-set()`, `element()`, `expression()`, `@import`, vendor prefixes included) is refused. Invisible
+  format characters are refused too. One shared predicate backs the schema, the renderer and the importer.
+- **Import jobs are readable only within their own project.** Job ids are short and sequential, so the id
+  alone is never sufficient, and the polled view is built field by field so internals cannot leak.
+- **A bulk delete reports only domain errors.** Anything unexpected is logged and reported generically, so
+  a driver message cannot ride out through a per-id result.
+
 ## [0.5.0] — 2026-07-28
 
 ### Added

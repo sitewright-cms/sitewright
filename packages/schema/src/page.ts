@@ -21,7 +21,7 @@ export type NavSlot = (typeof NAV_SLOTS)[number];
  * in which case `collection` must be set — and a `collection` requires the `[param]`. Both
  * directions are enforced.
  */
-const PageObject = z
+const PageFields = z
   .object({
     id: IdSchema,
     path: PageSlugSchema,
@@ -75,10 +75,10 @@ const PageObject = z
      */
     parent: IdSchema.optional(),
     /**
-     * Sibling sort order within the same parent (ascending; ties broken by title). Set by
-     * drag-reordering the pages list; the canonical page-tree order, independent of nav
-     * membership. The list and the auto-nav both prefer this, falling back to the legacy
-     * `nav.order` then title when it is absent.
+     * Sibling sort order within the same parent (ascending; ties broken by title). THE sort key:
+     * one page-tree order, independent of nav membership, driving both the pages list and every
+     * auto-nav menu. Set by drag-reordering the pages list (or Arrow Up/Down); a writer that wants
+     * an explicit position sets this. Absent → 0, so untouched pages fall back to title order.
      */
     order: z.number().int().min(0).max(100_000).optional(),
     /**
@@ -106,7 +106,15 @@ const PageObject = z
           .min(1)
           .max(NAV_SLOTS.length)
           .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates'),
-        /** Sort order within a slot (ascending; ties broken by title). */
+        /**
+         * @deprecated LEGACY sort order — use the page's top-level `order` instead.
+         *
+         * Nothing writes this any more (the editor's number inputs are gone; the importer and the
+         * new-project scaffold set `order`). It is still READ as a fallback, so a page written
+         * before the page tree became canonical — or by an older agent — keeps its position:
+         * effective order is `order ?? nav.order ?? 0`. Since `order` always wins, setting BOTH
+         * silently does nothing; the editor promotes a legacy value to `order` on the next save.
+         */
         order: z.number().int().min(0).max(100_000).optional(),
         /** Show this page's CHILD pages (pages whose `parent` is this page) in a dropdown under its nav item. */
         dropdown: z.boolean().optional(),
@@ -169,8 +177,9 @@ const PageObject = z
         newTab: z.boolean().optional(),
       })
       .optional(),
-  })
-  .superRefine((page, ctx) => {
+  });
+
+const PageObject = PageFields.superRefine((page, ctx) => {
     if (page.kind === 'link') {
       if (!page.link) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['link'], message: 'a link (placeholder) page requires a link definition' });
@@ -212,6 +221,20 @@ const PageObject = z
 // no production data to migrate, so the schema is the single shape of record (no back-compat preprocess).
 export const PageSchema = PageObject;
 export type Page = z.infer<typeof PageSchema>;
+
+/**
+ * A PARTIAL page for patch writes (`PUT …/content/page/:id?merge=1`, MCP `patch_page`): every field is
+ * optional except `id`, and the fragment is deep-merged into the stored page before the FULL
+ * {@link PageSchema} validates the result. Derived from the same field object as `PageSchema`, so it can
+ * never drift from it.
+ *
+ * Exists because a page write is otherwise a total REPLACE: sending `{id, path, title, nav}` to relabel a
+ * nav entry silently deleted `source`, `status`, `description`, `order`, `parent` and `data.swImport`.
+ * The cross-field rules (link pages need a `link`, `[param]` paths need a `collection`) deliberately do NOT
+ * run on the fragment — they are checked on the MERGED page, where they are actually meaningful.
+ */
+export const PagePatchSchema = PageFields.partial().extend({ id: IdSchema });
+export type PagePatch = z.infer<typeof PagePatchSchema>;
 
 /**
  * True for a navigation-placeholder page (`kind:'link'`): no own route/HTML — a nav item that links

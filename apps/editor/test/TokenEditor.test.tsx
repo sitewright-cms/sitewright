@@ -60,4 +60,39 @@ describe('TokenEditor (stable-id rows)', () => {
     expect((screen.getByLabelText('name 1') as HTMLInputElement).readOnly).toBe(false);
     expect(screen.getByRole('button', { name: /^Edit/ })).toBeInTheDocument();
   });
+
+  // Without inline validation the only feedback on a refused value is a Zod error at SAVE time, naming
+  // a field the author can no longer see. `validateValue` is opt-in, so the colour/font editors that
+  // don't pass it are unaffected.
+  describe('validateValue', () => {
+    const noUrl = (v: string): string | null => (/url\(/i.test(v) ? 'url() isn’t allowed.' : null);
+
+    it('flags an offending row inline and marks the input invalid', () => {
+      render(
+        <TokenEditor
+          rows={[{ id: 'a', key: 'ok', value: '4px' }, { id: 'b', key: 'bad', value: 'url(https://x.test/a.png)' }]}
+          onChange={() => {}}
+          keyPlaceholder="name"
+          valuePlaceholder="val"
+          validateValue={noUrl}
+        />,
+      );
+      expect(screen.getByRole('alert')).toHaveTextContent('url() isn’t allowed.');
+      expect(screen.getByLabelText('val 2')).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByLabelText('val 1')).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('treats a BLANK value as unset, not invalid (pairsToRecord drops it)', () => {
+      const alwaysBad = (): string => 'nope';
+      render(
+        <TokenEditor rows={[{ id: 'a', key: 'k', value: '   ' }]} onChange={() => {}} keyPlaceholder="name" valuePlaceholder="val" validateValue={alwaysBad} />,
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('shows nothing when no validator is supplied (the colour/font editors)', () => {
+      render(<TokenEditor rows={[{ id: 'a', key: 'k', value: 'url(x)' }]} onChange={() => {}} keyPlaceholder="name" valuePlaceholder="val" />);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
 });

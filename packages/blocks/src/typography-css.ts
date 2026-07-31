@@ -39,6 +39,17 @@ const SYSTEM_STACKS: Record<string, string> = {
 };
 const DEFAULT_SYSTEM = SYSTEM_STACKS['sans-serif']!;
 
+/**
+ * Well-known NAMED system faces → the generic stack that should trail them, so a named slot degrades
+ * into the right *kind* of face where the named one is absent. Everything unlisted trails sans-serif.
+ * Lower-cased keys; lookup is case-insensitive.
+ */
+const NAMED_SYSTEM_CATEGORY: Record<string, keyof typeof SYSTEM_STACKS> = {
+  georgia: 'serif', 'times new roman': 'serif', times: 'serif', garamond: 'serif', palatino: 'serif',
+  cambria: 'serif', baskerville: 'serif', 'book antiqua': 'serif',
+  'courier new': 'monospace', courier: 'monospace', consolas: 'monospace', monaco: 'monospace', menlo: 'monospace',
+};
+
 /** Platform defaults when a slot is unset: serif/700 headings, sans-serif/400 body. */
 const DEFAULT_HEADING: FontSlot = { source: 'system', family: 'serif', weight: 700 };
 const DEFAULT_BODY: FontSlot = { source: 'system', family: 'sans-serif', weight: 400 };
@@ -65,7 +76,20 @@ function familyStack(slot: FontSlot, font: FontAsset | undefined): string {
     if (font) return `"${font.family}", ${font.fallback}`;
     if (SAFE_FAMILY.test(slot.family)) return `"${slot.family}", ${DEFAULT_SYSTEM}`;
   }
-  return SYSTEM_STACKS[slot.family] ?? DEFAULT_SYSTEM;
+  // A GENERIC keyword (serif / sans-serif / monospace) picks its curated stack.
+  const generic = SYSTEM_STACKS[slot.family];
+  if (generic) return generic;
+  // A NAMED system face — Verdana, Georgia, Arial — is a real, requestable family. Quote it and trail a
+  // generic stack so it still degrades sensibly where the face is absent.
+  // This branch used to be missing: any family that wasn't one of the three keywords fell through to the
+  // default sans stack and the chosen face was silently DROPPED. The importer emits exactly such slots
+  // (a site declaring `@font-face{font-family:"text-font";src:local("Verdana")}` yields
+  // {source:'system', family:'Verdana'}), so an imported site's whole body font came out wrong with
+  // nothing anywhere reporting it.
+  if (SAFE_FAMILY.test(slot.family)) {
+    return `"${slot.family}", ${SYSTEM_STACKS[NAMED_SYSTEM_CATEGORY[slot.family.toLowerCase()] ?? 'sans-serif']}`;
+  }
+  return DEFAULT_SYSTEM;
 }
 
 /**

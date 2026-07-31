@@ -168,7 +168,7 @@ describe('consent CSP — author origins + integration frameOrigins', () => {
     const meta = buildConsentMetaCsp(undefined, { media: ['cdn.example.com'] })!;
     expect(meta).toContain("media-src 'self' https://cdn.example.com");
     // …and the serve-path reconstruction from the baked meta preserves media-src.
-    const html = `<meta http-equiv="Content-Security-Policy" content="${meta}">`;
+    const html = `<meta name="sw-csp" content="${meta}">`;
     expect(siteCspHeaderFromHtml(html)).toContain("media-src 'self' https://cdn.example.com");
   });
 
@@ -318,8 +318,54 @@ describe('CSP derivation (the security boundary)', () => {
     const meta = buildConsentMetaCsp(c)!;
     // The render layer attribute-escapes the content; emulate that to feed the extractor.
     const escaped = meta.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = `<head><meta http-equiv="Content-Security-Policy" content="${escaped}" /></head>`;
+    const html = `<head><meta name="sw-csp" content="${escaped}" /></head>`;
     expect(siteCspHeaderFromHtml(html)).toBe(buildSiteCspHeader(c)); // header === meta + frame-ancestors
     expect(siteCspHeaderFromHtml('<head><title>no consent</title></head>')).toBeUndefined();
+  });
+});
+
+// website.cspOrigins — the author's OWN allow-list. Before it existed, widening the policy meant either
+// enabling the whole consent manager (a site-wide cookie banner, just to name an origin) or planting tags
+// whose only purpose was to be scanned: a `<script type="text/plain" data-sw-consent src>` for
+// script/connect and an `<iframe>` inside an HTML COMMENT for frame-src.
+describe('website.cspOrigins (author allow-list, independent of the consent manager)', () => {
+  it('widens the policy with consent OFF and no integrations at all', () => {
+    const csp = buildSiteCspHeader(undefined, {}, { frame: ['www.google.com'], connect: ['api.example.com'] })!;
+    expect(csp).toContain('frame-src');
+    expect(csp).toContain('https://www.google.com');
+    expect(csp).toContain('https://api.example.com');
+  });
+
+  it('mirrors a script host into connect-src (a script you cannot talk to is half-configured)', () => {
+    const csp = buildSiteCspHeader(undefined, {}, { script: ['www.gstatic.com' ] })!;
+    const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'))!;
+    const connectSrc = csp.split('; ').find((d) => d.startsWith('connect-src'))!;
+    expect(scriptSrc).toContain('https://www.gstatic.com');
+    expect(connectSrc).toContain('https://www.gstatic.com');
+  });
+
+  it('covers every directive and merges alongside consent integrations', () => {
+    const o = consentCspOrigins(
+      consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]),
+      {},
+      { font: ['fonts.gstatic.com'], style: ['fonts.googleapis.com'], media: ['cdn.example.com'], frame: ['maps.google.com'] },
+    );
+    expect(o.font).toContain('fonts.gstatic.com');
+    expect(o.style).toContain('fonts.googleapis.com');
+    expect(o.media).toContain('cdn.example.com');
+    expect(o.frame).toContain('maps.google.com');
+    expect(o.script.some((h) => h.includes('googletagmanager'))).toBe(true); // the integration still applies
+  });
+
+  it('re-validates each host, so a malformed value can never break out of the directive', () => {
+    const csp = buildSiteCspHeader(undefined, {}, { frame: ['ok.example.com', 'evil.com; script-src *', 'no spaces.com'] })!;
+    expect(csp).toContain('https://ok.example.com');
+    expect(csp).not.toContain('evil.com');
+    expect(csp).not.toContain('no spaces.com');
+  });
+
+  it('contributes nothing when empty (a site with no third parties keeps the strict floor)', () => {
+    expect(buildSiteCspHeader(undefined, {}, {})).toBeUndefined();
+    expect(buildSiteCspHeader(undefined, {}, { frame: [] })).toBeUndefined();
   });
 });

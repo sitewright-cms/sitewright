@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   PageSchema,
+  PagePatchSchema,
   TemplateSchema,
   SnippetSchema,
   PageTranslationSchema,
@@ -26,7 +27,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult } from './client.js';
+import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -178,6 +179,15 @@ function toolError(text: string): ToolResult {
 
 /** Render the website-import report as a readable next-step summary (the `import_website` tool result). */
 function summarizeImport(r: ImportWebsiteResult): string {
+  // The async start: a job id, not a result. Say so plainly, or a model reads "ok:true" as "finished"
+  // and starts nativizing pages that do not exist yet.
+  if (typeof r.jobId === 'string') {
+    return [
+      `IMPORT STARTED (job ${r.jobId}) — it is running in the background and takes MINUTES on a real site.`,
+      `Poll import_status({ jobId: "${r.jobId}" }) every ~30s until status is "done" (or "failed"). Do NOT re-run import_website — a second import of the same URL would duplicate the work.`,
+      'When it is done, its report tells you what landed; then read get_guide("import") once and nativize.',
+    ].join('\n');
+  }
   const warnings = Array.isArray(r.warnings) ? r.warnings : [];
   return [
     `WEBSITE IMPORTED ✓ — ${r.pagesImported ?? 0} page(s) imported (${r.mediaSelfHosted ?? 0} media asset(s) self-hosted).`,
@@ -186,6 +196,17 @@ function summarizeImport(r: ImportWebsiteResult): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/** Render an async import job's state for the poller. */
+function summarizeImportJob(j: ImportJobView): string {
+  if (j.status === 'running') {
+    const last = j.progress.at(-1);
+    const mins = Math.round((Date.now() - j.startedAt) / 60_000);
+    return `IMPORT RUNNING (${mins}m elapsed)${last ? ` — ${last}` : ''}. Poll again in ~30s; do NOT start a second import.`;
+  }
+  if (j.status === 'failed') return `IMPORT FAILED — ${j.error ?? 'unknown error'}. Check the URL, then you may retry import_website.`;
+  return summarizeImport({ ok: true, ...(j.report ?? {}) } as ImportWebsiteResult);
 }
 
 /** Render the autonomous clone run's verdict as a readable per-page summary (the `ai_clone` tool result). */
@@ -465,8 +486,12 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   // ---------------------------------------------------------------- reads (content:read)
   server.registerTool(
     'list_pages',
-    { description: 'List the project’s pages.' },
-    gate(null, () => client.listContent('page')),
+    {
+      description:
+        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large).',
+      inputSchema: { includeSource: z.boolean().optional() },
+    },
+    gate(null, ({ includeSource }: { includeSource?: boolean }) => client.listContent('page', undefined, { summary: !includeSource })),
   );
 
   server.registerTool(
@@ -483,10 +508,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_content',
     {
       description:
-        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together.",
-      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional() },
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit.",
+      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional(), summary: z.boolean().optional() },
     },
-    gate(null, ({ kind, dataset }) => client.listContent(kind, dataset)),
+    gate(null, ({ kind, dataset, summary }: { kind: string; dataset?: string; summary?: boolean }) => client.listContent(kind, dataset, { summary })),
   );
 
   server.registerTool(
@@ -793,6 +818,43 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'inspect_source',
+    {
+      description:
+        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. The page must have an import source.",
+      inputSchema: {
+        pageId: z.string(),
+        selectors: z.array(z.string()).min(1).max(20).describe('CSS selectors to measure, e.g. ["#main-nav a", ".hero h1", "footer"]'),
+        styles: z.array(z.string()).max(40).optional().describe('Extra CSS properties beyond the default set (e.g. ["backdrop-filter","writing-mode"]).'),
+        html: z.boolean().optional().describe('Also return each match\'s settled outerHTML (scripts/styles stripped, truncated).'),
+        viewport: z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']).optional().describe('Measurement viewport (default laptop · 1440x900).'),
+        side: z.enum(['source', 'build']).optional().describe('Which page to measure: the live original (default) or your build.'),
+      },
+    },
+    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the \u201Ccontent:read\u201D capability.`);
+      }
+      try {
+        const r = await client.inspectSource(pageId, { selectors, ...(styles?.length ? { styles } : {}), ...(html ? { html } : {}), ...(viewport ? { viewport } : {}), ...(side ? { side } : {}) });
+        const missing = r.results.filter((x) => x.count === 0).map((x) => x.selector);
+        const invalid = r.results.filter((x) => x.count === -1).map((x) => x.selector);
+        const notes = [
+          `Measured the ${r.side === 'build' ? 'BUILD' : 'LIVE ORIGINAL'} (${r.url}) at ${r.viewport.width}\u00d7${r.viewport.height}; document height ${r.documentHeight}px.`,
+          'Every rect/px below is true AT THIS VIEWPORT only \u2014 re-measure at another width before porting responsive rules.',
+          invalid.length ? `INVALID selector syntax (count -1): ${invalid.join(', ')}` : '',
+          missing.length ? `NO MATCH: ${missing.join(', ')} \u2014 the element may be named differently here, or built by JS under another hook; try a broader selector.` : '',
+        ].filter(Boolean);
+        return { content: [{ type: 'text', text: `${notes.join('\n')}\n\n${JSON.stringify(r.results, null, 1)}` }] };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'compare_regions',
     {
       description:
@@ -887,8 +949,22 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   // create/update without the irreversible power to remove pages or content.
   server.registerTool(
     'put_page',
-    { description: 'Create or replace a page. The page id is taken from page.id.', inputSchema: { page: PageSchema } },
-    gate('content:write', ({ page }) => client.putContent('page', page.id, page)),
+    {
+      description:
+        'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page; call get_page if you need the stored page back.',
+      inputSchema: { page: PageSchema },
+    },
+    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { receipt: true })),
+  );
+
+  server.registerTool(
+    'patch_page',
+    {
+      description:
+        'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page: `changed` lists the top-level keys that actually differ, so an EMPTY list means your patch was a no-op (wrong id, or the value was already set). Call get_page if you need the stored page back.',
+      inputSchema: { page: PagePatchSchema },
+    },
+    gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true, receipt: true })),
   );
 
   server.registerTool(
@@ -901,7 +977,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'put_content',
     {
       description:
-        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide. For SETTINGS, pass `merge:true` to PATCH just the fields you send (e.g. only `website.footer`) without resending the whole object — safer than a full replace, which reverts any slot your snapshot missed.',
+        'Create or replace a content entity of the given kind. Args: { kind, id, data } — plus `dataset` (the owning dataset slug) when kind is "entry". For PAGES prefer put_page (fully typed). `data` must match that kind’s schema; you may OMIT `data.id` (and an entry’s `data.dataset`) — they are copied from the `id` / `dataset` args for you. On a mismatch the error names the wrong field AND the expected shape, so read it and retry. To learn a kind’s shape up front, call get_content on an existing entity of that kind, or get_guide. For SETTINGS, pass `merge:true` to PATCH just the fields you send (e.g. only `website.footer`) without resending the whole object — safer than a full replace, which reverts any slot your snapshot missed. Returns a RECEIPT — { kind, id, bytes, created, changed } — instead of echoing the entity (settings alone was ~9 KB per write): `changed` lists the top-level keys that actually differ, so an EMPTY list means the write changed nothing. Use get_content when you need the stored entity.',
       inputSchema: {
         kind: GENERIC_KIND,
         id: z.string(),
@@ -915,7 +991,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
       const normalized = normalizePutData(kind, id, dataset, data);
       try {
-        return await client.putContent(kind, id, normalized, { merge });
+        return await client.putContent(kind, id, normalized, { merge, receipt: true });
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed
         // the payload wrong can self-correct next turn instead of looping on the same validation error.
@@ -936,6 +1012,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
     gate('content:delete', ({ kind, id, dataset }) => client.deleteContent(kind, id, dataset).then(() => ({ deleted: `${kind}/${id}` }))),
+  );
+
+  server.registerTool(
+    'delete_content_bulk',
+    {
+      description:
+        'Delete MANY entities of one kind in ONE call: { kind, ids:[…] } — plus `dataset` (the owning dataset slug) when kind is "entry". Use this instead of looping delete_content when clearing up after an import (junk datasets, a batch of entries or scaffolded pages): one call instead of N, so you do not burn turns or hit the write rate limit. Up to 200 ids. PARTIAL SUCCESS is normal — each id is attempted on its own and the result is { deleted:[…], failed:[{id,error}], requested }, so an id that is already gone does not abort the rest. Deleting a DATASET also deletes its entries. Everything stays restorable from version history. Needs the content:delete capability.',
+      inputSchema: {
+        kind: GENERIC_KIND,
+        ids: z.array(z.string()).min(1).max(200).describe('The entity ids to delete (duplicates are collapsed).'),
+        dataset: z.string().optional().describe('ENTRY only: the owning dataset slug (entry ids are unique only within their dataset).'),
+      },
+    },
+    gate('content:delete', ({ kind, ids, dataset }) => client.deleteContentBulk(kind, ids, dataset)),
   );
 
   server.registerTool(
@@ -977,9 +1067,38 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Crawl + IMPORT a public https website URL into THIS project — the FIRST step of cloning/nativizing a site. The server fetches and RENDERS the live page(s) itself (executing JS, following an embed/preview wrapper to the real framed site), self-hosts the images + fonts, and creates the imported `swImport` scaffold pages. Call this FIRST whenever you are asked to clone/nativize/reproduce a URL and the project has no imported pages yet; then nativize (get_guide("import") → author → visual_audit → publish_project). NEVER tell the user you cannot fetch websites or ask them to paste HTML — this tool imports the live page for you. Foundation (native scaffold) is on by default.',
-      inputSchema: { url: z.string().url().max(2048), foundation: z.boolean().optional() },
+      inputSchema: {
+        url: z.string().url().max(2048),
+        foundation: z.boolean().optional(),
+        inferDatasets: z
+          .boolean()
+          .optional()
+          .describe(
+            'Guess DATASETS from repeated markup (a card grid → a dataset + one entry per card). Default FALSE and normally leave it so: shape-matching misses a listing whose cards are not identical, names fields after the markup instead of the meaning, and concatenates text split across inline elements — you author better datasets by reading the page. Set true only to see what it would guess.',
+          ),
+        renderMode: z
+          .enum(['auto', 'always'])
+          .optional()
+          .describe(
+            'When to run the headless render. "auto" (default) renders only a page with no content without JS (an SPA shell / embed wrapper). Use "always" when the imported pages come back MISSING chrome the live site clearly has — a header or footer a server-rendered site assembles in JavaScript is invisible to "auto", which sees real content and skips the render. Costs a browser navigation per page.',
+          ),
+        maxPages: z.number().int().min(1).max(200).optional(),
+        maxDepth: z.number().int().min(0).max(5).optional(),
+      },
     },
-    gate('content:write', ({ url, foundation }) => client.importWebsite(url, foundation).then(summarizeImport)),
+    gate('content:write', ({ url, foundation, inferDatasets, renderMode, maxPages, maxDepth }) =>
+      client.importWebsite(url, { foundation, inferDatasets, renderMode, maxPages, maxDepth }).then(summarizeImport),
+    ),
+  );
+
+  server.registerTool(
+    'import_status',
+    {
+      description:
+        'Poll a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. A real crawl takes MINUTES, so import_website hands back a jobId immediately and you check here (roughly every 30s) rather than blocking. NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
+      inputSchema: { jobId: z.string().min(1).max(64) },
+    },
+    gate('content:write', ({ jobId }) => client.importStatus(jobId).then(summarizeImportJob)),
   );
 
   server.registerTool(

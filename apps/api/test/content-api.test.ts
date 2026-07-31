@@ -217,6 +217,40 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
     expect((await put(t, projectId, 'snippet', 'card', { id: 'card', name: 'card', source: '<div onclick="{{x}}">x</div>' })).statusCode).toBe(400);
   });
 
+  // Render is deliberately LENIENT about an unknown helper (an inert comment, so one retired helper
+  // can't 400 a whole page). But that marker is invisible inside an attribute, which is exactly where
+  // the missing-arithmetic case lands — so the WRITE is where it has to be caught.
+  it('rejects a call to a helper that does not exist, naming it and pointing at the attribute case', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const bad = await put(t, projectId, 'page', 'home', {
+      ...page,
+      source: '<section>{{#each dataset.x}}<div data-sw-delay="{{multiply @index 90}}"></div>{{/each}}</section>',
+    });
+    expect(bad.statusCode).toBe(400);
+    const msg = (bad.json() as { error: string }).error;
+    expect(msg).toMatch(/multiply/);          // names the offender
+    expect(msg).toMatch(/inside an attribute/); // and why it would have been invisible
+    expect(msg).toMatch(/sw-stagger/);        // and what to use instead
+    // The supported form saves.
+    expect(
+      (await put(t, projectId, 'page', 'home', {
+        ...page,
+        source: '<section>{{#each dataset.x}}<div data-sw-delay="{{sw-stagger @index 90}}"></div>{{/each}}</section>',
+      })).statusCode,
+    ).toBe(200);
+  });
+
+  it('rejects an unknown helper in a CHROME slot too — it would show on every page', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+    const bad = await put(t, projectId, 'settings', 'settings', {
+      ...base,
+      website: { footer: '<div class="footer">{{bogusHelper company.name}}</div>' },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/Footer.*bogusHelper/i);
+  });
+
   it('LOUDLY rejects a skeleton landmark in a chrome slot (slot-named) but allows neutral slot content', async () => {
     const { t, projectId } = await setup('owner@acme.test');
     const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
@@ -312,16 +346,16 @@ describe('content API — settings patch/merge (?merge=1)', () => {
     expect(item.website?.footer).toBe('<div>NEW</div>');
   });
 
-  it('rejects ?merge=1 for a non-settings kind', async () => {
-    const { t, projectId } = await setup('owner@acme.test', 'mergepage');
+  it('rejects ?merge=1 for a kind that is neither settings nor page', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'mergekind');
     const res = await app.inject({
       method: 'PUT',
-      url: `/projects/${projectId}/content/page/home?merge=1`,
+      url: `/projects/${projectId}/content/dataset/team?merge=1`,
       cookies: { sw_session: t },
-      payload: { title: 'Home' },
+      payload: { name: 'Team' },
     });
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" kind/i);
+    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" and "page" kinds/i);
   });
 
   it('returns an actionable 404 when there is no settings row to merge into', async () => {
@@ -331,5 +365,307 @@ describe('content API — settings patch/merge (?merge=1)', () => {
     const res = await put(t, projectId, 'settings', { website: { footer: '<div>x</div>' } }, true);
     expect(res.statusCode).toBe(404);
     expect((res.json() as { error: string }).error).toMatch(/no settings to merge into/i);
+  });
+});
+
+// A page write used to be a TOTAL replace with no partial option, so the routine act of setting a nav
+// label (`{id, path, title, nav}`) silently deleted `source`, `status`, `description`, `order`, `parent`
+// AND `data.swImport` — the marker every fidelity tool requires, making the page permanently un-auditable.
+describe('content API — page patch/merge (?merge=1) + import-marker preservation', () => {
+  const putPage = (t: string, projectId: string, id: string, payload: object, merge = false) =>
+    app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/${id}${merge ? '?merge=1' : ''}`,
+      cookies: { sw_session: t },
+      payload,
+    });
+  const getPage = async (t: string, projectId: string, id: string) =>
+    (await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/${id}`, cookies: { sw_session: t } })).json() as {
+      item: Record<string, unknown>;
+    };
+
+  const full = {
+    id: 'about',
+    path: 'about',
+    title: 'About',
+    status: 'published',
+    description: 'All about us',
+    order: 3,
+    source: '<h1 data-sw-text="t">About</h1>',
+    data: { swImport: { sourceUrl: 'https://example.test/about', rewritten: true }, heading: 'About' },
+  };
+
+  it('PATCHES only the fields sent, keeping source/status/description/order/data', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge');
+    expect((await putPage(t, projectId, 'about', full)).statusCode).toBe(200);
+
+    const patched = await putPage(t, projectId, 'about', { id: 'about', nav: { title: 'About Us', slots: ['header'] } }, true);
+    expect(patched.statusCode).toBe(200);
+
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.nav as { title: string }).title).toBe('About Us');
+    expect(item.source).toBe(full.source); // ← the whole point: a total replace would have dropped these
+    expect(item.status).toBe('published');
+    expect(item.description).toBe('All about us');
+    expect(item.order).toBe(3);
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport);
+    expect((item.data as { heading?: string }).heading).toBe('About'); // sibling data key survives
+  });
+
+  it('merges data key-by-key but replaces arrays wholesale', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge2');
+    await putPage(t, projectId, 'about', { ...full, nav: { title: 'About', slots: ['header', 'footer'] } });
+    await putPage(t, projectId, 'about', { id: 'about', data: { heading: 'Changed' }, nav: { slots: ['mobile'] } }, true);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { heading?: string }).heading).toBe('Changed');
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport); // untouched sibling
+    expect((item.nav as { slots: string[] }).slots).toEqual(['mobile']); // array REPLACED, not appended
+    expect((item.nav as { title: string }).title).toBe('About'); // sibling object key kept
+  });
+
+  it('404s with an actionable message when the page does not exist yet', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemerge404');
+    const res = await putPage(t, projectId, 'ghost', { id: 'ghost', title: 'Ghost' }, true);
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toMatch(/no page "ghost" to merge into/i);
+  });
+
+  it('validates the MERGED page — an unsafe source in the patch is rejected', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemergeunsafe');
+    await putPage(t, projectId, 'about', full);
+    // a bare {{x}} in a URL attribute (must be {{sw-url x}}) — the same rule a full write is held to
+    const bad = await putPage(t, projectId, 'about', { id: 'about', source: '<a href="{{path}}">x</a>' }, true);
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('carries data.swImport across a FULL replace that omits it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemarker');
+    await putPage(t, projectId, 'about', full);
+    // exactly the call that used to destroy the marker
+    expect(
+      (await putPage(t, projectId, 'about', { id: 'about', path: 'about', title: 'About', nav: { title: 'About Us', slots: ['header'] } })).statusCode,
+    ).toBe(200);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { swImport?: unknown }).swImport).toEqual(full.data.swImport);
+    // the rest of the replace still applied normally (this is NOT a merge)
+    expect(item.source).toBeUndefined();
+    expect((item.data as { heading?: string }).heading).toBeUndefined();
+  });
+
+  it('lets an explicit data.swImport:null clear the marker (a page that is no longer import-derived)', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pagemarkerclear');
+    await putPage(t, projectId, 'about', full);
+    expect(
+      (await putPage(t, projectId, 'about', { id: 'about', path: 'about', title: 'About', data: { swImport: null } })).statusCode,
+    ).toBe(200);
+    const { item } = await getPage(t, projectId, 'about');
+    expect((item.data as { swImport?: unknown }).swImport ?? null).toBeNull();
+  });
+});
+
+// A full page list carries every page's Handlebars source — 337 KB on a 22-page imported site, past the
+// MCP tool-output ceiling, so listing the pages of a real site was impossible. `?summary=1` drops the
+// heavy body fields and describes them instead.
+describe('content API — list summary (?summary=1)', () => {
+  const list = (t: string, projectId: string, kind: string, summary = false) =>
+    app.inject({ method: 'GET', url: `/projects/${projectId}/content/${kind}${summary ? '?summary=1' : ''}`, cookies: { sw_session: t } });
+
+  it('omits source + data and describes them, keeping the metadata', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'listsum');
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/page/about`, cookies: { sw_session: t },
+      payload: { id: 'about', path: 'about', title: 'About', status: 'published', source: '<h1>hi</h1>', data: { heading: 'A' } },
+    });
+    const full = (list_ => list_.json() as { items: Array<Record<string, unknown>> })(await list(t, projectId, 'page'));
+    const about = full.items.find((p) => p.id === 'about')!;
+    expect(about.source).toBe('<h1>hi</h1>'); // default is unchanged — existing callers keep the body
+
+    const sum = (await list(t, projectId, 'page', true)).json() as { items: Array<Record<string, unknown>> };
+    const s = sum.items.find((p) => p.id === 'about')!;
+    expect(s.title).toBe('About');
+    expect(s.status).toBe('published');
+    expect(s.source).toBeUndefined();
+    expect(s.data).toBeUndefined();
+    expect((s._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ source: { bytes: 11 }, data: { keys: ['heading'] } });
+  });
+
+  it('still applies the dataset scope for entries while summarising', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'listsument');
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/dataset/team`, cookies: { sw_session: t }, payload: { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'name', type: 'text' }] } });
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/entry/a?dataset=team`, cookies: { sw_session: t }, payload: { id: 'a', dataset: 'team', values: { name: 'Ann' } } });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry?dataset=team&summary=1`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const items = (res.json() as { items: Array<Record<string, unknown>> }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]!.values).toBeUndefined();
+    expect((items[0]!._summary as { omitted: Record<string, unknown> }).omitted).toEqual({ values: { keys: ['name'] } });
+  });
+});
+
+// A write used to echo the whole stored entity — for settings that is criticalCss + four chrome slots
+// + identity, ~9 KB, even for a one-field ?merge=1 patch. `?receipt=1` returns what a writer actually
+// needs instead: did it land, and on what.
+describe('write receipt', () => {
+  const base = { identity: { name: 'Acme', colors: {} }, settings: {} };
+  const bigCss = `.x{color:red}${'/* pad */'.repeat(400)}`;
+
+  it('replaces the ~9 KB echo with a short receipt naming the changed keys', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt1');
+    const url = `/projects/${projectId}/content/settings/settings`;
+    // Seed a realistically FAT settings entity.
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { criticalCss: bigCss } } });
+
+    const echo = await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { criticalCss: bigCss, head: '<meta>' } } });
+    const receipt = await app.inject({
+      method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { website: { footer: '<div>f</div>' } },
+    });
+    expect(receipt.statusCode).toBe(200);
+    const body = receipt.json() as { kind: string; id: string; bytes: number; created: boolean; changed: string[] };
+    expect(body).toMatchObject({ kind: 'settings', id: 'settings', created: false, changed: ['website'] });
+    expect(body.bytes).toBeGreaterThan(3_000); // it still REPORTS the size it no longer sends
+    // The whole point: the receipt is orders of magnitude smaller than the echo it replaces.
+    expect(receipt.payload.length).toBeLessThan(200);
+    expect(echo.payload.length).toBeGreaterThan(3_000);
+  });
+
+  it('still MERGES correctly — a receipt write is a normal write', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt2');
+    const url = `/projects/${projectId}/content/settings/settings`;
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...base, website: { head: '<meta>' } } });
+    await app.inject({ method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { website: { footer: '<div>f</div>' } } });
+    const stored = (await app.inject({ method: 'GET', url, cookies: { sw_session: t } })).json() as { item: { website: Record<string, string> } };
+    expect(stored.item.website.footer).toBe('<div>f</div>');
+    expect(stored.item.website.head).toBe('<meta>'); // the omitted slot survived
+  });
+
+  it('reports an empty `changed` for a NO-OP patch — the signal the echo never gave', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt3');
+    const url = `/projects/${projectId}/content/page/home`;
+    await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { ...page, title: 'Home' } });
+    const noop = await app.inject({ method: 'PUT', url: `${url}?merge=1&receipt=1`, cookies: { sw_session: t }, payload: { id: 'home', title: 'Home' } });
+    expect((noop.json() as { changed: string[] }).changed).toEqual([]);
+  });
+
+  it('marks a CREATE, and defaults to the full echo so existing callers are untouched', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt4');
+    const url = `/projects/${projectId}/content/page/about`;
+    const created = await app.inject({
+      method: 'PUT', url: `${url}?receipt=1`, cookies: { sw_session: t }, payload: { id: 'about', path: 'about', title: 'About' },
+    });
+    const body = created.json() as { created: boolean; changed: string[] };
+    expect(body.created).toBe(true);
+    expect(body.changed).toEqual(expect.arrayContaining(['id', 'path', 'title']));
+    // No flag → the entity, exactly as before.
+    const plain = await app.inject({ method: 'PUT', url, cookies: { sw_session: t }, payload: { id: 'about', path: 'about', title: 'About 2' } });
+    expect((plain.json() as { item: { title: string } }).item.title).toBe('About 2');
+  });
+
+  it('reads an ENTRY under its dataset scope, so an update is not reported as a create', async () => {
+    // An entry lives under its dataset slug, not the project-global scope. A scope-less prior read would
+    // miss it and every entry write would claim created:true with every key "changed".
+    const { t, projectId } = await setup('owner@acme.test', 'rcptentry');
+    const put = (url: string, payload: Record<string, unknown>) =>
+      app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    await put('/content/dataset/team', { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'v', type: 'text' }] });
+
+    const created = await put('/content/entry/row_1?receipt=1', { id: 'row_1', dataset: 'team', values: { v: 'a' } });
+    expect((created.json() as { created: boolean }).created).toBe(true);
+
+    const updated = await put('/content/entry/row_1?receipt=1', { id: 'row_1', dataset: 'team', values: { v: 'b' } });
+    const body = updated.json() as { created: boolean; changed: string[] };
+    expect(body.created).toBe(false);       // the existing row WAS found
+    expect(body.changed).toEqual(['values']); // and only the field that moved is listed
+  });
+
+  it('still carries data.swImport across a full page replace when a receipt is requested', async () => {
+    // The receipt path reuses the SAME prior-value read as the swImport carry — a regression here would
+    // make a cloned page permanently un-auditable.
+    const { t, projectId } = await setup('owner@acme.test', 'rcpt5');
+    const url = `/projects/${projectId}/content/page/home`;
+    await app.inject({
+      method: 'PUT', url, cookies: { sw_session: t },
+      payload: { ...page, data: { swImport: { sourceUrl: 'https://x.test/' } } },
+    });
+    await app.inject({ method: 'PUT', url: `${url}?receipt=1`, cookies: { sw_session: t }, payload: { ...page, title: 'Renamed' } });
+    const stored = (await app.inject({ method: 'GET', url, cookies: { sw_session: t } })).json() as { item: { title: string; data?: { swImport?: unknown } } };
+    expect(stored.item.title).toBe('Renamed');
+    expect(stored.item.data?.swImport).toEqual({ sourceUrl: 'https://x.test/' });
+  });
+});
+
+// One call clears N entities. Looping delete_content was slow interactively and, for an agent, a
+// rate-limit wall that made "undo this import" cost more turns than the import.
+describe('bulk delete', () => {
+  const bulk = (t: string, projectId: string, kind: string, payload: { ids: string[]; dataset?: string }) =>
+    app.inject({ method: 'POST', url: `/projects/${projectId}/content/${kind}/bulk-delete`, cookies: { sw_session: t }, payload });
+
+  async function seedPages(t: string, projectId: string, ids: string[]) {
+    for (const id of ids) {
+      await app.inject({
+        method: 'PUT', url: `/projects/${projectId}/content/page/${id}`, cookies: { sw_session: t },
+        payload: { id, path: id, title: id },
+      });
+    }
+  }
+
+  it('deletes many in one call and reports each id', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk1');
+    await seedPages(t, projectId, ['a', 'b', 'c']);
+    const res = await bulk(t, projectId, 'page', { ids: ['a', 'b'] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ deleted: ['a', 'b'], failed: [], requested: 2 });
+    // Only the named ids went; home + c remain.
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } })).json() as { items: Array<{ id: string }> }).items;
+    expect(left.map((p) => p.id).sort()).toEqual(['c', 'home']);
+  });
+
+  it('is PARTIAL: one bad id does not abort the batch', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk2');
+    await seedPages(t, projectId, ['a', 'b']);
+    const body = (await bulk(t, projectId, 'page', { ids: ['a', 'ghost', 'b'] })).json() as { deleted: string[]; failed: Array<{ id: string; error: string }> };
+    expect(body.deleted).toEqual(['a', 'b']);
+    expect(body.failed).toHaveLength(1);
+    expect(body.failed[0]!.id).toBe('ghost');
+    expect(body.failed[0]!.error).toMatch(/not found/i); // the reason is reported, never swallowed
+  });
+
+  it('collapses duplicate ids so they cannot double-count or report a phantom miss', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk3');
+    await seedPages(t, projectId, ['a']);
+    expect((await bulk(t, projectId, 'page', { ids: ['a', 'a', 'a'] })).json()).toEqual({ deleted: ['a'], failed: [], requested: 1 });
+  });
+
+  it('scopes ENTRY deletes to their dataset (ids are unique only within one) and 400s without it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk4');
+    const put = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    for (const slug of ['team', 'faq']) {
+      await put(`/content/dataset/${slug}`, { id: slug, name: slug, slug, fields: [{ name: 'v', type: 'text' }] });
+      await put(`/content/entry/row_1?dataset=${slug}`, { id: 'row_1', dataset: slug, values: { v: slug } });
+    }
+    // Same entry id in both datasets — an unscoped bulk delete must be refused, not guessed.
+    expect((await bulk(t, projectId, 'entry', { ids: ['row_1'] })).statusCode).toBe(400);
+    expect((await bulk(t, projectId, 'entry', { ids: ['row_1'], dataset: 'team' })).json()).toMatchObject({ deleted: ['row_1'] });
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry`, cookies: { sw_session: t } })).json() as { items: Array<{ dataset: string }> }).items;
+    expect(left.map((e) => e.dataset)).toEqual(['faq']); // the other dataset's row_1 is untouched
+  });
+
+  it('rejects an empty or oversized id list, and a member without content:delete', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk5');
+    expect((await bulk(t, projectId, 'page', { ids: [] })).statusCode).toBe(400);
+    expect((await bulk(t, projectId, 'page', { ids: Array.from({ length: 201 }, (_, i) => `p${i}`) })).statusCode).toBe(400);
+    // An outsider has no access to the project at all.
+    await registerAccount(db, 'stranger@acme.test', 'Pw-secret-1');
+    const other = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'stranger@acme.test', password: 'Pw-secret-1' } }));
+    expect((await bulk(other, projectId, 'page', { ids: ['home'] })).statusCode).toBe(403);
+  });
+
+  it('deleting a DATASET takes its entries with it', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'bulk6');
+    const put = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: `/projects/${projectId}${url}`, cookies: { sw_session: t }, payload });
+    await put('/content/dataset/team', { id: 'team', name: 'Team', slug: 'team', fields: [{ name: 'v', type: 'text' }] });
+    await put('/content/entry/row_1?dataset=team', { id: 'row_1', dataset: 'team', values: { v: 'x' } });
+    expect((await bulk(t, projectId, 'dataset', { ids: ['team'] })).json()).toMatchObject({ deleted: ['team'] });
+    const left = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry`, cookies: { sw_session: t } })).json() as { items: unknown[] }).items;
+    expect(left).toEqual([]);
   });
 });

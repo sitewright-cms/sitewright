@@ -117,7 +117,19 @@ export const ANIMATION_NOSCRIPT =
 /** Scroll-reveal trigger point: the reveal fires once at least this fraction of the element is in view
  *  (0.2 = 20% — "meaningfully in view", intentionally later than a bare edge-touch). The reveal also
  *  RESETS on a full exit (ratio 0) so it replays on re-entry from any scroll direction. */
-const REVEAL_RATIO = 0.2;
+// DEFAULT reveal ratio — 0, i.e. "any part of the element has crossed the reveal line".
+//
+// It used to be 0.2, and that was the wrong UNIT: intersectionRatio is a fraction of the ELEMENT's own
+// area, so the trigger point drifts with content length. An element taller than the viewport can only ever
+// reach `viewportH / elementH`, and past `elementH > viewportH / ratio` it can never reach 0.2 at all.
+// MEASURED on a real clone (a 2960px content card, viewport 1440x900): the whole first screen of the page's
+// main content arrived INVISIBLE and only faded in around scrollY 300-600, i.e. after the reader had already
+// scrolled past it. The taller the section, the later it fires.
+// The "meaningfully in view" gate that this default was reaching for is the observer's rootMargin
+// (`0px 0px -20% 0px`, a fraction of the VIEWPORT) — that one is height-independent and already correct, so
+// the ratio gate on top of it only ever hurt. `data-sw-threshold` remains as an explicit escape hatch for an
+// author who really does want "N% of this element visible", and `data-sw-offset` sets the line in px.
+const REVEAL_RATIO = 0;
 
 // The runtime. Notes:
 // - Content is hidden from FIRST PAINT by CSS ({@link HIDDEN}) — it never flashes visible before the
@@ -127,9 +139,12 @@ const REVEAL_RATIO = 0.2;
 // - `data-sw-delay` (start delay, ms) / `data-sw-duration` (length, ms; default {@link SW_DURATION_DEFAULT})
 //   are parsed + clamped (swMs, timing.ts) and applied inline; `data-sw-easing` resolves through a fixed
 //   allowlist map. Attribute values can therefore never inject style/script.
-// - Scroll-reveal fires when the element is MEANINGFULLY in view — its intersectionRatio reaches
-//   `data-sw-threshold` (0-1 fraction; default {@link REVEAL_RATIO}) — later / more in view than a bare
-//   edge-touch. By DEFAULT the reveal REPLAYS: the element is RESET on a full exit (ratio 0) and re-reveals
+// - Scroll-reveal fires when the element crosses the REVEAL LINE — by default 20% up from the viewport
+//   bottom (the observer's rootMargin), so it animates clearly on screen rather than at the very edge.
+//   `data-sw-offset="150"` moves that line to a fixed 150px inside the viewport instead (its own observer);
+//   `data-sw-threshold` (0-1) additionally requires that fraction of the ELEMENT to be visible — an escape
+//   hatch, NOT the default, because an element taller than the viewport can never reach a high fraction.
+//   By DEFAULT the reveal REPLAYS: the element is RESET on a full exit (ratio 0) and re-reveals
 //   on re-entry from ANY scroll direction (mirrors the SVG engine's approach). `data-sw-once="true"` opts
 //   into play-once (unobserved after the first reveal).
 export const ANIMATION_JS = `(function(){
@@ -182,17 +197,29 @@ export const ANIMATION_JS = `(function(){
   // Reveal an element once. data-sw-once="true" then stops BOTH observers watching it → it can never reset.
   function swReveal(el){
     el.classList.add('sw-animation-active');
-    if(el.getAttribute('${SW_TIMING_ATTRS.once}')==='true'){io.unobserve(el);exitIo.unobserve(el);}
+    if(el.getAttribute('${SW_TIMING_ATTRS.once}')==='true'){if(el.__swIo)el.__swIo.unobserve(el);exitIo.unobserve(el);}
   }
-  // SCROLL-REVEAL observer: -20% bottom margin → REVEAL fires only once the element is MEANINGFULLY in view
-  // (intersectionRatio past data-sw-threshold / REVEAL_RATIO, past the line 20% up from the bottom) — later /
-  // more in view than a bare edge-touch. Reveal only; exitIo above owns the reset (replay).
-  var io=new IntersectionObserver(function(entries){
+  // SCROLL-REVEAL: fires once the element crosses the reveal line — 20% up from the viewport bottom by
+  // default, or data-sw-offset px in. Height-INDEPENDENT, so a 200px card and a 3000px section behave the
+  // same. data-sw-threshold can additionally demand a fraction of the element. Reveal only; exitIo owns reset.
+  function swRevealCb(entries){
     entries.forEach(function(entry){
       var el=entry.target;
       if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO}))swReveal(el);
     });
-  },{threshold:THRESHOLDS,rootMargin:'0px 0px -20% 0px',root:scrollRoot});
+  }
+  // Reveal observers keyed by their bottom rootMargin. Default is the -20% VIEWPORT line; an element with
+  // data-sw-offset="N" reveals once its top edge is N px inside the viewport instead. rootMargin is a
+  // property of the OBSERVER, not of a target, so each distinct offset needs its own observer — grouped, so
+  // a page using one offset throughout still creates exactly one extra.
+  var revealIos=Object.create(null);
+  function swOffset(el){var v=parseInt(el.getAttribute('data-sw-offset'),10);return isNaN(v)?null:Math.max(0,Math.min(v,4000));}
+  function swIoFor(el){
+    var off=swOffset(el);
+    var key=off===null?'d':'o'+off;
+    if(!revealIos[key])revealIos[key]=new IntersectionObserver(swRevealCb,{threshold:THRESHOLDS,rootMargin:'0px 0px '+(off===null?'-20%':'-'+off+'px')+' 0px',root:scrollRoot});
+    return revealIos[key];
+  }
   // The elements are ALREADY hidden from first paint by CSS (no flash). ARM them now so the CSS self-heal
   // failsafe stands down — this runtime has taken ownership and swWhenReady guarantees the reveal below.
   Array.prototype.forEach.call(els,function(el){
@@ -209,7 +236,9 @@ export const ANIMATION_JS = `(function(){
       if(duration>0)el.style.transitionDuration=duration+'ms';
       var easing=EASINGS[el.getAttribute('${SW_TIMING_ATTRS.easing}')||''];
       if(easing)el.style.transitionTimingFunction=easing;
-      io.observe(el);      // reveal (-20% "clearly in view")
+      var revealIo=swIoFor(el);  // reveal: the -20% line, or data-sw-offset px
+      el.__swIo=revealIo;        // remembered so data-sw-once can unobserve the RIGHT observer
+      revealIo.observe(el);
       exitIo.observe(el);  // reset (replay) when FULLY off the viewport
     });
     // ON-LOAD entrance: a THIRD observer against the FULL viewport (NO -20% bottom margin) reveals whatever

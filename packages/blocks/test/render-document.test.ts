@@ -268,3 +268,67 @@ describe('renderDocument — document shell', () => {
     });
   });
 });
+
+// The author's criticalCss used to be emitted BEFORE the platform's component/effect sheets, so on a
+// specificity TIE the platform silently won — and component rules are written with attribute selectors of
+// exactly the weight an author naturally writes, so ties were routine. One cloned tabs component lost gap,
+// flex-wrap, display, background, padding AND border-radius that way, surfacing as three separate
+// user-visible defects, with the author's rules sitting in the served CSS doing nothing.
+describe('renderDocument — cascade order (author criticalCss vs platform component CSS)', () => {
+  const order = (doc: string) => ({
+    base: doc.indexOf('sw-normalize'),
+    component: doc.indexOf('.sw-component-marker'),
+    critical: doc.indexOf('.author-marker'),
+    utilities: doc.indexOf('utilities.css'),
+  });
+
+  it('emits author criticalCss AFTER the component sheets but BEFORE the utility sheet', () => {
+    const doc = renderDocument(page, {
+      brand,
+      bodyHtml: '<h1>Hi</h1>',
+      criticalCss: '.author-marker{gap:10px}',
+      inlineStyles: ['.sw-component-marker{gap:.25rem}'],
+      stylesheets: ['/utilities.css'],
+    });
+    const o = order(doc);
+    expect(o.base).toBeGreaterThan(-1);
+    expect(o.component).toBeGreaterThan(-1);
+    expect(o.critical).toBeGreaterThan(-1);
+    expect(o.utilities).toBeGreaterThan(-1);
+    // platform base → platform components → AUTHOR → Tailwind utilities
+    expect(o.base).toBeLessThan(o.component);
+    expect(o.component).toBeLessThan(o.critical); // ← the fix: a tie now goes to the author
+    expect(o.critical).toBeLessThan(o.utilities); // ← unchanged: a utility class still wins
+  });
+
+  it('still emits criticalCss when there are no component sheets at all', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', criticalCss: '.author-marker{gap:10px}' });
+    expect(doc).toContain('.author-marker{gap:10px}');
+  });
+});
+
+// The site's content policy is enforced ONLY on platform-hosted origins, as a response header. In the
+// document it is INERT: a strict `default-src 'self'` shipping inside every exported site protects nobody
+// the platform is responsible for, while silently breaking web fonts, analytics beacons and embedded maps
+// on a customer's own server — and they can't remove it without editing every built file.
+describe('renderDocument — the CSP travels as an INERT meta, never an enforcing one', () => {
+  it('emits name="sw-csp", never http-equiv', () => {
+    const policy = "default-src 'self'; frame-src 'self' https://www.youtube.com";
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', metaCsp: policy });
+    expect(doc).toContain('name="sw-csp"');
+    expect(doc).not.toContain('http-equiv="Content-Security-Policy"');
+    // the policy itself is intact (attribute-escaped) so the hosted origin can reconstruct the header
+    expect(doc).toContain('https://www.youtube.com');
+  });
+
+  it('emits nothing at all when there is no policy to carry', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
+    expect(doc).not.toContain('sw-csp');
+    expect(doc).not.toContain('Content-Security-Policy');
+  });
+
+  it('escapes the policy into the attribute (it can never break out of the meta)', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', metaCsp: 'default-src \'self\'; report-to "x"><script>alert(1)</script>' });
+    expect(doc).not.toContain('<script>alert(1)</script>');
+  });
+});

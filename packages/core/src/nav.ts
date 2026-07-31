@@ -52,9 +52,10 @@ function linkHref(page: Page): Pick<NavItem, 'path' | 'external' | 'newTab'> {
 
 /**
  * Sibling order then title — explicit 'en' locale for deterministic ordering across
- * environments. Prefers the page-tree `order` (set by drag-reordering the pages list) so the
- * menu follows the list, falling back to the legacy `nav.order` when it is absent. Shared with
- * `childrenOf` so `{{#each page.children}}` and the auto-nav order siblings identically.
+ * environments. The page-tree `order` (set by drag-reordering the pages list) IS the sort key, so
+ * the menu follows the list; the retired `nav.order` is still read as a fallback for pages written
+ * before the tree became canonical (nothing writes it now). Shared with `childrenOf` so
+ * `{{#each page.children}}` and the auto-nav order siblings identically.
  */
 export function byNavOrder(a: Page, b: Page): number {
   const av = a.order ?? a.nav?.order ?? 0;
@@ -71,8 +72,8 @@ function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
 
 /**
  * Builds the ordered navigation items for a slot from the page tree — concrete
- * (non-collection) pages whose `nav.slots` includes the slot, sorted by
- * `nav.order` then title. The label falls back from `nav.title` to the page title.
+ * (non-collection) pages whose `nav.slots` includes the slot, sorted by the page-tree
+ * `order` then title ({@link byNavOrder}). The label falls back from `nav.title` to the page title.
  * Link placeholders (`kind:'link'`) are included like any nav-slotted entry — their
  * href resolves from `link.target` ({@link linkHref}) instead of the page-tree route,
  * and they can themselves be dropdown parents grouping child pages.

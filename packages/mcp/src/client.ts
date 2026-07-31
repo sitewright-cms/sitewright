@@ -136,6 +136,78 @@ export interface RegionCompareResult {
   regions: Record<string, { build?: RegionCrop; source?: RegionCrop }>;
 }
 
+/** Options for {@link SitewrightClient.importWebsite}; every one is server-defaulted when omitted. */
+export interface ImportWebsiteOptions {
+  foundation?: boolean;
+  inferDatasets?: boolean;
+  renderMode?: 'auto' | 'always';
+  /** Block until the import finishes instead of returning a job id. Usually a bad idea — a real crawl
+   *  outlives a tool call, which is the whole reason the async path exists. */
+  wait?: boolean;
+  maxPages?: number;
+  maxDepth?: number;
+}
+
+/** An async import job's state (GET /projects/:id/agent/import-website/:jobId). */
+export interface ImportJobView {
+  id: string;
+  url: string;
+  status: 'running' | 'done' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+  progress: string[];
+  report?: Record<string, unknown>;
+  error?: string;
+}
+
+/** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
+export interface WriteReceipt {
+  kind: string;
+  id: string;
+  bytes: number;
+  created: boolean;
+  /** Top-level keys that actually differ from before the write. EMPTY means the write changed nothing. */
+  changed: string[];
+}
+
+/**
+ * Outcome of a BULK delete (POST /projects/:id/content/:kind/bulk-delete). Partial success is normal:
+ * `deleted` + `failed` together account for every requested id (after de-duplication).
+ */
+export interface BulkDeleteResult {
+  deleted: string[];
+  failed: Array<{ id: string; error: string }>;
+  /** How many DISTINCT ids were attempted. */
+  requested: number;
+}
+
+/** One measured element from `inspect_source`. */
+export interface InspectNode {
+  tag: string;
+  id?: string;
+  classes?: string;
+  rect: { x: number; y: number; width: number; height: number; pageY: number };
+  styles: Record<string, string>;
+  text?: string;
+  html?: string;
+  pseudo?: { before?: Record<string, string>; after?: Record<string, string> };
+}
+/** Measured styles/rects/markup for a rendered page (POST /projects/:id/inspect-source/:pageId). */
+export interface InspectSourceResult {
+  /** Which page was measured — the LIVE original or the agent's own build. */
+  side: 'source' | 'build';
+  /** The URL actually rendered. */
+  url: string;
+  sourceUrl: string;
+  route: string;
+  title: string;
+  /** Every number below is only true AT this viewport. */
+  viewport: { width: number; height: number };
+  documentHeight: number;
+  /** `count: -1` marks a selector the browser rejected as invalid syntax. */
+  results: Array<{ selector: string; count: number; nodes: InspectNode[] }>;
+}
+
 /** Lighthouse category scores, 0–100 (null when a category could not be scored). */
 export interface PagespeedScores {
   performance: number | null;
@@ -346,11 +418,15 @@ export class SitewrightClient {
     this.scope = scope;
   }
 
-  async listContent(kind: string, dataset?: string): Promise<unknown[]> {
-    const res = await this.request<{ items: unknown[] }>(
-      'GET',
-      this.projectPath(`/content/${encodeURIComponent(kind)}${datasetQuery(dataset)}`),
-    );
+  /**
+   * List a kind. `summary` drops the heavy body fields (a page's `source` + `data`, a template/snippet
+   * `source`, an entry's `values`) and describes them under `_summary` instead — a full page list carries
+   * every page's Handlebars source, which on a real imported site exceeds the tool-output ceiling.
+   */
+  async listContent(kind: string, dataset?: string, opts: { summary?: boolean } = {}): Promise<unknown[]> {
+    const q = datasetQuery(dataset);
+    const suffix = opts.summary ? `${q ? `${q}&` : '?'}summary=1` : q;
+    const res = await this.request<{ items: unknown[] }>('GET', this.projectPath(`/content/${encodeURIComponent(kind)}${suffix}`));
     return res.items;
   }
 
@@ -362,15 +438,21 @@ export class SitewrightClient {
     return res.item;
   }
 
-  async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean } = {}): Promise<unknown> {
-    // `merge` PATCHES: the body is a fragment deep-merged into the existing entity (settings only) so a
-    // partial write can't revert the slots it omits. Default (no flag) still REPLACES the whole entity.
-    const res = await this.request<{ item: unknown }>(
+  async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean; receipt?: boolean } = {}): Promise<unknown> {
+    // `merge` PATCHES: the body is a fragment deep-merged into the existing entity (settings + page) so a
+    // partial write can't revert the fields it omits. Default (no flag) still REPLACES the whole entity.
+    //
+    // `receipt` asks for a SHORT confirmation ({kind,id,bytes,created,changed}) instead of the stored
+    // entity. Agent tools default it ON: echoing settings back cost ~9 KB per write for no benefit — an
+    // agent that wants the entity has get_content, and `changed` says more than the echo did (an empty
+    // list means the patch was a no-op). The response shape differs, so the caller decides.
+    const query = [opts.merge ? 'merge=1' : '', opts.receipt ? 'receipt=1' : ''].filter(Boolean).join('&');
+    const res = await this.request<{ item: unknown } | WriteReceipt>(
       'PUT',
-      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${opts.merge ? '?merge=1' : ''}`),
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${query ? `?${query}` : ''}`),
       data,
     );
-    return res.item;
+    return opts.receipt ? res : (res as { item: unknown }).item;
   }
 
   async deleteContent(kind: string, entityId: string, dataset?: string): Promise<void> {
@@ -378,6 +460,17 @@ export class SitewrightClient {
       'DELETE',
       this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${datasetQuery(dataset)}`),
     );
+  }
+
+  /**
+   * Delete MANY entities of one kind in a single call. Each id is attempted independently, so the
+   * result reports what went and what didn't rather than aborting the batch on the first bad id.
+   */
+  async deleteContentBulk(kind: string, ids: readonly string[], dataset?: string): Promise<BulkDeleteResult> {
+    return this.request<BulkDeleteResult>('POST', this.projectPath(`/content/${encodeURIComponent(kind)}/bulk-delete`), {
+      ids,
+      ...(dataset === undefined ? {} : { dataset }),
+    });
   }
 
   /** Add a translation-target language: appends the locale AND scaffolds an inherited variant of
@@ -449,6 +542,18 @@ export class SitewrightClient {
     return this.request('GET', this.projectPath(`/compare-regions/${encodeURIComponent(pageId)}${suffix}`));
   }
 
+  /**
+   * MEASURE a rendered page: settled markup + real computed styles + real rects for the given selectors.
+   * `side` picks the LIVE original (default) or the agent's own build, so the same call shape answers
+   * "what is the original" and "did my clone match it".
+   */
+  async inspectSource(
+    pageId: string,
+    body: { selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' },
+  ): Promise<InspectSourceResult> {
+    return this.request('POST', this.projectPath(`/inspect-source/${encodeURIComponent(pageId)}`), body);
+  }
+
   /** Lighthouse page-speed + SEO audit of a page (deploy-equivalent build). `formFactor` defaults to mobile. */
   async pagespeedAudit(pageId: string, formFactor?: 'mobile' | 'desktop'): Promise<PagespeedAuditResult> {
     const suffix = formFactor ? `?formFactor=${formFactor}` : '';
@@ -505,11 +610,13 @@ export class SitewrightClient {
 
   /** Import a PUBLIC https image by URL: the server downloads, optimizes, and self-hosts it. */
   /** Crawl + import a public website URL into the connected project (the first step of a clone). */
-  async importWebsite(url: string, foundation?: boolean): Promise<ImportWebsiteResult> {
-    return this.request('POST', this.projectPath('/agent/import-website'), {
-      url,
-      ...(foundation !== undefined ? { foundation } : {}),
-    });
+  async importWebsite(url: string, opts: ImportWebsiteOptions = {}): Promise<ImportWebsiteResult> {
+    return this.request('POST', this.projectPath('/agent/import-website'), { url, ...opts });
+  }
+
+  /** Poll an async import started by {@link importWebsite}. */
+  async importStatus(jobId: string): Promise<ImportJobView> {
+    return this.request('GET', this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}`));
   }
 
   async importImageUrl(url: string, folder?: string): Promise<unknown> {

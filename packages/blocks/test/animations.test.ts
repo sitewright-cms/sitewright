@@ -128,7 +128,7 @@ describe('animation runtime', () => {
     // Default = replay: the element is only unobserved when the author opts into play-once.
     expect(ANIMATION_JS).toContain("getAttribute('data-sw-once')==='true'");
     expect(ANIMATION_JS).not.toContain("getAttribute('data-sw-once')!=='false'"); // old play-once default is gone
-    expect(ANIMATION_JS).toContain('io.unobserve(el)');
+    expect(ANIMATION_JS).toContain('el.__swIo.unobserve(el)');
     // The reset lives in a DEDICATED full-viewport observer (rootMargin 0, threshold [0]) whose ratio===0
     // fires EXACTLY when no part is on screen — top OR bottom. So (a) content resting in view (incl. the -20%
     // observer's bottom-margin band) is never reset while visible, and (b) an element scrolled fully off the
@@ -138,29 +138,33 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toMatch(/exitIo=new IntersectionObserver\([\s\S]*?\},\{threshold:\[0\],root:scrollRoot\}\)/);
     expect(ANIMATION_JS).toContain("entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active')");
     expect(ANIMATION_JS).toContain("entry.target.classList.remove('sw-animation-active')");
-    // Every armed element is observed by BOTH the reveal observer and the reset observer.
-    expect(ANIMATION_JS).toContain('io.observe(el)');
+    // Every armed element is observed by BOTH its reveal observer and the reset observer.
+    expect(ANIMATION_JS).toContain('revealIo.observe(el)');
     expect(ANIMATION_JS).toContain('exitIo.observe(el)');
     // The old single-observer reset machinery (WeakSet gate + boundingClientRect off-screen probe) is GONE.
     expect(ANIMATION_JS).not.toContain('new WeakSet()');
     expect(ANIMATION_JS).not.toContain('r.top>=vp');
   });
 
-  it('reveals when MEANINGFULLY in view — per-element data-sw-threshold (default 0.2), later than an edge-touch', () => {
-    // The reveal is gated on intersectionRatio vs a PER-ELEMENT threshold (data-sw-threshold, default 0.2),
-    // not a bare isIntersecting edge-touch; the observer uses a negative bottom rootMargin so the trigger
-    // line sits above the viewport bottom.
-    expect(ANIMATION_JS).toContain("entry.intersectionRatio>=swRatio(el,'data-sw-threshold',0.2)");
+  it('reveals at the VIEWPORT reveal line, with NO element-fraction gate by default', () => {
+    // The default threshold is 0: crossing the line is enough. It used to be 0.2 — a fraction of the
+    // ELEMENT — which made the trigger point depend on content length: an element taller than the viewport
+    // can only ever reach viewportH/elementH, so a tall section revealed far too late (measured: a 2960px
+    // card stayed invisible until scrollY ~300-600) or, past ~5x the viewport, never at all.
+    expect(ANIMATION_JS).toContain("entry.intersectionRatio>=swRatio(el,'data-sw-threshold',0)");
+    expect(ANIMATION_JS).not.toContain("swRatio(el,'data-sw-threshold',0.2)");
     // A single observer applies ONE threshold list to all targets → the runtime UNIONS every element's
     // threshold (+ 0 for the reset) so the callback fires at each element's own crossing.
-    expect(ANIMATION_JS).toContain("thrSet[swRatio(el,'data-sw-threshold',0.2)]=1");
+    expect(ANIMATION_JS).toContain("thrSet[swRatio(el,'data-sw-threshold',0)]=1");
     expect(ANIMATION_JS).toContain('threshold:THRESHOLDS');
-    expect(ANIMATION_JS).toMatch(/rootMargin:'0px 0px -\d+% 0px'/);
+    // The height-INDEPENDENT gate that actually decides "meaningfully in view" is the observer's rootMargin:
+    // 20% up from the viewport bottom, or data-sw-offset px.
+    expect(ANIMATION_JS).toContain("'0px 0px '+(off===null?'-20%':'-'+off+'px')+' 0px'");
     // The observer root is PINNED to the body when it is the scroll container (whole-site preview's
     // body-scroll), else null — so a percentage rootMargin resolves against the real scrollport on every
-    // engine, not just Chromium. The primary observer passes root:scrollRoot alongside its -20% margin.
+    // engine, not just Chromium. Every reveal observer passes root:scrollRoot alongside its margin.
     expect(ANIMATION_JS).toContain("if(getComputedStyle(document.body).overflowY==='auto')scrollRoot=document.body");
-    expect(ANIMATION_JS).toContain("rootMargin:'0px 0px -20% 0px',root:scrollRoot");
+    expect(ANIMATION_JS).toMatch(/threshold:THRESHOLDS,rootMargin:[^,]+,root:scrollRoot/);
     // swRatio parses + CLAMPS the threshold to [0,1] (never injects — compared only as a number).
     expect(ANIMATION_JS).toContain('function swRatio(el,attr,def){var v=parseFloat(el.getAttribute(attr));return isNaN(v)?def:Math.max(0,Math.min(v,1));}');
   });
@@ -172,7 +176,7 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).not.toContain("if(!el.classList.contains('sw-animation-active'))");
     expect(ANIMATION_JS).toContain('function swReveal(el){');
     expect(ANIMATION_JS).toContain("el.classList.add('sw-animation-active')");
-    expect(ANIMATION_JS).toContain("if(el.getAttribute('data-sw-once')==='true'){io.unobserve(el);exitIo.unobserve(el);}");
+    expect(ANIMATION_JS).toContain("if(el.getAttribute('data-sw-once')==='true'){if(el.__swIo)el.__swIo.unobserve(el);exitIo.unobserve(el);}");
   });
 
   it('gates the reveal on the page-ready signal (starts after preloader clear / load, not behind it)', () => {
@@ -181,7 +185,19 @@ describe('animation runtime', () => {
     expect(ANIMATION_JS).toContain("addEventListener('sw:ready'");
     expect(ANIMATION_JS).toContain('swWhenReady(function(){');
     // observation happens inside the ready callback, not eagerly in the setup loop.
-    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*io\.observe\(el\)/);
+    expect(ANIMATION_JS).toMatch(/swWhenReady\(function\(\)\{[\s\S]*revealIo\.observe\(el\)/);
+  });
+
+  it('data-sw-offset sets the reveal line in PIXELS, via its own grouped observer', () => {
+    // rootMargin belongs to the OBSERVER, not the target, so a per-element px line needs one observer per
+    // distinct offset — grouped by key so a page using one offset throughout creates exactly one extra.
+    expect(ANIMATION_JS).toContain("function swOffset(el){var v=parseInt(el.getAttribute('data-sw-offset'),10);return isNaN(v)?null:Math.max(0,Math.min(v,4000));}");
+    expect(ANIMATION_JS).toContain("var key=off===null?'d':'o'+off;");
+    expect(ANIMATION_JS).toContain('if(!revealIos[key])revealIos[key]=new IntersectionObserver(');
+    // null-prototype map: a hostile offset key can never resolve to an inherited Object.prototype member.
+    expect(ANIMATION_JS).toContain('var revealIos=Object.create(null);');
+    // Each element remembers ITS observer so data-sw-once detaches from the right one.
+    expect(ANIMATION_JS).toContain('el.__swIo=revealIo;');
   });
 
   it('reveals ON LOAD via a SECOND full-viewport observer (loadIo) — no -20% margin, so on-screen content animates in without a scroll', () => {

@@ -19,9 +19,24 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     deleteContent: vi.fn(async () => undefined),
+    deleteContentBulk: vi.fn(async (_k: string, ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
     addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
     removeLocale: vi.fn(async (locale: string) => ({ locale, removed: 3 })),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
+    inspectSource: vi.fn(async () => ({
+      side: 'source' as const,
+      url: 'https://orig.test/',
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      title: 'Original',
+      viewport: { width: 1440, height: 900 },
+      documentHeight: 4200,
+      results: [
+        { selector: '#main-nav a', count: 7, nodes: [{ tag: 'a', rect: { x: 294.4, y: 8, width: 82.7, height: 42.8, pageY: 8 }, styles: { 'font-size': '16px', padding: '11.2px 20.8px' } }] },
+        { selector: '.missing', count: 0, nodes: [] },
+        { selector: 'a[', count: -1, nodes: [] },
+      ],
+    })),
     compareToSource: vi.fn(async () => ({
       sourceUrl: 'https://orig.test/',
       route: '',
@@ -117,6 +132,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
+    importWebsite: vi.fn(async () => ({ ok: true, jobId: 'imp_1', status: 'running' })),
+    importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'https://x.test/', status: 'running', startedAt: Date.now() - 120_000, progress: ['crawl: 7 pages'] })),
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
@@ -331,7 +348,7 @@ describe('createSitewrightMcpServer — snippet authoring (was unreachable)', ()
       arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<div>x</div>' } },
     });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything(), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything(), { merge: undefined, receipt: true });
   });
 });
 
@@ -859,7 +876,7 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
       recipient: 'sales@acme.com',
     };
     const res = await mcp.callTool({ name: 'put_content', arguments: { kind: 'form', id: 'contact', data: formData } });
-    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData, { merge: undefined });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData, { merge: undefined, receipt: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -897,21 +914,21 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const mcp = await connect(client, writeScope);
     // A dataset payload that (like a weak model) leaves out the "redundant" id the schema demands.
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'dataset', id: 'services', data: { name: 'Services', slug: 'services', fields: [] } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('dataset', 'services', expect.objectContaining({ id: 'services', name: 'Services', slug: 'services' }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('dataset', 'services', expect.objectContaining({ id: 'services', name: 'Services', slug: 'services' }), { merge: undefined, receipt: true });
   });
 
   it('put_content backfills an entry’s id AND dataset from the args', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'entry', id: 'leak', dataset: 'services', data: { values: { title: 'Leak detection' } } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('entry', 'leak', expect.objectContaining({ id: 'leak', dataset: 'services', values: { title: 'Leak detection' } }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('entry', 'leak', expect.objectContaining({ id: 'leak', dataset: 'services', values: { title: 'Leak detection' } }), { merge: undefined, receipt: true });
   });
 
   it('put_content parses a JSON-STRING data payload (models that stringify the object)', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: JSON.stringify({ name: 'CTA', source: '<div>hi</div>' }) } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.objectContaining({ id: 'cta', name: 'CTA', source: '<div>hi</div>' }), { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.objectContaining({ id: 'cta', name: 'CTA', source: '<div>hi</div>' }), { merge: undefined, receipt: true });
   });
 
   it('put_content does NOT inject an id into the settings singleton (it has no id field)', async () => {
@@ -919,21 +936,21 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: { identity: { name: 'Acme' } } } });
     // The settings body is written through verbatim — no stray `id` field injected.
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { identity: { name: 'Acme' } }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { identity: { name: 'Acme' } }, { merge: undefined, receipt: true });
   });
 
   it('put_content forwards merge:true so a settings patch PATCHES instead of replacing', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: { website: { footer: '<div>x</div>' } }, merge: true } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { website: { footer: '<div>x</div>' } }, { merge: true });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('settings', 'settings', { website: { footer: '<div>x</div>' } }, { merge: true, receipt: true });
   });
 
   it('put_content leaves an explicit, matching data.id untouched (no clobber)', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<b>x</b>' } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'cta', name: 'CTA', source: '<b>x</b>' }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'cta', name: 'CTA', source: '<b>x</b>' }, { merge: undefined, receipt: true });
   });
 
   it('put_content does NOT rewrite a MISMATCHED explicit data.id (the server’s ConflictError must still fire)', async () => {
@@ -942,7 +959,7 @@ describe('createSitewrightMcpServer — forms over MCP', () => {
     // A wrong-but-present id is passed through verbatim (id arg 'cta' ≠ data.id 'other') so the API's
     // entityKey guard raises ConflictError rather than the MCP layer silently "fixing" it.
     await mcp.callTool({ name: 'put_content', arguments: { kind: 'snippet', id: 'cta', data: { id: 'other', name: 'X', source: '<b/>' } } });
-    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'other', name: 'X', source: '<b/>' }, { merge: undefined });
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', { id: 'other', name: 'X', source: '<b/>' }, { merge: undefined, receipt: true });
   });
 });
 
@@ -960,7 +977,7 @@ describe('createSitewrightMcpServer — tool wiring', () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     const res = await mcp.callTool({ name: 'put_page', arguments: { page } });
-    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('page', 'home', page);
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('page', 'home', page, { receipt: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -1104,7 +1121,8 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
   it('list_pages forwards to listContent(page)', async () => {
     const client = fakeClient();
     const res = await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: {} });
-    expect(calls(client).listContent).toHaveBeenCalledWith('page');
+    // list_pages now requests the SUMMARY projection (metadata only) — the full body is get_page's job.
+    expect(calls(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: true });
     expect(res.isError).toBeFalsy();
   });
 
@@ -1112,9 +1130,9 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const client = fakeClient();
     const mcp = await connect(client, readScope);
     await mcp.callTool({ name: 'list_content', arguments: { kind: 'dataset' } });
-    expect(calls(client).listContent).toHaveBeenCalledWith('dataset', undefined);
+    expect(calls(client).listContent).toHaveBeenCalledWith('dataset', undefined, { summary: undefined });
     await mcp.callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team' } });
-    expect(calls(client).listContent).toHaveBeenCalledWith('entry', 'team');
+    expect(calls(client).listContent).toHaveBeenCalledWith('entry', 'team', { summary: undefined });
   });
 
   it('get_content forwards kind + id (+ dataset for an entry)', async () => {
@@ -1214,6 +1232,67 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(calls(client).deleteContent).toHaveBeenCalledWith('entry', 'row_1', 'team');
   });
 
+  it('delete_content_bulk forwards the whole id list (+ dataset for entries) and returns the per-id result', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, deleteScope);
+    const res = await mcp.callTool({ name: 'delete_content_bulk', arguments: { kind: 'dataset', ids: ['x', 'y'] } });
+    expect(calls(client).deleteContentBulk).toHaveBeenCalledWith('dataset', ['x', 'y'], undefined);
+    // The partial-success report reaches the agent, so it can see what did NOT go.
+    expect(text(res)).toContain('"requested": 2');
+    expect(text(res)).toContain('"failed": []');
+    await mcp.callTool({ name: 'delete_content_bulk', arguments: { kind: 'entry', ids: ['row_1'], dataset: 'team' } });
+    expect(calls(client).deleteContentBulk).toHaveBeenCalledWith('entry', ['row_1'], 'team');
+  });
+
+  // A real crawl outlives any tool call, so import_website hands back a job id and the agent polls. The
+  // summaries must make that unmistakable — a model that reads "ok" as "finished" starts nativizing pages
+  // that do not exist yet, and one that re-runs the import duplicates the whole crawl.
+  describe('import_website / import_status (async)', () => {
+    it('forwards the options and reports a STARTED job, not a finished import', async () => {
+      const client = fakeClient();
+      const res = await (await connect(client, writeScope)).callTool({
+        name: 'import_website',
+        arguments: { url: 'https://x.test/', renderMode: 'always', maxPages: 10 },
+      });
+      expect(calls(client).importWebsite).toHaveBeenCalledWith('https://x.test/', expect.objectContaining({ renderMode: 'always', maxPages: 10 }));
+      expect(text(res)).toMatch(/IMPORT STARTED \(job imp_1\)/);
+      expect(text(res)).toMatch(/import_status/);
+      expect(text(res)).not.toMatch(/IMPORTED ✓/); // never reads as complete
+    });
+
+    it('reports a RUNNING job with its elapsed time and latest progress, and says not to restart', async () => {
+      const client = fakeClient();
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1');
+      expect(text(res)).toMatch(/IMPORT RUNNING \(2m elapsed\)/);
+      expect(text(res)).toMatch(/crawl: 7 pages/);
+      expect(text(res)).toMatch(/do NOT start a second import/);
+    });
+
+    it('reports a FAILED job with its reason', async () => {
+      const client = fakeClient({ importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'failed', startedAt: 0, progress: [], error: 'dns exploded' })) });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/IMPORT FAILED — dns exploded/);
+    });
+
+    it('hands back the NATIVIZE instructions once the job is done', async () => {
+      const client = fakeClient({
+        importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'done', startedAt: 0, progress: [], report: { pagesImported: 22, mediaSelfHosted: 100, warnings: ['a'] } })),
+      });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/WEBSITE IMPORTED ✓ — 22 page\(s\)/);
+      expect(text(res)).toMatch(/NOW NATIVIZE/);
+      expect(text(res)).toMatch(/Importer notes \(1\)/);
+    });
+
+    it('needs content:write — a read-only token is refused and no crawl starts', async () => {
+      const ro = fakeClient();
+      const rej = await (await connect(ro, readScope)).callTool({ name: 'import_website', arguments: { url: 'https://x.test/' } });
+      expect(rej.isError).toBe(true);
+      expect(calls(ro).importWebsite).not.toHaveBeenCalled();
+    });
+  });
+
   it('add_language forwards the locale (atomic scaffold) with a write token', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
@@ -1247,12 +1326,14 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     for (const tool of [
       { name: 'delete_page', arguments: { id: 'home' } },
       { name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } },
+      { name: 'delete_content_bulk', arguments: { kind: 'dataset', ids: ['x'] } },
     ]) {
       const client = fakeClient();
       const res = await (await connect(client, writeScope)).callTool(tool);
       expect(res.isError).toBe(true);
       expect(text(res)).toMatch(/content:delete/);
       expect(calls(client).deleteContent).not.toHaveBeenCalled();
+      expect(calls(client).deleteContentBulk).not.toHaveBeenCalled();
     }
   });
 
@@ -1284,5 +1365,99 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const all = fakeClient();
     await (await connect(all, readScope)).callTool({ name: 'list_submissions', arguments: { formId: 'c', limit: 1, offset: 2 } });
     expect(calls(all).listSubmissions).toHaveBeenCalledWith({ formId: 'c', limit: 1, offset: 2 });
+  });
+});
+
+// patch_page exists because put_page is a TOTAL replace: `{id, path, title, nav}` silently deleted the
+// page's source/status/description/order/parent AND data.swImport (the marker every fidelity tool needs).
+describe('patch_page', () => {
+  it('sends the fragment with merge:true so omitted fields survive', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({ name: 'patch_page', arguments: { page: { id: 'home', nav: { title: 'Home', slots: ['header'] } } } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', { id: 'home', nav: { title: 'Home', slots: ['header'] } }, { merge: true, receipt: true });
+  });
+
+  it('is gated on content:write, and put_page stays a REPLACE (no merge flag)', async () => {
+    const reader = fakeClient();
+    const r = await (await connect(reader, readScope)).callTool({ name: 'patch_page', arguments: { page: { id: 'home', title: 'X' } } });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/content:write/);
+    expect(callsOf(reader).putContent).not.toHaveBeenCalled();
+
+    const writer = fakeClient();
+    await (await connect(writer, writeScope)).callTool({ name: 'put_page', arguments: { page } });
+    expect(callsOf(writer).putContent).toHaveBeenCalledWith('page', page.id, page, { receipt: true });
+  });
+});
+
+// inspect_source is the only tool that returns NUMBERS off the live original — the measurement the import
+// guide keeps asking for but previously shipped no way to obtain.
+describe('inspect_source', () => {
+  it('measures the original and flags selectors that matched nothing / were invalid', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'inspect_source', arguments: { pageId: 'home', selectors: ['#main-nav a', '.missing', 'a['] } });
+    expect(res.isError).toBeFalsy();
+    const out = text(res);
+    expect(out).toMatch(/LIVE ORIGINAL/);
+    expect(out).toMatch(/1440×900|1440×900/);
+    expect(out).toMatch(/NO MATCH: \.missing/);
+    expect(out).toMatch(/INVALID selector syntax.*a\[/);
+    expect(out).toContain('font-size'); // the measured values themselves come back
+    expect(callsOf(client).inspectSource).toHaveBeenCalledWith('home', { selectors: ['#main-nav a', '.missing', 'a['] });
+  });
+
+  it('forwards the optional knobs only when given', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({
+      name: 'inspect_source',
+      arguments: { pageId: 'home', selectors: ['h1'], styles: ['backdrop-filter'], html: true, viewport: 'mobile', side: 'build' },
+    });
+    expect(callsOf(client).inspectSource).toHaveBeenCalledWith('home', {
+      selectors: ['h1'], styles: ['backdrop-filter'], html: true, viewport: 'mobile', side: 'build',
+    });
+  });
+
+  it('needs content:read and surfaces an API failure as a tool error', async () => {
+    const noCaps = fakeClient();
+    const res = await (await connect(noCaps, { projectId: 'p', role: 'member', capabilities: [] })).callTool({
+      name: 'inspect_source', arguments: { pageId: 'home', selectors: ['h1'] },
+    });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/content:read/);
+    expect(callsOf(noCaps).inspectSource).not.toHaveBeenCalled();
+
+    const boom = fakeClient({ inspectSource: vi.fn(async () => { throw new Error('render failed'); }) });
+    const err = await (await connect(boom, readScope)).callTool({ name: 'inspect_source', arguments: { pageId: 'home', selectors: ['h1'] } });
+    expect(err.isError).toBe(true);
+    expect(text(err)).toBe('Error: render failed');
+  });
+});
+
+// A full page list carries every page's Handlebars source — 337 KB on a 22-page imported site, past the
+// tool-output ceiling — so list_pages defaults to metadata only and get_page fetches the one body needed.
+describe('list_pages summary', () => {
+  it('asks the API for the SUMMARY projection by default', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: {} });
+    expect(callsOf(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: true });
+  });
+
+  it('includeSource:true opts back into the full bodies', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: { includeSource: true } });
+    expect(callsOf(client).listContent).toHaveBeenCalledWith('page', undefined, { summary: false });
+  });
+
+  it('list_content stays FULL by default and takes an explicit summary flag', async () => {
+    const a = fakeClient();
+    await (await connect(a, readScope)).callTool({ name: 'list_content', arguments: { kind: 'template' } });
+    expect(callsOf(a).listContent).toHaveBeenCalledWith('template', undefined, { summary: undefined });
+
+    const b = fakeClient();
+    await (await connect(b, readScope)).callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team', summary: true } });
+    expect(callsOf(b).listContent).toHaveBeenCalledWith('entry', 'team', { summary: true });
   });
 });

@@ -450,15 +450,30 @@ describe('preview API — code-first source page', () => {
     expect(rejected.statusCode).toBe(400);
     expect((rejected.json() as { error: string }).error).toMatch(/Main Navigation/);
 
-    // The lenient PREVIEW skip still matters for a slot that PASSES the static save gate but throws at
-    // RENDER (e.g. a missing helper) — it's omitted so the page + good slots still render.
-    await poolApp.inject({
+    // An unknown HELPER is now caught at save too (it used to save fine and emit an invisible marker),
+    // so it can never reach preview — the slot is named, like any other save-time slot rejection.
+    const unknownHelper = await poolApp.inject({
       method: 'PUT',
       url: `${base}/content/settings/settings`,
       cookies: { sw_session: t },
       payload: {
         identity: { name: 'Acme', colors: {} },
         website: { mainNav: '<div>{{oops x}}</div>', footer: '<div class="footer">ok</div>' },
+        settings: {},
+      },
+    });
+    expect(unknownHelper.statusCode).toBe(400);
+    expect((unknownHelper.json() as { error: string }).error).toMatch(/Main Navigation.*oops/);
+
+    // The lenient PREVIEW skip still matters for a slot that PASSES both save gates but throws at
+    // RENDER — a missing {{> partial}} — it's omitted so the page + good slots still render.
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: {} },
+        website: { mainNav: '<div>{{> nopePartial}}</div>', footer: '<div class="footer">ok</div>' },
         settings: {},
       },
     });
@@ -471,7 +486,7 @@ describe('preview API — code-first source page', () => {
     expect(res.statusCode).toBe(200); // the page preview still renders
     const html = (res.json() as { html: string }).html;
     expect(html).toContain('<h1>Body</h1>'); // body intact
-    expect(html).not.toContain('{{oops'); // the render-failing slot was skipped, not injected
+    expect(html).not.toContain('nopePartial'); // the render-failing slot was skipped, not injected
     expect(html).toContain('<footer id="footer"><div class="footer">ok</div></footer>'); // the good slot still renders, wrapped in the platform landmark
   });
 

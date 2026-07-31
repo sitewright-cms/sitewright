@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dataPathOf, isSafeKey, dataLeafGet, dataLeafSet, mergeDefaults, isEmptyPageData, pageDataObject } from '../src/lib/page-data';
+import { dataPathOf, isSafeKey, dataLeafGet, dataLeafSet, mergeDefaults, isEmptyPageData, pageDataObject, websiteDataPathOf } from '../src/lib/page-data';
 
 describe('dataPathOf / isSafeKey', () => {
   it('extracts the page.data path from a page.data.* key, else null (bare = top-level)', () => {
@@ -116,5 +116,29 @@ describe('pageDataObject (persist coercion — object-only store)', () => {
     expect(pageDataObject('x')).toBeUndefined();
     expect(pageDataObject(0)).toBeUndefined();
     expect(pageDataObject(false)).toBeUndefined();
+  });
+});
+
+describe('websiteDataPathOf — routing an inline edit to the site-wide store', () => {
+  it('returns the path WITHIN website.data for a site-store key', () => {
+    expect(websiteDataPathOf('website.data.job_modal')).toBe('job_modal');
+    expect(websiteDataPathOf('website.data.hero.bg')).toBe('hero.bg');
+  });
+
+  it('returns null for a page.data key, so it falls through to the page store', () => {
+    // Getting this wrong is SILENT in both directions: a site key falling through to pageDataSet writes
+    // a literal website -> data -> ... object into page.data and never touches the real store.
+    expect(websiteDataPathOf('headline')).toBeNull();
+    expect(websiteDataPathOf('page.data.headline')).toBeNull();
+    // A key that merely starts with the word must not match — only the full dotted prefix.
+    expect(websiteDataPathOf('websiteXdata.k')).toBeNull();
+    expect(websiteDataPathOf('website.database')).toBeNull();
+  });
+
+  it('returns null for the bare prefix and for unsafe segments', () => {
+    expect(websiteDataPathOf('website.data.')).toBeNull(); // nothing after the prefix
+    expect(websiteDataPathOf('website.data.__proto__')).toBeNull();
+    expect(websiteDataPathOf('website.data.a.constructor.b')).toBeNull();
+    expect(websiteDataPathOf('website.data.a..b')).toBeNull(); // empty segment
   });
 });

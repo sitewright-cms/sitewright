@@ -38,6 +38,7 @@ import {
   pageDataGet,
   pageDataObject,
   pageDataSet,
+  websiteDataPathOf,
 } from '../lib/page-data';
 import { primaryButton, gradientSurface } from '../theme';
 import { PageAuditPanel } from './pagespeed/PageAuditPanel';
@@ -450,6 +451,24 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
         scrollYRef.current = d.y;
+      } else if (
+        (d.type === 'edit' || d.type === 'rich-edit') &&
+        typeof d.key === 'string' &&
+        websiteDataPathOf(d.key) !== null &&
+        typeof (d.type === 'edit' ? d.value : d.html) === 'string'
+      ) {
+        // Inline edit whose directive key targets the SITE-WIDE store (`data-sw-text`/`-html` with a
+        // `website.data.<path>` key) → the GLOBAL settings leaf, NOT page.data. Must be checked BEFORE
+        // the page.data branches below, which would otherwise write a literal `website` → `data` → …
+        // object INTO page.data and silently leave the real store untouched.
+        // Reuses the same debounced queue as {{sw-control target="website.data.…"}}: auto-saves to the
+        // settings entity on its own endpoint (not the page Save), then bumps previewNonce so the
+        // slot/page reading it re-renders. The store is not part of the page's draft state, so unlike a
+        // page.data edit there is no inline token to suppress the reload with.
+        queueWebsiteDataRef.current?.(
+          websiteDataPathOf(d.key) as string,
+          (d.type === 'edit' ? d.value : d.html) as string,
+        );
       } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && isSafeKey(d.key)) {
         // Inline plain-text edit → write the page.data leaf (bare key → top-level prop; page.data.<path> →
         // nested). The iframe DOM already shows it, so suppress the reload.

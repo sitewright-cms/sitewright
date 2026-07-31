@@ -18,9 +18,12 @@
 // `src`/inline style. So an author opts an editable image into lazy-loading by adding a (possibly
 // empty) `data-src`/`data-bg` attribute; data-sw-src/bg keep filling it from page.data.
 //
-// STORE: the text/html/href/src/bg directives read a SINGLE store — `page.data`. A BARE key
-// (`data-sw-text="hero_h1"`, `data-sw-html="bio"`) is a top-level page.data property; a `page.data.<path>`
-// key (`page.data.article_title`) is a nested page.data path. The value resolves to a STRING leaf
+// STORES: the text/html/href/src/bg directives read the PAGE's own store by default and the SITE-WIDE
+// store on request. A BARE key (`data-sw-text="hero_h1"`, `data-sw-html="bio"`) is a top-level page.data
+// property; a `page.data.<path>` key (`page.data.article_title`) is a nested page.data path; a
+// `website.data.<path>` key reads the site-wide `website.data` object instead — one value shared by every
+// page, and the only RICH editable leaf a chrome slot can reach (a slot is not a page, so it has no
+// page.data; `data-sw-translate` is the other non-page store but it is plain text only). The value resolves to a STRING leaf
 // (non-string / missing → keep the authored default). The retired `content`/`richContent` stores
 // folded into page.data; `data-sw-html` is the one HTML sink and is always sanitized at render
 // (`sanitizeRichHtml`), so storing raw HTML in generic page.data is safe — nothing is emitted unsanitized.
@@ -65,6 +68,21 @@ export const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_AT
 
 /** The `page.data.` key prefix routes a directive to a NESTED path in the page's own `page.data` object. */
 const DATA_PREFIX = 'page.data.';
+/**
+ * The `website.data.` key prefix routes a directive to a nested path in the SITE-WIDE `website.data`
+ * store — one value shared by every page, editable in one place.
+ *
+ * Why this exists: the chrome slots (mainNav / footer / bottom) are not a page, so before this the ONLY
+ * editable leaf reachable from them was `data-sw-translate`, which is plain TEXT. An author needing one
+ * editable rich block in the footer or a global modal had to shred it into a pile of per-fragment
+ * translate keys (a real clone did exactly that: one job-offer modal became six keys because the block
+ * contained a list, a link and some bold). A `website.data.<path>` binding gives chrome a single
+ * editable HTML region instead.
+ *
+ * Scoped deliberately to `website.data` — the author-owned bag — and NOT to arbitrary settings paths, so
+ * a directive can never address `identity.colors` or a deploy secret.
+ */
+const WEBSITE_DATA_PREFIX = 'website.data.';
 
 export interface DirectiveContext {
   /**
@@ -73,6 +91,12 @@ export interface DirectiveContext {
    * `page.data.<path>` key is a nested page.data path.
    */
   data?: Record<string, unknown>;
+  /**
+   * The SITE-WIDE `website.data` object — the store behind a `website.data.<path>` directive key. Shared
+   * by every page and by the chrome slots, which have no page.data of their own. Absent → those keys
+   * resolve to nothing and the authored default stands.
+   */
+  websiteData?: Record<string, unknown>;
   /**
    * The project TRANSLATION catalog pre-resolved for THIS page's locale — a flat `key → string` map
    * (defaultLocale fallback baked in, empties omitted; see resolveTranslations). The ONLY store
@@ -114,6 +138,10 @@ function flatData(data: Record<string, unknown> | undefined, key: string): strin
  * Undefined → no override (keep the authored default).
  */
 function resolveOverride(ctx: DirectiveContext, key: string): string | undefined {
+  // Checked BEFORE the page.data prefix: the two are disjoint, but ordering it first keeps the
+  // site-wide store readable from a chrome slot, which has no page.data at all.
+  if (key.startsWith(WEBSITE_DATA_PREFIX))
+    return dataLeaf(ctx.websiteData, key.slice(WEBSITE_DATA_PREFIX.length));
   if (key.startsWith(DATA_PREFIX)) return dataLeaf(ctx.data, key.slice(DATA_PREFIX.length));
   return flatData(ctx.data, key);
 }

@@ -44,6 +44,62 @@ describe('resolveDirectives — data-sw-text', () => {
   });
 });
 
+describe('resolveDirectives — website.data.<path> (the site-wide store)', () => {
+  it('resolves a website.data path for text and rich html — the store chrome slots can reach', () => {
+    // A chrome slot is not a page, so before this the only editable leaf reachable from mainNav /
+    // footer / bottom was data-sw-translate, which is PLAIN TEXT. One rich block therefore had to be
+    // shredded into many translate keys. A website.data binding gives chrome ONE editable region.
+    const html = '<div data-sw-html="website.data.job_modal">Authored</div>';
+    const out = resolveDirectives(html, {
+      websiteData: { job_modal: '<p>We are hiring a <strong>Podologist</strong>.</p>' },
+      preview: true,
+    });
+    expect(out).toContain('<strong>Podologist</strong>');
+    expect(out).not.toContain('Authored');
+    // …and plain text through the same store
+    expect(
+      resolveDirectives('<h1 data-sw-text="website.data.tagline">Def</h1>', { websiteData: { tagline: 'Hi' }, preview: true }),
+    ).toContain('>Hi<');
+  });
+
+  it('is a SEPARATE store from page.data — neither prefix can read the other', () => {
+    const html = '<h1 data-sw-text="website.data.k">Authored</h1>';
+    // page.data holding the same key must NOT satisfy a website.data binding…
+    expect(resolveDirectives(html, { data: { k: 'from page' }, preview: true })).toContain('>Authored<');
+    expect(resolveDirectives(html, { websiteData: { k: 'from site' }, preview: true })).toContain('>from site<');
+    // …and the reverse: a page.data binding must not read the site store.
+    const pageHtml = '<h1 data-sw-text="page.data.k">Authored</h1>';
+    expect(resolveDirectives(pageHtml, { websiteData: { k: 'from site' }, preview: true })).toContain('>Authored<');
+  });
+
+  it('walks nested paths, keeps the default for a missing/non-string leaf, and is proto-guarded', () => {
+    const ctx = { websiteData: { a: { b: { c: 'deep' } }, n: 42 }, preview: true } as const;
+    expect(resolveDirectives('<p data-sw-text="website.data.a.b.c">D</p>', ctx)).toContain('>deep<');
+    expect(resolveDirectives('<p data-sw-text="website.data.a.b.missing">D</p>', ctx)).toContain('>D<');
+    expect(resolveDirectives('<p data-sw-text="website.data.n">D</p>', ctx)).toContain('>D<'); // non-string
+    // A prototype-walking path must not resolve (own-property + DANGEROUS_KEYS guarded).
+    const poisoned = JSON.parse('{"__proto__":{"pwned":"yes"}}') as Record<string, unknown>;
+    expect(
+      resolveDirectives('<p data-sw-text="website.data.__proto__.pwned">Safe</p>', { websiteData: poisoned, preview: true }),
+    ).toContain('>Safe<');
+    expect(
+      resolveDirectives('<p data-sw-text="website.data.constructor.name">Safe</p>', { websiteData: {}, preview: true }),
+    ).toContain('>Safe<');
+  });
+
+  it('sanitizes site-store HTML through the same sink and strips markers on publish', () => {
+    const evil = { bio: '<img src=x onerror=alert(1)><script>bad()</script><em>ok</em>' };
+    const out = resolveDirectives('<div data-sw-html="website.data.bio">D</div>', { websiteData: evil, preview: true });
+    expect(out).toContain('<em>ok</em>');
+    expect(out).not.toContain('onerror');
+    expect(out).not.toContain('<script');
+    // PUBLISH (no preview flag) strips the marker attribute, like every other directive.
+    expect(resolveDirectives('<div data-sw-html="website.data.bio">D</div>', { websiteData: { bio: '<em>ok</em>' } })).toBe(
+      '<div><em>ok</em></div>',
+    );
+  });
+});
+
 describe('resolveDirectives — data-sw-translate', () => {
   it('binds the per-locale catalog value to textContent, escaping markup', () => {
     const html = '<span data-sw-translate="nav_cta">Default</span>';

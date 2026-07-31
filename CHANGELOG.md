@@ -9,6 +9,63 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-31
+
+Cloning a second real site (ost-noack.de) with a neutral, uncoached agent surfaced six new friction
+items. This release closes them — and, where the fix could be structural rather than documentary, makes
+the failure impossible rather than merely described.
+
+### Changed
+
+- **The sticky-header modes are POSITIONAL only** (`none` / `pinned` / `hide-on-scroll`). The `shrink`
+  mode is RETIRED: it condensed `#main-nav .navbar`, so it only ever worked for the stock DaisyUI recipe
+  and silently did nothing on a hand-authored header while still appearing to be enabled. The platform
+  now ships a scroll effect only when it is STRUCTURE-INDEPENDENT — sliding the whole landmark is,
+  condensing is not, because it must know which row collapses. Any visual scroll response is authored
+  against `html.sw-scrolled`; the effects guide and editor Library carry a copy-paste recipe, and the
+  example project demonstrates it in its own CSS.
+  A stored `shrink` STILL PARSES and behaves as `pinned` — removing it from the schema enum would make
+  `WebsiteSettingsSchema.parse` reject the whole settings object, not just the header.
+- **`html.sw-scrolled` and `--sw-header-h` now ship for EVERY site**, in every mode including a static
+  header. The hook used to exist only for the two modes the platform styled itself, so the authors who
+  most needed it — anyone with a custom header — were the ones who could not reach it. The spacer,
+  anchor offset and fixed positioning stay mode-gated (a static header must not gain a phantom offset).
+- **The anchor-rest sync is generic**, no longer gated on one mode: it measures the SCROLLED bar and pins
+  `scroll-padding-top` to it, so a hand-authored collapse lands in-page anchors correctly too.
+- **Verification tools are ordered rather than presented as peers** — `clone_audit` is step 1,
+  `visual_audit` is step 2 and the terminator; `compare_to_source` / `fidelity_check` / `compare_regions`
+  are marked SPECIALISED with the condition that justifies each. A real agent had used two of the five
+  and ignored the others across 23+ documentation mentions.
+
+### Added
+
+- **`data-sw-text` / `-html` / `-href` / `-src` / `-bg` can bind `website.data.<path>`** — the site-wide
+  store — and those leaves are click-to-edit in the preview. Chrome slots (mainNav / footer / bottom) are
+  not a page and so had NO editable rich leaf at all: the only non-page store was `data-sw-translate`,
+  which is plain text. A clone needing one editable block in a global modal had to shred it into six
+  translate keys. Scoped deliberately to `website.data`, so a directive can never address
+  `identity.colors` or a deploy secret.
+- **`clone_audit` fails on visually CLIPPED elements**, naming the clipper and the percentage lost. This
+  is the defect class every natural measurement misses: `getBoundingClientRect` returns the layout box
+  whether or not an ancestor clips it, so a half-visible logo reports full size — and when the clipper is
+  injected by a component runtime it is absent from the authored source too.
+
+### Fixed
+
+- **DaisyUI's `modal` and `tab` components are no longer shipped** in rendered-site CSS. They collided
+  with the platform's own `data-sw-component="modal"` / `"tabs"` primitives, and the collision failed
+  SILENTLY: the modal runtime moves the author's classes onto the body it builds, so a DaisyUI `.modal`
+  landed there and is `visibility:hidden` without `.modal-open` — which the platform never adds. The
+  dialog opened full-viewport with every child invisible and no console error. Excluding the components
+  makes those class names inert rather than harmful. The exclusion is surgical: `table` survives.
+- **The agent guide no longer claims the runtime measures `--sw-header-h`.** It does not — the token is a
+  hardcoded constant sized for the stock recipe. That one false sentence produced the same
+  content-behind-the-header bug twice; both author surfaces now say it must be overridden for a taller
+  custom header.
+- **The carousel's injected `[data-sw-part="container"]` and the edge-arrow `::before` hover overlay are
+  documented** in the component catalog — both are invisible in the authored source, so restyling the
+  element an author would reach for has no effect.
+
 ## [0.6.0] — 2026-07-31
 
 Everything in this release came from one exercise: cloning a real site (business.na) end to end and

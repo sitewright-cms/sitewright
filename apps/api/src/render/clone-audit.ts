@@ -42,6 +42,15 @@ export interface BehaviourFacts {
   navExpected: number;
   navReachableMobile: number;
   hasModalTrigger: boolean;
+  /**
+   * Elements VISUALLY CUT OFF by an ancestor's overflow (from CLIP_PROBE). Empty when nothing is
+   * clipped. Reported because a rect measurement CANNOT see this: getBoundingClientRect returns the
+   * layout box whether or not an ancestor clips it, so the element measures full-size while the visitor
+   * sees half of it — and when the clipper is injected by a component runtime it is absent from the
+   * authored source too. Both an agent and a reviewer have shipped this while holding a measurement
+   * that looked right, which is exactly why it belongs in the deterministic gate rather than in advice.
+   */
+  clipped?: readonly { el: string; clippedBy: string; box: string; visible: string; lost: string }[];
 }
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
@@ -111,6 +120,16 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
     { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
     { leg: 'behaviour', id: 'fonts', label: 'heading + body fonts actually load', pass: b.headingFontLoaded && b.bodyFontLoaded, detail: `heading "${b.headingFont}"=${b.headingFontLoaded ? 'loaded' : 'MISSING'}, body "${b.bodyFont}"=${b.bodyFontLoaded ? 'loaded' : 'MISSING'}` },
     { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, detail: `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
+    {
+      leg: 'behaviour',
+      id: 'not-clipped',
+      label: 'no element is visually cut off by an ancestor overflow',
+      pass: (b.clipped?.length ?? 0) === 0,
+      detail:
+        (b.clipped?.length ?? 0) === 0
+          ? 'nothing clipped'
+          : b.clipped!.map((c2) => `${c2.el} cut ${c2.lost} by ${c2.clippedBy} (${c2.box} -> ${c2.visible})`).join('; '),
+    },
   ];
 }
 

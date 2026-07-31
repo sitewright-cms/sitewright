@@ -441,6 +441,14 @@ describe('component registry', () => {
     expect(js).toContain('panel.className=wtoks.join');
     expect(js).toContain("body.className=body.className?body.className+' '+otoks.join(' '):otoks.join(' ')");
     expect(js).toContain("dialog.removeAttribute('class')");
+    // DaisyUI's modal class names are DROPPED, not relocated: .modal is visibility:hidden without
+    // .modal-open (which this runtime never adds), so moving it onto the body silently blanks every
+    // child while the dialog still opens — an empty modal with no console error.
+    expect(js).toContain('var MODAL_DROP_CLASSES=');
+    expect(js).toContain("'modal-box':1");
+    expect(js).toContain('hasOwnProperty.call(MODAL_DROP_CLASSES,cls[ci])');
+    // Prototype-safe membership test — a class literally named "constructor" must not match.
+    expect(js).not.toContain('if(MODAL_DROP_CLASSES[cls[ci]])');
     // With an author-supplied body part, ALL dialog children move into the panel (no orphaned siblings);
     // without one, the children are wrapped in a generated body — both preserving order via appendChild.
     expect(js).toContain('while(dialog.firstChild){panel.appendChild(dialog.firstChild);}');

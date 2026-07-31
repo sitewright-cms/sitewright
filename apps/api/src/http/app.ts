@@ -41,7 +41,7 @@ import {
   websiteEffectsCustomCode,
   stickyHeaderUsesRuntime,
   isLinkPage,
-  type StickyHeaderMode,
+  type StickyHeaderSetting,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -688,8 +688,12 @@ interface PreviewShell {
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
-  /** Sticky/fixed top-header mode (`website.effects.stickyHeader`) — passed straight to renderDocument. */
-  stickyHeader?: StickyHeaderMode | 'none';
+  /**
+   * Sticky/fixed top-header mode (`website.effects.stickyHeader`) — passed straight to renderDocument,
+   * which normalizes it. Typed AS STORED, so a retired value read back off a project still flows
+   * through instead of failing to typecheck at every call site.
+   */
+  stickyHeader?: StickyHeaderSetting;
   /** Opt-in light/dark color schemes (Website settings) — passed through to renderDocument. */
   theme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
@@ -771,7 +775,7 @@ async function styledSourceDocument(
   // STICKY top-header — the caller passes the validated mode via `shell.stickyHeader` (carried into
   // renderDocument by the `...shell` spread below, so the fixed `#main-nav` + offset token render in
   // the preview — WYSIWYG layout). Inline the scroll-state runtime for the JS-backed modes (hide/shrink).
-  const stickyHeaderRuntime = stickyHeaderUsesRuntime(shell.stickyHeader);
+  const stickyHeaderRuntime = stickyHeaderUsesRuntime();
   // SCROLLSPY — the marker `sw-scrollspy` is in scanHtml via either a per-element `data-sw-scrollspy`
   // attribute (rendered body/slots) or the site-wide `sw-scrollspy` body class (shell.bodyClass). Run it
   // live in the preview (harmless: it only toggles .active/aria-current, so it never fights the bridge).
@@ -6612,7 +6616,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
-      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
+      let themeStickyHeader: StickyHeaderSetting | undefined;
       let themeCustomScripts: string | undefined;
       let themePreloader: string | undefined;
       let themeEmitContentTokens = false;
@@ -6774,7 +6778,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
-      let themeStickyHeader: StickyHeaderMode | 'none' | undefined;
+      let themeStickyHeader: StickyHeaderSetting | undefined;
       let themeFxBodyEnd: string | undefined;
       let containerWidth: string | undefined;
       let themeCriticalCss: string | undefined;

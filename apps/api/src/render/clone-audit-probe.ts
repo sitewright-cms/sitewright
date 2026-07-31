@@ -36,6 +36,64 @@ export function NAV_COUNT() {
   return Array.prototype.filter.call(document.querySelectorAll('#main-nav a'), (a) => vis(a) && (a.textContent || '').trim().length > 1).length;
 }
 
+/**
+ * Elements VISUALLY CUT OFF by an ancestor's overflow — the check a rect measurement cannot make.
+ *
+ * getBoundingClientRect reports the LAYOUT box whether or not an ancestor clips it, so "is this cut
+ * off?" is invisible to every measurement an agent naturally reaches for: the element reports its full
+ * size while the visitor sees half of it. Both a platform agent and a human reviewer have shipped this
+ * defect while holding a measurement that looked correct. It is also invisible in the authored source
+ * when the clipper is INJECTED by a component runtime (e.g. the carousel's [data-sw-part="container"]).
+ *
+ * So: walk each candidate's ancestors, intersect with every clipping ancestor, and report what actually
+ * survives. Images and text leaves only, node-capped, and reporting the CLIPPER so the fix is obvious.
+ */
+export function CLIP_PROBE() {
+  const vis = (el) => {
+    const r = el.getBoundingClientRect();
+    const c = getComputedStyle(el);
+    return r.width > 1 && r.height > 1 && c.display !== 'none' && c.visibility !== 'hidden' && +c.opacity > 0.05;
+  };
+  const label = (el) => {
+    const cls = (el.className || '').toString().trim().split(/\s+/).slice(0, 2).join('.');
+    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (cls ? '.' + cls : '');
+  };
+  // Images carry the most visible failures; text leaves catch a clipped heading/caption.
+  const nodes = Array.prototype.slice.call(document.querySelectorAll('img,svg,picture,video,h1,h2,h3,p,figcaption')).slice(0, 400);
+  const out = [];
+  for (const el of nodes) {
+    if (!vis(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height < 8 || r.width < 8) continue;
+    let top = r.top, bottom = r.bottom, left = r.left, right = r.right, clipper = null;
+    let p = el.parentElement;
+    while (p && p !== document.documentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+        const pr = p.getBoundingClientRect();
+        if (pr.top > top || pr.bottom < bottom || pr.left > left || pr.right < right) clipper = clipper || label(p);
+        top = Math.max(top, pr.top); bottom = Math.min(bottom, pr.bottom);
+        left = Math.max(left, pr.left); right = Math.min(right, pr.right);
+      }
+      p = p.parentElement;
+    }
+    const visH = Math.max(0, bottom - top), visW = Math.max(0, right - left);
+    // >10% of either axis eaten = a real visual cut, not a rounding artefact or a deliberate 1px crop.
+    const lostH = 1 - visH / r.height, lostW = 1 - visW / r.width;
+    if (clipper && (lostH > 0.1 || lostW > 0.1)) {
+      out.push({
+        el: label(el),
+        clippedBy: clipper,
+        box: Math.round(r.width) + 'x' + Math.round(r.height),
+        visible: Math.round(visW) + 'x' + Math.round(visH),
+        lost: Math.round(Math.max(lostH, lostW) * 100) + '%',
+      });
+    }
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 /** Click the first visible menu toggle inside the header (hamburger/label/button). Returns whether one was found. */
 export function NAV_TOGGLE() {
   const vis = (el) => {

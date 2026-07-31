@@ -163,20 +163,22 @@ trigger and bridges the small gap so hover doesn't drop mid-travel — don't add
 spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
-preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
-pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
+preview_page (returns DESKTOP + MOBILE screenshots — LOOK and refine before moving on;
+includeHtml:true adds the HTML) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
 BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
 single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
 max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
-(chrome + 2-3 sections), then get_page it and put_page with the next sections appended, and REPEAT
-until the page is complete. Do NOT stop to ask "shall I continue" between sections — keep calling
-tools until the page is DONE or you are genuinely blocked; only then end your turn.
+(chrome + 2-3 sections), then get_page + put_page with the next sections appended, REPEATing until
+complete. Do NOT stop to ask "shall I continue" — keep calling
+tools until the page is DONE or you are genuinely blocked.
 PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
 preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
 — after building a meaningful chunk of a new page, and once before publishing — not after every tool
-call. (Imported-page fidelity work is the exception: keep iterating with compare_to_source until the
-build matches the original.)
+call. (Imported-page fidelity is the exception: iterate with clone_audit + visual_audit until it matches.)
+VERIFY WITH PLATFORM TOOLS, not your own browser/scraper: they render the real build against the LIVE
+original and answer what a rect CANNOT — is it CLIPPED, did the font LOAD. Fell back to your own
+tooling? Say so in your report.
 MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
 must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
 hard-code final copy as plain inline text (bound text is also what makes a page TRANSLATABLE by
@@ -193,12 +195,11 @@ USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
 thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag}} flags; search_icons finds
 names. Don't ship an icon-less contact / footer / feature / stats section.
 DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
-\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
-\`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
-or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
-replacing over deleting when in doubt.
-UNDO: every save is versioned. If an edit went wrong, list_revisions(kind,id) shows the history and
-restore_revision(kind,id,revisionId) rolls it back (non-destructive — a deleted entity is recreated).
+\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if absent,
+don't attempt removals: ask the user to delete it in the editor, or to grant \`content:delete\`. Prefer
+editing or replacing over deleting when in doubt.
+UNDO: every save is versioned — list_revisions(kind,id) then restore_revision(kind,id,revisionId)
+rolls it back (non-destructive; a deleted entity is recreated).
 `;
 
 /**
@@ -515,9 +516,13 @@ It repaints a gradient each frame, so use it on a hero accent, NOT on every card
 prefers-reduced-motion the beam parks (the border stays). Prefer it over hand-rolled conic-gradient CSS.
 
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
-so it stays visible while scrolling — \`pinned\` (always visible, pure CSS), \`hide-on-scroll\` (slides away
-on scroll-down, back on scroll-up), or \`shrink\` (condenses past a threshold). 'none' (default) = a normal
-static header. THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
+so it stays visible while scrolling. The modes are POSITIONAL ONLY — \`pinned\` (always visible) or
+\`hide-on-scroll\` (slides away on scroll-down, back on scroll-up). 'none' (default) = a normal static
+header. THERE IS NO "shrink" MODE: how the bar LOOKS once scrolled (condense, colour, shadow, logo swap)
+is ALWAYS hand-authored in website.criticalCss against \`html.sw-scrolled\` — see SCROLL-SHRINK below. The
+platform only ships a scroll effect it can apply to ANY header; condensing needs to know which row of
+YOUR header collapses, so it cannot. (A stored \`shrink\` from an older project still loads and behaves
+as \`pinned\`.) THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
 first section of a page so its content clears the bar (without it, content sits UNDER the header) — UNLESS
 that section already has enough top padding to clear the ~75px bar (e.g. \`pt-24\`/\`py-24\` = 96px), in which
 case you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section
@@ -525,8 +530,22 @@ flush and instead put \`sw-top-padding\` on an INNER element (so the background 
 the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
 \`:root{--sw-header-h:5rem}\` in website.criticalCss). The header sits at z-index 30 (below the mobile drawer
-+ back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once scrolled,
-shrink + hide modes) and \`html.sw-nav-hidden\` (hide-on-scroll only — header translated off-screen).
++ back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
+is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
+(hide-on-scroll only — header translated off-screen).
+
+SCROLL-SHRINK / any scroll response — the copy-paste recipe. The platform pins the bar and toggles
+\`html.sw-scrolled\`; you write what changes. Keep \`--sw-header-h\` at the FULL bar height so page content
+never reflows as the bar condenses. Stock \`.navbar\` recipe:
+\`@media(prefers-reduced-motion:no-preference){#main-nav,#main-nav .navbar{transition:min-height .3s ease,padding .3s ease,box-shadow .3s ease}}\`
+\`html.sw-scrolled #main-nav{box-shadow:0 2px 10px rgba(15,23,42,.08)}\`
+\`html.sw-scrolled #main-nav .navbar{min-height:3.25rem;padding-top:.125rem;padding-bottom:.125rem}\`
+For a CUSTOM two-row header (logo row + menu row), collapse the logo row and keep the menu — retarget the
+selectors at your own markup: put \`overflow:hidden;max-height:<full>;transition:max-height .4s ease,opacity
+.4s ease\` on the logo row, then \`html.sw-scrolled <logo-row>{max-height:0;opacity:0;margin:0}\`. Scope it to
+the breakpoint where BOTH rows exist (on mobile the menu row is usually hidden, so collapsing the logo row
+would leave an empty bar). Anchors stay correct automatically: the runtime measures the SCROLLED bar and
+pins \`scroll-padding-top\` to it, so an in-page jump rests flush no matter how far your CSS collapses it.
 
 STICKY HEADER ENTRANCE animation (the platform keeps entrance AUTHOR-CONTROLLED — write it in
 website.criticalCss). Simplest (no preloader): \`@media(prefers-reduced-motion:no-preference){@keyframes
@@ -536,7 +555,8 @@ overlay clears (otherwise it animates hidden behind it): the preloader toggles c
 overlay \`[data-sw-preloader]\` (a sibling of #main-nav that STAYS in the DOM), so add
 \`[data-sw-preloader].sw-loading ~ #main-nav{visibility:hidden}\` and
 \`[data-sw-preloader]:not(.sw-loading) ~ #main-nav{animation:sw-hdr-in .6s cubic-bezier(.16,1,.3,1) both}\`. Use
-\`animation\` (NOT \`transition\`) so the entrance doesn't clobber the shrink mode's own \`#main-nav{transition}\`.
+\`animation\` (NOT \`transition\`) so the entrance doesn't clobber any \`#main-nav{transition}\` your own
+scroll-shrink CSS sets.
 GOTCHA: a transform/translate on #main-nav (an entrance like the above) makes it the CONTAINING BLOCK for
 its \`position:fixed\` children — the default mobile-drawer recipe pins itself with \`h-dvh\` so it's unaffected,
 but a CUSTOM full-height nav drawer/overlay MUST set its own viewport height (\`h-dvh\`) or it gets clamped to
@@ -1136,9 +1156,13 @@ don't eyeball. HOW: \`inspect_source({ pageId, selectors:[…] })\` returns the 
 styles + rects for whatever you select (add \`html:true\` for its settled markup, \`side:'build'\` to
 measure your own clone the same way and diff). Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
 named slot like --sw-font-secondary), not a hard-coded family.
-STICKY HEADER: if the source header is FIXED/pinned (or shrinks on scroll), set website.effects.stickyHeader
-("pinned" | "shrink" | "hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the
-body isn't hidden under the bar — the runtime measures --sw-header-h so there's no layout shift. A static
+STICKY HEADER: if the source header is FIXED/pinned, set website.effects.stickyHeader ("pinned" |
+"hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the body isn't hidden
+under the bar. If it also SHRINKS on scroll, that part is hand-authored against html.sw-scrolled — there
+is no shrink mode; see get_guide("effects"). ⚠ --sw-header-h is a HARDCODED constant sized for the stock
+recipe (4.5rem mobile / 4.75rem desktop), NOT a measurement of your header: a taller custom header MUST
+override it (:root{--sw-header-h:<real height>} in website.criticalCss) or .sw-top-padding under-pads and
+your headings sit behind the bar. Measure the real bar and set it. A static
 clone of a fixed header fails the fidelity meta check (header-position). See get_guide("nav").
 FOUNDATION IMPORT (theme-only): when the project was imported in FOUNDATION mode, the mainNav/footer slots
 hold a GENERIC data-driven nav/footer (the extractor's native default), NOT the foreign header — so you must
@@ -1173,7 +1197,8 @@ AUTO-DETECTS several dynamic behaviours a static screenshot can't show and PRE-S
 button ripple ("waves-effect") -> website.effects.buttonEffect, a loading PRELOADER ("preloader-removed") ->
 website.effects.preloaderEffect, and per-element AOS scroll-motion (data-aos) -> a data-sw-animation attribute
 (+ data-sw-duration/-delay) on the element. VERIFY each pre-set value against the ORIGINAL in the side-by-side
-and ADJUST it (the detection is a best-effort heuristic — the shrink-vs-pinned mode, the exact preloader style,
+and ADJUST it (the detection is a best-effort heuristic — a detected scroll-shrink maps to a POSITIONAL mode
+only, so you still hand-author the condense; the exact preloader style,
 the closest ripple/animation may need a tweak) rather than assuming the feature is off. Still MANUAL: a
 back-to-top button ("back-to-top-removed") -> website.effects.backToTop; a discarded side widget
 ("sidebar-discarded") -> rebuild it in website.sidebarLeft/Right (a 3rd-party page-plugin = a consent-gated
@@ -1301,8 +1326,10 @@ against this list BEFORE you publish it:
   gray/empty pre-footer band as "empty" from pixels: inspect the settled original DOM for an <iframe> whose src
   is a maps/embed host, and reproduce that band site-wide (add it to the footer slot).
 - STICKY / SHRINK HEADER without overlap: when the original's header is fixed/shrinking, set
-  website.effects.stickyHeader AND give each page's FIRST section \`.sw-top-padding\` (plus a \`--sw-header-h\`
-  matching the real header height) so content isn't hidden under the fixed bar. Don't just leave it off
+  website.effects.stickyHeader to the POSITIONAL mode ("pinned"/"hide-on-scroll"; there is no shrink mode —
+  author the condense against html.sw-scrolled) AND give each page's FIRST section \`.sw-top-padding\` (plus a
+  \`--sw-header-h\` matching the real header height — the token is a hardcoded default, NOT measured) so
+  content isn't hidden under the fixed bar. Don't just leave it off
   because it overlapped.
 - NAV / BUTTON EFFECTS: if the original's nav links have a hover underline/animation, or its buttons animate
   on hover, SNAP the closest website.effects nav/button scheme (get_guide("effects")) — don't ship flat
@@ -1362,7 +1389,7 @@ sample the original's real values with \`inspect_source\`, don't approximate to 
   (a uniform fixed grid vs a masonry/justified layout — reproduce whichever it uses).
 - SHRINK/COLLAPSE HEADER — reproduce the original's ACTUAL scroll behaviour (OBSERVE it FIRST; don't assume).
   SCROLL THE LIVE ORIGINAL to learn what it does — a headless page: goto → window.scrollTo(0,700) →
-  measure/screenshot the header. Then match it via \`website.effects.stickyHeader:"shrink"\` + criticalCss keyed
+  measure/screenshot the header. Then match it via \`website.effects.stickyHeader:"pinned"\` + criticalCss keyed
   on \`html.sw-scrolled #main-nav\` (with a \`transition\`). Two common patterns: (a) SCALE the logo down but keep
   it visible (\`html.sw-scrolled #main-nav .logo{height:2.5rem}\`); or (b) FADE + COLLAPSE the whole logo section
   to nothing (\`html.sw-scrolled … .logo-sec{max-height:0;opacity:0}\`), leaving just a thin horizontal menu bar —
@@ -1538,11 +1565,11 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows). Pass summary:true to omit heavy bodies (source/data/values) when you only need to see WHAT exists." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
-  { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
-  { name: 'fidelity_check', description: "ADVISORY computed-style probe (NOT a done-gate): measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
-  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
-  { name: 'visual_audit', description: "THE visual acceptance TERMINATOR for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
-  { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
+  { name: 'compare_to_source', description: "SPECIALISED (step 2 = visual_audit covers the normal case). Screenshot an imported page's BUILD and its ORIGINAL side-by-side. Reach for it only when you want ONE quick paired look without the full rubric; visual_audit gives you the same pair PLUS the judging rubric, so prefer that.", capability: 'content:read' },
+  { name: 'fidelity_check', description: "SPECIALISED + ADVISORY (NOT a done-gate; the gate is clone_audit, the visual verdict is visual_audit). Computed-style probe: measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
+  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STEP 1 of acceptance, before visual_audit. STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable, and NOTHING is visually CUT OFF by an ancestor overflow — a clipped logo/heading measures full-size in a rect, so this is the one way to catch it). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
+  { name: 'visual_audit', description: "STEP 2 and THE visual acceptance TERMINATOR for a cloned page (run clone_audit first): renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
+  { name: 'compare_regions', description: "SPECIALISED zoom for CHROME only — use after visual_audit has flagged a header/footer difference you cannot resolve at 1x. Crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },
   { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). Lab-only (no CrUX field data): performance is a throttled lab score (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },

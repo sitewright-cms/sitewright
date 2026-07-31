@@ -1157,6 +1157,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   html = resolveDirectives(html, {
     // Single store: text/html/href/src/bg read page.data (bare key → top-level prop; `data.<path>` → nested).
     data: ctx.page?.data as Record<string, unknown> | undefined,
+    // …plus the SITE-WIDE store for a `website.data.<path>` key. Chrome slots (mainNav/footer/bottom)
+    // are not a page and have no page.data, so this is the only editable-leaf store reachable from them
+    // that can hold RICH html — `data-sw-translate` is plain text.
+    websiteData: (ctx.website as { data?: Record<string, unknown> } | undefined)?.data,
     // data-sw-translate reads the project i18n catalog, pre-resolved for this page's locale into website.t.
     t: (ctx.website as { t?: Record<string, unknown> } | undefined)?.t,
     preview: ctx.preview,

@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -323,7 +323,10 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     buttonShape: w?.effects?.buttonShape ?? '',
     preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
     backToTop: w?.effects?.backToTop !== false, // ON by default; only an explicit `false` disables it
-    stickyHeader: w?.effects?.stickyHeader ?? 'none',
+    // NORMALIZED on load: a retired stored value (`shrink`) has no matching <option>, so the picker
+    // would silently render the first one and misreport the site's actual mode. Resolving it here shows
+    // the mode it really behaves as (pinned) and quietly migrates the value on the next save.
+    stickyHeader: normalizeStickyHeader(w?.effects?.stickyHeader) ?? 'none',
     scrollSpy: w?.effects?.scrollSpy === true, // OFF by default; only an explicit `true` enables it
     navCode: w?.effects?.navCode ?? '',
     buttonCode: w?.effects?.buttonCode ?? '',

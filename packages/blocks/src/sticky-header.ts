@@ -1,21 +1,33 @@
 // STICKY (fixed) TOP-HEADER — fixes the platform `#main-nav` landmark to the top of the viewport
 // when the site opts in (website.effects.stickyHeader). renderDocument emits stickyHeaderCss(mode)
-// straight into the inline <style> (keyed on the mode → byte-identical output when off), so the
-// `--sw-header-h` offset token is correct at FIRST PAINT — no JS-derived layout, no layout shift.
+// straight into the inline <style>, so the `--sw-header-h` offset token is correct at FIRST PAINT —
+// no JS-derived layout, no layout shift.
 //
-// The offset is OPT-IN via the `.sw-top-padding` utility: drop it on the first section to clear the
-// fixed header, OR on an inner element so a full-bleed hero/slider background bleeds UNDER the header
-// while its text clears it. When stickyHeader is 'none' the utility/token aren't emitted, so the
-// class is inert and a static-header site is unchanged.
+// The modes are POSITIONAL ONLY ('pinned' | 'hide-on-scroll'). The platform deliberately ships no
+// "how the bar LOOKS once scrolled" mode: such an effect is only safe to ship generically if it is
+// STRUCTURE-INDEPENDENT. Sliding the whole landmark is; condensing it is not — that needs to know
+// which row collapses. So the retired 'shrink' mode (which targeted the stock DaisyUI `.navbar` and
+// silently did nothing for a hand-authored header) is gone, and ANY visual scroll response is now
+// authored against `html.sw-scrolled`. See LEGACY_STICKY_HEADER_MODES in @sitewright/schema.
 //
-// 'hide-on-scroll' and 'shrink' also ship STICKY_HEADER_JS, which ONLY toggles state classes on
-// <html> as the visitor scrolls (`sw-scrolled` for the shrink/shadow threshold, `sw-nav-hidden` for
-// the hide-on-scroll direction) — it never touches the initial layout. 'pinned' is pure CSS.
+// WHAT SHIPS WHERE:
+//   • `--sw-header-h` (the published bar height) — EVERY site, fixed or static. Inert on its own.
+//   • STICKY_HEADER_JS — EVERY site. It only toggles state classes on <html> (`sw-scrolled` always;
+//     `sw-nav-hidden` for the hide-on-scroll direction) and never touches the initial layout, so
+//     `sw-scrolled` is a universal authoring hook rather than a private detail of one mode.
+//   • `.sw-top-padding`, `scroll-padding-top`, `position:fixed` — FIXED MODES ONLY. Emitting the
+//     spacer for a header that scrolls away would give every page carrying the class a phantom gap.
+//
+// The offset is OPT-IN via `.sw-top-padding`: drop it on the first section to clear the fixed header,
+// OR on an inner element so a full-bleed hero/slider background bleeds UNDER the header while its
+// text clears it.
 //
 // Custom headers of a non-default height override the token themselves (`:root{--sw-header-h:5rem}`
-// in website.criticalCss, which is emitted after this base CSS so it wins).
+// in website.criticalCss, which is emitted after this base CSS so it wins). The token is a hardcoded
+// constant sized for the stock recipe — it is NOT measured; only the runtime's hide threshold and
+// anchor-rest sync measure the real bar.
 
-import type { StickyHeaderMode } from '@sitewright/schema';
+import { normalizeStickyHeader, type StickyHeaderSetting } from '@sitewright/schema';
 
 // The default `#main-nav` recipe (a DaisyUI `.navbar`) is taller than its 4rem min-height because the
 // logo is a `.btn` (an h-8/h-7 mark + button padding): MEASURED in headless Chromium at 74.59px desktop
@@ -33,21 +45,41 @@ const HEADER_LG_BREAKPOINT = '1024px'; // Tailwind `lg` — where the recipe swa
  * the `--sw-header-h` offset token + the `.sw-top-padding` spacer + `scroll-padding-top` for anchors,
  * plus the per-mode scroll-state rules (driven by STICKY_HEADER_JS).
  */
-export function stickyHeaderCss(mode: StickyHeaderMode | 'none' | null | undefined): string {
-  if (!mode || mode === 'none') return '';
-  const base = [
-    // Offset token (first-paint-correct) + the opt-in spacer utility + the in-page-anchor scroll offset
-    // so a jump-link lands BELOW the fixed header, not behind it. The token rides on :root so both the
-    // spacer (inherits down) and html's scroll-padding (same element) read one source of truth. The
-    // value is breakpoint-aware (the recipe's mobile bar is shorter than the desktop bar).
-    `:root{--sw-header-h:${HEADER_HEIGHT_MOBILE};scroll-padding-top:var(--sw-header-h)}`,
+export function stickyHeaderCss(
+  rawMode: StickyHeaderSetting | null | undefined,
+): string {
+  // A stored RETIRED value keeps its positioning and loses only its recipe-specific styling
+  // (`shrink` → `pinned`), so an existing site stays fixed instead of silently un-sticking.
+  const mode = normalizeStickyHeader(rawMode);
+  const fixed = !!mode && mode !== 'none';
+  // The offset TOKEN ships for EVERY site, fixed header or not. `--sw-header-h` is the one published
+  // answer to "how tall is the bar", and author CSS keyed on `html.sw-scrolled` — now a UNIVERSAL hook,
+  // since the runtime ships unconditionally — routinely needs it. On a static header the token is inert:
+  // nothing consumes it, because the spacer + anchor offset below are emitted only when the bar is
+  // actually fixed and therefore actually overlaying content. Emitting the spacer unconditionally would
+  // give any page carrying `.sw-top-padding` a phantom offset under a header that scrolls away.
+  const token = [
+    `:root{--sw-header-h:${HEADER_HEIGHT_MOBILE}}`,
     `@media (min-width:${HEADER_LG_BREAKPOINT}){:root{--sw-header-h:${HEADER_HEIGHT_DESKTOP}}}`,
+  ];
+  if (!fixed) return token.join('');
+  const base = [
+    ...token,
+    // The opt-in spacer utility + the in-page-anchor scroll offset, so a jump-link lands BELOW the fixed
+    // header rather than behind it. Both read the one `:root` token above (the spacer inherits down;
+    // html's scroll-padding sits on the same element), and both are FIXED-ONLY — see the note above.
+    ':root{scroll-padding-top:var(--sw-header-h)}',
     '.sw-top-padding{padding-top:var(--sw-header-h)}',
     // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content but BELOW the mobile
     // drawer (its backdrop/panel are z-40/z-50, so an open drawer correctly covers the header) and the
     // consent banner / back-to-top floats (9996+). The landmark itself stays transparent — the recipe's
     // own `.navbar` paints the background, leaving a transparent-over-hero design possible.
     '#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}',
+    // Measurement guard for the runtime's anchor-rest sync: it force-toggles `sw-scrolled` to measure
+    // the bar at its SCROLLED height, and this suppresses transitions during that forced toggle so the
+    // measurement can never flash a reverse animation. Emitted for every fixed mode (not just the old
+    // `shrink`), because the collapse it measures is now AUTHOR CSS that could be on any header.
+    'html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}',
   ];
   if (mode === 'hide-on-scroll') {
     // Slide the whole header out of view on scroll-down (runtime adds `sw-nav-hidden`), back on scroll-up.
@@ -59,50 +91,51 @@ export function stickyHeaderCss(mode: StickyHeaderMode | 'none' | null | undefin
     base.push(
       '@media (prefers-reduced-motion:no-preference){#main-nav{transition:translate .3s cubic-bezier(.16,1,.3,1)}}',
     );
-  } else if (mode === 'shrink') {
-    // Condense the bar past the scroll threshold (runtime adds `sw-scrolled`): tighter `.navbar` +
-    // a soft drop shadow. The OFFSET token stays at full height so content never reflows as it shrinks.
-    base.push('html.sw-scrolled #main-nav{box-shadow:0 2px 10px rgba(15,23,42,.08)}');
-    base.push(
-      'html.sw-scrolled #main-nav .navbar{min-height:3.25rem;padding-top:.125rem;padding-bottom:.125rem}',
-    );
-    base.push(
-      '@media (prefers-reduced-motion:no-preference){#main-nav,#main-nav .navbar{transition:min-height .3s ease,padding .3s ease,box-shadow .3s ease}}',
-    );
-    // Measurement guard for the runtime's anchor-rest sync: it force-toggles `sw-scrolled` to measure the
-    // SHRUNK bar before first paint-relevant use, and this suppresses the shrink transitions during that
-    // forced toggle so the measurement can never flash a reverse animation.
-    base.push('html.sw-measure #main-nav,html.sw-measure #main-nav *{transition:none!important}');
   }
+  // NOTE: there is deliberately no built-in "condense on scroll" rule. It used to live here as the
+  // `shrink` mode and targeted `#main-nav .navbar` — i.e. it only ever worked for the stock DaisyUI
+  // recipe, and silently did nothing for a hand-authored header while still appearing to be enabled.
+  // A scroll effect can only ship generically if it is STRUCTURE-INDEPENDENT (sliding the whole
+  // landmark, above, is); condensing needs to know which row collapses, so it belongs to the author,
+  // keyed on the universal `html.sw-scrolled` class. See LEGACY_STICKY_HEADER_MODES in the schema.
   return base.join('');
 }
 
 // --- runtime ----------------------------------------------------------------
-// Toggles scroll-state classes on <html> for the JS-backed modes. Reads the body class to decide
-// behavior: `sw-header-hide-on-scroll` tracks scroll direction (slide away / reveal); `sw-scrolled`
-// (the "is the page scrolled" flag, used by shrink + any author CSS) is set for both. rAF-throttled,
-// passive listener. No-JS → the header stays put (still fixed + visible, just no shrink/hide).
+// Ships on EVERY site. Toggles `html.sw-scrolled` (the universal "is the page scrolled" hook that any
+// header — stock or hand-authored — keys its scroll response off) and, when the body carries
+// `sw-header-hide-on-scroll`, also tracks direction for the slide-away. rAF-throttled, passive
+// listener. No-JS → the header stays put (still fixed + visible, just no scroll response).
 export const STICKY_HEADER_JS = `(function(){
   var root=document.documentElement;
   var nav=document.getElementById('main-nav');
   var hide=/\\bsw-header-hide-on-scroll\\b/.test(document.body.className||'');
-  var shrink=/\\bsw-header-shrink\\b/.test(document.body.className||'');
+  // Is the bar FIXED (ANY positional mode)? Match the body class the platform emits per mode, rather
+  // than the computed position: computed style depends on the stylesheet having been parsed, so it is
+  // empty in jsdom and racy before CSS lands, whereas the class is on the markup from first byte. The
+  // open character class also keeps this true for any mode added later; 'none' emits no class at all.
+  // The anchor sync below is only meaningful when the bar actually overlays content.
+  var fixed=/\\bsw-header-[a-z-]+\\b/.test(document.body.className||'');
   // The hide-reveal threshold = the REAL header height (measured, not assumed) so it matches the
   // breakpoint-aware offset token AND a custom header. Measuring here only sizes the scroll threshold,
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
   function measure(){headerH=nav?nav.getBoundingClientRect().height:72;}
-  // SHRINK anchor-rest sync: an anchor jump computes its target from scroll-padding-top at CLICK time,
-  // but by the time the smooth scroll rests the bar has CONDENSED — the static token (sized for the
-  // full bar) then leaves a strip of the PREVIOUS section visible under the bar. Pin scroll-padding-top
-  // to the bar's SCROLLED height (measured via a forced sw-scrolled toggle under the sw-measure
-  // transition guard, all within one synchronous task — nothing paints) so sections rest FLUSH under
-  // the bar the visitor actually sees at rest. Pinned on BOTH the root (the published site's scroller)
-  // AND the body (the editor preview's scroll container — html{overflow:hidden} there, so root
-  // scroll-padding is inert); each inline style beats its stylesheet token. The layout spacer
-  // (.sw-top-padding) keeps the full-height token, so nothing reflows.
+  // ANCHOR-REST sync — now GENERIC (it used to run only for the built-in shrink mode). An anchor jump
+  // computes its target from scroll-padding-top at CLICK time, but by the time the smooth scroll rests a
+  // collapsing bar is SHORTER — the static token (sized for the full bar) then leaves a strip of the
+  // PREVIOUS section visible under it. Pin scroll-padding-top to the bar's SCROLLED height, measured via
+  // a forced sw-scrolled toggle under the sw-measure transition guard, all within one synchronous task —
+  // nothing paints. Nothing about that was shrink-specific: forcing the class measures whatever the
+  // AUTHOR's own html.sw-scrolled CSS does, so a hand-authored collapse lands anchors correctly too.
+  // (Without this, retiring the shrink mode would have handed every hand-authored collapse a broken
+  // anchor.) A bar that does NOT change height measures the same value twice and the pin is a no-op.
+  // Pinned on BOTH the root (the published site's scroller) AND the body (the editor preview's scroll
+  // container — html{overflow:hidden} there, so root scroll-padding is inert); each inline style beats
+  // its stylesheet token. The layout spacer (sw-top-padding) keeps the full-height token → no reflow.
+  // NOTE: no backticks anywhere in this literal — one would terminate it.
   function syncAnchorRest(){
-    if(!shrink||!nav)return;
+    if(!fixed||!nav)return;
     var h;
     if(root.classList.contains('sw-scrolled')){h=nav.getBoundingClientRect().height;}
     else{

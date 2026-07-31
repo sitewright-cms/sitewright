@@ -132,3 +132,27 @@ export function isEmptyPageData(v: JsonValue): boolean {
 export function pageDataObject(v: JsonValue): Record<string, JsonValue> | undefined {
   return isPlainObject(v) && Object.keys(v).length > 0 ? v : undefined;
 }
+
+/**
+ * Directive-key prefix routing an inline edit to the SITE-WIDE `website.data` store instead of the
+ * page's own `page.data`. Mirrors the render-side resolver in @sitewright/blocks directives.ts.
+ */
+export const WEBSITE_DATA_PREFIX = 'website.data.';
+
+/**
+ * The path WITHIN `website.data` a directive key targets, or `null` when the key belongs to page.data.
+ *
+ * Extracted from the preview message handler so the routing decision is unit-testable: getting it wrong
+ * is silent and costly in both directions — a `website.data.*` key falling through to `pageDataSet`
+ * writes a literal `website` → `data` → … object INTO page.data and never touches the real store, while
+ * a page key mistakenly routed here would push per-page content into a site-wide setting.
+ *
+ * Returns null for the bare prefix with no path after it, and for any key whose segments aren't safe
+ * (empty or prototype-polluting) — the caller keeps the authored default rather than writing junk.
+ */
+export function websiteDataPathOf(key: string): string | null {
+  if (!key.startsWith(WEBSITE_DATA_PREFIX)) return null;
+  const path = key.slice(WEBSITE_DATA_PREFIX.length);
+  if (path === '' || !isSafeKey(path)) return null;
+  return path;
+}

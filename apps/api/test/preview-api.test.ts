@@ -422,14 +422,16 @@ describe('preview API — code-first source page', () => {
       },
     });
     expect((withEffect.json() as { html: string }).html).toContain("dispatchEvent(new Event('scroll'))");
-    // A plain page has no scroll effect → no bridge (nothing needs it).
+    // A PLAIN page bridges too, now that the sticky-header runtime ships unconditionally: `html.sw-scrolled`
+    // is a universal authoring hook, so ANY site's CSS may key off it and the preview has to stay WYSIWYG
+    // for that. The bridge is self-guarded (it no-ops where the viewport scrolls natively).
     const plain = await poolApp.inject({
       method: 'POST',
       url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Static</h1></section>' },
     });
-    expect((plain.json() as { html: string }).html).not.toContain("dispatchEvent(new Event('scroll'))");
+    expect((plain.json() as { html: string }).html).toContain("dispatchEvent(new Event('scroll'))");
   });
 
   it('rejects a STATICALLY-unsafe slot at save, and preview still skips a RENDER-failing slot', async () => {

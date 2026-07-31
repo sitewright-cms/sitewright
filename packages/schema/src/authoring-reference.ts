@@ -99,7 +99,7 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     name: 'data-sw-text',
     keywords: 'editable plain text inline directive',
     description:
-      'Makes the element’s text editable in place (plain text, HTML-escaped). The override is stored in page.data — a bare key is a top-level property; a `page.data.<path>` key targets a nested page.data path.',
+      'Makes the element’s text editable in place (plain text, HTML-escaped). The override is stored in page.data — a bare key is a top-level property; a `page.data.<path>` key targets a nested page.data path. A `website.data.<path>` key reads the SITE-WIDE store instead: one value shared by every page, and the only store a chrome slot (mainNav/footer/bottom) can reach, since a slot is not a page.',
     example: '<h1 data-sw-text="headline">Welcome</h1>',
   },
   {
@@ -109,7 +109,7 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     name: 'data-sw-html',
     keywords: 'editable rich text wysiwyg html directive',
     description:
-      'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The override is stored in page.data (bare key = top-level; `page.data.<path>` = nested) and sanitized to a safe allowlist at render.',
+      'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The override is stored in page.data (bare key = top-level; `page.data.<path>` = nested) and sanitized to a safe allowlist at render. Use a `website.data.<path>` key for ONE site-wide rich block — the way to put an editable HTML region in a chrome slot, which otherwise has only the plain-text data-sw-translate.',
     example: '<div data-sw-html="intro"><p>Default intro…</p></div>',
   },
   {

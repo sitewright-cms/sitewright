@@ -11,7 +11,7 @@ import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, typ
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
-import { BEHAVIOUR_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { BEHAVIOUR_PROBE, CLIP_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
@@ -207,11 +207,17 @@ export async function captureBehaviour(
     // DESKTOP probe: sliders / modals / fonts-loaded.
     const dp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.fullhd, opts.signal);
     let desktop = desktopFallback;
+    let clipped: BehaviourFacts['clipped'] = [];
     try {
       // freeze:false — the probe needs live runtimes (a slider must actually enhance, fonts must load) to
       // detect them; the shared settle still scrolls/loads + waits fonts + waits embeds.
       await settlePage(dp.page, { freeze: false });
       desktop = ((await dp.page.evaluate(BEHAVIOUR_PROBE as () => unknown).catch(() => null)) as typeof desktopFallback | null) ?? desktopFallback;
+      // Same settled desktop render: which elements are VISUALLY CUT OFF by an ancestor overflow. Kept
+      // here rather than in a separate pass because it needs the fully-settled page (a component runtime
+      // may INJECT the clipper — the carousel's [data-sw-part="container"] is not in the authored source).
+      // Empty on probe failure, so an unstable render cannot invent a clipping defect.
+      clipped = ((await dp.page.evaluate(CLIP_PROBE as () => unknown).catch(() => [])) as BehaviourFacts['clipped']) ?? [];
     } finally {
       await dp.context.close().catch(() => {});
     }
@@ -228,7 +234,7 @@ export async function captureBehaviour(
     } finally {
       await mp.context.close().catch(() => {});
     }
-    return { ...desktop, ...nav, navReachableMobile };
+    return { ...desktop, ...nav, navReachableMobile, clipped };
   }).catch(() => ({ ...desktopFallback, ...nav, navReachableMobile: 0 }));
 }
 

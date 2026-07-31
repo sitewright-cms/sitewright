@@ -226,10 +226,14 @@ describe('renderDocument — document shell', () => {
   });
 
   describe('sticky (fixed) header', () => {
-    it('a static header (none/absent) emits no sticky CSS — byte-identical default', () => {
+    it('a static header (none/absent) gets the offset token but no fixed-header rules', () => {
       const off = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
-      expect(off).not.toContain('--sw-header-h');
+      // The token ships everywhere — author CSS on the universal `html.sw-scrolled` hook reads it…
+      expect(off).toContain('--sw-header-h');
+      // …but nothing consumes it on a header that scrolls away, so the spacer, the anchor offset and
+      // the fixed positioning stay out (they would push every `.sw-top-padding` page down for nothing).
       expect(off).not.toContain('.sw-top-padding');
+      expect(off).not.toContain('scroll-padding-top');
       expect(off).not.toContain('#main-nav{position:fixed');
       // explicit 'none' is identical to absent
       expect(renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', stickyHeader: 'none' })).toBe(off);
@@ -246,19 +250,23 @@ describe('renderDocument — document shell', () => {
       }
     });
 
-    it('hide-on-scroll slides the header out; shrink condenses it — each its own state rule', () => {
+    it('hide-on-scroll slides the header out; the retired shrink renders exactly as pinned', () => {
       const hide = renderDocument(page, { brand, stickyHeader: 'hide-on-scroll' });
       expect(hide).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}');
       expect(hide).not.toContain('html.sw-scrolled #main-nav .navbar');
 
+      // `shrink` is retired: it keeps its positioning (an existing site must not un-stick) and loses
+      // the `.navbar` condense, which only ever worked for the stock DaisyUI recipe.
       const shrink = renderDocument(page, { brand, stickyHeader: 'shrink' });
-      expect(shrink).toContain('html.sw-scrolled #main-nav .navbar');
+      const pinnedDoc = renderDocument(page, { brand, stickyHeader: 'pinned' });
+      expect(shrink).toBe(pinnedDoc);
+      expect(shrink).not.toContain('.navbar');
       expect(shrink).not.toContain('sw-nav-hidden');
 
-      // 'pinned' is pure positioning — no scroll-state rule at all
-      const pinned = renderDocument(page, { brand, stickyHeader: 'pinned' });
+      // 'pinned' is pure positioning — the platform styles no scroll response of its own
+      const pinned = pinnedDoc;
       expect(pinned).not.toContain('sw-nav-hidden');
-      expect(pinned).not.toContain('sw-scrolled');
+      expect(pinned).not.toContain('html.sw-scrolled #main-nav{');
     });
 
     it('omits the sticky CSS on a raw-fidelity page (no platform CSS)', () => {

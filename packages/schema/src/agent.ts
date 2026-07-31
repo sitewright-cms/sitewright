@@ -163,20 +163,22 @@ trigger and bridges the small gap so hover doesn't drop mid-travel — don't add
 spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
-preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
-pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
+preview_page (returns DESKTOP + MOBILE screenshots — LOOK and refine before moving on;
+includeHtml:true adds the HTML) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
 BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
 single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
 max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
-(chrome + 2-3 sections), then get_page it and put_page with the next sections appended, and REPEAT
-until the page is complete. Do NOT stop to ask "shall I continue" between sections — keep calling
-tools until the page is DONE or you are genuinely blocked; only then end your turn.
+(chrome + 2-3 sections), then get_page + put_page with the next sections appended, REPEATing until
+complete. Do NOT stop to ask "shall I continue" — keep calling
+tools until the page is DONE or you are genuinely blocked.
 PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
 preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
 — after building a meaningful chunk of a new page, and once before publishing — not after every tool
-call. (Imported-page fidelity work is the exception: keep iterating with compare_to_source until the
-build matches the original.)
+call. (Imported-page fidelity is the exception: iterate with clone_audit + visual_audit until it matches.)
+VERIFY WITH PLATFORM TOOLS, not your own browser/scraper: they render the real build against the LIVE
+original and answer what a rect CANNOT — is it CLIPPED, did the font LOAD. Fell back to your own
+tooling? Say so in your report.
 MAKE ALL CONTENT EDITABLE: every headline / paragraph / image / link / button a client might change
 must carry a data-sw-* directive (data-sw-text / html / src / href / bg) or a {{sw-control}} — never
 hard-code final copy as plain inline text (bound text is also what makes a page TRANSLATABLE by
@@ -193,12 +195,11 @@ USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
 thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag}} flags; search_icons finds
 names. Don't ship an icon-less contact / footer / feature / stats section.
 DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
-\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
-\`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
-or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
-replacing over deleting when in doubt.
-UNDO: every save is versioned. If an edit went wrong, list_revisions(kind,id) shows the history and
-restore_revision(kind,id,revisionId) rolls it back (non-destructive — a deleted entity is recreated).
+\`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if absent,
+don't attempt removals: ask the user to delete it in the editor, or to grant \`content:delete\`. Prefer
+editing or replacing over deleting when in doubt.
+UNDO: every save is versioned — list_revisions(kind,id) then restore_revision(kind,id,revisionId)
+rolls it back (non-destructive; a deleted entity is recreated).
 `;
 
 /**
@@ -1564,11 +1565,11 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_content', description: "List all entities of a content kind (for 'entry', pass `dataset` to scope to one dataset's rows). Pass summary:true to omit heavy bodies (source/data/values) when you only need to see WHAT exists." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
-  { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
-  { name: 'fidelity_check', description: "ADVISORY computed-style probe (NOT a done-gate): measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
-  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
-  { name: 'visual_audit', description: "THE visual acceptance TERMINATOR for a cloned page: renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
-  { name: 'compare_regions', description: "HIGH-RES visual compare: crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
+  { name: 'compare_to_source', description: "SPECIALISED (step 2 = visual_audit covers the normal case). Screenshot an imported page's BUILD and its ORIGINAL side-by-side. Reach for it only when you want ONE quick paired look without the full rubric; visual_audit gives you the same pair PLUS the judging rubric, so prefer that.", capability: 'content:read' },
+  { name: 'fidelity_check', description: "SPECIALISED + ADVISORY (NOT a done-gate; the gate is clone_audit, the visual verdict is visual_audit). Computed-style probe: measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
+  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STEP 1 of acceptance, before visual_audit. STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable, and NOTHING is visually CUT OFF by an ancestor overflow — a clipped logo/heading measures full-size in a rect, so this is the one way to catch it). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
+  { name: 'visual_audit', description: "STEP 2 and THE visual acceptance TERMINATOR for a cloned page (run clone_audit first): renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
+  { name: 'compare_regions', description: "SPECIALISED zoom for CHROME only — use after visual_audit has flagged a header/footer difference you cannot resolve at 1x. Crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },
   { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). Lab-only (no CrUX field data): performance is a throttled lab score (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },

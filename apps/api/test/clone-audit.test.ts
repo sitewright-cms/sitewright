@@ -85,6 +85,32 @@ describe('behaviouralChecks', () => {
     expect(behaviouralChecks(behaviour({ carousels: 0, carouselsEnhanced: 0 })).find((c) => c.id === 'sliders')!.pass).toBe(true);
   });
 
+  it('fails when an element is visually CUT OFF by an ancestor overflow, and names the clipper', () => {
+    // The check a rect measurement cannot make: getBoundingClientRect returns the LAYOUT box whether or
+    // not an ancestor clips it, so the element reads full-size while the visitor sees part of it. When
+    // the clipper is injected by a component runtime it is absent from the authored source too.
+    const clean = behaviouralChecks(behaviour({ clipped: [] })).find((c) => c.id === 'not-clipped')!;
+    expect(clean.pass).toBe(true);
+    expect(clean.detail).toBe('nothing clipped');
+    // Absent (an older/failed probe) must not invent a defect.
+    expect(behaviouralChecks(behaviour({})).find((c) => c.id === 'not-clipped')!.pass).toBe(true);
+
+    const cut = behaviouralChecks(
+      behaviour({
+        clipped: [{ el: 'img.ost-cert-logo', clippedBy: 'div.', box: '122x115', visible: '122x51', lost: '56%' }],
+      }),
+    ).find((c) => c.id === 'not-clipped')!;
+    expect(cut.pass).toBe(false);
+    // The detail must name the CLIPPER and the loss — the fix is otherwise a guessing game, since the
+    // element the author would reach for is not the one doing the clipping.
+    expect(cut.detail).toContain('img.ost-cert-logo');
+    expect(cut.detail).toContain('by div.');
+    expect(cut.detail).toContain('56%');
+    expect(cut.detail).toContain('122x115 -> 122x51');
+    // GATING, not advisory — this is objectively measurable, so it must block rather than advise.
+    expect(cut.advisory).toBeFalsy();
+  });
+
   it('requires modals ONLY when the original has triggers', () => {
     expect(behaviouralChecks(behaviour({ hasModalTrigger: true, dialogs: 0 })).find((c) => c.id === 'modals')!.pass).toBe(false);
     expect(behaviouralChecks(behaviour({ hasModalTrigger: false, dialogs: 0 })).find((c) => c.id === 'modals')!.pass).toBe(true);

@@ -294,9 +294,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       'scroll-padding-top:var(--sw-header-h,0px);' +
       'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}'
     : '';
-  // Sticky/fixed top-header CSS (the fixed `#main-nav` + the `--sw-header-h` offset token + the
-  // `.sw-top-padding` spacer). Emitted here so the offset is correct at FIRST PAINT (no layout shift);
-  // '' when the site keeps a static header, so a default site is byte-identical.
+  // Sticky/fixed top-header CSS. Emitted here so the offset is correct at FIRST PAINT (no layout
+  // shift). A STATIC header still gets the `--sw-header-h` token (it is the published "how tall is the
+  // bar" number, and author CSS on the universal `html.sw-scrolled` hook needs it) but NOT the fixed
+  // positioning, the `.sw-top-padding` spacer or the anchor scroll-offset — those would mis-offset a
+  // header that scrolls away.
   const stickyHeaderStyles = stickyHeaderCss(stickyHeader);
   // Brand `--sw-color-*-content` (text-on-brand) tokens. Themes-on emits them via the dark block; for a
   // themes-OFF site emit the derived LIGHT tokens UNCONDITIONALLY. They are purge-proof (inline `:root`,

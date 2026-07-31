@@ -587,15 +587,30 @@ export const STICKY_HEADER_LABELS: Record<StickyHeaderMode, string> = {
 };
 
 /**
- * The fixed-header modes that need the sticky-header JS runtime — those that toggle a state class as
- * the visitor scrolls (`html.sw-nav-hidden` for hide-on-scroll direction, `html.sw-scrolled` for the
- * shrink/shadow threshold). `pinned` is pure CSS. Source-of-truth for the publish/preview runtime gate.
+ * The fixed-header modes whose OWN built-in CSS depends on a scroll-state class:
+ * `html.sw-nav-hidden` (hide-on-scroll direction) and `html.sw-scrolled` (the shrink/shadow threshold).
+ * Retained as documentation of which modes the platform styles itself — it is NO LONGER the runtime
+ * gate, see {@link stickyHeaderUsesRuntime}.
  */
 export const JS_STICKY_HEADER_MODES = ['hide-on-scroll', 'shrink'] as const;
 
-/** Whether a chosen sticky-header mode needs the sticky-header JS runtime (scroll state classes). */
-export function stickyHeaderUsesRuntime(mode: string | null | undefined): boolean {
-  return !!mode && (JS_STICKY_HEADER_MODES as readonly string[]).includes(mode);
+/**
+ * Whether to ship the sticky-header JS runtime. ALWAYS TRUE — `html.sw-scrolled` is a UNIVERSAL
+ * authoring hook, not a private detail of two named modes.
+ *
+ * It used to ship only for `hide-on-scroll`/`shrink`, which made "is the page scrolled" silently
+ * unavailable to every other site. That mattered because the platform's built-in `shrink` styling
+ * condenses a DaisyUI `.navbar` — so a CUSTOM header gets nothing from the mode and has to author its
+ * own collapse against `html.sw-scrolled`. Authors hit a dead end: the hook they needed existed only
+ * if they selected a mode whose visible behaviour did not apply to them. Now any header, in any mode
+ * (including a static one), can key scroll-state styling off the class.
+ *
+ * The runtime is rAF-throttled with a passive listener and degrades by itself: it reads the body class
+ * to decide whether to also track hide-on-scroll direction or the shrink anchor-rest sync, so with no
+ * mode selected it only toggles `sw-scrolled`. The parameter is kept for call-site clarity.
+ */
+export function stickyHeaderUsesRuntime(_mode?: string | null | undefined): boolean {
+  return true;
 }
 
 /**

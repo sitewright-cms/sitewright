@@ -34,14 +34,24 @@ const HEADER_LG_BREAKPOINT = '1024px'; // Tailwind `lg` — where the recipe swa
  * plus the per-mode scroll-state rules (driven by STICKY_HEADER_JS).
  */
 export function stickyHeaderCss(mode: StickyHeaderMode | 'none' | null | undefined): string {
-  if (!mode || mode === 'none') return '';
-  const base = [
-    // Offset token (first-paint-correct) + the opt-in spacer utility + the in-page-anchor scroll offset
-    // so a jump-link lands BELOW the fixed header, not behind it. The token rides on :root so both the
-    // spacer (inherits down) and html's scroll-padding (same element) read one source of truth. The
-    // value is breakpoint-aware (the recipe's mobile bar is shorter than the desktop bar).
-    `:root{--sw-header-h:${HEADER_HEIGHT_MOBILE};scroll-padding-top:var(--sw-header-h)}`,
+  const fixed = !!mode && mode !== 'none';
+  // The offset TOKEN ships for EVERY site, fixed header or not. `--sw-header-h` is the one published
+  // answer to "how tall is the bar", and author CSS keyed on `html.sw-scrolled` — now a UNIVERSAL hook,
+  // since the runtime ships unconditionally — routinely needs it. On a static header the token is inert:
+  // nothing consumes it, because the spacer + anchor offset below are emitted only when the bar is
+  // actually fixed and therefore actually overlaying content. Emitting the spacer unconditionally would
+  // give any page carrying `.sw-top-padding` a phantom offset under a header that scrolls away.
+  const token = [
+    `:root{--sw-header-h:${HEADER_HEIGHT_MOBILE}}`,
     `@media (min-width:${HEADER_LG_BREAKPOINT}){:root{--sw-header-h:${HEADER_HEIGHT_DESKTOP}}}`,
+  ];
+  if (!fixed) return token.join('');
+  const base = [
+    ...token,
+    // The opt-in spacer utility + the in-page-anchor scroll offset, so a jump-link lands BELOW the fixed
+    // header rather than behind it. Both read the one `:root` token above (the spacer inherits down;
+    // html's scroll-padding sits on the same element), and both are FIXED-ONLY — see the note above.
+    ':root{scroll-padding-top:var(--sw-header-h)}',
     '.sw-top-padding{padding-top:var(--sw-header-h)}',
     // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content but BELOW the mobile
     // drawer (its backdrop/panel are z-40/z-50, so an open drawer correctly covers the header) and the

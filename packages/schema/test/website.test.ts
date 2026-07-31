@@ -421,11 +421,14 @@ describe('WebsiteSettingsSchema', () => {
       expect(websiteEffectsClasses({ stickyHeader: 'none' })).toBe('');
       // composes with the other effect classes, header last
       expect(websiteEffectsClasses({ navEffect: 'box-solid', stickyHeader: 'shrink' })).toBe('sw-nav-box-solid sw-header-shrink');
-      // only the scroll-driven modes need the runtime; 'pinned' is pure CSS
+      // The runtime ships for EVERY site: `html.sw-scrolled` is a universal authoring hook, not a
+      // private detail of the two modes the platform happens to style itself. A custom header gets
+      // nothing from `shrink` (its built-in CSS condenses a DaisyUI `.navbar`) and must author its own
+      // collapse against the class — which was unreachable while the runtime was gated on the mode.
       for (const m of JS_STICKY_HEADER_MODES) expect(stickyHeaderUsesRuntime(m)).toBe(true);
-      expect(stickyHeaderUsesRuntime('pinned')).toBe(false);
-      expect(stickyHeaderUsesRuntime('none')).toBe(false);
-      expect(stickyHeaderUsesRuntime(undefined)).toBe(false);
+      expect(stickyHeaderUsesRuntime('pinned')).toBe(true);
+      expect(stickyHeaderUsesRuntime('none')).toBe(true);
+      expect(stickyHeaderUsesRuntime(undefined)).toBe(true);
       // every mode has a non-empty picker label
       for (const m of STICKY_HEADER_MODES) expect(STICKY_HEADER_LABELS[m]).toBeTruthy();
       for (const m of JS_STICKY_HEADER_MODES) expect(STICKY_HEADER_MODES).toContain(m);

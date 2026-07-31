@@ -226,10 +226,14 @@ describe('renderDocument — document shell', () => {
   });
 
   describe('sticky (fixed) header', () => {
-    it('a static header (none/absent) emits no sticky CSS — byte-identical default', () => {
+    it('a static header (none/absent) gets the offset token but no fixed-header rules', () => {
       const off = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
-      expect(off).not.toContain('--sw-header-h');
+      // The token ships everywhere — author CSS on the universal `html.sw-scrolled` hook reads it…
+      expect(off).toContain('--sw-header-h');
+      // …but nothing consumes it on a header that scrolls away, so the spacer, the anchor offset and
+      // the fixed positioning stay out (they would push every `.sw-top-padding` page down for nothing).
       expect(off).not.toContain('.sw-top-padding');
+      expect(off).not.toContain('scroll-padding-top');
       expect(off).not.toContain('#main-nav{position:fixed');
       // explicit 'none' is identical to absent
       expect(renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', stickyHeader: 'none' })).toBe(off);

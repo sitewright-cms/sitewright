@@ -951,11 +951,14 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('#main-nav{position:fixed'); // fixed
-    expect(home).not.toContain('sticky-header.js'); // pinned = pure CSS, no runtime
-    expect(home).not.toContain('sw-nav-hidden'); // no scroll-state rules
+    // The runtime ships for EVERY mode now — `html.sw-scrolled` is a universal authoring hook, not a
+    // private detail of hide-on-scroll/shrink. `pinned` contributes no scroll-state CSS of its own,
+    // but a pinned site's author CSS can still key off the class.
+    expect(home).toContain('sticky-header.js');
+    expect(home).not.toContain('sw-nav-hidden'); // no scroll-state rules of the platform's own
   });
 
-  it('static header (no stickyHeader): no fixed positioning, no offset token, no runtime', async () => {
+  it('static header (no stickyHeader): offset token + runtime ship, but no fixed positioning/spacer', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -969,9 +972,16 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).not.toContain('--sw-header-h');
+    // The offset TOKEN and the scroll-state runtime ship even for a static header: `--sw-header-h` is
+    // the published "how tall is the bar" number and `html.sw-scrolled` is a universal authoring hook.
+    expect(home).toContain('--sw-header-h');
+    expect(home).toContain('sticky-header.js');
+    // …but nothing CONSUMES the token on a header that scrolls away, so the fixed positioning, the
+    // spacer utility and the anchor offset stay out — emitting them would push every page carrying
+    // `.sw-top-padding` down by a phantom header height.
     expect(home).not.toContain('#main-nav{position:fixed');
-    expect(home).not.toContain('sticky-header.js');
+    expect(home).not.toContain('.sw-top-padding');
+    expect(home).not.toContain('scroll-padding-top');
     expect(home).not.toContain('scrollspy.js');
   });
 

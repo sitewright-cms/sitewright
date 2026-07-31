@@ -2,18 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { stickyHeaderCss, STICKY_HEADER_JS } from '../src/sticky-header.js';
 
 describe('stickyHeaderCss', () => {
-  it('returns "" for a static header (none/undefined) so a default site is byte-identical', () => {
-    expect(stickyHeaderCss('none')).toBe('');
-    expect(stickyHeaderCss(undefined)).toBe('');
-    expect(stickyHeaderCss(null)).toBe('');
+  it('a static header gets the offset TOKEN but none of the fixed-header rules', () => {
+    // The token is the published "how tall is the bar" number and author CSS on the universal
+    // `html.sw-scrolled` hook needs it, so it ships for every site…
+    for (const mode of ['none', undefined, null] as const) {
+      const css = stickyHeaderCss(mode);
+      expect(css).toContain(':root{--sw-header-h:4.5rem}');
+      expect(css).toContain('@media (min-width:1024px){:root{--sw-header-h:4.75rem}}');
+      // …but on its own it is INERT. Emitting the spacer or the anchor offset for a header that
+      // scrolls away would give any page carrying `.sw-top-padding` a phantom gap at the top.
+      expect(css).not.toContain('.sw-top-padding');
+      expect(css).not.toContain('scroll-padding-top');
+      expect(css).not.toContain('position:fixed');
+    }
   });
 
   it('every mode emits the offset token, the opt-in spacer, the anchor offset and the fixed landmark', () => {
     for (const mode of ['pinned', 'hide-on-scroll', 'shrink'] as const) {
       const css = stickyHeaderCss(mode);
-      // breakpoint-aware offset token (mobile bar shorter than desktop), measured from the stock recipe
-      expect(css).toContain(':root{--sw-header-h:4.5rem;scroll-padding-top:var(--sw-header-h)}');
+      // breakpoint-aware offset token (mobile bar shorter than desktop), measured from the stock recipe.
+      // The token rule and the anchor offset are SEPARATE rules now: the token ships for every site,
+      // the anchor offset only when the bar is actually fixed.
+      expect(css).toContain(':root{--sw-header-h:4.5rem}');
       expect(css).toContain('@media (min-width:1024px){:root{--sw-header-h:4.75rem}}');
+      expect(css).toContain(':root{scroll-padding-top:var(--sw-header-h)}');
       expect(css).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}');
       expect(css).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}');
     }

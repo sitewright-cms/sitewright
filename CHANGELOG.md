@@ -9,6 +9,51 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-01
+
+A third neutral clone run (advancedtechcc.com) surfaced four defects, three of which were the platform
+**misdescribing itself**: the feature worked, the response or the documentation did not. All three failed
+SILENTLY — no error, no marker — so the agent shipped a wrong page believing it was right. This release
+makes each of them tell the truth.
+
+### Fixed
+
+- **`get_publish_status` advertised a URL it knew was dead.** `url` was returned unconditionally, so a
+  project with no deploy target reported a `<slug>.<sitesDomain>` address that 404s — sitting right next
+  to `localHosting: false`. The editor gates on that flag; MCP hands the object to an agent verbatim, and
+  one duly reported a clone as "published at" an address that had never served anything. `status` is now
+  the headline — **`"unpublished"` whenever no deploy target exists**, however many releases were built —
+  `url` is non-null ONLY for Local Hosting (the one case where this app is the thing serving), and a
+  `reason` says what to do about it.
+- **Dataset entries rendered ALPHABETICALLY BY ID.** Entries sort by `order ?? +Infinity`, which is right
+  for the editor — drag-reorder stamps every row — but meant rows written over the API all tied at
+  infinity and fell back to the id tie-break. Badges came out Advisor→Partner→Silver; nine client logos
+  ran a–z. New entries are now numbered in **write order**, a full re-PUT that omits `order` keeps its
+  position, and appending to a legacy unordered dataset backfills it first so the new row cannot leapfrog
+  its siblings. Drag-and-drop in the editor remains the canonical way to reorder, and still wins.
+- **`{{#sw-pick-entry}}` silently rendered NOTHING.** The authoring reference documented
+  `{{#sw-pick-entry "dataset" id}}`, but the helper only ever accepted the entries ARRAY — a string is not
+  an array, so it fell straight to the `{{else}}` branch with no error and no marker, and two team members
+  vanished from a page. The reference is corrected AND the helper now also resolves a bare slug against
+  the root dataset map (own-property lookup only), so both forms work.
+- **`.loading` killed any authored aspect ratio.** `:is(iframe, img, video, embed, object).loading` is
+  specificity **(0,1,1)** — `:is()` takes the specificity of its most specific argument — so it outranked
+  every `.aspect-*` utility at (0,1,0). Folding `aspect-ratio: auto` into it (there to undo daisyUI's
+  square `.loading`) made an authored `aspect-video` impossible to honour, and a 16/9 lazy embed published
+  at the 150px bare-iframe default. The reset now lives in its own rule scoped
+  `:not([class*="aspect-"])`, so daisyUI is still neutralised while the author's ratio wins. Measured in a
+  browser: 1040×150 → **1040×585 (16 / 9)**, and a `.loading` image with no aspect utility still resets to
+  auto.
+
+### Added
+
+- **`previewUrl` on `get_page` and `list_pages`.** There was no way for an agent to SEE a page it had just
+  written unless the project happened to have a deploy target. Every page now carries a signed draft
+  preview URL that needs no login and no publish. It is composed from `pagePath` — the parent-chain route
+  the publisher itself uses — not the page's own last-segment `path`, so a child page resolves to
+  `/services/audit` rather than `/audit`; and it is omitted entirely on an instance with no preview root,
+  since those routes would not exist there.
+
 ## [0.7.0] — 2026-07-31
 
 Cloning a second real site (ost-noack.de) with a neutral, uncoached agent surfaced six new friction
@@ -338,8 +383,11 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.8.0...HEAD
 [#754]: https://github.com/sitewright-cms/sitewright/pull/754
+[0.8.0]: https://github.com/sitewright-cms/sitewright/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/sitewright-cms/sitewright/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/sitewright-cms/sitewright/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/sitewright-cms/sitewright/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sitewright-cms/sitewright/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sitewright-cms/sitewright/compare/v0.2.0...v0.3.0

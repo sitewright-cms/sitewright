@@ -276,6 +276,7 @@ import {
   type Settings,
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
+import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
 import { RevisionsRepository } from '../repo/revisions.js';
@@ -2884,6 +2885,47 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     return { ...body, order: next(Math.max(...ordered.map((e) => e.order as number)) + 1) };
   }
+
+  // ---- criticalCss PARTIAL write -------------------------------------------------------------
+  // `website.criticalCss` is one string, and `?merge=1` deep-merges OBJECTS but replaces strings
+  // wholesale — so changing one rule meant re-transmitting the whole stylesheet. Four clone agents
+  // independently called this the most tedious mechanic of the job (counted: 6x ~5KB, 6x ~7KB,
+  // 6x ~22KB, 11x ~19KB of pure re-send). A NAMED write is an upsert, so repeated edits to the same
+  // rule replace in place instead of piling up copies; an unnamed one appends.
+  app.post<{ Params: { projectId: string }; Body: { css?: unknown; block?: unknown } }>(
+    '/projects/:projectId/critical-css',
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const css = typeof req.body?.css === 'string' ? req.body.css : null;
+      if (css === null) {
+        return reply.code(400).send({ error: 'css is required — a string of CSS (send "" with a block to remove that block)' });
+      }
+      const rawBlock = req.body?.block;
+      const block = typeof rawBlock === 'string' && rawBlock !== '' ? rawBlock : undefined;
+      if (block !== undefined && !CSS_BLOCK_NAME.test(block)) {
+        return reply.code(400).send({
+          error: `block "${block}" is not a valid name — letters, digits, "-" and "_", starting with a letter, max 49 chars`,
+        });
+      }
+      const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as
+        | { website?: { criticalCss?: string } }
+        | null;
+      if (!settings) return reply.code(404).send({ error: 'no settings to patch — write the full settings object first' });
+      const before = settings.website?.criticalCss ?? '';
+      const after = applyCriticalCssPatch(before, css, block);
+      const next = { ...settings, website: { ...(settings.website ?? {}), criticalCss: after } };
+      await contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, next);
+      // A receipt, not the sheet: echoing it back is the very cost this route exists to avoid.
+      return reply.send({
+        block: block ?? null,
+        bytes: after.length,
+        bytesBefore: before.length,
+        blocks: listCriticalCssBlocks(after),
+        changed: after !== before,
+      });
+    },
+  );
 
   app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',

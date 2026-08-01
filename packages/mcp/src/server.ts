@@ -1023,6 +1023,29 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'patch_critical_css',
+    {
+      description:
+        'PARTIAL write of website.criticalCss — add or change site CSS WITHOUT re-sending the whole stylesheet. ' +
+        'Pass `block` (a short name like "nav" or "gallery") and that named block is UPSERTED: replaced in place if ' +
+        'it already exists, appended if not — so editing the same rule ten times leaves ONE copy, not ten. Omit ' +
+        '`block` to plain-append. Send an empty `css` WITH a `block` to delete that block. Returns a receipt ' +
+        '({ block, bytes, bytesBefore, blocks, changed }), never the sheet. Use this for every CSS tweak: a full ' +
+        'settings write re-transmits the entire stylesheet, which is the single most token-expensive habit in a ' +
+        'clone job. put_content(kind:"settings") still works when you genuinely want to replace the whole sheet.',
+      inputSchema: {
+        css: z.string().max(200_000).describe('The CSS for this write. Empty string + a block name removes that block.'),
+        block: z
+          .string()
+          .regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,48}$/)
+          .optional()
+          .describe('Name this chunk so later writes REPLACE it instead of appending a duplicate.'),
+      },
+    },
+    gate('content:write', ({ css, block }: { css: string; block?: string }) => client.patchCriticalCss(css, block)),
+  );
+
+  server.registerTool(
     'put_content',
     {
       description:

@@ -114,6 +114,49 @@ describe('publish status is honest about where a site actually is', () => {
   });
 });
 
+describe('criticalCss can be patched without re-sending the sheet', () => {
+  it('a named block upserts, so repeated edits replace instead of piling up', async () => {
+    // Four clone agents independently called the full re-send the most tedious mechanic of the job —
+    // one did it eleven times against a ~19KB stylesheet.
+    const projectId = await client.createProject('CSS', 'csspatch');
+    const proj = client.project(projectId);
+    const base = `/projects/${projectId}/critical-css`;
+
+    const first = await client.post(base, { css: '.nav{height:80px}', block: 'nav' });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as { changed: boolean }).changed).toBe(true);
+
+    await client.post(base, { css: '.hero{color:red}', block: 'hero' });
+    const third = await client.post(base, { css: '.nav{height:92px}', block: 'nav' });
+    const receipt = third.json() as { blocks: string[]; bytes: number };
+    expect(receipt.blocks).toEqual(['nav', 'hero']); // order stable across the edit
+
+    const stored = ((await proj.getContent('settings', 'settings')).json() as {
+      item: { website?: { criticalCss?: string } };
+    }).item.website?.criticalCss ?? '';
+    expect(stored).toContain('.nav{height:92px}');
+    expect(stored).not.toContain('80px');     // replaced, not appended
+    expect(stored).toContain('.hero{color:red}'); // the neighbouring block is untouched
+
+    // …and the receipt is a receipt: it must NOT echo the stylesheet back, which is the whole point.
+    expect(JSON.stringify(receipt)).not.toContain('height:92px');
+  });
+
+  it('rejects a block name that would break out of the CSS comment delimiter', async () => {
+    const projectId = await client.createProject('CSS2', 'csspatch2');
+    const res = await client.post(`/projects/${projectId}/critical-css`, { css: '.a{}', block: 'a */ .evil{}' });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain('not a valid name');
+  });
+
+  it('requires css, and says so', async () => {
+    const projectId = await client.createProject('CSS3', 'csspatch3');
+    const res = await client.post(`/projects/${projectId}/critical-css`, { block: 'nav' });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain('css is required');
+  });
+});
+
 describe('page endpoints hand back a preview URL', () => {
   it('list + get carry a signed per-page previewUrl ending in that page path', async () => {
     const projectId = await client.createProject('Pages', 'pages');

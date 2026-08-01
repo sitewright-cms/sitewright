@@ -163,6 +163,15 @@ export interface ImportJobView {
   error?: string;
 }
 
+/** What a `criticalCss` partial write reports back. */
+export interface CriticalCssReceipt {
+  block: string | null;
+  bytes: number;
+  bytesBefore: number;
+  blocks: string[];
+  changed: boolean;
+}
+
 /** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
 export interface WriteReceipt {
   kind: string;
@@ -439,6 +448,13 @@ export class SitewrightClient {
       this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}${datasetQuery(dataset)}`),
     );
     return res.item;
+  }
+
+  /** PARTIAL write of `website.criticalCss`. A NAMED block upserts (replace in place, else append);
+   *  an unnamed write appends; an empty body with a name removes that block. Returns a receipt, never
+   *  the sheet — echoing it back is the cost this exists to avoid. */
+  async patchCriticalCss(css: string, block?: string): Promise<CriticalCssReceipt> {
+    return this.request('POST', this.projectPath('/critical-css'), { css, ...(block ? { block } : {}) });
   }
 
   async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean; receipt?: boolean } = {}): Promise<unknown> {

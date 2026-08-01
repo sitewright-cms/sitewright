@@ -134,7 +134,7 @@ export const STICKY_HEADER_JS = `(function(){
   // breakpoint-aware offset token AND a custom header. Measuring here only sizes the scroll threshold,
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
-  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;}
+  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;thresholds();}
   // ANCHOR-REST sync — now GENERIC (it used to run only for the built-in shrink mode). An anchor jump
   // computes its target from scroll-padding-top at CLICK time, but by the time the smooth scroll rests a
   // collapsing bar is SHORTER — the static token (sized for the full bar) then leaves a strip of the
@@ -164,10 +164,20 @@ export const STICKY_HEADER_JS = `(function(){
   }
   var lastY=window.pageYOffset||root.scrollTop||document.body.scrollTop||0;
   var scrolled=false, hidden=false, ticking=false;
+  // HYSTERESIS. A single threshold cannot work here, because the state FEEDS BACK INTO THE SCROLL
+  // POSITION that decides it: html.sw-scrolled collapses the bar, a shorter bar shortens the document,
+  // and the browser clamps scrollTop down to match — back under the threshold, which un-collapses it,
+  // which lengthens the document again. Measured on a real site with the old y>4 test: 14 flips from
+  // one gesture, cycling ON y=7 navH=89 docH=2788 / off y=4 navH=86 docH=2785 indefinitely.
+  // So: enter the scrolled state only once the reader has genuinely moved past the bar, and leave it
+  // at a much lower mark. The gap is far wider than any collapse-induced clamp, so the loop cannot
+  // bridge it. Recomputed with headerH on resize.
+  var onAt=122, offAt=36;
+  function thresholds(){onAt=headerH+50;offAt=Math.max(4,Math.round(headerH*0.5));}
   function update(){
     ticking=false;
     var y=window.pageYOffset||root.scrollTop||document.body.scrollTop||0;
-    var s=y>4;
+    var s=scrolled?(y>offAt):(y>onAt);
     if(s!==scrolled){scrolled=s;root.classList.toggle('sw-scrolled',s);}
     if(hide){
       if(y>headerH && y>lastY+2 && !hidden){hidden=true;root.classList.add('sw-nav-hidden');}

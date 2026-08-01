@@ -80,6 +80,22 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const got = (await mcp.callTool({ name: 'get_page', arguments: { id: 'home' } })) as TextResult;
     expect(got.content[0]!.text).toContain('Hallo Welt');
 
+    // A caller that JSON-STRINGIFIES the object argument is sending the same data, so accept it.
+    // Two clone agents independently hit this on their first big page write: put_page answered
+    // "page — Expected object, received string", which names the wrong cause, and the identical
+    // payload went through once split in two.
+    const stringified = (await mcp.callTool({
+      name: 'put_page',
+      arguments: { page: JSON.stringify({ ...page, title: 'Stringified Title' }) },
+    })) as TextResult;
+    expect(stringified.isError).toBeFalsy();
+    const after = (await mcp.callTool({ name: 'get_page', arguments: { id: 'home' } })) as TextResult;
+    expect(after.content[0]!.text).toContain('Stringified Title');
+
+    // …but a string that is NOT valid JSON must still be rejected by the same schema as before.
+    const junk = (await mcp.callTool({ name: 'put_page', arguments: { page: '{not json at all' } })) as TextResult;
+    expect(junk.isError).toBeTruthy();
+
     const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } })) as TextResult;
     expect(prev.content.some((c) => c.type === 'text' && c.text?.includes('Hallo'))).toBe(true); // the source rendered
 

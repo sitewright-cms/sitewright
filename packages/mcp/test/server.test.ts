@@ -196,6 +196,31 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     expect(reader).toContain('login');
   });
 
+  it('accepts a JSON-STRINGIFIED page argument — same data, so do not refuse it', async () => {
+    // Two clone agents independently hit this on their first large page write (~12.5KB): put_page
+    // answered "page — Expected object, received string", which names the wrong cause entirely, and
+    // the identical payload succeeded once split into put_page + patch_page. One lost a cycle to it,
+    // the other worked around it for the whole job.
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+
+    const res = await mcp.callTool({ name: 'put_page', arguments: { page: JSON.stringify(page) } });
+    expect(res.isError).toBeFalsy();
+    // it must reach the client as a real OBJECT, not a string
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', expect.objectContaining({ id: 'home', title: 'Home' }), expect.anything());
+
+    // patch_page takes the same treatment
+    expect((await mcp.callTool({ name: 'patch_page', arguments: { page: JSON.stringify({ id: 'home', title: 'X' }) } })).isError).toBeFalsy();
+  });
+
+  it('a string that is not JSON is still rejected by the same schema', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    expect((await mcp.callTool({ name: 'put_page', arguments: { page: '{not json at all' } })).isError).toBeTruthy();
+    expect((await mcp.callTool({ name: 'put_page', arguments: { page: 'home' } })).isError).toBeTruthy();
+    expect(callsOf(client).putContent).not.toHaveBeenCalled();
+  });
+
   it('a read-only token gets a clear capability error when calling a write tool — and no client call', async () => {
     const client = fakeClient();
     const res = await (await connect(client, readScope)).callTool({ name: 'put_page', arguments: { page } });

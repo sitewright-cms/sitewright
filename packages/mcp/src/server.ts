@@ -968,6 +968,31 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:read', () => client.listMediaFolders()),
   );
 
+/**
+   * Accept an object argument that arrived JSON-STRINGIFIED.
+   *
+   * Two independent clone agents hit the same wall on their first large page write (~12.5KB):
+   * `put_page` rejected it with "page — Expected object, received string", the identical payload
+   * succeeded when split into a smaller `put_page` + a `patch_page`, and the error named the wrong
+   * cause entirely ("your object is a string" rather than anything about size). One reported losing a
+   * cycle guessing; the other worked around it permanently.
+   *
+   * A caller that serialises a big argument instead of nesting it is sending the same data — there is
+   * nothing to gain by refusing it. Parse it and hand the result to the SAME schema, so validation is
+   * unchanged and a genuinely malformed payload still fails exactly as before.
+   */
+  const objectArg = <T extends z.ZodTypeAny>(schema: T) =>
+    z.preprocess((v) => {
+      if (typeof v !== 'string') return v;
+      const s = v.trim();
+      if (!s.startsWith('{') || !s.endsWith('}')) return v;
+      try {
+        return JSON.parse(s);
+      } catch {
+        return v; // not JSON after all — let the schema report the real problem
+      }
+    }, schema);
+
   // ---------------------------------------------------------------- writes (content:write)
   // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to
   // create/update without the irreversible power to remove pages or content.
@@ -976,7 +1001,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page; call get_page if you need the stored page back.',
-      inputSchema: { page: PageSchema },
+      inputSchema: { page: objectArg(PageSchema) },
     },
     gate('content:write', ({ page }) => client.putContent('page', page.id, page, { receipt: true })),
   );
@@ -986,7 +1011,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page: `changed` lists the top-level keys that actually differ, so an EMPTY list means your patch was a no-op (wrong id, or the value was already set). Call get_page if you need the stored page back.',
-      inputSchema: { page: PagePatchSchema },
+      inputSchema: { page: objectArg(PagePatchSchema) },
     },
     gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true, receipt: true })),
   );

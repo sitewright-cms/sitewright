@@ -4564,6 +4564,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       folder: MediaFolderSchema.optional(),
       filename: z.string().min(1).max(255).optional(),
     });
+    // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
+    // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
+    // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
+    const BulkMoveBody = z.object({
+      ids: z.array(z.string().min(1)).min(1).max(200),
+      folder: MediaFolderSchema.optional(),
+      // A rename is inherently per-asset, so bulk only moves. Renaming stays on the single PATCH.
+    });
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/bulk-move', { config: rlAgent(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = BulkMoveBody.safeParse(req.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid request — ids (1-200) and a folder are required', details: body.error.flatten() });
+      }
+      if (body.data.folder === undefined) return reply.code(400).send({ error: 'folder is required' });
+      const folder = body.data.folder;
+      const ids = [...new Set(body.data.ids)];
+      const moved: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const id of ids) {
+        try {
+          const asset = await contentRepo.getLiveMedia(ctx, id);
+          await contentRepo.put(ctx, 'media', asset.id, { ...asset, folder });
+          moved.push(id);
+        } catch (err) {
+          // One bad id must not abandon the rest half-filed — that is the failure mode this replaces.
+          failed.push({ id, error: err instanceof Error ? err.message : 'move failed' });
+        }
+      }
+      return reply.send({ moved, failed, requested: ids.length, folder });
+    });
+
     app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id', { config: rl(60) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });

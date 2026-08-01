@@ -1206,6 +1206,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'move_media_bulk',
+    {
+      description:
+        'Re-file MANY media assets into one folder in a single call. Use this instead of looping move_media: ' +
+        'reorganising an imported library one asset at a time is one round-trip each (96 calls for one real ' +
+        'site, which then hit a rate limit partway and left the library half-filed). Partial success is normal — ' +
+        'the result reports { moved, failed, requested, folder } and accounts for every id. Renaming stays on ' +
+        'move_media, since a filename is inherently per-asset.',
+      inputSchema: {
+        ids: z.array(z.string()).min(1).max(200).describe('Asset ids to re-file (max 200).'),
+        folder: MediaFolderSchema.describe('Destination folder for all of them.'),
+      },
+    },
+    gate('content:write', ({ ids, folder }: { ids: string[]; folder: string }) => client.moveMediaBulk(ids, folder)),
+  );
+
+  server.registerTool(
     'move_media',
     {
       description:

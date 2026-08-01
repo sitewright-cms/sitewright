@@ -163,6 +163,14 @@ export interface ImportJobView {
   error?: string;
 }
 
+/** Outcome of a BULK media move. `moved` + `failed` together account for every requested id. */
+export interface BulkMoveResult {
+  moved: string[];
+  failed: Array<{ id: string; error: string }>;
+  requested: number;
+  folder: string;
+}
+
 /** What a `criticalCss` partial write reports back. */
 export interface CriticalCssReceipt {
   block: string | null;
@@ -663,6 +671,11 @@ export class SitewrightClient {
   }
 
   /** Move (`folder`) and/or rename (`filename`) a single media asset. */
+  /** Re-file MANY assets in one call. Partial success is normal — the result accounts for every id. */
+  async moveMediaBulk(ids: readonly string[], folder: string): Promise<BulkMoveResult> {
+    return this.request('POST', this.projectPath('/media/bulk-move'), { ids, folder });
+  }
+
   async updateMedia(id: string, changes: { folder?: string; filename?: string }): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'PATCH',

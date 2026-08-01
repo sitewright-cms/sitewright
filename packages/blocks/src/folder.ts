@@ -18,6 +18,10 @@ export interface RenderMedia {
   height?: number;
   /** Inline LQIP data URI (images only) — {{sw-image}} paints it as a blur-up placeholder. */
   placeholder?: string;
+  /** Source carries an alpha channel. {{sw-image}} SUPPRESSES the blur-up placeholder when it does:
+   *  the LQIP is painted as a background-image BEHIND the <img>, so on transparent art it shows
+   *  THROUGH as a coloured wash instead of being hidden by the image. */
+  hasAlpha?: boolean;
 }
 
 export type FolderKind = 'image' | 'file' | 'all';
@@ -35,6 +39,7 @@ export function mediaForRender(media: readonly MediaAsset[]): RenderMedia[] {
         out.width = a.width;
         out.height = a.height;
         if (typeof a.placeholder === 'string') out.placeholder = a.placeholder;
+        if (a.hasAlpha) out.hasAlpha = true;
       }
       return out;
     });

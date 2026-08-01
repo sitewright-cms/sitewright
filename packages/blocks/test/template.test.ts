@@ -985,6 +985,26 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
   it('block form routes an empty dataset to {{else}}', () => {
     expect(renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { dataset: { hero: [] } } as TemplateContext)).toBe('EMPTY');
   });
+
+  // A bare "slug" STRING is the form the authoring reference documented for a long time while the helper
+  // only accepted the entries array — so following the docs rendered NOTHING, silently. Both forms work.
+  describe('bare "slug" string form (as the reference documents it)', () => {
+    const ctx = { dataset: { hero: envelopes }, page: { data: {} } } as unknown as TemplateContext;
+    it('resolves the slug against the root dataset map, block form', () => {
+      expect(renderTemplate('{{#sw-pick-entry "hero" "b"}}<i>{{label}}</i>{{/sw-pick-entry}}', ctx)).toBe('<i>Beta</i>');
+    });
+    it('resolves the slug in subexpression form', () => {
+      expect(renderTemplate('{{#with (sw-pick-entry "hero" "a")}}[{{label}}]{{/with}}', ctx)).toBe('[Alpha]');
+    });
+    it('an unknown slug falls to {{else}} rather than throwing', () => {
+      expect(renderTemplate('{{#sw-pick-entry "nope" "a"}}X{{else}}EMPTY{{/sw-pick-entry}}', ctx)).toBe('EMPTY');
+    });
+    it('a prototype key can never name a dataset', () => {
+      for (const key of ['__proto__', 'constructor', 'toString']) {
+        expect(renderTemplate(`{{#sw-pick-entry "${key}" "a"}}X{{else}}EMPTY{{/sw-pick-entry}}`, ctx)).toBe('EMPTY');
+      }
+    });
+  });
 });
 
 describe('graceful missing helper (no whole-page 400 on a typo/retired helper)', () => {

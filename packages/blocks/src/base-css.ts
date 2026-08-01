@@ -494,11 +494,27 @@ iframe { border: 0; max-width: 100%; }
    SPINNER meant for inline/button use — on a REPLACED media element it would collapse the box and apply a
    spinner mask, so here we neutralise those spinner-specific props on media and let .loading act as a
    full-width loading placeholder (the shimmer comes from .skeleton). The element's own height (height attr /
-   h-* class) is preserved (we only reset aspect-ratio, not height). */
+   h-* class) is preserved. */
 :is(iframe, img, video, embed, object).loading {
-  width: 100%; aspect-ratio: auto; -webkit-mask: none !important; mask: none !important;
+  width: 100%; -webkit-mask: none !important; mask: none !important;
   animation-name: skeleton; background-color: var(--color-base-300, #d1d5db);
 }
+/* The aspect reset lives in its OWN rule, scoped to media that does NOT carry an aspect utility.
+   NOTE: no backticks anywhere in this file — the whole stylesheet is a JS template literal, so one would
+   end the string and break the build.
+   ★ WHY (cost a real defect — a 16/9 video published 1040x150): daisyUI's .loading sets aspect-ratio:1,
+   so media needs SOME reset or a lazy iframe renders square. But :is(iframe, ...) takes the specificity of
+   its most specific argument, making the selector above (0,1,1) — which outranks EVERY .aspect-* utility
+   at (0,1,0). Folding aspect-ratio:auto into it therefore made an authored aspect-video impossible to
+   honour: the author's ratio silently lost to a rule meant only to undo daisyUI, and the iframe fell back to
+   its 150px HTML default. Excluding "loading" from daisyUI is the wrong trade (it is a useful component and
+   the modifier classes carry the real spinner variants), so instead the reset simply steps aside whenever an
+   aspect utility is present:
+     - no aspect-* --> this matches at (0,2,1), still beating daisyUI's .loading, so auto, box preserved.
+     - aspect-video --> this does NOT match, leaving daisyUI's .loading{aspect-ratio:1} (0,1,0) against
+       .aspect-video (0,1,0). The utilities are emitted AFTER daisyUI's components, so the author wins.
+   The substring match covers aspect-square, aspect-[4/3] and responsive md:aspect-video alike. */
+:is(iframe, img, video, embed, object).loading:not([class*="aspect-"]) { aspect-ratio: auto; }
 
 /* Solid scrollbars (NO transparency anywhere): a solid track in the page
    background colour (so it blends with the page) and a solid brand-primary thumb

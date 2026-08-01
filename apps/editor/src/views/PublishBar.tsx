@@ -119,7 +119,7 @@ export function PublishBar({
       .then((res) => {
         if (!mountedRef.current) return;
         setRelease(res.release);
-        setUrl(res.url);
+        setUrl(res.url ?? '');
         setDirty(res.dirty);
         setPreviewToken(res.previewToken);
         setLocalHosting(!!res.localHosting);
@@ -203,7 +203,7 @@ export function PublishBar({
     try {
       const res = await api.publish(project.id);
       setRelease(res.release);
-      setUrl(res.url);
+      setUrl(res.url ?? '');
       setDirty(res.dirty);
       setLocalHosting(true);
       toast.show(`Published to Local Hosting · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');

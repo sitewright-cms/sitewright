@@ -271,7 +271,23 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       chrome.footer && 'footer',
       chrome.preloaderEffect && 'preloader→platform',
     ].filter(Boolean).join(', ');
-    diagnostics.push({ code: 'chrome-extracted', message: `hoisted shared chrome into the site slots: ${parts}` });
+    // FOUNDATION mode overwrites website.mainNav/footer with NATIVE chrome further down (see
+    // applyFoundation → nativeMainNav/nativeFooter), so saying "hoisted shared chrome into the site
+    // slots" here would be false by the time the caller reads it. It WAS false, and it cost a clone
+    // agent more than anything else in its run: it trusted the diagnostic, found a generic DaisyUI
+    // navbar in the slots, and called this "the single most expensive misdirection in the run".
+    // Report what the caller will ACTUALLY find.
+    if (opts.foundation) {
+      diagnostics.push({
+        code: 'chrome-scaffolded',
+        message:
+          `the source's chrome was detected (${parts}) but is NOT what landed in the slots — foundation mode ` +
+          'replaces it with a GENERIC platform nav + footer. Author website.mainNav/footer from the original ' +
+          'yourself; do not treat the slot contents as the source\'s header.',
+      });
+    } else {
+      diagnostics.push({ code: 'chrome-extracted', message: `hoisted shared chrome into the site slots: ${parts}` });
+    }
   }
 
   // Transform each captured page body into source and attach SEO/title by id.

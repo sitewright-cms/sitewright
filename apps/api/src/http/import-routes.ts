@@ -10,7 +10,7 @@ import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
-import { ImportJobRegistry } from '../import/jobs.js';
+import { ImportJobRegistry, type ImportJobView } from '../import/jobs.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
 import { renderViaBrowser } from '../import/render.js';
 import { downloadGoogleFont } from '../fonts/service.js';
@@ -597,14 +597,41 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
 
   // Poll an async import. Terminal states keep their report/error for a while so a caller that polls a
   // little late still gets the outcome rather than a bare 404.
-  app.get<{ Params: { projectId: string; jobId: string } }>(
+  app.get<{
+    Params: { projectId: string; jobId: string };
+    Querystring: { waitMs?: string; since?: string };
+  }>(
     '/projects/:projectId/agent/import-website/:jobId',
     { config: rl(120) },
     async (req, reply) => {
       const { project } = await resolveProject(req, 'content:write');
-      const job = importJobs.get(project.id, req.params.jobId);
+      const read = (): ImportJobView | undefined => importJobs.get(project.id, req.params.jobId);
+      let job = read();
       if (!job) return reply.code(404).send({ error: 'unknown import job (it may have expired — check list_pages for what landed)' });
-      return reply.send(job);
+
+      // LONG-POLL. A crawl runs for minutes and there was no way to AWAIT it, only to ask again — so
+      // agents spun: one made 25 status calls plus 7 shell `sleep`s (60/75/90/120/180/240/300s) and
+      // spent its first ten minutes on nothing; another "burned ~15 turns purely waiting".
+      // `waitMs` holds the request open until the job actually MOVES — a new progress line, or a
+      // terminal state — so one call replaces a poll loop. Bounded, so it can never hang.
+      const waitMs = Math.min(60_000, Math.max(0, Number(req.query.waitMs) || 0));
+      const since = Math.max(0, Number(req.query.since) || 0);
+      if (waitMs > 0 && job.status === 'running' && job.progress.length <= since) {
+        const deadline = Date.now() + waitMs;
+        // Server-side polling rather than an event emitter: the registry is a plain in-process Map and
+        // this collapses N client round-trips into one, which is the whole point. 250ms is well under
+        // any human-visible latency and costs a Map lookup.
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 250));
+          job = read();
+          if (!job) break; // swept mid-wait — fall through to the 404 below
+          if (job.status !== 'running' || job.progress.length > since) break;
+        }
+        if (!job) return reply.code(404).send({ error: 'unknown import job (it may have expired — check list_pages for what landed)' });
+      }
+      // `progressCount` is what the caller feeds back as `since` on the next wait, so a long-poll
+      // resumes from where it left off instead of returning instantly on already-seen lines.
+      return reply.send({ ...job, progressCount: job.progress.length });
     },
   );
 

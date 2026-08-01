@@ -373,8 +373,59 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
           '.slick-slide:not(.slick-active){opacity:0 !important}.slick-slide.slick-active{opacity:1 !important}' +
           // The timer sweep above may have killed a still-pending #718 fallback-reveal timer — force the
           // carousel visible for the shot (its enhancement, when done, is already awaited in step 2b).
-          '[data-sw-component="carousel"]{visibility:visible !important}';
+          '[data-sw-component="carousel"]{visibility:visible !important}' +
+          // UN-FIX THE FIXED CHROME. A fullPage capture stitches one tall image, so a position:fixed
+          // header paints ONCE, wherever the compositor left it — as an opaque band slicing through the
+          // MIDDLE of the page, hiding whatever section it lands on. Four agents hit this; two chased it
+          // as a layout bug in their own clone, and on the ORIGINAL side the nav vanished from its own
+          // capture entirely, making the header impossible to compare from that view.
+          // The page is already scrolled back to 0 by now, so pinning fixed elements to `absolute` puts
+          // the header exactly where a visitor sees it — at the top, once. `sticky` collapses the same
+          // way. Applied to BOTH sides of every comparison, so the diff stays fair.
+          // background-attachment:fixed gets the same treatment: it paints relative to the VIEWPORT, so
+          // in a stitched shot the image lands at a different offset on each side and reads as "the
+          // background is missing" — one agent lost a diagnostic detour to exactly that.
+          '*{background-attachment:scroll !important}';
         g.document.head?.appendChild(s);
+      })
+      .catch(() => {});
+    // UN-FIX THE FIXED CHROME — a COMPUTED-style pass, because a selector cannot express "whatever the
+    // stylesheet made fixed" and an imported site's header is fixed from its own CSS, not inline.
+    // A fullPage capture stitches one tall image, so a position:fixed header paints ONCE, wherever the
+    // compositor left it: an opaque band slicing through the MIDDLE of the page, hiding whatever section
+    // it lands on. Four agents hit this — two chased it as a layout bug in their own clone, and on the
+    // ORIGINAL side the nav vanished from its own capture, making the header impossible to compare.
+    // The page is scrolled back to 0 by now, so pinning each fixed element to `absolute` puts it exactly
+    // where a visitor sees it: at the top, once. Both sides of every comparison get the same treatment.
+    await page
+      .evaluate(() => {
+        // No DOM lib in this tsconfig (see the note in step 1) — describe only what we touch.
+        interface Fixable {
+          style: { setProperty(p: string, v: string, prio?: string): void };
+          getBoundingClientRect(): { top: number };
+        }
+        const g = globalThis as unknown as {
+          document: { querySelectorAll(s: string): ArrayLike<Fixable> };
+          getComputedStyle(el: Fixable): { position: string };
+          scrollY?: number;
+        };
+        const all = g.document.querySelectorAll('*');
+        const offset = g.scrollY ?? 0;
+        // Capped: a pathological DOM must not turn the freeze into the slow step of the capture.
+        const limit = Math.min(all.length, 4000);
+        for (let i = 0; i < limit; i++) {
+          const el = all[i];
+          if (!el) continue;
+          let pos: string;
+          try { pos = g.getComputedStyle(el).position; } catch { continue; }
+          if (pos !== 'fixed' && pos !== 'sticky') continue;
+          // Keep it where it is on screen RIGHT NOW (scroll is 0, so this is the visitor's top-of-page
+          // view) rather than letting it jump to the top of its containing block.
+          const top = Math.round(el.getBoundingClientRect().top + offset);
+          el.style.setProperty('position', 'absolute', 'important');
+          el.style.setProperty('top', `${top}px`, 'important');
+          el.style.setProperty('bottom', 'auto', 'important');
+        }
       })
       .catch(() => {});
     await page.waitForTimeout(400).catch(() => {});

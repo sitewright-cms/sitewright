@@ -159,6 +159,8 @@ export interface ImportJobView {
   startedAt: number;
   finishedAt?: number;
   progress: string[];
+  /** progress.length at the time of the reply — feed back as `since` to resume a long-poll. */
+  progressCount?: number;
   report?: Record<string, unknown>;
   error?: string;
 }
@@ -642,8 +644,18 @@ export class SitewrightClient {
   }
 
   /** Poll an async import started by {@link importWebsite}. */
-  async importStatus(jobId: string): Promise<ImportJobView> {
-    return this.request('GET', this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}`));
+  /** `waitMs` LONG-POLLS: the request is held open until the job moves (a new progress line, or a
+   *  terminal state) or the budget expires, so one call replaces a poll loop. `since` is the
+   *  `progressCount` from the previous reply, so the wait resumes instead of returning on old lines. */
+  async importStatus(jobId: string, opts: { waitMs?: number; since?: number } = {}): Promise<ImportJobView> {
+    const q = new URLSearchParams();
+    if (opts.waitMs) q.set('waitMs', String(opts.waitMs));
+    if (opts.since) q.set('since', String(opts.since));
+    const qs = q.toString();
+    return this.request(
+      'GET',
+      this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}${qs ? `?${qs}` : ''}`),
+    );
   }
 
   async importImageUrl(url: string, folder?: string): Promise<unknown> {

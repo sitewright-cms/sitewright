@@ -189,8 +189,16 @@ function summarizeImport(r: ImportWebsiteResult): string {
     ].join('\n');
   }
   const warnings = Array.isArray(r.warnings) ? r.warnings : [];
+  // State the MODE up front. Foundation (the default) puts a GENERIC platform nav/footer in the chrome
+  // slots — it does NOT carry the source's header over — and the guide's "start from the default nav"
+  // advice is written for the other path. An agent that had to infer this called it the single most
+  // expensive misdirection in its run.
+  const scaffolded = warnings.some((w) => typeof w === 'string' && w.includes('foundation mode replaces it'));
   return [
     `WEBSITE IMPORTED ✓ — ${r.pagesImported ?? 0} page(s) imported (${r.mediaSelfHosted ?? 0} media asset(s) self-hosted).`,
+    scaffolded
+      ? 'CHROME: the slots hold a GENERIC platform nav + footer, NOT the original\'s. Author website.mainNav/footer from the source yourself.'
+      : '',
     'These are RAW imported scaffolds (each page carries `data.swImport`). NOW NATIVIZE them: read get_guide("import") once, then rebuild each page with native primitives, judging against visual_audit region-by-region, and publish_project when clone_audit + visual_audit pass. Do NOT ask the user to paste HTML — the import already captured the live page.',
     warnings.length ? `Importer notes (${warnings.length}): ${warnings.slice(0, 8).join(' | ')}` : '',
   ]
@@ -202,8 +210,18 @@ function summarizeImport(r: ImportWebsiteResult): string {
 function summarizeImportJob(j: ImportJobView): string {
   if (j.status === 'running') {
     const last = j.progress.at(-1);
-    const mins = Math.round((Date.now() - j.startedAt) / 60_000);
-    return `IMPORT RUNNING (${mins}m elapsed)${last ? ` — ${last}` : ''}. Poll again in ~30s; do NOT start a second import.`;
+    // Elapsed used to be Math.round(ms/60_000), so it read "1m" for everything between 30s and 90s
+    // and looked FROZEN — an agent reported five consecutive polls all showing the same figure while
+    // real minutes passed, and stopped trusting the tool. Show seconds until a minute has actually
+    // passed, then m+s.
+    const secs = Math.max(0, Math.round((Date.now() - j.startedAt) / 1000));
+    const elapsed = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+    const seen = j.progressCount ?? j.progress.length;
+    return (
+      `IMPORT RUNNING (${elapsed} elapsed, ${seen} progress line${seen === 1 ? '' : 's'})${last ? ` — ${last}` : ''}. ` +
+      `Call import_status again with waitMs:30000 and since:${seen} — that BLOCKS until it actually moves ` +
+      'instead of returning the same line, so do NOT poll in a loop and do NOT start a second import.'
+    );
   }
   if (j.status === 'failed') return `IMPORT FAILED — ${j.error ?? 'unknown error'}. Check the URL, then you may retry import_website.`;
   return summarizeImport({ ok: true, ...(j.report ?? {}) } as ImportWebsiteResult);
@@ -1167,10 +1185,28 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'import_status',
     {
       description:
-        'Poll a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. A real crawl takes MINUTES, so import_website hands back a jobId immediately and you check here (roughly every 30s) rather than blocking. NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
-      inputSchema: { jobId: z.string().min(1).max(64) },
+        'Check a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. ' +
+        'PASS waitMs (up to 60000) TO WAIT INSTEAD OF POLLING: the call blocks until the job actually moves — a new progress line, or it finishes — so one call replaces a whole poll loop. ' +
+        'Feed `since` the `progress lines` count from the previous reply so the wait resumes rather than returning immediately on a line you have already seen. ' +
+        'Without waitMs this returns instantly, which is what made earlier runs spin: one agent made 25 status calls plus 7 shell sleeps and spent its first ten minutes waiting. ' +
+        'NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
+      inputSchema: {
+        jobId: z.string().min(1).max(64),
+        waitMs: z
+          .number()
+          .int()
+          .min(0)
+          .max(60_000)
+          .optional()
+          .describe('Block up to this many ms waiting for the job to move. Use 30000 and just call again if still running.'),
+        since: z.number().int().min(0).optional().describe('The progress-line count from your last reply, so the wait resumes.'),
+      },
     },
-    gate('content:write', ({ jobId }) => client.importStatus(jobId).then(summarizeImportJob)),
+    gate('content:write', ({ jobId, waitMs, since }: { jobId: string; waitMs?: number; since?: number }) =>
+      client
+        .importStatus(jobId, { ...(waitMs ? { waitMs } : {}), ...(since ? { since } : {}) })
+        .then(summarizeImportJob),
+    ),
   );
 
   server.registerTool(

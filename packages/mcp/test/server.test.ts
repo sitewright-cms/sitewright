@@ -1288,10 +1288,33 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     it('reports a RUNNING job with its elapsed time and latest progress, and says not to restart', async () => {
       const client = fakeClient();
       const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
-      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1');
-      expect(text(res)).toMatch(/IMPORT RUNNING \(2m elapsed\)/);
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1', {});
+      // Elapsed is m+s, not Math.round(minutes): rounding read "1m" for everything from 30s to 90s, so
+      // five consecutive polls showed the same figure while real minutes passed and an agent reported
+      // the counter as FROZEN.
+      expect(text(res)).toMatch(/IMPORT RUNNING \(2m 0s elapsed/);
       expect(text(res)).toMatch(/crawl: 7 pages/);
       expect(text(res)).toMatch(/do NOT start a second import/);
+      // …and it points at the wait, rather than inviting another poll.
+      expect(text(res)).toMatch(/waitMs:30000/);
+    });
+
+    it('shows SECONDS under a minute, so a young job does not read as stalled', async () => {
+      const client = fakeClient({
+        importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'running', startedAt: Date.now() - 8_000, progress: ['crawl: 1 page'] })),
+      });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/IMPORT RUNNING \([0-9]+s elapsed/);
+    });
+
+    it('forwards waitMs/since so ONE call can await the job instead of polling', async () => {
+      // The behaviour this replaces: 25 import_status calls plus 7 shell sleeps in a single run.
+      const client = fakeClient();
+      await (await connect(client, writeScope)).callTool({
+        name: 'import_status',
+        arguments: { jobId: 'imp_1', waitMs: 30_000, since: 4 },
+      });
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1', { waitMs: 30_000, since: 4 });
     });
 
     it('reports a FAILED job with its reason', async () => {

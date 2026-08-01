@@ -125,10 +125,26 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
       id: 'not-clipped',
       label: 'no element is visually cut off by an ancestor overflow',
       pass: (b.clipped?.length ?? 0) === 0,
+      // ADVISORY, deliberately — the measurement is sound but the INTENT is not knowable from the clone
+      // alone, and gating on it demonstrably damaged real clones. Two independent agents reported the
+      // same thing: to turn this check green they replaced every `<img>` in a carousel with a
+      // background-image div (measured: 41 alt texts down to 6 on one page, 18 down to 4 on another),
+      // swapped an accordion's `max-width:0` slide-open — which is what the ORIGINAL does — for a
+      // `display:none` toggle, and shrank icons that the original deliberately bleeds past a tile edge.
+      // Four fidelity regressions, no real defect among them.
+      //
+      // The probe now exempts the two provably-deliberate cases (a slider viewport, a >95% clip). What
+      // is LEFT is genuinely ambiguous: a partly-clipped element may be a broken layout or an intended
+      // bleed. The agent can settle that — it has the original in front of it — so report the number and
+      // let it judge. Gating instead forces a guess, and the guess has been wrong every time.
+      // The real fix is to compare against the ORIGINAL's own clipping; clone_audit has no source URL
+      // today, so that is a feature rather than a bug fix.
+      advisory: true,
       detail:
         (b.clipped?.length ?? 0) === 0
           ? 'nothing clipped'
-          : b.clipped!.map((c2) => `${c2.el} cut ${c2.lost} by ${c2.clippedBy} (${c2.box} -> ${c2.visible})`).join('; '),
+          : b.clipped!.map((c2) => `${c2.el} cut ${c2.lost} by ${c2.clippedBy} (${c2.box} -> ${c2.visible})`).join('; ') +
+            ' — ADVISORY: check whether the ORIGINAL clips it too before "fixing" it; a deliberate bleed is not a defect',
     },
   ];
 }

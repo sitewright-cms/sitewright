@@ -108,8 +108,13 @@ describe('behaviouralChecks', () => {
     expect(cut.detail).toContain('by div.');
     expect(cut.detail).toContain('56%');
     expect(cut.detail).toContain('122x115 -> 122x51');
-    // GATING, not advisory — this is objectively measurable, so it must block rather than advise.
-    expect(cut.advisory).toBeFalsy();
+    // ADVISORY, not gating. The measurement is sound; the INTENT is not knowable from the clone alone.
+    // Gating on it made real clones worse — two independent agents stripped `<img alt>` elements into
+    // background divs, flattened an accordion animation the original has, and shrank deliberately
+    // bleeding icons, purely to turn this green. Reporting the number lets the agent compare against
+    // the original and decide; forcing a guess produced four regressions and caught nothing real.
+    expect(cut.advisory).toBe(true);
+    expect(cut.detail).toContain('ADVISORY');
   });
 
   it('CLIP_PROBE exempts the two clippings that are DELIBERATE', () => {

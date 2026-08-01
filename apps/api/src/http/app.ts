@@ -1083,12 +1083,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    *  the store it depends on, so the guard can't drift away from the thing being guarded. */
   const draftPreviewBase = (projectId: string): string | null =>
     previewSiteStore ? `/preview-site/${projectId}/${signPreview(projectId, currentCookieSecret)}/` : null;
-  /** A page's preview URL. The route is the PARENT-CHAIN path (`pagePath`, what the publisher itself uses
-   *  via allRoutes) — NOT the page's own `path` field, which is only the last segment: a child page would
-   *  otherwise get a URL missing its parent's folder, i.e. exactly the kind of confidently-wrong address
-   *  this whole change exists to stop emitting. */
-  const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string =>
-    `${base}${pagePath(page, byId).replace(/^\//, '')}`;
+  /** A page's preview URL, or null when the row is not a renderable page. The route is the PARENT-CHAIN
+   *  path (`pagePath`, what the publisher itself uses via allRoutes) — NOT the page's own `path` field,
+   *  which is only the last segment: a child page would otherwise get a URL missing its parent's folder,
+   *  i.e. exactly the kind of confidently-wrong address this whole change exists to stop emitting.
+   *
+   *  A `kind:"link"` row is a NAV ENTRY, not a page — it has no source and its `path` is empty, so it
+   *  would resolve to the site ROOT. A real clone hit this: five `#anchor` nav placeholders each came
+   *  back advertising the home page's URL, so following one renders the home page while claiming to be
+   *  "About Us". Emitting nothing is the honest answer; there is no page to see. */
+  const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string | null =>
+    page.kind === 'link' ? null : `${base}${pagePath(page, byId).replace(/^\//, '')}`;
   // Cached source-reference screenshots (captured at import) for compare_to_source.
   const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
   // Live-preview draft-build state, keyed by project id: the content version currently built,
@@ -2780,13 +2785,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const previewBase = kind === 'page' ? (draftPreviewBase(proj.id) ?? '') : '';
       // byId comes from the RAW list (before any summarising) so the parent chain is always complete.
       const pageById = previewBase ? pagesById(items as Page[]) : undefined;
+      // The RAW row decides, not the summarised one: summarizeContentList may drop `kind`, and a
+      // `kind:"link"` nav placeholder must not be handed a URL (see pagePreviewUrl).
       const withPreview = (list: unknown[]): unknown[] =>
         previewBase && pageById
-          ? list.map((it) =>
-              it && typeof it === 'object'
-                ? { ...(it as Record<string, unknown>), previewUrl: pagePreviewUrl(previewBase, it as Page, pageById) }
-                : it,
-            )
+          ? list.map((it) => {
+              if (!it || typeof it !== 'object') return it;
+              const row = it as Record<string, unknown>;
+              const raw = pageById.get(String(row.id));
+              const url = raw ? pagePreviewUrl(previewBase, raw, pageById) : null;
+              return url ? { ...row, previewUrl: url } : row;
+            })
           : list;
       const project = (list: unknown[]): unknown[] =>
         withPreview(wantSummary ? summarizeContentList(kind, list) : list);
@@ -2824,7 +2833,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const byId = page.parent
             ? pagesById((await contentRepo.list(ctx, 'page')) as Page[])
             : pagesById([page]);
-          return reply.send({ item, previewUrl: pagePreviewUrl(base, page, byId) });
+          const previewUrl = pagePreviewUrl(base, page, byId);
+          // null for a `kind:"link"` nav placeholder — omit the field rather than advertise the site root.
+          if (previewUrl) return reply.send({ item, previewUrl });
         }
       }
       return reply.send({ item });

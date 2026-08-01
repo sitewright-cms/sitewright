@@ -130,6 +130,33 @@ describe('page endpoints hand back a preview URL', () => {
     expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\/[^/]+\/[^/]+\/$/);
   });
 
+  it('a kind:"link" nav placeholder gets NO previewUrl — it is not a page', async () => {
+    // Found on a real clone of a one-page site: the agent modelled the header as five `#anchor`
+    // nav placeholders so the menu could be data-driven. Each is `kind:"link"` with no source and an
+    // empty path, so each came back advertising the SITE ROOT — follow one and you render the home
+    // page while being told you are looking at "About Us". Emitting nothing is the honest answer.
+    const projectId = await client.createProject('Onepage', 'onepage');
+    const proj = client.project(projectId);
+    await proj.putContent('page', 'nav-about', {
+      id: 'nav-about',
+      path: '',
+      title: 'About Us',
+      kind: 'link',
+      link: { target: '#about' },
+    });
+
+    const got = (await proj.getContent('page', 'nav-about')).json() as Record<string, unknown>;
+    expect(got.previewUrl).toBeUndefined();
+
+    const items = (
+      (await proj.listContent('page')).json() as { items: Array<Record<string, unknown>> }
+    ).items;
+    expect(items.find((p) => p.id === 'nav-about')?.previewUrl).toBeUndefined();
+    // …while the REAL home page in the same project still gets one, so this is a targeted exclusion
+    // and not the whole feature quietly switching itself off.
+    expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\//);
+  });
+
   it('a CHILD page gets its full parent-chain route, not just its own last segment', async () => {
     const projectId = await client.createProject('Nested', 'nested');
     const proj = client.project(projectId);

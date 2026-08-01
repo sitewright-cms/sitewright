@@ -139,6 +139,32 @@ describe('behaviouralChecks', () => {
     expect(CLIP_PROBE.toString()).toMatch(/lostH > 0\.1 \|\| lostW > 0\.1/);
   });
 
+  it('a check with NOTHING to check is N/A, not a pass — it must not pad the score', () => {
+    // A single-page site with no slider, no modal trigger and no nav scored a perfect "8/8" while only
+    // five checks had actually verified anything. Three vacuous passes made the verdict read far
+    // stronger than it was, and an agent reported the clone as gated-green on that basis.
+    const bare = behaviouralChecks(behaviour({ carousels: 0, carouselsEnhanced: 0, hasModalTrigger: false, navExpected: 0 }));
+    for (const id of ['sliders', 'modals', 'mobile-menu']) {
+      const c = bare.find((x) => x.id === id)!;
+      expect(c.pass).toBe(true);      // still not a failure — there is nothing wrong
+      expect(c.na).toBe(true);        // …but it is not evidence either
+      expect(c.detail).toContain('n/a');
+    }
+    // fonts always applies — every page has type, so it is never vacuous
+    expect(bare.find((x) => x.id === 'fonts')!.na).toBeFalsy();
+
+    const audit = assembleAudit([bare]);
+    expect(audit.na).toBe(3);
+    expect(audit.total).toBe(1);      // only the fonts check actually tested anything
+    expect(audit.passed).toBe(1);
+    expect(audit.pass).toBe(true);
+
+    // …and when the page DOES have these things, they count normally again.
+    const real = assembleAudit([behaviouralChecks(behaviour({ carousels: 2, carouselsEnhanced: 2 }))]);
+    expect(real.na).toBe(0);
+    expect(real.total).toBe(4);
+  });
+
   it('requires modals ONLY when the original has triggers', () => {
     expect(behaviouralChecks(behaviour({ hasModalTrigger: true, dialogs: 0 })).find((c) => c.id === 'modals')!.pass).toBe(false);
     expect(behaviouralChecks(behaviour({ hasModalTrigger: false, dialogs: 0 })).find((c) => c.id === 'modals')!.pass).toBe(true);

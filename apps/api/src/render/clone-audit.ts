@@ -28,6 +28,12 @@ export interface AuditCheck {
    *  counter-skewed inner label spans where the clone exposes tab wrappers; its rich footer has no clone
    *  counterpart) is not reliably reachable, so a hard gate there would never terminate the loop. */
   advisory?: boolean;
+  /** N/A: the check passed because there was NOTHING TO CHECK — no sliders on either side, no modal
+   *  triggers in the original, no nav to reach on mobile. Counted separately from a real pass, because
+   *  "8/8" on a page where three checks were vacuous reads as far stronger evidence than it is. A single-
+   *  page site with no menu, no slider and no modal scored a perfect 8/8 while only five things had
+   *  actually been verified. Reported as `na`, and excluded from `passed`/`total`. */
+  na?: boolean;
 }
 
 /** Behavioural facts extracted from a live render of the BUILD (desktop probe + mobile nav reachability). */
@@ -116,10 +122,10 @@ export function structuralChecks(input: {
 /** BEHAVIOUR leg — pure over the extracted facts. modals only required when the original HAS modal triggers. */
 export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   return [
-    { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, detail: `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
-    { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
+    { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, na: b.carousels === 0, detail: b.carousels === 0 ? 'no carousels on the page — n/a' : `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
+    { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, na: !b.hasModalTrigger, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
     { leg: 'behaviour', id: 'fonts', label: 'heading + body fonts actually load', pass: b.headingFontLoaded && b.bodyFontLoaded, detail: `heading "${b.headingFont}"=${b.headingFontLoaded ? 'loaded' : 'MISSING'}, body "${b.bodyFont}"=${b.bodyFontLoaded ? 'loaded' : 'MISSING'}` },
-    { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, detail: `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
+    { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, na: b.navExpected === 0, detail: b.navExpected === 0 ? 'the original has no nav to reach — n/a' : `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
     {
       leg: 'behaviour',
       id: 'not-clipped',
@@ -167,14 +173,23 @@ export interface CloneAuditResult {
   pass: boolean;
   passed: number;
   total: number;
+  /** How many gating checks were N/A — nothing on the page for them to test. Kept out of `total` so the
+   *  score states what was actually verified. */
+  na: number;
   checks: AuditCheck[];
 }
 
 /** Assemble the full audit. RED (pass:false) if any GATING (non-advisory) check fails. Advisory checks are
- *  still in `checks` (reported to the agent) but excluded from pass/passed/total. */
+ *  still in `checks` (reported to the agent) but excluded from pass/passed/total.
+ *
+ *  N/A checks are excluded too. A check that passes because the page has no sliders, no modals and no nav
+ *  is not evidence of anything, and folding it into the score overstates the result: a single-page site
+ *  scored "8/8" with three of the eight vacuous, which reads as a far stronger verdict than five verified
+ *  checks. They stay in `checks` (so the agent can see they were considered) and are counted in `na`. */
 export function assembleAudit(legs: AuditCheck[][]): CloneAuditResult {
   const checks = legs.flat();
-  const gating = checks.filter((c) => !c.advisory);
+  const gating = checks.filter((c) => !c.advisory && !c.na);
+  const na = checks.filter((c) => !c.advisory && c.na).length;
   const passed = gating.filter((c) => c.pass).length;
-  return { pass: passed === gating.length && gating.length > 0, passed, total: gating.length, checks };
+  return { pass: passed === gating.length && gating.length > 0, passed, total: gating.length, na, checks };
 }

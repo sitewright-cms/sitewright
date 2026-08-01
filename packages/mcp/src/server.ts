@@ -682,7 +682,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       try {
         const r = await client.cloneAudit(pageId);
         const legName: Record<string, string> = { structure: 'STRUCTURE', behaviour: 'BEHAVIOUR', visual: 'VISUAL' };
-        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} gating checks for page “${pageId}” (original: ${r.sourceUrl}).`];
+        // The n/a count is part of the headline on purpose: a check that passed because the page has no
+        // slider / no modal / no nav verified nothing, and hiding that inside the total made "8/8" read
+        // as much stronger evidence than five actual checks.
+        const naNote = r.na ? `, ${r.na} n/a (nothing on the page to check)` : '';
+        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} gating checks${naNote} for page “${pageId}” (original: ${r.sourceUrl}).`];
         for (const leg of ['structure', 'behaviour', 'visual'] as const) {
           lines.push('', `[${legName[leg]}]`);
           for (const c of r.checks.filter((x) => x.leg === leg)) {

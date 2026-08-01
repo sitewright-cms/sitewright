@@ -1210,14 +1210,23 @@ export const api = {
 
   // --- publishing ---
   publish: (projectId: string) =>
-    request<{ release: Release; url: string; dirty: boolean }>('POST', `/projects/${projectId}/publish`),
+    request<{ release: Release; url: string | null; dirty: boolean }>('POST', `/projects/${projectId}/publish`),
   publishStatus: (projectId: string) =>
     // `dirty` = unpublished content changes; `localHosting` = a Local Hosting deploy target exists;
     // `previewToken` = that target's soft preview-token gate (the View-live link carries it).
-    request<{ release: Release | null; url: string; dirty: boolean; localHosting?: boolean; previewToken?: string }>(
-      'GET',
-      `/projects/${projectId}/publish`,
-    ),
+    // `url` is NULL unless this app is the thing serving the site (Local Hosting) — a remote FTP/SFTP/Git
+    // target uploads to an origin we can't name, and with no target at all nothing serves it. `previewUrl`
+    // (signed draft preview) is always present.
+    request<{
+      status: 'published' | 'unpublished';
+      release: Release | null;
+      url: string | null;
+      previewUrl: string;
+      dirty: boolean;
+      localHosting?: boolean;
+      deployTargets?: number;
+      previewToken?: string;
+    }>('GET', `/projects/${projectId}/publish`),
   /** URL of the zip artifact (used as an <a href download> — sends the session cookie). */
   archiveUrl: (projectId: string) => `${BASE}/projects/${projectId}/publish/archive`,
   deploy: (projectId: string, config: DeployConfig) =>

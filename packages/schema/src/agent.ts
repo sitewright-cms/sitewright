@@ -1500,7 +1500,12 @@ STEP 2 — ADD EACH ROW (entry): put_content({ kind: "entry", id: "delays", data
     STRIPPED and the entry saves EMPTY (values:{}) — it looks like it worked but renders nothing. Always wrap the
     row in \`values\`.
   - The entry id is an underscore identifier too ("fast_pickup", not "fast-pickup"). Omit data.id / data.dataset —
-    they're copied from the id/dataset args. Optional on data: status ("draft" default | "published"), order, locale.
+    they're copied from the id/dataset args. Optional on data: status ("draft" default | "published"), locale, order.
+  - **ORDER** = the render sort key (ascending), and it is what the editor's drag-reorder writes. You normally
+    DON'T set it: rows you create are numbered in the order you write them, so \`{{#each}}\` renders them in that
+    order. Set \`order\` explicitly only to place a row deliberately (0 = first). A full re-PUT that omits \`order\`
+    KEEPS the row's current position. If a list ever renders in the wrong order, get_content one of its entries
+    and look at \`order\` — do NOT rename ids to force a sequence.
   - A list/object field's value is stored as-is: values: { slides: [ { image:"/media/…", caption:"A" }, … ] }.
 
 STEP 3 — LOOP IT in a page/template source:

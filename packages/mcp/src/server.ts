@@ -488,7 +488,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_pages',
     {
       description:
-        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large).',
+        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large). Each page carries a `previewUrl` — a signed DRAFT preview of that page that needs no login. That is how you (or the user) LOOK at a page: it works with no deploy target, which most projects have none of.',
       inputSchema: { includeSource: z.boolean().optional() },
     },
     gate(null, ({ includeSource }: { includeSource?: boolean }) => client.listContent('page', undefined, { summary: !includeSource })),
@@ -498,7 +498,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_page',
     {
       description:
-        'Get one page by id. For code-first pages the design is in the `source` field.',
+        'Get one page by id. For code-first pages the design is in the `source` field. The response also carries `previewUrl` — a signed DRAFT preview of this page that needs no login and works with no deploy target.',
       inputSchema: { id: z.string() },
     },
     gate(null, ({ id }) => client.getContent('page', id)),
@@ -884,7 +884,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'get_publish_status',
-    { description: 'Read the project’s latest published release (or null if never published).' },
+    {
+      description:
+        'Read where this project actually stands. `status` is the headline: "unpublished" whenever no deploy target is configured — publishing BUILDS the site, but nothing serves it until a target exists, so there is no live address. `url` is non-null ONLY for Local Hosting; it is null for a remote (FTP/SFTP/Git) target too, because the upload origin is not ours to know. NEVER report a project as live from a `url` alone — check `status`. To SEE the site, use `previewUrl` (a signed draft preview that needs no login), or the per-page `previewUrl` on get_page / list_pages.',
+    },
     gate(null, () => client.publishStatus()),
   );
 

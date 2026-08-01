@@ -1076,6 +1076,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // proven path-safe serving logic is reused verbatim), but a separate root holding
   // ephemeral, rebuilt-on-change DRAFT builds served only to authenticated members.
   const previewSiteStore = opts.previewRoot ? new PublishStore(opts.previewRoot) : undefined;
+  /** The signed DRAFT-preview base for a project, or null when this instance serves no draft previews.
+   *  Handed out by the page endpoints + publish status as the reliable "where can I SEE this" answer.
+   *  The `/preview-site/*` routes only exist when `previewRoot` is configured, so emitting the URL
+   *  unconditionally would repeat the very bug it replaces — an address that 404s. Declared HERE, beside
+   *  the store it depends on, so the guard can't drift away from the thing being guarded. */
+  const draftPreviewBase = (projectId: string): string | null =>
+    previewSiteStore ? `/preview-site/${projectId}/${signPreview(projectId, currentCookieSecret)}/` : null;
+  /** A page's preview URL. The route is the PARENT-CHAIN path (`pagePath`, what the publisher itself uses
+   *  via allRoutes) — NOT the page's own `path` field, which is only the last segment: a child page would
+   *  otherwise get a URL missing its parent's folder, i.e. exactly the kind of confidently-wrong address
+   *  this whole change exists to stop emitting. */
+  const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string =>
+    `${base}${pagePath(page, byId).replace(/^\//, '')}`;
   // Cached source-reference screenshots (captured at import) for compare_to_source.
   const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
   // Live-preview draft-build state, keyed by project id: the content version currently built,
@@ -2751,7 +2764,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:read');
+      const { ctx, project: proj } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
       const items = await contentRepo.list(ctx, kind);
       // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
@@ -2760,7 +2773,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // pages of a real site was impossible without it. Opt-IN here (no change for existing callers); the
       // MCP `list_pages` tool opts in by default because `get_page` already exists for the body.
       const wantSummary = req.query.summary === '1' || req.query.summary === 'true';
-      const project = (list: unknown[]): unknown[] => (wantSummary ? summarizeContentList(kind, list) : list);
+      // Every PAGE carries the signed DRAFT-preview URL that shows it. Publishing is not the way to look at
+      // a page — most projects have no deploy target, so there is no live URL at all (see hostingState) —
+      // and an agent with no viewable address either guesses one or reports work it has never seen. The
+      // signature is one HMAC for the whole list, composed with each page's own path.
+      const previewBase = kind === 'page' ? (draftPreviewBase(proj.id) ?? '') : '';
+      // byId comes from the RAW list (before any summarising) so the parent chain is always complete.
+      const pageById = previewBase ? pagesById(items as Page[]) : undefined;
+      const withPreview = (list: unknown[]): unknown[] =>
+        previewBase && pageById
+          ? list.map((it) =>
+              it && typeof it === 'object'
+                ? { ...(it as Record<string, unknown>), previewUrl: pagePreviewUrl(previewBase, it as Page, pageById) }
+                : it,
+            )
+          : list;
+      const project = (list: unknown[]): unknown[] =>
+        withPreview(wantSummary ? summarizeContentList(kind, list) : list);
       // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
       // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
       // Validated against the slug charset; ignored for every other (project-global) kind.
@@ -2777,16 +2806,73 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/content/:kind/:entityId',
     { config: rlAgent(120) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:read');
+      const { ctx, project: proj } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
       // An `entry` is keyed within its DATASET (its id is only unique per-dataset) — the owning dataset
       // arrives as `?dataset=`; it is required so the right dataset's entry is returned unambiguously.
       const scope = entryScope(kind, req.query.dataset, reply);
       if (scope === undefined) return reply; // 400 already sent
       const item = await contentRepo.get(ctx, kind, req.params.entityId, scope);
+      // A page comes back with the signed DRAFT-preview URL that renders it — the reliable way to SEE a
+      // page, and for a project with no deploy target the only one. Same base as the list route.
+      if (kind === 'page' && item && typeof item === 'object') {
+        const base = draftPreviewBase(proj.id);
+        if (base) {
+          // A CHILD page's route needs its ancestors, so read the page list only in that case — the common
+          // top-level page resolves from a one-entry map with no extra query.
+          const page = item as Page;
+          const byId = page.parent
+            ? pagesById((await contentRepo.list(ctx, 'page')) as Page[])
+            : pagesById([page]);
+          return reply.send({ item, previewUrl: pagePreviewUrl(base, page, byId) });
+        }
+      }
       return reply.send({ item });
     },
   );
+
+  /**
+   * Gives a new ENTRY an `order` so a dataset built by writing rows comes out in the order it was written.
+   *
+   * ★ WHY (cost a real clone its list order twice over): entries sort by `order ?? +Infinity` with an id
+   * tie-break (compareEntryOrder). That is right for the EDITOR, where drag-reorder stamps `order` on every
+   * row — but an agent creating rows over the API sets no `order`, so every row ties at +Infinity and the
+   * dataset renders ALPHABETICALLY BY ID. Certification badges came out Advisor→Partner→Silver and nine
+   * client logos ran a-z; the author only noticed because badges are visually distinctive. A text list would
+   * have shipped silently wrong. Documenting the field is not enough — the DEFAULT has to be right.
+   *
+   * Three cases, cheapest first:
+   *  - UPDATE of an existing row → carry its current `order` when the body omits one, so a routine full
+   *    replace (the shape put_content encourages) stops silently dropping a hand-dragged position.
+   *  - CREATE into a dataset that already uses `order` → append after the highest.
+   *  - CREATE into an entirely UNORDERED dataset → freeze the order it renders in TODAY onto the existing
+   *    rows, then append. This fires once per legacy dataset; without it the new row would carry an order
+   *    while its siblings stayed +Infinity, and a single append would jump to the front of the list.
+   */
+  async function assignEntryOrder(ctx: ProjectContext, entityId: string, body: unknown): Promise<unknown> {
+    if (!body || typeof body !== 'object') return body;
+    const incoming = body as { dataset?: unknown; order?: unknown };
+    if (typeof incoming.order === 'number') return body; // explicit wins, always
+    const dataset = typeof incoming.dataset === 'string' ? incoming.dataset : '';
+    if (!dataset) return body; // no dataset → let the schema reject it with its own message
+    const siblings = ((await contentRepo.list(ctx, 'entry')) as Entry[]).filter((e) => e.dataset === dataset);
+    const existing = siblings.find((e) => e.id === entityId);
+    if (existing) return typeof existing.order === 'number' ? { ...body, order: existing.order } : body;
+    const ordered = siblings.filter((e) => typeof e.order === 'number');
+    // Clamped to the schema's ceiling so a pathological dataset can't push a write into a validation error.
+    const next = (n: number): number => Math.min(n, 100_000);
+    if (siblings.length === 0) return { ...body, order: 0 };
+    if (ordered.length === 0) {
+      const sorted = [...siblings].sort(compareEntryOrder);
+      let i = 0;
+      for (const row of sorted) {
+        await contentRepo.put(ctx, 'entry', row.id, { ...row, order: next(i) });
+        i += 1;
+      }
+      return { ...body, order: next(sorted.length) };
+    }
+    return { ...body, order: next(Math.max(...ordered.map((e) => e.order as number)) + 1) };
+  }
 
   app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
@@ -2858,6 +2944,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'page' && !wantMerge) {
         body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
       }
+      // Entries get a default `order` so write order == render order (see assignEntryOrder).
+      if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
       // A receipt reports what actually CHANGED, so the prior value must be read before the write.
       if (wantReceipt) await loadPrior();
       const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
@@ -4918,6 +5006,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return targets.find((t) => t.protocol === 'local');
   }
 
+  /**
+   * Where a built site can actually be REACHED — the shared answer behind both publish responses.
+   *
+   * ★ "A release exists" and "the site is live somewhere we can name" are DIFFERENT facts, and conflating
+   * them cost a real false completion: `url` used to be returned UNCONDITIONALLY, so a freshly cloned
+   * project with no deploy target reported `{ url: "https://<slug>.<sitesDomain>/", localHosting: false }`
+   * — a URL that 404s, sitting right next to the field saying why. The editor was fine (it gates its "View"
+   * button on `localHosting`), but MCP hands the object to an agent verbatim, and an agent reasonably reads
+   * `url` as "where this is". One reported a clone as published at an address that had never served.
+   * So: no deploy target at all → the project is UNPUBLISHED, whatever build artifacts exist on disk; and
+   * `url` is non-null ONLY for local hosting, the one case where this app is the thing doing the serving
+   * (a remote FTP/SFTP/Git target uploads to an origin we cannot know). `previewUrl` is always available
+   * and is the honest answer to "let me see it" — signed, no login needed, and it serves the DRAFT.
+   */
+  async function hostingState(
+    ctx: ProjectContext,
+    project: { id: string; slug: string },
+  ): Promise<{ local?: DeployTarget; deployTargets: number; url: string | null; previewUrl: string | null }> {
+    const targets = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
+    const local = targets.find((t) => t.protocol === 'local');
+    return {
+      local,
+      deployTargets: targets.length,
+      url: local ? servedSiteUrl(project.slug) : null,
+      previewUrl: draftPreviewBase(project.id),
+    };
+  }
+
   // Builds the site fresh into a throwaway temp directory and returns its path — used by deploy so the
   // upload ships the CURRENT content without first running (or disturbing) the local-publish artifact.
   // Takes the project ID (re-fetched here) so the deploy-target module needn't carry the project type.
@@ -4973,10 +5089,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Build the local artifact. Minify follows the `local` deploy target's serve option (if one is
           // configured); the site is only SERVED at /sites/<slug>/ when a local target exists (the gate
           // there enforces it) — so building without one just produces a downloadable/servable-later build.
-          const local = await findLocalTarget(ctx);
-          const release = await buildToDir(ctx, project, store.dirFor(project.slug), { minify: !!local?.minifyHtml });
+          const hosting = await hostingState(ctx, project);
+          const release = await buildToDir(ctx, project, store.dirFor(project.slug), {
+            minify: !!hosting.local?.minifyHtml,
+          });
           // Just published → nothing newer than this release, so the site is not dirty.
-          return reply.send({ release, url: servedSiteUrl(project.slug), dirty: false });
+          return reply.send({
+            status: hosting.deployTargets === 0 ? 'unpublished' : 'published',
+            release,
+            url: hosting.url,
+            previewUrl: hosting.previewUrl,
+            dirty: false,
+            localHosting: !!hosting.local,
+            deployTargets: hosting.deployTargets,
+            ...(hosting.deployTargets === 0
+              ? { reason: 'built, but this project has no deploy target — nothing serves it yet. Add one (Local Hosting, FTP/SFTP or Git) to put it online; until then use previewUrl to view it.' }
+              : {}),
+          });
         } catch (err) {
           // Author-correctable: a bad route graph (PublishError) or a bad json_data URL (JsonDataError).
           if (err instanceof PublishError || err instanceof JsonDataError) {
@@ -5000,13 +5129,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const dirty =
           latest !== null && (release === null || latest.getTime() > Date.parse(release.publishedAt));
         // `localHosting` = a `local` deploy target exists, so the site is (or can be) served at /sites/.
-        const local = await findLocalTarget(ctx);
+        // `status` is the headline an agent should act on: with NO deploy target the project is UNPUBLISHED
+        // no matter how many releases were built, because nothing serves them. See hostingState().
+        const hosting = await hostingState(ctx, project);
         return reply.send({
+          status: hosting.deployTargets === 0 || !release ? 'unpublished' : 'published',
           release,
-          url: servedSiteUrl(project.slug),
+          url: hosting.url,
+          previewUrl: hosting.previewUrl,
           dirty,
-          localHosting: !!local,
-          ...(local?.previewToken ? { previewToken: local.previewToken } : {}),
+          localHosting: !!hosting.local,
+          deployTargets: hosting.deployTargets,
+          ...(hosting.deployTargets === 0
+            ? { reason: 'this project has no deploy target, so nothing serves it — there is no live URL. Add one (Local Hosting, FTP/SFTP or Git) to put it online; until then use previewUrl to view it.' }
+            : {}),
+          ...(hosting.local?.previewToken ? { previewToken: hosting.local.previewToken } : {}),
         });
       },
     );

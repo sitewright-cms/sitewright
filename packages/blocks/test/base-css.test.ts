@@ -396,4 +396,23 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(webkitBranch).not.toMatch(/:hover::-webkit-scrollbar-thumb/);
     });
   });
+  describe('media .loading placeholder', () => {
+    it('neutralises the daisyUI spinner on replaced media', () => {
+      expect(css).toContain(':is(iframe, img, video, embed, object).loading {');
+      expect(css).toContain('-webkit-mask: none !important');
+    });
+
+    // REGRESSION: the aspect reset used to live in the rule above, whose `:is(iframe, …)` argument makes
+    // it (0,1,1) — outranking every `.aspect-*` utility at (0,1,0). An authored `aspect-video` on a lazy
+    // iframe therefore lost to it and the embed published at its 150px HTML default instead of 16/9.
+    it('the aspect reset steps aside when an aspect utility is present', () => {
+      expect(css).toContain(':is(iframe, img, video, embed, object).loading:not([class*="aspect-"]) { aspect-ratio: auto; }');
+      // …and is NOT folded back into the unscoped rule. Slice the DECLARATION BLOCK only — the prose
+      // between the two rules explains the specificity maths and naturally mentions aspect-ratio.
+      const open = css.indexOf(':is(iframe, img, video, embed, object).loading {');
+      const declarations = css.slice(open, css.indexOf('}', open));
+      expect(declarations).not.toContain('aspect-ratio');
+      expect(declarations).toContain('width: 100%');
+    });
+  });
 });

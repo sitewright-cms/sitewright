@@ -482,6 +482,20 @@ function createInstance(): typeof Handlebars {
   // robust across render + test contexts.
   hb.registerHelper('sw-pick-entry', function swPickEntry(entries: unknown, selectedId: unknown, options?: Handlebars.HelperOptions) {
     const block = options && typeof options.fn === 'function' ? options : undefined;
+    // A STRING first argument is the dataset SLUG — {{#sw-pick-entry "team" "t1_ada"}}. The authoring
+    // reference documented exactly this form for a long time while the helper only ever accepted the
+    // entries ARRAY, so following the docs produced an empty non-array, fell straight through to the
+    // {{else}} branch below, and rendered NOTHING — no error, no marker comment, no clue. Resolving the
+    // slug against the root `dataset` map makes the documented form work rather than merely correcting the
+    // doc. Own-property lookup only, so `__proto__`/`constructor` can never name a dataset.
+    if (typeof entries === 'string') {
+      const all = (options?.data?.root as { dataset?: Record<string, unknown> } | undefined)?.dataset;
+      const resolved =
+        all && typeof all === 'object' && Object.prototype.hasOwnProperty.call(all, entries)
+          ? all[entries]
+          : undefined;
+      entries = Array.isArray(resolved) ? resolved : [];
+    }
     if (!Array.isArray(entries) || entries.length === 0) {
       return block ? (typeof block.inverse === 'function' ? block.inverse(undefined) : '') : undefined;
     }

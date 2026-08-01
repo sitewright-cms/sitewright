@@ -47,6 +47,13 @@ export function NAV_COUNT() {
  *
  * So: walk each candidate's ancestors, intersect with every clipping ancestor, and report what actually
  * survives. Images and text leaves only, node-capped, and reporting the CLIPPER so the fix is obvious.
+ *
+ * TWO KINDS OF CLIPPING ARE DELIBERATE and must never be reported, because flagging them pushes authors
+ * to break working markup to satisfy the gate:
+ *   • a SLIDER viewport — queued slides live outside it; a "peek" carousel shows a sliver on purpose;
+ *   • a total (>95%) clip — a collapsed accordion, a closed drawer, an off-screen panel. The visitor
+ *     sees nothing rather than something chopped, so there is no visual defect.
+ * Only a PARTIAL cut of a normally-flowing element is a real finding.
  */
 export function CLIP_PROBE() {
   const vis = (el) => {
@@ -60,26 +67,41 @@ export function CLIP_PROBE() {
   };
   // Images carry the most visible failures; text leaves catch a clipped heading/caption.
   const nodes = Array.prototype.slice.call(document.querySelectorAll('img,svg,picture,video,h1,h2,h3,p,figcaption')).slice(0, 400);
+  // A slider viewport's ENTIRE JOB is to clip: the queued slides sit outside it, and a "peek" carousel
+  // deliberately shows a sliver of the next one. The probe cannot tell by-design queuing from a defect
+  // in there, and guessing wrong is expensive — a false positive here pushed a real clone to replace 14
+  // `<img alt>` elements with CSS background divs (alt text and srcset gone) purely to pass this gate.
+  const SLIDER = '[data-sw-part="container"],[data-sw-part="viewport"],[data-sw-component="carousel"],' +
+    '.embla,.embla__viewport,.slick-list,.swiper,.swiper-wrapper,.glide__track,.flickity-viewport';
   const out = [];
   for (const el of nodes) {
     if (!vis(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.height < 8 || r.width < 8) continue;
-    let top = r.top, bottom = r.bottom, left = r.left, right = r.right, clipper = null;
+    let top = r.top, bottom = r.bottom, left = r.left, right = r.right, clipper = null, bySlider = false;
     let p = el.parentElement;
     while (p && p !== document.documentElement) {
       const cs = getComputedStyle(p);
       if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
         const pr = p.getBoundingClientRect();
-        if (pr.top > top || pr.bottom < bottom || pr.left > left || pr.right < right) clipper = clipper || label(p);
+        if (pr.top > top || pr.bottom < bottom || pr.left > left || pr.right < right) {
+          clipper = clipper || label(p);
+          if (p.matches && p.matches(SLIDER)) bySlider = true;
+        }
         top = Math.max(top, pr.top); bottom = Math.min(bottom, pr.bottom);
         left = Math.max(left, pr.left); right = Math.min(right, pr.right);
       }
       p = p.parentElement;
     }
+    if (bySlider) continue;
     const visH = Math.max(0, bottom - top), visW = Math.max(0, right - left);
     // >10% of either axis eaten = a real visual cut, not a rounding artefact or a deliberate 1px crop.
     const lostH = 1 - visH / r.height, lostW = 1 - visW / r.width;
+    // ...but something clipped to NOTHING is hidden ON PURPOSE — a collapsed accordion caption
+    // (`max-width:0;overflow:hidden`, which is what the animation is), an off-screen slide, a closed
+    // drawer. The visitor sees no half-drawn element, so there is no visual defect to report. Only a
+    // PARTIAL cut means "the visitor can see this, and it is chopped".
+    if (Math.max(lostH, lostW) > 0.95) continue;
     if (clipper && (lostH > 0.1 || lostW > 0.1)) {
       out.push({
         el: label(el),

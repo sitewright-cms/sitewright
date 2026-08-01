@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { CLIP_PROBE } from '../src/render/clone-audit-probe.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
   carousels: 1, carouselsEnhanced: 1, dialogs: 1, headingFont: 'primary-font', bodyFont: 'text-font',
@@ -109,6 +110,28 @@ describe('behaviouralChecks', () => {
     expect(cut.detail).toContain('122x115 -> 122x51');
     // GATING, not advisory — this is objectively measurable, so it must block rather than advise.
     expect(cut.advisory).toBeFalsy();
+  });
+
+  it('CLIP_PROBE exempts the two clippings that are DELIBERATE', () => {
+    // Source-level, like the STICKY_HEADER_JS assertions: CLIP_PROBE is pure layout geometry, and
+    // jsdom's getBoundingClientRect returns zeros, so its behaviour can only be exercised in a real
+    // browser. What this guards is that the two exemptions are not silently dropped.
+    //
+    // Why they exist: a false positive here is not free. A clone agent hit both and, to pass the gate,
+    // replaced 14 `<img alt="…">` elements with CSS background divs (alt text and srcset gone) and
+    // swapped an accordion's `max-width:0 → 100%` slide-open — which is what the ORIGINAL did — for a
+    // `display:none` toggle, losing the animation. The gate made the output worse.
+    //   • a SLIDER viewport clips by definition: queued slides sit outside it, and a "peek" carousel
+    //     shows a sliver of the next slide on purpose.
+    //   • a >95% clip means the element is hidden, not chopped — a collapsed accordion, a closed
+    //     drawer. The visitor sees nothing, so there is no visual defect to report.
+    expect(CLIP_PROBE.toString()).toContain('.embla');
+    expect(CLIP_PROBE.toString()).toContain('.slick-list');
+    expect(CLIP_PROBE.toString()).toContain('data-sw-part="container"');
+    expect(CLIP_PROBE.toString()).toContain('if (bySlider) continue;');
+    expect(CLIP_PROBE.toString()).toMatch(/>\s*0\.95\)\s*continue/);
+    // and the partial-cut threshold that makes a REAL defect report must still be there
+    expect(CLIP_PROBE.toString()).toMatch(/lostH > 0\.1 \|\| lostW > 0\.1/);
   });
 
   it('requires modals ONLY when the original has triggers', () => {

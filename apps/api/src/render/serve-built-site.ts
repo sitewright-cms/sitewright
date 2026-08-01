@@ -35,7 +35,22 @@ const MIME: Record<string, string> = {
   '.xml': 'application/xml; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.pdf': 'application/pdf',
+  // Playable media. Without these a self-hosted background video was served as
+  // application/octet-stream with no range support, so the browser could not seek it (a
+  // `currentTime = 6` landed back at 0) and had to pull all 16 MB before it could start.
+  '.webm': 'video/webm',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.ogv': 'video/ogg',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.oga': 'audio/ogg',
+  '.wav': 'audio/wav',
 };
+
+/** Media the browser SEEKS — must be served with byte ranges, never gzipped. */
+const RANGED = /^(?:video|audio)\//;
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const NO_CACHE = 'no-cache';
@@ -108,6 +123,33 @@ export async function serveBuiltSite(root: string, host = '127.0.0.1'): Promise<
         const contentType = MIME[extname(file).toLowerCase()] ?? 'application/octet-stream';
         res.setHeader('content-type', contentType);
         res.setHeader('cache-control', cacheControlFor(rawUrl));
+        // BYTE RANGES for video/audio. A <video> seeks by asking for a window; answering every request
+        // with the whole file means the seek silently fails and playback cannot start until the entire
+        // file has transferred. Measured before this: seeking a 16 MB background video snapped to 0.
+        if (RANGED.test(contentType)) {
+          res.setHeader('accept-ranges', 'bytes');
+          const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+          if (m) {
+            const size = s.size;
+            const startRaw = m[1];
+            const endRaw = m[2];
+            const start = startRaw ? Number(startRaw) : Math.max(0, size - Number(endRaw || 0));
+            const end = startRaw ? (endRaw ? Math.min(Number(endRaw), size - 1) : size - 1) : size - 1;
+            if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) {
+              res.statusCode = 416;
+              res.setHeader('content-range', `bytes */${size}`);
+              res.end();
+              return;
+            }
+            res.statusCode = 206;
+            res.setHeader('content-range', `bytes ${start}-${end}/${size}`);
+            res.setHeader('content-length', String(end - start + 1));
+            const part = createReadStream(file, { start, end });
+            part.on('error', () => { if (!res.headersSent) res.statusCode = 500; res.end(); });
+            part.pipe(res);
+            return;
+          }
+        }
         const stream = createReadStream(file);
         // A file made unreadable after stat() (TOCTOU on the temp dir) must not crash the process.
         stream.on('error', () => {

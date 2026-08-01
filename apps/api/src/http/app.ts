@@ -914,6 +914,30 @@ const CreateApiKeyBody = z.object({
   expiresInDays: z.number().int().min(1).max(365),
 });
 
+/**
+ * Parse a `Range:` header against a buffer. Returns the slice + its `Content-Range`, `'unsatisfiable'`
+ * for a range past the end, or null when there is no (single, byte) range to honour.
+ *
+ * Shared because BOTH media routes need it and only one of them had it: advertising `accept-ranges`
+ * while ignoring `Range` makes a browser believe it can seek, then silently drops it back to 0.
+ */
+export function partialContent(
+  body: Buffer,
+  header: string | string[] | undefined,
+): { body: Buffer; contentRange: string } | 'unsatisfiable' | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(raw ?? ''));
+  if (!m) return null;
+  const size = body.length;
+  const startRaw = m[1];
+  const endRaw = m[2];
+  // `bytes=-N` = the last N bytes; `bytes=N-` = N to the end.
+  const start = startRaw ? Number(startRaw) : Math.max(0, size - Number(endRaw || 0));
+  const end = startRaw ? (endRaw ? Math.min(Number(endRaw), size - 1) : size - 1) : size - 1;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return 'unsatisfiable';
+  return { body: body.subarray(start, end + 1), contentRange: `bytes ${start}-${end}/${size}` };
+}
+
 export interface AppOptions {
   db: Database;
   cookieSecret?: string;
@@ -4978,10 +5002,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // applies, and the type comes from our own extension table rather than the upload's claim.
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        return CORS(reply)
-          .header('accept-ranges', 'bytes')
-          .type(VIDEO_CONTENT_TYPES.get(ext) ?? asset.contentType)
-          .send(bytes);
+        const type = VIDEO_CONTENT_TYPES.get(ext) ?? asset.contentType;
+        // RANGE REQUESTS, for real. Advertising `accept-ranges` while ignoring `Range:` is the exact
+        // kind of untrue signal this codebase keeps getting bitten by: the browser believes it can
+        // seek, asks for a byte window, gets the whole file with a 200, and SNAPS BACK TO 0. Measured
+        // on the first cut of this route — `video.currentTime = 6` landed at 0. It also means a 16 MB
+        // background video downloads in full before it can start.
+        const ranged = partialContent(bytes, req.headers.range);
+        if (ranged === 'unsatisfiable') {
+          return CORS(reply).code(416).header('content-range', `bytes */${bytes.length}`).send();
+        }
+        if (ranged) {
+          return CORS(reply)
+            .code(206)
+            .header('accept-ranges', 'bytes')
+            .header('content-range', ranged.contentRange)
+            .header('content-length', String(ranged.body.length))
+            .type(type)
+            .send(ranged.body);
+        }
+        return CORS(reply).header('accept-ranges', 'bytes').type(type).send(bytes);
       }
       if (asset.kind === 'file') {
         // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can
@@ -6259,6 +6299,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             if (binary.attachment) reply.header('content-disposition', 'attachment');
             if (binary.csp) reply.header('content-security-policy', binary.csp);
             if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
+            // Seekable media answers `Range:` with a 206. Without it a <video> cannot seek (measured:
+            // `currentTime = 6` snapped back to 0) and must transfer the whole file before it starts.
+            if (binary.ranged) {
+              reply.header('accept-ranges', 'bytes');
+              const ranged = partialContent(binary.body, req.headers.range);
+              if (ranged === 'unsatisfiable') {
+                return reply.code(416).header('content-range', `bytes */${binary.body.length}`).send();
+              }
+              if (ranged) {
+                return reply
+                  .code(206)
+                  .header('content-range', ranged.contentRange)
+                  .header('content-length', String(ranged.body.length))
+                  .type(binary.contentType)
+                  .send(ranged.body);
+              }
+            }
             return reply.type(binary.contentType).send(binary.body);
           }
           const asset = await preview.readAsset(project.slug, path);

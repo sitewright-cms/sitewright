@@ -296,6 +296,25 @@ describe('media pipeline (HTTP layer)', () => {
     expect(served.headers['content-type']).toContain('video/webm');
     expect(served.headers['content-disposition']).toBeUndefined();
     expect(served.headers['accept-ranges']).toBe('bytes');
+
+    // RANGE REQUESTS must actually work. Advertising accept-ranges and then ignoring Range is worse
+    // than not advertising it: the browser believes it can seek, asks for a window, gets the whole
+    // file with a 200, and SNAPS BACK TO 0 — measured on the first cut of this route.
+    const part = await app.inject({ method: 'GET', url: item.url, headers: { range: 'bytes=100-199' } });
+    expect(part.statusCode).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 100-199/${vid.length}`);
+    expect(part.headers['content-length']).toBe('100');
+    expect(part.rawPayload.length).toBe(100);
+
+    // an open-ended range runs to the end…
+    const tail = await app.inject({ method: 'GET', url: item.url, headers: { range: `bytes=${vid.length - 10}-` } });
+    expect(tail.statusCode).toBe(206);
+    expect(tail.rawPayload.length).toBe(10);
+
+    // …and a nonsensical one is refused with 416 rather than silently serving everything.
+    const bad = await app.inject({ method: 'GET', url: item.url, headers: { range: `bytes=${vid.length + 5}-` } });
+    expect(bad.statusCode).toBe(416);
+    expect(bad.headers['content-range']).toBe(`bytes */${vid.length}`);
   });
 
   // (4) Listing returns uploaded assets for the owner; a second tenant cannot

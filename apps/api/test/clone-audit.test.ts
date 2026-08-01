@@ -33,6 +33,25 @@ describe('structuralChecks', () => {
     expect(structuralChecks({ datasets: [], media: [], pageSource: '<h1 data-sw-text="t">T</h1>' }).find((c) => c.id === 'editable')!.pass).toBe(true);
   });
 
+  it('a page that is 100% DATASET-DRIVEN is editable — the loop is the affordance', () => {
+    // The guide REQUIRES loop fields to stay bare, so a gallery or activities page legitimately has
+    // zero `data-sw-*` leaves while being fully editable through the dataset editor. It used to score
+    // 0 and FAIL. One agent got past it by adding `data-sw-text` to a screen-reader-only <h1> and said
+    // plainly that this was gaming the check rather than improving the page.
+    const loop = structuralChecks({
+      datasets: [{ id: 'rooms', name: 'Rooms', slug: 'rooms' }],
+      media: [],
+      pageSource: '<ul>{{#each dataset.rooms}}<li>{{title}}</li>{{/each}}</ul>',
+    });
+    expect(loop.find((c) => c.id === 'editable')!.pass).toBe(true);
+    expect(countEditDirectives('{{#each dataset.rooms}}{{title}}{{/each}}')).toBe(1);
+    expect(countEditDirectives('{{#sw-pick-entry dataset.team "ana"}}{{name}}{{/sw-pick-entry}}')).toBe(1);
+    // a plain (non-dataset) each is NOT an edit affordance — it iterates whatever is in scope
+    expect(countEditDirectives('{{#each items}}{{x}}{{/each}}')).toBe(0);
+    // and a page with genuinely nothing still fails
+    expect(structuralChecks({ datasets: [], media: [], pageSource: '<div>plain</div>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
+  });
+
   // REGRESSION: the check used to read the page's RAW stored source, so the two structures the import
   // guide MANDATES both scored 0 and FAILED — a template-driven page (empty own source) and a page whose
   // directives live in a composed {{> snippet}}. The caller now passes the template-RESOLVED source plus
@@ -41,7 +60,7 @@ describe('structuralChecks', () => {
     const snippets = { 'page-hero': '<h1 data-sw-text="header_title">T</h1><div data-sw-text="header_sub"></div>' };
     const composed = structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>', snippets });
     expect(composed.find((c) => c.id === 'editable')!.pass).toBe(true);
-    expect(composed.find((c) => c.id === 'editable')!.detail).toContain('2 edit directives');
+    expect(composed.find((c) => c.id === 'editable')!.detail).toContain('2 edit affordances');
     // …and without the snippet bodies the very same page still reads as un-editable (the old behaviour).
     expect(structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
   });

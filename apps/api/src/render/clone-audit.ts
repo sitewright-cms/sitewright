@@ -61,8 +61,16 @@ export interface BehaviourFacts {
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
 
-/** A client-edit directive: what makes rendered content editable in the client editor. */
-const EDIT_DIRECTIVE = /data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry/g;
+/** A client-edit directive: what makes rendered content editable in the client editor.
+ *
+ *  A DATASET LOOP counts. The content inside `{{#each dataset.rooms}}` is edited in the dataset
+ *  editor, row by row — it is client-editable, just not through a `data-sw-*` leaf, and the import
+ *  guide REQUIRES the loop fields to stay bare. So a page that is correctly 100% dataset-driven (a
+ *  gallery, an activities list) used to score zero and fail this check. One agent passed it by adding
+ *  `data-sw-text` to a screen-reader-only `<h1>` and said outright that this was gaming the check
+ *  rather than improving the page. The check was measuring the wrong thing, not the page. */
+const EDIT_DIRECTIVE =
+  /data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry|\{\{\s*#each\s+dataset\.|\{\{\s*#sw-pick-entry/g;
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (mirrors publish's PARTIAL_REF). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -115,7 +123,7 @@ export function structuralChecks(input: {
   return [
     { leg: 'structure', id: 'datasets', label: 'datasets deduped + meaningfully named', pass: input.datasets.length === 0 || generic.length === 0, detail: `${generic.length} generic-named ("List"/"items") of ${input.datasets.length}` },
     { leg: 'structure', id: 'media-folders', label: 'media out of the transient imported/ tree', pass: imported.length === 0, detail: `${imported.length}/${input.media.length} assets still under imported/` },
-    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-*)', pass: edits > 0, detail: `${edits} edit directives on this page (template-resolved, including composed snippets)` },
+    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-* or a dataset loop)', pass: edits > 0, detail: `${edits} edit affordances on this page (template-resolved, including composed snippets and dataset loops)` },
   ];
 }
 

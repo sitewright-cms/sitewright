@@ -6018,7 +6018,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const side = req.body?.side === 'build' ? 'build' : 'source';
         const vpRaw = req.body?.viewport;
-        const viewport = typeof vpRaw === 'string' && isScreenshotViewportName(vpRaw) ? vpRaw : undefined;
+        // Either one of the five names, or an exact pixel width. The names leave a gap between 768 and
+        // 1440 — where responsive frameworks actually switch — so a width is the only way to measure
+        // "what applies at 992?" rather than infer it from the stylesheet text.
+        const viewport =
+          typeof vpRaw === 'string' && isScreenshotViewportName(vpRaw)
+            ? vpRaw
+            : typeof vpRaw === 'number' && Number.isFinite(vpRaw) && vpRaw > 0
+              ? vpRaw
+              : undefined;
         // A failed list must 500, not silently measure against an empty page set (same rule as clone_audit).
         const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(allPages);

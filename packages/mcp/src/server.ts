@@ -825,17 +825,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'inspect_source',
     {
       description:
-        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. The page must have an import source.",
+        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. KEEP THE RESPONSE SMALL: every node returns ~28 computed properties by default, so a few selectors with html:true can run to tens of thousands of tokens; pass `styles` to name EXACTLY the properties you need (it REPLACES the default set) and only set html:true when you actually need the markup. The page must have an import source.",
       inputSchema: {
         pageId: z.string(),
         selectors: z.array(z.string()).min(1).max(20).describe('CSS selectors to measure, e.g. ["#main-nav a", ".hero h1", "footer"]'),
-        styles: z.array(z.string()).max(40).optional().describe('Extra CSS properties beyond the default set (e.g. ["backdrop-filter","writing-mode"]).'),
+        styles: z
+          .array(z.string())
+          .max(40)
+          .optional()
+          .describe(
+            'EXACTLY which CSS properties to return — this REPLACES the ~28-property default set, it does not add to it. ' +
+              'Use it to keep the response small: ["font-size","font-weight","color","padding"] returns four properties per ' +
+              'node instead of twenty-eight. Omit it to get the full default set (every property a faithful port usually ' +
+              'has to match). Naming a property outside the default set works the same way, e.g. ["backdrop-filter","writing-mode"].',
+          ),
         html: z.boolean().optional().describe('Also return each match\'s settled outerHTML (scripts/styles stripped, truncated).'),
-        viewport: z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']).optional().describe('Measurement viewport (default laptop · 1440x900).'),
+        viewport: z
+          .union([z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']), z.number().int().min(240).max(3840)])
+          .optional()
+          .describe(
+            'Measurement viewport: a name (wqhd 2560 · fullhd 1920 · laptop 1440 (default) · tablet 768 · mobile 390) ' +
+              'OR an exact pixel WIDTH. Use a width to measure a breakpoint the names skip — there is nothing between ' +
+              '768 and 1440, which is exactly where most frameworks switch, so pass 992 or 1024 to see what actually ' +
+              'applies there instead of inferring it from the stylesheet.',
+          ),
         side: z.enum(['source', 'build']).optional().describe('Which page to measure: the live original (default) or your build.'),
       },
     },
-    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' }): Promise<ToolResult> => {
+    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string | number; side?: 'source' | 'build' }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
         return toolError(`Your connection to project ${holder.scope.projectId} lacks the \u201Ccontent:read\u201D capability.`);

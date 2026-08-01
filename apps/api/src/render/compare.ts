@@ -6,7 +6,7 @@
 //  - mode 'pinned'   — an EXTERNAL source URL; EVERY request is served by `pinnedFetch` (https-only,
 //                      SSRF-validated, connect-pinned), exactly like the importer's `renderViaBrowser`,
 //                      so the browser's unpinnable DNS is never used.
-import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName } from '@sitewright/schema';
+import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName, type ScreenshotViewport } from '@sitewright/schema';
 import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta, type FontMetrics } from '@sitewright/site-import/fidelity';
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
@@ -71,7 +71,7 @@ export function compareTargets(opts: {
 // external source, and navigate. The scroll/fonts/embed/animation SETTLE is a separate shared step
 // (`settlePage`, screenshot.ts) each caller runs next — with `freeze:false` for the behaviour probe. The
 // pinned routing lives in exactly ONE place.
-async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: (typeof SCREENSHOT_VIEWPORTS)[ViewportName], signal?: AbortSignal, deviceScaleFactor = 1): Promise<{ context: BrowserContext; page: Page }> {
+async function prepPage(browser: Browser, url: string, mode: CaptureMode, vp: ScreenshotViewport, signal?: AbortSignal, deviceScaleFactor = 1): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
     deviceScaleFactor,
@@ -250,12 +250,37 @@ export interface RegionShot { base64: string; mimeType: 'image/webp'; width: num
  * `compare_regions` / `visual_audit` show. Unlike those, failures THROW: a silent empty result would read
  * as "the original has no header", which is exactly the wrong thing to tell an agent that is measuring.
  */
+/** Clamp for an ad-hoc measurement width. Below 240 nothing lays out meaningfully; above 3840 the
+ *  render is slower than it is informative. */
+const INSPECT_WIDTH_RANGE = { min: 240, max: 3840 } as const;
+
 export async function captureUrlInspect(
   url: string,
-  opts: { mode: CaptureMode; selectors: string[]; styles?: string[]; html?: boolean; viewport?: ViewportName; signal?: AbortSignal },
+  opts: {
+    mode: CaptureMode;
+    selectors: string[];
+    styles?: string[];
+    html?: boolean;
+    /** A named viewport, or an EXACT pixel width. The five names leave a hole between 768 and 1440 —
+     *  precisely where responsive frameworks switch (992, 1024) — so "which rule applies at 992?" could
+     *  not be answered by measurement at all, only guessed at from the CSS text. An arbitrary width
+     *  turns that guess back into a number. */
+    viewport?: ViewportName | number;
+    signal?: AbortSignal;
+  },
 ): Promise<InspectResult> {
   const browser = await getBrowser();
-  const vp = SCREENSHOT_VIEWPORTS[opts.viewport ?? 'laptop'];
+  const vp =
+    typeof opts.viewport === 'number'
+      ? {
+          label: `Custom · ${opts.viewport}`,
+          width: Math.min(INSPECT_WIDTH_RANGE.max, Math.max(INSPECT_WIDTH_RANGE.min, Math.round(opts.viewport))),
+          height: 900,
+          capHeight: 8000,
+          // Match the named viewports' own boundary: `tablet` (768) is mobile, `laptop` (1440) is not.
+          isMobile: Math.round(opts.viewport) <= SCREENSHOT_VIEWPORTS.tablet.width,
+        }
+      : SCREENSHOT_VIEWPORTS[opts.viewport ?? 'laptop'];
   return withRenderSlot(async () => {
     const { context, page } = await prepPage(browser, url, opts.mode, vp, opts.signal);
     try {

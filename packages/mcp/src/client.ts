@@ -552,7 +552,7 @@ export class SitewrightClient {
    */
   async inspectSource(
     pageId: string,
-    body: { selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' },
+    body: { selectors: string[]; styles?: string[]; html?: boolean; viewport?: string | number; side?: 'source' | 'build' },
   ): Promise<InspectSourceResult> {
     return this.request('POST', this.projectPath(`/inspect-source/${encodeURIComponent(pageId)}`), body);
   }

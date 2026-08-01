@@ -92,6 +92,9 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
 // Document downloads worth self-hosting so the imported site is self-contained (else a <a href="x.pdf">
 // becomes a dead route or a hotlink to the source server). Stored download-only via the file-asset path.
 const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|rtf|odt|ods|odp|zip)(?:[?#]|$)/i;
+/** Playable media the importer self-hosts as kind `video` (served inline, not as a download). A site's
+ *  hero background video used to be dropped silently — nothing collected it, so it never existed. */
+const VIDEO_EXT = /\.(webm|mp4|m4v|mov|ogv|mp3|m4a|oga|wav)(?:[?#]|$)/i;
 
 /** Every same-or-cross-origin document reference — `<a href>` downloads AND `<iframe|embed src>` /
  *  `<object data>` EMBEDS (a PDF viewer in a modal) — keyed canonically (kind 'other'). Self-hosting the
@@ -101,7 +104,8 @@ export function collectDocumentRefs(docs: ParsedDoc[]): Map<string, CapturedAsse
   const refs = new Map<string, CapturedAsset>();
   const add = (raw: string | undefined, base: string): void => {
     const ref = raw?.trim();
-    if (!ref || ref.toLowerCase().startsWith('data:') || !DOC_EXT.test(ref)) return;
+    if (!ref || ref.toLowerCase().startsWith('data:')) return;
+    if (!DOC_EXT.test(ref) && !VIDEO_EXT.test(ref)) return;
     const key = assetKey(ref, base);
     if (!key || refs.has(key)) return;
     refs.set(key, { sourceRef: key, kind: 'other', remoteUrl: key });
@@ -111,6 +115,12 @@ export function collectDocumentRefs(docs: ParsedDoc[]): Map<string, CapturedAsse
     for (const f of allByName(doc.children, 'iframe')) add(f.attribs.src ?? f.attribs['data-src'], url); // lazy PDF embed
     for (const e of allByName(doc.children, 'embed')) add(e.attribs.src, url);
     for (const o of allByName(doc.children, 'object')) add(o.attribs.data, url);
+    // <video>/<audio> and their <source> children — self-hosted through the same 'other' path, which
+    // routes a playable extension to the inline video asset kind.
+    for (const v of [...allByName(doc.children, 'video'), ...allByName(doc.children, 'audio')]) {
+      add(v.attribs.src, url);
+      for (const s of allByName(v.children ?? [], 'source')) add(s.attribs.src, url);
+    }
   }
   return refs;
 }
@@ -181,4 +191,34 @@ export async function hostAssets(
     onProgress?.({ phase: 'host-media', done, total, detail: fname });
   });
   return { assetMap, srcsetMap, hosted, diagnostics };
+}
+
+/**
+ * Media the importer CANNOT self-host — currently `<video>` / `<audio>` sources.
+ *
+ * There is no video media kind (image | file | font | stylesheet | script), the collector above takes
+ * only a video's `poster`, and the page transform leaves the source URL as a bare hotlink. In
+ * FOUNDATION mode the body is re-authored from scratch, so the element does not survive at all — and
+ * NOTHING said so. A clone of a site whose hero is a full-viewport autoplay video came back with zero
+ * `<video>` elements, no video in the media library, and no diagnostic: measured on the original,
+ * `bg_video.webm` at 1440x900, autoplay+muted+loop, playing.
+ *
+ * Until video is a first-class asset, the least we owe the author is to NAME what was left behind.
+ */
+export function collectUnhostableMedia(docs: readonly ParsedDoc[]): string[] {
+  const out: string[] = [];
+  const push = (raw: string | undefined): void => {
+    if (!raw) return;
+    const v = raw.trim();
+    if (!v || v.toLowerCase().startsWith('data:') || out.includes(v)) return;
+    if (out.length < 12) out.push(v);
+  };
+  for (const { doc } of docs) {
+    for (const el of [...allByName(doc.children, 'video'), ...allByName(doc.children, 'audio')]) {
+      push(el.attribs.src);
+      // <source> children carry the real URLs when the element has no src of its own.
+      for (const s of allByName(el.children ?? [], 'source')) push(s.attribs.src);
+    }
+  }
+  return out;
 }

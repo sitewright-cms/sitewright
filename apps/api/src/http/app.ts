@@ -22,6 +22,9 @@ import {
   targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
+  VideoAssetSchema,
+  VIDEO_CONTENT_TYPES,
+  isVideoExt,
   StylesheetAssetSchema,
   ScriptAssetSchema,
   FontWeightSchema,
@@ -45,6 +48,7 @@ import {
   type CorporateIdentity,
   type Entry,
   type FileAsset,
+  type VideoAsset,
   type StylesheetAsset,
   type ScriptAsset,
   type MediaFolderRecord,
@@ -330,7 +334,12 @@ const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 // nativized site-wide `bottom` of deduped modals) + head/criticalCss + JSON envelope ~= 1.7 MiB, above
 // Fastify's 1 MiB default. 4 MiB gives headroom so a nativized settings save doesn't 413 in the editor/MCP.
 const CONTENT_BODY_LIMIT = 4 * 1024 * 1024;
-const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+// 15 MiB was sized for an IMAGE and quietly became the ceiling for every upload — a real background
+// video is tens of megabytes, so the media library simply could not hold one. The limit now matches the
+// project-zip path (200 MiB), which the same disk already accepts.
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+/** Images still go through sharp, which must not be handed an arbitrarily huge buffer. */
+const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
 const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
@@ -4019,6 +4028,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store a VIDEO/AUDIO upload. Served INLINE with its real content type (and range requests), because
+    // a <video> must be playable — the download-only `file` kind cannot back a background video.
+    async function createVideoAsset(
+      ctx: ProjectContext,
+      projectSlug: string,
+      buffer: Buffer,
+      meta: { filename: string; mimetype: string; folder?: string },
+    ): Promise<VideoAsset> {
+      const assetId = await mintAssetId(ctx);
+      const storedName = MediaStorage.safeStoredName(meta.filename || 'video');
+      const ext = storedName.split('.').pop()?.toLowerCase() ?? '';
+      try {
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
+        const asset = VideoAssetSchema.parse({
+          kind: 'video',
+          id: assetId,
+          filename: meta.filename || storedName,
+          folder: meta.folder ?? '',
+          bytes: buffer.length,
+          contentType: VIDEO_CONTENT_TYPES.get(ext) ?? (meta.mimetype || 'video/mp4'),
+          storedName,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as VideoAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store an imported site's CSS as one inline-served `.css` file (kind 'stylesheet') so the importer
     // can `<link>` it instead of inlining the bulk CSS into each page's editable source.
     async function createStylesheetAsset(ctx: ProjectContext, projectSlug: string, css: string): Promise<StylesheetAsset> {
@@ -4151,7 +4190,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
         try {
-          const saved = await createFileAsset(ctx, project.slug, buffer, meta);
+          // A playable video/audio goes to the INLINE video kind; everything else stays download-only.
+          const saved = isVideoExt(meta.filename)
+            ? await createVideoAsset(ctx, project.slug, buffer, meta)
+            : await createFileAsset(ctx, project.slug, buffer, meta);
           return reply.code(201).send({ item: saved });
         } catch (err) {
           // A bad client-supplied contentType (the only externally-shaped field) → clean 400,
@@ -4198,7 +4240,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       try {
         fetched = await importUrlFetch(url, {
           timeoutMs: IMPORT_TIMEOUT_MS,
-          maxBytes: MAX_UPLOAD_BYTES,
+          maxBytes: MAX_IMAGE_UPLOAD_BYTES,
           maxRedirects: MAX_IMPORT_REDIRECTS,
           signal: controller.signal,
         });
@@ -4241,7 +4283,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
           : contentType.startsWith('image/')
             ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-            : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+            : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
+              ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+              : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
         if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
         return reply.code(201).send({ item: saved });
       } catch (err) {
@@ -4313,7 +4357,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Self-host a linked document (PDF/doc/…) as-is via the file-asset path (download-only, no sharp).
       hostFileAsset: async (ctx, slug, buffer, meta) => {
         try {
-          const saved = await createFileAsset(ctx, slug, buffer, meta);
+          // The importer routes video/audio here too — self-host it as the INLINE video kind so a
+          // cloned background video actually plays instead of downloading (or vanishing).
+          const saved = isVideoExt(meta.filename)
+            ? await createVideoAsset(ctx, slug, buffer, meta)
+            : await createFileAsset(ctx, slug, buffer, meta);
           return { url: saved.url };
         } catch {
           return null; // oversize / storage error → leave the original href
@@ -4924,6 +4972,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
         return CORS(reply).type('text/javascript; charset=utf-8').send(bytes);
+      }
+      if (asset.kind === 'video') {
+        // INLINE with its real type — a background video has to play, not download. nosniff still
+        // applies, and the type comes from our own extension table rather than the upload's claim.
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        return CORS(reply)
+          .header('accept-ranges', 'bytes')
+          .type(VIDEO_CONTENT_TYPES.get(ext) ?? asset.contentType)
+          .send(bytes);
       }
       if (asset.kind === 'file') {
         // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can

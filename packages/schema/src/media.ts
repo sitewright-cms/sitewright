@@ -120,6 +120,57 @@ export const FileAssetSchema = z.object({
 export type FileAsset = z.infer<typeof FileAssetSchema>;
 
 /**
+ * A self-hosted **video or audio** file (kind `video`). Served INLINE with its real content type and
+ * HTTP range support, because a `<video>` has to be playable — the download-only `file` kind cannot
+ * back a background video or a player.
+ *
+ * It exists because it was MISSING: a clone of a site whose hero is a full-viewport autoplay
+ * `bg_video.webm` came back with no video, no video asset, and no warning. The importer had nowhere to
+ * put one, so it silently dropped it.
+ *
+ * No size cap — a real background video is tens of megabytes and truncating it is worse than storing it.
+ */
+export const VideoAssetSchema = z.object({
+  kind: z.literal('video'),
+  ...baseShape,
+  /** The served MIME type, e.g. `video/webm`, `video/mp4`, `audio/mpeg`. */
+  contentType: z.string().min(1).max(150),
+  /** On-disk stored file name (sanitized base + original extension). */
+  storedName: StoredFileNameSchema,
+  /** Intrinsic dimensions when known (video only) — lets an author avoid layout shift. */
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  /** A poster image asset id, when one was captured alongside. */
+  poster: z.string().max(64).optional(),
+  /** Root-relative INLINE URL — flat `/media/<slug>/<id>-<name>`. */
+  url: z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/),
+});
+export type VideoAsset = z.infer<typeof VideoAssetSchema>;
+
+/** Media types served inline as playable video/audio. Anything else stays a download-only `file`. */
+export const VIDEO_CONTENT_TYPES: ReadonlyMap<string, string> = new Map([
+  ['webm', 'video/webm'],
+  ['mp4', 'video/mp4'],
+  ['m4v', 'video/mp4'],
+  ['mov', 'video/quicktime'],
+  ['ogv', 'video/ogg'],
+  ['mp3', 'audio/mpeg'],
+  ['m4a', 'audio/mp4'],
+  ['oga', 'audio/ogg'],
+  ['wav', 'audio/wav'],
+]);
+
+/** Is this filename/extension a playable video or audio asset? */
+export function isVideoExt(nameOrExt: string): boolean {
+  const ext = nameOrExt.includes('.') ? nameOrExt.split('.').pop()! : nameOrExt;
+  return VIDEO_CONTENT_TYPES.has(ext.toLowerCase());
+}
+
+/**
  * A self-hosted **font** family (kind `font`): the family name, a generic CSS `fallback`, its
  * `source` (downloaded Google family or a local upload), and the stored `files` (one per weight×
  * style). Served INLINE (`font/*` + nosniff + CORS) so `@font-face` can load it; bundled like any
@@ -187,7 +238,7 @@ export const ScriptAssetSchema = z.object({
 export type ScriptAsset = z.infer<typeof ScriptAssetSchema>;
 
 /** Any uploaded asset — an optimized image, a raw file, a font, a stylesheet, or an imported script. */
-export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema, StylesheetAssetSchema, ScriptAssetSchema]);
+export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, VideoAssetSchema, FontAssetSchema, StylesheetAssetSchema, ScriptAssetSchema]);
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
 /**

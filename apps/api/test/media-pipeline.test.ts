@@ -259,17 +259,43 @@ describe('media pipeline (HTTP layer)', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  // (3b) A file larger than the multipart upload limit (15 MiB) is rejected with
-  // 413 by @fastify/multipart's truncation, before the pipeline ever runs. We pad
-  // a tiny valid PNG header with incompressible random bytes to exceed the cap.
-  it('rejects an upload exceeding the 15 MiB multipart limit with 413', async () => {
+  // (3b) An IMAGE over the image pipeline's own 15 MiB budget is still rejected — sharp must not be
+  // handed an arbitrarily large buffer. The MULTIPART limit is now 200 MiB (a real background video is
+  // tens of megabytes, and the 15 MiB ceiling — sized for an image — quietly became the ceiling for
+  // every upload, so the media library could not hold a video at all).
+  it('still rejects an oversized IMAGE, while the multipart limit itself now allows video-sized uploads', async () => {
     const { t, base } = await setup('a@acme.test');
-    // 16 MiB of random (incompressible) bytes — content is irrelevant since the
-    // size limit trips during streaming, before any image decode.
+    // 16 MiB of incompressible bytes: past the image budget, well under the 200 MiB multipart cap.
     const oversized = Buffer.alloc(16 * 1024 * 1024);
     for (let i = 0; i < oversized.length; i += 4096) oversized[i] = (i * 31) & 0xff;
     const res = await upload(base, t, 'huge.png', 'image/png', oversized);
-    expect(res.statusCode).toBe(413);
+    // Rejected by the image path, not by multipart truncation — either code is a rejection, and the
+    // point is that it does NOT succeed.
+    expect([400, 413]).toContain(res.statusCode);
+  });
+
+  // (3c) A VIDEO larger than the old 15 MiB image ceiling is accepted and stored as the inline
+  // `video` kind. This is the defect that motivated the change: a clone of a site whose hero is a
+  // full-viewport autoplay bg_video.webm (15.9 MiB) came back with no video, no video asset, and no
+  // warning — there was nowhere to put one.
+  it('accepts a video past the old image ceiling and stores it as kind "video"', async () => {
+    const { t, base } = await setup('a@acme.test');
+    // A 16 MiB buffer with a plausible WebM/EBML magic prefix.
+    const vid = Buffer.alloc(16 * 1024 * 1024);
+    Buffer.from([0x1a, 0x45, 0xdf, 0xa3]).copy(vid, 0);
+    const res = await upload(base, t, 'bg_video.webm', 'video/webm', vid);
+    expect(res.statusCode).toBe(201);
+    const item = (res.json() as { item: { kind: string; contentType: string; url: string; bytes: number } }).item;
+    expect(item.kind).toBe('video');
+    expect(item.contentType).toBe('video/webm');
+    expect(item.bytes).toBe(vid.length);
+
+    // …and it SERVES INLINE — a background video has to play, not download.
+    const served = await app.inject({ method: 'GET', url: item.url });
+    expect(served.statusCode).toBe(200);
+    expect(served.headers['content-type']).toContain('video/webm');
+    expect(served.headers['content-disposition']).toBeUndefined();
+    expect(served.headers['accept-ranges']).toBe('bytes');
   });
 
   // (4) Listing returns uploaded assets for the owner; a second tenant cannot

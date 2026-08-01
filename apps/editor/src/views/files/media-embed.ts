@@ -58,6 +58,8 @@ function kindHint(asset: Exclude<MediaAsset, { kind: 'image' }>): string {
   switch (asset.kind) {
     case 'file':
       return `${asset.contentType} · download`;
+    case 'video':
+      return `${asset.contentType} · plays inline`;
     case 'font':
       return `font · ${asset.family}`;
     case 'stylesheet':

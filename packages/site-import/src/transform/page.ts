@@ -481,7 +481,7 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
           if (abs) diags.push({ code: 'unsafe-url-dropped', message: `iframe from non-allowlisted host dropped: ${truncate(abs)}`, page: ctx.pageUrl });
         }
       } else if (isImageEl || isMediaSource || el.name === 'video' || el.name === 'audio') {
-        const ref = el.name === 'video' || el.name === 'audio' ? keepHttps(value, ctx) : imageRef(value, ctx);
+        const ref = el.name === 'video' || el.name === 'audio' ? mediaRef(value, ctx) : imageRef(value, ctx);
         if (ref) el.attribs.src = ref;
         else delete el.attribs.src;
       }
@@ -519,6 +519,21 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
     if (aos.duration) el.attribs['data-sw-duration'] = aos.duration;
     if (aos.delay) el.attribs['data-sw-delay'] = aos.delay;
   }
+}
+
+/**
+ * A `<video>`/`<audio>` source: prefer the SELF-HOSTED copy, fall back to an https hotlink.
+ *
+ * This used to be `keepHttps` alone — a bare hotlink to the source site, or nothing. Combined with the
+ * collector not gathering video at all, a cloned site's hero background video simply did not exist:
+ * measured on one clone, the original played a full-viewport `bg_video.webm` and the clone had zero
+ * <video> elements and no video asset. The importer now hosts these (kind 'video', served inline), so
+ * resolve through the asset map first, exactly like an image.
+ */
+function mediaRef(raw: string, ctx: TransformCtx): string | null {
+  const key = assetKey(raw, ctx.pageUrl);
+  if (key && ctx.assetMap.has(key)) return ctx.assetMap.get(key) ?? null;
+  return keepHttps(raw, ctx);
 }
 
 function keepHttps(raw: string, ctx: TransformCtx): string | null {

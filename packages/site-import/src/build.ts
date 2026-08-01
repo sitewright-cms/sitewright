@@ -28,6 +28,7 @@ import { parseGoogleFontRefs } from './transform/webfonts.js';
 import { applyFoundation, isIconFont, type HostedFont } from './transform/foundation.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
+import { collectUnhostableMedia } from './transform/assets.js';
 import { inferDatasets, uniquifyEntryIds, type DatasetInference } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedAsset, CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
@@ -288,6 +289,23 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     } else {
       diagnostics.push({ code: 'chrome-extracted', message: `hoisted shared chrome into the site slots: ${parts}` });
     }
+  }
+
+  // Say what could NOT be brought across. Video/audio are not hostable asset kinds, the collector takes
+  // only a video's poster, and foundation mode re-authors the body — so a hero background video simply
+  // vanishes. It did: a clone of a site whose hero is a full-viewport autoplay `bg_video.webm` came back
+  // with no <video>, no video asset, and no warning. Naming it is the difference between an author
+  // deciding not to reproduce it and never learning it was there.
+  const unhostable = collectUnhostableMedia(parsed);
+  if (unhostable.length) {
+    diagnostics.push({
+      code: 'media-not-captured',
+      message:
+        `${unhostable.length} video/audio source(s) were NOT captured — the importer cannot self-host them ` +
+        `and foundation mode re-authors the body, so they are absent from the clone: ${unhostable.slice(0, 6).join(', ')}` +
+        `${unhostable.length > 6 ? ` (+${unhostable.length - 6} more)` : ''}. ` +
+        'Reproduce them yourself if the design needs them — e.g. a muted autoplay loop behind the hero.',
+    });
   }
 
   // Transform each captured page body into source and attach SEO/title by id.

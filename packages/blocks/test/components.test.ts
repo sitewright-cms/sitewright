@@ -61,6 +61,16 @@ describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)',
     }
   });
 
+  it('an author can size an image inside a slide — the layout default must not decree', () => {
+    // At (0,2,1) the slide-image rule beat every author class: `.brand-logo{height:180px}` is (0,1,0),
+    // as is every Tailwind size utility. Measured on a clone — a brand strip the original renders at a
+    // uniform 180px tall was stuck at each image's intrinsic size, one logo at 73px, and no authored CSS
+    // could move it. `width:100%` is a sensible DEFAULT for a photo slide; it is not a decree.
+    const { css } = componentAssets(['Carousel']);
+    expect(css).toContain(':where([data-sw-component="carousel"] [data-sw-part="slide"] img)');
+    expect(css).not.toMatch(/(?<!:where\()\[data-sw-component="carousel"\] \[data-sw-part="slide"\] img\{/);
+  });
+
   it('the lightbox stylesheet is component-keyed too', () => {
     const { css } = componentAssets(['Lightbox']);
     expect(css).toContain('[data-sw-component="lightbox"]');

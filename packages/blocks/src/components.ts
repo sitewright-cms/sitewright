@@ -72,7 +72,13 @@ const CAROUSEL_CSS = [
   // border box so overflow:hidden clips the bottom margin. Slides are layout cells; author
   // spacing as padding INSIDE the slide (Embla's documented gap pattern).
   '[data-sw-component="carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0;margin:0}',
-  '[data-sw-component="carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
+  // ZERO-SPECIFICITY. At (0,2,1) this beat any author class — `.brand-logo{height:180px}` is (0,1,0)
+  // and so is every Tailwind size utility, so an image inside a slide could not be sized AT ALL.
+  // Measured on a clone: a brand strip whose logos the original renders at a uniform 180px tall was
+  // stuck at each image's intrinsic size (one logo at 73px against the original's 180px), and no
+  // amount of authored CSS moved it. `width:100%` is the useful default for a photo slide; it must
+  // stay a DEFAULT, not a decree.
+  ':where([data-sw-component="carousel"] [data-sw-part="slide"] img){display:block;width:100%;height:auto}',
   // data-item-align: HORIZONTAL distribution when the slides DON'T fill the row (fewer than
   // --sw-items) — start (default), center, or end. justify-content on the NO-JS scroll-snap TRACK
   // only (gated to the un-enhanced state). The enhanced (Embla) container is handled by the runtime,

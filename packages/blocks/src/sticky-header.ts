@@ -83,7 +83,14 @@ export function stickyHeaderCss(
     // which keeps every existing site pixel-identical and preserves the full-bleed pattern.
     // `:has()` is unsupported only in browsers that also predate it; there the rule is skipped and the
     // behaviour is exactly today's, so this can never be worse than before.
-    '#page-content:not(:has(.sw-top-padding)){padding-top:var(--sw-header-h)}',
+    // Scoped to `html:not(.sw-header-offtop)`: the safety net assumes a fixed bar sits AT THE TOP and
+    // therefore covers content, which is true of every built-in mode but NOT of a hand-authored bar that
+    // rests somewhere else — a design that parks the bar at the BOTTOM of the viewport at scroll 0 and
+    // slides it up on scroll gets a phantom band of dead space above its hero instead. The runtime
+    // measures the AT-REST position and sets `sw-header-offtop` when the bar is not at the top. Default
+    // ON (padding applied) so the overwhelmingly common top-anchored case never reflows; the rare
+    // off-top design is the one that adjusts, and only once.
+    'html:not(.sw-header-offtop) #page-content:not(:has(.sw-top-padding)){padding-top:var(--sw-header-h)}',
     // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content but BELOW the mobile
     // drawer (its backdrop/panel are z-40/z-50, so an open drawer correctly covers the header) and the
     // consent banner / back-to-top floats (9996+). The landmark itself stays transparent — the recipe's
@@ -134,7 +141,14 @@ export const STICKY_HEADER_JS = `(function(){
   // breakpoint-aware offset token AND a custom header. Measuring here only sizes the scroll threshold,
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
-  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;thresholds();}
+  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;thresholds();offtop();}
+  // Is the bar actually anchored to the TOP at rest? A position:fixed element's rect.top does not move
+  // with scroll, so this is scroll-independent — but only meaningful BEFORE the scrolled state applies,
+  // because a bar that slides up on scroll is legitimately at 0 once scrolled. So only judge at rest.
+  function offtop(){
+    if(!fixed||!nav||root.classList.contains('sw-scrolled'))return;
+    root.classList.toggle('sw-header-offtop',nav.getBoundingClientRect().top>2);
+  }
   // ANCHOR-REST sync — now GENERIC (it used to run only for the built-in shrink mode). An anchor jump
   // computes its target from scroll-padding-top at CLICK time, but by the time the smooth scroll rests a
   // collapsing bar is SHORTER — the static token (sized for the full bar) then leaves a strip of the

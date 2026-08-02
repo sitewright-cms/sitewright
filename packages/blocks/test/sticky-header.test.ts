@@ -43,6 +43,22 @@ describe('stickyHeaderCss', () => {
     }
   });
 
+  it('the safety net switches OFF for a bar that does not rest at the top', () => {
+    // It assumes "fixed" means "covers the top", which every built-in mode does — but a hand-authored bar
+    // that parks at the BOTTOM of the viewport at scroll 0 and slides up on scroll got a phantom 79px
+    // band of dead space above its hero. Measured on a real clone: #page-content padding-top 79px, hero
+    // top 79, --sw-header-h 79px, on a design whose bar was nowhere near the top.
+    for (const mode of ['pinned', 'hide-on-scroll'] as const) {
+      const css = stickyHeaderCss(mode);
+      expect(css).toContain('html:not(.sw-header-offtop) #page-content:not(:has(.sw-top-padding))');
+    }
+    // The runtime measures the AT-REST top edge — judging while scrolled would misread a bar that
+    // legitimately sits at 0 only after sliding up.
+    const js = STICKY_HEADER_JS;
+    expect(js).toContain('sw-header-offtop');
+    expect(js).toContain("root.classList.contains('sw-scrolled')");
+  });
+
   it('the fallback defers the moment an author opts in — so it can never double up', () => {
     // `:not(:has(.sw-top-padding))` is the whole safety property: an author who put the spacer on the
     // first section, OR on an inner element so a full-bleed hero bleeds UNDER the bar, keeps exactly

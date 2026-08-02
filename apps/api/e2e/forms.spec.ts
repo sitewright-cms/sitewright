@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, enableLocalHosting } from './helpers.js';
 
 // Full forms loop over HTTP: author a form + a page that embeds it, publish,
 // confirm the exported HTML carries the JS-only form (no recipient), submit via
@@ -7,13 +8,8 @@ import { test, expect } from '@playwright/test';
 // instance, so the submission is stored but not emailed — exactly the desired
 // "inbox is the source of truth" behavior; email delivery is unit-tested.)
 test('author → publish → public submit → inbox', async ({ playwright, baseURL }) => {
-  const api = await playwright.request.newContext({ baseURL });
-  const stamp = Date.now();
-
-  const reg = await api.post('/auth/register', {
-    data: { email: `forms-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+    const stamp = Date.now();
+  const api = await seedUser(playwright, baseURL, `forms-${stamp}@e2e.test`);
   const slug = `forms-${stamp}`;
   const proj = await api.post(`/projects`, { data: { name: 'Forms Site', slug } });
   const projectId = (await proj.json()).project.id as string;
@@ -51,6 +47,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   const localTarget = await api.post(`${base}/deploy-targets`, { data: { name: 'Local Hosting', protocol: 'local' } });
   expect([201, 409]).toContain(localTarget.status());
 
+  await enableLocalHosting(api, projectId);
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 
   // The exported page carries the JS-only form pointing at the platform endpoint;

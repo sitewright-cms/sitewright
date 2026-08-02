@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, enableLocalHosting } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -11,8 +12,7 @@ const PNG_1X1 = Buffer.from(
 // Media + preview URLs are addressed by the project SLUG (not its UUID), and the published export
 // rebases them to the bundled `_assets/`. Verified against a deployed instance.
 test('media + preview URLs are slug-based end to end', async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `slug-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `slug-${stamp}@e2e.test`);
   const slug = `acme-studio-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Acme', slug } });
   expect(proj.status()).toBe(201);
@@ -25,7 +25,8 @@ test('media + preview URLs are slug-based end to end', async ({ playwright, base
   });
   expect(up.status()).toBe(201);
   const asset = (await up.json()).item as { id: string; url: string };
-  expect(asset.url.startsWith(`/media/${slug}/${asset.id}/`)).toBe(true); // slug, not the UUID
+  // Flat media scheme (#708-711): /media/<slug>/<id>-<name>, not a directory per asset.
+  expect(asset.url.startsWith(`/media/${slug}/${asset.id}-`)).toBe(true); // slug, not the UUID
   expect(asset.url).not.toContain(projectId);
   const served = await ctx.get(asset.url);
   expect(served.status()).toBe(200);
@@ -46,6 +47,7 @@ test('media + preview URLs are slug-based end to end', async ({ playwright, base
   // Publish: the slug-based media URL is rebased to the bundled `_assets/` (no slug/UUID in the export).
   const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: `<div><img src="${asset.url}"></div>` };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
+  await enableLocalHosting(ctx, projectId);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
   const html = await (await ctx.get(`/sites/${slug}/index.html`)).text();
   expect(html).toContain('_assets/'); // media rebased into the portable artifact

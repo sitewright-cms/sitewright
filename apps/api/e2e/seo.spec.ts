@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, enableLocalHosting } from './helpers.js';
 
 const stamp = Date.now();
 
 // Publish-completeness over HTTP: configure a site URL + a redirect, publish, and
 // confirm the static export serves sitemap.xml / robots.txt / .htaccess.
 test('publish emits sitemap.xml, robots.txt, and redirect rules', async ({ playwright, baseURL }) => {
-  const api = await playwright.request.newContext({ baseURL });
-  const reg = await api.post('/auth/register', {
-    data: { email: `seo-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const api = await seedUser(playwright, baseURL, `seo-${stamp}@e2e.test`);
   const slug = `seo-${stamp}`;
   const proj = await api.post(`/projects`, { data: { name: 'SEO Site', slug } });
   const projectId = (await proj.json()).project.id as string;
@@ -33,6 +30,7 @@ test('publish emits sitemap.xml, robots.txt, and redirect rules', async ({ playw
     data: { id: 'secret', path: 'secret', title: 'Secret', noindex: true, root: { id: 'r2', type: 'Section' } },
   });
 
+  await enableLocalHosting(api, projectId);
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 
   // The exported static site (served at /sites/<slug>/) now includes the SEO files.

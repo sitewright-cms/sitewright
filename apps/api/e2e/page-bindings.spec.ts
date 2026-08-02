@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, enableLocalHosting } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,12 +9,7 @@ const stamp = Date.now();
 // through BOTH the sandboxed live preview (WYSIWYG parity) and the published export.
 
 test('page.slug + page.parent bindings render in preview and the published export', async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-
-  const reg = await ctx.post('/auth/register', {
-    data: { email: `bindings-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `bindings-${stamp}@e2e.test`);
   const slug = `bindings-${stamp}`;
   const proj = await ctx.post(`/projects`, { data: { name: 'Bindings Site', slug } });
   expect(proj.status()).toBe(201);
@@ -53,6 +49,7 @@ test('page.slug + page.parent bindings render in preview and the published expor
   expect(previewHtml).toContain('color:tomato'); // page.parent.data.* — inherited from the parent
 
   // Publish, then verify the exported child page over HTTP.
+  await enableLocalHosting(ctx, projectId);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
   const page = await ctx.get(`/sites/${slug}/services/index.html`);
   expect(page.status()).toBe(200);

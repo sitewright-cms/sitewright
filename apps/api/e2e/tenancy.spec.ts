@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from './helpers.js';
 
 // Flat-tenancy end-to-end coverage (post org-removal): platform admin reach, the project
 // invite → member flow, the constrained-write relaxation (members edit freely), per-project
@@ -9,8 +10,8 @@ import { test, expect } from '@playwright/test';
 // meant to be run on its own or spaced from the other suites that also register.
 
 const stamp = Date.now();
-const ADMIN_EMAIL = 'admin@sitewright.example';
-const ADMIN_PW = process.env.SW_ADMIN_PASSWORD ?? '123456';
+// Sourced from helpers so they can never drift from what the deploy script actually seeds.
+const ADMIN_PW = ADMIN_PASSWORD;
 
 test('project invite → member edits freely; isolation holds; platform invite is admin-gated', async ({
   playwright,
@@ -53,10 +54,12 @@ test('project invite → member edits freely; isolation holds; platform invite i
   expect(inviteBody.invite.projectId).toBe(projectId);
   const token = inviteBody.token as string;
 
-  // peek masks the email and surfaces the project.
+  // peek surfaces the invite to whoever holds the token. It returns the invited email UNMASKED by
+  // design (#465): the landing page shows that address in a disabled field, and the token holder was
+  // sent the invite at it, so echoing it back leaks nothing they were not already given.
   const peek = await (await admin.get(`/invites/peek?token=${encodeURIComponent(token)}`)).json();
   expect(peek.invite.role).toBe('member');
-  expect(peek.invite.email).not.toBe(`member-${stamp}@e2e.test`);
+  expect(peek.invite.email).toBe(`member-${stamp}@e2e.test`);
 
   // ---- Client registers (open registration) and accepts ----
   expect(

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser } from './helpers.js';
 
 // Unique per run so re-runs against the same deployed DB don't collide.
 const stamp = Date.now();
@@ -10,12 +11,7 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   playwright,
   baseURL,
 }) => {
-  const session = await playwright.request.newContext({ baseURL });
-
-  const reg = await session.post('/auth/register', {
-    data: { email: `keys-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const session = await seedUser(playwright, baseURL, `keys-${stamp}@e2e.test`);
   const created = await session.post(`/projects`, {
     data: { name: 'Keyed', slug: `keyed-${stamp}` },
   });
@@ -52,10 +48,7 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   expect((await bot.get(`${base}/api-keys`)).status()).toBe(403); // session-only
 
   // Confinement: a second user's project is unreachable with this token (404, not 403).
-  const other = await playwright.request.newContext({ baseURL });
-  await other.post('/auth/register', {
-    data: { email: `other-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
+  const other = await seedUser(playwright, baseURL, `other-${stamp}@e2e.test`);
   const projO = await other.post(`/projects`, { data: { name: 'O', slug: `o-${stamp}` } });
   const projectO = (await projO.json()).project.id as string;
   expect((await bot.get(`/projects/${projectO}/content/page`)).status()).toBe(404);

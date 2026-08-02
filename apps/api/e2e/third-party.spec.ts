@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { adminContext, enableLocalHosting } from './helpers.js';
 
 // Mode C / thirdParty (Phase 6) over HTTP: the admin enables the thirdParty mode, a
 // form targets an external endpoint, and publish points the exported form directly
@@ -7,15 +8,8 @@ import { test, expect } from '@playwright/test';
 const PW = 'Pw-secret-1';
 
 test('thirdParty: enabled mode points the exported form at the external endpoint', async ({ playwright, baseURL }) => {
-  const api = await playwright.request.newContext({ baseURL });
-  const stamp = Date.now();
-
-  const reg = await api.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
-  if (reg.status() === 409) {
-    expect((await api.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
-  } else {
-    expect(reg.status()).toBe(201);
-  }
+    const stamp = Date.now();
+  const api = await adminContext(playwright, baseURL);
   expect((await api.put('/admin/settings', { data: { formModes: { thirdParty: true } } })).status()).toBe(200);
 
   const slug = `tp-${stamp}`;
@@ -30,8 +24,11 @@ test('thirdParty: enabled mode points the exported form at the external endpoint
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'unused@acme.example', mode: 'thirdParty', thirdPartyUrl: endpoint },
   });
   await api.put(`${base}/content/page/contact`, {
-    data: { id: 'contact', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
+    // Code-first: the block-tree renderer was removed in #250, so a `Form` BLOCK renders as Unknown
+    // and no form markup reaches the export. {{sw-form}} is the supported embed.
+    data: { id: 'contact', path: 'contact', title: 'Contact', source: '<section>{{sw-form "contact"}}</section>' },
   });
+  await enableLocalHosting(api, projectId);
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 
   const html = await (await api.get(`/sites/${slug}/contact/`)).text();

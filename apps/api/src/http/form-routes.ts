@@ -224,8 +224,8 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       await submissions.create(projectId, formId, parsed.fields);
 
       // Delivery (best-effort): never fail the visitor's request on a mail error.
-      // globalSmtp → instance SMTP; userSmtp → the project's own SMTP. (contactPhp /
-      // thirdParty forms post elsewhere and never reach this endpoint.)
+      // globalSmtp → instance SMTP; userSmtp → the project's own SMTP. (contactPhp,
+      // contactPhpSmtp and thirdParty forms post elsewhere and never reach this endpoint.)
       const replyTo = pickReplyTo(parsed.fields);
       const mail = {
         recipient: form.recipient,

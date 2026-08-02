@@ -196,6 +196,7 @@ import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
 import { assertRemoteFormEndpointsReachable } from '../publish/form-guard.js';
+import { writePhpSmtpConfig } from '../publish/php-smtp.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
@@ -209,7 +210,7 @@ import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
-import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
+import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
@@ -5277,7 +5278,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   async function buildForDeploy(
     ctx: ProjectContext,
     projectId: string,
-    deployOpts: { minify?: boolean } = {},
+    deployOpts: { minify?: boolean; protocol?: string } = {},
   ): Promise<string> {
     const project = await projects.get(projectId);
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
@@ -5294,6 +5295,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Gated on `!opts.publicUrl`: when it IS set, buildToDir bakes ABSOLUTE endpoints, so the guard
       // would never match — skipping it is both correct and a small win, not a behavioural exception.
       if (!opts.publicUrl) await assertRemoteFormEndpointsReachable(dir);
+      // `contact.php (SMTP)` forms need their credentials alongside the handler. This runs HERE —
+      // main process, after the build, into the throwaway deploy dir — and never in the build
+      // worker (no secrets by design) or the persisted publish store (the member-readable archive
+      // zip would expose it). Refuses a git target outright. See writePhpSmtpConfig.
+      await writePhpSmtpConfig({
+        dir,
+        forms: (await contentRepo.list(ctx, 'form')) as Form[],
+        protocol: deployOpts.protocol ?? '',
+        formModes: await instanceSettingsRepo.getFormModes(),
+        smtp: await loadProjectSmtp(db, projectId),
+        ...(opts.encryptionKey ? { encryptionKey: opts.encryptionKey } : {}),
+      });
       return dir;
     } catch (err) {
       await rm(dir, { recursive: true, force: true });
@@ -5422,7 +5435,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // build failure (bad route graph / json_data URL) is author-correctable → 409.
         let dir: string;
         try {
-          dir = await buildForDeploy(ctx, project.id);
+          dir = await buildForDeploy(ctx, project.id, { protocol: config.protocol });
         } catch (err) {
           activeDeploys.delete(project.id);
           if (err instanceof PublishError || err instanceof JsonDataError) {

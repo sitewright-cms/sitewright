@@ -14,10 +14,18 @@ import {
 } from '../src/instance-settings.js';
 
 describe('FormModesSchema', () => {
-  it('requires all four booleans', () => {
+  it('requires every mode boolean except the back-compat one', () => {
     expect(() => FormModesSchema.parse({ globalSmtp: true })).toThrow();
-    const all = { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false };
+    const all = { globalSmtp: true, userSmtp: false, contactPhp: true, contactPhpSmtp: false, thirdParty: false };
     expect(FormModesSchema.parse(all)).toEqual(all);
+  });
+
+  // `contactPhpSmtp` was added AFTER instances were storing a four-key formModes object. Without a
+  // default, every pre-existing settings row would fail InstanceSettingsStoredSchema.parse and take
+  // the WHOLE document (SMTP, hCaptcha, branding, …) down with it — not just the new field.
+  it('parses a pre-existing four-key object, defaulting the newer mode to OFF', () => {
+    const legacy = { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false };
+    expect(FormModesSchema.parse(legacy)).toEqual({ ...legacy, contactPhpSmtp: false });
   });
 
   it('DEFAULT_FORM_MODES disables every mode', () => {
@@ -25,6 +33,7 @@ describe('FormModesSchema', () => {
       globalSmtp: false,
       userSmtp: false,
       contactPhp: false,
+      contactPhpSmtp: false,
       thirdParty: false,
     });
   });
@@ -131,7 +140,7 @@ describe('maskInstanceSettings', () => {
     const stored: InstanceSettingsStored = {
       smtp: { host: 'smtp.acme.com', port: 465, secure: true, user: 'mailer', fromEmail: 'no-reply@acme.com', password: enc },
       hcaptcha: { siteKey: 'site-123', secret: enc },
-      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: false },
+      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false },
     };
     const masked = maskInstanceSettings(stored);
     expect(masked.smtp).toEqual({

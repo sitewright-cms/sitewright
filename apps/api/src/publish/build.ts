@@ -83,7 +83,8 @@ import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
 import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
-import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
+import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
+import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
   toPublicForm,
   websiteEffectsClasses,
@@ -1224,10 +1225,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(sitemap);
     }
 
-    // Redirect rules (Apache + Netlify) when configured.
-    const redirects = website?.redirects;
-    if (redirects && redirects.length > 0) {
-      const htaccess = renderHtaccess(redirects);
+    // Redirect rules (Apache + Netlify) when configured. The .htaccess is ALSO emitted with no
+    // redirects at all when a form ships SMTP credentials, purely to carry the deny rule for
+    // `sw-mail.config.php` (the file is written into the deploy payload by the main process, not
+    // here — the build worker never sees the secret).
+    const redirects = website?.redirects ?? [];
+    // The manifest is denied alongside the credentials themselves: it records the NAME, SIZE and
+    // content HASH of every uploaded file, so serving it tells a stranger that this site carries
+    // sw-mail.config.php and lets them confirm a guessed copy byte-for-byte — recon the deny rule
+    // exists to prevent, reachable by a different filename.
+    const denyFiles = hasPhpSmtpForm(bundle.forms ?? []) ? [PHP_SMTP_CONFIG_FILE, MANIFEST_FILENAME] : [];
+    if (redirects.length > 0 || denyFiles.length > 0) {
+      const htaccess = renderHtaccess(redirects, { denyFiles });
       const netlify = renderNetlifyRedirects(redirects);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, '.htaccess'), htaccess, 'utf8');
@@ -1236,8 +1245,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(htaccess) + Buffer.byteLength(netlify);
     }
 
-    // contact.php (Mode B): one PHP mail() handler for every `contactPhp` form.
-    // Recipients are baked SERVER-SIDE in the PHP (never in the page HTML).
+    // contact.php (Mode B): ONE handler for every php-backed form (`contactPhp` = host mail(),
+    // `contactPhpSmtp` = authenticated SMTP). Recipients are baked SERVER-SIDE in the PHP (never
+    // in the page HTML); SMTP CREDENTIALS ARE NOT — they live in a sibling `sw-mail.config.php`
+    // the main API process writes into a deploy payload, because this build may run inside the
+    // isolated worker, which is guaranteed no secrets.
     const allForms = bundle.forms ?? [];
     if (hasContactPhpForm(allForms)) {
       const php = renderContactPhp(allForms);

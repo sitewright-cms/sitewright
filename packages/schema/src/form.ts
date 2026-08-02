@@ -50,9 +50,26 @@ export type FormField = z.infer<typeof FormFieldSchema>;
  * Which mail-delivery mode a form uses. Must be one of the modes the instance
  * admin enabled (see FormModes). Phase 3 implements `globalSmtp` (Mode A); the
  * others are accepted here and wired in later phases.
+ *
+ * `contactPhp` and `contactPhpSmtp` share ONE exported handler (`contact.php`,
+ * dispatched by the hidden `_form` field) and differ only in how that handler
+ * delivers: the host's `mail()` vs an authenticated SMTP session using the
+ * project's own credentials. Use {@link isContactPhpMode} rather than testing
+ * `=== 'contactPhp'` anywhere the question is "does this form post to
+ * contact.php?" — the two answers diverge only inside the generated PHP.
  */
-export const FormModeSchema = z.enum(['globalSmtp', 'userSmtp', 'contactPhp', 'thirdParty']);
+export const FormModeSchema = z.enum(['globalSmtp', 'userSmtp', 'contactPhp', 'contactPhpSmtp', 'thirdParty']);
 export type FormMode = z.infer<typeof FormModeSchema>;
+
+/** True for a mode whose form posts to the exported `contact.php` (either delivery flavour). */
+export function isContactPhpMode(mode: FormMode): boolean {
+  return mode === 'contactPhp' || mode === 'contactPhpSmtp';
+}
+
+/** True for a mode the PLATFORM routes + stores (`/f/<projectId>/<formId>`): inbox + hCaptcha apply. */
+export function isPlatformRoutedMode(mode: FormMode): boolean {
+  return mode === 'globalSmtp' || mode === 'userSmtp';
+}
 
 /** A form definition (content kind `form`). */
 export const FormSchema = z.object({

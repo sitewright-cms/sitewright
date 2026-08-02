@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { projectMembers, formSubmissions } from '../src/db/schema.js';
-import { MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
 import { SubmissionRepository } from '../src/repo/submissions.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import type { Database } from '../src/db/client.js';
@@ -275,12 +275,7 @@ describe('public form submission endpoint', () => {
     expect(unauth.statusCode).toBe(401);
     const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/form-modes`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { formModes: Record<string, boolean> }).formModes).toEqual({
-      globalSmtp: false,
-      userSmtp: false,
-      contactPhp: false,
-      thirdParty: false,
-    });
+    expect((res.json() as { formModes: Record<string, boolean> }).formModes).toEqual(DEFAULT_FORM_MODES);
   });
 });
 

@@ -174,6 +174,48 @@ describe('buildSite — code-first form embedding', () => {
     expect(html).toContain('data-sw-endpoint="/f/proj1/newsletter"');
   });
 
+  it('a contactPhpSmtp form posts to the SAME contact.php, which delivers over SMTP', async () => {
+    const b = bundle(
+      [{ id: 'home', path: '', title: 'Home', source: '{{sw-form "contact"}}' }],
+      [contactForm({ mode: 'contactPhpSmtp' as const })],
+    );
+    await buildSite({ publishedAt: at, outDir, bundle: b });
+    const html = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(html).toContain('data-sw-endpoint="contact.php"'); // same handler as the mail() mode
+    expect(html).toContain('name="_form"');
+    const php = await readFile(join(outDir, 'contact.php'), 'utf8');
+    expect(php).toContain('sw_smtp_send'); // …but the SMTP client is emitted
+    expect(php).toContain('secret-recipient@acme.com'); // recipient still server-side only
+  });
+
+  // ★ The credentials live ONLY in a deploy payload (written by the main process — see
+  // writePhpSmtpConfig). The BUILD must never emit them: this artifact is what gets persisted as
+  // the published site and handed out by the member-readable /publish/archive zip.
+  it('★ the build NEVER writes the SMTP credentials file, only the deny rule for it', async () => {
+    const b = bundle(
+      [{ id: 'home', path: '', title: 'Home', source: '{{sw-form "contact"}}' }],
+      [contactForm({ mode: 'contactPhpSmtp' as const })],
+    );
+    await buildSite({ publishedAt: at, outDir, bundle: b });
+    await expect(readFile(join(outDir, 'sw-mail.config.php'), 'utf8')).rejects.toThrow();
+    const htaccess = await readFile(join(outDir, '.htaccess'), 'utf8');
+    expect(htaccess).toContain('<Files "sw-mail.config.php">');
+    expect(htaccess).toContain('Require all denied');
+    // The deploy manifest names, sizes and HASHES every uploaded file, so serving it announces that
+    // this site carries the credentials file and lets a stranger confirm a guessed copy byte for
+    // byte. Denying one filename while the other describes it is not a boundary.
+    expect(htaccess).toContain('<Files ".sw-deploy-manifest.json">');
+  });
+
+  it('emits no deny rule (and no .htaccess) when nothing needs protecting', async () => {
+    const b = bundle(
+      [{ id: 'home', path: '', title: 'Home', source: '{{sw-form "contact"}}' }],
+      [contactForm({ mode: 'contactPhp' as const })],
+    );
+    await buildSite({ publishedAt: at, outDir, bundle: b });
+    await expect(readFile(join(outDir, '.htaccess'), 'utf8')).rejects.toThrow();
+  });
+
   it('does NOT generate contact.php when no form uses contactPhp', async () => {
     const b = bundle([{ id: 'home', path: '', title: 'Home', source: '{{sw-form "contact"}}' }], [contactForm()]);
     await buildSite({ publishedAt: at, outDir, bundle: b });

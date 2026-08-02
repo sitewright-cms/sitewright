@@ -9,6 +9,86 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`contact.php` can deliver over authenticated SMTP** — a fifth form delivery mode, `contactPhpSmtp`.
+  It reuses the exported `contact.php` (same file, same dispatch by the hidden `_form` field) but sends
+  through the project's own SMTP credentials instead of the host's `mail()`. The reason is deliverability:
+  `mail()` on shared hosting sends from the host's IP with an unaligned envelope, so it routinely fails
+  SPF/DKIM and lands in spam — and until now the only authenticated option was platform-routed, which made
+  "the site must work without the platform" and "the mail must actually arrive" mutually exclusive.
+  The SMTP client is ~90 lines of PHP rather than a vendored PHPMailer, whose thousands of lines and own
+  CVE stream would ship into every exported site; it speaks EHLO, STARTTLS, AUTH PLAIN/LOGIN and DATA with
+  explicit timeouts, so a black-holed host cannot hang a visitor's request.
+  **Credentials never travel in the clear**: if the channel cannot be encrypted the client aborts instead
+  of downgrading, TLS peer verification stays on for both the implicit-TLS and the STARTTLS path, and a
+  relay with no user configured (nothing to leak) still works in plaintext. **Where the password lives**
+  is fenced three ways — it is written only into the transient deploy payload and never into the published
+  store (whose archive zip is member-readable on the premise that its bytes are already public, true of
+  HTML and false of a credential), never onto a Git target (a password in a commit is permanent and
+  replicated to every clone), and never inside the build worker (which runs `--network none` with no
+  secrets by design). Every failure fails loud as a 409 rather than shipping a form that silently cannot
+  send. Because the mode puts a real password on the destination host, it is a separate admin permission
+  that `contactPhp` does not inherit.
+
+### Security
+
+- **The STARTTLS upgrade discards anything the server sent before the handshake** (RFC 3207 §6). PHP does
+  not do this for us: `fgets()` over-reads past the `220` into a userland buffer that survives
+  `stream_socket_enable_crypto()`, so bytes an on-path attacker appends to that line are read back later
+  as though they had arrived *inside* the verified session. Measured against the real interpreter, a
+  forged capability list plus an `235` acceptance injected into that buffer was enough to make the client
+  complete a login dialogue with itself and report a message queued that no server ever received. TLS
+  still protected the password — the attacker cannot read the encrypted stream — but silently losing form
+  submissions is precisely the failure this mode exists to fix. A compliant server says nothing between
+  the `220` and the handshake, so anything already buffered now aborts the send; data that instead arrives
+  after the check is consumed as handshake input and fails it, leaving both orderings closed.
+- **Nothing is delivered over an unencrypted session to a remote relay**, not only the credentials. Guarding
+  the password alone still allowed the other half of a STARTTLS strip: an on-path attacker forges the EHLO
+  reply *without* the STARTTLS capability, the upgrade is never attempted, and an unauthenticated relay then
+  carried the visitor's submission — whatever the form collects — in the clear, while reporting success. A
+  relay on the loopback interface has no on-path attacker by construction and still works in plaintext,
+  which is the configuration that carve-out existed for; anywhere else now aborts. The credential rule is
+  unchanged and separate: a password never goes out unencrypted, loopback included.
+- **The SMTP credentials file is uploaded with an explicit `0600`** over SFTP. It was written `0600` on the
+  build host, but a local mode does not travel — the uploaded file landed under the *remote* umask,
+  commonly `644` on exactly the shared hosting this feature targets. (FTP has no permission concept at all;
+  there the in-file PHP guard and the `.htaccess` deny rule remain the whole defence, so prefer SFTP.)
+- **The deploy manifest is denied alongside the credentials.** It records the name, size and content hash of
+  every uploaded file, so serving it announced that a site carries `sw-mail.config.php` and let a stranger
+  confirm a guessed copy byte for byte. Denying one filename while another describes it is not a boundary.
+- **Deploy protocols that may carry a live credential are an allowlist**, not a `git` blocklist. A blocklist
+  only stops what it was told about; a transport added later — or a caller that forgets to pass one — would
+  have shipped the password. Unknown protocols now fail closed with a 409.
+
+- **Deploy payloads left behind by a killed process are swept at boot.** The credentials file is the only
+  artifact in the system that puts a live password on the platform's own disk. Every deploy path already
+  removed its payload in a `finally` — but a `finally` does not run through a SIGKILL, an OOM kill, or a
+  host crash, which would leave the password in the OS temp dir indefinitely. The sweep is deliberately
+  timid, since deleting a payload out from under a running deploy would break a site rather than protect
+  one: only our own `sw-deploy-` prefix, only directly inside the temp dir, only entries older than six
+  hours, and it never throws. Boot is the safe moment because this process has no deploy in flight yet.
+
+### Fixed
+
+- **The SMTP session has a whole-session deadline, not just a per-operation one.** A timeout on each wait
+  does not bound their sum: a session is up to ten round trips, so a server answering just under the limit
+  every time could hold a visitor's request for minutes — past the 30-60s `max_execution_time` typical of
+  shared hosting, at which point the SAPI kills the script and the visitor gets the host's raw error page
+  instead of contact.php's own 502. Each read now re-arms the socket with what is *left* of a 25s budget.
+  Measured against a server that greets and then answers nothing: gives up in 3.0s on a 3s budget.
+- **A display name containing RFC 5322 specials is quoted.** `sw_smtp_header` only encoded *non-ASCII*
+  values, so an ordinary company name like `Acme, Inc.` went into `From:` unquoted — and an unquoted comma
+  in a display-name is a mailbox separator, making the header parse as two addresses. Pure ASCII is not the
+  same as safe.
+- **The hCaptcha toggle no longer offers itself for modes it does nothing for.** The embed pass drops the
+  widget for every non-platform-routed mode, but the editor only greyed the control out for `contactPhp` and
+  `thirdParty`, so a `contactPhpSmtp` form showed a live switch with no effect.
+- **The project SMTP panel appears for `contactPhpSmtp`, not only `userSmtp`.** Both modes send with the
+  project's own credentials and read the same record, but the panel was gated on `userSmtp` alone — so an
+  instance that enabled only the php mode (deliberately a separate permission) let an author choose it with
+  nowhere to type a password, and the publish-time 409 pointed at settings that were not on screen.
+
 ## [0.9.0] — 2026-08-02
 
 A ten-site clone run by ten neutral MCP agents. The dominant failure class was again the platform

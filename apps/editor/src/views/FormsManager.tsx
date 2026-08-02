@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import type { Form, FormField, FormMode } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, isPlatformRoutedMode, type Form, type FormField, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { identifierize, slugify } from '../lib/entry-form';
@@ -18,6 +18,7 @@ const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
   { value: 'globalSmtp', label: 'Platform email (global SMTP)' },
   { value: 'userSmtp', label: 'Platform email (project SMTP)' },
   { value: 'contactPhp', label: 'contact.php (host mail)' },
+  { value: 'contactPhpSmtp', label: 'contact.php (SMTP)' },
   { value: 'thirdParty', label: 'Third-party endpoint' },
 ];
 
@@ -49,7 +50,7 @@ export function FormsManager({ project }: { project: Project }) {
   const [forms, setForms] = useState<Form[]>([]);
   // Matches the server default (all off); the real values arrive from api.formModes
   // before the editor is reachable (the list view is gated on `loading`).
-  const [enabledModes, setEnabledModes] = useState<EnabledModes>({ globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false });
+  const [enabledModes, setEnabledModes] = useState<EnabledModes>(DEFAULT_FORM_MODES);
   const [draft, setDraft] = useState<Form | null>(null);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -387,12 +388,12 @@ export function FormsManager({ project }: { project: Project }) {
             className={toggleInput}
             aria-label="Require hCaptcha"
             checked={draft.hcaptcha}
-            disabled={draft.mode === 'contactPhp' || draft.mode === 'thirdParty'}
+            disabled={!isPlatformRoutedMode(draft.mode)}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400 dark:text-slate-500' : ''}>
+          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-400 dark:text-slate-500' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
-            {(draft.mode === 'contactPhp' || draft.mode === 'thirdParty') &&
+            {!isPlatformRoutedMode(draft.mode) &&
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
           </span>
         </label>
@@ -417,8 +418,13 @@ export function FormsManager({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       {dialog}
-      {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
-      {enabledModes.userSmtp && <ProjectSmtp project={project} />}
+      {/* Per-project SMTP config. BOTH modes that send with the project's own credentials need it:
+          `userSmtp` (the platform mailer sends) and `contactPhpSmtp` (the exported contact.php
+          sends). They read the same stored record, and `contactPhpSmtp` is deliberately a separate
+          admin permission rather than one `userSmtp` implies — so gating this panel on `userSmtp`
+          alone left an instance that enabled only the php mode able to CHOOSE it with nowhere to
+          enter a password, and the resulting 409 pointed at settings that were not on screen. */}
+      {(enabledModes.userSmtp || enabledModes.contactPhpSmtp) && <ProjectSmtp project={project} />}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {saved && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
       <ul className="flex flex-col gap-2">

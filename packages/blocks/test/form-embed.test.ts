@@ -48,6 +48,7 @@ describe('resolveFormEndpoints — per-mode endpoint precompute', () => {
   });
   it('contactPhp endpoints are deferred to the pass (empty here)', () => {
     expect(resolveFormEndpoints({ p: pub({ id: 'p', mode: 'contactPhp' }) }, ep).p!.endpoint).toBe('');
+    expect(resolveFormEndpoints({ p: pub({ id: 'p', mode: 'contactPhpSmtp' }) }, ep).p!.endpoint).toBe('');
   });
   it('skips prototype-polluting ids', () => {
     const out = resolveFormEndpoints({ __proto__: pub({ id: '__proto__' }) } as Record<string, FormPublic>, ep);
@@ -175,6 +176,13 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
     const out = resolveFormEmbeds(authored, { forms: formsOf(pub({ mode: 'contactPhp' })), siteRoot: '../../' });
     expect(out).toContain('data-sw-endpoint="../../contact.php"');
     expect(out).toContain('<input type="hidden" name="_form" value="contact"');
+  });
+  it('contactPhpSmtp is indistinguishable from contactPhp at the markup layer', () => {
+    // The two php modes differ only INSIDE the generated PHP; the page must not reveal which.
+    const out = resolveFormEmbeds(authored, { forms: formsOf(pub({ mode: 'contactPhpSmtp' })), siteRoot: '../../' });
+    expect(out).toContain('data-sw-endpoint="../../contact.php"');
+    expect(out).toContain('<input type="hidden" name="_form" value="contact"');
+    expect(out).not.toMatch(/smtp/i);
   });
   it('does not duplicate an authored _form input or honeypot', () => {
     const src = '<form data-sw-form="contact"><input name="_form" value="contact" /><input name="_hpt" /></form>';

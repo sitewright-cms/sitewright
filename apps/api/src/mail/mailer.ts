@@ -116,7 +116,7 @@ export interface ProjectMailer {
 }
 
 /** Reads a project's stored SMTP config (server-side, no tenant context), or null. */
-async function loadProjectSmtp(db: Database, projectId: string): Promise<SmtpStored | null> {
+export async function loadProjectSmtp(db: Database, projectId: string): Promise<SmtpStored | null> {
   const [row] = await db
     .select()
     .from(content)

@@ -6,12 +6,16 @@ const listForms = vi.fn();
 const putForm = vi.fn();
 const deleteForm = vi.fn();
 const formModes = vi.fn();
+const getProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     listForms: () => listForms(),
     putForm: (_p: string, form: Form) => putForm(form),
     deleteForm: (_p: string, id: string) => deleteForm(id),
     formModes: () => formModes(),
+    // Needed only once the embedded <ProjectSmtp> panel actually renders. Every test here used to
+    // leave both credential modes off, so the panel never mounted and its absence was invisible.
+    getProjectSmtp: () => getProjectSmtp(),
   },
 }));
 
@@ -24,6 +28,8 @@ beforeEach(() => {
   putForm.mockReset();
   deleteForm.mockReset();
   formModes.mockReset();
+  getProjectSmtp.mockReset();
+  getProjectSmtp.mockResolvedValue({ smtp: null });
   listForms.mockResolvedValue({ items: [] });
   putForm.mockResolvedValue({ item: {} });
   formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false } });
@@ -92,6 +98,36 @@ describe('FormsManager', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
     await waitFor(() => expect(putForm).toHaveBeenCalled());
     expect((putForm.mock.calls[0]![0] as Form).mode).toBe('contactPhp');
+  });
+
+  it('offers contact.php (SMTP) when enabled, and greys hCaptcha out for it', async () => {
+    // hCaptcha is verified server-side on the platform endpoint, which the php modes never touch —
+    // the embed pass drops the widget for them. An enabled toggle would therefore be a control that
+    // silently does nothing, so it must be disabled for BOTH php flavours, not just `contactPhp`.
+    formModes.mockResolvedValue({
+      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: true, thirdParty: false },
+    });
+    render(<FormsManager project={project} />);
+    // ★ The panel that sets those credentials must be on the list view. This mode sends with the
+    // PROJECT's own SMTP and is deliberately a separate permission from `userSmtp`, so gating the
+    // panel on `userSmtp` alone offered a delivery mode with nowhere to type the password — and the
+    // publish-time 409 told the author to go to settings that were not on screen.
+    expect(await screen.findByLabelText('Configure project SMTP')).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
+    const modeSelect = (await screen.findByLabelText('Delivery mode')) as HTMLSelectElement;
+    expect(Array.from(modeSelect.options).map((o) => o.value)).toEqual(['globalSmtp', 'contactPhpSmtp']);
+
+    const captcha = screen.getByLabelText('Require hCaptcha') as HTMLInputElement;
+    expect(captcha.disabled).toBe(false); // platform-routed default
+    fireEvent.change(modeSelect, { target: { value: 'contactPhpSmtp' } });
+    expect((screen.getByLabelText('Require hCaptcha') as HTMLInputElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Recipient email'), { target: { value: 'a@b.co' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
+    await waitFor(() => expect(putForm).toHaveBeenCalled());
+    expect((putForm.mock.calls[0]![0] as Form).mode).toBe('contactPhpSmtp');
   });
 
   it('shows the third-party URL field and saves it when mode is thirdParty', async () => {

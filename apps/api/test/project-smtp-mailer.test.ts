@@ -8,7 +8,7 @@ import type { Database } from '../src/db/client.js';
 import type { InstanceSettingsStored, SmtpStored } from '@sitewright/schema';
 
 const KEY = randomBytes(32);
-const userSmtpOn: InstanceSettingsStored = { formModes: { globalSmtp: false, userSmtp: true, contactPhp: false, thirdParty: false } };
+const userSmtpOn: InstanceSettingsStored = { formModes: { globalSmtp: false, userSmtp: true, contactPhp: false, contactPhpSmtp: false, thirdParty: false } };
 
 let db: Database;
 let projectId: string;
@@ -46,7 +46,7 @@ describe('ProjectSmtpMailer', () => {
   it('returns false when the userSmtp mode is disabled instance-wide', async () => {
     await seedProjectSmtp({ host: 'h', port: 25, secure: false, fromEmail: 'a@b.co' });
     const { sent, factory } = recordingTransport();
-    const off: InstanceSettingsStored = { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } };
+    const off: InstanceSettingsStored = { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false } };
     const mailer = new ProjectSmtpMailer(db, { getStored: async () => off }, KEY, factory);
     expect(await mailer.send(projectId, mail)).toBe(false);
     expect(sent).toHaveLength(0);

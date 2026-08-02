@@ -181,7 +181,7 @@ export interface DeployTargetDeps {
   isWriter: (ctx: ProjectContext) => boolean;
   /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it).
    *  `minify` mirrors the target's `minifyHtml` serve option (available for all target types). */
-  buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean }) => Promise<string>;
+  buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean; protocol?: string }) => Promise<string>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -476,7 +476,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // (bad route graph / json_data URL) is author-correctable → 409.
         let dir: string;
         try {
-          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml });
+          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -530,7 +530,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let dir: string;
         try {
-          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml });
+          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });

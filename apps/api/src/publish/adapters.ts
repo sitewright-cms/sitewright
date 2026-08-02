@@ -16,6 +16,7 @@ import {
   toPosixRel,
 } from './deploy/manifest.js';
 import { planLeafDirs, remoteJoin } from './deploy/plan.js';
+import { PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 
 // Re-exported so deploy consumers + tests get the manifest type from the adapters barrel.
 export type { DeployManifest } from './deploy/manifest.js';
@@ -360,7 +361,13 @@ class SftpTransport implements DeployTransport {
         next += 1;
         if (i >= files.length) return;
         try {
-          await this.client.fastPut(files[i]!.abs, remoteJoin(remoteDir, rels[i]!));
+          // The SMTP credentials file is written 0600 locally, but a local mode does not travel: an
+          // uploaded file lands under the REMOTE umask, commonly 644 on the shared hosting this
+          // feature exists for — readable by every other tenant on the box. fastPut takes an explicit
+          // mode, so ask for one rather than inheriting. (FTP has no permission concept at all; that
+          // residual is documented on writePhpSmtpConfig.)
+          const mode = rels[i] === PHP_SMTP_CONFIG_FILE ? { mode: 0o600 } : undefined;
+          await this.client.fastPut(files[i]!.abs, remoteJoin(remoteDir, rels[i]!), mode);
         } catch (err) {
           failed = true;
           throw err;

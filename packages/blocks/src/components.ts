@@ -162,11 +162,16 @@ const CAROUSEL_CSS = [
   ':where([data-sw-component="carousel"][data-arrows="circle"],[data-sw-component="carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="prev"]){left:.75rem}',
   ':where([data-sw-component="carousel"][data-arrows="circle"],[data-sw-component="carousel"]:not([data-arrows="edge"]):not([data-arrows="circle"])[data-sw-multi="true"]) :where([data-sw-part="next"]){right:.75rem}',
   '[data-sw-component="carousel"] [data-sw-part="prev"][disabled],[data-sw-component="carousel"] [data-sw-part="next"][disabled]{opacity:.35;cursor:default}',
-  '[data-sw-component="carousel"] [data-sw-part="prev"] svg,[data-sw-component="carousel"] [data-sw-part="next"] svg{margin:auto}',
+  ':where([data-sw-component="carousel"] [data-sw-part="prev"] svg,[data-sw-component="carousel"] [data-sw-part="next"] svg){margin:auto}',
   // Dots are runtime-generated buttons holding the Lucide `circle` glyph; the active
   // one fills via aria-current.
-  '[data-sw-component="carousel"] [data-sw-part="dots"] button{display:block;width:.7rem;height:.7rem;padding:0;border:0;background:none;color:#fff;opacity:.65;cursor:pointer}',
-  '[data-sw-component="carousel"] [data-sw-part="dots"] button svg{display:block;width:100%;height:100%}',
+  '[data-sw-component="carousel"] [data-sw-part="dots"] button{display:block;border:0;background:none;cursor:pointer}',
+  // Dot LOOK — size, colour, resting opacity — is the thing authors restyle most, so it is a
+  // zero-specificity default. `display`/`cursor`/`border:0` stay firm: they are what makes the
+  // <button> read as a dot at all.
+  ':where([data-sw-component="carousel"] [data-sw-part="dots"] button){width:.7rem;height:.7rem;padding:0;color:#fff;opacity:.65}',
+  '[data-sw-component="carousel"] [data-sw-part="dots"] button svg{display:block}',
+  ':where([data-sw-component="carousel"] [data-sw-part="dots"] button svg){width:100%;height:100%}',
   '[data-sw-component="carousel"] [data-sw-part="dots"] button[aria-current="true"]{opacity:1}',
   '[data-sw-component="carousel"] [data-sw-part="dots"] button[aria-current="true"] svg circle{fill:currentColor}',
   // Caption DEFAULT (zero-specificity): a frosted-glass, centered pill — the hero look, now the baseline
@@ -188,7 +193,8 @@ const CAROUSEL_CSS = [
   // look); multi-item rows keep the plain dots. Zero-specificity so an authored utility still wins.
   ':where([data-sw-component="carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]){backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
   ':where([data-sw-component="carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]) button svg{stroke-width:4px}',
-  '[data-sw-component="carousel"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;background:rgb(0 0 0/.35);transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
+  '[data-sw-component="carousel"] .sw-ripple{position:absolute;pointer-events:none;transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
+  ':where([data-sw-component="carousel"] .sw-ripple){border-radius:9999px;background:rgb(0 0 0/.35)}',
   // The runtime's live region announcing the active slide — visually hidden, AT-readable.
   '[data-sw-component="carousel"] .sw-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
   '@keyframes sw-ripple{to{transform:scale(1);opacity:0}}',
@@ -439,8 +445,11 @@ const MODAL_CSS = [
   `${mbody()}{min-width:0;max-height:none}`,
   // Auto-injected close button OVERHANGS the panel's top-right corner (needs the panel's overflow:visible);
   // it lands inside the container's padding, so it stays fully on-screen. Hover zooms + spins the icon 180°.
-  `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:var(--sw-color-primary-content,#fff);cursor:pointer;transition:transform .2s ease}`,
-  `${M} [data-sw-part="autoclose"]>svg{width:1.75rem;height:1.75rem;display:block;transition:transform .2s ease}`,
+  `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s ease}`,
+  // Its LOOK is a default; the overhang (position/offsets/z-index) is what keeps it clear of the card.
+  `:where(${M} [data-sw-part="autoclose"]){width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:var(--sw-color-primary-content,#fff)}`,
+  `${M} [data-sw-part="autoclose"]>svg{display:block;transition:transform .2s ease}`,
+  `:where(${M} [data-sw-part="autoclose"]>svg){width:1.75rem;height:1.75rem}`,
   `${M} [data-sw-part="autoclose"]:hover{transform:scale(1.1)}`,
   `${M} [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}`,
   `@media (prefers-reduced-motion:reduce){${mdlg()},${mdlgp()},[data-sw-modal-scrim],${M} [data-sw-part="autoclose"],${M} [data-sw-part="autoclose"]>svg{transition:none}}`,
@@ -640,14 +649,21 @@ const TABS_CSS = [
   // The "magic" floating background selector — a primary pill the runtime slides to
   // the active tab (transform/width/height set inline from the tab's box). Sits BEHIND
   // the tab labels (z-index:0); zero size until positioned so it never flashes at 0,0.
-  '[data-sw-component="tabs"] [data-sw-part="tabindicator"]{position:absolute;top:0;left:0;width:0;height:0;border-radius:.5rem;background:var(--sw-color-primary,#0a7a5a);transform:translate(0,0);transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:0}',
+  '[data-sw-component="tabs"] [data-sw-part="tabindicator"]{position:absolute;top:0;left:0;width:0;height:0;transform:translate(0,0);transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:0}',
+  // Colour + corner only. The zero size is deliberate (the runtime writes the real box inline, so it
+  // never flashes at 0,0) and must not be softened, or an author's stray width/height would show it.
+  ':where([data-sw-component="tabs"] [data-sw-part="tabindicator"]){border-radius:.5rem;background:var(--sw-color-primary,#0a7a5a)}',
   // Tab buttons: BOLD, default text colour, rounded, above the pill, clipping the ripple.
-  '[data-sw-component="tabs"] [data-sw-part="tab"]{position:relative;z-index:1;display:inline-flex;align-items:center;gap:.4rem;overflow:hidden;border:0;background:none;margin:0;padding:.5rem 1rem;border-radius:.5rem;font:inherit;font-weight:700;color:inherit;cursor:pointer;transition:color .2s ease;-webkit-tap-highlight-color:transparent}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"]{position:relative;z-index:1;display:inline-flex;align-items:center;overflow:hidden;cursor:pointer;transition:color .2s ease;-webkit-tap-highlight-color:transparent}',
+  // Everything the author might want to say about how a tab LOOKS. `overflow:hidden` stays firm —
+  // it is what clips the ripple to the tab — as does the stacking (the pill slides UNDER the label).
+  ':where([data-sw-component="tabs"] [data-sw-part="tab"]){gap:.4rem;border:0;background:none;margin:0;padding:.5rem 1rem;border-radius:.5rem;font:inherit;font-weight:700;color:inherit}',
   // A rich-label element (data-sw-part="tabtitle") whose nodes the runtime moves into the
   // tab button. Before enhancement it stays in the panel as that section\'s heading-style
   // label (block + bottom margin so it reads as a heading in the no-JS stack); the runtime
   // removes the wrapper from the panel once it builds the button.
-  '[data-sw-component="tabs"] [data-sw-part="tabtitle"]{display:flex;align-items:center;gap:.4rem;font-weight:700;margin-block-end:.5rem}',
+  '[data-sw-component="tabs"] [data-sw-part="tabtitle"]{display:flex;align-items:center}',
+  ':where([data-sw-component="tabs"] [data-sw-part="tabtitle"]){gap:.4rem;font-weight:700;margin-block-end:.5rem}',
   // Hover → primary; the active tab (over the primary pill) keeps the on-primary text colour even on hover.
   '[data-sw-component="tabs"] [data-sw-part="tab"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
   '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:var(--sw-color-primary-content,#fff)}',
@@ -655,13 +671,15 @@ const TABS_CSS = [
   // shared .waves-effect runtime is a separate marker-gated chunk that a tabs-only page doesn't
   // link; its listener is delegated now, but the CSS/JS still wouldn't be present). Primary tint
   // inactive, on-primary tint over the pill.
-  '[data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;transform:scale(0);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 28%,transparent);animation:sw-tab-ripple .6s ease-out forwards}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple{position:absolute;pointer-events:none;transform:scale(0);animation:sw-tab-ripple .6s ease-out forwards}',
+  // Tint + corner are decoration; the positioning and the animation ARE the ripple.
+  ':where([data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple){border-radius:9999px;background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 28%,transparent)}',
   '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"] .sw-ripple{background:color-mix(in srgb,var(--sw-color-primary-content,#fff) 50%,transparent)}',
   '@keyframes sw-tab-ripple{to{transform:scale(1);opacity:0}}',
   // One panel at a time once enhanced; reset the UA figure/dl side margins (modern-normalize
   // keeps them — a <figure> panel would otherwise inset its content by 40px).
   '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="panel"]:not([data-active]){display:none}',
-  '[data-sw-component="tabs"] [data-sw-part="panel"]{margin:0}',
+  ':where([data-sw-component="tabs"] [data-sw-part="panel"]){margin:0}',
   // Automatic + REPEATABLE fade-in: the data-active flip restarts this keyframe every
   // time a panel is selected (not just the first), so each switch fades the panel in.
   '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="panel"][data-active]{animation:sw-tab-in .3s ease both}',
@@ -766,8 +784,10 @@ const TABS_JS = `(function(){
 // posts, then shows the inline success/error message or follows `data-sw-redirect`.
 // PE note: with no JS the form simply cannot submit (no action), by design.
 const FORM_CSS = [
-  '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
-  '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
+  '[data-sw-block="Form"] [data-sw-part="field"]{display:block}',
+  ':where([data-sw-block="Form"] [data-sw-part="field"]){margin-bottom:1rem}',
+  '[data-sw-block="Form"] [data-sw-part="label"]{display:block}',
+  ':where([data-sw-block="Form"] [data-sw-part="label"]){margin-bottom:.25rem;font-size:.875rem}',
   // Field LOOK + full-bleed width are defaults for an otherwise-unstyled field, so they are written
   // at ZERO specificity: a `w-[60%]` (0,1,0) utility on the input has to be able to win. At the
   // previous (0,1,1) it could not — three fields carrying the SAME `w-[60%]` rendered 656/635/620px
@@ -776,20 +796,23 @@ const FORM_CSS = [
   ':where([data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select){width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
   // checkbox / radio inputs must NOT stretch to 100% — they sit inline next to their option label.
   '[data-sw-block="Form"] input[type=checkbox],[data-sw-block="Form"] input[type=radio]{width:auto;padding:0;border-radius:0;flex:none}',
-  '[data-sw-block="Form"] fieldset[data-sw-part="field"]{border:0;padding:0;margin:0 0 1rem;min-inline-size:0}',
-  '[data-sw-block="Form"] legend[data-sw-part="label"]{padding:0;margin-bottom:.35rem;font-size:.875rem}',
+  '[data-sw-block="Form"] fieldset[data-sw-part="field"]{min-inline-size:0}',
+  ':where([data-sw-block="Form"] fieldset[data-sw-part="field"]){border:0;padding:0;margin:0 0 1rem}',
+  ':where([data-sw-block="Form"] legend[data-sw-part="label"]){padding:0;margin-bottom:.35rem;font-size:.875rem}',
   // option ROWS inside a group sit tight (.25rem); a single-checkbox field keeps the normal field margin.
-  '[data-sw-block="Form"] .sw-form-opt{display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem}',
-  '[data-sw-block="Form"] .sw-form-check{display:flex;align-items:center;gap:.5rem}',
-  '[data-sw-block="Form"] .sw-form-check [data-sw-part="label"]{margin-bottom:0}',
+  '[data-sw-block="Form"] .sw-form-opt{display:flex;align-items:center}',
+  ':where([data-sw-block="Form"] .sw-form-opt){gap:.5rem;margin-bottom:.25rem}',
+  '[data-sw-block="Form"] .sw-form-check{display:flex;align-items:center}',
+  ':where([data-sw-block="Form"] .sw-form-check){gap:.5rem}',
+  ':where([data-sw-block="Form"] .sw-form-check [data-sw-part="label"]){margin-bottom:0}',
   // The submit button uses the vendored .btn (rendered with `class="btn btn-primary"`); only the
   // submitting/disabled cursor is kept here.
   '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{cursor:progress}',
   // Honeypot: take it out of the layout + the a11y tree, off-screen (not display:none,
   // which some bots skip). Real users never see or tab to it.
   '[data-sw-block="Form"] [data-sw-part="hp"]{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}',
-  '[data-sw-block="Form"] [data-sw-part="success"]{color:#0a7a5a;margin-top:.75rem}',
-  '[data-sw-block="Form"] [data-sw-part="error"]{color:#b00020;margin-top:.75rem}',
+  ':where([data-sw-block="Form"] [data-sw-part="success"]){color:#0a7a5a;margin-top:.75rem}',
+  ':where([data-sw-block="Form"] [data-sw-part="error"]){color:#b00020;margin-top:.75rem}',
 ].join('');
 
 const FORM_JS = `(function(){

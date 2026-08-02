@@ -177,7 +177,7 @@ const CAROUSEL_CSS = [
   // vertical) is what makes it read as a pill rather than a text box, and `text-align:center` is part of
   // that default — a caption is a headline, not a paragraph. Both are overridable with a px-*/text-left
   // utility; box-sizing is border-box (modern-normalize), so the padding eats into the 42rem cap.
-  ':where([data-sw-component="carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 3.5rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  ':where([data-sw-component="carousel"] .sw-caption){max-width:min(90%,42rem);margin-inline:auto;padding:.85rem 3.5rem;border-radius:.85rem;background:rgb(0 0 0/.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;text-align:center;filter:drop-shadow(0 10px 20px rgb(0 0 0/.45))}',
   // A slider caption comes in TWO shapes and BOTH centre by default. The pill above is one; the other is
   // a <figcaption> — the full-bleed gradient strip across the bottom of an image slide. It carries none of
   // the pill's paint (it brings its own gradient), so it gets the ONE thing that makes a caption a caption:
@@ -225,7 +225,13 @@ const CAROUSEL_CSS = [
   // zero-specificity so utility classes still restyle it"), and a clone measured the cost: its hero
   // caption shipped a 0.85/30px shadow against the original's 0.24/12px, with everything else about
   // the caption — box, background, blur, radius — matched exactly.
-  ':where([data-sw-component="carousel"][data-kenburns] .sw-caption){box-shadow:0 30px 80px rgba(0,0,0,.85),0 12px 28px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.5)}',
+    // drop-shadow, not box-shadow: a box-shadow stamps the caption's RECTANGLE onto the photo behind it,
+  // which reads as a UI card sitting on the image. drop-shadow follows the element's actual alpha
+  // shape (rounded corners, and any transparency in the caption's own content), so the pill looks
+  // lifted rather than boxed. Verified it does NOT interfere with the caption's backdrop-filter blur.
+  // Blur radii are roughly HALVED: drop-shadow's blur is a standard deviation and reads about twice
+  // as strong as the same number in a box-shadow.
+  ':where([data-sw-component="carousel"][data-kenburns] .sw-caption){filter:drop-shadow(0 16px 34px rgba(0,0,0,.85)) drop-shadow(0 6px 12px rgba(0,0,0,.6)) drop-shadow(0 1px 3px rgba(0,0,0,.5))}',
   '@media (prefers-reduced-motion: no-preference){' +
     '[data-sw-component="carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
     '[data-sw-component="carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +

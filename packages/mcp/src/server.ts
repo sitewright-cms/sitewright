@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   PageSchema,
+  IdSchema,
   PagePatchSchema,
   TemplateSchema,
   SnippetSchema,
@@ -602,7 +603,12 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       description:
         `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source (heavy — it includes the whole compiled stylesheet). Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source.`,
       inputSchema: {
-        page: PageSchema,
+        // A SAVED page may be named by id alone — the route loads the stored page and renders it. The
+        // description has promised that since the stored-page fallback landed; the schema still demanded
+        // `path` and `title`, so the documented call validation-errored on its first use. `.strict()`
+        // keeps the stub unambiguous: exactly `{id}` is a reference, anything richer is a full page and
+        // is validated as one.
+        page: z.union([z.object({ id: IdSchema }).strict(), PageSchema]),
         includeHtml: z.boolean().optional(),
         viewports: z.array(LenientScreenshotViewportNameSchema).optional(),
       },
@@ -1220,7 +1226,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Check a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. ' +
-        'PASS waitMs (up to 60000) TO WAIT INSTEAD OF POLLING: the call blocks until the job actually moves — a new progress line, or it finishes — so one call replaces a whole poll loop. ' +
+        'PASS waitMs (up to 55000) TO WAIT INSTEAD OF POLLING: the call blocks until the job actually moves — a new progress line, or it finishes — so one call replaces a whole poll loop. ' +
         'Feed `since` the `progress lines` count from the previous reply so the wait resumes rather than returning immediately on a line you have already seen. ' +
         'Without waitMs this returns instantly, which is what made earlier runs spin: one agent made 25 status calls plus 7 shell sleeps and spent its first ten minutes waiting. ' +
         'NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
@@ -1230,9 +1236,12 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           .number()
           .int()
           .min(0)
-          .max(60_000)
+          // 55s, NOT 60s: at the documented 60000 the MCP transport gave up before the tool could answer, so
+          // the maximum the docs advertised was the one value guaranteed to fail. Reported by an agent that
+          // had to discover the real ceiling by bisecting.
+          .max(55_000)
           .optional()
-          .describe('Block up to this many ms waiting for the job to move. Use 30000 and just call again if still running.'),
+          .describe('Block up to this many ms waiting for the job to move (max 55000 — the transport gives up beyond that). Use 30000 and just call again if still running.'),
         since: z.number().int().min(0).optional().describe('The progress-line count from your last reply, so the wait resumes.'),
       },
     },

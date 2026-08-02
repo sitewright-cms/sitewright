@@ -269,6 +269,24 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
   });
 });
 
+describe('preview_page argument shape', () => {
+  it('accepts a SAVED page by id alone — the shape its own description documents', async () => {
+    // The description has promised `page:{id:"home"}` since the stored-page fallback landed, while the
+    // schema still demanded `path` and `title` — so the documented call failed validation on first use.
+    // Reported by a clone agent whose very first preview_page call errored.
+    const mcp = await connect(fakeClient(), null);
+    const res = await mcp.callTool({ name: 'preview_page', arguments: { page: { id: 'home' } } });
+    // Not connected in this harness, so it fails on SCOPE, never on argument validation.
+    expect(text(res)).not.toMatch(/required|invalid_type|Input validation/i);
+  });
+
+  it('still validates a FULL page properly rather than waving it through as a stub', async () => {
+    const mcp = await connect(fakeClient(), null);
+    const res = await mcp.callTool({ name: 'preview_page', arguments: { page: { id: 'home', title: 'No path' } } });
+    expect(res.isError).toBe(true); // ambiguous: richer than a stub, incomplete as a page
+  });
+});
+
 describe('createSitewrightMcpServer — on-demand guides', () => {
   it('get_guide returns a topic how-to (no auth needed); unknown topic errors with the topic list', async () => {
     const mcp = await connect(fakeClient(), null);

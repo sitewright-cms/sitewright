@@ -71,6 +71,18 @@ describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)',
     expect(css).not.toMatch(/(?<!:where\()\[data-sw-component="carousel"\] \[data-sw-part="slide"\] img\{/);
   });
 
+  it('caption shadows are drop-shadow, not box-shadow', () => {
+    // A box-shadow stamps the caption's RECTANGLE onto the photo behind it, which reads as a UI card sat
+    // on the image; drop-shadow follows the element's alpha shape so the pill looks lifted instead. It
+    // also coexists with the caption's backdrop-filter blur, which was the thing worth checking before
+    // switching. Reported on a real clone's front-page slider.
+    const { css } = componentAssets(['Carousel']);
+    expect(css).toMatch(/\.sw-caption\)\{[^}]*filter:drop-shadow/);
+    expect(css).not.toMatch(/\.sw-caption\)?\{[^}]*box-shadow/);
+    // the frosted look itself must survive the change
+    expect(css).toMatch(/:where\(\[data-sw-component="carousel"\] \.sw-caption\)\{[^}]*backdrop-filter:blur/);
+  });
+
   it('the lightbox stylesheet is component-keyed too', () => {
     const { css } = componentAssets(['Lightbox']);
     expect(css).toContain('[data-sw-component="lightbox"]');

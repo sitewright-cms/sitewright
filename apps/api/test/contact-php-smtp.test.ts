@@ -161,6 +161,23 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     expect(Buffer.from(transcript.authPlain ?? '', 'base64').toString()).toBe('\0apikey\0s3cr3t');
   });
 
+  it('★ REFUSES to upgrade when the server pre-seeds the plaintext buffer (STARTTLS injection)', async () => {
+    // RFC 3207 §6: everything learned before the handshake must be discarded. PHP's stream layer
+    // does NOT do that for us — fgets() over-reads past the "220" line into a userland buffer that
+    // survives stream_socket_enable_crypto(), so bytes an on-path attacker appends to the 220 are
+    // read back later as though they had arrived INSIDE the encrypted session. Here the injection
+    // is a complete forged EHLO reply plus an "authentication accepted"; a client that trusts its
+    // buffer would treat both as answers from the verified server.
+    const { res, transcript } = await run({
+      smtp: { offerStartTls: true, injectAfterStartTls: '250-forged\r\n250 HELP\r\n235 2.7.0 ok\r\n' },
+    });
+    expect(res.status).toBe(502);
+    expect(transcript.authPlain).toBeNull();
+    expect(transcript.commands.some((c) => c.toUpperCase().includes('AUTH'))).toBe(false);
+    // It gave up BEFORE the handshake, so nothing was ever spoken inside the session.
+    expect(transcript.commands.some((c) => c.startsWith('[tls] '))).toBe(false);
+  });
+
   it('authenticates over implicit TLS (port-465 style)', async () => {
     const { res, transcript } = await run({ smtp: { implicitTls: true }, config: { secure: true } });
     expect(res.status).toBe(200);
@@ -173,6 +190,19 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     const { res, transcript } = await run({ smtp: { implicitTls: true }, config: { secure: true }, trustCert: false });
     expect(res.status).toBe(502);
     expect(transcript.commands).toEqual([]);
+  });
+
+  it('★ verifies the peer on the STARTTLS path too, not only on implicit TLS', async () => {
+    // Worth its own case: implicit TLS is verified by stream_socket_client(), but a STARTTLS
+    // upgrade is a SECOND handshake through stream_socket_enable_crypto(), and whether the
+    // context's verify_peer carries into it is not obvious from reading the code. It does — the
+    // upgrade fails against the untrusted test CA, so nothing is authenticated or sent.
+    const { res, transcript } = await run({ smtp: { offerStartTls: true }, trustCert: false });
+    expect(res.status).toBe(502);
+    expect(transcript.authPlain).toBeNull();
+    expect(transcript.commands).toContain('STARTTLS');
+    expect(transcript.commands.some((c) => c.startsWith('[tls] '))).toBe(false);
+    expect(transcript.commands.some((c) => c.toUpperCase().includes('AUTH'))).toBe(false);
   });
 
   it('fails CLOSED when the credentials file is missing — never falls back to mail()', async () => {

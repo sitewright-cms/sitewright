@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import { DEFAULT_FORM_MODES, type Form, type FormField, type FormMode } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, isPlatformRoutedMode, type Form, type FormField, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { identifierize, slugify } from '../lib/entry-form';
@@ -388,12 +388,12 @@ export function FormsManager({ project }: { project: Project }) {
             className={toggleInput}
             aria-label="Require hCaptcha"
             checked={draft.hcaptcha}
-            disabled={draft.mode === 'contactPhp' || draft.mode === 'thirdParty'}
+            disabled={!isPlatformRoutedMode(draft.mode)}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400 dark:text-slate-500' : ''}>
+          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-400 dark:text-slate-500' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
-            {(draft.mode === 'contactPhp' || draft.mode === 'thirdParty') &&
+            {!isPlatformRoutedMode(draft.mode) &&
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
           </span>
         </label>

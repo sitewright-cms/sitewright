@@ -282,11 +282,23 @@ function sw_smtp_send($conf, $to, $subject, $body, $replyTo) {
   // connection on an unknown verb). Implicit-TLS connections are already encrypted.
   $encrypted = $secure;
   if ($ok && !$secure && stripos($greeting, 'STARTTLS') !== false) {
-    if (substr(sw_smtp_say($fp, 'STARTTLS'), 0, 3) === '220'
-        && @stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-      $encrypted = true;
-      // RFC 3207: re-issue EHLO over the encrypted channel (the capability list can change).
-      if (!sw_smtp_cmd($fp, $ehlo, '250')) { $ok = false; }
+    if (substr(sw_smtp_say($fp, 'STARTTLS'), 0, 3) === '220') {
+      // RFC 3207 6: everything learned before the handshake must be DISCARDED. PHP does not do
+      // that for us — fgets() over-reads past the "220" into a userland buffer that survives
+      // stream_socket_enable_crypto(), so bytes an on-path attacker appends to that line are read
+      // back later as though they had arrived INSIDE the verified session (a forged capability
+      // list, an AUTH acceptance, a "queued" receipt for mail that was never sent). A compliant
+      // server says nothing more until the handshake, so anything already buffered means the
+      // connection is under attack: abort rather than upgrade. Data that instead arrives between
+      // this check and the handshake is consumed as handshake input and fails it, so both orders
+      // end closed.
+      $pending = stream_get_meta_data($fp);
+      if (!empty($pending['unread_bytes'])) { $ok = false; }
+      elseif (@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+        $encrypted = true;
+        // RFC 3207: re-issue EHLO over the encrypted channel (the capability list can change).
+        if (!sw_smtp_cmd($fp, $ehlo, '250')) { $ok = false; }
+      }
     }
   }
 

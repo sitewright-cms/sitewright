@@ -9,6 +9,41 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`contact.php` can deliver over authenticated SMTP** — a fifth form delivery mode, `contactPhpSmtp`.
+  It reuses the exported `contact.php` (same file, same dispatch by the hidden `_form` field) but sends
+  through the project's own SMTP credentials instead of the host's `mail()`. The reason is deliverability:
+  `mail()` on shared hosting sends from the host's IP with an unaligned envelope, so it routinely fails
+  SPF/DKIM and lands in spam — and until now the only authenticated option was platform-routed, which made
+  "the site must work without the platform" and "the mail must actually arrive" mutually exclusive.
+  The SMTP client is ~90 lines of PHP rather than a vendored PHPMailer, whose thousands of lines and own
+  CVE stream would ship into every exported site; it speaks EHLO, STARTTLS, AUTH PLAIN/LOGIN and DATA with
+  explicit timeouts, so a black-holed host cannot hang a visitor's request.
+  **Credentials never travel in the clear**: if the channel cannot be encrypted the client aborts instead
+  of downgrading, TLS peer verification stays on for both the implicit-TLS and the STARTTLS path, and a
+  relay with no user configured (nothing to leak) still works in plaintext. **Where the password lives**
+  is fenced three ways — it is written only into the transient deploy payload and never into the published
+  store (whose archive zip is member-readable on the premise that its bytes are already public, true of
+  HTML and false of a credential), never onto a Git target (a password in a commit is permanent and
+  replicated to every clone), and never inside the build worker (which runs `--network none` with no
+  secrets by design). Every failure fails loud as a 409 rather than shipping a form that silently cannot
+  send. Because the mode puts a real password on the destination host, it is a separate admin permission
+  that `contactPhp` does not inherit.
+
+### Security
+
+- **The STARTTLS upgrade discards anything the server sent before the handshake** (RFC 3207 §6). PHP does
+  not do this for us: `fgets()` over-reads past the `220` into a userland buffer that survives
+  `stream_socket_enable_crypto()`, so bytes an on-path attacker appends to that line are read back later
+  as though they had arrived *inside* the verified session. Measured against the real interpreter, a
+  forged capability list plus an `235` acceptance injected into that buffer was enough to make the client
+  complete a login dialogue with itself and report a message queued that no server ever received. TLS
+  still protected the password — the attacker cannot read the encrypted stream — but silently losing form
+  submissions is precisely the failure this mode exists to fix. A compliant server says nothing between
+  the `220` and the handshake, so anything already buffered now aborts the send; data that instead arrives
+  after the check is consumed as handshake input and fails it, leaving both orderings closed.
+
 ## [0.9.0] — 2026-08-02
 
 A ten-site clone run by ten neutral MCP agents. The dominant failure class was again the platform

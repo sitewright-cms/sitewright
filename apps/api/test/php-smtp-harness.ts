@@ -77,6 +77,12 @@ export interface FakeSmtpOptions {
   rejectAuth?: boolean;
   /** Reject RCPT TO with 550. */
   rejectRecipient?: boolean;
+  /**
+   * Append these bytes to the STARTTLS "220" reply, in the SAME write, before the handshake —
+   * i.e. what an on-path attacker injects to have the client read them back as though they had
+   * arrived inside the encrypted session (RFC 3207 §6).
+   */
+  injectAfterStartTls?: string;
   cert?: TestCert;
 }
 
@@ -119,7 +125,7 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
             sock.write('454 4.7.0 TLS unavailable\r\n');
             continue;
           }
-          sock.write('220 2.0.0 ready to start TLS\r\n');
+          sock.write(`220 2.0.0 ready to start TLS\r\n${options.injectAfterStartTls ?? ''}`);
           sock.removeListener('data', onData);
           transcript.upgraded = true;
           const upgraded = new tls.TLSSocket(sock as net.Socket, {

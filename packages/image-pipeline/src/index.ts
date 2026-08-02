@@ -4,3 +4,4 @@ export * from './store.js';
 export * from './rasterize.js';
 export * from './svg.js';
 export * from './favicon.js';
+export * from './model-image.js';

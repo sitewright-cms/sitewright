@@ -9,6 +9,17 @@ import { z } from 'zod';
 // unbounded image — set generously (narrower viewports stack content taller, so they get higher caps)
 // so real long-tail pages are captured in full rather than truncated.
 
+/**
+ * Tailwind's `md` breakpoint, and with it the exact pixel where a CSS media query and a Tailwind
+ * arbitrary variant disagree: `@media (max-width:768px)` INCLUDES 768, while `max-[768px]:` compiles
+ * to `@media not all and (min-width:768px)` and EXCLUDES it. Anything rendered AT 768 therefore
+ * exercises the one width where the two do not describe the same layout — and a clone agent that
+ * measures there gets an answer it cannot reconcile with either stylesheet.
+ *
+ * So no viewport sits on it, and "is this width mobile?" is answered the way Tailwind answers it.
+ */
+export const TAILWIND_MD_PX = 768;
+
 export interface ScreenshotViewport {
   /** Human label for pickers/logs. */
   readonly label: string;
@@ -27,7 +38,10 @@ export const SCREENSHOT_VIEWPORTS = {
   // visual_audit/compare side-by-side, so agents judged tall pages against a footer-less "ground truth".
   fullhd: { label: 'Full HD · 1920', width: 1920, height: 1080, capHeight: 12000, isMobile: false },
   laptop: { label: 'Laptop · 1440', width: 1440, height: 900, capHeight: 8000, isMobile: false },
-  tablet: { label: 'Tablet · 768', width: 768, height: 1024, capHeight: 10000, isMobile: true },
+  // 767, not 768: one pixel below Tailwind's `md` boundary (see TAILWIND_MD_PX). At 768 the audit
+  // rendered exactly where a CSS `max-width:768px` rule applies and its Tailwind `max-[768px]:`
+  // equivalent does not, so the tool's own measurement contradicted the page's CSS.
+  tablet: { label: 'Tablet · 767', width: 767, height: 1024, capHeight: 10000, isMobile: true },
   mobile: { label: 'Mobile · 390', width: 390, height: 844, capHeight: 12000, isMobile: true },
 } as const satisfies Record<string, ScreenshotViewport>;
 

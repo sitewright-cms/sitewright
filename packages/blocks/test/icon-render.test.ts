@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderIconSvg, isPhosphorName, aliasToPhosphor, phosphorBody, PHOSPHOR_WEIGHTS } from '../src/index.js';
+import { SocialLinkSchema } from '@sitewright/schema';
 
 describe('renderIconSvg — Phosphor icon resolution', () => {
   it('renders a Phosphor FILL glyph by default (256 viewBox, fill, name+weight hooks)', () => {
@@ -117,5 +118,31 @@ describe('searchIcons — multi-term icon search', () => {
     const many = Array.from({ length: 5000 }, () => 'a').join(',');
     expect(iconSearchTerms(many).length).toBe(MAX_ICON_SEARCH_TERMS);
     expect(searchIcons(many).length).toBe(MAX_ICON_SEARCH_TERMS);
+  });
+});
+
+
+describe('social icon weights stay in step with the icon system', () => {
+  const parse = (icon: string) => SocialLinkSchema.safeParse({ link: 'https://example.com', icon }).success;
+
+  it('the schema accepts exactly the weights Phosphor ships', () => {
+    // `identity.social[].icon` feeds `{{sw-icon}}`, so its pattern has to accept the same
+    // `name:weight` syntax — it used to reject it outright, which is why a clone of a site with
+    // hairline glyphs shipped filled marks: the author tried `envelope:light` and got
+    // `400: invalid icon name`. The weight list is duplicated in @sitewright/schema (which cannot
+    // import this package), so this is the guard against the two drifting apart.
+    for (const weight of PHOSPHOR_WEIGHTS) expect(parse(`envelope:${weight}`), weight).toBe(true);
+    expect(parse('envelope')).toBe(true);
+    expect(parse('brand:whatsapp')).toBe(true);
+    // A made-up weight stays a typo rather than silently becoming the default.
+    expect(parse('envelope:hairline')).toBe(false);
+    // A brand logo has ONE form — accepting a weight there would quietly do nothing.
+    expect(parse('brand:x:bold')).toBe(false);
+  });
+
+  it('a weighted social icon renders that weight, not the default fill', () => {
+    const thin = renderIconSvg('envelope:thin');
+    expect(thin).toContain('sw-icon-thin');
+    expect(thin).not.toBe(renderIconSvg('envelope'));
   });
 });

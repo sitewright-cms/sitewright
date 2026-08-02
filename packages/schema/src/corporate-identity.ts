@@ -62,13 +62,28 @@ const GeoSchema = z.object({ latitude: z.string().max(40), longitude: z.string()
 
 // --- Social profiles (link + display name + icon) ---
 
-/** Icon for a social link: a Lucide glyph name or a `brand:<slug>` social logo.
- *  A slug may start with a digit (e.g. `brand:500px`) — matching the simple-icons catalog. */
+/** Icon for a social link: a Phosphor/Lucide glyph name, optionally with a `:weight`, or a
+ *  `brand:<slug>` social logo. A slug may start with a digit (e.g. `brand:500px`) — matching the
+ *  simple-icons catalog.
+ *
+ *  The `:weight` suffix is the same one `{{sw-icon "name:weight"}}` takes everywhere else, and this
+ *  field feeds exactly that helper — but the pattern used to forbid it, so a social icon could only
+ *  ever be had at the default (filled) weight. A clone of a site whose header uses hairline glyphs
+ *  came out with filled marks for that reason: its author tried `envelope:light`, got
+ *  `400: invalid icon name`, and had no way to say what the design plainly needed.
+ *
+ *  A brand logo takes no weight — simple-icons ships one form per brand — so `brand:x:bold` stays
+ *  invalid rather than silently ignoring the suffix. The weight list mirrors PHOSPHOR_WEIGHTS in
+ *  @sitewright/blocks (which cannot be imported here — blocks depends on schema, not the reverse);
+ *  a test over there asserts the two never drift. */
 const SocialIconSchema = z
   .string()
   .min(1)
-  .max(40)
-  .regex(/^(?:brand:)?[a-z0-9][a-z0-9-]*$/, 'invalid icon name');
+  .max(56)
+  .regex(
+    /^(?:brand:[a-z0-9][a-z0-9-]*|[a-z0-9][a-z0-9-]*(?::(?:thin|light|regular|bold|fill|duotone))?)$/,
+    'invalid icon name — a glyph name with an optional :weight (thin|light|regular|bold|fill|duotone), or brand:<slug>',
+  );
 
 /** Display name for a social link (rendered — escaped — in templates; length-bounded). */
 const SocialNameSchema = z.string().max(60);

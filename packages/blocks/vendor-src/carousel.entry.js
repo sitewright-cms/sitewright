@@ -341,10 +341,46 @@ function enhance(root) {
     var fits = !embla.canScrollNext() && !embla.canScrollPrev();
     container.style.justifyContent = fits ? (itemAlign === 'end' ? 'flex-end' : itemAlign === 'center' ? 'center' : 'flex-start') : '';
   }
+  // THE CAROUSEL OWNS LAZINESS FOR ITS OWN TRACK.
+  //
+  // `loading="lazy"` inside a slider means NEVER. The browser defers until the image nears the
+  // SCROLLING VIEWPORT, and a slide two places along is not below the fold — it is translated
+  // sideways, off to the left or right, where it never intersects anything. Worse, an image that
+  // has not loaded has no intrinsic size, so in a flex slide it collapses to width:0: not a
+  // placeholder that fills in later, an empty slot forever. Measured on a real clone — three of
+  // thirteen slide images sat at left −886…−1470 with naturalWidth 0, and paging the carousel
+  // forward four times did not rescue them; the same images render 206/297/408px wide when told
+  // to load. The author had done the reasonable thing and been silently punished for it.
+  //
+  // So: keep the deferral, but decide it from the TRACK rather than the page. Slides at or near the
+  // selected index are promoted to `eager` on every select — near, not just current, so the next
+  // image is decoded before the visitor swipes to it. Nothing else about the author's markup changes,
+  // and an image that was never lazy is untouched.
+  function loadNear() {
+    var slides = embla.slideNodes();
+    var current = embla.selectedScrollSnap();
+    var inView = embla.slidesInView ? embla.slidesInView() : [];
+    for (var i = 0; i < slides.length; i++) {
+      var near = Math.abs(i - current) <= 2 || inView.indexOf(i) !== -1;
+      // Wrap-around: with a loop, the slide "before" the first is the last one.
+      if (!near && slides.length > 2) {
+        var wrapped = Math.min(Math.abs(i - current + slides.length), Math.abs(i - current - slides.length));
+        near = wrapped <= 2;
+      }
+      if (!near) continue;
+      var imgs = slides[i].querySelectorAll('img[loading="lazy"],iframe[loading="lazy"]');
+      for (var j = 0; j < imgs.length; j++) imgs[j].setAttribute('loading', 'eager');
+    }
+  }
+
   buildDots();
   applyItemAlign();
+  loadNear();
   embla
-    .on('select', sync)
+    .on('select', function () {
+      sync();
+      loadNear();
+    })
     .on('settle', pruneActive)
     .on('reInit', function () {
       syncItemsMode();
@@ -353,6 +389,7 @@ function enhance(root) {
       applyItemAlign();
       sync();
       pruneActive();
+      loadNear();
     });
   sync();
   pruneActive();

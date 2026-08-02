@@ -6,12 +6,19 @@
 //  - mode 'pinned'   — an EXTERNAL source URL; EVERY request is served by `pinnedFetch` (https-only,
 //                      SSRF-validated, connect-pinned), exactly like the importer's `renderViaBrowser`,
 //                      so the browser's unpinnable DNS is never used.
-import { SCREENSHOT_VIEWPORTS, DEFAULT_SCREENSHOT_VIEWPORTS, isScreenshotViewportName, type ScreenshotViewport } from '@sitewright/schema';
+import {
+  SCREENSHOT_VIEWPORTS,
+  DEFAULT_SCREENSHOT_VIEWPORTS,
+  TAILWIND_MD_PX,
+  isScreenshotViewportName,
+  type ScreenshotViewport,
+} from '@sitewright/schema';
 import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, type ChromeEl, type ChromeMeta, type FontMetrics } from '@sitewright/site-import/fidelity';
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, CLIP_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { clampShotForModel } from './mcp-image.js';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
@@ -146,7 +153,10 @@ export async function captureUrlShots(
   const out: Array<[ViewportName, Shot]> = [];
   for (const [name, vp] of plan) {
     const shot = await withRenderSlot(() => shootOne(browser, url, opts.mode, vp, opts.signal)).catch(() => null);
-    if (shot) out.push([name, shot]);
+    // CLAMP before anyone can hand this to a model. A full-page capture is routinely taller than the
+    // 2000px per-image ceiling that applies to a many-image request, and going over does not degrade the
+    // reply — it REJECTS the whole request and ends the session (measured: a clone agent died at turn 124).
+    if (shot) out.push([name, await clampShotForModel(shot)]);
   }
   return Object.fromEntries(out);
 }
@@ -306,8 +316,10 @@ export async function captureUrlInspect(
           width: Math.min(INSPECT_WIDTH_RANGE.max, Math.max(INSPECT_WIDTH_RANGE.min, Math.round(opts.viewport))),
           height: 900,
           capHeight: 8000,
-          // Match the named viewports' own boundary: `tablet` (768) is mobile, `laptop` (1440) is not.
-          isMobile: Math.round(opts.viewport) <= SCREENSHOT_VIEWPORTS.tablet.width,
+          // Answer "is this mobile?" the way the page's own CSS does: Tailwind's `md` starts AT 768,
+          // so 767 is mobile and 768 is not. Deriving this from `tablet.width` would silently move
+          // the boundary whenever that viewport moves.
+          isMobile: Math.round(opts.viewport) < TAILWIND_MD_PX,
         }
       : SCREENSHOT_VIEWPORTS[opts.viewport ?? 'laptop'];
   return withRenderSlot(async () => {

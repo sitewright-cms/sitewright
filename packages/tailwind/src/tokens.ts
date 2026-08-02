@@ -65,5 +65,11 @@ export function renderThemeBlock(vars: Record<string, string>): string {
   const lines = Object.entries(vars)
     .filter(([, v]) => SAFE_VALUE.test(v))
     .map(([k, v]) => `  ${k}: ${v};`);
-  return lines.length ? `\n@theme {\n${lines.join('\n')}\n}` : '';
+  // `static`, so every brand variable is EMITTED whether or not Tailwind's own output happens to
+  // reference it. Tailwind tree-shakes a plain `@theme` against the CSS it generates — which stopped
+  // being the whole stylesheet once the effect schemes were compiled separately (they live in
+  // `@layer sw-effects`, which Tailwind never sees). A scheme reading
+  // `var(--color-primary-content)` would then resolve against a variable nobody declared: no error,
+  // just an unreadable label on a brand-coloured pill.
+  return lines.length ? `\n@theme static {\n${lines.join('\n')}\n}` : '';
 }

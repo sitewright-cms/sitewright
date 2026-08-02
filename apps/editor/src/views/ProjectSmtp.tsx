@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Project, type SmtpInput } from '../api';
-import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
+import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 
 /**
  * Per-project SMTP config — used by forms whose delivery mode is "Project SMTP"
- * (userSmtp). The password is write-only (the API returns only a presence flag;
- * leave it blank to keep the stored one). Owner/admin only; a non-writer gets a 403
- * which we surface as a notice.
+ * (userSmtp) and by "contact.php (SMTP)", which sends with these same credentials
+ * from the exported site. The password is write-only (the API returns only a presence
+ * flag; leave it blank to keep the stored one). Owner/admin only; a non-writer gets a
+ * 403 which we surface as a notice.
  */
 export function ProjectSmtp({ project }: { project: Project }) {
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,21 @@ export function ProjectSmtp({ project }: { project: Project }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  async function test() {
+    setTesting(true);
+    setResult(null);
+    try {
+      setResult(await api.testProjectSmtp(project.id));
+    } catch (e) {
+      // A 404 here means "save first" — the route tests what is STORED, not what is on screen.
+      setResult({ ok: false, error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -143,11 +159,24 @@ export function ProjectSmtp({ project }: { project: Project }) {
             </label>
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className={primaryButton}>
             Save SMTP
           </button>
+          {/* Form delivery is best-effort, so a broken SMTP is otherwise invisible until leads stop
+              arriving. This tests what is SAVED — it authenticates but sends no mail. */}
+          {enabled && (
+            <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={testing}>
+              {testing ? 'Testing…' : 'Test connection'}
+            </button>
+          )}
           {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
+          {result &&
+            (result.ok ? (
+              <span className="text-sm text-green-600 dark:text-green-400">✓ Connected</span>
+            ) : (
+              <span className="text-sm text-red-600 dark:text-red-400">✗ {result.error}</span>
+            ))}
           {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
         </div>
       </form>

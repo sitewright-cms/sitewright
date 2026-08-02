@@ -6,10 +6,12 @@ import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
 // Mock the API module so the view's load/save go through spies.
 const getInstanceSettings = vi.fn();
 const putInstanceSettings = vi.fn();
+const testInstanceSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getInstanceSettings: () => getInstanceSettings(),
     putInstanceSettings: (body: InstanceSettingsInput) => putInstanceSettings(body),
+    testInstanceSmtp: () => testInstanceSmtp(),
   },
 }));
 
@@ -305,5 +307,29 @@ describe('InstanceSettings — branding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     expect(lastPayload().platformLogo).toBeNull();
+  });
+});
+
+describe('instance SMTP connection test', () => {
+  // The admin's only signal that instance mail is broken: form delivery is best-effort, so a dead
+  // SMTP otherwise shows up as leads quietly not arriving.
+  it('surfaces the server\u2019s reason for a failed connection', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } },
+    });
+    testInstanceSmtp.mockResolvedValue({ ok: false, error: 'The server at smtp.acme.com:587 does not offer STARTTLS' });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/does not offer STARTTLS/)).toBeInTheDocument();
+  });
+
+  it('confirms a healthy connection', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } },
+    });
+    testInstanceSmtp.mockResolvedValue({ ok: true });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/Connected/)).toBeInTheDocument();
   });
 });

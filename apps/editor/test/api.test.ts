@@ -1202,3 +1202,23 @@ describe('project transfer api', () => {
     expect(init.method).toBe('GET');
   });
 });
+
+describe('SMTP connection test helpers', () => {
+  // These POST with no body: the endpoints deliberately test what is STORED, not what is on screen,
+  // so there is nothing to send and nothing that could leak a password into a request log.
+  it('POSTs the instance SMTP test to the admin endpoint', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    expect(await api.testInstanceSmtp()).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/settings/smtp/test');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('POSTs the project SMTP test under the project, and passes a failure reason through', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: false, error: 'does not offer STARTTLS' }));
+    expect(await api.testProjectSmtp('p1')).toEqual({ ok: false, error: 'does not offer STARTTLS' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/smtp/test');
+  });
+});
+

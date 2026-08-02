@@ -86,6 +86,31 @@ describe('per-project SMTP API', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('the connection test 404s until an SMTP is saved — it tests what is STORED', async () => {
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('the connection test reports a reachable-but-unusable server rather than throwing', async () => {
+    // Port 1 with nothing on it: the point is the SHAPE of the answer. A broken SMTP must come back
+    // as a readable reason an admin can act on, not a 500 and not a silent success.
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeTruthy();
+  }, 30_000);
+
+  it('a project member can run the connection test, like the rest of SMTP management', async () => {
+    const { userId: mUser } = await registerAccount(db, 'tester@x.test', 'Pw-secret-1');
+    const mt = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'tester@x.test', password: 'Pw-secret-1' } }));
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: mt } });
+    expect(res.statusCode).toBe(200); // members manage SMTP, so they can test it too
+  }, 30_000);
+
   it('DELETE is idempotent (204) when no config exists', async () => {
     const res = await app.inject({ method: 'DELETE', url: `${base}/smtp`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(204);

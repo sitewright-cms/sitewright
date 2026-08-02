@@ -1,8 +1,7 @@
 import net from 'node:net';
-import tls from 'node:tls';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -23,201 +22,45 @@ export function phpAvailable(): boolean {
   }
 }
 
-/** A self-signed cert that is ALSO its own CA, so PHP can verify the peer against it. */
-export interface TestCert {
-  key: string;
-  cert: string;
-  /** Path to the PEM, for PHP's `openssl.cafile`. */
-  caFile: string;
-  dir: string;
+export type { TestCert, SmtpTranscript, FakeSmtp, FakeSmtpOptions } from './smtp-server.js';
+export { makeCert, startFakeSmtp } from './smtp-server.js';
+
+/** A stand-in for the host's `sendmail`, so PHP's `mail()` can actually succeed under test. */
+export interface SendmailCapture {
+  /** Value for PHP's `sendmail_path` ini setting. */
+  iniSetting: string;
+  /** Everything `mail()` has piped to it so far (headers + body), or '' if it never ran. */
+  read: () => Promise<string>;
+  cleanup: () => Promise<void>;
 }
 
-/** Generates a throwaway cert for 127.0.0.1 (openssl CLI; the suite skips when absent). */
-export async function makeCert(): Promise<TestCert> {
-  const dir = await mkdtemp(join(tmpdir(), 'sw-php-cert-'));
-  const key = join(dir, 'key.pem');
-  const cert = join(dir, 'cert.pem');
-  const res = spawnSync(
-    'openssl',
-    ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', key, '-out', cert, '-days', '1', '-nodes',
-     '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-addext', 'basicConstraints=critical,CA:TRUE'],
-    { stdio: 'ignore' },
-  );
-  if (res.status !== 0) throw new Error('openssl failed to generate a test certificate');
-  const { readFile } = await import('node:fs/promises');
-  return { key: await readFile(key, 'utf8'), cert: await readFile(cert, 'utf8'), caFile: cert, dir };
-}
-
-/** What the fake SMTP server observed. */
-export interface SmtpTranscript {
-  /** Every command line, in order. TLS-phase lines are prefixed `[tls] `. */
-  commands: string[];
-  /** The DATA payload, as the server received it (still dot-stuffed). */
-  rawData: string[];
-  /** The argument of `AUTH PLAIN`, base64 as sent (null when AUTH never happened). */
-  authPlain: string | null;
-  /** The two `AUTH LOGIN` continuation lines, base64 as sent, in the order the client sent them. */
-  authLoginUser: string | null;
-  authLoginPass: string | null;
-  /** True once the connection was upgraded via STARTTLS. */
-  upgraded: boolean;
-}
-
-export interface FakeSmtp {
-  port: number;
-  transcript: SmtpTranscript;
-  /** Resolves when the client disconnects. */
-  finished: Promise<void>;
-  close: () => Promise<void>;
-}
-
-export interface FakeSmtpOptions {
-  /** Advertise STARTTLS in the EHLO response (and honour it). */
-  offerStartTls?: boolean;
-  /** Serve implicit TLS from the first byte (port 465 style). */
-  implicitTls?: boolean;
-  /** Reject AUTH with 535. */
-  rejectAuth?: boolean;
-  /** Reject only `AUTH PLAIN` (535) while honouring the `AUTH LOGIN` challenge — the real reason
-   *  the LOGIN fallback exists, and the only way to exercise it end to end. */
-  rejectPlainAuth?: boolean;
-  /** Greet normally, then answer NOTHING — a black hole that keeps the socket open. The shape a
-   *  per-operation timeout cannot bound, because each individual wait looks survivable. */
-  stallAfterGreeting?: boolean;
-  /** Reject RCPT TO with 550. */
-  rejectRecipient?: boolean;
-  /**
-   * Append these bytes to the STARTTLS "220" reply, in the SAME write, before the handshake —
-   * i.e. what an on-path attacker injects to have the client read them back as though they had
-   * arrived inside the encrypted session (RFC 3207 §6).
-   */
-  injectAfterStartTls?: string;
-  cert?: TestCert;
-}
-
-/** Starts a scripted SMTP server on an ephemeral port. */
-export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<FakeSmtp> {
-  const transcript: SmtpTranscript = {
-    commands: [],
-    rawData: [],
-    authPlain: null,
-    authLoginUser: null,
-    authLoginPass: null,
-    upgraded: false,
-  };
-  let resolveFinished: () => void;
-  const finished = new Promise<void>((r) => (resolveFinished = r));
-
-  const speak = (sock: net.Socket | tls.TLSSocket, phase: '' | '[tls] '): void => {
-    sock.setEncoding('utf8');
-    let buffer = '';
-    let inData = false;
-    // AUTH LOGIN is a challenge/response: the next two lines after it are base64 payloads, not
-    // commands, so the dispatcher has to track where it is. Without this the server answered the
-    // generic "250 ok" to `AUTH LOGIN`, the client's chain died on the first step expecting 334,
-    // and the username/password lines were never sent — the fallback looked tested but wasn't.
-    let authStage: '' | 'user' | 'pass' = '';
-    const onData = (chunk: string): void => {
-      buffer += chunk;
-      let idx: number;
-      while ((idx = buffer.indexOf('\r\n')) !== -1) {
-        const line = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        if (inData) {
-          if (line === '.') {
-            inData = false;
-            transcript.commands.push(`${phase}<END-OF-DATA>`);
-            sock.write('250 2.0.0 queued\r\n');
-          } else {
-            transcript.rawData.push(line);
-          }
-          continue;
-        }
-        transcript.commands.push(`${phase}${line}`);
-        if (options.stallAfterGreeting) continue; // record it, answer nothing, hold the socket open
-        if (authStage === 'user') {
-          transcript.authLoginUser = line;
-          authStage = 'pass';
-          sock.write('334 UGFzc3dvcmQ6\r\n'); // base64("Password:")
-          continue;
-        }
-        if (authStage === 'pass') {
-          transcript.authLoginPass = line;
-          authStage = '';
-          sock.write(options.rejectAuth ? '535 5.7.8 bad credentials\r\n' : '235 2.7.0 ok\r\n');
-          continue;
-        }
-        const up = line.toUpperCase();
-        if (up === 'AUTH LOGIN') {
-          if (options.rejectAuth && !options.rejectPlainAuth) {
-            sock.write('535 5.7.8 bad credentials\r\n');
-            continue;
-          }
-          authStage = 'user';
-          sock.write('334 VXNlcm5hbWU6\r\n'); // base64("Username:")
-          continue;
-        }
-        if (up.startsWith('EHLO')) {
-          const starttls = options.offerStartTls && phase === '' ? '250-STARTTLS\r\n' : '';
-          sock.write(`250-fake greets you\r\n250-PIPELINING\r\n${starttls}250-AUTH PLAIN LOGIN\r\n250 HELP\r\n`);
-        } else if (up.startsWith('AUTH PLAIN')) {
-          transcript.authPlain = line.slice('AUTH PLAIN '.length);
-          sock.write(
-            options.rejectAuth || options.rejectPlainAuth ? '535 5.7.8 bad credentials\r\n' : '235 2.7.0 ok\r\n',
-          );
-        } else if (up === 'STARTTLS') {
-          if (!options.offerStartTls || !options.cert) {
-            sock.write('454 4.7.0 TLS unavailable\r\n');
-            continue;
-          }
-          sock.write(`220 2.0.0 ready to start TLS\r\n${options.injectAfterStartTls ?? ''}`);
-          sock.removeListener('data', onData);
-          transcript.upgraded = true;
-          const upgraded = new tls.TLSSocket(sock as net.Socket, {
-            isServer: true,
-            key: options.cert.key,
-            cert: options.cert.cert,
-          });
-          speak(upgraded, '[tls] ');
-          return;
-        } else if (up.startsWith('MAIL FROM')) {
-          sock.write('250 2.1.0 ok\r\n');
-        } else if (up.startsWith('RCPT TO')) {
-          sock.write(options.rejectRecipient ? '550 5.1.1 no such user\r\n' : '250 2.1.5 ok\r\n');
-        } else if (up === 'DATA') {
-          inData = true;
-          sock.write('354 end with .\r\n');
-        } else if (up === 'QUIT') {
-          sock.write('221 2.0.0 bye\r\n');
-          sock.end();
-        } else {
-          sock.write('250 2.0.0 ok\r\n');
-        }
-      }
-    };
-    sock.on('data', onData);
-    sock.on('error', () => {}); // a client abort mid-handshake is a valid outcome under test
-  };
-
-  const onConnection = (sock: net.Socket | tls.TLSSocket): void => {
-    sock.write('220 fake ESMTP ready\r\n');
-    speak(sock, options.implicitTls ? '' : '');
-    sock.on('close', () => resolveFinished());
-  };
-
-  const server =
-    options.implicitTls && options.cert
-      ? tls.createServer({ key: options.cert.key, cert: options.cert.cert }, onConnection)
-      : net.createServer(onConnection);
-  server.on('tlsClientError', () => resolveFinished()); // verification failure = no session at all
-
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const port = (server.address() as net.AddressInfo).port;
+/**
+ * Creates a capturing replacement for `sendmail`.
+ *
+ * WHY: `mail()` is the oldest export delivery mode and nothing has ever executed it successfully —
+ * a test box has no MTA, so the call returns false and every test could assert was the 502. Pointing
+ * `sendmail_path` at a script that keeps stdin makes the path real: the message is produced, handed
+ * over, and can be read back and asserted.
+ *
+ * The script ignores its arguments on purpose — PHP may invoke it with `-t -i`, and a naive
+ * `cat > file` would treat those as filenames and fail in a way that looks like a mail failure.
+ */
+export async function makeSendmailCapture(): Promise<SendmailCapture> {
+  const dir = await mkdtemp(join(tmpdir(), 'sw-sendmail-'));
+  const out = join(dir, 'captured.eml');
+  const script = join(dir, 'sendmail.sh');
+  await writeFile(script, `#!/bin/sh\ncat >> '${out}'\n`, { encoding: 'utf8', mode: 0o755 });
   return {
-    port,
-    transcript,
-    finished,
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    iniSetting: `sendmail_path=${script}`,
+    read: async () => {
+      try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- a path this function just made
+        return await readFile(out, 'utf8');
+      } catch {
+        return ''; // mail() never ran
+      }
+    },
+    cleanup: () => rm(dir, { recursive: true, force: true }),
   };
 }
 

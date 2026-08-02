@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { SmtpInputSchema, SmtpStoredSchema, maskSmtp, type SmtpStored } from '@sitewright/schema';
-import { encryptSecret } from '../crypto/secret.js';
+import { encryptSecret, decryptSecret } from '../crypto/secret.js';
+import { verifySmtpConnection, type TransportConfig } from '../mail/mailer.js';
 import type { ContentRepository } from '../repo/content.js';
 import { NotFoundError, type ProjectContext } from '../repo/context.js';
 import { PROJECT_SMTP_ENTITY_ID, type ApiKeyCapability } from '../db/schema.js';
@@ -73,6 +74,30 @@ export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmt
       });
       const saved = (await contentRepo.put(ctx, 'project_smtp', PROJECT_SMTP_ENTITY_ID, stored)) as SmtpStored;
       return reply.send({ smtp: maskSmtp(saved) });
+    },
+  );
+
+  // Opens a real session to the configured server and authenticates, sending nothing. Form delivery
+  // is best-effort by design — the visitor is thanked either way — so without this an operator has
+  // no way to discover that their SMTP is misconfigured except by noticing leads stopped arriving.
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/smtp/test',
+    { config: rl(10) }, // a real outbound connection per call: tighter than the read/write limits
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const stored = await loadStored(contentRepo, ctx);
+      if (!stored) return reply.code(404).send({ error: 'no SMTP is configured for this project' });
+      assertHostAllowed(stored.host); // the stored host could predate an allowlist being configured
+      const config: TransportConfig = { host: stored.host, port: stored.port, secure: stored.secure };
+      if (stored.user && stored.password) {
+        try {
+          config.auth = { user: stored.user, pass: decryptSecret(stored.password, encryptionKey) };
+        } catch {
+          return reply.send({ ok: false, error: 'The stored password could not be decrypted — re-enter it and save.' });
+        }
+      }
+      return reply.send(await verifySmtpConnection(config));
     },
   );
 

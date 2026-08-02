@@ -5,11 +5,13 @@ import type { SmtpInput } from '../src/api';
 const getProjectSmtp = vi.fn();
 const putProjectSmtp = vi.fn();
 const deleteProjectSmtp = vi.fn();
+const testProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getProjectSmtp: () => getProjectSmtp(),
     putProjectSmtp: (_p: string, body: SmtpInput) => putProjectSmtp(body),
     deleteProjectSmtp: () => deleteProjectSmtp(),
+    testProjectSmtp: () => testProjectSmtp(),
   },
 }));
 
@@ -21,6 +23,7 @@ beforeEach(() => {
   getProjectSmtp.mockReset();
   putProjectSmtp.mockReset();
   deleteProjectSmtp.mockReset();
+  testProjectSmtp.mockReset();
   putProjectSmtp.mockResolvedValue({ smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } });
   deleteProjectSmtp.mockResolvedValue(undefined);
 });
@@ -72,5 +75,33 @@ describe('ProjectSmtp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
     await waitFor(() => expect(deleteProjectSmtp).toHaveBeenCalled());
     expect(putProjectSmtp).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectSmtp connection test', () => {
+  // Form delivery is best-effort — the visitor is thanked whether or not the mail leaves — so an
+  // operator's only signal that SMTP is broken is this button. It has to report the REASON, not
+  // just a red cross, because the most likely failure now is a server that offers no STARTTLS.
+  it('reports a failure reason from the server verbatim', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } });
+    testProjectSmtp.mockResolvedValue({ ok: false, error: 'The server at smtp.acme.com:587 does not offer STARTTLS' });
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/does not offer STARTTLS/)).toBeInTheDocument();
+  });
+
+  it('confirms a healthy connection', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } });
+    testProjectSmtp.mockResolvedValue({ ok: true });
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/Connected/)).toBeInTheDocument();
+  });
+
+  it('offers no test button until SMTP is switched on — there would be nothing to test', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: null });
+    render(<ProjectSmtp project={project} />);
+    await screen.findByLabelText('Configure project SMTP');
+    expect(screen.queryByRole('button', { name: 'Test connection' })).toBeNull();
   });
 });

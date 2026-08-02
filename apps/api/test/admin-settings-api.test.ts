@@ -414,3 +414,39 @@ describe('admin settings API', () => {
     });
   });
 });
+
+describe('instance SMTP connection test', () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeEach(async () => {
+    db = await makeTestDb();
+    app = await createApp({ db, encryptionKey: Buffer.from(ENC_KEY, 'base64') });
+    await app.ready();
+    adminToken = (await registerAdmin(app)).t;
+  });
+
+  it('404s until an SMTP is configured, then reports a usable/unusable verdict', async () => {
+    // Form delivery is best-effort, so a broken instance SMTP is otherwise invisible to the admin:
+    // the visitor is thanked either way and only a server log records the failure.
+    const none = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: adminToken } });
+    expect(none.statusCode).toBe(404);
+
+    // Port 1 with nothing on it: what matters is the SHAPE of the answer — a readable reason, not a
+    // 500 and not a silent success.
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } },
+    });
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: adminToken } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeTruthy();
+  }, 30_000);
+
+  it('is admin-only', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test' });
+    expect(res.statusCode).toBe(401);
+  });
+});

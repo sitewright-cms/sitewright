@@ -210,7 +210,7 @@ import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
-import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
+import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnection, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
@@ -2239,6 +2239,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // immediately (don't rely on a follow-up 401). Match the set-time attributes (incl. the __Host- name).
     reply.clearCookie(sessionCookie, { path: '/', secure: opts.secureCookies ?? false, sameSite: 'strict' });
     return reply.send({ ok: true });
+  });
+
+  // Tests the INSTANCE SMTP by opening a real session and authenticating, sending nothing. Form
+  // delivery is best-effort by design — the visitor is thanked whether or not the mail leaves — so
+  // this is the only place an admin can find out their SMTP is broken before leads go missing.
+  app.post('/admin/settings/smtp/test', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const stored = await instanceSettingsRepo.getStored();
+    if (!stored.smtp) return reply.code(404).send({ error: 'no instance SMTP is configured' });
+    assertDeployHostAllowed(stored.smtp.host); // the stored host could predate an allowlist
+    const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
+    let password: string | null = null;
+    try {
+      password = await instanceSettingsRepo.getSmtpPassword();
+    } catch {
+      return reply.send({ ok: false, error: 'The stored password could not be decrypted — re-enter it and save.' });
+    }
+    if (stored.smtp.user && password) config.auth = { user: stored.smtp.user, pass: password };
+    return reply.send(await verifySmtpConnection(config));
   });
 
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {

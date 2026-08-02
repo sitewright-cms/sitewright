@@ -1307,6 +1307,8 @@ export const api = {
     request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Open a real session to the saved instance SMTP and authenticate, sending nothing. */
+  testInstanceSmtp: () => request<{ ok: boolean; error?: string }>('POST', '/admin/settings/smtp/test'),
   /** Verify the platform AI provider (connectivity + model). A blank apiKey tests the stored one. */
   testInstanceAi: (body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
     request<AiTestResult>('POST', '/admin/settings/ai/test', body),
@@ -1363,6 +1365,9 @@ export const api = {
     request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
   deleteProjectSmtp: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/smtp`),
+  /** Opens a real session to the saved SMTP and authenticates, sending nothing. */
+  testProjectSmtp: (projectId: string) =>
+    request<{ ok: boolean; error?: string }>('POST', `/projects/${projectId}/smtp/test`),
 
   // --- per-project AI assistant config ("bring your own agent") ---
   getAiConfig: (projectId: string) =>

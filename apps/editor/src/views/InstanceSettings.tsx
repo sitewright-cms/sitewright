@@ -151,6 +151,8 @@ export function InstanceSettings() {
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
   const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
+  const [smtpTest, setSmtpTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [smtpTesting, setSmtpTesting] = useState(false);
   const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
@@ -197,6 +199,19 @@ export function InstanceSettings() {
       setPurgeMsg(e instanceof Error ? e.message : 'purge failed');
     } finally {
       setPurging(false);
+    }
+  }
+
+  async function testSmtp() {
+    setSmtpTesting(true);
+    setSmtpTest(null);
+    try {
+      setSmtpTest(await api.testInstanceSmtp());
+    } catch (e) {
+      // A 404 here means "save first" — the route tests what is STORED, not what is on screen.
+      setSmtpTest({ ok: false, error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setSmtpTesting(false);
     }
   }
 
@@ -749,6 +764,26 @@ export function InstanceSettings() {
               <input type="checkbox" className={toggleInput} aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
               Use implicit TLS (port 465); otherwise STARTTLS
             </label>
+            {/* Form delivery is best-effort — the visitor is thanked whether or not the mail leaves
+                — so a broken SMTP is otherwise invisible until someone notices leads stopped. This
+                tests the SAVED settings (it authenticates but sends nothing). */}
+            <div className="col-span-2 flex items-center gap-3">
+              <button
+                type="button"
+                className={`${ghostButton} px-2 py-1 text-xs`}
+                onClick={() => void testSmtp()}
+                disabled={smtpTesting}
+              >
+                {smtpTesting ? 'Testing…' : 'Test connection'}
+              </button>
+              {smtpTest &&
+                (smtpTest.ok ? (
+                  <span className="text-sm text-green-600 dark:text-green-400">✓ Connected</span>
+                ) : (
+                  <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
+                ))}
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Tests the saved settings; sends no mail.</span>
+            </div>
           </div>
         )}
       </fieldset>

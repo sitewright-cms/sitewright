@@ -281,6 +281,7 @@ import {
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
+import { normalizeEntryValues } from '../repo/entry-values.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
 import { RevisionsRepository } from '../repo/revisions.js';
@@ -3030,7 +3031,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'page' && !wantMerge) {
         body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
       }
-      // Entries get a default `order` so write order == render order (see assignEntryOrder).
+      // Entries: fold FLAT field values into `values` before anything else looks at the body. Sending
+      // them flat is the most common mistake against this API and it fails silently — unknown keys are
+      // stripped, the row saves as values:{}, the write reports success, and the loop renders nothing.
+      // Then give it a default `order` so write order == render order (see assignEntryOrder).
+      if (kind === 'entry') body = normalizeEntryValues(body);
       if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
       // A receipt reports what actually CHANGED, so the prior value must be read before the write.
       if (wantReceipt) await loadPrior();
@@ -3497,7 +3502,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { bodyLimit: PREVIEW_BODY_LIMIT, config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
-      const page = PageSchema.parse(req.body);
+      // RENDER THE STORED PAGE when the caller sends only an id. The route used to render exactly the
+      // object it was handed, so `{ id, path, title }` produced an EMPTY page — an agent asking "show me
+      // this page" got a screenshot of just the header and footer and had to fall back to the far heavier
+      // visual_audit. The tool description already implied a fallback ("possibly unsaved"); now there is
+      // one. A body carrying `source` still renders verbatim, so previewing an UNSAVED draft is unchanged.
+      const rawBody = (req.body ?? {}) as Record<string, unknown>;
+      const bodyIsStub =
+        typeof rawBody.id === 'string' && rawBody.source === undefined && rawBody.root === undefined;
+      // The lookup is a FALLBACK, not a precondition: a stub naming a page that doesn't exist must still
+      // fail validation as a malformed page (400), not escape as a 404 from the repo. Only a stub that
+      // resolves to a real stored page gets merged.
+      let stored: object | null = null;
+      if (bodyIsStub) {
+        stored = ((await contentRepo.get(ctx, 'page', rawBody.id as string).catch(() => null)) as object) ?? null;
+      }
+      const page = PageSchema.parse(stored ? { ...stored, ...rawBody } : req.body);
 
       // Brand tokens come from the saved Corporate Identity singleton; fall back to
       // the project name with default tokens when settings aren't configured yet.
@@ -4424,14 +4444,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         : {}),
     });
 
-    app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(
+    app.get<{ Params: { projectId: string }; Querystring: { kind?: string; placeholders?: string } }>(
       '/projects/:projectId/media',
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
         const items = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
-        // Optional `?kind=image|file|font` filter (e.g. the font picker only needs fonts).
+        // Optional `?kind=image|file|font|video` filter (e.g. the font picker only needs fonts).
         const kind = req.query.kind;
-        return reply.send({ items: kind ? items.filter((a) => a.kind === kind) : items });
+        const filtered = kind ? items.filter((a) => a.kind === kind) : items;
+        // DROP the inline LQIP data URIs by default. They are only useful to a UI that paints a blur-up
+        // thumbnail; to any other caller they are pure noise, and they are not small — measured on a
+        // real project, 28,176 of a 76,287-char response (36%) was base64 placeholder. `?placeholders=1`
+        // brings them back for the editor's media picker.
+        const wantPlaceholders = req.query.placeholders === '1' || req.query.placeholders === 'true';
+        const out = wantPlaceholders
+          ? filtered
+          : filtered.map((a) => (a.kind === 'image' && a.placeholder ? { ...a, placeholder: undefined } : a));
+        return reply.send({ items: out });
       },
     );
 
@@ -4536,7 +4565,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // List the persisted folder records (the editor unions these with asset-derived folders).
     app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
-      return reply.send({ items: await contentRepo.list(ctx, 'mediafolder') });
+      // A folder RECORD exists only for a folder someone explicitly CREATED. Assets filed straight into
+      // a path (every importer-created folder, for one) have no record, so this returned almost nothing
+      // while the library was fully organised — measured on a real project: 1 record against 10 folders
+      // actually in use. That makes "look at the folders before you organise", which this endpoint's own
+      // description tells you to do, return a misleading answer. Union the records with the paths that
+      // are genuinely in use, plus their ancestors, so the answer is the real folder tree.
+      const [records, media] = await Promise.all([
+        contentRepo.list(ctx, 'mediafolder') as Promise<MediaFolderRecord[]>,
+        contentRepo.list(ctx, 'media') as Promise<MediaAsset[]>,
+      ]);
+      const paths = new Map<string, MediaFolderRecord>();
+      for (const r of records) paths.set(r.path, r);
+      for (const asset of media) {
+        const folder = String((asset as { folder?: string }).folder ?? '').replace(/^\/+|\/+$/g, '');
+        if (!folder) continue;
+        // "a/b/c" implies "a" and "a/b" exist too — a picker needs the ancestors to render the tree.
+        const segs = folder.split('/');
+        for (let i = 1; i <= segs.length; i++) {
+          const p = segs.slice(0, i).join('/');
+          if (!paths.has(p)) paths.set(p, { id: `used:${p}`, path: p });
+        }
+      }
+      const items = [...paths.values()].sort((a, b) => a.path.localeCompare(b.path));
+      return reply.send({ items });
     });
 
     // Create an (empty) folder + any missing ancestors.
@@ -5933,6 +5985,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           signal: abort.signal,
           navExpected,
           hasModalTrigger: (source.meta.modalTriggers ?? 0) > 0,
+          // Probe the ORIGINAL for clipping too, so the clip check reports only what the SOURCE does not
+          // already do. Without this the check cannot tell a broken layout from a deliberate bleed, which
+          // is why it had to be demoted to advisory; with it, it gates again.
+          sourceUrl: target.sourceUrl,
         });
         // STRUCTURE leg: pure over repo data.
         const [datasets, media] = await Promise.all([contentRepo.list(ctx, 'dataset'), contentRepo.list(ctx, 'media')]);
@@ -6229,7 +6285,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...(viewport ? { viewport } : {}),
           signal: abort.signal,
         });
-        return reply.send({ side, url: side === 'build' ? target.buildUrl : target.sourceUrl, sourceUrl: target.sourceUrl, route: target.route, ...measured });
+        // `data-sw-*` markers are STRIPPED at publish (see resolveDirectives in build.ts), so selecting
+        // on them against the BUILD matches nothing — and a bare `count: 0` reads as "my content is
+        // missing". One agent logged a MAJOR defect and rewrote correct markup because of exactly this.
+        // Say what actually happened instead of letting a false negative stand.
+        const strippedSelectors = selectors.filter((s) => /\[\s*data-sw-/.test(s));
+        const zeroMatch = new Set(
+          ((measured as { results?: Array<{ selector: string; count: number }> }).results ?? [])
+            .filter((r) => r.count === 0)
+            .map((r) => r.selector),
+        );
+        const misleading = strippedSelectors.filter((s) => zeroMatch.has(s));
+        const notes =
+          misleading.length && side === 'build'
+            ? [
+                `${misleading.length} selector(s) matched nothing because data-sw-* attributes are REMOVED ` +
+                  `from published output — they exist only in the authored source. This is not a missing ` +
+                  `element: select it structurally instead (e.g. by tag/class/id). Affected: ${misleading.join(', ')}`,
+              ]
+            : undefined;
+        return reply.send({
+          side,
+          url: side === 'build' ? target.buildUrl : target.sourceUrl,
+          sourceUrl: target.sourceUrl,
+          route: target.route,
+          ...measured,
+          ...(notes ? { notes } : {}),
+        });
       },
     );
 

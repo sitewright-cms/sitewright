@@ -13,6 +13,8 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS,
   COMPONENT_CATALOG,
   AGENT_GUIDES,
+  sectionGuide,
+  resolveSection,
   buildCapabilitiesIndex,
   GUIDE_TOPICS,
   SW_HELPERS,
@@ -458,10 +460,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   server.registerTool(
     'get_guide',
     {
-      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). Call with NO topic to get the index. topic = one of: ${GUIDE_TOPICS.join(', ')}.`,
-      inputSchema: { topic: z.string().max(40).optional() },
+      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). Call with NO topic to get the index. topic = one of: ${GUIDE_TOPICS.join(', ')}. A LONG guide is split into sections: calling it plain returns the overview plus a section index, and you then re-call with section = one of those keys (or section "all" for the whole thing).`,
+      inputSchema: { topic: z.string().max(40).optional(), section: z.string().max(40).optional() },
     },
-    ({ topic }: { topic?: string }) => {
+    ({ topic, section }: { topic?: string; section?: string }) => {
       // No topic (or a blank one) → hand back the index instead of erroring, so a model that forgot the
       // argument recovers in one step rather than looping on a validation error.
       if (!topic || !topic.trim()) {
@@ -480,7 +482,39 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return toolError(`Unknown guide "${topic}" — topics: ${GUIDE_TOPICS.join(', ')}.`);
       }
       const guide = AGENT_GUIDES[key as GuideTopic];
-      return ok(`# ${guide.title}\n\n${guide.body.trim()}`);
+      const head = `# ${guide.title}`;
+
+      // A short guide is served whole — a second round-trip costs more than the bytes it saves.
+      const sections = sectionGuide(key, guide.body);
+      if (sections.length === 0) return ok(`${head}\n\n${guide.body.trim()}`);
+
+      const want = resolveSection(sections, section);
+      if (want.unknown) {
+        return toolError(
+          `Unknown section "${want.unknown}" of guide "${key}" — sections: ${sections
+            .map((s) => s.key)
+            .join(', ')}, or "all" for the whole guide.`,
+        );
+      }
+      if (want.all) return ok(`${head}\n\n${guide.body.trim()}`);
+      if (want.match) {
+        return ok(`${head} — section "${want.match.key}"\n\n${want.match.blocks.join('\n\n')}`);
+      }
+
+      // No section asked for: the overview, plus what else is available and how big it is. The index
+      // is part of the RESPONSE rather than the tool description because it is derived from the body.
+      const overview = sections[0];
+      const index = sections
+        .slice(1)
+        .map((s) => `  - ${s.key} (~${Math.round(s.chars / 100) / 10}k chars) — ${s.summary}`)
+        .join('\n');
+      return ok(
+        `${head}\n\n${overview?.blocks.join('\n\n') ?? ''}\n\n` +
+          `── THIS GUIDE CONTINUES. The above is the overview; the detail is in these sections, ` +
+          `fetched one at a time with get_guide({ topic: "${key}", section: "…" }):\n${index}\n` +
+          `  - all (~${Math.round(guide.body.length / 100) / 10}k chars) — every section at once.\n` +
+          `Read the section for the step you are on. Porting a page start-to-finish uses all of them.`,
+      );
     },
   );
 
@@ -566,7 +600,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source (heavy — it includes the whole compiled stylesheet). Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source.`,
       inputSchema: {
         page: PageSchema,
         includeHtml: z.boolean().optional(),

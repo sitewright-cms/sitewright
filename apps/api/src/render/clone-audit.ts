@@ -16,6 +16,8 @@
 // truly LOAD, mobile menu reachable. Those never move a computed-style number and never show in a thumbnail.
 // The pure scorers live here (unit-tested); the browser-driving capture lives in compare.ts.
 
+import { diffClips, describeClips, type ClipFinding } from './clip-diff.js';
+
 /** One audit check. `leg` groups them; `id` is a stable key; `detail` is the human/agent-readable evidence. */
 export interface AuditCheck {
   leg: 'structure' | 'behaviour' | 'visual';
@@ -56,7 +58,14 @@ export interface BehaviourFacts {
    * authored source too. Both an agent and a reviewer have shipped this while holding a measurement
    * that looked right, which is exactly why it belongs in the deterministic gate rather than in advice.
    */
-  clipped?: readonly { el: string; clippedBy: string; box: string; visible: string; lost: string }[];
+  clipped?: readonly ClipFinding[];
+  /**
+   * The SAME probe run against the imported page's original URL. `undefined`/`null` means no comparison
+   * was possible (no import provenance, or the source render failed) — which is NOT the same as "the
+   * original clips nothing", and the check stays advisory in that case rather than gating on a finding
+   * it cannot justify.
+   */
+  originalClipped?: readonly ClipFinding[] | null;
 }
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
@@ -129,6 +138,8 @@ export function structuralChecks(input: {
 
 /** BEHAVIOUR leg — pure over the extracted facts. modals only required when the original HAS modal triggers. */
 export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
+  // Only clips the ORIGINAL does not also make are candidate defects; see clip-diff.ts.
+  const clip = diffClips(b.clipped, b.originalClipped);
   return [
     { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, na: b.carousels === 0, detail: b.carousels === 0 ? 'no carousels on the page — n/a' : `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
     { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, na: !b.hasModalTrigger, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
@@ -137,28 +148,32 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
     {
       leg: 'behaviour',
       id: 'not-clipped',
-      label: 'no element is visually cut off by an ancestor overflow',
-      pass: (b.clipped?.length ?? 0) === 0,
-      // ADVISORY, deliberately — the measurement is sound but the INTENT is not knowable from the clone
-      // alone, and gating on it demonstrably damaged real clones. Two independent agents reported the
-      // same thing: to turn this check green they replaced every `<img>` in a carousel with a
-      // background-image div (measured: 41 alt texts down to 6 on one page, 18 down to 4 on another),
-      // swapped an accordion's `max-width:0` slide-open — which is what the ORIGINAL does — for a
-      // `display:none` toggle, and shrank icons that the original deliberately bleeds past a tile edge.
-      // Four fidelity regressions, no real defect among them.
+      label: clip.compared
+        ? 'no element is cut off that the ORIGINAL does not also cut off'
+        : 'no element is visually cut off by an ancestor overflow (ADVISORY — no original to compare against)',
+      pass: clip.novel.length === 0,
+      // GATING ONLY WHEN THE ORIGINAL WAS PROBED. The measurement was always sound; what it lacked was
+      // intent. Gating on the clone alone demonstrably damaged real clones — to turn it green, agents
+      // replaced every `<img>` in a carousel with a background-image div (measured: 41 alt texts down to
+      // 6 on one page, 18 down to 4 on another), swapped an accordion's `max-width:0` slide-open — which
+      // is what the ORIGINAL does — for a `display:none` toggle, and shrank icons the original
+      // deliberately bleeds past a tile edge. Four fidelity regressions, no real defect among them.
       //
-      // The probe now exempts the two provably-deliberate cases (a slider viewport, a >95% clip). What
-      // is LEFT is genuinely ambiguous: a partly-clipped element may be a broken layout or an intended
-      // bleed. The agent can settle that — it has the original in front of it — so report the number and
-      // let it judge. Gating instead forces a guess, and the guess has been wrong every time.
-      // The real fix is to compare against the ORIGINAL's own clipping; clone_audit has no source URL
-      // today, so that is a feature rather than a bug fix.
-      advisory: true,
+      // With the original probed, "is this intended?" stops being a guess: a clip the SOURCE also makes
+      // is the design being ported, and is subtracted. What survives is a cut the original does not
+      // make, which is a genuine defect and is worth failing on. Without a source (no import provenance,
+      // or the source render failed) there is still no basis to judge, so the check stays advisory —
+      // reported for the agent to weigh, never forcing the guess that caused the damage.
+      advisory: !clip.compared,
       detail:
-        (b.clipped?.length ?? 0) === 0
-          ? 'nothing clipped'
-          : b.clipped!.map((c2) => `${c2.el} cut ${c2.lost} by ${c2.clippedBy} (${c2.box} -> ${c2.visible})`).join('; ') +
-            ' — ADVISORY: check whether the ORIGINAL clips it too before "fixing" it; a deliberate bleed is not a defect',
+        clip.novel.length === 0
+          ? clip.compared
+            ? `nothing clipped that the original doesn't also clip${clip.matchedOriginal > 0 ? ` (${clip.matchedOriginal} matched the original and were ignored)` : ''}`
+            : 'nothing clipped'
+          : describeClips(clip.novel) +
+            (clip.compared
+              ? ` — the ORIGINAL does not clip these${clip.matchedOriginal > 0 ? ` (${clip.matchedOriginal} other clips DO match the original and were ignored)` : ''}`
+              : ' — ADVISORY: check whether the ORIGINAL clips it too before "fixing" it; a deliberate bleed is not a defect'),
     },
   ];
 }

@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer, normalizePutData } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 import type { BridgeAuth } from '../src/auth.js';
-import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS } from '@sitewright/schema';
+import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS, AGENT_GUIDES } from '@sitewright/schema';
 
 const page = { id: 'home', path: '', title: 'Home' };
 
@@ -289,6 +289,40 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     const parsed = JSON.parse(text(index)) as { topics: string[]; guides: Array<{ topic: string; title: string }> };
     expect(parsed.topics).toEqual([...GUIDE_TOPICS]);
     expect(parsed.guides.length).toBe(GUIDE_TOPICS.length);
+  });
+
+  it('a LONG guide answers with an overview + section index, not 54k characters', async () => {
+    const mcp = await connect(fakeClient(), null);
+
+    // Plain call: the overview and a menu, small enough not to overflow the tool-output cap. Before
+    // this, every clone agent paid 54k characters here and at least once spilled it to a file.
+    const plain = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import' } }));
+    expect(plain.length).toBeLessThan(4_000);
+    expect(plain).toContain('THIS GUIDE CONTINUES');
+    expect(plain).toContain('get_guide({ topic: "import", section:');
+    for (const key of ['pages', 'chrome', 'fidelity', 'verify', 'cleanup', 'all']) {
+      expect(plain).toContain(`- ${key} (~`); // every section is reachable from the index
+    }
+
+    // A section returns its own prose and NOT the rest of the guide.
+    const chrome = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'chrome' } }));
+    expect(chrome).toContain('website.criticalCss');
+    expect(chrome).not.toContain('COMMON FIDELITY MISSES');
+    expect(chrome.length).toBeLessThan(AGENT_GUIDES.import.body.length / 2);
+
+    // "all" is the escape hatch back to the old behaviour.
+    const all = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'all' } }));
+    expect(all).toContain('COMMON FIDELITY MISSES');
+    expect(all).toContain('PORT CHECKLIST');
+
+    // A near-miss is an error listing the real keys, never a silent fallback to the wrong prose.
+    const bad = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'chrom' } });
+    expect(bad.isError).toBe(true);
+    expect(text(bad)).toContain('sections:');
+
+    // A short guide ignores sectioning entirely and still comes back whole.
+    const shop = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'shop' } }));
+    expect(shop).toContain(AGENT_GUIDES.shop.body.trim());
   });
 
   it('get_reference returns the authoring vocabulary (no auth); a section filters it', async () => {

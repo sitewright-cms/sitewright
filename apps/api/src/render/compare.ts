@@ -195,7 +195,15 @@ export async function captureUrlElements(
  */
 export async function captureBehaviour(
   url: string,
-  opts: { mode: CaptureMode; signal?: AbortSignal; navExpected: number; hasModalTrigger: boolean },
+  opts: {
+    mode: CaptureMode;
+    signal?: AbortSignal;
+    navExpected: number;
+    hasModalTrigger: boolean;
+    /** The imported page's source URL, when known. Enables the ORIGINAL-side clip probe, which is what
+     *  turns the clipping check from "something is clipped" into "something the original does NOT clip". */
+    sourceUrl?: string;
+  },
 ): Promise<BehaviourFacts> {
   const browser = await getBrowser();
   // FAIL-BY-DEFAULT: a render failure must not green-light the fonts check — fonts default UNLOADED so an
@@ -234,7 +242,28 @@ export async function captureBehaviour(
     } finally {
       await mp.context.close().catch(() => {});
     }
-    return { ...desktop, ...nav, navReachableMobile, clipped };
+    // ORIGINAL-side clip probe. A clip only means something relative to the design being ported: if the
+    // source cuts an image off at a card edge, the clone doing the same is fidelity. Runs at the same
+    // viewport with the same settle so the two sets are comparable. `null` (no source, or a failed
+    // render) is NOT the same as "the original clips nothing" — it means no comparison was possible,
+    // and the caller keeps the check advisory rather than gating on an unfounded finding.
+    let originalClipped: BehaviourFacts['clipped'] | null = null;
+    if (opts.sourceUrl) {
+      // 'pinned' — the SSRF-guarded mode every foreign fetch on this route uses; the clone's own render
+      // above is 'loopback'. The source is untrusted input, so it must not share the clone's mode.
+      const sp = await prepPage(browser, opts.sourceUrl, 'pinned', SCREENSHOT_VIEWPORTS.fullhd, opts.signal).catch(() => null);
+      if (sp) {
+        try {
+          await settlePage(sp.page, { freeze: false });
+          originalClipped = ((await sp.page.evaluate(CLIP_PROBE as () => unknown)) as BehaviourFacts['clipped']) ?? [];
+        } catch {
+          originalClipped = null;
+        } finally {
+          await sp.context.close().catch(() => {});
+        }
+      }
+    }
+    return { ...desktop, ...nav, navReachableMobile, clipped, originalClipped };
   }).catch(() => ({ ...desktopFallback, ...nav, navReachableMobile: 0 }));
 }
 

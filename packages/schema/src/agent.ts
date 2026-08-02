@@ -298,7 +298,9 @@ Quick rules vs the similar-looking DaisyUI classes:
   slider-logowall / slider-dataset; get_components("Carousel") carries short examples of each.
 - Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
   DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
-  content tabs. Recipes to copy: tabs-mixed (rich + plain labels) / tabs-dataset (one tab per entry).
+  content tabs. Recipes to copy: tabs-mixed (rich + plain labels) / tabs-dataset (one tab per entry) /
+  tabs-vertical (side tablist — the runtime makes panels SIBLINGS of the tablist, so a flex-row root
+  puts the tablist AND every panel in one row; the recipe's grid is what actually makes it vertical).
 - Image viewer/gallery → data-sw-component="lightbox": a full-screen gallery with a bottom
   thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption,
   swipe, pinch-zoom, and keyboard nav (viewer DOM is runtime-built — no overlay element). THREE
@@ -365,6 +367,15 @@ own fields) / datetimepicker-field.
     title: "Images & lazy-loading",
     summary: "add images (stock search/import), lazy-load, blur-up, skeletons",
     body: `
+★ LAZY-LOADING AND THE SCREENSHOT GATE DO NOT CONFLICT — every capture SCROLLS the page first.
+visual_audit / compare_to_source / preview_page settle the page by scrolling it end to end before
+shooting, so deferred images DO load and DO appear. If a lazy image looks missing in a capture, the
+cause is a real defect (a bad url, a zero-height box), NOT the deferral — do not "fix" it by making
+the image eager. One clone lost an audit round to that misdiagnosis, having read the lazy-load rule
+below and the screenshot gate as contradicting each other. They don't.
+(The same trap catches your OWN tooling: a hand-rolled screenshot that does not scroll first will
+measure a lazy page SHORT and invent drift that isn't there.)
+
 LAZY-LOAD (images, backgrounds, iframes): the platform ships its own tiny runtime when it sees
 data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is no longer needed)
 — never add a lazy-load library. Put the URL in data-* via {{sw-url …}} or as a literal path.
@@ -1150,7 +1161,12 @@ site-wide) — class your slot markup (e.g. class="ph-tab") and write the rules 
 criticalCss is emitted AFTER the platform's component/effect sheets, so your rule WINS a specificity tie
 with them — you do NOT need \`!important\` to restyle a \`data-sw-part\` (a Tailwind utility class still
 wins over criticalCss, which is the normal mental model). If a rule still doesn't apply, it is a real
-specificity difference, not the cascade order — raise the selector rather than reaching for !important. For a
+specificity difference, not the cascade order — raise the selector rather than reaching for !important.
+★ THE TRAP RUNS THE OTHER WAY TOO: a class+element selector like \`.mc p\` is (0,1,1) and BEATS every
+utility at (0,1,0) — one clone's base rule silently killed \`mb-*\` on every paragraph site-wide and
+nothing flagged it. Keep chrome CSS on a SINGLE class (\`.mc-lead\`, not \`.mc p\`) so it can never
+out-rank the utilities you also use. The same arithmetic bites \`:is(a,b).x\`, which takes the
+specificity of its most specific argument. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
 on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do
@@ -1578,7 +1594,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "SPECIALISED (step 2 = visual_audit covers the normal case). Screenshot an imported page's BUILD and its ORIGINAL side-by-side. Reach for it only when you want ONE quick paired look without the full rubric; visual_audit gives you the same pair PLUS the judging rubric, so prefer that.", capability: 'content:read' },
   { name: 'fidelity_check', description: "SPECIALISED + ADVISORY (NOT a done-gate; the gate is clone_audit, the visual verdict is visual_audit). Computed-style probe: measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
-  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STEP 1 of acceptance, before visual_audit. STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable, and NOTHING is visually CUT OFF by an ancestor overflow — a clipped logo/heading measures full-size in a rect, so this is the one way to catch it). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
+  { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STEP 1 of acceptance, before visual_audit. STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable, and nothing is visually CUT OFF that the ORIGINAL does not also cut off — a clipped logo/heading measures full-size in a rect, so this is the one way to catch it; the original is probed too, so a deliberate bleed the source itself makes is subtracted rather than reported, and you should NEVER strip alt text or swap an <img> for a background div to satisfy it). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
   { name: 'visual_audit', description: "STEP 2 and THE visual acceptance TERMINATOR for a cloned page (run clone_audit first): renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "SPECIALISED zoom for CHROME only — use after visual_audit has flagged a header/footer difference you cannot resolve at 1x. Crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },

@@ -109,6 +109,11 @@ export function CLIP_PROBE() {
         box: Math.round(r.width) + 'x' + Math.round(r.height),
         visible: Math.round(visW) + 'x' + Math.round(visH),
         lost: Math.round(Math.max(lostH, lostW) * 100) + '%',
+        // Emitted so the ORIGINAL's clipping can be subtracted from the clone's. A native port has
+        // different markup, so selectors cannot be paired across the two renders — but "an IMG cut
+        // horizontally" is a design decision that survives the rewrite, and that is what pairs.
+        tag: el.tagName.toLowerCase(),
+        axis: lostW > lostH ? 'x' : 'y',
       });
     }
     if (out.length >= 12) break;

@@ -1,5 +1,6 @@
 export * from './primitives.js';
 export * from './agent.js';
+export * from './guide-sections.js';
 export * from './ai-config.js';
 export * from './component-catalog.js';
 export * from './authoring-reference.js';

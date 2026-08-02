@@ -1202,3 +1202,54 @@ describe('project transfer api', () => {
     expect(init.method).toBe('GET');
   });
 });
+
+describe('SMTP connection test helpers', () => {
+  // These POST with no body: the endpoints deliberately test what is STORED, not what is on screen,
+  // so there is nothing to send and nothing that could leak a password into a request log.
+  it('POSTs the instance SMTP test to the admin endpoint', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    expect(await api.testInstanceSmtp()).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/settings/smtp/test');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('POSTs the project SMTP test under the project, and passes a failure reason through', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: false, error: 'does not offer STARTTLS' }));
+    expect(await api.testProjectSmtp('p1')).toEqual({ ok: false, error: 'does not offer STARTTLS' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/smtp/test');
+  });
+});
+
+describe('SMTP send-test helpers', () => {
+  it('omits the body entirely when no recipient is named, so the server picks your own address', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, to: 'admin@acme.test' }));
+    expect(await api.sendInstanceSmtpTest()).toEqual({ ok: true, to: 'admin@acme.test' });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/admin/settings/smtp/send-test');
+    expect(JSON.parse(init.body)).toEqual({});
+  });
+
+  it('sends a named recipient through for the instance scope', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, to: 'x@y.co' }));
+    await api.sendInstanceSmtpTest('x@y.co');
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ to: 'x@y.co' });
+  });
+
+  it('posts the project send-test under the project, with and without a recipient', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, to: 'me@acme.test' }));
+    await api.sendProjectSmtpTest('p1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/smtp/send-test');
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({});
+
+    await api.sendProjectSmtpTest('p1', 'x@y.co');
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ to: 'x@y.co' });
+  });
+
+  it('surfaces a send failure as an ApiError rather than a silent no-op', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'only agency staff can send the test message to another address' }));
+    await expect(api.sendProjectSmtpTest('p1', 'someone@else.example')).rejects.toMatchObject({ status: 403 });
+  });
+});
+

@@ -151,6 +151,12 @@ export function InstanceSettings() {
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
   const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
+  const [smtpTest, setSmtpTest] = useState<{ ok: boolean; error?: string; to?: string } | null>(null);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  // Staff may aim the test message anywhere; the server enforces that, and prefilling their own
+  // address keeps the common case one click.
+  const [smtpTestTo, setSmtpTestTo] = useState('');
+  const [smtpSending, setSmtpSending] = useState(false);
   const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
@@ -197,6 +203,31 @@ export function InstanceSettings() {
       setPurgeMsg(e instanceof Error ? e.message : 'purge failed');
     } finally {
       setPurging(false);
+    }
+  }
+
+  async function sendSmtpTest() {
+    setSmtpSending(true);
+    setSmtpTest(null);
+    try {
+      setSmtpTest(await api.sendInstanceSmtpTest(smtpTestTo.trim() || undefined));
+    } catch (e) {
+      setSmtpTest({ ok: false, error: e instanceof Error ? e.message : 'send failed' });
+    } finally {
+      setSmtpSending(false);
+    }
+  }
+
+  async function testSmtp() {
+    setSmtpTesting(true);
+    setSmtpTest(null);
+    try {
+      setSmtpTest(await api.testInstanceSmtp());
+    } catch (e) {
+      // A 404 here means "save first" — the route tests what is STORED, not what is on screen.
+      setSmtpTest({ ok: false, error: e instanceof Error ? e.message : 'test failed' });
+    } finally {
+      setSmtpTesting(false);
     }
   }
 
@@ -382,6 +413,7 @@ export function InstanceSettings() {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setSmtpTest(null); // what was tested is no longer what is stored
     // Validate the AI output-token cap inline (mirrors the per-project form) so an out-of-range
     // value shows a clear message instead of a generic server 400.
     if (aiEnabled && aiMaxTokens.trim() !== '') {
@@ -694,7 +726,9 @@ export function InstanceSettings() {
           Configure a global SMTP server
         </label>
         {smtpEnabled && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          /* Any edit invalidates the last test: the endpoint checks what is STORED, so a leftover
+             ✓ would assert something nobody has verified. */
+          <div className="mt-3 grid grid-cols-2 gap-3" onChange={() => setSmtpTest(null)}>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />
@@ -749,6 +783,47 @@ export function InstanceSettings() {
               <input type="checkbox" className={toggleInput} aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
               Use implicit TLS (port 465); otherwise STARTTLS
             </label>
+            {/* Form delivery is best-effort — the visitor is thanked whether or not the mail leaves
+                — so a broken SMTP is otherwise invisible until someone notices leads stopped. This
+                tests the SAVED settings (it authenticates but sends nothing). */}
+            <div className="col-span-2 flex items-center gap-3">
+              <button
+                type="button"
+                className={`${ghostButton} px-2 py-1 text-xs`}
+                onClick={() => void testSmtp()}
+                disabled={smtpTesting || smtpSending}
+              >
+                {smtpTesting ? 'Testing…' : 'Test connection'}
+              </button>
+              <button
+                type="button"
+                className={`${ghostButton} px-2 py-1 text-xs`}
+                onClick={() => void sendSmtpTest()}
+                disabled={smtpTesting || smtpSending}
+              >
+                {smtpSending ? 'Sending…' : 'Send test message'}
+              </button>
+              <input
+                className={`${field} max-w-xs`}
+                aria-label="Test message recipient"
+                type="email"
+                value={smtpTestTo}
+                placeholder="your address"
+                onChange={(e) => setSmtpTestTo(e.target.value)}
+              />
+              {smtpTest &&
+                (smtpTest.ok ? (
+                  <span className="text-sm text-green-600 dark:text-green-400">
+                    ✓ {smtpTest.to ? `Sent to ${smtpTest.to}` : 'Connected'}
+                  </span>
+                ) : (
+                  <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
+                ))}
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Both act on the SAVED settings, not what is on screen. “Test connection” sends nothing;
+                “Send test message” sends real mail — blank recipient means your own address.
+              </span>
+            </div>
           </div>
         )}
       </fieldset>

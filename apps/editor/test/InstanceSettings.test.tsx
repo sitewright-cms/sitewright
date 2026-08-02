@@ -6,10 +6,14 @@ import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
 // Mock the API module so the view's load/save go through spies.
 const getInstanceSettings = vi.fn();
 const putInstanceSettings = vi.fn();
+const testInstanceSmtp = vi.fn();
+const sendInstanceSmtpTest = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getInstanceSettings: () => getInstanceSettings(),
     putInstanceSettings: (body: InstanceSettingsInput) => putInstanceSettings(body),
+    testInstanceSmtp: () => testInstanceSmtp(),
+    sendInstanceSmtpTest: (to?: string) => sendInstanceSmtpTest(to),
   },
 }));
 
@@ -307,3 +311,62 @@ describe('InstanceSettings — branding', () => {
     expect(lastPayload().platformLogo).toBeNull();
   });
 });
+
+describe('instance SMTP connection test', () => {
+  // The admin's only signal that instance mail is broken: form delivery is best-effort, so a dead
+  // SMTP otherwise shows up as leads quietly not arriving.
+  it('surfaces the server\u2019s reason for a failed connection', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } },
+    });
+    testInstanceSmtp.mockResolvedValue({ ok: false, error: 'The server at smtp.acme.com:587 does not offer STARTTLS' });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/does not offer STARTTLS/)).toBeInTheDocument();
+  });
+
+  it('confirms a healthy connection', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } },
+    });
+    testInstanceSmtp.mockResolvedValue({ ok: true });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/Connected/)).toBeInTheDocument();
+  });
+});
+
+describe('instance SMTP send test message', () => {
+  const withSmtp = { settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } } };
+
+  it('sends to the admin’s own address when the field is left blank', async () => {
+    getInstanceSettings.mockResolvedValue(withSmtp);
+    sendInstanceSmtpTest.mockResolvedValue({ ok: true, to: 'admin@acme.test' });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send test message' }));
+    await waitFor(() => expect(sendInstanceSmtpTest).toHaveBeenCalledWith(undefined));
+    expect(await screen.findByText(/Sent to admin@acme.test/)).toBeInTheDocument();
+  });
+
+  it('sends to a typed address — admins are the ones diagnosing deliverability', async () => {
+    getInstanceSettings.mockResolvedValue(withSmtp);
+    sendInstanceSmtpTest.mockResolvedValue({ ok: true, to: 'someone@else.test' });
+    render(<InstanceSettings />);
+    fireEvent.change(await screen.findByLabelText('Test message recipient'), { target: { value: 'someone@else.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send test message' }));
+    await waitFor(() => expect(sendInstanceSmtpTest).toHaveBeenCalledWith('someone@else.test'));
+  });
+});
+
+describe('instance SMTP send-test failure', () => {
+  it('reports a thrown request rather than leaving the operator guessing', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } },
+    });
+    sendInstanceSmtpTest.mockRejectedValue(new Error('no instance SMTP is configured'));
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send test message' }));
+    expect(await screen.findByText(/no instance SMTP is configured/)).toBeInTheDocument();
+  });
+});
+

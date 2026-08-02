@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **★ The platform mailer was sending SMTP credentials in the clear.** `globalSmtp` and `userSmtp` build a
+  nodemailer transport, and nodemailer's STARTTLS is *opportunistic*: against a server that does not
+  advertise the capability it carries on unencrypted and authenticates anyway. So an on-path attacker who
+  strips STARTTLS from the EHLO reply — or simply a provider on a plaintext port — harvested the mailbox
+  password. Measured against a real socket before the fix: **zero encrypted lines**, `AUTH PLAIN` decoding
+  to `\0apikey\0…` on the wire, and the message delivered as if nothing were wrong.
+  It survived this long because every existing test injected a recording transport, so nodemailer was
+  never constructed and its TLS negotiation was exercised by nothing. Both mailers now follow the same two
+  rules the exported `contact.php` client already did — credentials never unencrypted anywhere, messages
+  never unencrypted to a remote host, loopback still allowed for the classic `localhost:25` relay — so a
+  customer's guarantee no longer depends on which of the two SMTP clients happens to deliver their mail.
+
 ## [0.10.0] — 2026-08-02
 
 ### Fixed
@@ -78,6 +92,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **A "Send test message" action for instance and per-project SMTP.** The connection test proves the
+  server accepts our login, which is not the same as proving mail arrives: a rejected sender address, a
+  refused recipient, or an SPF/DKIM misalignment all pass `verify()` and then silently swallow every lead.
+  Only a message that lands in a human's inbox catches those. **Agency staff** (instance admin or
+  developer) may address it anywhere, defaulting to their own account email — they are the ones
+  diagnosing deliverability, and often need to see how the mail lands somewhere else. **Everyone else gets
+  their own account address and nothing else**: a project member is an invited client, and "make this
+  server send a message to an address I choose" is not a capability a client should hold. That is enforced
+  server-side, not by hiding the field — a hidden field is a suggestion, this is a rule — and the send path
+  obeys the same encryption rules as a real submission, so it cannot become a way to push a message out in
+  the clear that a form would refuse to send.
+- **A "Test connection" button for instance and per-project SMTP.** Form delivery is best-effort by design:
+  the submission is stored and the visitor thanked whether or not the mail leaves, which is right for the
+  visitor and leaves the operator with no signal at all — the only trace of a broken SMTP was a line in the
+  server log. Requiring encryption (above) turns a genuinely insecure server from quietly-working into
+  failing, so there had to be somewhere that is visible at the moment someone configures it rather than
+  weeks later when a lead goes missing. It opens a real session and authenticates, sending nothing, and
+  reports causes an operator can act on ("does not offer STARTTLS … use 587 with STARTTLS, or 465 with
+  implicit TLS enabled") without ever echoing the password or the server's banner.
+
 - **`contact.php` can deliver over authenticated SMTP** — a fifth form delivery mode, `contactPhpSmtp`.
   It reuses the exported `contact.php` (same file, same dispatch by the hidden `_form` field) but sends
   through the project's own SMTP credentials instead of the host's `mail()`. The reason is deliverability:
@@ -135,6 +169,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   timid, since deleting a payload out from under a running deploy would break a site rather than protect
   one: only our own `sw-deploy-` prefix, only directly inside the temp dir, only entries older than six
   hours, and it never throws. Boot is the safe moment because this process has no deploy in flight yet.
+
+### Tests
+
+- **Every mail delivery path is now exercised end to end.** Four of the five delivery modes had no proof a
+  message ever left the process: the two platform modes only ever saw an injected recording transport, and
+  `contactPhp`'s host `mail()` had never once executed successfully anywhere — a test box has no MTA, so
+  the only assertion available was the 502. The platform mailers now run against the same scripted SMTP
+  server the exported `contact.php` is held to (one shared implementation, so the two cannot drift and the
+  weaker one cannot quietly become the guarantee), across implicit TLS, STARTTLS and plaintext, covering
+  auth mechanisms, certificate rejection, name resolution, and every misconfiguration that must fail fast
+  rather than hang: `secure` on a plaintext port and off a TLS one, a refused connection, a name that does
+  not resolve, a rejected password, a rejected recipient. `mail()` is executed for real by pointing PHP's
+  `sendmail_path` at a capturing script, which also pins that a CRLF in a submitted field cannot inject a
+  header. (`thirdParty` stays uncovered, correctly — the browser posts straight to a third party and the
+  platform is not in the delivery path.)
 
 ### Fixed
 

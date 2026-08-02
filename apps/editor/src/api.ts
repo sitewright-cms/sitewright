@@ -1307,6 +1307,12 @@ export const api = {
     request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Open a real session to the saved instance SMTP and authenticate, sending nothing. */
+  testInstanceSmtp: () => request<{ ok: boolean; error?: string }>('POST', '/admin/settings/smtp/test'),
+  /** Send a REAL test message through the instance SMTP. `to` is honoured for agency staff only;
+   *  anyone else is served their own account address regardless of what is sent. */
+  sendInstanceSmtpTest: (to?: string) =>
+    request<{ ok: boolean; error?: string; to?: string }>('POST', '/admin/settings/smtp/send-test', to ? { to } : {}),
   /** Verify the platform AI provider (connectivity + model). A blank apiKey tests the stored one. */
   testInstanceAi: (body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
     request<AiTestResult>('POST', '/admin/settings/ai/test', body),
@@ -1363,6 +1369,12 @@ export const api = {
     request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
   deleteProjectSmtp: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/smtp`),
+  /** Opens a real session to the saved SMTP and authenticates, sending nothing. */
+  testProjectSmtp: (projectId: string) =>
+    request<{ ok: boolean; error?: string }>('POST', `/projects/${projectId}/smtp/test`),
+  /** Send a REAL test message through the project SMTP. See sendInstanceSmtpTest for who may pick `to`. */
+  sendProjectSmtpTest: (projectId: string, to?: string) =>
+    request<{ ok: boolean; error?: string; to?: string }>('POST', `/projects/${projectId}/smtp/send-test`, to ? { to } : {}),
 
   // --- per-project AI assistant config ("bring your own agent") ---
   getAiConfig: (projectId: string) =>

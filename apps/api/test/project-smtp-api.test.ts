@@ -86,6 +86,96 @@ describe('per-project SMTP API', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('the connection test 404s until an SMTP is saved — it tests what is STORED', async () => {
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('the connection test reports a reachable-but-unusable server rather than throwing', async () => {
+    // Port 1 with nothing on it: the point is the SHAPE of the answer. A broken SMTP must come back
+    // as a readable reason an admin can act on, not a 500 and not a silent success.
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeTruthy();
+  }, 30_000);
+
+  it('a project member can run the connection test, like the rest of SMTP management', async () => {
+    const { userId: mUser } = await registerAccount(db, 'tester@x.test', 'Pw-secret-1');
+    const mt = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'tester@x.test', password: 'Pw-secret-1' } }));
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/test`, cookies: { sw_session: mt } });
+    expect(res.statusCode).toBe(200); // members manage SMTP, so they can test it too
+  }, 30_000);
+
+  it('★ a project member cannot aim the test message at someone else', async () => {
+    // An invited client is a project `member`. "Make this server send a message to an address I
+    // choose" is not a capability they should hold, and the field being hidden in the UI is a
+    // suggestion, not a rule — so the rule lives here.
+    const { userId: mUser } = await registerAccount(db, 'client@x.test', 'Pw-secret-1');
+    const mt = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'client@x.test', password: 'Pw-secret-1' } }));
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+
+    const elsewhere = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: mt }, payload: { to: 'someone@else.example' },
+    });
+    expect(elsewhere.statusCode).toBe(403);
+
+    // Their OWN address is allowed — the delivery then fails on the dead port, which is a mail
+    // result rather than an authorization one, so it comes back 200 with ok:false.
+    const own = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: mt }, payload: { to: 'client@x.test' },
+    });
+    expect(own.statusCode).toBe(200);
+    expect((own.json() as { to: string }).to).toBe('client@x.test');
+  }, 30_000);
+
+  it('defaults the recipient to the caller’s own address when none is given', async () => {
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { to: string }).to).toBe('owner@acme.test');
+  }, 30_000);
+
+  it('lets agency staff address the test somewhere else — they are the ones diagnosing it', async () => {
+    // The fixture owner carries platformRole 'developer', i.e. agency staff.
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: { to: 'deliverability@acme.test' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { to: string }).to).toBe('deliverability@acme.test');
+  }, 30_000);
+
+  it('rejects a malformed recipient before any mail is attempted', async () => {
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: { to: 'not-an-email' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('★ send-test refuses an API key with a reason, not a bare 401', async () => {
+    // The recipient rule is "the CALLER's own account email", which only means something for an
+    // interactive human — so the route is session-only BY DECLARATION. Before, it resolved the
+    // project happily and then 401'd deep inside recipient resolution, so a valid owner-scoped key
+    // got "authentication required", which reads like an expired token rather than a policy.
+    const key = await app.inject({
+      method: 'POST', url: `${base}/api-keys`, cookies: { sw_session: t },
+      payload: { name: 'automation', role: 'owner', capabilities: ['content:read', 'content:write'], expiresInDays: 1 },
+    });
+    expect(key.statusCode).toBe(201);
+    const token = (key.json() as { token: string }).token;
+
+    const res = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, headers: { authorization: `Bearer ${token}` }, payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toMatch(/interactive session/i);
+  }, 30_000);
+
   it('DELETE is idempotent (204) when no config exists', async () => {
     const res = await app.inject({ method: 'DELETE', url: `${base}/smtp`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(204);

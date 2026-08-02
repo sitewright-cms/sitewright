@@ -16,6 +16,8 @@ vi.mock('../src/api', () => ({
     // Needed only once the embedded <ProjectSmtp> panel actually renders. Every test here used to
     // leave both credential modes off, so the panel never mounted and its absence was invisible.
     getProjectSmtp: () => getProjectSmtp(),
+    // <ProjectSmtp> asks who you are, to decide whether to offer a test-message recipient field.
+    me: () => Promise.resolve({ platformRole: null }),
   },
 }));
 

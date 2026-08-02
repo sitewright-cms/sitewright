@@ -414,3 +414,99 @@ describe('admin settings API', () => {
     });
   });
 });
+
+describe('instance SMTP connection test', () => {
+  let app: FastifyInstance;
+  let adminToken: string;
+
+  beforeEach(async () => {
+    db = await makeTestDb();
+    app = await createApp({ db, encryptionKey: Buffer.from(ENC_KEY, 'base64') });
+    await app.ready();
+    adminToken = (await registerAdmin(app)).t;
+  });
+
+  it('404s until an SMTP is configured, then reports a usable/unusable verdict', async () => {
+    // Form delivery is best-effort, so a broken instance SMTP is otherwise invisible to the admin:
+    // the visitor is thanked either way and only a server log records the failure.
+    const none = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: adminToken } });
+    expect(none.statusCode).toBe(404);
+
+    // Port 1 with nothing on it: what matters is the SHAPE of the answer — a readable reason, not a
+    // 500 and not a silent success.
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } },
+    });
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: adminToken } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeTruthy();
+  }, 30_000);
+
+  it('is admin-only', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('send-test 404s until an SMTP is configured', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: {} });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('send-test defaults to the admin’s own address, and honours one they type', async () => {
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co', fromName: 'Acme' } },
+    });
+    // Port 1 refuses, so delivery fails — but the RECIPIENT decision happens first and is what
+    // matters here: an admin is agency staff, so both forms are allowed.
+    const own = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: {} });
+    expect(own.statusCode).toBe(200);
+    expect((own.json() as { to: string }).to).toBe('admin@acme.test');
+
+    const typed = await app.inject({
+      method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: { to: 'deliverability@acme.test' },
+    });
+    expect((typed.json() as { to: string; ok: boolean }).to).toBe('deliverability@acme.test');
+    expect((typed.json() as { ok: boolean }).ok).toBe(false); // nothing is listening on port 1
+  }, 30_000);
+
+  it('send-test rejects a malformed recipient before attempting any mail', async () => {
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } },
+    });
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: { to: 'nope' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('send-test is admin-only', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', payload: {} });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('instance SMTP honours SW_SMTP_ALLOWED_HOSTS', () => {
+  it('★ refuses to connect to or mail a host outside the SMTP allowlist', async () => {
+    // The guard is named for SMTP and an operator setting SW_SMTP_ALLOWED_HOSTS expects it to bound
+    // the instance surface too. Both instance routes previously consulted the DEPLOY allowlist, so
+    // this setting was a no-op there while reading like enforcement.
+    const adb = await makeTestDb();
+    db = adb;
+    const app2 = await createApp({ db: adb, encryptionKey: Buffer.from(ENC_KEY, 'base64'), smtpAllowedHosts: ['mail.allowed.com'] });
+    await app2.ready();
+    const admin = (await registerAdmin(app2)).t;
+    // Saved directly: the save path is admin-trusted and deliberately unguarded (see the note in
+    // the route), so this succeeds and the check has to happen where we actually connect.
+    expect((await app2.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: admin },
+      payload: { smtp: { host: 'evil.example', port: 25, secure: false, fromEmail: 'a@b.co' } },
+    })).statusCode).toBe(200);
+
+    expect((await app2.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: admin } })).statusCode).toBe(403);
+    expect((await app2.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: admin }, payload: {} })).statusCode).toBe(403);
+  }, 30_000);
+});
+

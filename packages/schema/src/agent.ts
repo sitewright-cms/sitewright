@@ -539,14 +539,20 @@ header. THERE IS NO "shrink" MODE: how the bar LOOKS once scrolled (condense, co
 is ALWAYS hand-authored in website.criticalCss against \`html.sw-scrolled\` — see SCROLL-SHRINK below. The
 platform only ships a scroll effect it can apply to ANY header; condensing needs to know which row of
 YOUR header collapses, so it cannot. (A stored \`shrink\` from an older project still loads and behaves
-as \`pinned\`.) THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
-first section of a page so its content clears the bar (without it, content sits UNDER the header) — UNLESS
-that section already has enough top padding to clear the ~75px bar (e.g. \`pt-24\`/\`py-24\` = 96px), in which
-case you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section
+as \`pinned\`.) THE OFFSET IS AUTOMATIC, NOT OPT-IN — this used to say opt-in and that cost a clone two
+round-trips: a fixed bar is out of flow, so when NOTHING inside the content wrapper carries
+\`sw-top-padding\` the platform adds \`padding-top:var(--sw-header-h)\` to \`main#page-content\` itself. Place
+\`sw-top-padding\` anywhere inside and that rule drops out and YOUR choice stands. ★ IF YOUR SOURCE HEADER
+OVERLAYS ITS HERO (the hero supplies its own top padding and the bar floats over it), the automatic offset
+is WRONG and makes every page a header taller — set \`:root{--sw-header-h:0}\` in website.criticalCss.
+Zeroing the token is what works; \`main#page-content{padding-top:0}\` does NOT outrank the platform rule.
+(A bar that does not REST at the top — parked mid-viewport and sliding up on scroll — is detected and
+un-padded for you.) For a full-bleed hero/slider that should bleed UNDER the header, leave the section
 flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
 the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
-\`:root{--sw-header-h:5rem}\` in website.criticalCss). The header sits at z-index 30 (below the mobile drawer
+\`:root{--sw-header-h:5rem}\` in website.criticalCss — and use \`patch_critical_css\` to change ONE rule
+rather than resending the whole sheet; it writes a named block in place). The header sits at z-index 30 (below the mobile drawer
 + back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
 is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
 (hide-on-scroll only — header translated off-screen).
@@ -1166,7 +1172,15 @@ specificity difference, not the cascade order — raise the selector rather than
 utility at (0,1,0) — one clone's base rule silently killed \`mb-*\` on every paragraph site-wide and
 nothing flagged it. Keep chrome CSS on a SINGLE class (\`.mc-lead\`, not \`.mc p\`) so it can never
 out-rank the utilities you also use. The same arithmetic bites \`:is(a,b).x\`, which takes the
-specificity of its most specific argument. For a
+specificity of its most specific argument.
+★ MAX-WIDTH BREAKPOINTS DISAGREE BY ONE PIXEL, AND IT IS THE PIXEL THE TOOLING RENDERS AT. Tailwind's
+\`max-[768px]:\` compiles to \`@media not all and (min-width:768px)\`, which is FALSE at exactly 768px;
+your own \`@media (max-width:768px)\` in criticalCss is TRUE there. Clone a site built on max-width
+breakpoints (1200/992/768 is the common set) and mirror them literally and the two halves of your own
+layout disagree at each boundary — and \`visual_audit\`'s "tablet" is exactly 768px, so the tool renders
+precisely where they diverge. One clone shipped a 3-column tablet layout against a 1-column original for
+this reason. Use \`max-[769px]:\` / \`max-[993px]:\` / \`max-[1201px]:\` to match a source \`max-width:768\`,
+or write the media query yourself and skip the variant. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
 on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do

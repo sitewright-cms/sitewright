@@ -9,8 +9,10 @@ import { PROJECT_SMTP_ENTITY_ID, type ApiKeyCapability } from '../db/schema.js';
 
 export { PROJECT_SMTP_ENTITY_ID };
 
-/** Body of a send-test request: an optional recipient, validated before it reaches the mailer. */
-const SmtpSendTestBodySchema = z.object({ to: z.string().email().optional() });
+/** Body of a send-test request: an optional recipient, validated before it reaches the mailer.
+ *  Exported so the instance-scoped route in app.ts shares it — two copies of a validation rule
+ *  drift the moment one of them is tightened. */
+export const SmtpSendTestBodySchema = z.object({ to: z.string().email().optional() });
 
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
@@ -115,7 +117,12 @@ export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmt
     '/projects/:projectId/smtp/send-test',
     { config: rl(5) }, // sends real mail: tighter than the connection test
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:write');
+      // SESSION-ONLY, declared rather than accidental: the recipient rule is "the CALLER's own
+      // account email", which only means something for an interactive human. Left as
+      // `content:write` the route resolved the project happily and then 401'd deep inside recipient
+      // resolution, so a valid, fully-privileged API key got "authentication required" — a message
+      // that reads like an expired token rather than a deliberate policy.
+      const { ctx } = await resolveProject(req, 'session-only');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const parsed = SmtpSendTestBodySchema.parse(req.body ?? {});
       // Throws for a project member naming someone else's address — the rule is enforced server-side.

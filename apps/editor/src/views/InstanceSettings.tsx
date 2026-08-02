@@ -791,7 +791,7 @@ export function InstanceSettings() {
                 type="button"
                 className={`${ghostButton} px-2 py-1 text-xs`}
                 onClick={() => void testSmtp()}
-                disabled={smtpTesting}
+                disabled={smtpTesting || smtpSending}
               >
                 {smtpTesting ? 'Testing…' : 'Test connection'}
               </button>
@@ -799,7 +799,7 @@ export function InstanceSettings() {
                 type="button"
                 className={`${ghostButton} px-2 py-1 text-xs`}
                 onClick={() => void sendSmtpTest()}
-                disabled={smtpSending}
+                disabled={smtpTesting || smtpSending}
               >
                 {smtpSending ? 'Sending…' : 'Send test message'}
               </button>
@@ -820,8 +820,8 @@ export function InstanceSettings() {
                   <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
                 ))}
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                “Test connection” checks the saved settings and sends nothing. “Send test message” sends real mail —
-                blank recipient means your own address.
+                Both act on the SAVED settings, not what is on screen. “Test connection” sends nothing;
+                “Send test message” sends real mail — blank recipient means your own address.
               </span>
             </div>
           </div>

@@ -48,7 +48,13 @@ const opensslAvailable = (): boolean => {
 };
 
 const PASSWORD = 's3cr3t-mailbox-pw';
-let portsUsable = false;
+
+// ★ Resolved at MODULE scope, before any describe body runs, so the suite can SKIP VISIBLY rather
+// than pass vacuously. The first version gated inside each `it` with an early `return`, which
+// Vitest reports as PASSED — so on an ordinary non-root runner (where ports below 1024 need
+// CAP_NET_BIND_SERVICE) all fifteen cases would have gone green having asserted nothing, and the
+// reporter output would be indistinguishable from a real run. A test that cannot run must say so.
+const portsUsable = (await Promise.all(Object.values(PORTS).map(canBind))).every(Boolean);
 
 const modes: InstanceSettingsStored['formModes'] = {
   globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false,
@@ -58,13 +64,12 @@ const mail: SubmissionMail = {
   recipient: 'sales@acme.com', subject: 'New lead', formName: 'Contact', fields: { email: 'v@example.com' },
 };
 
-describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', () => {
+describe.skipIf(!opensslAvailable() || !portsUsable)('SMTP port conventions (25 / 465 / 587)', () => {
   let cert: TestCert;
   const servers: FakeSmtp[] = [];
 
   beforeAll(async () => {
     cert = await makeCert();
-    portsUsable = (await Promise.all(Object.values(PORTS).map(canBind))).every(Boolean);
   });
   // A FIXED port cannot be left listening between cases the way an ephemeral one can — the next
   // case on the same port would get EADDRINUSE. Close after every test, not once at the end.
@@ -96,18 +101,12 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
     );
   }
 
-  /** Wraps a case so it reports "skipped" rather than failing where the ports are privileged. */
-  const onPorts = (name: string, fn: () => Promise<void>, timeout = 30_000) =>
-    it(name, async () => {
-      if (!portsUsable) return; // no root / high ip_unprivileged_port_start — nothing to prove here
-      await fn();
-    }, timeout);
 
   // -------------------------------------------------------------------------------------------
   // 465 — implicit TLS. Encrypted before the first byte, so AUTH PLAIN is fine immediately.
   // -------------------------------------------------------------------------------------------
 
-  onPorts('465 with implicit TLS: authenticates and delivers, never speaking plaintext', async () => {
+  it('465 with implicit TLS: authenticates and delivers, never speaking plaintext', async () => {
     const srv = await server(PORTS.implicitTls, { implicitTls: true, requireAuth: true });
     expect(await mailer({ port: PORTS.implicitTls, secure: true, host: 'localhost' }).send(mail)).toBe(true);
     await srv.finished;
@@ -118,7 +117,7 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
     expect(srv.transcript.commands).toContain('<END-OF-DATA>');
   });
 
-  onPorts('465 configured as if it were 587 (secure off) fails fast instead of hanging', async () => {
+  it('465 configured as if it were 587 (secure off) fails fast instead of hanging', async () => {
     const srv = await server(PORTS.implicitTls, { implicitTls: true });
     const started = Date.now();
     await expect(mailer({ port: PORTS.implicitTls, secure: false, host: 'localhost' }).send(mail)).rejects.toThrow();
@@ -130,7 +129,7 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
   // 587 — submission. Plaintext greeting, STARTTLS, then AUTH inside the upgrade.
   // -------------------------------------------------------------------------------------------
 
-  onPorts('587 upgrades with STARTTLS and only then authenticates', async () => {
+  it('587 upgrades with STARTTLS and only then authenticates', async () => {
     const srv = await server(PORTS.submission, { offerStartTls: true, requireAuth: true });
     expect(await mailer({ port: PORTS.submission, secure: false }).send(mail)).toBe(true);
     await srv.finished;
@@ -140,14 +139,14 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
     expect(srv.transcript.commands).toContain('[tls] <END-OF-DATA>');
   });
 
-  onPorts('★ 587 that will not upgrade never sees the password', async () => {
+  it('★ 587 that will not upgrade never sees the password', async () => {
     const srv = await server(PORTS.submission, { offerStartTls: false });
     await expect(mailer({ port: PORTS.submission, secure: false }).send(mail)).rejects.toThrow();
     expect(srv.transcript.authPlain).toBeNull();
     expect(srv.transcript.commands.some((c) => c.toUpperCase().includes('AUTH'))).toBe(false);
   });
 
-  onPorts('587 configured as if it were 465 (secure on) fails fast instead of hanging', async () => {
+  it('587 configured as if it were 465 (secure on) fails fast instead of hanging', async () => {
     const srv = await server(PORTS.submission, { offerStartTls: true });
     const started = Date.now();
     await expect(mailer({ port: PORTS.submission, secure: true }).send(mail)).rejects.toThrow();
@@ -160,7 +159,7 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
   // STARTTLS-then-AUTH. What is NOT legitimate is a password in the clear.
   // -------------------------------------------------------------------------------------------
 
-  onPorts('25 unauthenticated on loopback delivers in the clear — nothing to protect', async () => {
+  it('25 unauthenticated on loopback delivers in the clear — nothing to protect', async () => {
     const srv = await server(PORTS.smtp);
     const m = new GlobalSmtpMailer(
       {
@@ -176,7 +175,7 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
     expect(srv.transcript.commands).toContain('<END-OF-DATA>');
   });
 
-  onPorts('25 upgrades opportunistically when the relay does offer STARTTLS', async () => {
+  it('25 upgrades opportunistically when the relay does offer STARTTLS', async () => {
     // No credentials at stake, but if encryption is on the table it should be taken.
     const srv = await server(PORTS.smtp, { offerStartTls: true });
     const m = new GlobalSmtpMailer(
@@ -193,14 +192,14 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
     expect(srv.transcript.commands).toContain('[tls] <END-OF-DATA>');
   });
 
-  onPorts('25 with credentials authenticates only after STARTTLS', async () => {
+  it('25 with credentials authenticates only after STARTTLS', async () => {
     const srv = await server(PORTS.smtp, { offerStartTls: true, requireAuth: true });
     expect(await mailer({ port: PORTS.smtp, secure: false }).send(mail)).toBe(true);
     await srv.finished;
     expect(srv.transcript.commands.filter((c) => c.toUpperCase().includes('AUTH')).every((c) => c.startsWith('[tls] '))).toBe(true);
   });
 
-  onPorts('★ 25 with credentials and no STARTTLS is refused, even on loopback', async () => {
+  it('★ 25 with credentials and no STARTTLS is refused, even on loopback', async () => {
     // The one rule that holds everywhere: a mailbox password never goes out unencrypted. Loopback
     // exempts the MESSAGE, never the credential.
     const srv = await server(PORTS.smtp, { offerStartTls: false });
@@ -213,7 +212,7 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
   // The rule the review found untested: a REMOTE host with no credentials still requires encryption
   // -------------------------------------------------------------------------------------------
 
-  onPorts('★ a non-loopback host with NO credentials still requires encryption', async () => {
+  it('★ a non-loopback host with NO credentials still requires encryption', async () => {
     // `0.0.0.0` reaches the loopback listener but is not a loopback ADDRESS, which is exactly the
     // distinction the rule draws. Without this, "messages never travel unencrypted to a remote
     // host" was asserted only for the PHP client, never for the platform mailer.
@@ -235,14 +234,13 @@ describe.skipIf(!opensslAvailable())('SMTP port conventions (25 / 465 / 587)', (
 // The SAME three ports for the OTHER SMTP client — the one that ends up on a customer's own host.
 // It is a completely separate implementation (hand-rolled PHP, not nodemailer), so "the platform
 // mailer handles 465" says nothing about what the exported contact.php does with it.
-describe.skipIf(!opensslAvailable() || !phpAvailable())('contact.php on the same three ports', () => {
+describe.skipIf(!opensslAvailable() || !phpAvailable() || !portsUsable)('contact.php on the same three ports', () => {
   let cert: TestCert;
   const servers: FakeSmtp[] = [];
   const sites: PhpSite[] = [];
 
   beforeAll(async () => {
     cert = await makeCert();
-    portsUsable = (await Promise.all(Object.values(PORTS).map(canBind))).every(Boolean);
   });
   afterEach(async () => {
     await Promise.all(sites.splice(0).map((s) => s.stop()));
@@ -278,13 +276,8 @@ describe.skipIf(!opensslAvailable() || !phpAvailable())('contact.php on the same
     return { res, transcript: srv.transcript };
   }
 
-  const onPorts = (name: string, fn: () => Promise<void>, timeout = 30_000) =>
-    it(name, async () => {
-      if (!portsUsable) return;
-      await fn();
-    }, timeout);
 
-  onPorts('465: implicit TLS, credentials inside the encrypted channel', async () => {
+  it('465: implicit TLS, credentials inside the encrypted channel', async () => {
     const { res, transcript } = await deliver(PORTS.implicitTls, {
       smtp: { implicitTls: true, requireAuth: true },
       conf: { secure: true },
@@ -294,28 +287,28 @@ describe.skipIf(!opensslAvailable() || !phpAvailable())('contact.php on the same
     expect(transcript.upgraded).toBe(false); // encrypted from the first byte; no STARTTLS needed
   });
 
-  onPorts('587: STARTTLS first, then AUTH', async () => {
+  it('587: STARTTLS first, then AUTH', async () => {
     const { res, transcript } = await deliver(PORTS.submission, { smtp: { offerStartTls: true, requireAuth: true } });
     expect(res.status).toBe(200);
     expect(transcript.upgraded).toBe(true);
     expect(transcript.commands.filter((c) => c.toUpperCase().includes('AUTH')).every((c) => c.startsWith('[tls] '))).toBe(true);
   });
 
-  onPorts('★ 587 that will not upgrade never sees the password', async () => {
+  it('★ 587 that will not upgrade never sees the password', async () => {
     const { res, transcript } = await deliver(PORTS.submission, { smtp: { offerStartTls: false } });
     expect(res.status).toBe(502);
     expect(transcript.authPlain).toBeNull();
     expect(transcript.commands.some((c) => c.toUpperCase().includes('AUTH'))).toBe(false);
   });
 
-  onPorts('25: an unauthenticated loopback relay delivers in the clear', async () => {
+  it('25: an unauthenticated loopback relay delivers in the clear', async () => {
     const { res, transcript } = await deliver(PORTS.smtp, { conf: { user: '', password: '' } });
     expect(res.status).toBe(200);
     expect(transcript.authPlain).toBeNull();
     expect(transcript.commands).toContain('<END-OF-DATA>');
   });
 
-  onPorts('★ 25 with credentials and no STARTTLS is refused, even on loopback', async () => {
+  it('★ 25 with credentials and no STARTTLS is refused, even on loopback', async () => {
     const { res, transcript } = await deliver(PORTS.smtp, { smtp: { offerStartTls: false } });
     expect(res.status).toBe(502);
     expect(transcript.authPlain).toBeNull();

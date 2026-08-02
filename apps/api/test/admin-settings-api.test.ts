@@ -487,3 +487,26 @@ describe('instance SMTP connection test', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('instance SMTP honours SW_SMTP_ALLOWED_HOSTS', () => {
+  it('★ refuses to connect to or mail a host outside the SMTP allowlist', async () => {
+    // The guard is named for SMTP and an operator setting SW_SMTP_ALLOWED_HOSTS expects it to bound
+    // the instance surface too. Both instance routes previously consulted the DEPLOY allowlist, so
+    // this setting was a no-op there while reading like enforcement.
+    const adb = await makeTestDb();
+    db = adb;
+    const app2 = await createApp({ db: adb, encryptionKey: Buffer.from(ENC_KEY, 'base64'), smtpAllowedHosts: ['mail.allowed.com'] });
+    await app2.ready();
+    const admin = (await registerAdmin(app2)).t;
+    // Saved directly: the save path is admin-trusted and deliberately unguarded (see the note in
+    // the route), so this succeeds and the check has to happen where we actually connect.
+    expect((await app2.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: admin },
+      payload: { smtp: { host: 'evil.example', port: 25, secure: false, fromEmail: 'a@b.co' } },
+    })).statusCode).toBe(200);
+
+    expect((await app2.inject({ method: 'POST', url: '/admin/settings/smtp/test', cookies: { sw_session: admin } })).statusCode).toBe(403);
+    expect((await app2.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: admin }, payload: {} })).statusCode).toBe(403);
+  }, 30_000);
+});
+

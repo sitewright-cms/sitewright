@@ -121,6 +121,10 @@ export function ProjectSmtp({ project }: { project: Project }) {
     }
   }
 
+  // The three actions share one result slot, so overlapping requests would display whichever
+  // response happened to land last rather than the one the operator is waiting on.
+  const busy = testing || sending;
+
   if (loading) return null;
 
   const field = `${glassInput} px-2 py-1`;
@@ -197,17 +201,17 @@ export function ProjectSmtp({ project }: { project: Project }) {
           </div>
         )}
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className={primaryButton}>
+          <button type="submit" className={primaryButton} disabled={busy}>
             Save SMTP
           </button>
           {/* Form delivery is best-effort, so a broken SMTP is otherwise invisible until leads stop
               arriving. This tests what is SAVED — it authenticates but sends no mail. */}
           {enabled && (
             <>
-              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={testing}>
+              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={busy}>
                 {testing ? 'Testing…' : 'Test connection'}
               </button>
-              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void sendTest()} disabled={sending}>
+              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void sendTest()} disabled={busy}>
                 {sending ? 'Sending…' : 'Send test message'}
               </button>
               {staff && (
@@ -221,7 +225,8 @@ export function ProjectSmtp({ project }: { project: Project }) {
                 />
               )}
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                “Test connection” sends no mail. “Send test message” sends real mail
+                Both act on the SAVED settings, not what is on screen. “Test connection” sends no mail;
+                “Send test message” sends real mail
                 {staff ? ' — blank recipient means your own address.' : ' to your account address.'}
               </span>
             </>

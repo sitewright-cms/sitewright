@@ -204,7 +204,7 @@ import { registerWebsiteDataRoutes } from './website-data.js';
 import { buildEffectForks } from './effect-forks.js';
 import { buttonPreviewCss } from './button-preview.js';
 import { registerFormRoutes } from './form-routes.js';
-import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
+import { registerProjectSmtpRoutes, SmtpSendTestBodySchema } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
@@ -1660,9 +1660,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return requested.trim();
   }
 
-  /** Body of a send-test request: an optional recipient, validated before it reaches the mailer. */
-  const SmtpSendTestSchema = z.object({ to: z.string().email().optional() });
-
   // Platform STAFF = the agency: an instance admin OR a developer. Session-only. Gates actions that are
   // the agency's to take rather than a client's — currently creating projects (invited clients, who are
   // project `member`s, must never self-provision new projects).
@@ -2273,7 +2270,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await requireInstanceAdmin(req);
     const stored = await instanceSettingsRepo.getStored();
     if (!stored.smtp) return reply.code(404).send({ error: 'no instance SMTP is configured' });
-    assertDeployHostAllowed(stored.smtp.host); // the stored host could predate an allowlist
+    // SMTP, not deploy: `assertDeployHostAllowed` here made SW_SMTP_ALLOWED_HOSTS a no-op on the
+    // instance surface while looking like enforcement. The stored host can also predate an
+    // allowlist being configured, which is why it is re-checked at use rather than trusted.
+    assertSmtpHostAllowed(stored.smtp.host);
     const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
     let password: string | null = null;
     try {
@@ -2290,11 +2290,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // SPF/DKIM failure both pass `verify()` and then silently swallow every lead.
   app.post('/admin/settings/smtp/send-test', { config: rl(5) }, async (req, reply) => {
     await requireInstanceAdmin(req);
-    const { to } = SmtpSendTestSchema.parse(req.body ?? {});
+    const { to } = SmtpSendTestBodySchema.parse(req.body ?? {});
     const recipient = await resolveSmtpTestRecipient(req, to);
     const stored = await instanceSettingsRepo.getStored();
     if (!stored.smtp) return reply.code(404).send({ error: 'no instance SMTP is configured' });
-    assertDeployHostAllowed(stored.smtp.host);
+    assertSmtpHostAllowed(stored.smtp.host);
     const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
     let password: string | null = null;
     try {

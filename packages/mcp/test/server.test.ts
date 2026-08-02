@@ -595,7 +595,11 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await (await connect(emptyC, readScope)).callTool({ name: 'visual_audit', arguments: { pageId: 'home' } });
     expect(res.isError).toBeFalsy();
     expect((res.content as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
-    expect(JSON.stringify(res.content)).toMatch(/No screenshots could be captured/);
+    // The message must NOT assert a cause it has not checked. It used to read "no Chromium on this
+    // server, or neither side rendered" — two causes with opposite remedies, and an agent that had just
+    // received a screenshot from another tool still read it as "this server cannot capture" and stopped.
+    expect(JSON.stringify(res.content)).toMatch(/No screenshots came back for either side/);
+    expect(JSON.stringify(res.content)).not.toMatch(/no Chromium/);
   });
 
   it('visual_audit: gates on login + content:read, and surfaces client errors', async () => {

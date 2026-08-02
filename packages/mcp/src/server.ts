@@ -683,7 +683,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           }
         }
         if (names.length === 0) {
-          content.push({ type: 'text', text: 'No screenshots could be captured (no Chromium on this server, or neither the build nor the source rendered).' });
+          content.push({ type: 'text', text: 'No screenshots came back for either side. If other screenshot tools are working, this is not a missing browser \u2014 check that the page and its source URL both render.' });
         }
         return { content };
       } catch (err) {
@@ -869,7 +869,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             content.push({ type: 'image', data: b.base64, mimeType: b.mimeType });
           }
         }
-        if (names.length === 0) content.push({ type: 'text', text: 'No screenshots could be captured (no Chromium on this server, or neither side rendered).' });
+        if (names.length === 0) content.push({ type: 'text', text: 'No screenshots came back for either side. If other screenshot tools are working, this is not a missing browser \u2014 check that the page and its source URL both render.' });
         else content.push({ type: 'text', text: 'Now list every blocker + major defect you see, fix them (put_page), and run visual_audit again until there are none.' });
         return { content };
       } catch (err) {
@@ -952,7 +952,21 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           if (pair.build) { content.push({ type: 'text', text: `— ${name.toUpperCase()} · YOUR BUILD (${pair.build.width}×${pair.build.height}) —` }); content.push({ type: 'image', data: pair.build.base64, mimeType: pair.build.mimeType }); }
           if (pair.source) { content.push({ type: 'text', text: `— ${name.toUpperCase()} · ORIGINAL (${pair.source.width}×${pair.source.height}) —` }); content.push({ type: 'image', data: pair.source.base64, mimeType: pair.source.mimeType }); }
         }
-        if (content.length === 1) content.push({ type: 'text', text: 'No region crops could be captured (no Chromium on this server, or the regions were not found on the page).' });
+        if (content.length === 1) {
+          // Name what was ACTUALLY tried. The old wording blamed "no Chromium on this server, or the
+          // regions were not found" — two causes with opposite remedies, and the reader cannot tell
+          // which. Chromium is almost always fine (preview_page works), so an agent reads this as "the
+          // server can't crop" and stops, when the real problem is a selector that matched nothing.
+          const asked = regions?.length ? regions.join(', ') : Object.keys(r.regions).join(', ') || 'the default regions';
+          content.push({
+            type: 'text',
+            text:
+              `The page rendered, but none of these regions matched an element: ${asked}. ` +
+              'A region name is matched against the page\u2019s own markup — use inspect_source to see what is ' +
+              'actually there and pass a selector that exists. (If the render itself had failed you would ' +
+              'have got an error instead of this message.)',
+          });
+        }
         return { content };
       } catch (err) {
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);

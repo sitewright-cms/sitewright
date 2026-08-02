@@ -1184,9 +1184,10 @@ selector only when you actually want the scheme AND a tweak.
 \`max-[768px]:\` compiles to \`@media not all and (min-width:768px)\`, which is FALSE at exactly 768px;
 your own \`@media (max-width:768px)\` in criticalCss is TRUE there. Clone a site built on max-width
 breakpoints (1200/992/768 is the common set) and mirror them literally and the two halves of your own
-layout disagree at each boundary — and \`visual_audit\`'s "tablet" is exactly 768px, so the tool renders
-precisely where they diverge. One clone shipped a 3-column tablet layout against a 1-column original for
-this reason. Use \`max-[769px]:\` / \`max-[993px]:\` / \`max-[1201px]:\` to match a source \`max-width:768\`,
+layout disagree at each boundary. One clone shipped a 3-column tablet layout against a 1-column original
+for this reason. The TOOLING no longer sits on the seam — the "tablet" viewport is 767px, one pixel below
+the boundary, so what you measure is a width both spellings agree about; the disagreement is still real in
+YOUR css. Use \`max-[769px]:\` / \`max-[993px]:\` / \`max-[1201px]:\` to match a source \`max-width:768\`,
 or write the media query yourself and skip the variant. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)

@@ -902,7 +902,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           .union([z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']), z.number().int().min(240).max(3840)])
           .optional()
           .describe(
-            'Measurement viewport: a name (wqhd 2560 · fullhd 1920 · laptop 1440 (default) · tablet 768 · mobile 390) ' +
+            'Measurement viewport: a name (wqhd 2560 · fullhd 1920 · laptop 1440 (default) · tablet 767 · mobile 390) ' +
               'OR an exact pixel WIDTH. Use a width to measure a breakpoint the names skip — there is nothing between ' +
               '768 and 1440, which is exactly where most frameworks switch, so pass 992 or 1024 to see what actually ' +
               'applies there instead of inferring it from the stylesheet.',

@@ -129,6 +129,40 @@ export async function verifySmtpConnection(
 }
 
 /**
+ * Sends a real, deliverable test message.
+ *
+ * Distinct from {@link verifySmtpConnection}, and both are worth having: `verify()` proves the
+ * server accepts our login, which is NOT the same as proving mail arrives. It cannot catch a
+ * rejected `From` (an unverified sender on SES/SendGrid/Postmark), a recipient the relay refuses,
+ * or the failure this whole feature area exists for — a message accepted and then silently
+ * spam-filed for SPF/DKIM misalignment. Only something that lands in a human's inbox catches those.
+ */
+export async function sendSmtpTestMessage(
+  config: TransportConfig,
+  msg: { to: string; fromEmail: string; fromName?: string; origin: string },
+  transportFactory: TransportFactory = defaultTransportFactory,
+): Promise<SmtpVerifyResult> {
+  try {
+    await transportFactory(config).sendMail({
+      from: msg.fromName ? { name: msg.fromName, address: msg.fromEmail } : msg.fromEmail,
+      to: msg.to,
+      subject: 'Sitewright SMTP test',
+      text:
+        `This is a test message from Sitewright, sent from ${msg.origin}.\n\n` +
+        'Receiving it confirms the whole delivery path works: the connection, the login, the sender\n' +
+        'address, and that your provider accepted and delivered the mail.\n\n' +
+        `Server: ${config.host}:${config.port}${config.secure ? ' (implicit TLS)' : ''}\n` +
+        `From: ${msg.fromEmail}\n\n` +
+        'If this landed in spam, form submissions will too — check the SPF and DKIM records for the\n' +
+        'sending domain.\n',
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: describeSmtpError(err, config) };
+  }
+}
+
+/**
  * Turns a nodemailer failure into something an operator can act on.
  *
  * Deliberately does NOT pass the raw message through: it can carry the server's banner and the

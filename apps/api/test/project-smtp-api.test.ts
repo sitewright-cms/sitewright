@@ -111,6 +111,52 @@ describe('per-project SMTP API', () => {
     expect(res.statusCode).toBe(200); // members manage SMTP, so they can test it too
   }, 30_000);
 
+  it('★ a project member cannot aim the test message at someone else', async () => {
+    // An invited client is a project `member`. "Make this server send a message to an address I
+    // choose" is not a capability they should hold, and the field being hidden in the UI is a
+    // suggestion, not a rule — so the rule lives here.
+    const { userId: mUser } = await registerAccount(db, 'client@x.test', 'Pw-secret-1');
+    const mt = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'client@x.test', password: 'Pw-secret-1' } }));
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+
+    const elsewhere = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: mt }, payload: { to: 'someone@else.example' },
+    });
+    expect(elsewhere.statusCode).toBe(403);
+
+    // Their OWN address is allowed — the delivery then fails on the dead port, which is a mail
+    // result rather than an authorization one, so it comes back 200 with ok:false.
+    const own = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: mt }, payload: { to: 'client@x.test' },
+    });
+    expect(own.statusCode).toBe(200);
+    expect((own.json() as { to: string }).to).toBe('client@x.test');
+  }, 30_000);
+
+  it('defaults the recipient to the caller’s own address when none is given', async () => {
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { to: string }).to).toBe('owner@acme.test');
+  }, 30_000);
+
+  it('lets agency staff address the test somewhere else — they are the ones diagnosing it', async () => {
+    // The fixture owner carries platformRole 'developer', i.e. agency staff.
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({
+      method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: { to: 'deliverability@acme.test' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { to: string }).to).toBe('deliverability@acme.test');
+  }, 30_000);
+
+  it('rejects a malformed recipient before any mail is attempted', async () => {
+    await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: t }, payload: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } });
+    const res = await app.inject({ method: 'POST', url: `${base}/smtp/send-test`, cookies: { sw_session: t }, payload: { to: 'not-an-email' } });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('DELETE is idempotent (204) when no config exists', async () => {
     const res = await app.inject({ method: 'DELETE', url: `${base}/smtp`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(204);

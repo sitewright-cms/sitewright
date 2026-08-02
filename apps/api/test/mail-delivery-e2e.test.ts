@@ -9,6 +9,7 @@ import {
   ProjectSmtpMailer,
   buildTransportOptions,
   verifySmtpConnection,
+  sendSmtpTestMessage,
   type MailTransport,
   type SubmissionMail,
   type TransportFactory,
@@ -357,6 +358,54 @@ describe.skipIf(!opensslAvailable())('mail delivery over a real SMTP dialogue', 
       expect(res.ok).toBe(false);
       expect(res.error).not.toContain(PASSWORD);
       expect(res.error).not.toMatch(/fake ESMTP ready/);
+    });
+  });
+
+  describe('sendSmtpTestMessage', () => {
+    it('★ delivers a real message an operator can look for in their inbox', async () => {
+      // The point of this over verify(): a login that succeeds proves nothing about whether mail
+      // ARRIVES. Only a message that goes all the way through DATA exercises the sender address and
+      // the recipient, and only one that lands in a human's inbox reveals an SPF/DKIM problem.
+      const srv = await server({ offerStartTls: true, requireAuth: true });
+      const res = await sendSmtpTestMessage(
+        { host: '127.0.0.1', port: srv.port, secure: false, auth: { user: 'apikey', pass: PASSWORD } },
+        { to: 'admin@acme.test', fromEmail: 'no-reply@acme.com', fromName: 'Acme Ltd', origin: 'the instance mail settings' },
+        trustingFactory,
+      );
+      expect(res).toEqual({ ok: true });
+      await srv.finished;
+      const data = srv.transcript.rawData.join('\n');
+      expect(srv.transcript.commands).toContain('[tls] RCPT TO:<admin@acme.test>');
+      expect(data).toContain('From: Acme Ltd <no-reply@acme.com>');
+      expect(data).toContain('Subject: Sitewright SMTP test');
+      // The body has to tell the reader what receiving it proves, and where to look if it went to spam.
+      expect(data).toMatch(/SPF/);
+      expect(data).toContain('127.0.0.1');
+    });
+
+    it('reports a refused recipient instead of claiming the mail was sent', async () => {
+      const srv = await server({ offerStartTls: true, rejectRecipient: true });
+      const res = await sendSmtpTestMessage(
+        { host: '127.0.0.1', port: srv.port, secure: false, auth: { user: 'apikey', pass: PASSWORD } },
+        { to: 'nobody@acme.test', fromEmail: 'no-reply@acme.com', origin: 'x' },
+        trustingFactory,
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error).toBeTruthy();
+      expect(srv.transcript.commands).not.toContain('[tls] <END-OF-DATA>');
+    });
+
+    it('★ will not send a test message over an unencrypted remote session either', async () => {
+      // The send path must obey the same rule as delivery — otherwise "test message" would be a
+      // way to push a message out in the clear that a real submission would refuse to send.
+      const srv = await server({ offerStartTls: false });
+      const res = await sendSmtpTestMessage(
+        { host: '0.0.0.0', port: srv.port, secure: false },
+        { to: 'admin@acme.test', fromEmail: 'no-reply@acme.com', origin: 'x' },
+        trustingFactory,
+      );
+      expect(res.ok).toBe(false);
+      expect(srv.transcript.rawData).toEqual([]);
     });
   });
 

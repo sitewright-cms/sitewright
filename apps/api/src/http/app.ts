@@ -210,7 +210,7 @@ import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
-import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnection, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
+import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
@@ -1638,6 +1638,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return userId;
   }
 
+  /**
+   * Who an SMTP test message may be addressed to.
+   *
+   * Agency staff (instance admin or developer) may type any address — they are the ones diagnosing
+   * deliverability, and often need to see how the mail lands somewhere other than their own inbox.
+   * Everyone else gets their OWN account email and nothing else: a project `member` is an invited
+   * client, and "send a message from this server to an address I choose" is not a capability a
+   * client should hold. Enforced here rather than by hiding the field, because a hidden field is a
+   * suggestion and this is a rule.
+   */
+  async function resolveSmtpTestRecipient(req: FastifyRequest, requested?: string): Promise<string> {
+    const userId = await requireUserId(req);
+    const own = await getUserEmail(db, userId);
+    if (!own) throw new ForbiddenError('your account has no email address to send a test message to');
+    if (!requested || requested.trim().toLowerCase() === own.toLowerCase()) return own;
+    const role = await getPlatformRole(db, userId);
+    if (role !== 'admin' && role !== 'developer') {
+      throw new ForbiddenError('only agency staff can send the test message to another address');
+    }
+    return requested.trim();
+  }
+
+  /** Body of a send-test request: an optional recipient, validated before it reaches the mailer. */
+  const SmtpSendTestSchema = z.object({ to: z.string().email().optional() });
+
   // Platform STAFF = the agency: an instance admin OR a developer. Session-only. Gates actions that are
   // the agency's to take rather than a client's — currently creating projects (invited clients, who are
   // project `member`s, must never self-provision new projects).
@@ -2258,6 +2283,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     if (stored.smtp.user && password) config.auth = { user: stored.smtp.user, pass: password };
     return reply.send(await verifySmtpConnection(config));
+  });
+
+  // Sends a REAL message through the instance SMTP. Separate from the connection test above because
+  // a successful login proves nothing about whether mail arrives — a rejected sender address or an
+  // SPF/DKIM failure both pass `verify()` and then silently swallow every lead.
+  app.post('/admin/settings/smtp/send-test', { config: rl(5) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const { to } = SmtpSendTestSchema.parse(req.body ?? {});
+    const recipient = await resolveSmtpTestRecipient(req, to);
+    const stored = await instanceSettingsRepo.getStored();
+    if (!stored.smtp) return reply.code(404).send({ error: 'no instance SMTP is configured' });
+    assertDeployHostAllowed(stored.smtp.host);
+    const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
+    let password: string | null = null;
+    try {
+      password = await instanceSettingsRepo.getSmtpPassword();
+    } catch {
+      return reply.send({ ok: false, error: 'The stored password could not be decrypted — re-enter it and save.' });
+    }
+    if (stored.smtp.user && password) config.auth = { user: stored.smtp.user, pass: password };
+    const result = await sendSmtpTestMessage(config, {
+      to: recipient,
+      fromEmail: stored.smtp.fromEmail,
+      ...(stored.smtp.fromName ? { fromName: stored.smtp.fromName } : {}),
+      origin: 'the instance mail settings',
+    });
+    return reply.send({ ...result, to: recipient });
   });
 
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {
@@ -6499,6 +6551,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       encryptionKey: opts.encryptionKey,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       assertHostAllowed: assertSmtpHostAllowed,
+      resolveSmtpTestRecipient,
       rl,
     });
     // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.

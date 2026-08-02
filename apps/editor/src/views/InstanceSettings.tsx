@@ -151,8 +151,12 @@ export function InstanceSettings() {
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
   const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
-  const [smtpTest, setSmtpTest] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [smtpTest, setSmtpTest] = useState<{ ok: boolean; error?: string; to?: string } | null>(null);
   const [smtpTesting, setSmtpTesting] = useState(false);
+  // Staff may aim the test message anywhere; the server enforces that, and prefilling their own
+  // address keeps the common case one click.
+  const [smtpTestTo, setSmtpTestTo] = useState('');
+  const [smtpSending, setSmtpSending] = useState(false);
   const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
@@ -199,6 +203,18 @@ export function InstanceSettings() {
       setPurgeMsg(e instanceof Error ? e.message : 'purge failed');
     } finally {
       setPurging(false);
+    }
+  }
+
+  async function sendSmtpTest() {
+    setSmtpSending(true);
+    setSmtpTest(null);
+    try {
+      setSmtpTest(await api.sendInstanceSmtpTest(smtpTestTo.trim() || undefined));
+    } catch (e) {
+      setSmtpTest({ ok: false, error: e instanceof Error ? e.message : 'send failed' });
+    } finally {
+      setSmtpSending(false);
     }
   }
 
@@ -779,13 +795,34 @@ export function InstanceSettings() {
               >
                 {smtpTesting ? 'Testing…' : 'Test connection'}
               </button>
+              <button
+                type="button"
+                className={`${ghostButton} px-2 py-1 text-xs`}
+                onClick={() => void sendSmtpTest()}
+                disabled={smtpSending}
+              >
+                {smtpSending ? 'Sending…' : 'Send test message'}
+              </button>
+              <input
+                className={`${field} max-w-xs`}
+                aria-label="Test message recipient"
+                type="email"
+                value={smtpTestTo}
+                placeholder="your address"
+                onChange={(e) => setSmtpTestTo(e.target.value)}
+              />
               {smtpTest &&
                 (smtpTest.ok ? (
-                  <span className="text-sm text-green-600 dark:text-green-400">✓ Connected</span>
+                  <span className="text-sm text-green-600 dark:text-green-400">
+                    ✓ {smtpTest.to ? `Sent to ${smtpTest.to}` : 'Connected'}
+                  </span>
                 ) : (
                   <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
                 ))}
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Tests the saved settings; sends no mail.</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                “Test connection” checks the saved settings and sends nothing. “Send test message” sends real mail —
+                blank recipient means your own address.
+              </span>
             </div>
           </div>
         )}

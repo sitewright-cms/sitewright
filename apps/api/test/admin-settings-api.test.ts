@@ -449,4 +449,41 @@ describe('instance SMTP connection test', () => {
     const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/test' });
     expect(res.statusCode).toBe(401);
   });
+
+  it('send-test 404s until an SMTP is configured', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: {} });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('send-test defaults to the admin’s own address, and honours one they type', async () => {
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co', fromName: 'Acme' } },
+    });
+    // Port 1 refuses, so delivery fails — but the RECIPIENT decision happens first and is what
+    // matters here: an admin is agency staff, so both forms are allowed.
+    const own = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: {} });
+    expect(own.statusCode).toBe(200);
+    expect((own.json() as { to: string }).to).toBe('admin@acme.test');
+
+    const typed = await app.inject({
+      method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: { to: 'deliverability@acme.test' },
+    });
+    expect((typed.json() as { to: string; ok: boolean }).to).toBe('deliverability@acme.test');
+    expect((typed.json() as { ok: boolean }).ok).toBe(false); // nothing is listening on port 1
+  }, 30_000);
+
+  it('send-test rejects a malformed recipient before attempting any mail', async () => {
+    await app.inject({
+      method: 'PUT', url: '/admin/settings', cookies: { sw_session: adminToken },
+      payload: { smtp: { host: '127.0.0.1', port: 1, secure: false, fromEmail: 'a@b.co' } },
+    });
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', cookies: { sw_session: adminToken }, payload: { to: 'nope' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('send-test is admin-only', async () => {
+    const res = await app.inject({ method: 'POST', url: '/admin/settings/smtp/send-test', payload: {} });
+    expect(res.statusCode).toBe(401);
+  });
 });

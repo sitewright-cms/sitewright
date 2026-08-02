@@ -6,12 +6,16 @@ const getProjectSmtp = vi.fn();
 const putProjectSmtp = vi.fn();
 const deleteProjectSmtp = vi.fn();
 const testProjectSmtp = vi.fn();
+const sendProjectSmtpTest = vi.fn();
+const me = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getProjectSmtp: () => getProjectSmtp(),
     putProjectSmtp: (_p: string, body: SmtpInput) => putProjectSmtp(body),
     deleteProjectSmtp: () => deleteProjectSmtp(),
     testProjectSmtp: () => testProjectSmtp(),
+    sendProjectSmtpTest: (_p: string, to?: string) => sendProjectSmtpTest(to),
+    me: () => me(),
   },
 }));
 
@@ -24,6 +28,9 @@ beforeEach(() => {
   putProjectSmtp.mockReset();
   deleteProjectSmtp.mockReset();
   testProjectSmtp.mockReset();
+  sendProjectSmtpTest.mockReset();
+  me.mockReset();
+  me.mockResolvedValue({ platformRole: null }); // a client unless a test says otherwise
   putProjectSmtp.mockResolvedValue({ smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } });
   deleteProjectSmtp.mockResolvedValue(undefined);
 });
@@ -130,6 +137,74 @@ describe('ProjectSmtp stale test result', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
     await waitFor(() => expect(screen.queryByText(/Connected/)).toBeNull());
+  });
+});
+
+describe('ProjectSmtp send test message', () => {
+  const configured = { smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } };
+
+  it('★ offers a project member NO recipient field — they may only mail themselves', async () => {
+    // An invited client is a project member. The server refuses another address regardless; showing
+    // the field would only ever produce a 403, so it is not shown.
+    getProjectSmtp.mockResolvedValue(configured);
+    sendProjectSmtpTest.mockResolvedValue({ ok: true, to: 'client@x.test' });
+    render(<ProjectSmtp project={project} />);
+    await screen.findByRole('button', { name: 'Send test message' });
+    expect(screen.queryByLabelText('Test message recipient')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send test message' }));
+    await waitFor(() => expect(sendProjectSmtpTest).toHaveBeenCalledWith(undefined));
+    expect(await screen.findByText(/Sent to client@x.test/)).toBeInTheDocument();
+  });
+
+  it('offers agency staff a recipient field and sends to it', async () => {
+    getProjectSmtp.mockResolvedValue(configured);
+    me.mockResolvedValue({ platformRole: 'developer' });
+    sendProjectSmtpTest.mockResolvedValue({ ok: true, to: 'deliverability@acme.test' });
+    render(<ProjectSmtp project={project} />);
+    const to = await screen.findByLabelText('Test message recipient');
+    fireEvent.change(to, { target: { value: 'deliverability@acme.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send test message' }));
+    await waitFor(() => expect(sendProjectSmtpTest).toHaveBeenCalledWith('deliverability@acme.test'));
+  });
+
+  it('surfaces a send failure rather than implying the mail went', async () => {
+    getProjectSmtp.mockResolvedValue(configured);
+    sendProjectSmtpTest.mockResolvedValue({ ok: false, error: 'The server rejected the username or password.' });
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send test message' }));
+    expect(await screen.findByText(/rejected the username or password/)).toBeInTheDocument();
+  });
+});
+
+describe('ProjectSmtp send-test edge paths', () => {
+  const configured = { smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } };
+
+  it('hides the recipient field when the identity lookup fails — fail closed, not open', async () => {
+    getProjectSmtp.mockResolvedValue(configured);
+    me.mockRejectedValue(new Error('offline'));
+    sendProjectSmtpTest.mockResolvedValue({ ok: true, to: 'me@acme.test' });
+    render(<ProjectSmtp project={project} />);
+    await screen.findByRole('button', { name: 'Send test message' });
+    expect(screen.queryByLabelText('Test message recipient')).toBeNull();
+  });
+
+  it('staff leaving the field blank still defaults to their own address', async () => {
+    getProjectSmtp.mockResolvedValue(configured);
+    me.mockResolvedValue({ platformRole: 'admin' });
+    sendProjectSmtpTest.mockResolvedValue({ ok: true, to: 'admin@acme.test' });
+    render(<ProjectSmtp project={project} />);
+    await screen.findByLabelText('Test message recipient');
+    fireEvent.click(screen.getByRole('button', { name: 'Send test message' }));
+    await waitFor(() => expect(sendProjectSmtpTest).toHaveBeenCalledWith(undefined));
+  });
+
+  it('reports a thrown request (e.g. a 403) instead of leaving the button silent', async () => {
+    getProjectSmtp.mockResolvedValue(configured);
+    sendProjectSmtpTest.mockRejectedValue(new Error('only agency staff can send the test message to another address'));
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send test message' }));
+    expect(await screen.findByText(/only agency staff/)).toBeInTheDocument();
   });
 });
 

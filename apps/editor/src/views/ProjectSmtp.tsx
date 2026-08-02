@@ -23,8 +23,41 @@ export function ProjectSmtp({ project }: { project: Project }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; error?: string; to?: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [sending, setSending] = useState(false);
+  // Only agency staff may aim the test message at an address of their choosing — a project member
+  // is an invited client. The server enforces it either way; this just decides whether to offer the
+  // field, so a client is not shown a control that would only ever 403.
+  const [staff, setStaff] = useState(false);
+  const [sendTo, setSendTo] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void api
+      .me()
+      .then((m) => {
+        if (active) setStaff(m.platformRole === 'admin' || m.platformRole === 'developer');
+      })
+      .catch(() => {
+        /* not fatal: without this the field simply stays hidden */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function sendTest() {
+    setSending(true);
+    setResult(null);
+    try {
+      setResult(await api.sendProjectSmtpTest(project.id, staff && sendTo.trim() ? sendTo.trim() : undefined));
+    } catch (e) {
+      setResult({ ok: false, error: e instanceof Error ? e.message : 'send failed' });
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function test() {
     setTesting(true);
@@ -174,13 +207,31 @@ export function ProjectSmtp({ project }: { project: Project }) {
               <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={testing}>
                 {testing ? 'Testing…' : 'Test connection'}
               </button>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Tests the saved settings; sends no mail.</span>
+              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void sendTest()} disabled={sending}>
+                {sending ? 'Sending…' : 'Send test message'}
+              </button>
+              {staff && (
+                <input
+                  className={`${glassInput} max-w-xs px-2 py-1 text-xs`}
+                  aria-label="Test message recipient"
+                  type="email"
+                  value={sendTo}
+                  placeholder="your address"
+                  onChange={(e) => setSendTo(e.target.value)}
+                />
+              )}
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                “Test connection” sends no mail. “Send test message” sends real mail
+                {staff ? ' — blank recipient means your own address.' : ' to your account address.'}
+              </span>
             </>
           )}
           {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
           {result &&
             (result.ok ? (
-              <span className="text-sm text-green-600 dark:text-green-400">✓ Connected</span>
+              <span className="text-sm text-green-600 dark:text-green-400">
+                ✓ {result.to ? `Sent to ${result.to}` : 'Connected'}
+              </span>
             ) : (
               <span className="text-sm text-red-600 dark:text-red-400">✗ {result.error}</span>
             ))}

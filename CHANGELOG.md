@@ -25,6 +25,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **A "Send test message" action for instance and per-project SMTP.** The connection test proves the
+  server accepts our login, which is not the same as proving mail arrives: a rejected sender address, a
+  refused recipient, or an SPF/DKIM misalignment all pass `verify()` and then silently swallow every lead.
+  Only a message that lands in a human's inbox catches those. **Agency staff** (instance admin or
+  developer) may address it anywhere, defaulting to their own account email — they are the ones
+  diagnosing deliverability, and often need to see how the mail lands somewhere else. **Everyone else gets
+  their own account address and nothing else**: a project member is an invited client, and "make this
+  server send a message to an address I choose" is not a capability a client should hold. That is enforced
+  server-side, not by hiding the field — a hidden field is a suggestion, this is a rule — and the send path
+  obeys the same encryption rules as a real submission, so it cannot become a way to push a message out in
+  the clear that a form would refuse to send.
 - **A "Test connection" button for instance and per-project SMTP.** Form delivery is best-effort by design:
   the submission is stored and the visitor thanked whether or not the mail leaves, which is right for the
   visitor and leaves the operator with no signal at all — the only trace of a broken SMTP was a line in the

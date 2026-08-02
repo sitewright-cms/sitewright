@@ -12,6 +12,7 @@ import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, CLIP_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { clampShotForModel } from './mcp-image.js';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
@@ -146,7 +147,10 @@ export async function captureUrlShots(
   const out: Array<[ViewportName, Shot]> = [];
   for (const [name, vp] of plan) {
     const shot = await withRenderSlot(() => shootOne(browser, url, opts.mode, vp, opts.signal)).catch(() => null);
-    if (shot) out.push([name, shot]);
+    // CLAMP before anyone can hand this to a model. A full-page capture is routinely taller than the
+    // 2000px per-image ceiling that applies to a many-image request, and going over does not degrade the
+    // reply — it REJECTS the whole request and ends the session (measured: a clone agent died at turn 124).
+    if (shot) out.push([name, await clampShotForModel(shot)]);
   }
   return Object.fromEntries(out);
 }

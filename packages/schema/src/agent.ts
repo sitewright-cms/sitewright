@@ -1372,10 +1372,11 @@ against this list BEFORE you publish it:
   criticalCss — snap the axes instead (they're contrast-safe, animate correctly, and stay editable in the picker).
 - READABLE SOURCE: author page/template/snippet source as PRETTY-PRINTED, indented, multi-line HTML — one
   block element per line group, children indented — NOT one minified line. A human edits this source.
-- CAROUSEL MARKERS: a hand-authored carousel needs BOTH \`data-sw-component="carousel"\` AND
-  \`data-sw-block="Carousel"\` on the root (copy the EXACT get_components skeleton) — with only -component the
-  slide-sizing CSS never applies and every slide collapses to zero height (silently, no error). Prefer the
-  \`{{> hero-slider}}\` widget, which is already marked up correctly.
+- CAROUSEL MARKERS: \`data-sw-component="carousel"\` on the root is all a hand-authored carousel needs —
+  it ships the CSS, it is what the runtime enhances, and the stylesheet keys on it. \`data-sw-block\` is a
+  free-text LABEL; name it whatever you like. (It used to be load-bearing, and a custom label silently
+  cost the carousel every one of its style rules.) The \`{{> hero-slider}}\` widget is already marked up
+  correctly if you want a shortcut.
 
 FINE POLISH — match the original EXACTLY, by MEASUREMENT (the last-mile "looks close but a bit off" misses;
 sample the original's real values with \`inspect_source\`, don't approximate to the nearest token):

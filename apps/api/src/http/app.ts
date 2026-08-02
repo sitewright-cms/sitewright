@@ -294,6 +294,7 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
+import { clampShots } from '../render/mcp-image.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
 import { INSPECT_LIMITS } from '../render/inspect-probe.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
@@ -868,13 +869,13 @@ async function previewScreenshots(
     .map((v) => v.trim())
     .filter((v): v is ViewportName => isScreenshotViewportName(v));
   try {
-    return await captureScreenshots(html, {
+    return await clampShots(await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,
       // Default a plain preview to desktop + mobile (2), and halve the raster (scale 0.5) — a big cut in
       // the vision-token cost of design iteration. The agent can still request more viewports explicitly.
       viewports: viewports.length ? viewports : [...PREVIEW_DEFAULT_VIEWPORTS],
       scale: 0.5,
-    });
+    }));
   } catch (err) {
     req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');
     return undefined;

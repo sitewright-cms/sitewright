@@ -87,6 +87,51 @@ function makeWriter(el, mode, withTime) {
   };
 }
 
+// Pin an open popup to its input, in VIEWPORT coordinates.
+//
+// Vanilla Calendar Pro places the popup once, from `window.scrollY` / `document.documentElement
+// .scrollLeft` alone (its getOffset + getWindowScrollPosition). Neither reads `document.body
+// .scrollTop` — so on any page whose SCROLLER is not the window the popup is positioned in
+// viewport coordinates against a container that never scrolls: it detaches from the field the
+// moment the page moves and strands itself down the page. That is not an exotic layout — the
+// platform's own preview shell sets html{overflow:hidden} + body{overflow-y:auto}, so every
+// author reviewing a picker in preview sees it break. Measured before this fix: field at y=312,
+// popup still painting at y=660.
+//
+// So we position it ourselves: `fixed`, from the input's live rect, re-run on scroll (capture:true,
+// which is what catches a scroll on the body or any wrapper — a bubbling listener on window never
+// sees those) and on resize, until the popup hides.
+function pinToInput(input, popup) {
+  if (!popup) return function () {};
+  var place = function () {
+    var r = input.getBoundingClientRect();
+    var h = popup.offsetHeight;
+    var w = popup.offsetWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    // Below the field; flip above when the popup would not fit and there IS room above; then clamp
+    // into the viewport so a short screen still shows the whole calendar.
+    var top = r.bottom + 4;
+    if (top + h > vh && r.top - h - 4 >= 0) top = r.top - h - 4;
+    top = Math.max(4, Math.min(top, vh - h - 4));
+    var left = Math.max(4, Math.min(r.left, vw - w - 4));
+    popup.style.position = 'fixed';
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+    popup.style.right = 'auto';
+    popup.style.bottom = 'auto';
+  };
+  place();
+  // The popup can be measured at zero height on the same tick it is inserted; re-place once laid out.
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(place);
+  window.addEventListener('scroll', place, true);
+  window.addEventListener('resize', place);
+  return function () {
+    window.removeEventListener('scroll', place, true);
+    window.removeEventListener('resize', place);
+  };
+}
+
 function enhance(el) {
   if (el.getAttribute('data-sw-enhanced') === 'true') return;
   el.setAttribute('data-sw-enhanced', 'true');
@@ -155,6 +200,17 @@ function enhance(el) {
     opts.onChangeToInput = write;
     // Time-only changes don't fire onChangeToInput, so mirror time edits too.
     if (withTime) opts.onChangeTime = write;
+    // Keep the popup ON its field. See pinToInput: the library reads window scroll only, so a page
+    // whose scroller is not the window strands the popup mid-page.
+    var unpin = null;
+    opts.onShow = function (self) {
+      if (unpin) unpin();
+      unpin = pinToInput(el, self && self.context && self.context.mainElement);
+    };
+    opts.onHide = function () {
+      if (unpin) unpin();
+      unpin = null;
+    };
   }
 
   // SECURITY: we deliberately pass NO HTML-accepting options (popups / labels /

@@ -5,7 +5,7 @@ import { Scanner } from '@tailwindcss/oxide';
 import type { TailwindTheme } from './theme.js';
 import { brandVars, renderThemeBlock } from './tokens.js';
 import { DAISY_EXCLUDED, DAISY_PLUGIN_PATH, daisyThemeVars, usesDaisyComponents } from './daisy.js';
-import { EFFECT_UTILITIES } from './effects.js';
+import { effectCss } from './effects.js';
 
 // Resolve Tailwind's own install directory so `@import "tailwindcss/*"` resolves
 // from there regardless of the process cwd — robust in the repo, under vitest,
@@ -54,11 +54,9 @@ export async function compileUtilityCss(
   // pure-Tailwind pages stay at their minimal size. DaisyUI runs with `themes:false` (no
   // theme block of its own) and we supply the full var set, brand colors overriding the
   // palette, so `btn-primary` etc. are brand-themed with no cascade fight.
-  // The nav/button EFFECT utilities are appended in both branches — they tree-shake per scheme
-  // (only schemes whose class appears in the HTML are emitted), so they cost nothing when unused.
   const input = usesDaisyComponents(candidates)
-    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n  exclude: ${DAISY_EXCLUDED.join(', ')};\n}${renderThemeBlock(daisyThemeVars(theme))}\n${EFFECT_UTILITIES}`
-    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}\n${EFFECT_UTILITIES}`;
+    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n  exclude: ${DAISY_EXCLUDED.join(', ')};\n}${renderThemeBlock(daisyThemeVars(theme))}`
+    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}`;
 
   // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).
   const compiler = await compile(input, { base, onDependency: () => {} });
@@ -69,5 +67,19 @@ export async function compileUtilityCss(
   // persists after load and makes the embedded viewer un-scrollable / un-clickable. Drop it from the
   // standalone `.loading{…}` rule only — a real spinner has nothing to click anyway.
   const deSpun = css.replace(/(\.loading\s*\{[^}]*?)pointer-events\s*:\s*none\s*;?/g, '$1');
-  return minify ? optimize(deSpun, { minify: true }).code : deSpun;
+
+  // The nav/button EFFECT schemes are compiled SEPARATELY and appended, for two reasons.
+  //   1. They belong in `@layer sw-effects` — a scheme selector reaches (0,4,1), which no author
+  //      selector beats, and layered declarations lose to any unlayered rule whatever its
+  //      specificity. Tailwind emits `@utility` output UNLAYERED, so it cannot produce that.
+  //   2. Tailwind PRUNES a top-level `@keyframes` it does not see referenced from a utility it
+  //      emitted. Feeding it raw layered CSS that animates `sw-btn-pulse` silently dropped the
+  //      keyframes while keeping the `animation:` that needs them — a dead animation, no warning.
+  //      Compiling this block outside Tailwind removes that coupling entirely.
+  // Tree-shaking is ours now: a candidate can carry variants (`md:sw-btn-fx-lift`), so compare on the
+  // last segment — the same rule daisy.ts uses. Lightning CSS flattens the `&` nesting either way, so
+  // the unminified output is as browser-ready as the minified one.
+  const used = new Set(candidates.map((c) => c.slice(c.lastIndexOf(':') + 1)));
+  const out = `${deSpun}\n${effectCss((name) => used.has(name))}`;
+  return minify ? optimize(out, { minify: true }).code : out;
 }

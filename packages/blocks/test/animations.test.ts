@@ -237,3 +237,28 @@ describe('animation detection', () => {
   });
 
 });
+
+describe('bottom-of-document reveal failsafe', () => {
+  // The reveal line is 20% up from the viewport bottom, which an element reaches by having content BELOW
+  // it to scroll past. The LAST things on the page have none: at maximum scroll the footer still lies in
+  // that excluded band, never crosses the line, and stays at opacity 0 forever. Measured on a real clone:
+  // 4 animated elements, the 1 in the page body revealed, all 3 in the footer slot permanently invisible
+  // — which reads as missing content, not as a broken animation.
+  it('reveals on-screen elements once the scroller cannot move further', () => {
+    expect(ANIMATION_JS).toContain('swRevealTrailing');
+    expect(ANIMATION_JS).toContain('swAtBottom');
+    // it must be driven by scroll/resize, not run once at load
+    expect(ANIMATION_JS).toMatch(/addEventListener\('scroll',swRevealTrailing/);
+    expect(ANIMATION_JS).toMatch(/addEventListener\('resize',swRevealTrailing/);
+  });
+
+  it('only reveals what is actually on screen, and never re-reveals', () => {
+    // guard the two conditions that keep it from becoming "reveal everything at the bottom"
+    expect(ANIMATION_JS).toContain("if(el.classList.contains('sw-animation-active'))return;");
+    expect(ANIMATION_JS).toContain('if(r.bottom>0&&r.top<vh)swReveal(el);');
+  });
+
+  it('honours a body scroller, which is what the preview shell uses', () => {
+    expect(ANIMATION_JS).toContain('if(scrollRoot)scrollRoot.addEventListener');
+  });
+});

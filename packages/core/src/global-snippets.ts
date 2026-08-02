@@ -313,6 +313,33 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </div>`,
   },
   {
+    name: 'tabs-vertical',
+    label: 'Tabs — vertical (tablist beside the panels)',
+    category: 'tabs',
+    description:
+      'A side tablist with the panel next to it. Needs an explicit grid, because the runtime makes the panels SIBLINGS of the tablist.',
+    demonstrates: ['tabs', 'data-sw-part:tablist/panel', 'data-sw-title'],
+    // WHY THIS RECIPE EXISTS: the runtime injects the tablist as a sibling of the panels inside the same
+    // container, so a `flex-row` root lays the tablist AND every panel out in one row — a real clone got a
+    // 120px-wide panel and spent a full audit round finding out why. A grid fixes it declaratively: the
+    // tablist takes column 1, and EVERY panel is placed into column 2 row 1 so they stack rather than
+    // marching across. `nowrap` on the tablist stops three tabs in a narrow column wrapping into a stack.
+    source: `{{!-- Vertical tabs. The runtime builds the tablist; the grid below is what makes it VERTICAL. --}}
+<div data-sw-component="tabs"
+     class="grid grid-cols-1 gap-6 md:[grid-template-columns:14rem_1fr] [&>[data-sw-part=tablist]]:flex-col [&>[data-sw-part=tablist]]:flex-nowrap md:[&>[data-sw-part=panel]]:col-start-2 md:[&>[data-sw-part=panel]]:row-start-1">
+  <div data-sw-part="tablist" class="flex gap-1"></div>
+  <div data-sw-part="panel" data-sw-title="Ozone Therapy">
+    <div class="prose max-w-none"><p>One panel per treatment. Each holds any markup.</p></div>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Massage">
+    <div class="prose max-w-none"><p>The second panel sits in the same grid cell, so they stack.</p></div>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Sauna">
+    <div class="prose max-w-none"><p>Add as many as you need — the tablist grows with them.</p></div>
+  </div>
+</div>`,
+  },
+  {
     name: 'tabs-dataset',
     label: 'Tabs — generated from a dataset',
     category: 'tabs',

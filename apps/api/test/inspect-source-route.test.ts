@@ -126,6 +126,26 @@ describe('inspect_source route', () => {
     expect(captureUrlInspect.mock.calls[0]![1].viewport).toBeUndefined();
   });
 
+  it('accepts an exact pixel WIDTH, so a breakpoint the five names skip can be measured', async () => {
+    // The named viewports jump 768 -> 1440, and responsive frameworks switch at 992/1024. A clone agent
+    // called that gap "the single most valuable missing capability": it had to reverse-engineer the
+    // source's -sm- breakpoint from pixel arithmetic because nothing could render at 992.
+    const { t, projectId } = await setup();
+    await putPage(t, projectId, imported);
+    expect((await inspect(t, projectId, 'home', { selectors: ['h1'], viewport: 992 })).statusCode).toBe(200);
+    expect(captureUrlInspect.mock.calls[0]![1].viewport).toBe(992);
+  });
+
+  it('a nonsensical numeric viewport is ignored rather than rendered', async () => {
+    const { t, projectId } = await setup();
+    await putPage(t, projectId, imported);
+    for (const bad of [0, -50]) {
+      captureUrlInspect.mock.calls.length = 0;
+      expect((await inspect(t, projectId, 'home', { selectors: ['h1'], viewport: bad })).statusCode).toBe(200);
+      expect(captureUrlInspect.mock.calls[0]![1].viewport).toBeUndefined();
+    }
+  });
+
   it('rejects a call with no usable selectors, naming what is required', async () => {
     const { t, projectId } = await setup();
     await putPage(t, projectId, imported);

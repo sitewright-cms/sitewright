@@ -6,11 +6,12 @@
 import { PHOSPHOR_NAMES, isPhosphorName } from './phosphor-icons.js';
 import { aliasToPhosphor } from './icon-aliases.js';
 import { ICON_NAMES, iconTags } from './icons.js';
+import { BRAND_ICON_NAMES } from './brand-icons.js';
 
 export interface IconSearchGroup {
   /** The search term this group answers. */
   term: string;
-  /** Matching Phosphor icon names, best first. */
+  /** Matching icon names, best first — Phosphor names, plus `brand:<slug>` logos where they match. */
   matches: string[];
 }
 
@@ -56,6 +57,17 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
         const ph = isPhosphorName(lu) ? lu : aliasToPhosphor(lu);
         if (ph) bump(ph, lu === term ? 80 : 35);
       }
+    }
+    // BRAND LOGOS. `brand:<slug>` renders a simple-icons logo, but the slugs were not searchable at
+    // all — and an unknown slug renders NOTHING: no error, no fallback. A clone author guessed
+    // `brand:dinersclub`, got silence, and only caught it by counting <svg> elements against the
+    // spans that should have held them. Returning the slugs makes the set discoverable instead of a
+    // blind guess. Scored below an exact Phosphor hit but above a loose substring, and emitted with
+    // the `brand:` prefix so the result is the literal string {{sw-icon}} expects.
+    for (const slug of BRAND_ICON_NAMES) {
+      if (slug === term) bump(`brand:${slug}`, 95);
+      else if (slug.startsWith(term) || slug.endsWith(term)) bump(`brand:${slug}`, 60);
+      else if (slug.includes(term)) bump(`brand:${slug}`, 40);
     }
     const matches = [...score.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length || a[0].localeCompare(b[0]))

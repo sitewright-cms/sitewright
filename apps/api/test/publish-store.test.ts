@@ -48,6 +48,30 @@ describe('PublishStore HTML serving', () => {
     expect(await store.readBinary('site', '/styles.css')).toBeNull();
   });
 
+  it('serves a bundled VIDEO inline and marks it seekable', async () => {
+    // Video used to fall through to the octet-stream + attachment default, so a self-hosted background
+    // video on a published or previewed site arrived as a DOWNLOAD: the browser could not seek it
+    // (a `currentTime = 6` landed back at 0) and had to transfer all 16 MB before playback started.
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'bg-video.webm'), Buffer.from('webmbytes'));
+    const vid = await store.readBinary('site', '/_assets/bg-video.webm');
+    expect(vid?.contentType).toBe('video/webm');
+    expect(vid?.attachment).toBe(false); // INLINE — it has to play
+    expect(vid?.ranged).toBe(true); // …and be seekable
+
+    await writeFile(join(dir, '_assets', 'theme.mp3'), Buffer.from('mp3bytes'));
+    const audio = await store.readBinary('site', '/_assets/theme.mp3');
+    expect(audio?.contentType).toBe('audio/mpeg');
+    expect(audio?.ranged).toBe(true);
+
+    // …while an unknown binary is still download-only, and NOT marked seekable.
+    await writeFile(join(dir, '_assets', 'thing.bin'), Buffer.from('x'));
+    const other = await store.readBinary('site', '/_assets/thing.bin');
+    expect(other?.attachment).toBe(true);
+    expect(other?.ranged).toBeFalsy();
+  });
+
   it('serves a bundled stylesheet (imported CSS) inline as text/css, not a download', async () => {
     const dir = store.dirFor('site');
     await mkdir(join(dir, '_assets', 'css1'), { recursive: true });

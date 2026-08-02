@@ -50,6 +50,22 @@ export const PDF_MEDIA_CSP = "default-src 'none'; frame-ancestors 'self'";
 // PDF_MEDIA_CSP so a same-origin page can frame them.
 const PUBLISHED_DOC_TYPES = new Map<string, string>([['.pdf', 'application/pdf']]);
 
+// Playable media, served INLINE. Video/audio used to fall through to the octet-stream + attachment
+// default, so a self-hosted background video on a published or previewed site arrived as a DOWNLOAD:
+// it could not seek (a `currentTime = 6` landed back at 0) and had to transfer in full before
+// starting. These formats are inert container/codec data — no script, no markup — so inline is safe.
+const PUBLISHED_MEDIA_TYPES = new Map<string, string>([
+  ['.webm', 'video/webm'],
+  ['.mp4', 'video/mp4'],
+  ['.m4v', 'video/mp4'],
+  ['.mov', 'video/quicktime'],
+  ['.ogv', 'video/ogg'],
+  ['.mp3', 'audio/mpeg'],
+  ['.m4a', 'audio/mp4'],
+  ['.oga', 'audio/ogg'],
+  ['.wav', 'audio/wav'],
+]);
+
 // Inline-servable types for the bundled `_assets/` binaries. Anything NOT in this map (raw uploads,
 // .html, .js, …) is served download-only (octet-stream + attachment), so an uploaded file can never
 // render/execute on this cookie-bearing origin. SVG is handled separately (inline + a locked-down CSP,
@@ -85,6 +101,8 @@ export interface PublishedBinary {
   contentType: string;
   attachment: boolean;
   csp?: string;
+  /** Seekable media — the route answers `Range:` with a 206 instead of the whole file. */
+  ranged?: boolean;
 }
 
 /**
@@ -198,6 +216,9 @@ export class PublishStore {
     // PDF: inline + same-origin-frameable (see PDF_MEDIA_CSP) so a cloned modal iframe renders the doc.
     const docType = PUBLISHED_DOC_TYPES.get(ext);
     if (docType) return { body, contentType: docType, attachment: false, csp: PDF_MEDIA_CSP };
+    // Video/audio: inline, so a <video> can actually play it (see PUBLISHED_MEDIA_TYPES).
+    const mediaType = PUBLISHED_MEDIA_TYPES.get(ext);
+    if (mediaType) return { body, contentType: mediaType, attachment: false, ranged: true };
     // Sandboxed-preview ONLY (opt-in, cross-site script load): run an imported `.js` in the opaque
     // origin. Never set by the same-origin `/sites/` route, so local hosting stays inert.
     if (opts?.executableScripts && ext === '.js') {

@@ -76,6 +76,71 @@ const listFolders = async (t: string, projectId: string): Promise<MediaFolderRec
 const listMedia = async (t: string, projectId: string): Promise<MediaAsset[]> =>
   ((await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } })).json() as { items: MediaAsset[] }).items;
 
+describe('bulk media move', () => {
+  it('re-files many assets in ONE call and accounts for every id', async () => {
+    // Reorganising an imported library one asset at a time is a round-trip each: a real clone made 96
+    // move_media calls for one site and hit a rate limit partway, leaving the library half-filed.
+    const { t, projectId } = await setup('bulkmove@e2e.test');
+    const a = await uploadImage(t, projectId, 'imported');
+    const b = await uploadImage(t, projectId, 'imported');
+    const c = await uploadImage(t, projectId, 'imported');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/bulk-move`,
+      cookies: { sw_session: t },
+      payload: { ids: [a.id, b.id, c.id], folder: 'Gallery' },
+    });
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { moved: string[]; failed: unknown[]; requested: number; folder: string };
+    expect(out.moved).toHaveLength(3);
+    expect(out.failed).toHaveLength(0);
+    expect(out.requested).toBe(3);
+
+    const all = await listMedia(t, projectId);
+    expect(all.every((m) => m.folder === 'Gallery')).toBe(true);
+  });
+
+  it('a bad id fails on its own — the rest still move', async () => {
+    // The failure mode being replaced is a half-filed library, so one unknown id must not abandon the batch.
+    const { t, projectId } = await setup('bulkmove2@e2e.test');
+    const good = await uploadImage(t, projectId, 'imported');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/bulk-move`,
+      cookies: { sw_session: t },
+      payload: { ids: [good.id, 'no-such-asset'], folder: 'Brand' },
+    });
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { moved: string[]; failed: Array<{ id: string }>; requested: number };
+    expect(out.moved).toEqual([good.id]);
+    expect(out.failed.map((f) => f.id)).toEqual(['no-such-asset']);
+    expect(out.moved.length + out.failed.length).toBe(out.requested);
+    expect((await listMedia(t, projectId)).find((m) => m.id === good.id)?.folder).toBe('Brand');
+  });
+
+  it('duplicate ids are de-duplicated, and the batch is bounded', async () => {
+    const { t, projectId } = await setup('bulkmove3@e2e.test');
+    const one = await uploadImage(t, projectId);
+    const dup = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/bulk-move`,
+      cookies: { sw_session: t },
+      payload: { ids: [one.id, one.id, one.id], folder: 'X' },
+    });
+    expect((dup.json() as { requested: number }).requested).toBe(1);
+
+    const tooMany = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/bulk-move`,
+      cookies: { sw_session: t },
+      payload: { ids: Array.from({ length: 201 }, (_, i) => `id${i}`), folder: 'X' },
+    });
+    expect(tooMany.statusCode).toBe(400);
+  });
+});
+
 describe('media folders — persistence', () => {
   it('an EMPTY folder persists (the original bug: it used to vanish)', async () => {
     const { t, projectId } = await setup('f1@e2e.test');
@@ -117,8 +182,10 @@ describe('media folders — rename / move', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    // The explicit records (Old + Old/Empty) re-root; no duplicate 'New' is created.
-    expect((await listFolders(t, projectId)).map((f) => f.path).sort()).toEqual(['New', 'New/Empty']);
+    // The explicit records (Old + Old/Empty) re-root; no duplicate 'New' is created. 'New/Sub' is listed
+    // too even though it has no record of its own — a folder holding a live asset is IN USE, and the
+    // listing used to hide exactly those, so an agent that moved a file into one could not see where it went.
+    expect((await listFolders(t, projectId)).map((f) => f.path).sort()).toEqual(['New', 'New/Empty', 'New/Sub']);
     // The asset (in the implicit 'Old/Sub') follows the rename too.
     expect((await listMedia(t, projectId))[0]!.folder).toBe('New/Sub');
   });
@@ -191,8 +258,10 @@ describe('media folders — recursive delete', () => {
     });
     expect(res.statusCode).toBe(204);
 
-    // Every record under 'Trash' is gone ('Keep' was asset-derived, never an explicit record).
-    expect((await listFolders(t, projectId)).map((f) => f.path)).toEqual([]);
+    // Every record under 'Trash' is gone. 'Keep' remains listed: it never had an explicit record, but it
+    // still HOLDS the surviving asset (asserted below), and a folder with a live asset in it must be
+    // visible — the delete removed the Trash subtree, not the sibling.
+    expect((await listFolders(t, projectId)).map((f) => f.path)).toEqual(['Keep']);
     const media = await listMedia(t, projectId);
     expect(media).toHaveLength(1); // the sibling 'Keep' asset survived
     expect(media[0]!.folder).toBe('Keep');

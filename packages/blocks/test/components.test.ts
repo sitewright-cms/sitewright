@@ -133,6 +133,23 @@ describe('component registry', () => {
     expect(used.js).toContain('data-gallery'); // shared data-gallery merges roots into one combined gallery
     expect(used.js).toContain('sw-lightbox'); // runtime builds the viewer with the neutral class names
     expect(used.js).toContain('focus'); // a11y shim: focus restored to the trigger on close
+
+    // The thumbnail strip CENTRES and wraps rather than running off the left edge, and keeps its
+    // first/last tile clear of the prev/next arrows.
+    expect(used.css).toContain('.sw-lightbox-nav ul{display:flex;flex-wrap:wrap');
+    expect(used.css).toContain('justify-content:center');
+    expect(used.css).toContain('padding:0 50px');
+
+    // ZOOM CURSOR TELLS THE TRUTH. SmartPhoto only zooms an image it had to SHRINK to fit
+    // (desktop gate: 1/scale > 1), but its own stylesheet sets `cursor:zoom-in` unconditionally —
+    // so a photo already at 100% showed a zoom cursor and did nothing when clicked. Measured on a
+    // real gallery: 1000x668 source, 1440x900 viewport, displayed 1000x668, scale 1.00, click →
+    // no change. The runtime stamps data-sw-zoomable only when there is real headroom.
+    expect(used.css).toContain('.sw-lightbox .sw-lightbox-img{cursor:default}');
+    expect(used.css).toContain('.sw-lightbox[data-sw-zoomable] .sw-lightbox-img{cursor:zoom-in}');
+    expect(used.js).toContain('data-sw-zoomable');
+    expect(used.js).toContain('naturalWidth'); // the headroom test is a real measurement
+    expect(used.js).toContain('zoomHintInterval'); // …and its poll is cleared on close (no timer leak)
     // The IE-only polyfills SmartPhoto ships are aliased away at bundle time (modern target).
     expect(used.js).not.toContain('es6-promise-polyfill');
     expect(used.js).not.toContain('custom-event-polyfill');

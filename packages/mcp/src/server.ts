@@ -13,6 +13,8 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS,
   COMPONENT_CATALOG,
   AGENT_GUIDES,
+  sectionGuide,
+  resolveSection,
   buildCapabilitiesIndex,
   GUIDE_TOPICS,
   SW_HELPERS,
@@ -189,8 +191,16 @@ function summarizeImport(r: ImportWebsiteResult): string {
     ].join('\n');
   }
   const warnings = Array.isArray(r.warnings) ? r.warnings : [];
+  // State the MODE up front. Foundation (the default) puts a GENERIC platform nav/footer in the chrome
+  // slots — it does NOT carry the source's header over — and the guide's "start from the default nav"
+  // advice is written for the other path. An agent that had to infer this called it the single most
+  // expensive misdirection in its run.
+  const scaffolded = warnings.some((w) => typeof w === 'string' && w.includes('foundation mode replaces it'));
   return [
     `WEBSITE IMPORTED ✓ — ${r.pagesImported ?? 0} page(s) imported (${r.mediaSelfHosted ?? 0} media asset(s) self-hosted).`,
+    scaffolded
+      ? 'CHROME: the slots hold a GENERIC platform nav + footer, NOT the original\'s. Author website.mainNav/footer from the source yourself.'
+      : '',
     'These are RAW imported scaffolds (each page carries `data.swImport`). NOW NATIVIZE them: read get_guide("import") once, then rebuild each page with native primitives, judging against visual_audit region-by-region, and publish_project when clone_audit + visual_audit pass. Do NOT ask the user to paste HTML — the import already captured the live page.',
     warnings.length ? `Importer notes (${warnings.length}): ${warnings.slice(0, 8).join(' | ')}` : '',
   ]
@@ -202,8 +212,18 @@ function summarizeImport(r: ImportWebsiteResult): string {
 function summarizeImportJob(j: ImportJobView): string {
   if (j.status === 'running') {
     const last = j.progress.at(-1);
-    const mins = Math.round((Date.now() - j.startedAt) / 60_000);
-    return `IMPORT RUNNING (${mins}m elapsed)${last ? ` — ${last}` : ''}. Poll again in ~30s; do NOT start a second import.`;
+    // Elapsed used to be Math.round(ms/60_000), so it read "1m" for everything between 30s and 90s
+    // and looked FROZEN — an agent reported five consecutive polls all showing the same figure while
+    // real minutes passed, and stopped trusting the tool. Show seconds until a minute has actually
+    // passed, then m+s.
+    const secs = Math.max(0, Math.round((Date.now() - j.startedAt) / 1000));
+    const elapsed = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+    const seen = j.progressCount ?? j.progress.length;
+    return (
+      `IMPORT RUNNING (${elapsed} elapsed, ${seen} progress line${seen === 1 ? '' : 's'})${last ? ` — ${last}` : ''}. ` +
+      `Call import_status again with waitMs:30000 and since:${seen} — that BLOCKS until it actually moves ` +
+      'instead of returning the same line, so do NOT poll in a loop and do NOT start a second import.'
+    );
   }
   if (j.status === 'failed') return `IMPORT FAILED — ${j.error ?? 'unknown error'}. Check the URL, then you may retry import_website.`;
   return summarizeImport({ ok: true, ...(j.report ?? {}) } as ImportWebsiteResult);
@@ -440,10 +460,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   server.registerTool(
     'get_guide',
     {
-      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). Call with NO topic to get the index. topic = one of: ${GUIDE_TOPICS.join(', ')}.`,
-      inputSchema: { topic: z.string().max(40).optional() },
+      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). Call with NO topic to get the index. topic = one of: ${GUIDE_TOPICS.join(', ')}. A LONG guide is split into sections: calling it plain returns the overview plus a section index, and you then re-call with section = one of those keys (or section "all" for the whole thing).`,
+      inputSchema: { topic: z.string().max(40).optional(), section: z.string().max(40).optional() },
     },
-    ({ topic }: { topic?: string }) => {
+    ({ topic, section }: { topic?: string; section?: string }) => {
       // No topic (or a blank one) → hand back the index instead of erroring, so a model that forgot the
       // argument recovers in one step rather than looping on a validation error.
       if (!topic || !topic.trim()) {
@@ -462,7 +482,39 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return toolError(`Unknown guide "${topic}" — topics: ${GUIDE_TOPICS.join(', ')}.`);
       }
       const guide = AGENT_GUIDES[key as GuideTopic];
-      return ok(`# ${guide.title}\n\n${guide.body.trim()}`);
+      const head = `# ${guide.title}`;
+
+      // A short guide is served whole — a second round-trip costs more than the bytes it saves.
+      const sections = sectionGuide(key, guide.body);
+      if (sections.length === 0) return ok(`${head}\n\n${guide.body.trim()}`);
+
+      const want = resolveSection(sections, section);
+      if (want.unknown) {
+        return toolError(
+          `Unknown section "${want.unknown}" of guide "${key}" — sections: ${sections
+            .map((s) => s.key)
+            .join(', ')}, or "all" for the whole guide.`,
+        );
+      }
+      if (want.all) return ok(`${head}\n\n${guide.body.trim()}`);
+      if (want.match) {
+        return ok(`${head} — section "${want.match.key}"\n\n${want.match.blocks.join('\n\n')}`);
+      }
+
+      // No section asked for: the overview, plus what else is available and how big it is. The index
+      // is part of the RESPONSE rather than the tool description because it is derived from the body.
+      const overview = sections[0];
+      const index = sections
+        .slice(1)
+        .map((s) => `  - ${s.key} (~${Math.round(s.chars / 100) / 10}k chars) — ${s.summary}`)
+        .join('\n');
+      return ok(
+        `${head}\n\n${overview?.blocks.join('\n\n') ?? ''}\n\n` +
+          `── THIS GUIDE CONTINUES. The above is the overview; the detail is in these sections, ` +
+          `fetched one at a time with get_guide({ topic: "${key}", section: "…" }):\n${index}\n` +
+          `  - all (~${Math.round(guide.body.length / 100) / 10}k chars) — every section at once.\n` +
+          `Read the section for the step you are on. Porting a page start-to-finish uses all of them.`,
+      );
     },
   );
 
@@ -548,7 +600,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source (heavy — it includes the whole compiled stylesheet). Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source.`,
       inputSchema: {
         page: PageSchema,
         includeHtml: z.boolean().optional(),
@@ -682,7 +734,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       try {
         const r = await client.cloneAudit(pageId);
         const legName: Record<string, string> = { structure: 'STRUCTURE', behaviour: 'BEHAVIOUR', visual: 'VISUAL' };
-        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} gating checks for page “${pageId}” (original: ${r.sourceUrl}).`];
+        // The n/a count is part of the headline on purpose: a check that passed because the page has no
+        // slider / no modal / no nav verified nothing, and hiding that inside the total made "8/8" read
+        // as much stronger evidence than five actual checks.
+        const naNote = r.na ? `, ${r.na} n/a (nothing on the page to check)` : '';
+        const lines = [`CLONE AUDIT ${r.pass ? 'PASS ✓' : 'FAIL ✗'} — ${r.passed}/${r.total} gating checks${naNote} for page “${pageId}” (original: ${r.sourceUrl}).`];
         for (const leg of ['structure', 'behaviour', 'visual'] as const) {
           lines.push('', `[${legName[leg]}]`);
           for (const c of r.checks.filter((x) => x.leg === leg)) {
@@ -821,17 +877,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'inspect_source',
     {
       description:
-        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. The page must have an import source.",
+        "MEASURE a rendered page — settled markup + REAL computed styles + REAL rects for the CSS selectors you name. This is how you get NUMBERS off the LIVE ORIGINAL (font-size, padding, gap, colour, gradient stops, border-radius, shadow, transform), which the other fidelity tools cannot give you: they all return an image or a comparison score and each needs a built clone first. Use it BEFORE authoring a section — measure, then reproduce those exact values — instead of eyeballing a screenshot. It is also the ONLY way to see chrome a site builds in JAVASCRIPT: the importer stores the PRE-JS body, so such a site's stored page source contains no header/footer markup at all, while this returns what the visitor actually sees. Pass html:true to get the settled outerHTML of each match (scripts/styles stripped) — that is how you recover a JS-built nav's real link list. ::before/::after are reported when they generate a box, so rotated labels / gradient underlines / counters are visible too. side:'build' measures YOUR clone through the same probe, so you can diff numbers directly against the original. Measurements are viewport-dependent — the viewport used is echoed back. KEEP THE RESPONSE SMALL: every node returns ~28 computed properties by default, so a few selectors with html:true can run to tens of thousands of tokens; pass `styles` to name EXACTLY the properties you need (it REPLACES the default set) and only set html:true when you actually need the markup. The page must have an import source.",
       inputSchema: {
         pageId: z.string(),
         selectors: z.array(z.string()).min(1).max(20).describe('CSS selectors to measure, e.g. ["#main-nav a", ".hero h1", "footer"]'),
-        styles: z.array(z.string()).max(40).optional().describe('Extra CSS properties beyond the default set (e.g. ["backdrop-filter","writing-mode"]).'),
+        styles: z
+          .array(z.string())
+          .max(40)
+          .optional()
+          .describe(
+            'EXACTLY which CSS properties to return — this REPLACES the ~28-property default set, it does not add to it. ' +
+              'Use it to keep the response small: ["font-size","font-weight","color","padding"] returns four properties per ' +
+              'node instead of twenty-eight. Omit it to get the full default set (every property a faithful port usually ' +
+              'has to match). Naming a property outside the default set works the same way, e.g. ["backdrop-filter","writing-mode"].',
+          ),
         html: z.boolean().optional().describe('Also return each match\'s settled outerHTML (scripts/styles stripped, truncated).'),
-        viewport: z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']).optional().describe('Measurement viewport (default laptop · 1440x900).'),
+        viewport: z
+          .union([z.enum(['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile']), z.number().int().min(240).max(3840)])
+          .optional()
+          .describe(
+            'Measurement viewport: a name (wqhd 2560 · fullhd 1920 · laptop 1440 (default) · tablet 768 · mobile 390) ' +
+              'OR an exact pixel WIDTH. Use a width to measure a breakpoint the names skip — there is nothing between ' +
+              '768 and 1440, which is exactly where most frameworks switch, so pass 992 or 1024 to see what actually ' +
+              'applies there instead of inferring it from the stylesheet.',
+          ),
         side: z.enum(['source', 'build']).optional().describe('Which page to measure: the live original (default) or your build.'),
       },
     },
-    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' }): Promise<ToolResult> => {
+    async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string | number; side?: 'source' | 'build' }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
         return toolError(`Your connection to project ${holder.scope.projectId} lacks the \u201Ccontent:read\u201D capability.`);
@@ -947,6 +1020,31 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:read', () => client.listMediaFolders()),
   );
 
+/**
+   * Accept an object argument that arrived JSON-STRINGIFIED.
+   *
+   * Two independent clone agents hit the same wall on their first large page write (~12.5KB):
+   * `put_page` rejected it with "page — Expected object, received string", the identical payload
+   * succeeded when split into a smaller `put_page` + a `patch_page`, and the error named the wrong
+   * cause entirely ("your object is a string" rather than anything about size). One reported losing a
+   * cycle guessing; the other worked around it permanently.
+   *
+   * A caller that serialises a big argument instead of nesting it is sending the same data — there is
+   * nothing to gain by refusing it. Parse it and hand the result to the SAME schema, so validation is
+   * unchanged and a genuinely malformed payload still fails exactly as before.
+   */
+  const objectArg = <T extends z.ZodTypeAny>(schema: T) =>
+    z.preprocess((v) => {
+      if (typeof v !== 'string') return v;
+      const s = v.trim();
+      if (!s.startsWith('{') || !s.endsWith('}')) return v;
+      try {
+        return JSON.parse(s);
+      } catch {
+        return v; // not JSON after all — let the schema report the real problem
+      }
+    }, schema);
+
   // ---------------------------------------------------------------- writes (content:write)
   // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to
   // create/update without the irreversible power to remove pages or content.
@@ -955,7 +1053,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Create or REPLACE a page. The page id is taken from page.id. This is a TOTAL replace — every field you omit is deleted, so only use it when you are writing the whole page. To change a FEW fields (a nav label, the title, one data key) use patch_page instead. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page; call get_page if you need the stored page back.',
-      inputSchema: { page: PageSchema },
+      inputSchema: { page: objectArg(PageSchema) },
     },
     gate('content:write', ({ page }) => client.putContent('page', page.id, page, { receipt: true })),
   );
@@ -965,7 +1063,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'PATCH an existing page: send only the fields you want to change and everything else is kept. Use this instead of put_page for partial edits — put_page REPLACES, so `{id, path, title, nav}` would silently wipe `source`, `status`, `description`, `order`, `parent` and the `data.swImport` import marker every fidelity tool needs. Objects merge key-by-key (so `data:{a:1}` keeps the other data keys); ARRAYS and scalars replace wholesale (so `nav.slots` is set, not appended). The merged page is validated exactly like a full write. 404s if the page does not exist yet — create it with put_page first. Returns a RECEIPT — { kind, id, bytes, created, changed } — not the page: `changed` lists the top-level keys that actually differ, so an EMPTY list means your patch was a no-op (wrong id, or the value was already set). Call get_page if you need the stored page back.',
-      inputSchema: { page: PagePatchSchema },
+      inputSchema: { page: objectArg(PagePatchSchema) },
     },
     gate('content:write', ({ page }) => client.putContent('page', page.id, page, { merge: true, receipt: true })),
   );
@@ -974,6 +1072,29 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'delete_page',
     { description: 'Delete a page by id. Needs the content:delete capability.', inputSchema: { id: z.string() } },
     gate('content:delete', ({ id }) => client.deleteContent('page', id).then(() => ({ deleted: id }))),
+  );
+
+  server.registerTool(
+    'patch_critical_css',
+    {
+      description:
+        'PARTIAL write of website.criticalCss — add or change site CSS WITHOUT re-sending the whole stylesheet. ' +
+        'Pass `block` (a short name like "nav" or "gallery") and that named block is UPSERTED: replaced in place if ' +
+        'it already exists, appended if not — so editing the same rule ten times leaves ONE copy, not ten. Omit ' +
+        '`block` to plain-append. Send an empty `css` WITH a `block` to delete that block. Returns a receipt ' +
+        '({ block, bytes, bytesBefore, blocks, changed }), never the sheet. Use this for every CSS tweak: a full ' +
+        'settings write re-transmits the entire stylesheet, which is the single most token-expensive habit in a ' +
+        'clone job. put_content(kind:"settings") still works when you genuinely want to replace the whole sheet.',
+      inputSchema: {
+        css: z.string().max(200_000).describe('The CSS for this write. Empty string + a block name removes that block.'),
+        block: z
+          .string()
+          .regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,48}$/)
+          .optional()
+          .describe('Name this chunk so later writes REPLACE it instead of appending a duplicate.'),
+      },
+    },
+    gate('content:write', ({ css, block }: { css: string; block?: string }) => client.patchCriticalCss(css, block)),
   );
 
   server.registerTool(
@@ -1098,10 +1219,28 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'import_status',
     {
       description:
-        'Poll a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. A real crawl takes MINUTES, so import_website hands back a jobId immediately and you check here (roughly every 30s) rather than blocking. NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
-      inputSchema: { jobId: z.string().min(1).max(64) },
+        'Check a website import started by import_website. Returns its status ("running" | "done" | "failed"), the latest progress line, and — once done — the import report. ' +
+        'PASS waitMs (up to 60000) TO WAIT INSTEAD OF POLLING: the call blocks until the job actually moves — a new progress line, or it finishes — so one call replaces a whole poll loop. ' +
+        'Feed `since` the `progress lines` count from the previous reply so the wait resumes rather than returning immediately on a line you have already seen. ' +
+        'Without waitMs this returns instantly, which is what made earlier runs spin: one agent made 25 status calls plus 7 shell sleeps and spent its first ten minutes waiting. ' +
+        'NEVER re-run import_website while a job is running: the second crawl duplicates the work.',
+      inputSchema: {
+        jobId: z.string().min(1).max(64),
+        waitMs: z
+          .number()
+          .int()
+          .min(0)
+          .max(60_000)
+          .optional()
+          .describe('Block up to this many ms waiting for the job to move. Use 30000 and just call again if still running.'),
+        since: z.number().int().min(0).optional().describe('The progress-line count from your last reply, so the wait resumes.'),
+      },
     },
-    gate('content:write', ({ jobId }) => client.importStatus(jobId).then(summarizeImportJob)),
+    gate('content:write', ({ jobId, waitMs, since }: { jobId: string; waitMs?: number; since?: number }) =>
+      client
+        .importStatus(jobId, { ...(waitMs ? { waitMs } : {}), ...(since ? { since } : {}) })
+        .then(summarizeImportJob),
+    ),
   );
 
   server.registerTool(
@@ -1134,6 +1273,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       inputSchema: { from: MediaFolderSchema, to: MediaFolderSchema },
     },
     gate('content:write', ({ from, to }) => client.renameMediaFolder(from, to)),
+  );
+
+  server.registerTool(
+    'move_media_bulk',
+    {
+      description:
+        'Re-file MANY media assets into one folder in a single call. Use this instead of looping move_media: ' +
+        'reorganising an imported library one asset at a time is one round-trip each (96 calls for one real ' +
+        'site, which then hit a rate limit partway and left the library half-filed). Partial success is normal — ' +
+        'the result reports { moved, failed, requested, folder } and accounts for every id. Renaming stays on ' +
+        'move_media, since a filename is inherently per-asset.',
+      inputSchema: {
+        ids: z.array(z.string()).min(1).max(200).describe('Asset ids to re-file (max 200).'),
+        folder: MediaFolderSchema.describe('Destination folder for all of them.'),
+      },
+    },
+    gate('content:write', ({ ids, folder }: { ids: string[]; folder: string }) => client.moveMediaBulk(ids, folder)),
   );
 
   server.registerTool(

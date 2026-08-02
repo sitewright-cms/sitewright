@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type PlaywrightWorkerArgs } from '@playwright/test';
+import { adminContext, seedUser } from './helpers.js';
 
 type PwFixture = PlaywrightWorkerArgs['playwright'];
 
@@ -12,22 +13,9 @@ const PW = 'Pw-secret-1';
 const UNSPLASH_KEY = process.env.SW_E2E_UNSPLASH_KEY;
 const PEXELS_KEY = process.env.SW_E2E_PEXELS_KEY;
 
-async function adminContext(playwright: PwFixture, baseURL: string): Promise<APIRequestContext> {
-  const admin = await playwright.request.newContext({ baseURL });
-  const reg = await admin.post('/auth/register', { data: { email: ADMIN_EMAIL, password: PW } });
-  if (reg.status() === 409) {
-    expect((await admin.post('/auth/login', { data: { email: ADMIN_EMAIL, password: PW } })).status()).toBe(200);
-  } else {
-    expect(reg.status()).toBe(201);
-  }
-  return admin;
-}
-
 async function newProject(playwright: PwFixture, baseURL: string) {
-  const ctx = await playwright.request.newContext({ baseURL });
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-  const reg = await ctx.post('/auth/register', { data: { email: `u-${stamp}@e2e.test`, password: PW } });
-  expect(reg.status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `u-${stamp}@e2e.test`);
   const proj = await ctx.post(`/projects`, { data: { name: 'Site', slug: `s${stamp}` } });
   expect(proj.status()).toBe(201);
   const projectId = (await proj.json()).project.id as string;
@@ -43,6 +31,10 @@ test('stock: provider availability, search gating, and tenant isolation', async 
   expect(byName.openverse).toBe(true); // keyless → always available
 
   // A keyed provider with no instance key configured → 400.
+  // NOTE: this asserts INSTANCE-wide state, and the "admin configures provider keys" test below writes
+  // exactly that. There is no way to clear a stored key (StockKeysInputSchema: "omit a key to keep the
+  // stored one", and empty string is rejected), so this only holds on a FRESH deployment — which is what
+  // `scripts/e2e-deploy.sh up` gives. Re-running the suite against an already-used slot will fail here.
   expect((await ctx.get(`${base}/stock/search?provider=pexels&q=cats`)).status()).toBe(400);
   // Unknown provider / empty query → 400.
   expect((await ctx.get(`${base}/stock/search?provider=bogus&q=cats`)).status()).toBe(400);
@@ -71,7 +63,7 @@ test('stock: keyless Openverse search + import works with no configuration', asy
     expect(imp.status()).toBe(201);
     const asset = (await imp.json()).item;
     expect(asset.attribution.provider).toBe('openverse');
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.jpg$/); // self-hosted, not hotlinked
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\.jpg$/); // flat scheme (#708-711), self-hosted not hotlinked
     expect((await ctx.get(asset.url)).status()).toBe(200);
   }
   await ctx.dispose();

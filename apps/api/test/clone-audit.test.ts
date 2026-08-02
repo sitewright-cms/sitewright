@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { CLIP_PROBE } from '../src/render/clone-audit-probe.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
   carousels: 1, carouselsEnhanced: 1, dialogs: 1, headingFont: 'primary-font', bodyFont: 'text-font',
@@ -32,6 +33,25 @@ describe('structuralChecks', () => {
     expect(structuralChecks({ datasets: [], media: [], pageSource: '<h1 data-sw-text="t">T</h1>' }).find((c) => c.id === 'editable')!.pass).toBe(true);
   });
 
+  it('a page that is 100% DATASET-DRIVEN is editable — the loop is the affordance', () => {
+    // The guide REQUIRES loop fields to stay bare, so a gallery or activities page legitimately has
+    // zero `data-sw-*` leaves while being fully editable through the dataset editor. It used to score
+    // 0 and FAIL. One agent got past it by adding `data-sw-text` to a screen-reader-only <h1> and said
+    // plainly that this was gaming the check rather than improving the page.
+    const loop = structuralChecks({
+      datasets: [{ id: 'rooms', name: 'Rooms', slug: 'rooms' }],
+      media: [],
+      pageSource: '<ul>{{#each dataset.rooms}}<li>{{title}}</li>{{/each}}</ul>',
+    });
+    expect(loop.find((c) => c.id === 'editable')!.pass).toBe(true);
+    expect(countEditDirectives('{{#each dataset.rooms}}{{title}}{{/each}}')).toBe(1);
+    expect(countEditDirectives('{{#sw-pick-entry dataset.team "ana"}}{{name}}{{/sw-pick-entry}}')).toBe(1);
+    // a plain (non-dataset) each is NOT an edit affordance — it iterates whatever is in scope
+    expect(countEditDirectives('{{#each items}}{{x}}{{/each}}')).toBe(0);
+    // and a page with genuinely nothing still fails
+    expect(structuralChecks({ datasets: [], media: [], pageSource: '<div>plain</div>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
+  });
+
   // REGRESSION: the check used to read the page's RAW stored source, so the two structures the import
   // guide MANDATES both scored 0 and FAILED — a template-driven page (empty own source) and a page whose
   // directives live in a composed {{> snippet}}. The caller now passes the template-RESOLVED source plus
@@ -40,7 +60,7 @@ describe('structuralChecks', () => {
     const snippets = { 'page-hero': '<h1 data-sw-text="header_title">T</h1><div data-sw-text="header_sub"></div>' };
     const composed = structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>', snippets });
     expect(composed.find((c) => c.id === 'editable')!.pass).toBe(true);
-    expect(composed.find((c) => c.id === 'editable')!.detail).toContain('2 edit directives');
+    expect(composed.find((c) => c.id === 'editable')!.detail).toContain('2 edit affordances');
     // …and without the snippet bodies the very same page still reads as un-editable (the old behaviour).
     expect(structuralChecks({ datasets: [], media: [], pageSource: '{{> page-hero}}\n<section>plain</section>' }).find((c) => c.id === 'editable')!.pass).toBe(false);
   });
@@ -107,8 +127,61 @@ describe('behaviouralChecks', () => {
     expect(cut.detail).toContain('by div.');
     expect(cut.detail).toContain('56%');
     expect(cut.detail).toContain('122x115 -> 122x51');
-    // GATING, not advisory — this is objectively measurable, so it must block rather than advise.
-    expect(cut.advisory).toBeFalsy();
+    // ADVISORY, not gating. The measurement is sound; the INTENT is not knowable from the clone alone.
+    // Gating on it made real clones worse — two independent agents stripped `<img alt>` elements into
+    // background divs, flattened an accordion animation the original has, and shrank deliberately
+    // bleeding icons, purely to turn this green. Reporting the number lets the agent compare against
+    // the original and decide; forcing a guess produced four regressions and caught nothing real.
+    expect(cut.advisory).toBe(true);
+    expect(cut.detail).toContain('ADVISORY');
+  });
+
+  it('CLIP_PROBE exempts the two clippings that are DELIBERATE', () => {
+    // Source-level, like the STICKY_HEADER_JS assertions: CLIP_PROBE is pure layout geometry, and
+    // jsdom's getBoundingClientRect returns zeros, so its behaviour can only be exercised in a real
+    // browser. What this guards is that the two exemptions are not silently dropped.
+    //
+    // Why they exist: a false positive here is not free. A clone agent hit both and, to pass the gate,
+    // replaced 14 `<img alt="…">` elements with CSS background divs (alt text and srcset gone) and
+    // swapped an accordion's `max-width:0 → 100%` slide-open — which is what the ORIGINAL did — for a
+    // `display:none` toggle, losing the animation. The gate made the output worse.
+    //   • a SLIDER viewport clips by definition: queued slides sit outside it, and a "peek" carousel
+    //     shows a sliver of the next slide on purpose.
+    //   • a >95% clip means the element is hidden, not chopped — a collapsed accordion, a closed
+    //     drawer. The visitor sees nothing, so there is no visual defect to report.
+    expect(CLIP_PROBE.toString()).toContain('.embla');
+    expect(CLIP_PROBE.toString()).toContain('.slick-list');
+    expect(CLIP_PROBE.toString()).toContain('data-sw-part="container"');
+    expect(CLIP_PROBE.toString()).toContain('if (bySlider) continue;');
+    expect(CLIP_PROBE.toString()).toMatch(/>\s*0\.95\)\s*continue/);
+    // and the partial-cut threshold that makes a REAL defect report must still be there
+    expect(CLIP_PROBE.toString()).toMatch(/lostH > 0\.1 \|\| lostW > 0\.1/);
+  });
+
+  it('a check with NOTHING to check is N/A, not a pass — it must not pad the score', () => {
+    // A single-page site with no slider, no modal trigger and no nav scored a perfect "8/8" while only
+    // five checks had actually verified anything. Three vacuous passes made the verdict read far
+    // stronger than it was, and an agent reported the clone as gated-green on that basis.
+    const bare = behaviouralChecks(behaviour({ carousels: 0, carouselsEnhanced: 0, hasModalTrigger: false, navExpected: 0 }));
+    for (const id of ['sliders', 'modals', 'mobile-menu']) {
+      const c = bare.find((x) => x.id === id)!;
+      expect(c.pass).toBe(true);      // still not a failure — there is nothing wrong
+      expect(c.na).toBe(true);        // …but it is not evidence either
+      expect(c.detail).toContain('n/a');
+    }
+    // fonts always applies — every page has type, so it is never vacuous
+    expect(bare.find((x) => x.id === 'fonts')!.na).toBeFalsy();
+
+    const audit = assembleAudit([bare]);
+    expect(audit.na).toBe(3);
+    expect(audit.total).toBe(1);      // only the fonts check actually tested anything
+    expect(audit.passed).toBe(1);
+    expect(audit.pass).toBe(true);
+
+    // …and when the page DOES have these things, they count normally again.
+    const real = assembleAudit([behaviouralChecks(behaviour({ carousels: 2, carouselsEnhanced: 2 }))]);
+    expect(real.na).toBe(0);
+    expect(real.total).toBe(4);
   });
 
   it('requires modals ONLY when the original has triggers', () => {

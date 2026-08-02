@@ -115,6 +115,8 @@ function assetExt(asset: MediaAsset): string {
       return asset.format === 'jpeg' ? 'jpg' : asset.format.toLowerCase();
     case 'file':
       return extOf(asset.storedName);
+    case 'video':
+      return extOf(asset.storedName);
     case 'font':
       return asset.files[0]?.format ?? extOf(asset.url);
     case 'stylesheet':

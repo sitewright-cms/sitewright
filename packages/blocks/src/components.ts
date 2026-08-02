@@ -263,6 +263,14 @@ const LIGHTBOX_CSS = [
   // twice during the grow; and we cancel the vendor's secondary "inner slides up 100px" entrance,
   // which moved the real image against the zoom (the content shift).
   '.sw-lightbox-img-clone{object-fit:cover;z-index:101}',
+  // The vendor sets `cursor:zoom-in` on the open image unconditionally, but SmartPhoto only zooms
+  // an image that had to be SHRUNK to fit (desktop gate: 1/scale > 1). A photo already displayed at
+  // 100% therefore showed a zoom cursor and did nothing when clicked — measured: a 1000x668 source
+  // on a 1440x900 viewport displays 1000x668, scale 1.00, click → no change. The runtime stamps
+  // `data-sw-zoomable` on the viewer only when there is real headroom, so the cursor now tells the
+  // truth in both directions instead of promising a zoom that cannot happen.
+  '.sw-lightbox .sw-lightbox-img{cursor:default}',
+  '.sw-lightbox[data-sw-zoomable] .sw-lightbox-img{cursor:zoom-in}',
   '.sw-lightbox-inner{animation:none}',
   // Arrows: tall semi-transparent edge tabs (rounded inner corners, centered chevron) that DARKEN
   // and GROW WIDER on hover (dune7 behaviour). Shape/colour on the .arrow-* li; size + width-grow on
@@ -281,6 +289,13 @@ const LIGHTBOX_CSS = [
   '.sw-lightbox-header{height:auto;min-height:50px;padding:14px 18px;background:linear-gradient(to bottom,rgb(0 0 0/.55),transparent)}',
   // Thumbnail strip: rounded tiles; the active thumb gets a brand ring.
   '.sw-lightbox-nav{padding:0}',
+  // The strip itself CENTRES and wraps rather than running off the left edge. The vendor lays the
+  // list out left-aligned and full-bleed, so a short gallery's thumbnails sat hard against the
+  // arrow and a long one ran under it. The 50px inline padding keeps the first and last thumb
+  // clear of the prev/next arrows. z-index sits above the image clone so the strip stays clickable.
+  // (`overflow-x`/`white-space` are the vendor's own scroll affordance, kept for the wrap:nowrap
+  // fallback path; with `flex-wrap:wrap` a tall gallery stacks into rows instead of scrolling.)
+  '.sw-lightbox-nav ul{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;position:relative;z-index:101;overflow-x:auto;list-style:none;margin:0;padding:0 50px;text-align:center;white-space:nowrap;-webkit-overflow-scrolling:touch}',
   '.sw-lightbox-nav li{width:50px;height:50px;border-radius:.5rem;margin:0 .18rem}',
   '.sw-lightbox-nav a{border-radius:.5rem;transition:opacity .2s ease,box-shadow .2s ease}',
   '.sw-lightbox-nav a:hover{opacity:.85}',

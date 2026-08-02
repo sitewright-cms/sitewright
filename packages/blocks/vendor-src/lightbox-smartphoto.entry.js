@@ -164,6 +164,8 @@ function enhanceGallery(gallery) {
       sp.on('close', function () {
         window.clearInterval(sp.interval); // stop the inertia loop while the gallery is closed
         sp.interval = null;
+        window.clearInterval(sp.zoomHintInterval); // …and the zoomable-hint poll with it
+        sp.zoomHintInterval = null;
         if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
         lastFocus = null;
       });
@@ -172,12 +174,42 @@ function enhanceGallery(gallery) {
       /* overlay not built yet — retried on the next open */
     }
   }
+  // Mark whether the OPEN image can actually be zoomed, so the cursor stops lying.
+  //
+  // SmartPhoto zooms to 100% of the natural size, so on desktop its own gate is
+  // `_getScaleBoarder() = 1 / scale > 1` — i.e. it only zooms an image that had to be SHRUNK to
+  // fit. Its stylesheet nevertheless sets `cursor: zoom-in` on the open image unconditionally, so
+  // a photo that already displays at 100% shows a zoom cursor and then does nothing at all when
+  // clicked. Measured on a real gallery: 1000x668 source on a 1440x900 viewport → displayed
+  // 1000x668, scale 1.00, click → no change, cursor still `zoom-in`. It reads as a broken feature
+  // when it is in fact working exactly as designed.
+  //
+  // We stamp `data-sw-zoomable` on the viewer whenever there is real headroom; the CSS keys the
+  // cursor off it. Re-checked on a timer because the viewer re-renders through morphdom (which
+  // strips attributes absent from its template) and because the image changes as the user swipes.
+  function markZoomable() {
+    try {
+      var img = document.querySelector('.sw-lightbox-img.active') || document.querySelector('.sw-lightbox-img');
+      var root = document.querySelector('.sw-lightbox');
+      if (!img || !root) return;
+      var shown = img.getBoundingClientRect().width;
+      var zoomable = shown > 0 && img.naturalWidth > shown + 1;
+      if (zoomable) root.setAttribute('data-sw-zoomable', '');
+      else root.removeAttribute('data-sw-zoomable');
+    } catch {
+      /* never let a cosmetic hint break the viewer */
+    }
+  }
+
   items.forEach(function (a) {
     a.addEventListener('click', function () {
       lastFocus = a;
       // Re-arm the inertia loop for this open (covers the first open too); cleared again on close.
       if (!sp.interval) sp.interval = window.setInterval(function () { sp._doAnim(); }, 10);
       window.setTimeout(arm, 0);
+      // after the open animation, and again as the user pages through the gallery
+      window.setTimeout(markZoomable, 400);
+      if (!sp.zoomHintInterval) sp.zoomHintInterval = window.setInterval(markZoomable, 500);
     });
   });
 }

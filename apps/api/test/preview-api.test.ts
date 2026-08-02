@@ -174,6 +174,63 @@ describe('preview API — code-first source page', () => {
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('a body carrying only an id renders the STORED page, not an empty one', async () => {
+    // The route used to render exactly the object it was handed, so `{ id }` produced a page with no
+    // body — an agent asking "show me this page" got back just the chrome and had to fall back to the
+    // much heavier visual_audit.
+    const { t, projectId } = await setup('stub@acme.test', poolApp);
+    const saved = await poolApp.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/home`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', source: '<h1>Stored heading</h1>' },
+    });
+    expect(saved.statusCode, saved.body).toBeLessThan(300);
+
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((res.json() as { html: string }).html).toContain('Stored heading');
+  });
+
+  it('a body carrying its own source still renders VERBATIM (previewing an UNSAVED draft)', async () => {
+    // The stored-page fallback must not hijack the editor's live preview of unsaved edits.
+    const { t, projectId } = await setup('draft@acme.test', poolApp);
+    await poolApp.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/home`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', source: '<h1>Saved version</h1>' },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', source: '<h1>Unsaved draft</h1>' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('Unsaved draft');
+    expect(html).not.toContain('Saved version');
+  });
+
+  it('a stub naming a page that does not exist is still a 400, not a 404 from the repo', async () => {
+    // The stored-page lookup is a FALLBACK. If it became a precondition, a malformed body would escape
+    // validation and surface as "not found", which tells the caller nothing about what was wrong.
+    const { t, projectId } = await setup('miss@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'no-such-page' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('?screenshot=1 returns the HTML and, when a browser is available, well-formed screenshots', async () => {
     // Screenshots are BEST-EFFORT: with no Chromium (some CI) the capture is swallowed and only HTML
     // returns; where Chromium is present the route renders the page to JPEGs. Assert the contract holds

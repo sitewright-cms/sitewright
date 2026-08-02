@@ -1,14 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { seedUser } from './helpers.js';
 
 const stamp = Date.now();
 
 test('content lifecycle + export over HTTP', async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-
-  const reg = await ctx.post('/auth/register', {
-    data: { email: `content-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `content-${stamp}@e2e.test`);
   const proj = await ctx.post(`/projects`, {
     data: { name: 'Site', slug: `site-${stamp}` },
   });

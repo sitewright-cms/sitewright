@@ -114,6 +114,49 @@ describe('publish status is honest about where a site actually is', () => {
   });
 });
 
+describe('criticalCss can be patched without re-sending the sheet', () => {
+  it('a named block upserts, so repeated edits replace instead of piling up', async () => {
+    // Four clone agents independently called the full re-send the most tedious mechanic of the job —
+    // one did it eleven times against a ~19KB stylesheet.
+    const projectId = await client.createProject('CSS', 'csspatch');
+    const proj = client.project(projectId);
+    const base = `/projects/${projectId}/critical-css`;
+
+    const first = await client.post(base, { css: '.nav{height:80px}', block: 'nav' });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as { changed: boolean }).changed).toBe(true);
+
+    await client.post(base, { css: '.hero{color:red}', block: 'hero' });
+    const third = await client.post(base, { css: '.nav{height:92px}', block: 'nav' });
+    const receipt = third.json() as { blocks: string[]; bytes: number };
+    expect(receipt.blocks).toEqual(['nav', 'hero']); // order stable across the edit
+
+    const stored = ((await proj.getContent('settings', 'settings')).json() as {
+      item: { website?: { criticalCss?: string } };
+    }).item.website?.criticalCss ?? '';
+    expect(stored).toContain('.nav{height:92px}');
+    expect(stored).not.toContain('80px');     // replaced, not appended
+    expect(stored).toContain('.hero{color:red}'); // the neighbouring block is untouched
+
+    // …and the receipt is a receipt: it must NOT echo the stylesheet back, which is the whole point.
+    expect(JSON.stringify(receipt)).not.toContain('height:92px');
+  });
+
+  it('rejects a block name that would break out of the CSS comment delimiter', async () => {
+    const projectId = await client.createProject('CSS2', 'csspatch2');
+    const res = await client.post(`/projects/${projectId}/critical-css`, { css: '.a{}', block: 'a */ .evil{}' });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain('not a valid name');
+  });
+
+  it('requires css, and says so', async () => {
+    const projectId = await client.createProject('CSS3', 'csspatch3');
+    const res = await client.post(`/projects/${projectId}/critical-css`, { block: 'nav' });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain('css is required');
+  });
+});
+
 describe('page endpoints hand back a preview URL', () => {
   it('list + get carry a signed per-page previewUrl ending in that page path', async () => {
     const projectId = await client.createProject('Pages', 'pages');
@@ -128,6 +171,33 @@ describe('page endpoints hand back a preview URL', () => {
     expect(items.find((p) => p.id === 'about')?.previewUrl).toBe(got.previewUrl);
     // the home page created with the project sits at the preview ROOT
     expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\/[^/]+\/[^/]+\/$/);
+  });
+
+  it('a kind:"link" nav placeholder gets NO previewUrl — it is not a page', async () => {
+    // Found on a real clone of a one-page site: the agent modelled the header as five `#anchor`
+    // nav placeholders so the menu could be data-driven. Each is `kind:"link"` with no source and an
+    // empty path, so each came back advertising the SITE ROOT — follow one and you render the home
+    // page while being told you are looking at "About Us". Emitting nothing is the honest answer.
+    const projectId = await client.createProject('Onepage', 'onepage');
+    const proj = client.project(projectId);
+    await proj.putContent('page', 'nav-about', {
+      id: 'nav-about',
+      path: '',
+      title: 'About Us',
+      kind: 'link',
+      link: { target: '#about' },
+    });
+
+    const got = (await proj.getContent('page', 'nav-about')).json() as Record<string, unknown>;
+    expect(got.previewUrl).toBeUndefined();
+
+    const items = (
+      (await proj.listContent('page')).json() as { items: Array<Record<string, unknown>> }
+    ).items;
+    expect(items.find((p) => p.id === 'nav-about')?.previewUrl).toBeUndefined();
+    // …while the REAL home page in the same project still gets one, so this is a targeted exclusion
+    // and not the whole feature quietly switching itself off.
+    expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\//);
   });
 
   it('a CHILD page gets its full parent-chain route, not just its own last segment', async () => {

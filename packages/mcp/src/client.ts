@@ -100,7 +100,7 @@ export interface FidelityCheckResult {
 }
 
 /** One clone_audit check. `advisory` checks are reported but do NOT gate the audit's PASS (chrome element-fidelity). */
-export interface AuditCheck { leg: 'structure' | 'behaviour' | 'visual'; id: string; label: string; pass: boolean; detail: string; advisory?: boolean }
+export interface AuditCheck { leg: 'structure' | 'behaviour' | 'visual'; id: string; label: string; pass: boolean; detail: string; advisory?: boolean; na?: boolean }
 /** The comprehensive clone-acceptance gate (GET /projects/:id/clone-audit/:pageId). */
 export interface CloneAuditResult {
   sourceUrl: string;
@@ -110,6 +110,9 @@ export interface CloneAuditResult {
   passed: number;
   /** Total GATING (non-advisory) checks — advisory checks are in `checks` but NOT counted here. */
   total: number;
+  /** Gating checks that were N/A: nothing on the page for them to test (no slider, no modal trigger, no
+   *  nav). Excluded from `passed`/`total` so the score reports what was actually verified. */
+  na?: number;
   checks: AuditCheck[];
   fidelity: FidelityCheckResult;
 }
@@ -156,8 +159,27 @@ export interface ImportJobView {
   startedAt: number;
   finishedAt?: number;
   progress: string[];
+  /** progress.length at the time of the reply — feed back as `since` to resume a long-poll. */
+  progressCount?: number;
   report?: Record<string, unknown>;
   error?: string;
+}
+
+/** Outcome of a BULK media move. `moved` + `failed` together account for every requested id. */
+export interface BulkMoveResult {
+  moved: string[];
+  failed: Array<{ id: string; error: string }>;
+  requested: number;
+  folder: string;
+}
+
+/** What a `criticalCss` partial write reports back. */
+export interface CriticalCssReceipt {
+  block: string | null;
+  bytes: number;
+  bytesBefore: number;
+  blocks: string[];
+  changed: boolean;
 }
 
 /** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
@@ -438,6 +460,13 @@ export class SitewrightClient {
     return res.item;
   }
 
+  /** PARTIAL write of `website.criticalCss`. A NAMED block upserts (replace in place, else append);
+   *  an unnamed write appends; an empty body with a name removes that block. Returns a receipt, never
+   *  the sheet — echoing it back is the cost this exists to avoid. */
+  async patchCriticalCss(css: string, block?: string): Promise<CriticalCssReceipt> {
+    return this.request('POST', this.projectPath('/critical-css'), { css, ...(block ? { block } : {}) });
+  }
+
   async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean; receipt?: boolean } = {}): Promise<unknown> {
     // `merge` PATCHES: the body is a fragment deep-merged into the existing entity (settings + page) so a
     // partial write can't revert the fields it omits. Default (no flag) still REPLACES the whole entity.
@@ -549,7 +578,7 @@ export class SitewrightClient {
    */
   async inspectSource(
     pageId: string,
-    body: { selectors: string[]; styles?: string[]; html?: boolean; viewport?: string; side?: 'source' | 'build' },
+    body: { selectors: string[]; styles?: string[]; html?: boolean; viewport?: string | number; side?: 'source' | 'build' },
   ): Promise<InspectSourceResult> {
     return this.request('POST', this.projectPath(`/inspect-source/${encodeURIComponent(pageId)}`), body);
   }
@@ -615,8 +644,18 @@ export class SitewrightClient {
   }
 
   /** Poll an async import started by {@link importWebsite}. */
-  async importStatus(jobId: string): Promise<ImportJobView> {
-    return this.request('GET', this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}`));
+  /** `waitMs` LONG-POLLS: the request is held open until the job moves (a new progress line, or a
+   *  terminal state) or the budget expires, so one call replaces a poll loop. `since` is the
+   *  `progressCount` from the previous reply, so the wait resumes instead of returning on old lines. */
+  async importStatus(jobId: string, opts: { waitMs?: number; since?: number } = {}): Promise<ImportJobView> {
+    const q = new URLSearchParams();
+    if (opts.waitMs) q.set('waitMs', String(opts.waitMs));
+    if (opts.since) q.set('since', String(opts.since));
+    const qs = q.toString();
+    return this.request(
+      'GET',
+      this.projectPath(`/agent/import-website/${encodeURIComponent(jobId)}${qs ? `?${qs}` : ''}`),
+    );
   }
 
   async importImageUrl(url: string, folder?: string): Promise<unknown> {
@@ -644,6 +683,11 @@ export class SitewrightClient {
   }
 
   /** Move (`folder`) and/or rename (`filename`) a single media asset. */
+  /** Re-file MANY assets in one call. Partial success is normal — the result accounts for every id. */
+  async moveMediaBulk(ids: readonly string[], folder: string): Promise<BulkMoveResult> {
+    return this.request('POST', this.projectPath('/media/bulk-move'), { ids, folder });
+  }
+
   async updateMedia(id: string, changes: { folder?: string; filename?: string }): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'PATCH',

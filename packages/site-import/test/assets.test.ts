@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parse } from '../src/dom.js';
-import { collectDocumentRefs, collectImageRefs, hostAssets } from '../src/transform/assets.js';
+import { collectDocumentRefs, collectImageRefs, collectUnhostableMedia, hostAssets } from '../src/transform/assets.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
 import type { CapturedSite, MediaPort } from '../src/types.js';
 
@@ -129,5 +129,32 @@ describe('hostAssets', () => {
     expect(res.hosted).toBe(20);
     expect(maxInFlight).toBeGreaterThan(1); // proves parallelism (was strictly serial)
     expect(maxInFlight).toBeLessThanOrEqual(8); // bounded by the concurrency cap
+  });
+});
+
+describe('collectUnhostableMedia', () => {
+  it('names the video/audio sources the importer cannot bring across', () => {
+    // A clone of a site whose hero is a full-viewport autoplay video came back with NO <video>, no
+    // video asset, and no warning: measured on the original, bg_video.webm at 1440x900, autoplay +
+    // muted + loop, playing. Video is not a hostable kind, the image collector takes only the poster,
+    // and foundation mode re-authors the body — so it vanishes. Naming it is the whole fix for now.
+    const html = `<html><body>
+      <video src="/_data/assets/bg_video.webm" autoplay muted loop poster="/poster.jpg"></video>
+      <video><source src="/clip.mp4" type="video/mp4"><source src="/clip.webm"></video>
+      <audio src="/theme.mp3"></audio>
+      </body></html>`;
+    const found = collectUnhostableMedia([{ url: 'https://ex.com/p', doc: parse(html) }]);
+    expect(found).toContain('/_data/assets/bg_video.webm');
+    expect(found).toContain('/clip.mp4');   // <source> children, not just the element's own src
+    expect(found).toContain('/clip.webm');
+    expect(found).toContain('/theme.mp3');
+    expect(found).not.toContain('/poster.jpg'); // the poster IS captured, as an image
+  });
+
+  it('is quiet on a page with no video, dedupes, and ignores data: URIs', () => {
+    expect(collectUnhostableMedia([{ url: 'https://ex.com/p', doc: parse('<html><body><img src="/a.png"></body></html>') }])).toEqual([]);
+    const dup = `<html><body><video src="/same.webm"></video><video src="/same.webm"></video>
+      <video src="data:video/mp4;base64,AAAA"></video></body></html>`;
+    expect(collectUnhostableMedia([{ url: 'https://ex.com/p', doc: parse(dup) }])).toEqual(['/same.webm']);
   });
 });

@@ -16,6 +16,8 @@
 // truly LOAD, mobile menu reachable. Those never move a computed-style number and never show in a thumbnail.
 // The pure scorers live here (unit-tested); the browser-driving capture lives in compare.ts.
 
+import { diffClips, describeClips, type ClipFinding } from './clip-diff.js';
+
 /** One audit check. `leg` groups them; `id` is a stable key; `detail` is the human/agent-readable evidence. */
 export interface AuditCheck {
   leg: 'structure' | 'behaviour' | 'visual';
@@ -28,6 +30,12 @@ export interface AuditCheck {
    *  counter-skewed inner label spans where the clone exposes tab wrappers; its rich footer has no clone
    *  counterpart) is not reliably reachable, so a hard gate there would never terminate the loop. */
   advisory?: boolean;
+  /** N/A: the check passed because there was NOTHING TO CHECK — no sliders on either side, no modal
+   *  triggers in the original, no nav to reach on mobile. Counted separately from a real pass, because
+   *  "8/8" on a page where three checks were vacuous reads as far stronger evidence than it is. A single-
+   *  page site with no menu, no slider and no modal scored a perfect 8/8 while only five things had
+   *  actually been verified. Reported as `na`, and excluded from `passed`/`total`. */
+  na?: boolean;
 }
 
 /** Behavioural facts extracted from a live render of the BUILD (desktop probe + mobile nav reachability). */
@@ -50,13 +58,28 @@ export interface BehaviourFacts {
    * authored source too. Both an agent and a reviewer have shipped this while holding a measurement
    * that looked right, which is exactly why it belongs in the deterministic gate rather than in advice.
    */
-  clipped?: readonly { el: string; clippedBy: string; box: string; visible: string; lost: string }[];
+  clipped?: readonly ClipFinding[];
+  /**
+   * The SAME probe run against the imported page's original URL. `undefined`/`null` means no comparison
+   * was possible (no import provenance, or the source render failed) — which is NOT the same as "the
+   * original clips nothing", and the check stays advisory in that case rather than gating on a finding
+   * it cannot justify.
+   */
+  originalClipped?: readonly ClipFinding[] | null;
 }
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
 
-/** A client-edit directive: what makes rendered content editable in the client editor. */
-const EDIT_DIRECTIVE = /data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry/g;
+/** A client-edit directive: what makes rendered content editable in the client editor.
+ *
+ *  A DATASET LOOP counts. The content inside `{{#each dataset.rooms}}` is edited in the dataset
+ *  editor, row by row — it is client-editable, just not through a `data-sw-*` leaf, and the import
+ *  guide REQUIRES the loop fields to stay bare. So a page that is correctly 100% dataset-driven (a
+ *  gallery, an activities list) used to score zero and fail this check. One agent passed it by adding
+ *  `data-sw-text` to a screen-reader-only `<h1>` and said outright that this was gaming the check
+ *  rather than improving the page. The check was measuring the wrong thing, not the page. */
+const EDIT_DIRECTIVE =
+  /data-sw-(?:text|html|control|bg|src|href)|\{\{\s*sw-control|data-sw-entry|\{\{\s*#each\s+dataset\.|\{\{\s*#sw-pick-entry/g;
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (mirrors publish's PARTIAL_REF). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -109,26 +132,48 @@ export function structuralChecks(input: {
   return [
     { leg: 'structure', id: 'datasets', label: 'datasets deduped + meaningfully named', pass: input.datasets.length === 0 || generic.length === 0, detail: `${generic.length} generic-named ("List"/"items") of ${input.datasets.length}` },
     { leg: 'structure', id: 'media-folders', label: 'media out of the transient imported/ tree', pass: imported.length === 0, detail: `${imported.length}/${input.media.length} assets still under imported/` },
-    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-*)', pass: edits > 0, detail: `${edits} edit directives on this page (template-resolved, including composed snippets)` },
+    { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-* or a dataset loop)', pass: edits > 0, detail: `${edits} edit affordances on this page (template-resolved, including composed snippets and dataset loops)` },
   ];
 }
 
 /** BEHAVIOUR leg — pure over the extracted facts. modals only required when the original HAS modal triggers. */
 export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
+  // Only clips the ORIGINAL does not also make are candidate defects; see clip-diff.ts.
+  const clip = diffClips(b.clipped, b.originalClipped);
   return [
-    { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, detail: `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
-    { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
+    { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, na: b.carousels === 0, detail: b.carousels === 0 ? 'no carousels on the page — n/a' : `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
+    { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, na: !b.hasModalTrigger, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
     { leg: 'behaviour', id: 'fonts', label: 'heading + body fonts actually load', pass: b.headingFontLoaded && b.bodyFontLoaded, detail: `heading "${b.headingFont}"=${b.headingFontLoaded ? 'loaded' : 'MISSING'}, body "${b.bodyFont}"=${b.bodyFontLoaded ? 'loaded' : 'MISSING'}` },
-    { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, detail: `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
+    { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, na: b.navExpected === 0, detail: b.navExpected === 0 ? 'the original has no nav to reach — n/a' : `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
     {
       leg: 'behaviour',
       id: 'not-clipped',
-      label: 'no element is visually cut off by an ancestor overflow',
-      pass: (b.clipped?.length ?? 0) === 0,
+      label: clip.compared
+        ? 'no element is cut off that the ORIGINAL does not also cut off'
+        : 'no element is visually cut off by an ancestor overflow (ADVISORY — no original to compare against)',
+      pass: clip.novel.length === 0,
+      // GATING ONLY WHEN THE ORIGINAL WAS PROBED. The measurement was always sound; what it lacked was
+      // intent. Gating on the clone alone demonstrably damaged real clones — to turn it green, agents
+      // replaced every `<img>` in a carousel with a background-image div (measured: 41 alt texts down to
+      // 6 on one page, 18 down to 4 on another), swapped an accordion's `max-width:0` slide-open — which
+      // is what the ORIGINAL does — for a `display:none` toggle, and shrank icons the original
+      // deliberately bleeds past a tile edge. Four fidelity regressions, no real defect among them.
+      //
+      // With the original probed, "is this intended?" stops being a guess: a clip the SOURCE also makes
+      // is the design being ported, and is subtracted. What survives is a cut the original does not
+      // make, which is a genuine defect and is worth failing on. Without a source (no import provenance,
+      // or the source render failed) there is still no basis to judge, so the check stays advisory —
+      // reported for the agent to weigh, never forcing the guess that caused the damage.
+      advisory: !clip.compared,
       detail:
-        (b.clipped?.length ?? 0) === 0
-          ? 'nothing clipped'
-          : b.clipped!.map((c2) => `${c2.el} cut ${c2.lost} by ${c2.clippedBy} (${c2.box} -> ${c2.visible})`).join('; '),
+        clip.novel.length === 0
+          ? clip.compared
+            ? `nothing clipped that the original doesn't also clip${clip.matchedOriginal > 0 ? ` (${clip.matchedOriginal} matched the original and were ignored)` : ''}`
+            : 'nothing clipped'
+          : describeClips(clip.novel) +
+            (clip.compared
+              ? ` — the ORIGINAL does not clip these${clip.matchedOriginal > 0 ? ` (${clip.matchedOriginal} other clips DO match the original and were ignored)` : ''}`
+              : ' — ADVISORY: check whether the ORIGINAL clips it too before "fixing" it; a deliberate bleed is not a defect'),
     },
   ];
 }
@@ -151,14 +196,23 @@ export interface CloneAuditResult {
   pass: boolean;
   passed: number;
   total: number;
+  /** How many gating checks were N/A — nothing on the page for them to test. Kept out of `total` so the
+   *  score states what was actually verified. */
+  na: number;
   checks: AuditCheck[];
 }
 
 /** Assemble the full audit. RED (pass:false) if any GATING (non-advisory) check fails. Advisory checks are
- *  still in `checks` (reported to the agent) but excluded from pass/passed/total. */
+ *  still in `checks` (reported to the agent) but excluded from pass/passed/total.
+ *
+ *  N/A checks are excluded too. A check that passes because the page has no sliders, no modals and no nav
+ *  is not evidence of anything, and folding it into the score overstates the result: a single-page site
+ *  scored "8/8" with three of the eight vacuous, which reads as a far stronger verdict than five verified
+ *  checks. They stay in `checks` (so the agent can see they were considered) and are counted in `na`. */
 export function assembleAudit(legs: AuditCheck[][]): CloneAuditResult {
   const checks = legs.flat();
-  const gating = checks.filter((c) => !c.advisory);
+  const gating = checks.filter((c) => !c.advisory && !c.na);
+  const na = checks.filter((c) => !c.advisory && c.na).length;
   const passed = gating.filter((c) => c.pass).length;
-  return { pass: passed === gating.length && gating.length > 0, passed, total: gating.length, checks };
+  return { pass: passed === gating.length && gating.length > 0, passed, total: gating.length, na, checks };
 }

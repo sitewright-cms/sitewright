@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { adminContext } from './helpers.js';
 
 // Mode B / userSmtp (Phase 5b) over HTTP: the admin enables the userSmtp mode, the
 // project configures its own SMTP (encrypted, masked), a userSmtp form is created,
@@ -7,15 +8,8 @@ import { test, expect } from '@playwright/test';
 const PW = 'Pw-secret-1';
 
 test('userSmtp: project SMTP config + a userSmtp form stores submissions', async ({ playwright, baseURL }) => {
-  const api = await playwright.request.newContext({ baseURL });
-  const stamp = Date.now();
-
-  const reg = await api.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
-  if (reg.status() === 409) {
-    expect((await api.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
-  } else {
-    expect(reg.status()).toBe(201);
-  }
+    const stamp = Date.now();
+  const api = await adminContext(playwright, baseURL);
   // Enable the userSmtp mode instance-wide.
   expect((await api.put('/admin/settings', { data: { formModes: { userSmtp: true } } })).status()).toBe(200);
 

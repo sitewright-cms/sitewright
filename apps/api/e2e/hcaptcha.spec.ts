@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { adminContext, enableLocalHosting } from './helpers.js';
 
 const PW = 'Pw-secret-1';
 
@@ -7,16 +8,8 @@ const PW = 'Pw-secret-1';
 // rejects a submission with no/invalid captcha token (fail-closed). The DinD instance
 // is started with SW_ADMIN_EMAILS=admin@e2e.test + SW_ENCRYPTION_KEY (for the secret).
 test('hcaptcha: configured keys render the widget and gate submissions', async ({ playwright, baseURL }) => {
-  const admin = await playwright.request.newContext({ baseURL });
-  const stamp = Date.now();
-
-  // Register-or-login the configured admin (idempotent across runs).
-  const reg = await admin.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
-  if (reg.status() === 409) {
-    expect((await admin.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
-  } else {
-    expect(reg.status()).toBe(201);
-  }
+    const stamp = Date.now();
+  const admin = await adminContext(playwright, baseURL);
   // Configure instance hCaptcha keys (secret encrypted at rest).
   const settings = await admin.put('/admin/settings', {
     data: { hcaptcha: { siteKey: `hcsite-${stamp}`, secret: 'hc-secret-xyz' } },
@@ -32,8 +25,11 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'leads@acme.example', hcaptcha: true },
   });
   await admin.put(`${base}/content/page/contact`, {
-    data: { id: 'contact', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
+    // Code-first: the block-tree renderer was removed in #250, so a `Form` BLOCK renders as Unknown
+    // and no form markup reaches the export. {{sw-form}} is the supported embed.
+    data: { id: 'contact', path: 'contact', title: 'Contact', source: '<section>{{sw-form "contact"}}</section>' },
   });
+  await enableLocalHosting(admin, projectId);
   expect((await admin.post(`${base}/publish`)).status()).toBe(200);
 
   // The exported page carries the hCaptcha widget with the configured site key.

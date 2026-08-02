@@ -113,7 +113,15 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   const webpSrcset = usable.map((s) => `${base}?size=${s} ${descriptor(s)}w`).join(', ');
   const imgSrc = `${base}?size=${largest}`;
   const dims = `width="${width}" height="${height}"`;
-  const safePlaceholder = asset.placeholder && PLACEHOLDER_RE.test(asset.placeholder) ? asset.placeholder : undefined;
+  // NO BLUR-UP ON TRANSPARENT ART. The LQIP is painted as a background-image BEHIND the <img>, which
+  // works only because an opaque photo covers it once decoded. On art with an alpha channel it shows
+  // THROUGH the transparent pixels as a permanent coloured wash — a cut-out logo, an illustration or a
+  // product shot ends up in a blurred rectangle. A clone hit this on every illustration on the page and
+  // abandoned {{sw-image}} altogether, hand-authoring <img> with explicit width/height to get away from
+  // it. `hasAlpha` is recorded by the image pipeline at import, so this is the actual condition rather
+  // than an extension guess: an OPAQUE png keeps its placeholder, a transparent WebP correctly loses it.
+  const safePlaceholder =
+    !asset.hasAlpha && asset.placeholder && PLACEHOLDER_RE.test(asset.placeholder) ? asset.placeholder : undefined;
   const lqip = safePlaceholder
     ? ` style="background-image:url('${safePlaceholder}');background-size:cover;background-repeat:no-repeat"`
     : '';

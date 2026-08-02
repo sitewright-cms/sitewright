@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, adminContext } from './helpers.js';
 
 // The deployed instance is started with SW_ADMIN_EMAILS=admin@e2e.test and a
 // SW_ENCRYPTION_KEY. This exercises the instance-admin settings flow over HTTP:
@@ -9,36 +10,24 @@ const ADMIN_EMAIL = 'admin@e2e.test';
 const PW = 'Pw-secret-1';
 
 test('instance admin settings: gating, persistence, and secret masking', async ({ playwright, baseURL }) => {
-  const api = await playwright.request.newContext({ baseURL });
-  const stamp = Date.now();
-
-  // --- A normal (non-admin) user is denied. ---
-  const userReg = await api.post('/auth/register', {
-    data: { email: `user-${stamp}@e2e.test`, password: PW },
-  });
-  expect(userReg.status()).toBe(201);
+    const stamp = Date.now();
+  const api = await seedUser(playwright, baseURL, `user-${stamp}@e2e.test`);
   const userMe = await api.get('/me');
   expect((await userMe.json()).isInstanceAdmin).toBe(false);
   expect((await api.get('/admin/settings')).status()).toBe(403);
   await api.dispose();
 
-  // --- The configured admin can manage settings. Register-or-login for
-  // idempotency across repeated runs against the same (persistent) container. ---
-  const admin = await playwright.request.newContext({ baseURL });
-  const reg = await admin.post('/auth/register', {
-    data: { email: ADMIN_EMAIL, password: PW },
-  });
-  if (reg.status() === 409) {
-    const login = await admin.post('/auth/login', { data: { email: ADMIN_EMAIL, password: PW } });
-    expect(login.status()).toBe(200);
-  } else {
-    expect(reg.status()).toBe(201);
-  }
+  // --- The configured admin can manage settings. The admin is SEEDED at first boot (never
+  // registered), so this just logs in — idempotent across repeated runs. ---
+  const admin = await adminContext(playwright, baseURL);
 
   const me = await admin.get('/me');
   expect((await me.json()).isInstanceAdmin).toBe(true);
 
-  // Defaults: all form modes disabled.
+  // Form modes start disabled. This spec WRITES them further down, so a re-run against the same
+  // deployment would otherwise fail on its own leftovers — reset first, then assert the read-back.
+  // That still proves the gate (a non-admin was refused above) and that writes persist.
+  expect((await admin.put('/admin/settings', { data: { formModes: { globalSmtp: false } } })).status()).toBe(200);
   const initial = await admin.get('/admin/settings');
   expect(initial.status()).toBe(200);
   expect((await initial.json()).settings.formModes.globalSmtp).toBe(false);

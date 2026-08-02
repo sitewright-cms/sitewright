@@ -81,6 +81,25 @@ describe('searchIcons — multi-term icon search', () => {
     expect(searchIcons('cog')[0]!.matches).toContain('gear'); // lucide "settings" tag "cog" → gear
     expect(searchIcons('magnify')[0]!.matches.some((m) => m.includes('magnifying-glass'))).toBe(true);
   });
+  it('finds BRAND logos, so brand:<slug> stops being a blind guess', async () => {
+    // `brand:<slug>` renders a simple-icons logo, but the slugs were unsearchable AND an unknown slug
+    // renders NOTHING — no error, no fallback. A clone author guessed `brand:dinersclub`, got silence,
+    // and only noticed by counting <svg> elements against the spans that should have held them.
+    const { searchIcons, BRAND_ICON_NAMES, renderIconSvg } = await import('../src/index.js');
+    const known = BRAND_ICON_NAMES[0]!;
+    const hits = searchIcons(known)[0]!.matches;
+    expect(hits).toContain(`brand:${known}`);
+    // the result is the LITERAL string {{sw-icon}} takes, so it can be pasted straight in and renders
+    expect(renderIconSvg(`brand:${known}`)).toContain('<svg');
+
+    // a well-known logo is findable by its plain name
+    const fb = searchIcons('facebook')[0]!.matches;
+    expect(fb.some((m) => m.startsWith('brand:'))).toBe(true);
+
+    // …and brand results never crowd out an exact Phosphor match for an ordinary word
+    expect(searchIcons('gear')[0]!.matches[0]).toBe('gear');
+  });
+
   it('matches tags as WHOLE words, not substrings (no cross-word false positives)', async () => {
     const { searchIcons } = await import('../src/index.js');
     // 'onito' is a mid-word fragment of the tag 'monitor' — must NOT surface tag-sourced matches.

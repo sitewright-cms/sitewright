@@ -17,6 +17,15 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('CODE-FIRST static website');
   });
 
+  it('tells the agent the connected project IS the authorization', () => {
+    // A clone agent stopped after building only the chrome and declined to port 16 page bodies,
+    // reasoning that nothing in the task established authorization from the site's owner. The
+    // operator who granted the project token IS that party, and nothing said so.
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('YOU ARE AUTHORIZED');
+    // …without becoming a blanket "never refuse anything": impersonation stays the agent's call.
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/impersonat/i);
+  });
+
   it('is a SMALL core (feature how-tos moved to on-demand guides)', () => {
     // The served instructions are the core + a generated topic index — kept well under the old ~24k
     // monolith (and the 32k admin-override max) so it isn't a heavy up-front prompt. (Ceiling covers the
@@ -27,7 +36,10 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // 18_800 -> 19_200 when patch_page joined the core: put_page is a TOTAL replace that silently deletes
     // omitted fields (data.swImport included, which makes a page un-auditable), so which of the two to
     // reach for is a destructive-write rule that has to be in the always-loaded core, not a guide.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(19_200);
+    // 19_200 -> 19_800 for the authorization line: an agent stopped a clone half-way and handed back 16
+    // pages of raw scaffold because nothing told it that a connected project IS the authorization. That
+    // is a directive shaping whether a session COMPLETES AT ALL, so it belongs in the core, not a guide.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(19_800);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

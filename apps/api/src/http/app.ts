@@ -22,6 +22,9 @@ import {
   targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
+  VideoAssetSchema,
+  VIDEO_CONTENT_TYPES,
+  isVideoExt,
   StylesheetAssetSchema,
   ScriptAssetSchema,
   FontWeightSchema,
@@ -45,6 +48,7 @@ import {
   type CorporateIdentity,
   type Entry,
   type FileAsset,
+  type VideoAsset,
   type StylesheetAsset,
   type ScriptAsset,
   type MediaFolderRecord,
@@ -276,6 +280,8 @@ import {
   type Settings,
 } from '../repo/content.js';
 import { deepMerge } from '../repo/merge.js';
+import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
+import { normalizeEntryValues } from '../repo/entry-values.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
 import { RevisionsRepository } from '../repo/revisions.js';
@@ -329,7 +335,12 @@ const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 // nativized site-wide `bottom` of deduped modals) + head/criticalCss + JSON envelope ~= 1.7 MiB, above
 // Fastify's 1 MiB default. 4 MiB gives headroom so a nativized settings save doesn't 413 in the editor/MCP.
 const CONTENT_BODY_LIMIT = 4 * 1024 * 1024;
-const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+// 15 MiB was sized for an IMAGE and quietly became the ceiling for every upload — a real background
+// video is tens of megabytes, so the media library simply could not hold one. The limit now matches the
+// project-zip path (200 MiB), which the same disk already accepts.
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+/** Images still go through sharp, which must not be handed an arbitrarily huge buffer. */
+const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
 const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
@@ -904,6 +915,30 @@ const CreateApiKeyBody = z.object({
   expiresInDays: z.number().int().min(1).max(365),
 });
 
+/**
+ * Parse a `Range:` header against a buffer. Returns the slice + its `Content-Range`, `'unsatisfiable'`
+ * for a range past the end, or null when there is no (single, byte) range to honour.
+ *
+ * Shared because BOTH media routes need it and only one of them had it: advertising `accept-ranges`
+ * while ignoring `Range` makes a browser believe it can seek, then silently drops it back to 0.
+ */
+export function partialContent(
+  body: Buffer,
+  header: string | string[] | undefined,
+): { body: Buffer; contentRange: string } | 'unsatisfiable' | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(raw ?? ''));
+  if (!m) return null;
+  const size = body.length;
+  const startRaw = m[1];
+  const endRaw = m[2];
+  // `bytes=-N` = the last N bytes; `bytes=N-` = N to the end.
+  const start = startRaw ? Number(startRaw) : Math.max(0, size - Number(endRaw || 0));
+  const end = startRaw ? (endRaw ? Math.min(Number(endRaw), size - 1) : size - 1) : size - 1;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return 'unsatisfiable';
+  return { body: body.subarray(start, end + 1), contentRange: `bytes ${start}-${end}/${size}` };
+}
+
 export interface AppOptions {
   db: Database;
   cookieSecret?: string;
@@ -1083,12 +1118,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    *  the store it depends on, so the guard can't drift away from the thing being guarded. */
   const draftPreviewBase = (projectId: string): string | null =>
     previewSiteStore ? `/preview-site/${projectId}/${signPreview(projectId, currentCookieSecret)}/` : null;
-  /** A page's preview URL. The route is the PARENT-CHAIN path (`pagePath`, what the publisher itself uses
-   *  via allRoutes) — NOT the page's own `path` field, which is only the last segment: a child page would
-   *  otherwise get a URL missing its parent's folder, i.e. exactly the kind of confidently-wrong address
-   *  this whole change exists to stop emitting. */
-  const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string =>
-    `${base}${pagePath(page, byId).replace(/^\//, '')}`;
+  /** A page's preview URL, or null when the row is not a renderable page. The route is the PARENT-CHAIN
+   *  path (`pagePath`, what the publisher itself uses via allRoutes) — NOT the page's own `path` field,
+   *  which is only the last segment: a child page would otherwise get a URL missing its parent's folder,
+   *  i.e. exactly the kind of confidently-wrong address this whole change exists to stop emitting.
+   *
+   *  A `kind:"link"` row is a NAV ENTRY, not a page — it has no source and its `path` is empty, so it
+   *  would resolve to the site ROOT. A real clone hit this: five `#anchor` nav placeholders each came
+   *  back advertising the home page's URL, so following one renders the home page while claiming to be
+   *  "About Us". Emitting nothing is the honest answer; there is no page to see. */
+  const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string | null =>
+    page.kind === 'link' ? null : `${base}${pagePath(page, byId).replace(/^\//, '')}`;
   // Cached source-reference screenshots (captured at import) for compare_to_source.
   const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
   // Live-preview draft-build state, keyed by project id: the content version currently built,
@@ -2780,13 +2820,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const previewBase = kind === 'page' ? (draftPreviewBase(proj.id) ?? '') : '';
       // byId comes from the RAW list (before any summarising) so the parent chain is always complete.
       const pageById = previewBase ? pagesById(items as Page[]) : undefined;
+      // The RAW row decides, not the summarised one: summarizeContentList may drop `kind`, and a
+      // `kind:"link"` nav placeholder must not be handed a URL (see pagePreviewUrl).
       const withPreview = (list: unknown[]): unknown[] =>
         previewBase && pageById
-          ? list.map((it) =>
-              it && typeof it === 'object'
-                ? { ...(it as Record<string, unknown>), previewUrl: pagePreviewUrl(previewBase, it as Page, pageById) }
-                : it,
-            )
+          ? list.map((it) => {
+              if (!it || typeof it !== 'object') return it;
+              const row = it as Record<string, unknown>;
+              const raw = pageById.get(String(row.id));
+              const url = raw ? pagePreviewUrl(previewBase, raw, pageById) : null;
+              return url ? { ...row, previewUrl: url } : row;
+            })
           : list;
       const project = (list: unknown[]): unknown[] =>
         withPreview(wantSummary ? summarizeContentList(kind, list) : list);
@@ -2824,7 +2868,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const byId = page.parent
             ? pagesById((await contentRepo.list(ctx, 'page')) as Page[])
             : pagesById([page]);
-          return reply.send({ item, previewUrl: pagePreviewUrl(base, page, byId) });
+          const previewUrl = pagePreviewUrl(base, page, byId);
+          // null for a `kind:"link"` nav placeholder — omit the field rather than advertise the site root.
+          if (previewUrl) return reply.send({ item, previewUrl });
         }
       }
       return reply.send({ item });
@@ -2873,6 +2919,47 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     return { ...body, order: next(Math.max(...ordered.map((e) => e.order as number)) + 1) };
   }
+
+  // ---- criticalCss PARTIAL write -------------------------------------------------------------
+  // `website.criticalCss` is one string, and `?merge=1` deep-merges OBJECTS but replaces strings
+  // wholesale — so changing one rule meant re-transmitting the whole stylesheet. Four clone agents
+  // independently called this the most tedious mechanic of the job (counted: 6x ~5KB, 6x ~7KB,
+  // 6x ~22KB, 11x ~19KB of pure re-send). A NAMED write is an upsert, so repeated edits to the same
+  // rule replace in place instead of piling up copies; an unnamed one appends.
+  app.post<{ Params: { projectId: string }; Body: { css?: unknown; block?: unknown } }>(
+    '/projects/:projectId/critical-css',
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const css = typeof req.body?.css === 'string' ? req.body.css : null;
+      if (css === null) {
+        return reply.code(400).send({ error: 'css is required — a string of CSS (send "" with a block to remove that block)' });
+      }
+      const rawBlock = req.body?.block;
+      const block = typeof rawBlock === 'string' && rawBlock !== '' ? rawBlock : undefined;
+      if (block !== undefined && !CSS_BLOCK_NAME.test(block)) {
+        return reply.code(400).send({
+          error: `block "${block}" is not a valid name — letters, digits, "-" and "_", starting with a letter, max 49 chars`,
+        });
+      }
+      const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as
+        | { website?: { criticalCss?: string } }
+        | null;
+      if (!settings) return reply.code(404).send({ error: 'no settings to patch — write the full settings object first' });
+      const before = settings.website?.criticalCss ?? '';
+      const after = applyCriticalCssPatch(before, css, block);
+      const next = { ...settings, website: { ...(settings.website ?? {}), criticalCss: after } };
+      await contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, next);
+      // A receipt, not the sheet: echoing it back is the very cost this route exists to avoid.
+      return reply.send({
+        block: block ?? null,
+        bytes: after.length,
+        bytesBefore: before.length,
+        blocks: listCriticalCssBlocks(after),
+        changed: after !== before,
+      });
+    },
+  );
 
   app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
@@ -2944,7 +3031,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'page' && !wantMerge) {
         body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
       }
-      // Entries get a default `order` so write order == render order (see assignEntryOrder).
+      // Entries: fold FLAT field values into `values` before anything else looks at the body. Sending
+      // them flat is the most common mistake against this API and it fails silently — unknown keys are
+      // stripped, the row saves as values:{}, the write reports success, and the loop renders nothing.
+      // Then give it a default `order` so write order == render order (see assignEntryOrder).
+      if (kind === 'entry') body = normalizeEntryValues(body);
       if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
       // A receipt reports what actually CHANGED, so the prior value must be read before the write.
       if (wantReceipt) await loadPrior();
@@ -3411,7 +3502,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { bodyLimit: PREVIEW_BODY_LIMIT, config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
-      const page = PageSchema.parse(req.body);
+      // RENDER THE STORED PAGE when the caller sends only an id. The route used to render exactly the
+      // object it was handed, so `{ id, path, title }` produced an EMPTY page — an agent asking "show me
+      // this page" got a screenshot of just the header and footer and had to fall back to the far heavier
+      // visual_audit. The tool description already implied a fallback ("possibly unsaved"); now there is
+      // one. A body carrying `source` still renders verbatim, so previewing an UNSAVED draft is unchanged.
+      const rawBody = (req.body ?? {}) as Record<string, unknown>;
+      const bodyIsStub =
+        typeof rawBody.id === 'string' && rawBody.source === undefined && rawBody.root === undefined;
+      // The lookup is a FALLBACK, not a precondition: a stub naming a page that doesn't exist must still
+      // fail validation as a malformed page (400), not escape as a 404 from the repo. Only a stub that
+      // resolves to a real stored page gets merged.
+      let stored: object | null = null;
+      if (bodyIsStub) {
+        stored = ((await contentRepo.get(ctx, 'page', rawBody.id as string).catch(() => null)) as object) ?? null;
+      }
+      const page = PageSchema.parse(stored ? { ...stored, ...rawBody } : req.body);
 
       // Brand tokens come from the saved Corporate Identity singleton; fall back to
       // the project name with default tokens when settings aren't configured yet.
@@ -3966,6 +4072,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store a VIDEO/AUDIO upload. Served INLINE with its real content type (and range requests), because
+    // a <video> must be playable — the download-only `file` kind cannot back a background video.
+    async function createVideoAsset(
+      ctx: ProjectContext,
+      projectSlug: string,
+      buffer: Buffer,
+      meta: { filename: string; mimetype: string; folder?: string },
+    ): Promise<VideoAsset> {
+      const assetId = await mintAssetId(ctx);
+      const storedName = MediaStorage.safeStoredName(meta.filename || 'video');
+      const ext = storedName.split('.').pop()?.toLowerCase() ?? '';
+      try {
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
+        const asset = VideoAssetSchema.parse({
+          kind: 'video',
+          id: assetId,
+          filename: meta.filename || storedName,
+          folder: meta.folder ?? '',
+          bytes: buffer.length,
+          contentType: VIDEO_CONTENT_TYPES.get(ext) ?? (meta.mimetype || 'video/mp4'),
+          storedName,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as VideoAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store an imported site's CSS as one inline-served `.css` file (kind 'stylesheet') so the importer
     // can `<link>` it instead of inlining the bulk CSS into each page's editable source.
     async function createStylesheetAsset(ctx: ProjectContext, projectSlug: string, css: string): Promise<StylesheetAsset> {
@@ -4098,7 +4234,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
         try {
-          const saved = await createFileAsset(ctx, project.slug, buffer, meta);
+          // A playable video/audio goes to the INLINE video kind; everything else stays download-only.
+          const saved = isVideoExt(meta.filename)
+            ? await createVideoAsset(ctx, project.slug, buffer, meta)
+            : await createFileAsset(ctx, project.slug, buffer, meta);
           return reply.code(201).send({ item: saved });
         } catch (err) {
           // A bad client-supplied contentType (the only externally-shaped field) → clean 400,
@@ -4145,7 +4284,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       try {
         fetched = await importUrlFetch(url, {
           timeoutMs: IMPORT_TIMEOUT_MS,
-          maxBytes: MAX_UPLOAD_BYTES,
+          maxBytes: MAX_IMAGE_UPLOAD_BYTES,
           maxRedirects: MAX_IMPORT_REDIRECTS,
           signal: controller.signal,
         });
@@ -4188,7 +4327,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
           : contentType.startsWith('image/')
             ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-            : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+            : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
+              ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+              : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
         if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
         return reply.code(201).send({ item: saved });
       } catch (err) {
@@ -4260,7 +4401,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Self-host a linked document (PDF/doc/…) as-is via the file-asset path (download-only, no sharp).
       hostFileAsset: async (ctx, slug, buffer, meta) => {
         try {
-          const saved = await createFileAsset(ctx, slug, buffer, meta);
+          // The importer routes video/audio here too — self-host it as the INLINE video kind so a
+          // cloned background video actually plays instead of downloading (or vanishing).
+          const saved = isVideoExt(meta.filename)
+            ? await createVideoAsset(ctx, slug, buffer, meta)
+            : await createFileAsset(ctx, slug, buffer, meta);
           return { url: saved.url };
         } catch {
           return null; // oversize / storage error → leave the original href
@@ -4299,14 +4444,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         : {}),
     });
 
-    app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(
+    app.get<{ Params: { projectId: string }; Querystring: { kind?: string; placeholders?: string } }>(
       '/projects/:projectId/media',
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
         const items = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
-        // Optional `?kind=image|file|font` filter (e.g. the font picker only needs fonts).
+        // Optional `?kind=image|file|font|video` filter (e.g. the font picker only needs fonts).
         const kind = req.query.kind;
-        return reply.send({ items: kind ? items.filter((a) => a.kind === kind) : items });
+        const filtered = kind ? items.filter((a) => a.kind === kind) : items;
+        // DROP the inline LQIP data URIs by default. They are only useful to a UI that paints a blur-up
+        // thumbnail; to any other caller they are pure noise, and they are not small — measured on a
+        // real project, 28,176 of a 76,287-char response (36%) was base64 placeholder. `?placeholders=1`
+        // brings them back for the editor's media picker.
+        const wantPlaceholders = req.query.placeholders === '1' || req.query.placeholders === 'true';
+        const out = wantPlaceholders
+          ? filtered
+          : filtered.map((a) => (a.kind === 'image' && a.placeholder ? { ...a, placeholder: undefined } : a));
+        return reply.send({ items: out });
       },
     );
 
@@ -4411,7 +4565,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // List the persisted folder records (the editor unions these with asset-derived folders).
     app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
-      return reply.send({ items: await contentRepo.list(ctx, 'mediafolder') });
+      // A folder RECORD exists only for a folder someone explicitly CREATED. Assets filed straight into
+      // a path (every importer-created folder, for one) have no record, so this returned almost nothing
+      // while the library was fully organised — measured on a real project: 1 record against 10 folders
+      // actually in use. That makes "look at the folders before you organise", which this endpoint's own
+      // description tells you to do, return a misleading answer. Union the records with the paths that
+      // are genuinely in use, plus their ancestors, so the answer is the real folder tree.
+      const [records, media] = await Promise.all([
+        contentRepo.list(ctx, 'mediafolder') as Promise<MediaFolderRecord[]>,
+        contentRepo.list(ctx, 'media') as Promise<MediaAsset[]>,
+      ]);
+      const paths = new Map<string, MediaFolderRecord>();
+      for (const r of records) paths.set(r.path, r);
+      for (const asset of media) {
+        const folder = String((asset as { folder?: string }).folder ?? '').replace(/^\/+|\/+$/g, '');
+        if (!folder) continue;
+        // "a/b/c" implies "a" and "a/b" exist too — a picker needs the ancestors to render the tree.
+        const segs = folder.split('/');
+        for (let i = 1; i <= segs.length; i++) {
+          const p = segs.slice(0, i).join('/');
+          if (!paths.has(p)) paths.set(p, { id: `used:${p}`, path: p });
+        }
+      }
+      const items = [...paths.values()].sort((a, b) => a.path.localeCompare(b.path));
+      return reply.send({ items });
     });
 
     // Create an (empty) folder + any missing ancestors.
@@ -4511,6 +4688,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       folder: MediaFolderSchema.optional(),
       filename: z.string().min(1).max(255).optional(),
     });
+    // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
+    // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
+    // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
+    const BulkMoveBody = z.object({
+      ids: z.array(z.string().min(1)).min(1).max(200),
+      folder: MediaFolderSchema.optional(),
+      // A rename is inherently per-asset, so bulk only moves. Renaming stays on the single PATCH.
+    });
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/bulk-move', { config: rlAgent(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = BulkMoveBody.safeParse(req.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid request — ids (1-200) and a folder are required', details: body.error.flatten() });
+      }
+      if (body.data.folder === undefined) return reply.code(400).send({ error: 'folder is required' });
+      const folder = body.data.folder;
+      const ids = [...new Set(body.data.ids)];
+      const moved: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const id of ids) {
+        try {
+          const asset = await contentRepo.getLiveMedia(ctx, id);
+          await contentRepo.put(ctx, 'media', asset.id, { ...asset, folder });
+          moved.push(id);
+        } catch (err) {
+          // One bad id must not abandon the rest half-filed — that is the failure mode this replaces.
+          failed.push({ id, error: err instanceof Error ? err.message : 'move failed' });
+        }
+      }
+      return reply.send({ moved, failed, requested: ids.length, folder });
+    });
+
     app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id', { config: rl(60) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
@@ -4838,6 +5048,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
         return CORS(reply).type('text/javascript; charset=utf-8').send(bytes);
+      }
+      if (asset.kind === 'video') {
+        // INLINE with its real type — a background video has to play, not download. nosniff still
+        // applies, and the type comes from our own extension table rather than the upload's claim.
+        const bytes = await read();
+        if (!bytes) return reply.code(404).send({ error: 'not found' });
+        const type = VIDEO_CONTENT_TYPES.get(ext) ?? asset.contentType;
+        // RANGE REQUESTS, for real. Advertising `accept-ranges` while ignoring `Range:` is the exact
+        // kind of untrue signal this codebase keeps getting bitten by: the browser believes it can
+        // seek, asks for a byte window, gets the whole file with a 200, and SNAPS BACK TO 0. Measured
+        // on the first cut of this route — `video.currentTime = 6` landed at 0. It also means a 16 MB
+        // background video downloads in full before it can start.
+        const ranged = partialContent(bytes, req.headers.range);
+        if (ranged === 'unsatisfiable') {
+          return CORS(reply).code(416).header('content-range', `bytes */${bytes.length}`).send();
+        }
+        if (ranged) {
+          return CORS(reply)
+            .code(206)
+            .header('accept-ranges', 'bytes')
+            .header('content-range', ranged.contentRange)
+            .header('content-length', String(ranged.body.length))
+            .type(type)
+            .send(ranged.body);
+        }
+        return CORS(reply).header('accept-ranges', 'bytes').type(type).send(bytes);
       }
       if (asset.kind === 'file') {
         // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can
@@ -5749,6 +5985,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           signal: abort.signal,
           navExpected,
           hasModalTrigger: (source.meta.modalTriggers ?? 0) > 0,
+          // Probe the ORIGINAL for clipping too, so the clip check reports only what the SOURCE does not
+          // already do. Without this the check cannot tell a broken layout from a deliberate bleed, which
+          // is why it had to be demoted to advisory; with it, it gates again.
+          sourceUrl: target.sourceUrl,
         });
         // STRUCTURE leg: pure over repo data.
         const [datasets, media] = await Promise.all([contentRepo.list(ctx, 'dataset'), contentRepo.list(ctx, 'media')]);
@@ -6007,7 +6247,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const side = req.body?.side === 'build' ? 'build' : 'source';
         const vpRaw = req.body?.viewport;
-        const viewport = typeof vpRaw === 'string' && isScreenshotViewportName(vpRaw) ? vpRaw : undefined;
+        // Either one of the five names, or an exact pixel width. The names leave a gap between 768 and
+        // 1440 — where responsive frameworks actually switch — so a width is the only way to measure
+        // "what applies at 992?" rather than infer it from the stylesheet text.
+        const viewport =
+          typeof vpRaw === 'string' && isScreenshotViewportName(vpRaw)
+            ? vpRaw
+            : typeof vpRaw === 'number' && Number.isFinite(vpRaw) && vpRaw > 0
+              ? vpRaw
+              : undefined;
         // A failed list must 500, not silently measure against an empty page set (same rule as clone_audit).
         const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(allPages);
@@ -6037,7 +6285,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...(viewport ? { viewport } : {}),
           signal: abort.signal,
         });
-        return reply.send({ side, url: side === 'build' ? target.buildUrl : target.sourceUrl, sourceUrl: target.sourceUrl, route: target.route, ...measured });
+        // `data-sw-*` markers are STRIPPED at publish (see resolveDirectives in build.ts), so selecting
+        // on them against the BUILD matches nothing — and a bare `count: 0` reads as "my content is
+        // missing". One agent logged a MAJOR defect and rewrote correct markup because of exactly this.
+        // Say what actually happened instead of letting a false negative stand.
+        const strippedSelectors = selectors.filter((s) => /\[\s*data-sw-/.test(s));
+        const zeroMatch = new Set(
+          ((measured as { results?: Array<{ selector: string; count: number }> }).results ?? [])
+            .filter((r) => r.count === 0)
+            .map((r) => r.selector),
+        );
+        const misleading = strippedSelectors.filter((s) => zeroMatch.has(s));
+        const notes =
+          misleading.length && side === 'build'
+            ? [
+                `${misleading.length} selector(s) matched nothing because data-sw-* attributes are REMOVED ` +
+                  `from published output — they exist only in the authored source. This is not a missing ` +
+                  `element: select it structurally instead (e.g. by tag/class/id). Affected: ${misleading.join(', ')}`,
+              ]
+            : undefined;
+        return reply.send({
+          side,
+          url: side === 'build' ? target.buildUrl : target.sourceUrl,
+          sourceUrl: target.sourceUrl,
+          route: target.route,
+          ...measured,
+          ...(notes ? { notes } : {}),
+        });
       },
     );
 
@@ -6107,6 +6381,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             if (binary.attachment) reply.header('content-disposition', 'attachment');
             if (binary.csp) reply.header('content-security-policy', binary.csp);
             if (binary.contentType === 'application/pdf') reply.header('x-frame-options', 'SAMEORIGIN');
+            // Seekable media answers `Range:` with a 206. Without it a <video> cannot seek (measured:
+            // `currentTime = 6` snapped back to 0) and must transfer the whole file before it starts.
+            if (binary.ranged) {
+              reply.header('accept-ranges', 'bytes');
+              const ranged = partialContent(binary.body, req.headers.range);
+              if (ranged === 'unsatisfiable') {
+                return reply.code(416).header('content-range', `bytes */${binary.body.length}`).send();
+              }
+              if (ranged) {
+                return reply
+                  .code(206)
+                  .header('content-range', ranged.contentRange)
+                  .header('content-length', String(ranged.body.length))
+                  .type(binary.contentType)
+                  .send(ranged.body);
+              }
+            }
             return reply.type(binary.contentType).send(binary.body);
           }
           const asset = await preview.readAsset(project.slug, path);

@@ -9,7 +9,7 @@ export interface RenderMedia {
   id?: string;
   /** Virtual folder path the asset is filed under ('' = root). */
   folder: string;
-  kind: 'image' | 'file' | 'font';
+  kind: 'image' | 'file' | 'font' | 'video';
   filename: string;
   /** `/media/<slug>/<id>/<file>` — rebased to `_assets/…` at publish (build.ts), live in preview. */
   url: string;
@@ -18,9 +18,13 @@ export interface RenderMedia {
   height?: number;
   /** Inline LQIP data URI (images only) — {{sw-image}} paints it as a blur-up placeholder. */
   placeholder?: string;
+  /** Source carries an alpha channel. {{sw-image}} SUPPRESSES the blur-up placeholder when it does:
+   *  the LQIP is painted as a background-image BEHIND the <img>, so on transparent art it shows
+   *  THROUGH as a coloured wash instead of being hidden by the image. */
+  hasAlpha?: boolean;
 }
 
-export type FolderKind = 'image' | 'file' | 'all';
+export type FolderKind = 'image' | 'file' | 'video' | 'all';
 export type FolderSort = 'name' | 'name-desc';
 
 /** Slim a project's media list for the render context (drops placeholder / variants / bytes / etc.). */
@@ -35,6 +39,7 @@ export function mediaForRender(media: readonly MediaAsset[]): RenderMedia[] {
         out.width = a.width;
         out.height = a.height;
         if (typeof a.placeholder === 'string') out.placeholder = a.placeholder;
+        if (a.hasAlpha) out.hasAlpha = true;
       }
       return out;
     });
@@ -57,7 +62,8 @@ export function selectFolderAssets(
 ): RenderMedia[] {
   const folder = normFolder(path);
   const recursive = opts.recursive === true;
-  const kind: FolderKind = opts.kind === 'file' || opts.kind === 'all' ? opts.kind : 'image';
+  const kind: FolderKind =
+    opts.kind === 'file' || opts.kind === 'video' || opts.kind === 'all' ? opts.kind : 'image';
   const inFolder = (f: string): boolean =>
     recursive ? folder === '' || f === folder || f.startsWith(`${folder}/`) : f === folder;
   const matchesKind = (a: RenderMedia): boolean => (kind === 'all' ? a.kind !== 'font' : a.kind === kind);
@@ -71,7 +77,7 @@ export function selectFolderAssets(
 export interface FolderItem {
   url: string;
   filename: string;
-  kind: 'image' | 'file' | 'font';
+  kind: 'image' | 'file' | 'font' | 'video';
   alt: string;
   width?: number;
   height?: number;

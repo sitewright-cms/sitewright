@@ -44,6 +44,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${SW_E2E_ADMIN_EMAILS:=admin@e2e.test}"
 : "${SW_E2E_ADMIN_PASSWORD:=Pw-secret-1}"
 : "${SW_E2E_HEALTH_TIMEOUT:=90}"
+# Subdomain routing for locally-hosted sites (`<slug>.<domain>` serves that site at root). The forms
+# specs exercise that origin — they drive it with a Host header, so this only needs to be CONFIGURED,
+# not resolvable. Left as the deploy host by default, which does have wildcard DNS here.
+: "${SW_E2E_SITES_DOMAIN:=$SW_E2E_HOST}"
 
 log() { printf '\033[36m[e2e-deploy]\033[0m %s\n' "$*" >&2; }
 
@@ -198,6 +202,7 @@ cmd_up() {
           -e SW_ENCRYPTION_KEY="$(secret)" \
           -e SW_ADMIN_EMAIL="$SW_E2E_ADMIN_EMAILS" \
           -e SW_ADMIN_PASSWORD="$SW_E2E_ADMIN_PASSWORD" \
+          -e SW_SITES_DOMAIN="$SW_E2E_SITES_DOMAIN" \
           "$_up_tmp_image" 2>&1 >/dev/null)"; then
       claimed=1; break
     fi

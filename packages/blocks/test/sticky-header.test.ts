@@ -31,6 +31,34 @@ describe('stickyHeaderCss', () => {
     }
   });
 
+  it('a fixed header clears the content wrapper itself when the page never opted in', () => {
+    // The regression this closes: the offset was purely opt-in via `.sw-top-padding`, and the importer
+    // turns `pinned` on automatically whenever it detects a fixed source header — so an imported site
+    // shipped EVERY page with its first 76-242px hidden behind the bar. Measured on a real import:
+    // a 242px pinned header over 242px of content, zero `.sw-top-padding` elements, on all 16 pages.
+    for (const mode of ['pinned', 'hide-on-scroll'] as const) {
+      expect(stickyHeaderCss(mode)).toContain(
+        '#page-content:not(:has(.sw-top-padding)){padding-top:var(--sw-header-h)}',
+      );
+    }
+  });
+
+  it('the fallback defers the moment an author opts in — so it can never double up', () => {
+    // `:not(:has(.sw-top-padding))` is the whole safety property: an author who put the spacer on the
+    // first section, OR on an inner element so a full-bleed hero bleeds UNDER the bar, keeps exactly
+    // the layout they authored. Guard the selector shape, since dropping the :not() would silently
+    // add a second header's worth of padding to every existing site that had opted in.
+    const css = stickyHeaderCss('pinned');
+    expect(css).toContain('#page-content:not(:has(.sw-top-padding))');
+    expect(css).not.toMatch(/#page-content\{padding-top/);
+  });
+
+  it('a static header gets NO content-wrapper padding (it overlays nothing)', () => {
+    for (const mode of ['none', undefined, null] as const) {
+      expect(stickyHeaderCss(mode)).not.toContain('#page-content');
+    }
+  });
+
   it('pinned is pure positioning — the platform styles no scroll response of its own', () => {
     const css = stickyHeaderCss('pinned');
     expect(css).not.toContain('sw-nav-hidden');

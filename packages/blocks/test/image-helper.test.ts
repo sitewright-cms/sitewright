@@ -78,6 +78,24 @@ describe('buildSwImage', () => {
     expect(html).not.toContain('&format');
   });
 
+  it('an image with ALPHA gets no blur-up placeholder', () => {
+    // The LQIP is a background-image painted BEHIND the <img>, which only works because an opaque
+    // photo covers it. On transparent art it shows THROUGH as a permanent coloured wash — a clone
+    // hit this on every illustration on a page (a pink/grey box around a cut-out logo, a map, a
+    // watch) and abandoned {{sw-image}} entirely to escape it.
+    const cutout: RenderMedia = { ...img, hasAlpha: true };
+    const html = buildSwImage(cutout.url, [cutout]);
+    expect(html).not.toContain('background-image');
+    // …everything else about the image is unchanged — this suppresses the wash, not the feature.
+    expect(html).toContain('width="2000" height="1000"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('?size=xl 2000w');
+
+    // and an OPAQUE image still gets it: the condition is the pipeline's recorded alpha flag, not
+    // the file extension, so an opaque .png keeps its placeholder and a transparent .webp loses it.
+    expect(buildSwImage(img.url, [img])).toContain('background-image');
+  });
+
   it('never upscales: a tiny source emits only the smallest reachable rung, clamped', () => {
     const small: RenderMedia = { ...img, width: 400, height: 300, placeholder: undefined };
     const html = buildSwImage(small.url, [small]);

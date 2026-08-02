@@ -139,6 +139,8 @@ export type DiagnosticCode =
   | 'css-overflow'
   | 'page-skipped'
   | 'chrome-extracted'
+  | 'chrome-scaffolded'
+  | 'media-not-captured'
   | 'locales-detected'
   | 'dataset-inferred'
   | 'invalid-source-fallback'

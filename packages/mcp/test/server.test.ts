@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer, normalizePutData } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 import type { BridgeAuth } from '../src/auth.js';
-import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS } from '@sitewright/schema';
+import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS, AGENT_GUIDES } from '@sitewright/schema';
 
 const page = { id: 'home', path: '', title: 'Home' };
 
@@ -196,6 +196,31 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     expect(reader).toContain('login');
   });
 
+  it('accepts a JSON-STRINGIFIED page argument — same data, so do not refuse it', async () => {
+    // Two clone agents independently hit this on their first large page write (~12.5KB): put_page
+    // answered "page — Expected object, received string", which names the wrong cause entirely, and
+    // the identical payload succeeded once split into put_page + patch_page. One lost a cycle to it,
+    // the other worked around it for the whole job.
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+
+    const res = await mcp.callTool({ name: 'put_page', arguments: { page: JSON.stringify(page) } });
+    expect(res.isError).toBeFalsy();
+    // it must reach the client as a real OBJECT, not a string
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('page', 'home', expect.objectContaining({ id: 'home', title: 'Home' }), expect.anything());
+
+    // patch_page takes the same treatment
+    expect((await mcp.callTool({ name: 'patch_page', arguments: { page: JSON.stringify({ id: 'home', title: 'X' }) } })).isError).toBeFalsy();
+  });
+
+  it('a string that is not JSON is still rejected by the same schema', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    expect((await mcp.callTool({ name: 'put_page', arguments: { page: '{not json at all' } })).isError).toBeTruthy();
+    expect((await mcp.callTool({ name: 'put_page', arguments: { page: 'home' } })).isError).toBeTruthy();
+    expect(callsOf(client).putContent).not.toHaveBeenCalled();
+  });
+
   it('a read-only token gets a clear capability error when calling a write tool — and no client call', async () => {
     const client = fakeClient();
     const res = await (await connect(client, readScope)).callTool({ name: 'put_page', arguments: { page } });
@@ -264,6 +289,40 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     const parsed = JSON.parse(text(index)) as { topics: string[]; guides: Array<{ topic: string; title: string }> };
     expect(parsed.topics).toEqual([...GUIDE_TOPICS]);
     expect(parsed.guides.length).toBe(GUIDE_TOPICS.length);
+  });
+
+  it('a LONG guide answers with an overview + section index, not 54k characters', async () => {
+    const mcp = await connect(fakeClient(), null);
+
+    // Plain call: the overview and a menu, small enough not to overflow the tool-output cap. Before
+    // this, every clone agent paid 54k characters here and at least once spilled it to a file.
+    const plain = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import' } }));
+    expect(plain.length).toBeLessThan(4_000);
+    expect(plain).toContain('THIS GUIDE CONTINUES');
+    expect(plain).toContain('get_guide({ topic: "import", section:');
+    for (const key of ['pages', 'chrome', 'fidelity', 'verify', 'cleanup', 'all']) {
+      expect(plain).toContain(`- ${key} (~`); // every section is reachable from the index
+    }
+
+    // A section returns its own prose and NOT the rest of the guide.
+    const chrome = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'chrome' } }));
+    expect(chrome).toContain('website.criticalCss');
+    expect(chrome).not.toContain('COMMON FIDELITY MISSES');
+    expect(chrome.length).toBeLessThan(AGENT_GUIDES.import.body.length / 2);
+
+    // "all" is the escape hatch back to the old behaviour.
+    const all = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'all' } }));
+    expect(all).toContain('COMMON FIDELITY MISSES');
+    expect(all).toContain('PORT CHECKLIST');
+
+    // A near-miss is an error listing the real keys, never a silent fallback to the wrong prose.
+    const bad = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'import', section: 'chrom' } });
+    expect(bad.isError).toBe(true);
+    expect(text(bad)).toContain('sections:');
+
+    // A short guide ignores sectioning entirely and still comes back whole.
+    const shop = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'shop' } }));
+    expect(shop).toContain(AGENT_GUIDES.shop.body.trim());
   });
 
   it('get_reference returns the authoring vocabulary (no auth); a section filters it', async () => {
@@ -1263,10 +1322,33 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     it('reports a RUNNING job with its elapsed time and latest progress, and says not to restart', async () => {
       const client = fakeClient();
       const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
-      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1');
-      expect(text(res)).toMatch(/IMPORT RUNNING \(2m elapsed\)/);
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1', {});
+      // Elapsed is m+s, not Math.round(minutes): rounding read "1m" for everything from 30s to 90s, so
+      // five consecutive polls showed the same figure while real minutes passed and an agent reported
+      // the counter as FROZEN.
+      expect(text(res)).toMatch(/IMPORT RUNNING \(2m 0s elapsed/);
       expect(text(res)).toMatch(/crawl: 7 pages/);
       expect(text(res)).toMatch(/do NOT start a second import/);
+      // …and it points at the wait, rather than inviting another poll.
+      expect(text(res)).toMatch(/waitMs:30000/);
+    });
+
+    it('shows SECONDS under a minute, so a young job does not read as stalled', async () => {
+      const client = fakeClient({
+        importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'u', status: 'running', startedAt: Date.now() - 8_000, progress: ['crawl: 1 page'] })),
+      });
+      const res = await (await connect(client, writeScope)).callTool({ name: 'import_status', arguments: { jobId: 'imp_1' } });
+      expect(text(res)).toMatch(/IMPORT RUNNING \([0-9]+s elapsed/);
+    });
+
+    it('forwards waitMs/since so ONE call can await the job instead of polling', async () => {
+      // The behaviour this replaces: 25 import_status calls plus 7 shell sleeps in a single run.
+      const client = fakeClient();
+      await (await connect(client, writeScope)).callTool({
+        name: 'import_status',
+        arguments: { jobId: 'imp_1', waitMs: 30_000, since: 4 },
+      });
+      expect(calls(client).importStatus).toHaveBeenCalledWith('imp_1', { waitMs: 30_000, since: 4 });
     });
 
     it('reports a FAILED job with its reason', async () => {

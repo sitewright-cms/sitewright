@@ -140,8 +140,18 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // editable link) must never navigate — you're editing, not browsing. Suppress it entirely.
     if (editing && a.closest('[data-sw-text],[data-sw-html],[data-sw-translate],[data-sw-src],[data-sw-bg],[data-sw-control]')) { e.preventDefault(); e.stopPropagation(); return; }
     if (a.getAttribute('target') === '_blank') return;
+    // An anchor INSIDE an interactive component belongs to that component's runtime, not to
+    // navigation. The lightbox is authored as <a href="/media/…"><img></a>, which is root-relative,
+    // so this capture-phase handler used to preventDefault + stopPropagation it before the runtime
+    // ever saw the click: the viewer was built and enhanced, and then simply never opened. It also
+    // asked the editor to "navigate" to a .jpg. Measured in the preview before this guard:
+    // 32 lightbox anchors, data-sw-enhanced="true", click → viewer stayed display:none.
+    if (a.closest('[data-sw-component]')) return;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '/' || href.charAt(1) === '/') return; // only root-relative site routes
+    // …and an ASSET is not a site route: /media/… and /_assets/… are files, so a click on one is
+    // either a component's business or a genuine download. Either way the editor cannot open it.
+    if (href.indexOf('/media/') === 0 || href.indexOf('/_assets/') === 0) return;
     e.preventDefault();
     e.stopPropagation();
     post({ type: 'link-click', href: href });

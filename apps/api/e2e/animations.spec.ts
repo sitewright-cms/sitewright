@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedUser, enableLocalHosting } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,12 +9,7 @@ const stamp = Date.now();
 // inline animation CSS) — and ONLY for sites that use it.
 
 test('publish ships the data-sw-animation runtime for an animated code-first site', async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-
-  const reg = await ctx.post('/auth/register', {
-    data: { email: `anim-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `anim-${stamp}@e2e.test`);
   const slug = `anim-${stamp}`;
   const proj = await ctx.post(`/projects`, { data: { name: 'Animated Site', slug } });
   expect(proj.status()).toBe(201);
@@ -44,6 +40,7 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
   expect(previewHtml).toContain('IntersectionObserver');
 
   // Publish, then verify the exported site over HTTP.
+  await enableLocalHosting(ctx, projectId);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   const index = await ctx.get(`/sites/${slug}/index.html`);
@@ -52,7 +49,9 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
   // Authored attributes survive; runtime linked; CSS inlined with the a11y gate.
   expect(html).toContain('data-sw-animation="fade-up"');
   expect(html).toContain('data-sw-delay="200"');
-  expect(html).toContain('<script defer src="animations.js"></script>');
+  // Published assets carry a per-publish `?v=` token (immutable caching), so match the src prefix
+  // rather than an exact tag — asserting the bare filename broke on the cache-busting change.
+  expect(html).toMatch(/<script defer src="animations\.js(\?v=[0-9a-f]+)?"><\/script>/);
   expect(html).toContain('[data-sw-animation].sw-animation-active');
   expect(html).toContain('prefers-reduced-motion');
 
@@ -67,16 +66,12 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
 });
 
 test('a site without data-sw-animation ships no animation assets', async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-
-  const reg = await ctx.post('/auth/register', {
-    data: { email: `plain-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  const ctx = await seedUser(playwright, baseURL, `plain-${stamp}@e2e.test`);
   const slug = `plain-${stamp}`;
   const proj = await ctx.post(`/projects`, { data: { name: 'Plain Site', slug } });
   expect(proj.status()).toBe(201);
-  const base = `/projects/${(await proj.json()).project.id as string}`;
+  const projectId = (await proj.json()).project.id as string;
+  const base = `/projects/${projectId}`;
 
   const page = {
     id: 'home',
@@ -86,6 +81,7 @@ test('a site without data-sw-animation ships no animation assets', async ({ play
     source: '<div><h1>Static content</h1></div>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
+  await enableLocalHosting(ctx, projectId);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   const index = await ctx.get(`/sites/${slug}/index.html`);

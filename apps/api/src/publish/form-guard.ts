@@ -8,8 +8,9 @@ import { PublishError } from './build.js';
  * that endpoint ABSOLUTE when a `publicBaseUrl` is configured (`https://host/f/…`), and root-relative
  * (`/f/…`) otherwise. The relative form is fine for LOCAL hosting — it shares the platform origin (path
  * form) or is reached via the subdomain carve-out — but on a REMOTE host it resolves to the deployed
- * site itself, where no such route exists, so the form silently 404s. (`contactPhp` posts to a
- * co-located `../contact.php`, and `thirdParty` to an external URL — neither carries this marker.)
+ * site itself, where no such route exists, so the form silently 404s. (the `contactPhp`/`contactPhpSmtp`
+ * modes post to a co-located `../contact.php`, and `thirdParty` to an external URL — none of them
+ * carries this marker.)
  *
  * Depends on the built attribute staying double-quoted: dom-serializer always double-quotes and
  * `minifyPageHtml` does NOT enable `removeAttributeQuotes`. Revisit this marker if that changes.

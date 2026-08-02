@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import type { Form, FormField, FormMode } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, type Form, type FormField, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { identifierize, slugify } from '../lib/entry-form';
@@ -18,6 +18,7 @@ const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
   { value: 'globalSmtp', label: 'Platform email (global SMTP)' },
   { value: 'userSmtp', label: 'Platform email (project SMTP)' },
   { value: 'contactPhp', label: 'contact.php (host mail)' },
+  { value: 'contactPhpSmtp', label: 'contact.php (SMTP)' },
   { value: 'thirdParty', label: 'Third-party endpoint' },
 ];
 
@@ -49,7 +50,7 @@ export function FormsManager({ project }: { project: Project }) {
   const [forms, setForms] = useState<Form[]>([]);
   // Matches the server default (all off); the real values arrive from api.formModes
   // before the editor is reachable (the list view is gated on `loading`).
-  const [enabledModes, setEnabledModes] = useState<EnabledModes>({ globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false });
+  const [enabledModes, setEnabledModes] = useState<EnabledModes>(DEFAULT_FORM_MODES);
   const [draft, setDraft] = useState<Form | null>(null);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { DEFAULT_FORM_MODES } from '@sitewright/schema';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -79,12 +80,7 @@ describe('admin settings API', () => {
 
       const initial = await app.inject({ method: 'GET', url: '/admin/settings', cookies });
       expect(initial.statusCode).toBe(200);
-      expect((initial.json() as { settings: { formModes: Record<string, boolean> } }).settings.formModes).toEqual({
-        globalSmtp: false,
-        userSmtp: false,
-        contactPhp: false,
-        thirdParty: false,
-      });
+      expect((initial.json() as { settings: { formModes: Record<string, boolean> } }).settings.formModes).toEqual(DEFAULT_FORM_MODES);
 
       const put = await app.inject({
         method: 'PUT',

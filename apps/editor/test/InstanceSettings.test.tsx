@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { DEFAULT_FORM_MODES } from '@sitewright/schema';
 import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
 
 // Mock the API module so the view's load/save go through spies.
@@ -15,7 +16,7 @@ vi.mock('../src/api', () => ({
 import { InstanceSettings } from '../src/views/InstanceSettings';
 
 const DEFAULTS: InstanceSettingsPublic = {
-  formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false },
+  formModes: DEFAULT_FORM_MODES,
 };
 
 beforeEach(() => {
@@ -89,7 +90,7 @@ describe('InstanceSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
-    expect(body.formModes).toEqual({ globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: false });
+    expect(body.formModes).toEqual({ ...DEFAULT_FORM_MODES, globalSmtp: true });
     // SMTP and hCaptcha were never enabled → explicitly cleared.
     expect(body.smtp).toBeNull();
     expect(body.hcaptcha).toBeNull();

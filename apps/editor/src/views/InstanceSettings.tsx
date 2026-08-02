@@ -12,6 +12,7 @@ import {
   DEFAULT_BRAND_SECONDARY,
   DEFAULT_HSTS,
   DEFAULT_BACKUP_RETENTION,
+  DEFAULT_FORM_MODES,
   DEFAULT_LOG_LEVEL,
   LOG_LEVELS,
   type LogLevel,
@@ -50,10 +51,17 @@ const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; 
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
   { key: 'userSmtp', label: 'Project SMTP', hint: 'Each project supplies its own SMTP, sent by the platform mailer.' },
   { key: 'contactPhp', label: 'contact.php', hint: 'Export a PHP contact.php that uses the host’s mail() function.' },
+  {
+    key: 'contactPhpSmtp',
+    label: 'contact.php (SMTP)',
+    hint: 'Same exported handler, but sending via the project’s own SMTP. ⚠ Writes that password onto the destination host in plaintext — SFTP/FTP only, never Git.',
+  },
   { key: 'thirdParty', label: 'Third-party', hint: 'Forms post directly to an external endpoint URL.' },
 ];
 
-const EMPTY_MODES = { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false };
+// The schema's own all-off default — imported rather than re-typed so adding a delivery mode
+// can't leave this literal (or the FormsManager one) silently missing a key.
+const EMPTY_MODES = DEFAULT_FORM_MODES;
 
 /** Coerce the agent-session field to the server-accepted integer range [1, 720] (hours). */
 const clampSessionHours = (n: number): number => Math.max(1, Math.min(720, Math.round(n)));

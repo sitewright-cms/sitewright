@@ -10,7 +10,9 @@
 //   globalSmtp / userSmtp → the platform endpoint (precomputed: absolute on export when a
 //                           publicBaseUrl is set, same-origin `/f/<projectId>/<formId>` otherwise)
 //   thirdParty            → the form's own https endpoint (posted to directly, cross-origin)
-//   contactPhp            → `${siteRoot}contact.php` (the exported PHP mailer, page-relative)
+//   contactPhp /          → `${siteRoot}contact.php` (the exported PHP mailer, page-relative). BOTH
+//   contactPhpSmtp          php modes post to the same file; they differ only in how that file
+//                           delivers (host mail() vs authenticated SMTP), which is invisible here.
 //
 // It also injects `data-sw-redirect` (from the definition — the single source of truth), the
 // honeypot block, the contactPhp `_form` dispatch field, and the hCaptcha widget div (platform-
@@ -32,7 +34,7 @@ import { parseDocument } from 'htmlparser2';
 import type { Element } from 'domhandler';
 import { findAll, appendChild } from 'domutils';
 import render from 'dom-serializer';
-import { HONEYPOT_FIELD, FORM_ID_FIELD, type FormPublic } from '@sitewright/schema';
+import { HONEYPOT_FIELD, FORM_ID_FIELD, isContactPhpMode, isPlatformRoutedMode, type FormPublic } from '@sitewright/schema';
 import { escapeAttr, escapeHtml } from './escape.js';
 
 /** Form-id keys that must never index the forms map (prototype-pollution guard). */
@@ -48,7 +50,7 @@ const FORM_ATTR = 'data-sw-form';
  */
 export interface RenderForm extends FormPublic {
   /**
-   * The platform endpoint for swRouted modes / the thirdParty URL; '' for contactPhp. NOT meant
+   * The platform endpoint for swRouted modes / the thirdParty URL; '' for the php modes. NOT meant
    * for direct template use — `{{forms.x.endpoint}}` in a hand-rolled form bypasses the embed
    * pass (no honeypot, no hCaptcha, no component wiring → a silently dead form). Reference the
    * form via `data-sw-form` / `{{sw-form}}` instead.
@@ -58,7 +60,7 @@ export interface RenderForm extends FormPublic {
 
 /** Platform-routed delivery (the only modes Sitewright can server-side verify, incl. hCaptcha). */
 function isSwRouted(form: FormPublic): boolean {
-  return form.mode === 'globalSmtp' || form.mode === 'userSmtp';
+  return isPlatformRoutedMode(form.mode);
 }
 
 /**
@@ -237,12 +239,12 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
     const form = formAt(forms, resolvedId)!;
     // The pass OWNS the endpoint/redirect attributes — the stored definition is the single source
     // of truth, so an authored endpoint is overwritten and a stale authored redirect is dropped.
-    el.attribs['data-sw-endpoint'] = form.mode === 'contactPhp' ? `${ctx.siteRoot ?? ''}contact.php` : form.endpoint;
+    el.attribs['data-sw-endpoint'] = isContactPhpMode(form.mode) ? `${ctx.siteRoot ?? ''}contact.php` : form.endpoint;
     if (form.redirectUrl) el.attribs['data-sw-redirect'] = form.redirectUrl;
     else delete el.attribs['data-sw-redirect'];
     // Without the component marker FORM_JS never wires the submit — a silently dead form.
     el.attribs['data-sw-component'] = 'form';
-    if (form.mode === 'contactPhp' && !hasNamedInput(el, FORM_ID_FIELD)) {
+    if (isContactPhpMode(form.mode) && !hasNamedInput(el, FORM_ID_FIELD)) {
       // contact.php dispatches by form id (one contact.php serves every form on the export).
       appendFragment(el, `<input type="hidden" name="${escapeAttr(FORM_ID_FIELD)}" value="${escapeAttr(resolvedId)}" />`);
     }

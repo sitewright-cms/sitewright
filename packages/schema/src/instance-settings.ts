@@ -73,15 +73,28 @@ const PlatformNameSchema = z
 /**
  * Which form mail-delivery modes the instance admin permits. A project can only
  * choose among the modes enabled here.
- *  - globalSmtp:  the platform sends via the instance's global SMTP (Mode A)
- *  - userSmtp:    a project-provided SMTP, sent by the SW mailer (Mode B)
- *  - contactPhp:  an exported `contact.php` that uses PHP `mail()` (Mode B)
- *  - thirdParty:  the form posts to a third-party endpoint URL (Mode C)
+ *  - globalSmtp:     the platform sends via the instance's global SMTP (Mode A)
+ *  - userSmtp:       a project-provided SMTP, sent by the SW mailer (Mode B)
+ *  - contactPhp:     an exported `contact.php` that uses PHP `mail()` (Mode B)
+ *  - contactPhpSmtp: the same exported handler, but delivering over AUTHENTICATED
+ *      SMTP using the PROJECT's credentials instead of the host's `mail()`. Kept a
+ *      SEPARATE permission from `contactPhp` on purpose: it is the only mode that
+ *      writes a live password onto a host the operator does not control, so an
+ *      admin must opt into that risk explicitly rather than inherit it by having
+ *      enabled plain PHP mail. See `renderPhpSmtpConfig` for the exposure model.
+ *  - thirdParty:     the form posts to a third-party endpoint URL (Mode C)
+ *
+ * `contactPhpSmtp` carries `.default(false)` because it was added after instances
+ * were already storing a four-key `formModes` object: a bare `z.boolean()` would
+ * make every pre-existing settings row fail `InstanceSettingsStoredSchema.parse`
+ * and take the WHOLE settings document down with it (SMTP, hCaptcha, branding…),
+ * not merely the new field. The default keeps old rows parsing, opted-out.
  */
 export const FormModesSchema = z.object({
   globalSmtp: z.boolean(),
   userSmtp: z.boolean(),
   contactPhp: z.boolean(),
+  contactPhpSmtp: z.boolean().default(false),
   thirdParty: z.boolean(),
 });
 export type FormModes = z.infer<typeof FormModesSchema>;
@@ -91,6 +104,7 @@ export const DEFAULT_FORM_MODES: Readonly<FormModes> = Object.freeze({
   globalSmtp: false,
   userSmtp: false,
   contactPhp: false,
+  contactPhpSmtp: false,
   thirdParty: false,
 });
 

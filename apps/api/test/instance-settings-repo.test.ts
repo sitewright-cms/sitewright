@@ -1,3 +1,4 @@
+import { DEFAULT_FORM_MODES } from '@sitewright/schema';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { makeTestDb } from './helpers.js';
@@ -16,7 +17,7 @@ describe('InstanceSettingsRepository', () => {
   it('returns all-disabled form modes and no secrets before anything is set', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     const pub = await repo.getPublic();
-    expect(pub.formModes).toEqual({ globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false });
+    expect(pub.formModes).toEqual(DEFAULT_FORM_MODES);
     expect(pub.smtp).toBeUndefined();
     expect(pub.hcaptcha).toBeUndefined();
   });

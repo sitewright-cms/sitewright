@@ -250,6 +250,18 @@ describe('component registry', () => {
     expect(js).not.toMatch(/\("data-loop",""\)==="true"/);
   });
 
+  it('Carousel loads the lazy media in and near the selected slide (a translated slide never intersects)', () => {
+    const { js } = componentAssets(['Carousel']);
+    // `loading="lazy"` inside a slider means NEVER: the browser waits for the image to approach the
+    // SCROLLING viewport, and a slide two places along is translated sideways, not below the fold.
+    // An unloaded <img> has no intrinsic size either, so it collapses to width:0 — an empty slot, not
+    // a placeholder. Measured on a clone: 3 of 13 images stuck at naturalWidth 0 forever.
+    expect(js).toContain('loading="lazy"');
+    expect(js).toContain('setAttribute("loading","eager")');
+    // Promotion is driven off the selected snap, so it re-runs as the visitor pages through.
+    expect(js).toContain('selectedScrollSnap');
+  });
+
   it('DateTimePicker pins its popup to the field in VIEWPORT space, and hears a non-window scroller', () => {
     const { js } = componentAssets(['DateTimePicker']);
     // Vanilla Calendar Pro positions the popup from window scroll alone, so on a body-scroller page

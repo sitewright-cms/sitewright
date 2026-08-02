@@ -539,13 +539,17 @@ header. THERE IS NO "shrink" MODE: how the bar LOOKS once scrolled (condense, co
 is ALWAYS hand-authored in website.criticalCss against \`html.sw-scrolled\` — see SCROLL-SHRINK below. The
 platform only ships a scroll effect it can apply to ANY header; condensing needs to know which row of
 YOUR header collapses, so it cannot. (A stored \`shrink\` from an older project still loads and behaves
-as \`pinned\`.) THE OFFSET IS AUTOMATIC, NOT OPT-IN — this used to say opt-in and that cost a clone two
-round-trips: a fixed bar is out of flow, so when NOTHING inside the content wrapper carries
-\`sw-top-padding\` the platform adds \`padding-top:var(--sw-header-h)\` to \`main#page-content\` itself. Place
-\`sw-top-padding\` anywhere inside and that rule drops out and YOUR choice stands. ★ IF YOUR SOURCE HEADER
-OVERLAYS ITS HERO (the hero supplies its own top padding and the bar floats over it), the automatic offset
-is WRONG and makes every page a header taller — set \`:root{--sw-header-h:0}\` in website.criticalCss.
-Zeroing the token is what works; \`main#page-content{padding-top:0}\` does NOT outrank the platform rule.
+as \`pinned\`.) THE OFFSET IS AUTOMATIC, NOT OPT-IN — a fixed bar is out of flow, so the platform gives
+\`main#page-content\` \`padding-top:var(--sw-header-offset, <bar height>)\` by default. ★ THE AMOUNT IS A
+TOKEN YOU SET, per PAGE (\`:root{…}\` in that page's own \`<style>\`) or site-wide (website.criticalCss):
+  \`:root{--sw-header-offset:0}\`                               → this page clears the bar itself
+  \`:root{--sw-header-offset:120px}\`                           → a different amount on this page
+  \`:root{--sw-header-offset:calc(var(--sw-header-h) + 2rem)}\` → the bar clearance PLUS your own air
+Do NOT reach for \`--sw-header-h\` to do this: that token means how TALL the bar is, and anchors
+(\`scroll-padding-top\`) and ScrollSpy both read it — change it and jump-links stop landing correctly.
+\`main#page-content{padding-top:0}\` does not work either; it does not outrank the platform rule. ★ IF YOUR
+SOURCE HEADER OVERLAYS ITS HERO (the hero supplies its own top padding and the bar floats over it), the
+default offset is WRONG and makes every page a header taller — set \`--sw-header-offset:0\`.
 (A bar that does not REST at the top — parked mid-viewport and sliding up on scroll — is detected and
 un-padded for you.) For a full-bleed hero/slider that should bleed UNDER the header, leave the section
 flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears

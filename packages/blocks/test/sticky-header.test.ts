@@ -38,9 +38,32 @@ describe('stickyHeaderCss', () => {
     // a 242px pinned header over 242px of content, zero `.sw-top-padding` elements, on all 16 pages.
     for (const mode of ['pinned', 'hide-on-scroll'] as const) {
       expect(stickyHeaderCss(mode)).toContain(
-        '#page-content:not(:has(.sw-top-padding)){padding-top:var(--sw-header-h)}',
+        '#page-content{padding-top:var(--sw-header-offset,var(--sw-header-legacy-offset,var(--sw-header-h)))}',
       );
     }
+  });
+
+  it('the offset AMOUNT is a token an author can set per page, without moving anchors', () => {
+    const css = stickyHeaderCss('pinned');
+    // One class used to mean two things — "pad here" AND "hands off, I did it myself" — so reserving
+    // the space any other way did not register and the platform padded on top (a clone measured 503px
+    // where the original had 251, under two different class names), and "pad PLUS my own margin" could
+    // not be said at all. The amount is now a value: 0 to take over, a length to change it, or
+    // calc(var(--sw-header-h) + …) to keep the bar clearance and add your own air.
+    expect(css).toContain('padding-top:var(--sw-header-offset,');
+    // `--sw-header-h` keeps ONE meaning (how tall the bar is) — anchors and ScrollSpy read it, so
+    // changing the offset must not move where a jump-link lands.
+    expect(css).toContain(':root{scroll-padding-top:var(--sw-header-h)}');
+    expect(css).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}');
+  });
+
+  it('the OLD sentinel still zeroes the offset, so existing sites are pixel-identical', () => {
+    // Sites using the documented full-bleed pattern opted out by placing `.sw-top-padding` on an inner
+    // element. That keeps working — it supplies a fallback value now — and an explicit token beats it,
+    // because it sits earlier in the var() chain. No migration.
+    const css = stickyHeaderCss('pinned');
+    expect(css).toContain('#page-content:has(.sw-top-padding){--sw-header-legacy-offset:0px}');
+    expect(css).toContain('var(--sw-header-offset,var(--sw-header-legacy-offset,var(--sw-header-h)))');
   });
 
   it('the safety net switches OFF for a bar that does not rest at the top', () => {
@@ -50,7 +73,7 @@ describe('stickyHeaderCss', () => {
     // top 79, --sw-header-h 79px, on a design whose bar was nowhere near the top.
     for (const mode of ['pinned', 'hide-on-scroll'] as const) {
       const css = stickyHeaderCss(mode);
-      expect(css).toContain('html:not(.sw-header-offtop) #page-content:not(:has(.sw-top-padding))');
+      expect(css).toContain('html:not(.sw-header-offtop) #page-content{padding-top:var(--sw-header-offset');
     }
     // The runtime measures the AT-REST top edge — judging while scrolled would misread a bar that
     // legitimately sits at 0 only after sliding up.
@@ -60,13 +83,19 @@ describe('stickyHeaderCss', () => {
   });
 
   it('the fallback defers the moment an author opts in — so it can never double up', () => {
-    // `:not(:has(.sw-top-padding))` is the whole safety property: an author who put the spacer on the
-    // first section, OR on an inner element so a full-bleed hero bleeds UNDER the bar, keeps exactly
-    // the layout they authored. Guard the selector shape, since dropping the :not() would silently
-    // add a second header's worth of padding to every existing site that had opted in.
+    // The safety property is unchanged; only where it is written moved. An author who put the spacer
+    // on the first section, OR on an inner element so a full-bleed hero bleeds UNDER the bar, must
+    // still get exactly the layout they authored — losing that would silently add a second header's
+    // worth of padding to every existing site that had opted in. It now rides the var() chain: the
+    // sentinel sets the legacy fallback to 0, and the chain resolves to it whenever the author has
+    // not named an offset of their own. Measured in Chromium across all six cases (default, sentinel,
+    // token 0, token 120px, calc, and token-beats-sentinel) before this was committed.
     const css = stickyHeaderCss('pinned');
-    expect(css).toContain('#page-content:not(:has(.sw-top-padding))');
-    expect(css).not.toMatch(/#page-content\{padding-top/);
+    expect(css).toContain('#page-content:has(.sw-top-padding){--sw-header-legacy-offset:0px}');
+    expect(css).toContain('var(--sw-header-legacy-offset,var(--sw-header-h))');
+    // The sentinel must sit BEHIND an explicit token in the chain, or the old class would override
+    // the new, more specific instruction.
+    expect(css.indexOf('--sw-header-offset,')).toBeLessThan(css.lastIndexOf('--sw-header-legacy-offset,'));
   });
 
   it('a static header gets NO content-wrapper padding (it overlays nothing)', () => {

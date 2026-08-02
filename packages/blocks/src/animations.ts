@@ -208,6 +208,30 @@ export const ANIMATION_JS = `(function(){
       if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO}))swReveal(el);
     });
   }
+  // BOTTOM-OF-DOCUMENT FAILSAFE. The reveal line sits 20% up from the viewport bottom, which an element
+  // reaches by having content BELOW it to scroll past. The last things on the page have none: at maximum
+  // scroll the footer still lies inside that excluded band, so it never crosses the line and stays at
+  // opacity 0 FOREVER. Measured on a real clone — 4 animated elements, the 1 in the page body revealed,
+  // all 3 in the footer slot permanently invisible, which read as missing content rather than a broken
+  // animation. So once the scroller cannot move any further, reveal whatever is genuinely on screen.
+  function swAtBottom(){
+    var se=scrollRoot||document.scrollingElement||document.documentElement;
+    var y=scrollRoot?scrollRoot.scrollTop:(window.pageYOffset||se.scrollTop||0);
+    var vh=scrollRoot?scrollRoot.clientHeight:(window.innerHeight||se.clientHeight);
+    return y+vh>=se.scrollHeight-2;
+  }
+  function swRevealTrailing(){
+    if(!swAtBottom())return;
+    var vh=window.innerHeight||document.documentElement.clientHeight;
+    Array.prototype.forEach.call(els,function(el){
+      if(el.classList.contains('sw-animation-active'))return;
+      var r=el.getBoundingClientRect();
+      if(r.bottom>0&&r.top<vh)swReveal(el);
+    });
+  }
+  window.addEventListener('scroll',swRevealTrailing,{passive:true});
+  window.addEventListener('resize',swRevealTrailing,{passive:true});
+  if(scrollRoot)scrollRoot.addEventListener('scroll',swRevealTrailing,{passive:true});
   // Reveal observers keyed by their bottom rootMargin. Default is the -20% VIEWPORT line; an element with
   // data-sw-offset="N" reveals once its top edge is N px inside the viewport instead. rootMargin is a
   // property of the OBSERVER, not of a target, so each distinct offset needs its own observer — grouped, so

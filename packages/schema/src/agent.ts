@@ -539,14 +539,24 @@ header. THERE IS NO "shrink" MODE: how the bar LOOKS once scrolled (condense, co
 is ALWAYS hand-authored in website.criticalCss against \`html.sw-scrolled\` — see SCROLL-SHRINK below. The
 platform only ships a scroll effect it can apply to ANY header; condensing needs to know which row of
 YOUR header collapses, so it cannot. (A stored \`shrink\` from an older project still loads and behaves
-as \`pinned\`.) THE OFFSET IS OPT-IN: a fixed header is out of flow, so add class \`sw-top-padding\` to the
-first section of a page so its content clears the bar (without it, content sits UNDER the header) — UNLESS
-that section already has enough top padding to clear the ~75px bar (e.g. \`pt-24\`/\`py-24\` = 96px), in which
-case you need nothing. For a full-bleed hero/slider that should bleed UNDER the header, leave the section
+as \`pinned\`.) THE OFFSET IS AUTOMATIC, NOT OPT-IN — a fixed bar is out of flow, so the platform gives
+\`main#page-content\` \`padding-top:var(--sw-header-offset, <bar height>)\` by default. ★ THE AMOUNT IS A
+TOKEN YOU SET, per PAGE (\`:root{…}\` in that page's own \`<style>\`) or site-wide (website.criticalCss):
+  \`:root{--sw-header-offset:0}\`                               → this page clears the bar itself
+  \`:root{--sw-header-offset:120px}\`                           → a different amount on this page
+  \`:root{--sw-header-offset:calc(var(--sw-header-h) + 2rem)}\` → the bar clearance PLUS your own air
+Do NOT reach for \`--sw-header-h\` to do this: that token means how TALL the bar is, and anchors
+(\`scroll-padding-top\`) and ScrollSpy both read it — change it and jump-links stop landing correctly.
+\`main#page-content{padding-top:0}\` does not work either; it does not outrank the platform rule. ★ IF YOUR
+SOURCE HEADER OVERLAYS ITS HERO (the hero supplies its own top padding and the bar floats over it), the
+default offset is WRONG and makes every page a header taller — set \`--sw-header-offset:0\`.
+(A bar that does not REST at the top — parked mid-viewport and sliding up on scroll — is detected and
+un-padded for you.) For a full-bleed hero/slider that should bleed UNDER the header, leave the section
 flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
 the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
-\`:root{--sw-header-h:5rem}\` in website.criticalCss). The header sits at z-index 30 (below the mobile drawer
+\`:root{--sw-header-h:5rem}\` in website.criticalCss — and use \`patch_critical_css\` to change ONE rule
+rather than resending the whole sheet; it writes a named block in place). The header sits at z-index 30 (below the mobile drawer
 + back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
 is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
 (hide-on-scroll only — header translated off-screen).
@@ -1166,7 +1176,23 @@ specificity difference, not the cascade order — raise the selector rather than
 utility at (0,1,0) — one clone's base rule silently killed \`mb-*\` on every paragraph site-wide and
 nothing flagged it. Keep chrome CSS on a SINGLE class (\`.mc-lead\`, not \`.mc p\`) so it can never
 out-rank the utilities you also use. The same arithmetic bites \`:is(a,b).x\`, which takes the
-specificity of its most specific argument. For a
+specificity of its most specific argument.
+★ A NAV EFFECT OUT-RANKS YOUR OWN NAV CSS, AND THE FIX IS TO TURN IT OFF, NOT TO OUT-SPECIFY IT.
+\`website.effects.navEffect\` styles the ACTIVE item at specificity (0,4,1) — the scheme class, \`.menu\`,
+a \`:not([class*="sw-nav-"])\` guard, and \`a.active\`. A hand-written \`.my-nav > li > a.active\` is (0,2,2)
+and LOSES, silently: three clones shipped an accent-coloured current item against an original that used
+plain white, and one of them had authored the correct override and never saw it fail. If the source has
+no such treatment, set \`effects.navEffect:"none"\` — then your own CSS applies. Reach for a heavier
+selector only when you actually want the scheme AND a tweak.
+★ MAX-WIDTH BREAKPOINTS DISAGREE BY ONE PIXEL, AND IT IS THE PIXEL THE TOOLING RENDERS AT. Tailwind's
+\`max-[768px]:\` compiles to \`@media not all and (min-width:768px)\`, which is FALSE at exactly 768px;
+your own \`@media (max-width:768px)\` in criticalCss is TRUE there. Clone a site built on max-width
+breakpoints (1200/992/768 is the common set) and mirror them literally and the two halves of your own
+layout disagree at each boundary. One clone shipped a 3-column tablet layout against a 1-column original
+for this reason. The TOOLING no longer sits on the seam — the "tablet" viewport is 767px, one pixel below
+the boundary, so what you measure is a width both spellings agree about; the disagreement is still real in
+YOUR css. Use \`max-[769px]:\` / \`max-[993px]:\` / \`max-[1201px]:\` to match a source \`max-width:768\`,
+or write the media query yourself and skip the variant. For a
 SIGNATURE SHAPE — skewed/angled tabs, clipped corners, gradient bars, diagonal buttons — reproduce it with
 REAL CSS there: e.g. a skewed tab = transform:skewX(-25deg) on the tab + a COUNTER transform:skewX(25deg)
 on its inner label so the text stays upright; gradients as linear-gradient(...); notches as clip-path. Do
@@ -1372,10 +1398,11 @@ against this list BEFORE you publish it:
   criticalCss — snap the axes instead (they're contrast-safe, animate correctly, and stay editable in the picker).
 - READABLE SOURCE: author page/template/snippet source as PRETTY-PRINTED, indented, multi-line HTML — one
   block element per line group, children indented — NOT one minified line. A human edits this source.
-- CAROUSEL MARKERS: a hand-authored carousel needs BOTH \`data-sw-component="carousel"\` AND
-  \`data-sw-block="Carousel"\` on the root (copy the EXACT get_components skeleton) — with only -component the
-  slide-sizing CSS never applies and every slide collapses to zero height (silently, no error). Prefer the
-  \`{{> hero-slider}}\` widget, which is already marked up correctly.
+- CAROUSEL MARKERS: \`data-sw-component="carousel"\` on the root is all a hand-authored carousel needs —
+  it ships the CSS, it is what the runtime enhances, and the stylesheet keys on it. \`data-sw-block\` is a
+  free-text LABEL; name it whatever you like. (It used to be load-bearing, and a custom label silently
+  cost the carousel every one of its style rules.) The \`{{> hero-slider}}\` widget is already marked up
+  correctly if you want a shortcut.
 
 FINE POLISH — match the original EXACTLY, by MEASUREMENT (the last-mile "looks close but a bit off" misses;
 sample the original's real values with \`inspect_source\`, don't approximate to the nearest token):

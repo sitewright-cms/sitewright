@@ -139,6 +139,36 @@ const PLATFORM_DEFAULTS = `
 /* Foundational box model (kept unlayered so it always wins). */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* THE PAGE COLOUR BELONGS ON THE ROOT, AND BODY IS A STACKING CONTEXT.
+
+   A full-bleed background layer — the \`position:fixed; z-index:-1\` video or image that half the web
+   uses for a hero — is a NEGATIVE-z descendant of body. Painting order inside a stacking context is:
+   that context's own background first, then its negative-z descendants. So whether such a layer is
+   visible at all comes down to which element owns the page colour:
+
+     - colour on the ROOT (or nothing set): the root's background is promoted to the canvas, which is
+       painted before everything, and the layer shows.
+     - colour on BODY: body's background is an ordinary box painted AFTER negative-z descendants —
+       it covers the layer completely. No error, no warning, and the video is still loading and
+       playing behind it. A clone lost its hero backdrop to exactly this and it was reported twice
+       as "the background video is missing"; it had never stopped playing.
+
+   daisyUI already puts a background on \`:root\`, but only when a page uses daisyUI at all, so the
+   default cannot be left to it. Two rules make the behaviour the same either way:
+
+   1. The root carries the surface colour (weak layer — a theme or author sets its own freely) and
+      body stays transparent, so the out-of-the-box page is background-media-safe.
+   2. \`isolation:isolate\` makes BODY a stacking context. That is the part that survives an author
+      who sets \`body{background:#000}\` anyway: body's background is now the FIRST paint of its own
+      stacking context, so a z-index:-1 child lands above it instead of behind it. Verified in
+      Chromium — the same page renders the layer buried without this rule and visible with it.
+      Unlayered, because it must hold regardless of where the author's background rule sits. */
+@layer sw-normalize {
+  html { background-color: var(--sw-color-base-100, #ffffff); }
+  body { background-color: transparent; }
+}
+body { isolation: isolate; }
+
 /* Smooth in-page scrolling for the document viewport — anchor jumps, fragment navigation, and any
    scrollTo/scrollIntoView that leaves behavior at its "auto" default all ease instead of snapping. In
    the weak sw-normalize layer so an author can opt a site back to instant with scroll-behavior:auto. The

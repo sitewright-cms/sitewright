@@ -24,7 +24,10 @@ export const BANNER_CSS = [
   // the shared animation runtime drives the entrance, and these would conflict).
   '[data-sw-component="banner"]:not([data-sw-animation]){opacity:0;transform:translateY(10px);transition:opacity .28s ease,transform .28s ease}',
   '[data-sw-component="banner"]:not([data-sw-animation])[data-sw-banner-shown]{opacity:1;transform:none}',
-  '[data-sw-component="banner"] p{margin:0;flex:1;min-width:12rem;font-size:.9rem;line-height:1.5}',
+  '[data-sw-component="banner"] p{flex:1}',
+  // The banner's own copy: an author restyles this text like any other. `flex:1` stays firm — it is
+  // what lets the message share the row with the buttons instead of pushing them out.
+  ':where([data-sw-component="banner"] p){margin:0;min-width:12rem;font-size:.9rem;line-height:1.5}',
   // Placement variants. Each resets the offsets the others set, so switching is total.
   '[data-sw-component="banner"][data-position="bottom"]{left:1rem;right:1rem;bottom:1rem;top:auto;max-width:none}',
   '[data-sw-component="banner"][data-position="top"]{left:1rem;right:1rem;top:1rem;bottom:auto;max-width:none}',

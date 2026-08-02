@@ -86,6 +86,9 @@ const btnFace = (s = ''): string =>
  * The effect `@utility` blocks, appended to the Tailwind compile input. Tree-shaken per scheme.
  * Scheme names are the source-of-truth `NAV_EFFECTS` / `BUTTON_EFFECTS` in @sitewright/schema; a test
  * asserts every name here has a matching `@utility`.
+ *
+ * NOT emitted directly — {@link effectCss} rewrites the used blocks into `@layer sw-effects` first.
+ * See that function for why.
  */
 export const EFFECT_UTILITIES = `
 /* ── nav schemes ─────────────────────────────────────────────────────────── */
@@ -530,3 +533,88 @@ export const EFFECT_UTILITIES = `
   }
 }
 `;
+
+/**
+ * The effect schemes, tree-shaken to what the page uses and moved into `@layer sw-effects`.
+ *
+ * WHY A LAYER. A scheme selector like `.sw-nav-line-bottom .menu:not([class*="sw-nav-"]) a.active`
+ * sits at (0,4,1). No sensible author selector beats that — and three clones out of eight shipped an
+ * accent-coloured current nav item against a plain-white original because of it. On one, the agent had
+ * authored exactly the right rule (`.nt-navlist > li > a.active`, (0,2,2)) and still lost. The author
+ * was not wrong; the platform was simply unanswerable.
+ *
+ * A cascade layer fixes that at the right level: layered declarations lose to ANY unlayered rule
+ * whatever its specificity, so the author's own CSS always wins — while the scheme keeps its full
+ * INTERNAL specificity, so its own base → :hover → .active → ::after relationships still resolve
+ * exactly as written. `:where()` would have flattened all of those to (0,0,0) and left source order
+ * deciding whether the active item beats the resting one. The layer is declared last, so it still
+ * outranks daisyUI's own layered `.menu a` rules.
+ *
+ * WHY THE REWRITE. `@utility` gives per-scheme tree-shaking (only what the HTML uses is emitted) but
+ * Tailwind puts utilities in the UNLAYERED utilities sheet — the thing we are moving away from. So we
+ * keep authoring them as `@utility` (one source of truth, and the shape the tests assert) and do the
+ * selection here instead: `@utility x { … }` becomes `.x { … }`, which is what Tailwind would have
+ * emitted anyway. `&` nesting means the same thing in both forms.
+ *
+ * Top-level `@keyframes` / `@property` / comments are passed through UNCHANGED and unlayered — a
+ * `@property` is a registration, not a declaration, and layering it would be meaningless.
+ *
+ * @param isUsed answers whether a scheme class appears in the rendered HTML.
+ */
+export function effectCss(isUsed: (className: string) => boolean): string {
+  const src = EFFECT_UTILITIES;
+  const passthrough: string[] = [];
+  const layered: string[] = [];
+  let i = 0;
+
+  while (i < src.length) {
+    const at = src.indexOf('@utility ', i);
+    if (at === -1) {
+      passthrough.push(src.slice(i));
+      break;
+    }
+    passthrough.push(src.slice(i, at));
+    const braceAt = src.indexOf('{', at);
+    const name = src.slice(at + '@utility '.length, braceAt).trim();
+    // Walk to the matching close brace — bodies nest (`&`, @media), so counting is required.
+    let depth = 0;
+    let end = braceAt;
+    for (; end < src.length; end++) {
+      if (src[end] === '{') depth++;
+      else if (src[end] === '}' && --depth === 0) break;
+    }
+    const body = src.slice(braceAt + 1, end);
+    if (isUsed(name)) layered.push(`.${name} {${body}}`);
+    i = end + 1;
+  }
+
+  // Keyframes ride INSIDE the layer, with the rules that animate them. Lightning CSS drops a
+  // top-level `@keyframes` whose only reference sits inside `@media` inside `@layer` — it keeps the
+  // `animation:` and deletes the animation, which is a dead effect and no warning. Verified: the same
+  // block keeps its keyframes when they are declared in the layer and loses them when they are not.
+  // `@property` and the comments stay outside: a registration is not a declaration to lose a cascade.
+  let rest = passthrough.join('');
+  const keyframes: string[] = [];
+  // Line-anchored: the prose above these blocks TALKS about `@keyframes`, and matching that sentence
+  // spliced a comment into the stylesheet. An at-rule here always starts its own line.
+  const KEYFRAMES_AT = /(?:^|\n)[ \t]*@keyframes\s+[\w-]+\s*\{/;
+  for (;;) {
+    const m = KEYFRAMES_AT.exec(rest);
+    if (!m) break;
+    const at = m.index + m[0].indexOf('@keyframes');
+    let depth = 0;
+    let end = rest.indexOf('{', at);
+    for (; end < rest.length; end++) {
+      if (rest[end] === '{') depth++;
+      else if (rest[end] === '}' && --depth === 0) break;
+    }
+    keyframes.push(rest.slice(at, end + 1));
+    rest = rest.slice(0, at) + rest.slice(end + 1);
+  }
+
+  // No scheme on the page → emit NOTHING. The passthrough is prose and registrations that only mean
+  // something next to a scheme, and its comments name `.btn`, which a page using no effects should
+  // not carry (a test asserts a pure-Tailwind page never mentions daisyUI's classes).
+  if (!layered.length) return '';
+  return `${rest}\n@layer sw-effects {\n${keyframes.join('\n')}\n${layered.join('\n')}\n}\n`;
+}

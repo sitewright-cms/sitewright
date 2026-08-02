@@ -14,6 +14,27 @@ describe('nav/button effect utilities', () => {
     for (const a of BUTTON_ACCENTS) expect(EFFECT_UTILITIES).toContain(`@utility sw-btn-accent-${a}`);
   });
 
+  it('ships the schemes in @layer sw-effects, so the AUTHOR always outranks them', async () => {
+    const css = await compile('<body class="sw-nav-line-bottom"><ul class="menu"><a class="active">x</a></ul></body>');
+    // A scheme selector reaches (0,4,1). No sensible author selector beats that on specificity, and
+    // three clones shipped an accent-coloured nav item they had explicitly styled white because of it.
+    // Layered declarations lose to ANY unlayered rule, whatever its specificity — that is the fix.
+    expect(css).toContain('@layer sw-effects');
+    const layerAt = css.indexOf('@layer sw-effects');
+    expect(css.indexOf('.sw-nav-line-bottom')).toBeGreaterThan(layerAt);
+    // …while keeping their INTERNAL specificity, so base → :hover → .active still resolve as written
+    // (`:where()` would have flattened all three and left source order to decide).
+    expect(css).toContain('a.active');
+    expect(css).not.toContain(':where(.sw-nav-line-bottom');
+  });
+
+  it('still tree-shakes per scheme (an unused scheme is not emitted at all)', async () => {
+    const css = await compile('<body class="sw-nav-line-bottom"><ul class="menu"><a class="active">x</a></ul></body>');
+    expect(css).toContain('sw-nav-line-bottom');
+    expect(css).not.toContain('sw-nav-blob');
+    expect(css).not.toContain('sw-btn-fx-jelly');
+  });
+
   it('emits a nav scheme scoped to the .menu links, filled with the brand + derived foreground', async () => {
     const css = await compile('<body class="sw-nav-box-solid"><ul class="menu"><a class="active">x</a></ul></body>');
     expect(css).toContain('.sw-nav-box-solid');
@@ -249,7 +270,13 @@ describe('sw-border-beam (box ornament)', () => {
       { minify: true },
     );
     expect(css).toContain('.sw-border-beam{position:relative}');
-    expect(css.indexOf('.absolute{')).toBeGreaterThan(css.indexOf('.sw-border-beam{'));
+    // The ring's `position:relative` now lives in `@layer sw-effects`, so the author's `.absolute`
+    // wins by LAYER rather than by coming later in the file — a guarantee that survives a Tailwind
+    // upgrade reordering its output, which is what the old source-order assertion was guarding.
+    const layerAt = css.indexOf('@layer sw-effects');
+    expect(layerAt).toBeGreaterThan(-1);
+    expect(css.indexOf('.sw-border-beam{')).toBeGreaterThan(layerAt);
+    expect(css).toContain('.absolute{');
   });
 
   it('registers the angle so it INTERPOLATES (an unregistered custom property would jump)', async () => {

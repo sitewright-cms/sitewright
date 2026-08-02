@@ -73,17 +73,44 @@ export function stickyHeaderCss(
     // html's scroll-padding sits on the same element), and both are FIXED-ONLY — see the note above.
     ':root{scroll-padding-top:var(--sw-header-h)}',
     '.sw-top-padding{padding-top:var(--sw-header-h)}',
-    // SAFETY NET. The spacer above is opt-in, which meant a fixed header that nothing opted OUT from
-    // simply covered the top of the page — and the importer sets `pinned` automatically whenever it
-    // detects a fixed source header, so an imported site shipped every page broken by default. Measured
-    // on a real import: a 242px pinned bar sitting on 242px of content, on all 16 pages.
-    // So when NOTHING inside the content wrapper opted in, the platform clears the bar itself. The
-    // moment an author places `.sw-top-padding` anywhere inside — on the first section, or on an inner
-    // element so a full-bleed hero bleeds UNDER the bar — this rule drops out and their choice stands,
-    // which keeps every existing site pixel-identical and preserves the full-bleed pattern.
-    // `:has()` is unsupported only in browsers that also predate it; there the rule is skipped and the
-    // behaviour is exactly today's, so this can never be worse than before.
-    '#page-content:not(:has(.sw-top-padding)){padding-top:var(--sw-header-h)}',
+    // THE CONTENT OFFSET IS A TOKEN YOU CAN SET, NOT A CLASS YOU HAVE TO GUESS.
+    //
+    // A fixed bar is out of flow, so something must clear it or it sits on the first section. That
+    // default has to stay ON: the importer sets `pinned` by itself whenever it detects a fixed source
+    // header (site-import/transform/effects.ts), so an opt-in offset means every imported site ships
+    // broken — measured, a 242px bar over 242px of content on all 16 pages of one import.
+    //
+    // What was wrong was not the default, it was how you argued with it. The only lever used to be
+    // the PRESENCE of `.sw-top-padding` somewhere inside the wrapper, which made one class mean two
+    // things at once — "pad here" AND "hands off, I did it myself". So reserving the space any other
+    // way (a margin, your own padding class) did not register and the platform added its own on top:
+    // a clone came out at 503px where the original had 251, and carried the same mistake under two
+    // different class names. And "pad, PLUS my own margin" could not be expressed at all, because
+    // taking control meant switching the whole rule off.
+    //
+    // Now the amount is `--sw-header-offset`, defaulting to the bar height. Set it wherever you like —
+    // `:root` in a page's own <style> is per-PAGE, in `website.criticalCss` is site-wide:
+    //   :root{--sw-header-offset:0}                                  → this page clears it itself
+    //   :root{--sw-header-offset:120px}                              → a different amount here
+    //   :root{--sw-header-offset:calc(var(--sw-header-h) + 2rem)}    → the bar, plus your own air
+    // `--sw-header-h` keeps its single meaning (how tall the bar is), so anchors and ScrollSpy — which
+    // both read it — are unaffected by anything you do to the offset. That is the whole point of
+    // splitting them: changing your padding used to move where jump-links landed.
+    //
+    // The `:has()` line below is the OLD sentinel, kept working: it now only supplies a fallback value,
+    // so every existing site that opted out by placing the utility stays pixel-identical, while an
+    // explicit `--sw-header-offset` (inherited from :root) takes precedence over it in the var() chain.
+    // No migration, and the class is back to being a plain spacer everywhere else.
+    //
+    // Scoped to `html:not(.sw-header-offtop)`: the default assumes a fixed bar sits AT THE TOP and
+    // therefore covers content, which is true of every built-in mode but NOT of a hand-authored bar that
+    // rests somewhere else — a design that parks the bar at the BOTTOM of the viewport at scroll 0 and
+    // slides it up on scroll gets a phantom band of dead space above its hero instead. The runtime
+    // measures the AT-REST position and sets `sw-header-offtop` when the bar is not at the top. Default
+    // ON (padding applied) so the overwhelmingly common top-anchored case never reflows; the rare
+    // off-top design is the one that adjusts, and only once.
+    'html:not(.sw-header-offtop) #page-content:has(.sw-top-padding){--sw-header-legacy-offset:0px}',
+    'html:not(.sw-header-offtop) #page-content{padding-top:var(--sw-header-offset,var(--sw-header-legacy-offset,var(--sw-header-h)))}',
     // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content but BELOW the mobile
     // drawer (its backdrop/panel are z-40/z-50, so an open drawer correctly covers the header) and the
     // consent banner / back-to-top floats (9996+). The landmark itself stays transparent — the recipe's
@@ -134,7 +161,14 @@ export const STICKY_HEADER_JS = `(function(){
   // breakpoint-aware offset token AND a custom header. Measuring here only sizes the scroll threshold,
   // never the layout, so it can't cause a shift. Re-measured on resize (breakpoint / wrap changes).
   var headerH=72;
-  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;thresholds();}
+  function measure(){headerH=nav?nav.getBoundingClientRect().height:72;thresholds();offtop();}
+  // Is the bar actually anchored to the TOP at rest? A position:fixed element's rect.top does not move
+  // with scroll, so this is scroll-independent — but only meaningful BEFORE the scrolled state applies,
+  // because a bar that slides up on scroll is legitimately at 0 once scrolled. So only judge at rest.
+  function offtop(){
+    if(!fixed||!nav||root.classList.contains('sw-scrolled'))return;
+    root.classList.toggle('sw-header-offtop',nav.getBoundingClientRect().top>2);
+  }
   // ANCHOR-REST sync — now GENERIC (it used to run only for the built-in shrink mode). An anchor jump
   // computes its target from scroll-padding-top at CLICK time, but by the time the smooth scroll rests a
   // collapsing bar is SHORTER — the static token (sized for the full bar) then leaves a strip of the

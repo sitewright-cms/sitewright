@@ -26,6 +26,29 @@ describe('baseStyles — platform base stylesheet', () => {
     });
   });
 
+  describe('full-bleed background layers survive the page colour', () => {
+    it('puts the surface colour on the ROOT and leaves body transparent', () => {
+      // A body background is painted AFTER negative-z descendants, so it covers a
+      // `position:fixed; z-index:-1` video/image entirely. The root's background is promoted to the
+      // canvas instead, which is painted before everything.
+      expect(css).toContain('html { background-color: var(--sw-color-base-100, #ffffff); }');
+      expect(css).toContain('body { background-color: transparent; }');
+      // Weak layer: a theme, daisyUI or the author sets its own page colour without a fight.
+      const layerStart = css.indexOf('@layer sw-normalize {\n  html { background-color:');
+      expect(layerStart).toBeGreaterThan(-1);
+    });
+
+    it('makes body a stacking context so an authored body background cannot bury the layer', () => {
+      // The half that survives an author who sets body{background:#000} anyway: body's background
+      // becomes the first paint of its OWN stacking context, so a z-index:-1 child lands above it.
+      // Must be UNLAYERED — it has to hold wherever the author's background rule sits.
+      expect(css).toContain('body { isolation: isolate; }');
+      const iso = css.indexOf('body { isolation: isolate; }');
+      const layerEnd = css.lastIndexOf('}', iso);
+      expect(css.slice(layerEnd, iso)).not.toContain('@layer');
+    });
+  });
+
   describe('deterministic block spacing (zeroed margins + .prose)', () => {
     it('zeroes UA block margins on flow elements (in the weak layer)', () => {
       expect(css).toContain('h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr, ul, ol, fieldset { margin: 0; }');

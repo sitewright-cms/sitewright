@@ -627,8 +627,16 @@ const MODAL_JS = `(function(){
 const TABS_CSS = [
   // PE-first: any authored tablist stays hidden until the runtime enhances.
   '[data-sw-component="tabs"] [data-sw-part="tablist"]{display:none}',
-  // The enhanced tablist is the positioning context for the floating selector pill.
-  '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{position:relative;display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:1rem}',
+  // The enhanced tablist is the positioning context for the floating selector pill. Only the two
+  // STRUCTURAL declarations live here — the pill is absolutely positioned against this box, and a
+  // tablist that is not a flex row cannot lay its buttons out at all.
+  '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{position:relative;display:flex}',
+  // Its LOOK (does the strip wrap, how far apart are the tabs, how much air under it) is a default,
+  // not a rule, so it is written at ZERO specificity: any author selector beats it. At the previous
+  // (0,3,0) it did not — an author asking for `flex-wrap:nowrap;gap:0;margin:0` on
+  // `.their-tabs [data-sw-part="tablist"]` (0,2,0) was silently overruled and got a 16px gap under
+  // the tab strip they had explicitly closed up. A platform default no author can beat is a bug.
+  ':where([data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]){flex-wrap:wrap;gap:.25rem;margin-bottom:1rem}',
   // The "magic" floating background selector — a primary pill the runtime slides to
   // the active tab (transform/width/height set inline from the tab's box). Sits BEHIND
   // the tab labels (z-index:0); zero size until positioned so it never flashes at 0,0.
@@ -760,7 +768,12 @@ const TABS_JS = `(function(){
 const FORM_CSS = [
   '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
   '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
-  '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
+  // Field LOOK + full-bleed width are defaults for an otherwise-unstyled field, so they are written
+  // at ZERO specificity: a `w-[60%]` (0,1,0) utility on the input has to be able to win. At the
+  // previous (0,1,1) it could not — three fields carrying the SAME `w-[60%]` rendered 656/635/620px
+  // wide, because each was really at width:100% and then shrunk by whatever its row's label left
+  // over. A default an author cannot override is not a default.
+  ':where([data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select){width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
   // checkbox / radio inputs must NOT stretch to 100% — they sit inline next to their option label.
   '[data-sw-block="Form"] input[type=checkbox],[data-sw-block="Form"] input[type=radio]{width:auto;padding:0;border-radius:0;flex:none}',
   '[data-sw-block="Form"] fieldset[data-sw-part="field"]{border:0;padding:0;margin:0 0 1rem;min-inline-size:0}',

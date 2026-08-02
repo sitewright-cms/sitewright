@@ -250,6 +250,18 @@ describe('component registry', () => {
     expect(js).not.toMatch(/\("data-loop",""\)==="true"/);
   });
 
+  it('DateTimePicker pins its popup to the field in VIEWPORT space, and hears a non-window scroller', () => {
+    const { js } = componentAssets(['DateTimePicker']);
+    // Vanilla Calendar Pro positions the popup from window scroll alone, so on a body-scroller page
+    // (the preview shell, and plenty of site layouts) it detaches from the field and strands itself
+    // down the page. Our wrapper re-places it as `fixed` from the input's live rect. Asserted on the
+    // build OUTPUT because only this string ships, and the browser test does not run in CI.
+    expect(js).toContain('style.position="fixed"');
+    // capture:true — a bubbling window listener never sees a scroll on body or a wrapper element.
+    expect(js).toMatch(/addEventListener\("scroll",\w+,!0\)/);
+    expect(js).toMatch(/removeEventListener\("scroll",\w+,!0\)/);
+  });
+
   it('Carousel arrows: EDGE (gradient, full-height) by default, CIRCLE for multi-item / data-arrows="circle"', () => {
     const { css } = componentAssets(['Carousel']);
     // The runtime stamps data-sw-multi from --sw-items; the CSS branches the arrow LOOK on it, with an
@@ -633,6 +645,29 @@ describe('component registry', () => {
     expect(tabs.js).toContain("setAttribute('data-sw-part','tablist')");
     expect(tabs.js).toContain("setAttribute('role','tablist')");
     expect(tabs.js).toContain("setAttribute('role','tabpanel')");
+  });
+
+  it('Form: field width/padding are zero-specificity, so a width utility on the input wins', () => {
+    const { css } = componentAssets(['Form']);
+    // width:100% is the right default for a bare field and the wrong answer for an author who asked
+    // for 60%. At (0,1,1) it beat every utility class; inside :where() it beats nothing.
+    expect(css).toMatch(/:where\(\[data-sw-block="Form"\] input,\[data-sw-block="Form"\] textarea,\[data-sw-block="Form"\] select\)\{width:100%/);
+    expect(css).not.toMatch(/[^)]\[data-sw-block="Form"\] input,\[data-sw-block="Form"\] textarea,\[data-sw-block="Form"\] select\{width:100%/);
+    // The checkbox/radio exception is a real rule, not a default — it must still outrank it.
+    expect(css).toContain('[data-sw-block="Form"] input[type=checkbox]');
+  });
+
+  it('Tabs: the tablist LOOK is zero-specificity, so an author can close the gap under the strip', () => {
+    const { css } = componentAssets(['Tabs']);
+    // gap / flex-wrap / margin-bottom are defaults, not rules: they must sit inside :where() so a
+    // plain `.my-tabs [data-sw-part="tablist"]` (0,2,0) wins. They previously rode along on the
+    // (0,3,0) structural selector, which no reasonable author selector could beat.
+    expect(css).toMatch(/:where\(\[data-sw-component="tabs"\]\[data-sw-enhanced="true"\] \[data-sw-part="tablist"\]\)\{[^}]*margin-bottom:1rem/);
+    expect(css).toMatch(/:where\([^)]*\[data-sw-part="tablist"\]\)\{[^}]*gap:\.25rem/);
+    // …while the two structural declarations stay outside :where().
+    expect(css).toContain('[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{position:relative;display:flex}');
+    // The un-whered rule must NOT carry the cosmetic ones any more.
+    expect(css).not.toMatch(/\[data-sw-enhanced="true"\] \[data-sw-part="tablist"\]\{position:relative;display:flex;flex-wrap/);
   });
 
   it('DateTimePicker ships the vendored Vanilla Calendar Pro runtime (dual-panel range)', () => {

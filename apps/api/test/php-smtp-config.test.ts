@@ -80,6 +80,22 @@ describe('writePhpSmtpConfig', () => {
     expect(await readdir(dir)).toEqual([]); // and nothing was written before the throw
   });
 
+  it('★ fails CLOSED on any protocol not on the allowlist, not just the one it knows to refuse', async () => {
+    // The git check is a blocklist, and a blocklist only stops what it was told about: a transport
+    // added later, or a caller that forgets to pass one, would otherwise ship the credential. Both
+    // shapes must throw, and neither may leave the file behind.
+    for (const protocol of ['', 'local', 's3', 'rsync-over-carrier-pigeon']) {
+      await expect(writePhpSmtpConfig({ ...base(), protocol })).rejects.toThrow(PublishError);
+      expect(await readdir(dir)).toEqual([]);
+    }
+    // …while the three that legitimately carry it still do.
+    for (const protocol of ['sftp', 'ftp', 'ftps']) {
+      await writePhpSmtpConfig({ ...base(), protocol });
+      expect(await readdir(dir)).toEqual(['sw-mail.config.php']);
+      await rm(join(dir, 'sw-mail.config.php'), { force: true });
+    }
+  });
+
   it('refuses when the instance admin has not enabled the mode', async () => {
     await expect(
       writePhpSmtpConfig({ ...base(), formModes: modes({ contactPhpSmtp: false }) }),

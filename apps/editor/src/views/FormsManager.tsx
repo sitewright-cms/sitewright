@@ -418,8 +418,13 @@ export function FormsManager({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       {dialog}
-      {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
-      {enabledModes.userSmtp && <ProjectSmtp project={project} />}
+      {/* Per-project SMTP config. BOTH modes that send with the project's own credentials need it:
+          `userSmtp` (the platform mailer sends) and `contactPhpSmtp` (the exported contact.php
+          sends). They read the same stored record, and `contactPhpSmtp` is deliberately a separate
+          admin permission rather than one `userSmtp` implies — so gating this panel on `userSmtp`
+          alone left an instance that enabled only the php mode able to CHOOSE it with nowhere to
+          enter a password, and the resulting 409 pointed at settings that were not on screen. */}
+      {(enabledModes.userSmtp || enabledModes.contactPhpSmtp) && <ProjectSmtp project={project} />}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {saved && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
       <ul className="flex flex-col gap-2">

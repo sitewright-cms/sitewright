@@ -6,12 +6,16 @@ const listForms = vi.fn();
 const putForm = vi.fn();
 const deleteForm = vi.fn();
 const formModes = vi.fn();
+const getProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     listForms: () => listForms(),
     putForm: (_p: string, form: Form) => putForm(form),
     deleteForm: (_p: string, id: string) => deleteForm(id),
     formModes: () => formModes(),
+    // Needed only once the embedded <ProjectSmtp> panel actually renders. Every test here used to
+    // leave both credential modes off, so the panel never mounted and its absence was invisible.
+    getProjectSmtp: () => getProjectSmtp(),
   },
 }));
 
@@ -24,6 +28,8 @@ beforeEach(() => {
   putForm.mockReset();
   deleteForm.mockReset();
   formModes.mockReset();
+  getProjectSmtp.mockReset();
+  getProjectSmtp.mockResolvedValue({ smtp: null });
   listForms.mockResolvedValue({ items: [] });
   putForm.mockResolvedValue({ item: {} });
   formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false } });
@@ -102,6 +108,12 @@ describe('FormsManager', () => {
       formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: true, thirdParty: false },
     });
     render(<FormsManager project={project} />);
+    // ★ The panel that sets those credentials must be on the list view. This mode sends with the
+    // PROJECT's own SMTP and is deliberately a separate permission from `userSmtp`, so gating the
+    // panel on `userSmtp` alone offered a delivery mode with nowhere to type the password — and the
+    // publish-time 409 told the author to go to settings that were not on screen.
+    expect(await screen.findByLabelText('Configure project SMTP')).toBeInTheDocument();
+
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     const modeSelect = (await screen.findByLabelText('Delivery mode')) as HTMLSelectElement;

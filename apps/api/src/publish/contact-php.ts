@@ -253,6 +253,23 @@ function sw_smtp_header($value) {
 }
 
 /**
+ * Formats a display name for a From:/To: mailbox. Plain ASCII is NOT automatically safe here: in
+ * the RFC 5322 grammar an unquoted comma separates mailboxes, so "Acme, Inc." <a@b> parses as two
+ * addresses, and a bare quote opens a string that never closes. Any such name goes in a quoted
+ * string with the two characters that are special inside one escaped; non-ASCII still takes the
+ * RFC 2047 path, which is already a safe token and must NOT then be quoted.
+ */
+function sw_smtp_display_name($value) {
+  $encoded = sw_smtp_header($value);
+  if ($encoded !== $value) { return $encoded; }
+  // strpbrk/addcslashes rather than two regexes: a character class needing a literal backslash has
+  // to survive BOTH the JS template literal and PHP's single-quoted string, and the version that
+  // did not returned NULL from preg_replace — which concatenates as an EMPTY display name.
+  if (strpbrk($value, '()<>[]:;@\\\\,."') === false) { return $value; }
+  return '"' . addcslashes($value, '"\\\\') . '"';
+}
+
+/**
  * Delivers one message over authenticated SMTP. Returns false on ANY failure — the caller
  * turns that into a 502 so the visitor can retry; it never falls back to mail().
  */
@@ -305,12 +322,20 @@ function sw_smtp_send($conf, $to, $subject, $body, $replyTo) {
   // AUTH (only when a user is configured). PLAIN first, LOGIN as the fallback.
   $user = isset($conf['user']) ? (string) $conf['user'] : '';
   $pass = isset($conf['pass']) ? (string) $conf['pass'] : '';
-  // NEVER put credentials on the wire in the clear. If the channel could not be encrypted
-  // (no implicit TLS, and STARTTLS absent or failed) we ABORT instead of downgrading — an
-  // opportunistic client that carries on would hand the password to any on-path observer,
-  // and this password belongs to the customer's real mailbox. No user configured = nothing
-  // to leak, so an unauthenticated relay (e.g. localhost:25) still works.
-  if ($ok && $user !== '' && !$encrypted) { $ok = false; }
+  // A relay reached over the LOOPBACK interface has no on-path attacker by construction, which is
+  // the one case where an unencrypted, unauthenticated session is genuinely safe (the classic
+  // shared-hosting "localhost:25"). Anywhere else, opportunistic TLS can simply be stripped: an
+  // attacker forges the EHLO reply WITHOUT the STARTTLS capability, so the upgrade is never even
+  // attempted, and a client that shrugs and continues hands the visitor's message — name, email,
+  // whatever the form collects — to whoever is on the path, while still reporting success.
+  $loopback = ($host === 'localhost' || $host === '::1' || strpos($host, '127.') === 0);
+  // TWO rules, and they are not the same rule. Credentials never go on the wire unencrypted
+  // ANYWHERE, loopback included — this password belongs to the customer's real mailbox and there is
+  // no reading of "convenient" that justifies it. Separately, no MESSAGE goes out unencrypted to a
+  // remote host: guarding only the password would let an unauthenticated remote relay carry the
+  // visitor's submission in the clear to whoever forged the greeting. We ABORT, never downgrade.
+  if ($ok && !$encrypted && $user !== '') { $ok = false; }
+  if ($ok && !$encrypted && !$loopback) { $ok = false; }
   if ($ok && $user !== '') {
     $plain = base64_encode("\\0" . $user . "\\0" . $pass);
     if (substr(sw_smtp_say($fp, 'AUTH PLAIN ' . $plain), 0, 3) !== '235') {
@@ -327,7 +352,7 @@ function sw_smtp_send($conf, $to, $subject, $body, $replyTo) {
 
   if ($ok) {
     $fromName = isset($conf['fromName']) ? (string) $conf['fromName'] : '';
-    $fromHeader = $fromName !== '' ? sw_smtp_header($fromName) . ' <' . $from . '>' : $from;
+    $fromHeader = $fromName !== '' ? sw_smtp_display_name($fromName) . ' <' . $from . '>' : $from;
     $domain = strpos($from, '@') !== false ? substr($from, strpos($from, '@') + 1) : 'localhost';
     $headers = array(
       'From: ' . $fromHeader,

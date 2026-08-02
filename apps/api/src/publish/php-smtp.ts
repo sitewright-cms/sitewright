@@ -6,6 +6,17 @@ import { PublishError } from './build.js';
 import { hasPhpSmtpForm, renderPhpSmtpConfig, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 
 /**
+ * The deploy protocols a live credential may travel over: a direct file transfer to a host the
+ * operator controls. Used as an ALLOWLIST — see the fail-closed check in `writePhpSmtpConfig`.
+ *
+ * ★ Note the residual on plain FTP: the file is uploaded 0600 over SFTP (an explicit mode on the
+ * transfer, see `SftpTransport.putFiles`), but FTP has no permission concept, so there the file
+ * lands under the remote umask and its confidentiality rests on the in-file PHP guard and the
+ * emitted `.htaccess` deny rule rather than on file mode. Prefer SFTP for this delivery mode.
+ */
+const CREDENTIAL_SAFE_PROTOCOLS: readonly string[] = ['ftp', 'ftps', 'sftp'];
+
+/**
  * Materializes `sw-mail.config.php` — the ONLY file that ever carries the project's SMTP password
  * in plaintext — into a DEPLOY PAYLOAD.
  *
@@ -53,6 +64,17 @@ export async function writePhpSmtpConfig(opts: {
       'A form uses “contact.php (SMTP)”, which writes your SMTP password into the deployed files — that must never ' +
         'be committed to a Git repository, where it would persist in the history and in every clone. Deploy this ' +
         'site over SFTP/FTP instead, or switch the form to “contact.php (host mail)” or a platform Email mode.',
+    );
+  }
+  if (!CREDENTIAL_SAFE_PROTOCOLS.includes(opts.protocol)) {
+    // Everything past this point writes a live password into the payload, so an unrecognised
+    // transport must fail CLOSED. The `=== 'git'` check above stays only because it can say
+    // something specific and actionable; on its own it would be a blocklist, and a blocklist lets
+    // a protocol added later — or a caller that simply forgets to pass one — ship the credential.
+    throw new PublishError(
+      `A form uses “contact.php (SMTP)”, which writes your SMTP password into the deployed files. That is only ` +
+        `supported for a direct file transfer to a host you control (SFTP or FTP), not for “${opts.protocol || 'unknown'}”. ` +
+        'Switch the form to “contact.php (host mail)” or a platform Email mode.',
     );
   }
   if (!opts.smtp) {

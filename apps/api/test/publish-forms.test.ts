@@ -201,6 +201,10 @@ describe('buildSite — code-first form embedding', () => {
     const htaccess = await readFile(join(outDir, '.htaccess'), 'utf8');
     expect(htaccess).toContain('<Files "sw-mail.config.php">');
     expect(htaccess).toContain('Require all denied');
+    // The deploy manifest names, sizes and HASHES every uploaded file, so serving it announces that
+    // this site carries the credentials file and lets a stranger confirm a guessed copy byte for
+    // byte. Denying one filename while the other describes it is not a boundary.
+    expect(htaccess).toContain('<Files ".sw-deploy-manifest.json">');
   });
 
   it('emits no deny rule (and no .htaccess) when nothing needs protecting', async () => {

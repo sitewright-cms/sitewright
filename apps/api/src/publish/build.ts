@@ -84,6 +84,7 @@ import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
+import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
   toPublicForm,
   websiteEffectsClasses,
@@ -1229,7 +1230,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // `sw-mail.config.php` (the file is written into the deploy payload by the main process, not
     // here — the build worker never sees the secret).
     const redirects = website?.redirects ?? [];
-    const denyFiles = hasPhpSmtpForm(bundle.forms ?? []) ? [PHP_SMTP_CONFIG_FILE] : [];
+    // The manifest is denied alongside the credentials themselves: it records the NAME, SIZE and
+    // content HASH of every uploaded file, so serving it tells a stranger that this site carries
+    // sw-mail.config.php and lets them confirm a guessed copy byte-for-byte — recon the deny rule
+    // exists to prevent, reachable by a different filename.
+    const denyFiles = hasPhpSmtpForm(bundle.forms ?? []) ? [PHP_SMTP_CONFIG_FILE, MANIFEST_FILENAME] : [];
     if (redirects.length > 0 || denyFiles.length > 0) {
       const htaccess = renderHtaccess(redirects, { denyFiles });
       const netlify = renderNetlifyRedirects(redirects);

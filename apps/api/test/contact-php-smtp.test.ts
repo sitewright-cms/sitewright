@@ -139,6 +139,21 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     expect(transcript.authPlain).toBeNull();
   });
 
+  it('★ REFUSES to deliver to a REMOTE relay that never offered encryption, even with no credentials', async () => {
+    // STARTTLS stripping: an on-path attacker forges the EHLO reply without the STARTTLS capability,
+    // so the upgrade is never attempted and the buffer check above never runs. Guarding only the
+    // password would let an unauthenticated remote relay carry the visitor's message in the clear
+    // while still reporting success. `0.0.0.0` reaches the loopback listener but is not a loopback
+    // ADDRESS, which is exactly the distinction the rule draws.
+    const { res, transcript } = await run({
+      smtp: { offerStartTls: false },
+      config: { host: '0.0.0.0', user: '', password: '' },
+    });
+    expect(res.status).toBe(502);
+    expect(transcript.commands).not.toContain('DATA');
+    expect(transcript.rawData).toEqual([]);
+  });
+
   it('★ REFUSES to send credentials over an unencrypted channel — aborts before AUTH', async () => {
     // The server offers no STARTTLS, so the session can never be encrypted. An "opportunistic"
     // client would carry on and put the customer's mailbox password on the wire in the clear.
@@ -228,6 +243,36 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     const { res, transcript } = await run({ smtp: { offerStartTls: true, rejectAuth: true } });
     expect(res.status).toBe(502);
     expect(transcript.commands).toContain('[tls] AUTH LOGIN'); // fallback attempted
+  });
+
+  it('completes the AUTH LOGIN challenge when the server rejects PLAIN', async () => {
+    // The LOGIN fallback is one of only two supported mechanisms and exists precisely for servers
+    // that refuse PLAIN — but until the fake server learned to answer 334, it replied "250 ok" and
+    // the client's chain died on the first step, so the username/password lines never ran. Every
+    // assertion below would have passed against a fallback that was completely broken.
+    const { res, transcript } = await run({ smtp: { offerStartTls: true, rejectPlainAuth: true } });
+    expect(res.status).toBe(200);
+    // Order matters: username answers the first 334, password the second. A swap would still send
+    // two plausible base64 lines, so assert the decoded values, not just that two lines arrived.
+    expect(Buffer.from(transcript.authLoginUser ?? '', 'base64').toString()).toBe('apikey');
+    expect(Buffer.from(transcript.authLoginPass ?? '', 'base64').toString()).toBe('s3cr3t');
+    // …and the whole exchange stayed inside TLS, like the PLAIN path.
+    expect(transcript.commands.filter((c) => c.toUpperCase().includes('AUTH')).every((c) => c.startsWith('[tls] '))).toBe(true);
+    expect(transcript.commands).toContain('[tls] <END-OF-DATA>');
+  });
+
+  it('quotes a display name that RFC 5322 would otherwise read as two addresses', async () => {
+    // "Acme, Inc." is a perfectly ordinary company name and passes the fromName schema, but an
+    // unquoted comma in a display-name is a MAILBOX SEPARATOR — the header would parse as two
+    // addresses. Pure-ASCII is not the same as safe, which is what the old check assumed.
+    const { res, transcript } = await run({
+      smtp: { offerStartTls: true },
+      config: { fromName: 'Acme, Inc. "The Best"' },
+    });
+    expect(res.status).toBe(200);
+    expect(transcript.rawData.join('\n')).toContain(
+      'From: "Acme, Inc. \\"The Best\\"" <no-reply@acme.com>',
+    );
   });
 
   it('builds a well-formed message: RFC 2047 subject, Reply-To, and DOT-STUFFED body', async () => {

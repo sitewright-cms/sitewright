@@ -43,6 +43,37 @@ The running version of an instance is reported at `GET /version` (baked into the
   submissions is precisely the failure this mode exists to fix. A compliant server says nothing between
   the `220` and the handshake, so anything already buffered now aborts the send; data that instead arrives
   after the check is consumed as handshake input and fails it, leaving both orderings closed.
+- **Nothing is delivered over an unencrypted session to a remote relay**, not only the credentials. Guarding
+  the password alone still allowed the other half of a STARTTLS strip: an on-path attacker forges the EHLO
+  reply *without* the STARTTLS capability, the upgrade is never attempted, and an unauthenticated relay then
+  carried the visitor's submission — whatever the form collects — in the clear, while reporting success. A
+  relay on the loopback interface has no on-path attacker by construction and still works in plaintext,
+  which is the configuration that carve-out existed for; anywhere else now aborts. The credential rule is
+  unchanged and separate: a password never goes out unencrypted, loopback included.
+- **The SMTP credentials file is uploaded with an explicit `0600`** over SFTP. It was written `0600` on the
+  build host, but a local mode does not travel — the uploaded file landed under the *remote* umask,
+  commonly `644` on exactly the shared hosting this feature targets. (FTP has no permission concept at all;
+  there the in-file PHP guard and the `.htaccess` deny rule remain the whole defence, so prefer SFTP.)
+- **The deploy manifest is denied alongside the credentials.** It records the name, size and content hash of
+  every uploaded file, so serving it announced that a site carries `sw-mail.config.php` and let a stranger
+  confirm a guessed copy byte for byte. Denying one filename while another describes it is not a boundary.
+- **Deploy protocols that may carry a live credential are an allowlist**, not a `git` blocklist. A blocklist
+  only stops what it was told about; a transport added later — or a caller that forgets to pass one — would
+  have shipped the password. Unknown protocols now fail closed with a 409.
+
+### Fixed
+
+- **A display name containing RFC 5322 specials is quoted.** `sw_smtp_header` only encoded *non-ASCII*
+  values, so an ordinary company name like `Acme, Inc.` went into `From:` unquoted — and an unquoted comma
+  in a display-name is a mailbox separator, making the header parse as two addresses. Pure ASCII is not the
+  same as safe.
+- **The hCaptcha toggle no longer offers itself for modes it does nothing for.** The embed pass drops the
+  widget for every non-platform-routed mode, but the editor only greyed the control out for `contactPhp` and
+  `thirdParty`, so a `contactPhpSmtp` form showed a live switch with no effect.
+- **The project SMTP panel appears for `contactPhpSmtp`, not only `userSmtp`.** Both modes send with the
+  project's own credentials and read the same record, but the panel was gated on `userSmtp` alone — so an
+  instance that enabled only the php mode (deliberately a separate permission) let an author choose it with
+  nowhere to type a password, and the publish-time 409 pointed at settings that were not on screen.
 
 ## [0.9.0] — 2026-08-02
 

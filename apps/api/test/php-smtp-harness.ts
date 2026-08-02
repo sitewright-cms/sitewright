@@ -56,6 +56,9 @@ export interface SmtpTranscript {
   rawData: string[];
   /** The argument of `AUTH PLAIN`, base64 as sent (null when AUTH never happened). */
   authPlain: string | null;
+  /** The two `AUTH LOGIN` continuation lines, base64 as sent, in the order the client sent them. */
+  authLoginUser: string | null;
+  authLoginPass: string | null;
   /** True once the connection was upgraded via STARTTLS. */
   upgraded: boolean;
 }
@@ -75,6 +78,9 @@ export interface FakeSmtpOptions {
   implicitTls?: boolean;
   /** Reject AUTH with 535. */
   rejectAuth?: boolean;
+  /** Reject only `AUTH PLAIN` (535) while honouring the `AUTH LOGIN` challenge — the real reason
+   *  the LOGIN fallback exists, and the only way to exercise it end to end. */
+  rejectPlainAuth?: boolean;
   /** Reject RCPT TO with 550. */
   rejectRecipient?: boolean;
   /**
@@ -88,7 +94,14 @@ export interface FakeSmtpOptions {
 
 /** Starts a scripted SMTP server on an ephemeral port. */
 export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<FakeSmtp> {
-  const transcript: SmtpTranscript = { commands: [], rawData: [], authPlain: null, upgraded: false };
+  const transcript: SmtpTranscript = {
+    commands: [],
+    rawData: [],
+    authPlain: null,
+    authLoginUser: null,
+    authLoginPass: null,
+    upgraded: false,
+  };
   let resolveFinished: () => void;
   const finished = new Promise<void>((r) => (resolveFinished = r));
 
@@ -96,6 +109,11 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
     sock.setEncoding('utf8');
     let buffer = '';
     let inData = false;
+    // AUTH LOGIN is a challenge/response: the next two lines after it are base64 payloads, not
+    // commands, so the dispatcher has to track where it is. Without this the server answered the
+    // generic "250 ok" to `AUTH LOGIN`, the client's chain died on the first step expecting 334,
+    // and the username/password lines were never sent — the fallback looked tested but wasn't.
+    let authStage: '' | 'user' | 'pass' = '';
     const onData = (chunk: string): void => {
       buffer += chunk;
       let idx: number;
@@ -113,13 +131,36 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
           continue;
         }
         transcript.commands.push(`${phase}${line}`);
+        if (authStage === 'user') {
+          transcript.authLoginUser = line;
+          authStage = 'pass';
+          sock.write('334 UGFzc3dvcmQ6\r\n'); // base64("Password:")
+          continue;
+        }
+        if (authStage === 'pass') {
+          transcript.authLoginPass = line;
+          authStage = '';
+          sock.write(options.rejectAuth ? '535 5.7.8 bad credentials\r\n' : '235 2.7.0 ok\r\n');
+          continue;
+        }
         const up = line.toUpperCase();
+        if (up === 'AUTH LOGIN') {
+          if (options.rejectAuth && !options.rejectPlainAuth) {
+            sock.write('535 5.7.8 bad credentials\r\n');
+            continue;
+          }
+          authStage = 'user';
+          sock.write('334 VXNlcm5hbWU6\r\n'); // base64("Username:")
+          continue;
+        }
         if (up.startsWith('EHLO')) {
           const starttls = options.offerStartTls && phase === '' ? '250-STARTTLS\r\n' : '';
           sock.write(`250-fake greets you\r\n250-PIPELINING\r\n${starttls}250-AUTH PLAIN LOGIN\r\n250 HELP\r\n`);
         } else if (up.startsWith('AUTH PLAIN')) {
           transcript.authPlain = line.slice('AUTH PLAIN '.length);
-          sock.write(options.rejectAuth ? '535 5.7.8 bad credentials\r\n' : '235 2.7.0 ok\r\n');
+          sock.write(
+            options.rejectAuth || options.rejectPlainAuth ? '535 5.7.8 bad credentials\r\n' : '235 2.7.0 ok\r\n',
+          );
         } else if (up === 'STARTTLS') {
           if (!options.offerStartTls || !options.cert) {
             sock.write('454 4.7.0 TLS unavailable\r\n');

@@ -397,6 +397,7 @@ export function InstanceSettings() {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setSmtpTest(null); // what was tested is no longer what is stored
     // Validate the AI output-token cap inline (mirrors the per-project form) so an out-of-range
     // value shows a clear message instead of a generic server 400.
     if (aiEnabled && aiMaxTokens.trim() !== '') {
@@ -709,7 +710,9 @@ export function InstanceSettings() {
           Configure a global SMTP server
         </label>
         {smtpEnabled && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          /* Any edit invalidates the last test: the endpoint checks what is STORED, so a leftover
+             ✓ would assert something nobody has verified. */
+          <div className="mt-3 grid grid-cols-2 gap-3" onChange={() => setSmtpTest(null)}>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />

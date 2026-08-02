@@ -42,11 +42,22 @@ export type TransportFactory = (config: TransportConfig) => MailTransport;
 
 /**
  * True for a host that cannot have an on-path attacker: the traffic never leaves the machine.
- * Bracketed form included because that is how an IPv6 literal is written in a URL-ish field.
+ * Bracketed form included because that is how an IPv6 literal is written in a URL-ish field, and a
+ * trailing dot because `localhost.` is the same name in fully-qualified form.
+ *
+ * ★ The 127/8 arm must match a complete ADDRESS, never a prefix. `127.` is a legal start to an
+ * ordinary DNS label, so a "starts with 127." test also accepts `127.evil.com` and
+ * `127.0.0.1.evil.com` — registrable names whose owner decides where they point. That would hand
+ * the "loopback needs no encryption" exemption to a host on the public internet, which is the exact
+ * downgrade this rule exists to prevent. Anything that is not a valid dotted quad is not loopback.
  */
 export function isLoopbackSmtpHost(host: string): boolean {
-  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, '');
-  return h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1' || /^127\./.test(h);
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  if (h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1') return true;
+  const quad = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!quad) return false;
+  const octets = quad.slice(1).map(Number);
+  return octets.every((o) => o <= 255) && octets[0] === 127; // all of 127.0.0.0/8
 }
 
 /**

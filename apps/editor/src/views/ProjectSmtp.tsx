@@ -70,6 +70,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setResult(null); // what was tested is no longer what is stored
     try {
       if (!enabled) {
         await api.deleteProjectSmtp(project.id);
@@ -103,7 +104,10 @@ export function ProjectSmtp({ project }: { project: Project }) {
           — for “Project SMTP” and “contact.php (SMTP)” forms
         </span>
       </summary>
-      <form onSubmit={save} className="mt-3 flex flex-col gap-3">
+      {/* Any edit invalidates the last test: the endpoint checks what is STORED, so a ✓ left over
+          from the previous settings would assert something nobody has verified. Clearing on the
+          form's change event catches every field without threading a reset through each setter. */}
+      <form onSubmit={save} onChange={() => setResult(null)} className="mt-3 flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className={toggleInput} aria-label="Configure project SMTP" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Send this project’s form mail via its own SMTP
@@ -166,9 +170,12 @@ export function ProjectSmtp({ project }: { project: Project }) {
           {/* Form delivery is best-effort, so a broken SMTP is otherwise invisible until leads stop
               arriving. This tests what is SAVED — it authenticates but sends no mail. */}
           {enabled && (
-            <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={testing}>
-              {testing ? 'Testing…' : 'Test connection'}
-            </button>
+            <>
+              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={testing}>
+                {testing ? 'Testing…' : 'Test connection'}
+              </button>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Tests the saved settings; sends no mail.</span>
+            </>
           )}
           {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}
           {result &&

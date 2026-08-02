@@ -93,6 +93,9 @@ export interface FakeSmtpOptions {
   injectAfterStartTls?: string;
   /** Address to listen on. `::1` exercises the IPv6 path; default is IPv4 loopback. */
   bindHost?: string;
+  /** Listen on a SPECIFIC port (25/465/587) instead of an ephemeral one. Only for the port-semantics
+   *  matrix — everything else should stay on port 0 so suites never collide. */
+  bindPort?: number;
   /** Mechanisms to advertise on the `AUTH` capability line. A server offering only one is how a
    *  client's choice of mechanism gets exercised — nodemailer picks from what is advertised and
    *  does NOT retry another after a 535. */
@@ -229,7 +232,13 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
       : net.createServer(onConnection);
   server.on('tlsClientError', () => resolveFinished()); // verification failure = no session at all
 
-  await new Promise<void>((r) => server.listen(0, options.bindHost ?? '127.0.0.1', r));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject); // a taken/privileged port must surface, not hang
+    server.listen(options.bindPort ?? 0, options.bindHost ?? '127.0.0.1', () => {
+      server.removeListener('error', reject);
+      resolve();
+    });
+  });
   const port = (server.address() as net.AddressInfo).port;
   return {
     port,

@@ -105,3 +105,31 @@ describe('ProjectSmtp connection test', () => {
     expect(screen.queryByRole('button', { name: 'Test connection' })).toBeNull();
   });
 });
+
+describe('ProjectSmtp stale test result', () => {
+  // The endpoint tests what is STORED. A ✓ left over from the previous settings, sitting next to a
+  // Save button the operator just pressed, asserts something nobody has verified — which is the
+  // exact "no signal that mail broke" failure this button exists to remove.
+  it('clears a previous result as soon as a field is edited', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } });
+    testProjectSmtp.mockResolvedValue({ ok: true });
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/Connected/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.other.com' } });
+    await waitFor(() => expect(screen.queryByText(/Connected/)).toBeNull());
+  });
+
+  it('clears a previous result on save', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'u', fromEmail: 'a@b.co', hasPassword: true } });
+    testProjectSmtp.mockResolvedValue({ ok: true });
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+    expect(await screen.findByText(/Connected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
+    await waitFor(() => expect(screen.queryByText(/Connected/)).toBeNull());
+  });
+});
+

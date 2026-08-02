@@ -235,7 +235,9 @@ const SMTP_DISPATCH_PHP = `if (!empty($cfg['smtp'])) {
 //    legal and gets mangled or rejected.
 //  - TLS peer verification is left ON (PHP's default since 5.6) — set explicitly so a future
 //    reader sees it was a decision, not an omission.
-const smtpClientPhp = (totalTimeoutS: number): string => `
+/** The SMTP client emitted into contact.php. Exported so a test can run the REAL emitted PHP
+ *  (not a copy of it) against the platform-side predicates it has to agree with. */
+export const smtpClientPhp = (totalTimeoutS: number): string => `
 /**
  * Holds (and reads back) the wall-clock deadline for the WHOLE session.
  *
@@ -287,6 +289,25 @@ function sw_smtp_say($fp, $cmd) {
 /** Sends one command (or none) and returns true when the reply starts with $expect. */
 function sw_smtp_cmd($fp, $cmd, $expect) {
   return substr(sw_smtp_say($fp, $cmd), 0, strlen($expect)) === $expect;
+}
+
+/**
+ * True for a host whose traffic never leaves the machine, and therefore has no on-path attacker.
+ *
+ * ★ The 127/8 arm must match a complete ADDRESS, never a prefix. "127." is a legal start to an
+ * ordinary DNS label, so strpos($host, '127.') === 0 also accepts 127.evil.com and
+ * 127.0.0.1.evil.com — registrable names whose owner decides where they resolve. That would hand
+ * the "loopback needs no encryption" exemption to a host on the public internet, which is exactly
+ * the downgrade this rule exists to prevent. filter_var settles it: a name is not an address.
+ *
+ * Kept in step with isLoopbackSmtpHost() on the platform side — a test runs this very code against
+ * that function host-for-host, because a customer's guarantee must not depend on which of the two
+ * SMTP clients happens to carry their mail.
+ */
+function sw_smtp_is_loopback($host) {
+  $h = trim(rtrim(strtolower(trim($host)), '.'), '[]');
+  if ($h === 'localhost' || $h === '::1' || $h === '0:0:0:0:0:0:0:1') { return true; }
+  return filter_var($h, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false && strpos($h, '127.') === 0;
 }
 
 /** RFC 2047 encodes a header value when it is not plain ASCII. */
@@ -378,7 +399,7 @@ function sw_smtp_send($conf, $to, $subject, $body, $replyTo) {
   // attacker forges the EHLO reply WITHOUT the STARTTLS capability, so the upgrade is never even
   // attempted, and a client that shrugs and continues hands the visitor's message — name, email,
   // whatever the form collects — to whoever is on the path, while still reporting success.
-  $loopback = ($host === 'localhost' || $host === '::1' || strpos($host, '127.') === 0);
+  $loopback = sw_smtp_is_loopback($host);
   // TWO rules, and they are not the same rule. Credentials never go on the wire unencrypted
   // ANYWHERE, loopback included — this password belongs to the customer's real mailbox and there is
   // no reading of "convenient" that justifies it. Separately, no MESSAGE goes out unencrypted to a

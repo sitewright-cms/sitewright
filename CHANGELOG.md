@@ -9,6 +9,73 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08-02
+
+### Fixed
+
+- **A nav effect no longer outranks the author's own nav CSS.** A scheme selector reaches (0,4,1) —
+  `.sw-nav-line-bottom .menu:not([class*="sw-nav-"]) a.active` — which no sensible author selector beats.
+  Three clones out of eight shipped an accent-coloured current nav item against a plain-white original,
+  and on one the agent had written exactly the right rule, at (0,2,2), and still lost. The schemes now
+  ship in `@layer sw-effects`: layered declarations lose to ANY unlayered rule whatever its specificity,
+  so the author always wins, while each scheme keeps its INTERNAL specificity and its own
+  base → `:hover` → `.active` ordering still resolves as written. `:where()` was the alternative and is
+  the wrong tool here — it would flatten those three and leave source order to decide.
+- **The rest of the platform's visual defaults are zero-specificity too.** The component catalog has long
+  promised that "every default is zero-specificity so utility classes still restyle it"; it was not true,
+  and four clones shipped visibly wrong output because of it — a Ken Burns caption keeping a shadow it was
+  told to drop, five brand logos at 73×73 against an original's 180×180, three contact fields carrying the
+  SAME `w-[60%]` rendering 656/635/620px wide, a tab strip keeping a 16px gap the author had explicitly
+  closed. Measured on the emitted stylesheet, rules an author cannot restyle went **56 → 37**; what stays
+  firm is listed with a reason (Embla mechanics, the `<dialog>` box, the honeypot, the checkbox exception,
+  our overrides of the vendored lightbox, anything expressing a state), and a test now walks the whole
+  sheet on every run rather than trusting it.
+- **A carousel label no longer costs it every style rule.** The stylesheet keyed on `data-sw-block` while
+  the runtime enhanced `data-sw-component`, so `data-sw-block="Hero slider"` — a natural thing to write,
+  since the editor uses that attribute as a human-readable label — removed all 78 carousel rules while the
+  JS still ran. A blank hero, no error, no console warning. Carousel and lightbox CSS key on the component
+  marker now.
+- **Lazy images inside a slider actually load.** `loading="lazy"` in a carousel meant never: the browser
+  defers until the image nears the SCROLLING viewport, and a slide two places along is translated sideways,
+  not below the fold. An image that has not loaded has no intrinsic size either, so in a flex slide it
+  collapsed to width 0 — an empty slot, not a placeholder. Measured: 3 of 13 slide images stuck at
+  naturalWidth 0, and paging forward four times did not rescue them. The carousel now decides deferral from
+  its own track, promoting the selected slide and its neighbours while distant slides stay lazy.
+- **An opaque page background no longer buries a fixed background layer.** A `position:fixed; z-index:-1`
+  video or image is a negative-z descendant of body, and body's own background paints AFTER it — so a hero
+  backdrop was covered while still loading and playing behind it, reported twice as "the video is missing".
+  The page colour sits on the root with body transparent, and `body{isolation:isolate}` makes body a
+  stacking context so an authored body background cannot bury the layer either.
+- **The header content offset is a value you can set, not a class you have to guess.** The only way to
+  argue with the automatic offset was the PRESENCE of `.sw-top-padding` inside the wrapper, so that one
+  class meant both "pad here" and "hands off, I did it myself". Reserve the space any other way and the
+  platform added its own on top — 503px where the original had 251, under two different class names in the
+  same clone — and "the bar clearance PLUS my own margin" could not be expressed at all. The amount is now
+  `--sw-header-offset`, settable per page (`:root` in that page's `<style>`) or site-wide, defaulting to the
+  bar height. `--sw-header-h` keeps its single meaning, so changing the offset no longer moves where
+  jump-links land or where ScrollSpy thinks a section starts. The old sentinel still works, so no migration.
+- **Content at the bottom of a page reveals.** The scroll-reveal line sits 20% up from the viewport bottom,
+  which an element reaches by having content BELOW it to scroll past — the last things on a page have none,
+  so they stayed at `opacity:0` permanently. Measured on a clone: three footer elements invisible forever,
+  reported as missing content rather than a broken animation.
+- **The date picker stays on its field.** Vanilla Calendar Pro positions from `window.scrollY` alone and
+  never reads `body.scrollTop`, so on a page whose scroller is not the window — including the platform's own
+  preview shell — the popup was placed once and then stranded: field at y=312, popup still painting at y=660.
+- **A social icon can carry a weight.** `identity.social[].icon` fed `{{sw-icon}}` but forbade the `:weight`
+  suffix that helper takes everywhere else, so a clone of a site with hairline glyphs shipped filled marks —
+  its author tried `envelope:light` and got `400: invalid icon name`.
+- **The audit's tablet viewport moved off 768px**, the single pixel where `@media (max-width:768px)` and
+  Tailwind's `max-[768px]:` disagree — so the tool was rendering exactly where a page's two spellings of the
+  same breakpoint describe different layouts.
+- **An oversized image no longer kills a session unrecoverably.** An image past the model's 2000px
+  many-image limit rejects the whole request; one agent died at 37 minutes and 124 turns with no way to resume.
+- **The header content offset no longer assumes a fixed bar sits at the top**, which gave a design resting
+  its bar at `calc(100dvh - 79px)` a phantom 79px band above a full-bleed hero.
+- **Three untrue statements in the agent guide, two self-contradicting tool descriptions, and an MCP error
+  that blamed a missing browser** for a selector that simply matched nothing.
+- Six dead constants in the e2e specs that had been failing lint on `main`.
+
+
 ### Added
 
 - **`contact.php` can deliver over authenticated SMTP** — a fifth form delivery mode, `contactPhpSmtp`.

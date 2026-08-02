@@ -9,6 +9,67 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-02
+
+A ten-site clone run by ten neutral MCP agents. The dominant failure class was again the platform
+**describing itself incorrectly** — silent, because the agent then builds on a false belief and the error
+only surfaces in the finished clone. This release fixes the nine that cost the most, and repairs an E2E
+suite that had rotted against four intentional product changes.
+
+### Fixed
+
+- **`clone_audit`'s clipping check compares against the ORIGINAL.** It measured something real — an
+  element cut off by an ancestor's overflow is invisible to `getBoundingClientRect` — but could not tell a
+  broken layout from a deliberate bleed, and gating on that ambiguity did real damage. To turn it green,
+  agents replaced `<img>` elements with background-image divs (measured: 41 alt texts down to 6 on one
+  page, 18 down to 4 on another), swapped an accordion's `max-width:0` slide-open for `display:none`, and
+  shrank icons the design intentionally bleeds past a tile edge. Four fidelity regressions, no real defect
+  among them; the check had been demoted to advisory as damage control. The missing input was always the
+  source: a clip the ORIGINAL also makes is the design being ported. Both sides are now probed and the
+  overlap subtracted, pairing on tag + clipped axis because a faithful native port has entirely different
+  markup and selectors cannot pair across the two renders. It gates again when a source was probed, and
+  stays advisory when there wasn't one — "couldn't look at the original" is not "the original clips
+  nothing", and must not produce the same verdict.
+- **Flat dataset entry values are folded into `values` instead of being silently stripped.** The guide
+  called this "THE #1 MISTAKE", which is an admission that the shape is surprising rather than a defence
+  of it. The failure was silent in the worst way: unknown keys were dropped, the row saved as `values:{}`,
+  the write reported success, and the loop rendered nothing. `EntrySchema` has a closed envelope, so any
+  other top-level key can only be a field value.
+- **`list_media_folders` unions the folder records with the paths actually in use.** A folder record
+  exists only for a folder someone explicitly created, so this returned almost nothing while the library
+  was fully organised — measured on a real project: 1 record against 10 folders holding assets.
+- **`POST /preview` renders the STORED page when handed only an id.** It used to render exactly the object
+  it was given, so `{ id, path, title }` produced an empty page and an agent asking "show me this page"
+  got back just the chrome. The lookup is a fallback, so a stub naming a page that doesn't exist is still
+  a 400 rather than escaping as a repo 404.
+- **`inspect_source` explains stripped `data-sw-*` attributes** instead of leaving the reader to infer
+  their markup was wrong.
+
+### Changed
+
+- **`get_guide` is section-addressable.** The import guide is 54,564 characters — it overflowed the
+  tool-output cap, spilled to a file and had to be re-read, at least once per agent. The plain call now
+  returns a 2,055-character overview plus a section index, with the detail behind
+  `section: pages | chrome | fidelity | verify | cleanup` (or `all`). The split is by extraction, never
+  classification: a section claims a block only by matching its opening phrase, so a reworded lead falls
+  into the always-returned default rather than vanishing.
+- **`list_media` omits inline LQIP data URIs unless `?placeholders=1`.** Measured on a real project:
+  28,176 of a 76,287-character response (36%) was base64 placeholder, useful only to a UI painting a
+  blur-up thumbnail.
+- **A `tabs-vertical` snippet recipe**, plus guide notes on the `:is()` specificity trap and on
+  lazy-loading not conflicting with screenshot capture.
+
+### Tests
+
+- **The deployed-instance E2E suite is green again — 19 failures to 0.** Every failure was the suite
+  asserting behaviour the platform deliberately stopped having, not a product defect: registration became
+  invitation-only (and `e2e-deploy.sh` still flipped a setting that no longer exists, swallowing the
+  failure); local hosting is opt-in via a `local` deploy target, so publishing then fetching
+  `/sites/<slug>/` 404ed on success; the block-tree renderer was removed in #250, so a `Form` block
+  rendered as "Unknown"; media URLs are flat since #708-711 and published assets carry a `?v=` token; and
+  the invite peek stopped masking the email on purpose in #465. A new `e2e/helpers.ts` seeds users through
+  the real invite → register → accept chain rather than a bypass.
+
 ## [0.8.0] — 2026-08-01
 
 A third neutral clone run (advancedtechcc.com) surfaced four defects, three of which were the platform
@@ -383,7 +444,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/sitewright-cms/sitewright/compare/v0.8.0...v0.9.0
 [#754]: https://github.com/sitewright-cms/sitewright/pull/754
 [0.8.0]: https://github.com/sitewright-cms/sitewright/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/sitewright-cms/sitewright/compare/v0.6.0...v0.7.0

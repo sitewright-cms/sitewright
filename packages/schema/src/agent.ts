@@ -1173,6 +1173,13 @@ utility at (0,1,0) — one clone's base rule silently killed \`mb-*\` on every p
 nothing flagged it. Keep chrome CSS on a SINGLE class (\`.mc-lead\`, not \`.mc p\`) so it can never
 out-rank the utilities you also use. The same arithmetic bites \`:is(a,b).x\`, which takes the
 specificity of its most specific argument.
+★ A NAV EFFECT OUT-RANKS YOUR OWN NAV CSS, AND THE FIX IS TO TURN IT OFF, NOT TO OUT-SPECIFY IT.
+\`website.effects.navEffect\` styles the ACTIVE item at specificity (0,4,1) — the scheme class, \`.menu\`,
+a \`:not([class*="sw-nav-"])\` guard, and \`a.active\`. A hand-written \`.my-nav > li > a.active\` is (0,2,2)
+and LOSES, silently: three clones shipped an accent-coloured current item against an original that used
+plain white, and one of them had authored the correct override and never saw it fail. If the source has
+no such treatment, set \`effects.navEffect:"none"\` — then your own CSS applies. Reach for a heavier
+selector only when you actually want the scheme AND a tweak.
 ★ MAX-WIDTH BREAKPOINTS DISAGREE BY ONE PIXEL, AND IT IS THE PIXEL THE TOOLING RENDERS AT. Tailwind's
 \`max-[768px]:\` compiles to \`@media not all and (min-width:768px)\`, which is FALSE at exactly 768px;
 your own \`@media (max-width:768px)\` in criticalCss is TRUE there. Clone a site built on max-width

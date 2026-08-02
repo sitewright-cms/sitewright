@@ -44,6 +44,23 @@ describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)',
     expect(css).not.toContain('[data-sw-block="Carousel"]');
   });
 
+  it('every .sw-caption DEFAULT is zero-specificity, so an author utility can restyle it', () => {
+    // The catalog promises exactly this ("every default is zero-specificity so utility classes still
+    // restyle it"). The Ken Burns caption shadow broke the promise at (0,3,0): a plain
+    // `.sw-caption{box-shadow:...}` is (0,1,0) and a Tailwind `shadow-*` utility is (0,1,0), so neither
+    // could touch it. Measured on a clone — its hero caption shipped a 0.85/30px shadow against the
+    // original's 0.24/12px, while box, background, blur and radius all matched exactly.
+    const { css } = componentAssets(['Carousel']);
+    const captionRules = css.match(/[^{}]*\.sw-caption[^{}]*\{[^}]*\}/g) ?? [];
+    expect(captionRules.length).toBeGreaterThan(0);
+    for (const rule of captionRules) {
+      const selector = rule.slice(0, rule.indexOf('{'));
+      // An animation hook may legitimately carry weight; a visual DEFAULT may not.
+      if (/animation:/.test(rule)) continue;
+      expect(selector.trim().startsWith(':where('), `not zero-specificity: ${selector.trim()}`).toBe(true);
+    }
+  });
+
   it('the lightbox stylesheet is component-keyed too', () => {
     const { css } = componentAssets(['Lightbox']);
     expect(css).toContain('[data-sw-component="lightbox"]');

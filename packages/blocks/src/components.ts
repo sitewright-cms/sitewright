@@ -213,7 +213,13 @@ const CAROUSEL_CSS = [
   '[data-sw-component="carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;object-fit:cover}',
   // Hero (data-kenburns) caption gets an EXTRA-strong drop-shadow over bright imagery. The frosted dots
   // pill + thicker glyphs now come from the single-item default above (every kenburns hero matches it).
-  '[data-sw-component="carousel"][data-kenburns] .sw-caption{box-shadow:0 30px 80px rgba(0,0,0,.85),0 12px 28px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.5)}',
+  // ZERO-SPECIFICITY, like the base .sw-caption rule above. At (0,3,0) this out-ranked every author
+  // override — a plain `.sw-caption{box-shadow:...}` is (0,1,0) and a Tailwind `shadow-*` utility is
+  // (0,1,0) too, so neither could touch it. The catalog PROMISES the opposite ("every default is
+  // zero-specificity so utility classes still restyle it"), and a clone measured the cost: its hero
+  // caption shipped a 0.85/30px shadow against the original's 0.24/12px, with everything else about
+  // the caption — box, background, blur, radius — matched exactly.
+  ':where([data-sw-component="carousel"][data-kenburns] .sw-caption){box-shadow:0 30px 80px rgba(0,0,0,.85),0 12px 28px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.5)}',
   '@media (prefers-reduced-motion: no-preference){' +
     '[data-sw-component="carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
     '[data-sw-component="carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +

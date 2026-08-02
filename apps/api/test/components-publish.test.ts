@@ -18,7 +18,13 @@ const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', 
 // same only-used-ships discipline as animations/lazyload/ripple. `data-sw-component`/`data-sw-part`
 // survive the publish directive-strip (only data-sw-text/html/href/src/bg are removed).
 
-describe('interactive component + dialog runtimes → code-first publish + preview', () => {
+// Every case here boots a harness and runs a REAL publish, ~0.5-0.8s each when the box is idle.
+// Vitest's 5s default looked like a 6x margin and was not: under the full suite's parallelism this
+// file takes 3x longer wall-clock, and the slowest case (the shared-slot split) intermittently blew
+// the budget — green alone, red inside `pnpm verify`. Same shape as the render-pool timeout raised
+// in #756: a margin measured on an idle machine says little about a loaded one. 15s is ~20x the
+// idle cost, so it still fails fast on a genuine hang.
+describe('interactive component + dialog runtimes → code-first publish + preview', { timeout: 15_000 }, () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;

@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type PlaywrightWorkerArgs } from '@playwright/test';
+import { test, expect, type PlaywrightWorkerArgs } from '@playwright/test';
 import { adminContext, seedUser } from './helpers.js';
 
 type PwFixture = PlaywrightWorkerArgs['playwright'];
@@ -8,8 +8,6 @@ type PwFixture = PlaywrightWorkerArgs['playwright'];
 // runs only when SW_E2E_UNSPLASH_KEY / SW_E2E_PEXELS_KEY are provided to the test run,
 // so no provider secret is ever committed and a keyless CI still exercises the wiring.
 
-const ADMIN_EMAIL = 'admin@e2e.test';
-const PW = 'Pw-secret-1';
 const UNSPLASH_KEY = process.env.SW_E2E_UNSPLASH_KEY;
 const PEXELS_KEY = process.env.SW_E2E_PEXELS_KEY;
 

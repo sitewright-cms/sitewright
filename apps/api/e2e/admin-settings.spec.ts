@@ -6,8 +6,6 @@ import { seedUser, adminContext } from './helpers.js';
 // a normal user is denied; the configured admin can read/write settings; secrets
 // are stored but never returned.
 
-const ADMIN_EMAIL = 'admin@e2e.test';
-const PW = 'Pw-secret-1';
 
 test('instance admin settings: gating, persistence, and secret masking', async ({ playwright, baseURL }) => {
     const stamp = Date.now();

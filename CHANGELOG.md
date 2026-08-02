@@ -61,8 +61,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   only stops what it was told about; a transport added later — or a caller that forgets to pass one — would
   have shipped the password. Unknown protocols now fail closed with a 409.
 
+- **Deploy payloads left behind by a killed process are swept at boot.** The credentials file is the only
+  artifact in the system that puts a live password on the platform's own disk. Every deploy path already
+  removed its payload in a `finally` — but a `finally` does not run through a SIGKILL, an OOM kill, or a
+  host crash, which would leave the password in the OS temp dir indefinitely. The sweep is deliberately
+  timid, since deleting a payload out from under a running deploy would break a site rather than protect
+  one: only our own `sw-deploy-` prefix, only directly inside the temp dir, only entries older than six
+  hours, and it never throws. Boot is the safe moment because this process has no deploy in flight yet.
+
 ### Fixed
 
+- **The SMTP session has a whole-session deadline, not just a per-operation one.** A timeout on each wait
+  does not bound their sum: a session is up to ten round trips, so a server answering just under the limit
+  every time could hold a visitor's request for minutes — past the 30-60s `max_execution_time` typical of
+  shared hosting, at which point the SAPI kills the script and the visitor gets the host's raw error page
+  instead of contact.php's own 502. Each read now re-arms the socket with what is *left* of a 25s budget.
+  Measured against a server that greets and then answers nothing: gives up in 3.0s on a 3s budget.
 - **A display name containing RFC 5322 specials is quoted.** `sw_smtp_header` only encoded *non-ASCII*
   values, so an ordinary company name like `Acme, Inc.` went into `From:` unquoted — and an unquoted comma
   in a display-name is a mailbox separator, making the header parse as two addresses. Pure ASCII is not the

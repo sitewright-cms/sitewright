@@ -14,6 +14,13 @@ const PHP_MAX_BODY_BYTES = 128 * 1024;
 const PHP_JSON_DEPTH = 10;
 /** Socket connect + per-read timeout for the generated SMTP client, in seconds. */
 const PHP_SMTP_TIMEOUT_S = 15;
+/**
+ * Ceiling on the WHOLE SMTP session, not one operation. Sized to finish inside the 30s
+ * `max_execution_time` that shared hosting commonly enforces, with room left for the rest of the
+ * request — otherwise the SAPI kills the script and the visitor sees the host's error page rather
+ * than contact.php's own 502.
+ */
+const PHP_SMTP_TOTAL_S = 25;
 /** Filename of the sibling credentials file (written ONLY into a deploy payload — see below). */
 export const PHP_SMTP_CONFIG_FILE = 'sw-mail.config.php';
 /** Guard constant `contact.php` defines before including the config; a direct hit 404s. */
@@ -116,7 +123,12 @@ return json_decode('${literal}', true);
  * recipient + subject are baked per form id, along with which transport to use.
  * Returns the full PHP source. Contains NO credentials in either mode.
  */
-export function renderContactPhp(forms: readonly Form[]): string {
+export function renderContactPhp(
+  forms: readonly Form[],
+  /** Whole-session SMTP budget in seconds. Production always takes the default; the tests lower it
+   *  so a stalling server can be exercised in seconds instead of half a minute. */
+  opts: { totalTimeoutS?: number } = {},
+): string {
   const map: Record<string, ContactConfig> = {};
   for (const form of forms) {
     if (!isContactPhpMode(form.mode)) continue;
@@ -136,7 +148,7 @@ export function renderContactPhp(forms: readonly Form[]): string {
 // for high-traffic sites add web-server rate limiting (e.g. mod_ratelimit / Nginx
 // limit_req) in front of this file.
 function sw_fail($code) { http_response_code($code); echo json_encode(array('ok' => false)); exit; }
-${anySmtp ? SMTP_CLIENT_PHP : ''}
+${anySmtp ? smtpClientPhp(opts.totalTimeoutS ?? PHP_SMTP_TOTAL_S) : ''}
 // Public, no-credentials endpoint: permissive CORS (mirrors the platform endpoint).
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -223,11 +235,42 @@ const SMTP_DISPATCH_PHP = `if (!empty($cfg['smtp'])) {
 //    legal and gets mangled or rejected.
 //  - TLS peer verification is left ON (PHP's default since 5.6) — set explicitly so a future
 //    reader sees it was a decision, not an omission.
-const SMTP_CLIENT_PHP = `
+const smtpClientPhp = (totalTimeoutS: number): string => `
+/**
+ * Holds (and reads back) the wall-clock deadline for the WHOLE session.
+ *
+ * A per-operation timeout bounds each individual wait but NOT their sum: a session is up to ~10
+ * waits (greeting, EHLO, STARTTLS, re-EHLO, up to three AUTH round-trips, MAIL, RCPT, DATA, the
+ * final ack), so a server that answers just under the limit every time can hold the request for
+ * minutes. Shared hosting — the environment this whole mode exists for — commonly caps
+ * max_execution_time at 30-60s, and the SAPI then kills the script mid-flight: the visitor gets the
+ * host's raw error page instead of our clean 502, and contact.php's own failure handling never runs.
+ */
+function sw_smtp_deadline($set = null) {
+  static $at = 0.0;
+  if ($set !== null) { $at = (float) $set; }
+  return $at;
+}
+
+/** Whole seconds left in the session budget; 0 once it is spent. */
+function sw_smtp_left() {
+  $left = (int) ceil(sw_smtp_deadline() - microtime(true));
+  return $left > 0 ? $left : 0;
+}
+
 /** Reads one complete SMTP reply (handles multi-line "250-" continuations). */
 function sw_smtp_read($fp) {
   $out = '';
-  while (($line = fgets($fp, 1024)) !== false) {
+  while (true) {
+    // Re-arm the socket with what is LEFT of the whole-session budget rather than a fresh full
+    // timeout, so the total cannot outrun it however many round trips the server drags us through.
+    $left = sw_smtp_left();
+    // Budget spent: return an empty reply. Every caller compares against an expected code, so ''
+    // fails every one of them and the send aborts cleanly instead of running until the SAPI kills it.
+    if ($left <= 0) { return ''; }
+    stream_set_timeout($fp, $left);
+    $line = fgets($fp, 1024);
+    if ($line === false) { break; }
     $out .= $line;
     // Last line of a reply has a SPACE in the 4th column ("250 ok"); "250-" continues.
     if (strlen($line) < 4 || $line[3] === ' ') { break; }
@@ -278,15 +321,22 @@ function sw_smtp_send($conf, $to, $subject, $body, $replyTo) {
   $port = (int) $conf['port'];
   $secure = !empty($conf['secure']);
   $timeout = ${PHP_SMTP_TIMEOUT_S};
+  // Start the whole-session clock BEFORE connecting — a black-holed host burns the budget on the
+  // TCP connect just as effectively as on a slow reply.
+  sw_smtp_deadline(microtime(true) + ${totalTimeoutS});
   // Peer verification ON (PHP default) — an unverified TLS session would hand the
   // credentials to anyone able to MITM the connection.
   $ctx = stream_context_create(array('ssl' => array(
     'verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true,
   )));
   $endpoint = ($secure ? 'ssl://' : 'tcp://') . $host . ':' . $port;
-  $fp = @stream_socket_client($endpoint, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $ctx);
+  // The connect gets the smaller of its own limit and the session budget — a 15s connect inside a
+  // 10s budget would blow the whole thing on the first step.
+  $connect = min($timeout, sw_smtp_left());
+  if ($connect <= 0) { return false; }
+  $fp = @stream_socket_client($endpoint, $errno, $errstr, $connect, STREAM_CLIENT_CONNECT, $ctx);
   if (!$fp) { return false; }
-  stream_set_timeout($fp, $timeout);
+  stream_set_timeout($fp, $timeout); // re-armed from the remaining budget before every read
 
   $ok = true;
   // Greeting, then EHLO.

@@ -81,6 +81,9 @@ export interface FakeSmtpOptions {
   /** Reject only `AUTH PLAIN` (535) while honouring the `AUTH LOGIN` challenge — the real reason
    *  the LOGIN fallback exists, and the only way to exercise it end to end. */
   rejectPlainAuth?: boolean;
+  /** Greet normally, then answer NOTHING — a black hole that keeps the socket open. The shape a
+   *  per-operation timeout cannot bound, because each individual wait looks survivable. */
+  stallAfterGreeting?: boolean;
   /** Reject RCPT TO with 550. */
   rejectRecipient?: boolean;
   /**
@@ -131,6 +134,7 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
           continue;
         }
         transcript.commands.push(`${phase}${line}`);
+        if (options.stallAfterGreeting) continue; // record it, answer nothing, hold the socket open
         if (authStage === 'user') {
           transcript.authLoginUser = line;
           authStage = 'pass';

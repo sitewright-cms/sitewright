@@ -16,6 +16,7 @@ import { runShutdown } from './shutdown.js';
 import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
+import { sweepOrphanedDeployDirs } from './publish/deploy-tmp.js';
 import { AnthropicProvider } from './ai/provider.js';
 import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
 import { OpenAiAgentProvider } from './ai/openai-agent.js';
@@ -310,6 +311,17 @@ try {
   mediaOk = true;
 } catch (err) {
   process.stderr.write(`[sitewright/migrate] WARNING: media-flat migration failed — ${err instanceof Error ? err.message : String(err)}\n`);
+}
+
+// Clear deploy payloads a previous run left behind. A `contactPhpSmtp` form's sw-mail.config.php holds a
+// plaintext SMTP password, and though every deploy path removes its payload in a `finally`, a `finally`
+// does not run through a SIGKILL. Boot is the safe moment: this process has no deploy in flight yet.
+// Best-effort by construction — the sweep never throws.
+try {
+  const { removed } = await sweepOrphanedDeployDirs({ log: (m) => process.stderr.write(`[sitewright/deploy] ${m}\n`) });
+  if (removed > 0) process.stderr.write(`[sitewright/deploy] swept ${removed} orphaned deploy payload(s)\n`);
+} catch (err) {
+  process.stderr.write(`[sitewright/deploy] WARNING: temp sweep failed — ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
 // Stamp the highest CONTIGUOUS generation that succeeded this boot (SQLite PRAGMA user_version, monotonic

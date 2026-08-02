@@ -114,11 +114,16 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     body?: Record<string, unknown>;
     forms?: Form[];
     trustCert?: boolean;
+    /** Shrink the whole-session SMTP budget so a stalling server can be tested in seconds. */
+    totalTimeoutS?: number;
   }) {
     const server = await startFakeSmtp({ cert, ...opts.smtp });
     servers.push(server);
     const files: Record<string, string> = {
-      'contact.php': renderContactPhp(opts.forms ?? [form({ mode: 'contactPhpSmtp' })]),
+      'contact.php': renderContactPhp(
+        opts.forms ?? [form({ mode: 'contactPhpSmtp' })],
+        opts.totalTimeoutS ? { totalTimeoutS: opts.totalTimeoutS } : {},
+      ),
     };
     if (!opts.noConfig) files['sw-mail.config.php'] = conf({ port: server.port, ...opts.config });
     const site = await startPhpSite(files, opts.trustCert === false ? [] : [`openssl.cafile=${cert.caFile}`]);
@@ -219,6 +224,19 @@ describe.skipIf(!phpAvailable())('contact.php SMTP mode — executed', () => {
     expect(transcript.commands.some((c) => c.startsWith('[tls] '))).toBe(false);
     expect(transcript.commands.some((c) => c.toUpperCase().includes('AUTH'))).toBe(false);
   });
+
+  it('★ gives up on a black-holed server within the WHOLE-SESSION budget, not per operation', async () => {
+    // The failure a per-operation timeout cannot catch: every individual wait looks survivable, but
+    // a session is ~10 of them, so 10 x 15s outlasts the 30-60s max_execution_time shared hosting
+    // enforces — the SAPI kills the script and the visitor gets the host's error page instead of
+    // contact.php's 502. Here the server greets and then answers nothing at all.
+    const started = Date.now();
+    const { res } = await run({ smtp: { stallAfterGreeting: true }, totalTimeoutS: 3 });
+    const elapsed = Date.now() - started;
+    expect(res.status).toBe(502); // our own clean failure, not a truncated request
+    // Comfortably inside a would-be per-operation stall, and provably bounded by the budget.
+    expect(elapsed).toBeLessThan(9000);
+  }, 20_000);
 
   it('fails CLOSED when the credentials file is missing — never falls back to mail()', async () => {
     const { res, transcript } = await run({ noConfig: true });

@@ -54,6 +54,9 @@ export function FormsManager({ project }: { project: Project }) {
   const [draft, setDraft] = useState<Form | null>(null);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Surfaced here too: an author lands on Forms to ask "is this form working?", and a silent
+  // delivery failure is exactly the answer they are looking for.
+  const [owed, setOwed] = useState<{ count: number; lastError: string | null }>({ count: 0, lastError: null });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   // Which form's submissions are expanded inline (the folded-in inbox).
@@ -61,8 +64,14 @@ export function FormsManager({ project }: { project: Project }) {
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const [res, fm] = await Promise.all([api.listForms(project.id), api.formModes(project.id)]);
+      const [res, fm, undelivered] = await Promise.all([
+        api.listForms(project.id),
+        api.formModes(project.id),
+        api.undeliveredSubmissions(project.id).catch(() => ({ count: 0, lastError: null })),
+      ]);
+
       if (!isActive()) return;
+      setOwed(undelivered);
       setForms(res.items);
       setEnabledModes(fm.formModes);
     } catch (err) {
@@ -425,6 +434,12 @@ export function FormsManager({ project }: { project: Project }) {
           alone left an instance that enabled only the php mode able to CHOOSE it with nowhere to
           enter a password, and the resulting 409 pointed at settings that were not on screen. */}
       {(enabledModes.userSmtp || enabledModes.contactPhpSmtp) && <ProjectSmtp project={project} />}
+      {owed.count > 0 && (
+        <p className="text-sm text-amber-700 dark:text-amber-400" role="status">
+          ⚠ {owed.count} submission{owed.count === 1 ? '' : 's'} could not be emailed
+          {owed.lastError ? ` — ${owed.lastError}` : '.'} Open the Submissions tab to resend.
+        </p>
+      )}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {saved && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
       <ul className="flex flex-col gap-2">

@@ -1253,3 +1253,25 @@ describe('SMTP send-test helpers', () => {
   });
 });
 
+describe('undelivered-notification helpers', () => {
+  it('reads a project’s undelivered count', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { count: 2, lastError: 'nope' }));
+    expect(await api.undeliveredSubmissions('p1')).toEqual({ count: 2, lastError: 'nope' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/submissions/undelivered');
+  });
+
+  it('reads the instance-wide count', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { count: 5, lastError: null }));
+    expect(await api.undeliveredInstanceSubmissions()).toEqual({ count: 5, lastError: null });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/admin/submissions/undelivered');
+  });
+
+  it('POSTs a resend for one submission', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { queued: true }));
+    expect(await api.resendSubmission('p1', 's1')).toEqual({ queued: true });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/submissions/s1/resend');
+    expect(init.method).toBe('POST');
+  });
+});
+

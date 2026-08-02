@@ -9,13 +9,15 @@ import {
   MIN_SUBMIT_ELAPSED_MS,
   MAX_SUBMISSIONS_PER_FORM,
   validateFormSubmission,
+  isPlatformRoutedMode,
   type Form,
   type FormModes,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
-import type { SubmissionMailer, ProjectMailer } from '../mail/mailer.js';
+import { describeDeliveryFailure, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
+import { nextAttemptAt } from '../mail/delivery-policy.js';
 import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -220,8 +222,21 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         return reply.send({ ok: true });
       }
 
-      // Store first — the inbox is the source of truth even if email is unconfigured.
-      await submissions.create(projectId, formId, parsed.fields);
+      // First failure schedules the first retry. The runner owns every attempt after this one; the
+      // request path only has to make sure the row does not sit `pending` with no due time, which
+      // would leave it invisible to the runner's query.
+      const scheduleRetry = async (id: string, error: string): Promise<void> => {
+        const next = nextAttemptAt(1, Date.now());
+        if (next === null) return;
+        await submissions.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(next), error });
+      };
+
+      // Store first — the inbox is the source of truth even if email is unconfigured. A
+      // platform-routed form is stored as `pending`: the row now RECORDS that someone is still owed
+      // an email, so a failure below leaves something the retry runner can pick up and the operator
+      // can see, rather than one line in a log nobody reads.
+      const routed = isPlatformRoutedMode(form.mode);
+      const stored = await submissions.create(projectId, formId, parsed.fields, { owesEmail: routed });
 
       // Delivery (best-effort): never fail the visitor's request on a mail error.
       // globalSmtp → instance SMTP; userSmtp → the project's own SMTP. (contactPhp,
@@ -239,8 +254,11 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         if (form.mode === 'globalSmtp') sent = await mailer.send(mail);
         else if (form.mode === 'userSmtp') sent = await projectMailer.send(projectId, mail);
         else app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored; this mode is not server-routed');
-        if (!sent && (form.mode === 'globalSmtp' || form.mode === 'userSmtp')) {
+        if (sent) {
+          await submissions.recordDelivery(stored.id, { state: 'sent' });
+        } else if (routed) {
           app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored but not emailed (SMTP not configured/enabled)');
+          await scheduleRetry(stored.id, 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.');
         }
       } catch (err) {
         // Log only the message — a nodemailer error can carry the SMTP banner / resolved
@@ -249,6 +267,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
           { projectId, formId, errMsg: err instanceof Error ? err.message : String(err) },
           'form submission email failed',
         );
+        if (routed) await scheduleRetry(stored.id, describeDeliveryFailure(err));
       }
 
       return reply.send({ ok: true });
@@ -299,6 +318,35 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       const item = await submissions.get(project.id, req.params.id);
       if (!item) return reply.code(404).send({ error: 'submission not found' });
       return reply.send({ item });
+    },
+  );
+
+  // How many submissions are still owed an email, and why the last one failed. The editor polls
+  // this to show a banner: emailing someone about broken email is circular, so the alert has to be
+  // somewhere they already look.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/submissions/undelivered',
+    { config: rl(60) },
+    async (req, reply) => {
+      const { project } = await resolveProject(req, 'content:read');
+      // Scope to one form when asked: the inbox is rendered per-form on the Forms tab, and a
+      // project-wide count there would announce another form's failure over this one's rows.
+      const q = req.query as { formId?: string };
+      return reply.send(await submissions.undeliveredSummary(project.id, q.formId));
+    },
+  );
+
+  // Puts one back in the queue — what an operator clicks after fixing SMTP. Without it, `failed`
+  // would be terminal and a backlog built up during an outage could never be cleared.
+  app.post<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/submissions/:id/resend',
+    { config: rl(30) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const queued = await submissions.requeue(project.id, req.params.id);
+      if (!queued) return reply.code(404).send({ error: 'submission not found, or it was never owed an email' });
+      return reply.send({ queued: true });
     },
   );
 

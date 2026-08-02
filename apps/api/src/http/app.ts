@@ -204,6 +204,9 @@ import { registerWebsiteDataRoutes } from './website-data.js';
 import { buildEffectForks } from './effect-forks.js';
 import { buttonPreviewCss } from './button-preview.js';
 import { registerFormRoutes } from './form-routes.js';
+import { runDueDeliveries } from '../mail/delivery-runner.js';
+import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
+import type { DeliveryRunResult } from '../mail/delivery-runner.js';
 import { registerProjectSmtpRoutes, SmtpSendTestBodySchema } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes, streamImport } from './import-routes.js';
@@ -939,6 +942,14 @@ export function partialContent(
   const end = startRaw ? (endRaw ? Math.min(Number(endRaw), size - 1) : size - 1) : size - 1;
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return 'unsatisfiable';
   return { body: body.subarray(start, end + 1), contentRange: `bytes ${start}-${end}/${size}` };
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Runs ONE retry pass over undelivered form notifications. The interval lives in server.ts —
+     *  see the decoration site for why this is not scheduled inside createApp. */
+    runDueFormDeliveries: (opts?: { now?: () => number; limit?: number }) => Promise<DeliveryRunResult>;
+  }
 }
 
 export interface AppOptions {
@@ -2311,6 +2322,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       origin: 'the instance mail settings',
     });
     return reply.send({ ...result, to: recipient });
+  });
+
+  // Instance-wide undelivered count. A broken GLOBAL SMTP breaks every project at once, and an
+  // admin looking at the mail settings is exactly the person who can fix it — so the number belongs
+  // next to those settings, not only inside each project's inbox.
+  app.get('/admin/submissions/undelivered', { config: rl(60) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    return reply.send(await submissionsRepo.undeliveredSummary());
   });
 
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {
@@ -6618,6 +6637,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
   // authenticated submissions inbox. Always registered (no secret/key dependency).
+  /**
+   * One retry pass over form notifications that have not gone out yet.
+   *
+   * Exposed on the app rather than scheduled here: the INTERVAL belongs to `server.ts`, because
+   * `createApp` is constructed by roughly two hundred test files and a background timer in each of
+   * them is a flakiness generator. A test that wants to exercise retries calls this directly.
+   */
+  const resolveMail = makeDeliveryResolver({ db, mailer, projectMailer });
+  app.decorate('runDueFormDeliveries', async (opts: { now?: () => number; limit?: number } = {}) =>
+    runDueDeliveries({
+      submissions: submissionsRepo,
+      resolveMail,
+      ...opts,
+      log: (message, detail) => app.log.info(detail, message),
+    }),
+  );
+
   registerFormRoutes(app, {
     db,
     submissions: submissionsRepo,

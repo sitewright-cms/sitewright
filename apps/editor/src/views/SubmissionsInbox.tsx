@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormSubmission } from '@sitewright/schema';
 import { api, type Project } from '../api';
-import { glassCard, dangerButton } from '../theme';
+import { glassCard, dangerButton, ghostButton } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
 
@@ -20,16 +20,27 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Delivery is best-effort — the visitor is thanked whether or not the mail left — so a broken
+  // SMTP is otherwise invisible here. Emailing someone about broken email is circular, which is
+  // why the alert lives in the one place they already come to read leads.
+  const [undelivered, setUndelivered] = useState<{ count: number; lastError: string | null }>({ count: 0, lastError: null });
+  const [resending, setResending] = useState(false);
 
   async function load(isActive: () => boolean = () => true) {
     try {
       // Scope server-side when asked (the Forms-tab "Show submissions" action) so the page +
       // `total` are correct per form — the endpoint paginates (newest 50), so filtering client-side
       // would both miscount and miss older submissions.
-      const res = await api.listSubmissions(project.id, formId);
+      const [res, owed] = await Promise.all([
+        api.listSubmissions(project.id, formId),
+        // Same scope as the list: a project-wide count here would announce another form's failure
+        // over this form's rows.
+        api.undeliveredSubmissions(project.id, formId).catch(() => ({ count: 0, lastError: null })),
+      ]);
       if (!isActive()) return;
       setItems(res.items);
       setTotal(res.total);
+      setUndelivered(owed);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load submissions');
     } finally {
@@ -54,12 +65,39 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
     }
   }
 
+  async function resend(id: string) {
+    setResending(true);
+    setError(null);
+    try {
+      await api.resendSubmission(project.id, id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to queue the resend');
+    } finally {
+      setResending(false);
+    }
+  }
+
   if (loading) return <SkeletonList rows={3} label="Loading submissions…" />;
 
   return (
     <div className="flex flex-col gap-3">
       {dialog}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {undelivered.count > 0 && (
+        <div className={`${glassCard} border-l-4 border-amber-500 px-4 py-3 text-sm`} role="status">
+          <p className="font-bold text-amber-700 dark:text-amber-400">
+            {undelivered.count} submission{undelivered.count === 1 ? ' was' : 's were'} not emailed
+          </p>
+          <p className="mt-1 text-slate-600 dark:text-slate-300">
+            {undelivered.lastError ?? 'Delivery has not succeeded yet.'}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            The submissions themselves are safe below — only the notification failed. Fix the SMTP settings, then use
+            Resend, or wait for the automatic retry.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-slate-500 dark:text-slate-400">{total} submission{total === 1 ? '' : 's'}</p>
       <ul className="flex flex-col gap-2">
         {items.map((s) => {
@@ -78,6 +116,20 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                   <span className="text-slate-700 dark:text-slate-200">{summary.slice(0, 80)}</span>
                   <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{new Date(s.createdAt).toLocaleString()}</span>
                 </button>
+                {/* ★ Gated on THIS ROW's state, not on the aggregate count. Keying it off the count
+                    put a Resend beside every row the moment any one of them failed — one click on a
+                    delivered row and the recipient gets the same lead twice. The server refuses it
+                    too; this is so the button is not offered in the first place. */}
+                {(s.deliveryState === 'pending' || s.deliveryState === 'failed') && (
+                  <button
+                    aria-label={`Resend submission ${s.id}`}
+                    className={`${ghostButton} px-2 py-1 text-xs`}
+                    disabled={resending}
+                    onClick={() => void resend(s.id)}
+                  >
+                    Resend
+                  </button>
+                )}
                 <button
                   aria-label={`Delete submission ${s.id}`}
                   className={dangerButton}

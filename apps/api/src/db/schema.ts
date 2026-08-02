@@ -590,10 +590,31 @@ export const formSubmissions = sqliteTable(
     formId: text('form_id').notNull(),
     data: text('data', { mode: 'json' }).$type<Record<string, string>>().notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * Whether the NOTIFICATION for this submission reached the recipient. The submission itself is
+     * never at risk — it is stored before any delivery is attempted, which is what makes the inbox
+     * the source of truth. What used to vanish was the knowledge that nobody had been told: a
+     * failure wrote one line to the server log and the visitor was thanked either way.
+     *
+     * `na` for a form the platform does not route (contact.php / third-party post elsewhere and
+     * never reach this table's writer), so `pending` genuinely means "we owe someone an email".
+     */
+    deliveryState: text('delivery_state', { enum: ['pending', 'sent', 'failed', 'na', 'abandoned'] })
+      .notNull()
+      .default('na'),
+    deliveryAttempts: integer('delivery_attempts').notNull().default(0),
+    /** When the next attempt becomes due. Also the LEASE: pushed forward before an attempt, so a
+     *  process killed mid-send leaves a row that becomes due again rather than one stuck sending. */
+    deliveryNextAt: integer('delivery_next_at', { mode: 'timestamp_ms' }),
+    /** Last failure, already sanitized by describeDeliveryFailure — safe to show an operator. */
+    deliveryError: text('delivery_error'),
   },
   (t) => [
     index('form_submissions_project_created_idx').on(t.projectId, t.createdAt),
     index('form_submissions_project_form_idx').on(t.projectId, t.formId),
+    // The runner's hot query: rows that are due, oldest first. Without this it scans every
+    // submission ever stored on every tick.
+    index('form_submissions_delivery_idx').on(t.deliveryState, t.deliveryNextAt),
   ],
 );
 

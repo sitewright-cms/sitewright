@@ -157,6 +157,9 @@ export function InstanceSettings() {
   // address keeps the common case one click.
   const [smtpTestTo, setSmtpTestTo] = useState('');
   const [smtpSending, setSmtpSending] = useState(false);
+  // A broken GLOBAL SMTP breaks every project at once, so the backlog is shown to the person who
+  // can actually fix it, beside the settings that caused it.
+  const [owed, setOwed] = useState<{ count: number; lastError: string | null }>({ count: 0, lastError: null });
   const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
   const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
@@ -217,6 +220,21 @@ export function InstanceSettings() {
       setSmtpSending(false);
     }
   }
+
+  useEffect(() => {
+    let active = true;
+    void api
+      .undeliveredInstanceSubmissions()
+      .then((r) => {
+        if (active) setOwed(r);
+      })
+      .catch(() => {
+        /* a count that cannot load must never block the settings screen */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function testSmtp() {
     setSmtpTesting(true);
@@ -725,6 +743,14 @@ export function InstanceSettings() {
           />
           Configure a global SMTP server
         </label>
+        {/* OUTSIDE the `smtpEnabled` block on purpose: a backlog is most likely precisely when SMTP
+            is unconfigured or switched off, which is the case that would otherwise hide it. */}
+        {owed.count > 0 && (
+          <p className="mt-2 text-sm text-amber-700 dark:text-amber-400" role="status">
+            ⚠ {owed.count} form submission{owed.count === 1 ? '' : 's'} across all projects could not be emailed
+            {owed.lastError ? ` — ${owed.lastError}` : '.'}
+          </p>
+        )}
         {smtpEnabled && (
           /* Any edit invalidates the last test: the endpoint checks what is STORED, so a leftover
              ✓ would assert something nobody has verified. */

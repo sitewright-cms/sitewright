@@ -249,16 +249,20 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         fields: parsed.fields,
         ...(replyTo ? { replyTo } : {}),
       };
+      // ★ The TRANSPORT call is the only thing inside this try. Recording the outcome used to sit in
+      // here too, which meant a transient database error while writing "sent" was caught as though
+      // the MAIL had failed — scheduling a retry for a message that had already gone, and emailing
+      // the customer twice on the next pass. What failed and what is being recorded are now separate
+      // questions.
+      let sent = false;
+      let failure: string | null = null;
       try {
-        let sent = false;
         if (form.mode === 'globalSmtp') sent = await mailer.send(mail);
         else if (form.mode === 'userSmtp') sent = await projectMailer.send(projectId, mail);
         else app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored; this mode is not server-routed');
-        if (sent) {
-          await submissions.recordDelivery(stored.id, { state: 'sent' });
-        } else if (routed) {
+        if (!sent && routed) {
           app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored but not emailed (SMTP not configured/enabled)');
-          await scheduleRetry(stored.id, 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.');
+          failure = 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.';
         }
       } catch (err) {
         // Log only the message — a nodemailer error can carry the SMTP banner / resolved
@@ -267,7 +271,20 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
           { projectId, formId, errMsg: err instanceof Error ? err.message : String(err) },
           'form submission email failed',
         );
-        if (routed) await scheduleRetry(stored.id, describeDeliveryFailure(err));
+        failure = describeDeliveryFailure(err);
+      }
+      if (routed) {
+        // Recording is best-effort in its own right: if THIS fails, the row keeps the hold `create`
+        // put on it and the runner retries — the wrong outcome recorded is worse than none.
+        try {
+          if (sent) await submissions.recordDelivery(stored.id, { state: 'sent' });
+          else if (failure) await scheduleRetry(stored.id, failure);
+        } catch (err) {
+          app.log.error(
+            { projectId, formId, errMsg: err instanceof Error ? err.message : String(err) },
+            'could not record the delivery outcome for a submission',
+          );
+        }
       }
 
       return reply.send({ ok: true });

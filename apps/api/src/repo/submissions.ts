@@ -133,7 +133,13 @@ export class SubmissionRepository {
     }));
   }
 
-  /** How many submissions are still owed an email, and the most recent reason one failed. */
+  /**
+   * How many submissions are still owed an email, and a reason one of them failed.
+   *
+   * The reason comes from the newest-SUBMITTED row that has one, which is not necessarily the most
+   * recent failure — `deliveryError` is overwritten in place on each retry and there is no
+   * per-attempt timestamp to order by. It is a representative example for the banner, not a log.
+   */
   async undeliveredSummary(projectId?: string, formId?: string): Promise<{ count: number; lastError: string | null }> {
     const undelivered = inArray(formSubmissions.deliveryState, ['pending', 'failed']);
     const scoped = projectId ? and(eq(formSubmissions.projectId, projectId), undelivered) : undelivered;
@@ -158,13 +164,29 @@ export class SubmissionRepository {
    */
   async requeue(projectId: string, id: string): Promise<boolean> {
     const [row] = await this.db
-      .select({ state: formSubmissions.deliveryState })
+      .select({
+        state: formSubmissions.deliveryState,
+        attempts: formSubmissions.deliveryAttempts,
+        error: formSubmissions.deliveryError,
+      })
       .from(formSubmissions)
       .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
-    // ★ Only something still OWED may be requeued. Accepting `sent` would let one click re-email a
-    // lead that already arrived — and `abandoned` was settled precisely because nothing is owed any
-    // more. The UI hides the button per row, but that is presentation; this is the rule.
-    if (!row || (row.state !== 'pending' && row.state !== 'failed')) return false;
+    if (!row) return false;
+    // Accepting `sent` would let one click re-email a lead that already arrived. `na` was never owed.
+    if (row.state === 'sent' || row.state === 'na') return false;
+    // ★ AND: refuse a row whose FIRST attempt has not resolved yet.
+    //
+    // A brand-new submission is `pending` from the moment it is stored, while the request handler is
+    // still performing its own inline send — that attempt holds no lease, so `create()` holds the row
+    // back by one instead. Requeueing clears that hold, and the next pass then sends a message the
+    // request is in the middle of sending: the customer gets it twice. `pending` alone cannot tell
+    // "in flight" from "failed and backing off"; a recorded attempt or a recorded error can, because
+    // both are written only after an attempt has concluded.
+    //
+    // `abandoned` is deliberately requeueable: it is settled, not delivered, so an operator who has
+    // just switched a form's mode back has a way to recover the notification. If it is still not
+    // platform-routed the next pass simply abandons it again.
+    if (row.state === 'pending' && row.attempts === 0 && row.error === null) return false;
     await this.db
       .update(formSubmissions)
       .set({ deliveryState: 'pending', deliveryAttempts: 0, deliveryNextAt: null, deliveryError: null })

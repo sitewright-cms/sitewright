@@ -412,3 +412,48 @@ describe('undelivered notifications are visible and recoverable', () => {
   });
 });
 
+describe('a submission is never emailed twice', () => {
+  it('★ Resend during an in-flight first send does not produce a second delivery', async () => {
+    // The exact reproduction: a fresh row is `pending` while the REQUEST is still sending it, and
+    // that inline attempt holds no lease — `create()` holds the row back instead. Resend used to
+    // clear that hold, so the next pass sent the message the request was in the middle of sending.
+    let releaseSend: () => void = () => {};
+    const inFlight = new Promise<void>((r) => { releaseSend = r; });
+    let calls = 0;
+    mailer.send = async () => {
+      calls += 1;
+      await inFlight; // the SMTP transaction is still open
+      return true;
+    };
+
+    // Fire the submission WITHOUT awaiting: the handler is now blocked inside the transport.
+    const posting = app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await waitFor(async () => (await db.select().from(formSubmissions)).length === 1);
+    const [row] = await db.select().from(formSubmissions);
+    expect(row!.deliveryState).toBe('pending'); // stored, owed, first attempt still running
+
+    // An impatient operator clicks Resend on it.
+    const resend = await app.inject({ method: 'POST', url: `/projects/${projectId}/submissions/${row!.id}/resend`, cookies: { sw_session: t } });
+    expect(resend.statusCode).toBe(404); // refused: nothing has failed yet
+
+    // A background pass must find nothing to do.
+    expect((await app.runDueFormDeliveries()).attempted).toBe(0);
+
+    releaseSend();
+    await posting;
+    expect(calls).toBe(1); // ONE send, to one customer
+    const [after] = await db.select().from(formSubmissions);
+    expect(after!.deliveryState).toBe('sent');
+  }, 30_000);
+});
+
+/** Polls until `check` is true, so the test does not depend on a fixed sleep. */
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 5000): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() - started > timeoutMs) throw new Error('condition never became true');
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+

@@ -213,11 +213,37 @@ describe('undelivered summary and resend', () => {
     expect((await row(id)).deliveryState).toBe('sent'); // and it stays settled
   });
 
-  it('★ refuses to requeue an ABANDONED row — nothing is owed for a deleted form', async () => {
+  it('ALLOWS requeueing an abandoned row — an operator who fixed the form can recover it', async () => {
+    // Abandoned means settled, not delivered. Refusing it would make an ordinary, reversible edit
+    // (switch a form's mode away and back) a permanent, silent loss of that notification.
     const id = await pending();
     await runDueDeliveries({ submissions: repo, resolveMail: async () => null, now: () => NOW });
     expect((await row(id)).deliveryState).toBe('abandoned');
+    expect(await repo.requeue(projectId, id)).toBe(true);
+    expect((await row(id)).deliveryState).toBe('pending');
+    // …and if the form is still not platform-routed, the next pass simply settles it again.
+    await runDueDeliveries({ submissions: repo, resolveMail: async () => null, now: () => NOW + 1000 });
+    expect((await row(id)).deliveryState).toBe('abandoned');
+  });
+
+  it('★ REFUSES to requeue a row whose first attempt has not resolved yet', async () => {
+    // The duplicate-send hole this closes: a fresh submission is `pending` while the REQUEST is
+    // still sending it, and that attempt holds no lease — `create` holds the row back instead.
+    // Requeueing cleared that hold, and the next pass sent the message the request was in the
+    // middle of sending. `pending` alone cannot tell "in flight" from "failed and backing off".
+    const id = await pending();
+    const before = await row(id);
+    expect(before.deliveryAttempts).toBe(0);
+    expect(before.deliveryError).toBeNull();
+
     expect(await repo.requeue(projectId, id)).toBe(false);
+    // The creation hold survives, so no pass can claim it out from under the request handler.
+    expect((await row(id)).deliveryNextAt?.getTime()).toBe(before.deliveryNextAt?.getTime());
+    expect(await repo.claimDue(new Date(Date.now()), 60_000, 10)).toEqual([]);
+
+    // Once the first attempt HAS concluded and failed, it becomes requeueable as normal.
+    await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(NOW + 60_000), error: 'down' });
+    expect(await repo.requeue(projectId, id)).toBe(true);
   });
 
   it('refuses to requeue a submission that was never owed an email', async () => {

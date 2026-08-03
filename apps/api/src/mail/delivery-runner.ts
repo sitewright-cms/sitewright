@@ -49,7 +49,7 @@ export interface DeliveryRunResult {
 }
 
 export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<DeliveryRunResult> {
-  const now = deps.now?.() ?? Date.now();
+  // No pass-level clock: every row reads the time when its own work starts (see the loop).
   const limit = deps.limit ?? 25;
   const result: DeliveryRunResult = { attempted: 0, sent: 0, retrying: 0, failed: 0, abandoned: 0 };
 
@@ -59,7 +59,12 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
   // them, and a second pass could reclaim and send them underneath it. Claiming each row as it is
   // reached means every lease starts when the work does.
   for (let i = 0; i < limit; i++) {
-    const [row] = await deps.submissions.claimDue(new Date(deps.now?.() ?? now), DELIVERY_LEASE_MS, 1);
+    // Each row gets the CURRENT clock, not the pass-start one: a pass working through a backlog can
+    // run for minutes, and a "back off one minute" computed from when the pass started would already
+    // be in the past by the time it is written — collapsing the backoff for exactly the rows in a
+    // struggling queue that most need it.
+    const rowNow = deps.now?.() ?? Date.now();
+    const [row] = await deps.submissions.claimDue(new Date(rowNow), DELIVERY_LEASE_MS, 1);
     if (!row) break;
     result.attempted += 1;
     const attempts = row.attempts + 1;
@@ -70,7 +75,7 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
     } catch (err) {
       // Could not even work out how to send (settings unreadable, project gone). No explainer is
       // available, so say the plainest true thing.
-      await recordFailure(deps, row, attempts, now, describeFallback(err), result);
+      await recordFailure(deps, row, attempts, rowNow, describeFallback(err), result);
       continue;
     }
 
@@ -85,8 +90,16 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
       continue;
     }
 
+    // Same separation as the request path: a database error while recording "sent" must not be
+    // mistaken for the mail having failed, or the next pass re-sends what already went.
+    let sent = false;
     try {
-      const sent = await resolved.send(resolved.mail);
+      sent = await resolved.send(resolved.mail);
+    } catch (err) {
+      await recordFailure(deps, row, attempts, rowNow, resolved.explain(err), result);
+      continue;
+    }
+    try {
       if (sent) {
         await deps.submissions.recordDelivery(row.id, { state: 'sent' });
         result.sent += 1;
@@ -97,13 +110,16 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
           deps,
           row,
           attempts,
-          now,
+          rowNow,
           'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.',
           result,
         );
       }
     } catch (err) {
-      await recordFailure(deps, row, attempts, now, resolved.explain(err), result);
+      // The SEND succeeded (or was cleanly "not configured"); only the bookkeeping failed. Leave the
+      // row leased — it becomes due again on its own — rather than recording an outcome we no longer
+      // know to be true.
+      deps.log?.('could not record a delivery outcome', { id: row.id, err: String(err) });
     }
   }
 

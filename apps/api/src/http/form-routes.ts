@@ -158,6 +158,56 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
     return reply.code(204).send();
   });
 
+  // ---- DRY RUN, for the previews -----------------------------------------------------------------
+  //
+  // The draft preview is served `sandbox allow-scripts` WITHOUT `allow-same-origin`, and used to omit
+  // `allow-forms` too, on the reasoning that a shared draft must not fire real leads at the merchant.
+  // The reasoning is right; the result was not — with no `allow-forms` the browser refuses the submit
+  // outright ("Blocked form submission … the form's frame is sandboxed"), so the button did NOTHING,
+  // said nothing, and the one feature you cannot exercise on the surface the whole review workflow runs
+  // on was forms. Testing one meant publishing the site.
+  //
+  // So: the previews now allow the submit, and their forms post HERE instead. Same parse, same bot
+  // filters, same definition-aware validation as the real endpoint — an author sees their required
+  // fields and typed formats enforced exactly as a visitor would — and then it stops. Nothing is
+  // stored, nothing is emailed, no state is touched anywhere.
+  //
+  // Public and unsigned, like the endpoint it shadows: it is a validator with no side effects, so
+  // there is nothing to protect beyond the same rate limit. It deliberately returns NO detail about
+  // the form (recipient, subject) — a preview must not become a way to read a merchant's address.
+  app.options('/f/:projectId/:formId/preview', { config: rl(20) }, async (_req, reply) => {
+    setSubmissionCors(reply);
+    return reply.code(204).send();
+  });
+
+  app.post<{ Params: { projectId: string; formId: string } }>(
+    '/f/:projectId/:formId/preview',
+    { config: rl(20), bodyLimit: MAX_BODY_BYTES },
+    async (req, reply) => {
+      setSubmissionCors(reply);
+      const form = await loadForm(db, req.params.projectId, req.params.formId);
+      if (!form) return reply.code(404).send({ error: 'form not found' });
+
+      const parsed = parseSubmission(req.body);
+      if (!parsed) return reply.code(400).send({ error: 'invalid submission' });
+
+      // Mirror production's VISIBLE behaviour exactly (a filtered post still answers 200, so the
+      // visitor sees the same thank-you) but name the reason in the body, so an author who opens
+      // devtools can tell a silent drop from a real delivery. Nothing here is a secret from a bot:
+      // this endpoint stores and sends nothing whatever the answer.
+      const elapsed = parsed.elapsed ?? 0;
+      if (parsed.honeypotFilled) return reply.send({ ok: true, preview: true, filtered: 'honeypot' });
+      if (elapsed < MIN_SUBMIT_ELAPSED_MS) return reply.send({ ok: true, preview: true, filtered: 'too-fast' });
+
+      const invalidFields = validateFormSubmission(form.fields, parsed.fields);
+      if (invalidFields.length > 0) return reply.code(400).send({ error: 'invalid fields', fields: invalidFields });
+
+      // A captcha is NOT verified here: the token is single-use, so spending it on a dry run would
+      // make the next real submission fail. The widget still renders, so its placement is previewable.
+      return reply.send({ ok: true, preview: true, fields: Object.keys(parsed.fields).length });
+    },
+  );
+
   app.post<{ Params: { projectId: string; formId: string } }>(
     '/f/:projectId/:formId',
     { config: rl(20), bodyLimit: MAX_BODY_BYTES },

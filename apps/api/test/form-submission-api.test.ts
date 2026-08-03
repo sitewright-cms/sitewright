@@ -244,6 +244,80 @@ describe('public form submission endpoint', () => {
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
+  describe('dry run — what a preview posts to', () => {
+    const stored = async (): Promise<number> =>
+      (await new SubmissionRepository(db).list(projectId, {})).total;
+
+    it('validates like the real endpoint, then stores nothing and mails nobody', async () => {
+      const before = await stored();
+      const res = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { email: 'lead@x.co', message: 'Hello there', _elapsed: '5000' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true, preview: true, fields: 2 });
+      expect(await stored()).toBe(before);
+      expect(mailer.sent).toHaveLength(0);
+      expect(projectMailer.sent).toHaveLength(0);
+    });
+
+    it('enforces the definition — a missing required field fails here exactly as it would live', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { message: 'no email', _elapsed: '5000' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
+    });
+
+    it('mirrors the bot filters, and names the reason so an author can tell a drop from a delivery', async () => {
+      const trap = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { email: 'lead@x.co', _elapsed: '10' },
+      });
+      expect(trap.statusCode).toBe(200);
+      expect(trap.json()).toMatchObject({ ok: true, filtered: 'too-fast' });
+      const pot = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { email: 'lead@x.co', _hpt: 'bot', _elapsed: '5000' },
+      });
+      expect(pot.json()).toMatchObject({ ok: true, filtered: 'honeypot' });
+      expect(await stored()).toBe(0);
+    });
+
+    it('404s an unknown form, and answers a CORS preflight like the real endpoint', async () => {
+      const missing = await app.inject({ method: 'POST', url: `/f/${projectId}/nope/preview`, payload: { _elapsed: '5000' } });
+      expect(missing.statusCode).toBe(404);
+      const pre = await app.inject({ method: 'OPTIONS', url: `/f/${projectId}/contact/preview` });
+      expect(pre.statusCode).toBe(204);
+      expect(pre.headers['access-control-allow-origin']).toBe('*');
+    });
+
+    it('never echoes anything about the form — a preview must not leak the recipient', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { email: 'lead@x.co', _elapsed: '5000' },
+      });
+      expect(res.body).not.toContain('sales@acme.com');
+      expect(res.body).not.toContain('Contact form');
+    });
+
+    it('400s a structurally invalid body, like the real endpoint', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/f/${projectId}/contact/preview`,
+        payload: { email: { nested: true }, _elapsed: '5000' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: 'invalid submission' });
+    });
+  });
+
   it('silently drops (200, not stored) once the per-form storage cap is reached', async () => {
     // Seed the table to the cap with a chunked batch insert (fast), then a public
     // submit must be silently dropped (200, no store, no email).

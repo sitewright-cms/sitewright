@@ -675,7 +675,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       (bundle.forms ?? []).map((f) => [f.id, toPublicForm(f)]),
     );
     const formBase = (opts.publicBaseUrl ?? '').replace(/\/+$/, '');
-    const formEndpoint = (formId: string): string => `${formBase}/f/${bundle.project.id}/${formId}`;
+    // In the DRAFT PREVIEW every form posts to the dry-run endpoint instead: same parse, same bot
+    // filters, same definition-aware validation, then nothing stored and nothing emailed. A shared
+    // draft must not fire real leads at the merchant, but the author still has to be able to test the
+    // form — which, before this, they could only do by publishing the site.
+    const formEndpoint = (formId: string): string =>
+      `${formBase}/f/${bundle.project.id}/${formId}${previewMode ? '/preview' : ''}`;
     const resolvedForms = resolveFormEndpoints(forms, formEndpoint);
     let bytes = 0;
     // Absolute URLs for sitemap.xml (when a production site URL is configured);

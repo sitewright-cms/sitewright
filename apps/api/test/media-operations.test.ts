@@ -76,6 +76,52 @@ const listFolders = async (t: string, projectId: string): Promise<MediaFolderRec
 const listMedia = async (t: string, projectId: string): Promise<MediaAsset[]> =>
   ((await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } })).json() as { items: MediaAsset[] }).items;
 
+describe('deleting a media folder', () => {
+  // The call bins EVERYTHING under the folder. It used to answer a bare 204 whether it removed an
+  // empty folder or five hundred photographs, and there was no way to ask first.
+  const del = (t: string, projectId: string, path: string, dryRun = false) =>
+    app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/media/folders${dryRun ? '?dryRun=1' : ''}`,
+      cookies: { sw_session: t },
+      payload: { path },
+    });
+
+  it('reports what it binned — count, subfolders and a sample', async () => {
+    const { t, projectId } = await setup('foldercount@acme.test');
+    await uploadImage(t, projectId, 'Gallery');
+    await uploadImage(t, projectId, 'Gallery/2024');
+    await uploadImage(t, projectId, 'Keep');
+    const res = await del(t, projectId, 'Gallery');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ folder: 'Gallery', assets: 2, binned: 2, folders: 2 });
+    expect((res.json() as { sample: string[] }).sample).toHaveLength(2);
+    // and it really did bin them — the untouched folder's asset survives
+    const left = await listMedia(t, projectId);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.folder).toBe('Keep');
+  });
+
+  it('?dryRun=1 answers the same shape and touches nothing', async () => {
+    const { t, projectId } = await setup('folderdry@acme.test');
+    await uploadImage(t, projectId, 'Gallery');
+    await uploadImage(t, projectId, 'Gallery/2024');
+    const res = await del(t, projectId, 'Gallery', true);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ folder: 'Gallery', assets: 2, folders: 2, dryRun: true });
+    expect(res.json()).not.toHaveProperty('binned');
+    expect(await listMedia(t, projectId)).toHaveLength(2);
+    expect((await listFolders(t, projectId)).some((f) => f.path === 'Gallery')).toBe(true);
+  });
+
+  it('an empty folder reports zero rather than looking the same as binning a library', async () => {
+    const { t, projectId } = await setup('folderempty@acme.test');
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/media/folders`, cookies: { sw_session: t }, payload: { path: 'Empty' } });
+    const res = await del(t, projectId, 'Empty');
+    expect(res.json()).toMatchObject({ assets: 0, binned: 0, folders: 1, sample: [] });
+  });
+});
+
 describe('bulk media move', () => {
   it('re-files many assets in ONE call and accounts for every id', async () => {
     // Reorganising an imported library one asset at a time is a round-trip each: a real clone made 96
@@ -256,7 +302,7 @@ describe('media folders — recursive delete', () => {
       cookies: { sw_session: t },
       payload: { path: 'Trash' },
     });
-    expect(res.statusCode).toBe(204);
+    expect(res.statusCode).toBe(200); // the delete now REPORTS what it binned rather than answering blank
 
     // Every record under 'Trash' is gone. 'Keep' remains listed: it never had an explicit record, but it
     // still HOLDS the surviving asset (asserted below), and a folder with a live asset in it must be

@@ -148,7 +148,7 @@ describe('media recycle bin', () => {
     await app.inject({ method: 'PATCH', url: `${base}/media/${id}`, cookies, payload: { folder: 'photos' } }); // file it under a folder
 
     // delete the whole folder → the asset goes to the bin (binary retained), the folder leaves the tree.
-    expect((await app.inject({ method: 'DELETE', url: `${base}/media/folders`, cookies, payload: { path: 'photos' } })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/media/folders`, cookies, payload: { path: 'photos' } })).statusCode).toBe(200);
     expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: unknown[] }).items).toHaveLength(0);
     const binned = ((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: Array<{ id: string }> };
     expect(binned.items.some((a) => a.id === id)).toBe(true);

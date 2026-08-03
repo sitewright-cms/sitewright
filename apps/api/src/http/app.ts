@@ -4768,26 +4768,44 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // removed (structural shells with no binary), so the folder disappears from the tree; a restored
     // asset re-materializes its folder from its retained `folder` path (FileBrowser derives folders
     // from asset paths too), so restore stays coherent even though the record is gone.
-    app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
+    // Deleting a folder BINS EVERYTHING UNDER IT — the assets are soft-deleted to the Recycle Bin, not
+    // just unfiled. That is the right behaviour and it used to be invisible: the call answered a bare 204
+    // whether it removed an empty folder or 500 photographs, so neither a caller nor a person could tell
+    // which had just happened, and there was no way to ASK first. It now reports the count, and
+    // `?dryRun=1` answers the same shape while touching nothing.
+    app.delete<{ Params: { projectId: string }; Querystring: { dryRun?: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:delete');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = FolderPathBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
       const folder = body.data.path;
+      const dryRun = req.query.dryRun === '1' || req.query.dryRun === 'true';
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
-      let softDeleted = false;
-      for (const a of assets) {
-        if (isUnderFolder(a.folder, folder)) {
-          await contentRepo.softDeleteMedia(ctx, a.id);
-          softDeleted = true;
-        }
-      }
-      if (softDeleted) mediaRecordCache.clear();
+      const doomed = assets.filter((a) => isUnderFolder(a.folder, folder));
       const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
-      for (const f of folders) {
-        if (isUnderFolder(f.path, folder)) await contentRepo.remove(ctx, 'mediafolder', f.id);
-      }
-      return reply.code(204).send();
+      const doomedFolders = folders.filter((f) => isUnderFolder(f.path, folder));
+      // Count the folders a PERSON sees disappear, not the folder RECORDS. A folder only gets a record
+      // when someone creates or renames one — the tree also shows every path an asset lives in, so a
+      // library that was only ever uploaded into has records for none of it and would report "0
+      // subfolders" while removing eleven.
+      const doomedPaths = new Set<string>([
+        ...doomedFolders.map((f) => f.path),
+        ...doomed.map((a) => a.folder).filter((f) => f && isUnderFolder(f, folder)),
+      ]);
+      // A sample so a confirmation prompt can name what is at stake rather than only counting it.
+      const report = {
+        folder,
+        assets: doomed.length,
+        folders: doomedPaths.size,
+        sample: doomed.slice(0, 5).map((a) => a.filename),
+      };
+      if (dryRun) return reply.send({ ...report, dryRun: true });
+      for (const a of doomed) await contentRepo.softDeleteMedia(ctx, a.id);
+      if (doomed.length > 0) mediaRecordCache.clear();
+      for (const f of doomedFolders) await contentRepo.remove(ctx, 'mediafolder', f.id);
+      // 200 with the report, not 204: what a destructive call actually did is worth saying out loud.
+      // Restorable from the Recycle Bin for 90 days, which is the other half of why the count matters.
+      return reply.send({ ...report, binned: doomed.length });
     });
 
     // Move and/or rename a single asset: `folder` re-files it, `filename` changes its display name.

@@ -16,10 +16,30 @@ export function BEHAVIOUR_PROBE() {
   };
   const headingFont = famOf('--sw-font-heading', 'h1,h2,h3');
   const bodyFont = famOf('--sw-font-body', 'body');
-  const isSystem = (f) => !f || /^(sans-serif|serif|monospace|system-ui|ui-|-apple-|-webkit-|inherit|initial)/i.test(f);
   // document.fonts is a FontFaceSet (setlike, iterable — NOT array-like), so materialise it before .some.
-  const loaded = (f) => isSystem(f) || Array.from(document.fonts).some((ff) => ff.family.replace(/["']/g, '') === f && ff.status === 'loaded');
-  return { carousels: cars.length, carouselsEnhanced, dialogs, headingFont, bodyFont, headingFontLoaded: loaded(headingFont), bodyFontLoaded: loaded(bodyFont) };
+  const faces = Array.from(document.fonts);
+  const norm = (s) => (s || '').replace(/["']/g, '').trim().toLowerCase();
+  const declared = (f) => faces.some((ff) => norm(ff.family) === norm(f));
+  // A family NO @font-face declares is a SYSTEM face — there is nothing to load, so it cannot be MISSING.
+  // This used to be a name test (`/^(sans-serif|serif|monospace|ui-|…)/`) that only recognised the GENERIC
+  // keywords, so every NAMED system face failed the gate: Verdana, Georgia, Times New Roman, Arial and the
+  // rest. The platform offers exactly those (FontSlotEditor's web-safe group), the importer WRITES them
+  // (a source declaring `@font-face{font-family:"text-font";src:local("Verdana")}` becomes
+  // `{source:'system', family:'Verdana'}`) and the agent guide instructs agents to use them — and then this
+  // check called the result a missing font. An agent's only way out was a webfont the original never had.
+  // Note `document.fonts.check()` cannot do this job: measured in the render container it returns TRUE for
+  // any family that isn't a registered-and-failed @font-face, including ones nothing can render.
+  // The converse gap — a webfont NAME with no @font-face behind it — is unreachable through the platform's
+  // renderer, which emits a slot's family and its @font-face from the same source (typography-css).
+  const kind = (f) => (!f || !declared(f) ? 'system' : faces.some((ff) => norm(ff.family) === norm(f) && ff.status === 'loaded') ? 'loaded' : 'missing');
+  const loaded = (f) => kind(f) !== 'missing';
+  return {
+    carousels: cars.length, carouselsEnhanced, dialogs, headingFont, bodyFont,
+    headingFontLoaded: loaded(headingFont), bodyFontLoaded: loaded(bodyFont),
+    // Reported so the check's DETAIL can say "system" rather than "loaded" for a face there was never
+    // anything to load for — the pass is the same, the sentence an agent reads is not.
+    headingFontKind: kind(headingFont), bodyFontKind: kind(bodyFont),
+  };
 }
 
 // Each probe MUST be self-contained (no module-scope refs) — page.evaluate serialises only the function

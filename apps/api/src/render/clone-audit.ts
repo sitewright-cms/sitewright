@@ -47,6 +47,9 @@ export interface BehaviourFacts {
   bodyFont: string;
   headingFontLoaded: boolean;
   bodyFontLoaded: boolean;
+  /** Why the font check passed: a SYSTEM face had nothing to load; a `loaded` one is a real @font-face. */
+  headingFontKind?: 'system' | 'loaded' | 'missing';
+  bodyFontKind?: 'system' | 'loaded' | 'missing';
   navExpected: number;
   navReachableMobile: number;
   hasModalTrigger: boolean;
@@ -225,6 +228,15 @@ export function structuralChecks(input: {
   ];
 }
 
+/**
+ * How a font slot resolved, for the check's detail line. `kind` is absent on facts captured before it
+ * existed, so fall back to the boolean and read as before.
+ */
+function fontState(family: string, ok: boolean, kind?: 'system' | 'loaded' | 'missing'): string {
+  if (!kind) return ok ? 'loaded' : 'MISSING';
+  return kind === 'system' ? (family ? 'system face (nothing to load)' : 'unset') : kind === 'loaded' ? 'loaded' : 'MISSING';
+}
+
 /** BEHAVIOUR leg — pure over the extracted facts. modals only required when the original HAS modal triggers. */
 export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   // Only clips the ORIGINAL does not also make are candidate defects; see clip-diff.ts.
@@ -232,7 +244,16 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   return [
     { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, na: b.carousels === 0, detail: b.carousels === 0 ? 'no carousels on the page — n/a' : `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
     { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, na: !b.hasModalTrigger, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
-    { leg: 'behaviour', id: 'fonts', label: 'heading + body fonts actually load', pass: b.headingFontLoaded && b.bodyFontLoaded, detail: `heading "${b.headingFont}"=${b.headingFontLoaded ? 'loaded' : 'MISSING'}, body "${b.bodyFont}"=${b.bodyFontLoaded ? 'loaded' : 'MISSING'}` },
+    {
+      leg: 'behaviour',
+      id: 'fonts',
+      // A SYSTEM face (a generic keyword, or a named one like Verdana/Georgia) declares no @font-face, so
+      // there is nothing to load and nothing to miss — it reports `system`, not `loaded`, so the sentence
+      // an agent reads matches what actually happened.
+      label: 'heading + body fonts actually load',
+      pass: b.headingFontLoaded && b.bodyFontLoaded,
+      detail: `heading "${b.headingFont}"=${fontState(b.headingFont, b.headingFontLoaded, b.headingFontKind)}, body "${b.bodyFont}"=${fontState(b.bodyFont, b.bodyFontLoaded, b.bodyFontKind)}`,
+    },
     { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, na: b.navExpected === 0, detail: b.navExpected === 0 ? 'the original has no nav to reach — n/a' : `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
     {
       leg: 'behaviour',

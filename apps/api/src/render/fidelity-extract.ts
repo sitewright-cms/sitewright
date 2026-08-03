@@ -19,7 +19,9 @@ export function FIDELITY_EXTRACT() {
   for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect().bottom + sy; if (b > pageH) pageH = b; }
   const footTop = pageH - 650;
   const out = [];
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,img,[class*="btn"]')) {
+  // `span,div` are here only so a CTA authored as a STYLED LEAF can be recognised below; every other
+  // span/div falls out as role 'other'.
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,img,[class*="btn"],span,div')) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) continue;
     if (r.right < 4 || r.left > vpW - 4 || r.bottom < 0) continue;
@@ -30,7 +32,19 @@ export function FIDELITY_EXTRACT() {
     const tag = el.tagName.toLowerCase();
     const text = tag === 'img' ? '' : n(el.textContent).slice(0, 60);
     const heading = /^h[1-6]$/.test(tag);
-    const btn = tag === 'button' || (tag === 'a' && (/btn|button/i.test(el.className) || cs.backgroundImage !== 'none' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)'));
+    // A CTA authored as a styled SPAN/DIV rather than a <button> or an `a.btn` — ordinary in
+    // utility-class markup (`<span class="rounded-full border px-4">…</span>`) and invisible to a tag or
+    // class-NAME test. That blind spot cost coverage for a difference nobody can see: a clone whose CTA
+    // was a span had no counterpart for the original's real <button>, so seven buttons on one page
+    // counted as missing content and the page scored 76% when it was complete. Recognised from
+    // APPEARANCE instead — a short text LEAF that is padded, has a corner radius, and paints a border or
+    // a fill. Measured across three clone pairs this adds NOTHING to either original (the coverage
+    // denominator cannot be inflated by it) and exactly the missing CTAs to the clone that had them.
+    const looksBtn =
+      (tag === 'span' || tag === 'div') && el.children.length === 0 && text.length >= 2 && text.length <= 60 &&
+      (cs.borderTopWidth !== '0px' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)' || cs.backgroundImage !== 'none') &&
+      parseFloat(cs.borderTopLeftRadius) > 0 && parseFloat(cs.paddingLeft) > 0;
+    const btn = tag === 'button' || looksBtn || (tag === 'a' && (/btn|button/i.test(el.className) || cs.backgroundImage !== 'none' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)'));
     let role = heading ? 'heading' : btn ? 'button' : (tag === 'p' || tag === 'li') ? 'text' : tag === 'img' ? 'img' : 'other';
     if (region === 'body') {
       if (role === 'other' || role === 'img' || !text || text.length < 2) continue;
@@ -71,33 +85,52 @@ export function FIDELITY_EXTRACT() {
 }
 
 /**
- * Per-page font FINGERPRINTS: first font-family of every text-bearing element → the rendered width of a fixed
- * pangram at 100px in that family. Two family NAMES that load the same glyphs (an imported original serves
- * its face as "primary-font"; the clone declares the real name) measure identically — the diff uses this to
- * suppress name-only font mismatches (gate.ts sameFace) instead of flagging a false fontMiss. Waits for
- * document.fonts so a face still loading doesn't fingerprint as the fallback.
+ * Per-page font FINGERPRINTS: first font-family of every text-bearing element → the width of a fixed pangram
+ * as that element ACTUALLY RENDERS IT. Two family NAMES that put the same glyphs on screen (an imported
+ * original serves its face as "primary-font"; the clone declares the real name) measure identically, and
+ * gate.ts `sameFace` uses that to suppress name-only mismatches instead of flagging a false fontMiss.
+ *
+ * Measured through the element's WHOLE computed family list in a real DOM span, not through a canvas set to
+ * the first name alone. That distinction is the whole point: a page whose first family does not resolve
+ * renders its FALLBACK, and only the full chain says what that fallback is. The old version measured
+ * `100px "<first-family>"` on a canvas and skipped any family `document.fonts.check()` did not confirm —
+ * which made every clone of a site whose own webfont 404s report a font mismatch it could do nothing about.
+ * (Measured on a real pair: the original declares `text-font`, whose @font-face is in `error` state, so it
+ * renders the default at 2030px; the clone's `ui-serif, Georgia, …` renders at 2030px too — the same
+ * pixels — and the gate called it a defect four times on one page.)
+ *
+ * The safety property the old omission bought is KEPT, and by a sounder route: a clone whose webfont failed
+ * renders at its fallback width, so if the original's face did load the two widths differ and the diff still
+ * fires. What is deliberately no longer reported here is two sides that render the SAME fallback — they look
+ * identical, which is the only thing a visual-fidelity diff is entitled to judge. Whether a face the project
+ * asked for actually arrived is a different question, and `clone_audit`'s behaviour leg owns it
+ * (`headingFontLoaded` / `bodyFontLoaded`), where a name can be checked against its @font-face status.
+ *
+ * Waits for document.fonts so a face still loading doesn't fingerprint as the fallback.
  */
 export async function FIDELITY_FONTS() {
   try { await document.fonts.ready; } catch { /* measure with whatever painted */ }
   const first = (f) => (f || '').split(',')[0].trim().replace(/['"]/g, '').toLowerCase();
-  const fams = new Set();
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) fams.add(first(getComputedStyle(el).fontFamily));
-  const ctx = document.createElement('canvas').getContext('2d');
-  const out = {};
-  if (!ctx) return out;
-  for (const fam of fams) {
-    if (!fam) continue;
-    const spec = `100px "${fam.replace(/"/g, '')}"`;
-    // Fingerprint ONLY families the browser confirms are resolvable: an unavailable family silently
-    // measures as the generic fallback, and two DIFFERENT failed fonts would fingerprint identically —
-    // sameFace would then hide a real "the clone's font never loaded" defect. An unconfirmed family is
-    // OMITTED, so the diff falls back to strict name comparison (fails closed, never masks).
-    let loaded = false;
-    try { loaded = document.fonts.check(spec); } catch { /* unsupported → strict names */ }
-    if (!loaded) continue;
-    ctx.font = spec;
-    out[fam] = Math.round(ctx.measureText('Sphinx of black quartz judge my vow 0123456789').width);
+  // Keyed by FIRST family (what sameFace looks up), valued by the full chain that family appeared in.
+  const chains = new Map();
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) {
+    const chain = getComputedStyle(el).fontFamily;
+    const k = first(chain);
+    if (k && !chains.has(k)) chains.set(k, chain);
   }
+  const span = document.createElement('span');
+  // Neutralise everything that could move the width for a reason other than the FACE.
+  span.style.cssText =
+    'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font-size:100px;' +
+    'font-weight:400;font-style:normal;font-variant:normal;letter-spacing:normal;word-spacing:normal;text-transform:none';
+  span.textContent = 'Sphinx of black quartz judge my vow 0123456789';
+  document.body.appendChild(span);
+  const out = {};
+  chains.forEach((chain, fam) => {
+    span.style.fontFamily = chain;
+    out[fam] = Math.round(span.getBoundingClientRect().width);
+  });
+  span.remove();
   return out;
 }
 

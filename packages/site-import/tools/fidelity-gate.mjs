@@ -68,7 +68,9 @@ const EXTRACT = () => {
   for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect().bottom + sy; if (b > pageH) pageH = b; }
   const footTop = pageH - 650;
   const out = [];
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,img,[class*="btn"]')) {
+  // `span,div` are here only so a CTA authored as a STYLED LEAF can be recognised below; every other
+  // span/div falls out as role 'other'.
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li,img,[class*="btn"],span,div')) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) continue;
     if (r.right < 4 || r.left > vpW - 4 || r.bottom < 0) continue; // skip off-screen (hidden mobile-nav variants at x:-236)
@@ -79,7 +81,19 @@ const EXTRACT = () => {
     const tag = el.tagName.toLowerCase();
     const text = tag === 'img' ? '' : n(el.textContent).slice(0, 60);
     const heading = /^h[1-6]$/.test(tag);
-    const btn = tag === 'button' || (tag === 'a' && (/btn|button/i.test(el.className) || cs.backgroundImage !== 'none' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)'));
+    // A CTA authored as a styled SPAN/DIV rather than a <button> or an `a.btn` — ordinary in
+    // utility-class markup (`<span class="rounded-full border px-4">…</span>`) and invisible to a tag or
+    // class-NAME test. That blind spot cost coverage for a difference nobody can see: a clone whose CTA
+    // was a span had no counterpart for the original's real <button>, so seven buttons on one page
+    // counted as missing content and the page scored 76% when it was complete. Recognised from
+    // APPEARANCE instead — a short text LEAF that is padded, has a corner radius, and paints a border or
+    // a fill. Measured across three clone pairs this adds NOTHING to either original (the coverage
+    // denominator cannot be inflated by it) and exactly the missing CTAs to the clone that had them.
+    const looksBtn =
+      (tag === 'span' || tag === 'div') && el.children.length === 0 && text.length >= 2 && text.length <= 60 &&
+      (cs.borderTopWidth !== '0px' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)' || cs.backgroundImage !== 'none') &&
+      parseFloat(cs.borderTopLeftRadius) > 0 && parseFloat(cs.paddingLeft) > 0;
+    const btn = tag === 'button' || looksBtn || (tag === 'a' && (/btn|button/i.test(el.className) || cs.backgroundImage !== 'none' || cs.backgroundColor !== 'rgba(0, 0, 0, 0)'));
     let role = heading ? 'heading' : btn ? 'button' : (tag === 'p' || tag === 'li') ? 'text' : tag === 'img' ? 'img' : 'other';
     if (region === 'body') {
       if (role === 'other' || role === 'img' || !text || text.length < 2) continue; // body: text-bearing meaningful only
@@ -114,29 +128,32 @@ const EXTRACT = () => {
   return out;
 };
 
-// Per-page font fingerprints (firstFamily → pangram width at 100px) so the diff can recognise the SAME face
-// served under different family names (imported "primary-font" vs the clone's real name) — mirrors
-// FIDELITY_FONTS in apps/api/src/render/fidelity-extract.ts.
+// Per-page font fingerprints (firstFamily → the pangram width as the element ACTUALLY RENDERS it) so the
+// diff can recognise the SAME face served under different family names (imported "primary-font" vs the
+// clone's real name) — mirrors FIDELITY_FONTS in apps/api/src/render/fidelity-extract.ts, which carries the
+// full rationale. Measured through the element's WHOLE computed family list in a real span: a first family
+// that doesn't resolve renders its FALLBACK, and only the full chain says what that fallback is.
 const FONTS = async () => {
   try { await document.fonts.ready; } catch { /* measure what painted */ }
   const first = (f) => (f || '').split(',')[0].trim().replace(/['"]/g, '').toLowerCase();
-  const fams = new Set();
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) fams.add(first(getComputedStyle(el).fontFamily));
-  const ctx = document.createElement('canvas').getContext('2d');
-  const out = {};
-  if (!ctx) return out;
-  for (const fam of fams) {
-    if (!fam) continue;
-    const spec = `100px "${fam.replace(/"/g, '')}"`;
-    // Only fingerprint CONFIRMED-resolvable families — a failed font measures as the generic fallback
-    // and two different failed fonts would falsely fingerprint as the same face. Omission → the diff
-    // uses strict name comparison instead (fails closed). Mirrors FIDELITY_FONTS in fidelity-extract.ts.
-    let loaded = false;
-    try { loaded = document.fonts.check(spec); } catch { /* unsupported → strict names */ }
-    if (!loaded) continue;
-    ctx.font = spec;
-    out[fam] = Math.round(ctx.measureText('Sphinx of black quartz judge my vow 0123456789').width);
+  const chains = new Map();
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,p,li')) {
+    const chain = getComputedStyle(el).fontFamily;
+    const k = first(chain);
+    if (k && !chains.has(k)) chains.set(k, chain);
   }
+  const span = document.createElement('span');
+  span.style.cssText =
+    'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font-size:100px;' +
+    'font-weight:400;font-style:normal;font-variant:normal;letter-spacing:normal;word-spacing:normal;text-transform:none';
+  span.textContent = 'Sphinx of black quartz judge my vow 0123456789';
+  document.body.appendChild(span);
+  const out = {};
+  chains.forEach((chain, fam) => {
+    span.style.fontFamily = chain;
+    out[fam] = Math.round(span.getBoundingClientRect().width);
+  });
+  span.remove();
   return out;
 };
 

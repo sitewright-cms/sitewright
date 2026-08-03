@@ -9,6 +9,75 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-08-03
+
+Seven platform defects, all found the same way: by using the platform to finish and review a batch of
+cloned sites, then asking what the tooling should have told us and didn't. The through-line is the one
+this project keeps meeting — the platform knowing something and not saying it.
+
+### Added
+
+- **The audit fails a page that links a file nothing will serve.** Eight publication PDFs shipped on a
+  finished clone as eight dead download buttons: the links pointed at the SOURCE site's own tree
+  (`/_data/assets/…`), the media library held 522 assets and not one pdf, and every click 404'd while
+  the originals served fine. The importer was not the culprit — it already collects and hosts
+  `<a href>` documents and `<iframe|embed|object>` sources. The failure is one step later: a page
+  AUTHORED from the original's markup carries the original's paths straight through, and nothing ever
+  asked whether they resolve. `assets-resolve` now names them. Deliberately narrow: a `{{sw-url …}}` ref
+  resolves at render, a page-relative or cross-origin path is not ours to judge, and a path without an
+  extension is a route.
+- **The audit fails author CSS that redefines a platform class.** A clone redeclared `.sw-container`.
+  The platform's rule for it lives in `@layer sw-normalize`, and unlayered author CSS beats any layer
+  whatever its specificity — so the platform rule stopped applying and the Website → Content width
+  setting was inert on that site, with nothing anywhere saying so. `platform-classes` tests the rule's
+  SUBJECT, which is the whole distinction: `html.sw-scrolled .my-header{…}` is exactly how a scroll
+  response is meant to be written and stays free, while `.sw-container{…}` is caught.
+
+### Fixed
+
+- **★ A code-first form confirmed nothing, and could be double-posted.** `FORM_JS` reveals
+  `[data-sw-part="success"]` on a 2xx, `[data-sw-part="error"]` on a failure, and disables
+  `[data-sw-part="submit"]` while the request is in flight. The `{{sw-form}}` helper emits all three;
+  the code-first `data-sw-form` path emitted none of them. So a hand-authored form submitted
+  successfully and told the visitor nothing, failed silently when delivery broke, and posted the lead
+  again on a second click — while the definition's own successMessage and errorMessage were rendered
+  nowhere at all. Code-first is the primary authoring model here, so this was the DEFAULT experience.
+  Injected only when absent and keyed on the PART, so an author's own status markup keeps its
+  placement, wording and classes.
+- **★ A form could not be submitted from a preview at all.** The draft preview is served
+  `sandbox allow-scripts` with no `allow-forms`, on the reasoning that a shared draft must not fire
+  real leads at the merchant. The reasoning is right; the result was that the browser refused the
+  submit outright, so the button did nothing, said nothing, and the one feature you could not exercise
+  on the surface the entire review workflow runs on was forms. Testing one meant publishing the site.
+  Both halves are now handled separately: the previews allow the submit event, and their forms post to
+  a new DRY-RUN endpoint — same parse, same bot filters, same definition-aware validation, then nothing
+  stored and nothing emailed. All three preview surfaces are covered.
+- **A merge patch can now REMOVE a field, and a full write infers its id.** `?merge=1` could only add or
+  overwrite, and some fields cannot be overwritten into absence: `template` is `.min(1)`, so
+  `template:""` fails validation and `template:null` was stored as a literal null and then failed it
+  too. Moving a page off a template ref — the whole "this translation now inherits its parent's code"
+  operation — had no expressible form. A patch value of `null` now deletes the key. Separately, a full
+  write must carry `id` and the path already says what it is; the failure was a bare
+  `{"fieldErrors":{"id":["Required"]}}` naming neither the id nor where it belongs. It is now defaulted
+  from the path, and an id that is present and disagrees still conflicts.
+- **The notification email reads the author's labels, and a rejection names its cap.** The body was
+  keyed by input `name` — wiring. A merchant opening a meal-kit order read `arrival_date:` and
+  `rental:` while the author had written "Pickup Date in Windhoek" and "Car Rental or Travel Agent"
+  right there in the form definition, which the route already had in hand. Fields with no definition
+  entry keep their own name, which is right for what a hand-authored page posts beyond its definition.
+  The retry path re-reads the labels from the form as it is NOW, like the recipient beside it. And
+  every structural rejection collapsed into one `invalid submission`: a big order form sits close to
+  the 60-field cap — a real one measured 44 — and the first time a menu grows past it, every order 400s
+  with a message that names neither the limit nor its existence.
+- **A media folder delete says what it binned, and can be asked first.** Deleting a folder bins
+  everything under it — soft-deleted to the Recycle Bin, not merely unfiled. That is right, and it was
+  invisible: the call answered a bare 204 whether it removed an empty folder or five hundred
+  photographs, and there was no way to ask first. It now reports the folder, the count, the number of
+  folders that disappear and a sample of filenames, and `?dryRun=1` returns the same shape while
+  touching nothing. The folder count is the one a PERSON sees rather than the number of folder RECORDS
+  — a library only ever uploaded into has records for none of it, and would have reported "0
+  subfolders" while removing eleven.
+
 ## [0.11.0] — 2026-08-03
 
 ### Added
@@ -684,7 +753,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/sitewright-cms/sitewright/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/sitewright-cms/sitewright/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/sitewright-cms/sitewright/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/sitewright-cms/sitewright/compare/v0.8.0...v0.9.0

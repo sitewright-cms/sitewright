@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-08-03
+
 ### Added
 
 - **Form notifications retry, and a failure is now visible.** Delivery is best-effort by design — the
@@ -27,6 +29,29 @@ The running version of an instance is reported at `GET /version` (baked into the
   admin's mail settings — shown even when SMTP is switched off, which is when a backlog is most
   likely — and a **Resend** action so a backlog built up during an outage can be cleared once the
   cause is fixed.
+
+### Fixed
+
+- **★ An author's `transition:` shorthand silently deleted a scroll reveal.** The platform declares the
+  reveal as `[data-sw-animation]{transition-property:opacity,transform}` at (0,1,0). An author's own
+  `.card{transition:outline-color .2s ease}` is ALSO (0,1,0), comes later, and a shorthand REPLACES
+  `transition-property` outright — so the reveal had nothing left to animate. Measured on one clone: four
+  tiles went 0 → 1 opacity inside 80 ms and their 0/90/180/270 ms stagger was invisible, with the author's
+  markup completely correct. The same shorthand appeared on four separate classes in that one site, so it
+  is not a slip — it is what people write. The runtime now SELF-HEALS at arm time: it reads the computed
+  `transition-property` and re-declares `opacity,transform` inline only when `opacity` / `transform` /
+  `all` are all absent. Deliberately not by raising specificity, which would contradict this release
+  series' whole direction — the author's own selector wins.
+- **The model image clamp covered one path of two.** 0.10.0 clamped `captureUrlShots` after an agent died
+  on an over-limit screenshot; the REGION crop behind `inspect_source` / `compare_regions` was never
+  covered, and it is worse — it caps the crop at 1500 CSS px of height and captures at deviceScaleFactor
+  2, so *every* crop was 3000 physical px, and a full-width crop at the 1440 viewport 2880. Another agent
+  died at turn 119 with the identical error. The comment above that cap explains the miss exactly: it
+  reasons carefully about bounding the PAYLOAD SIZE and never mentions dimensions. Crops stay lossless
+  WebP through the resize — re-encoding a UI crop as JPEG would put ringing on the hairlines a crop exists
+  to let an agent judge. The test lesson is the real one: 0.10.0's test asserted the clamp FUNCTION worked
+  and passed throughout; what it never asserted was that every image an agent can receive goes through a
+  clamp. Coverage of the mechanism is not coverage of the surface.
 
 ### Security
 
@@ -659,7 +684,9 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/sitewright-cms/sitewright/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/sitewright-cms/sitewright/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/sitewright-cms/sitewright/compare/v0.8.0...v0.9.0
 [#754]: https://github.com/sitewright-cms/sitewright/pull/754
 [0.8.0]: https://github.com/sitewright-cms/sitewright/compare/v0.7.0...v0.8.0

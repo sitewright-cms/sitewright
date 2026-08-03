@@ -221,6 +221,64 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
       expect(out).not.toContain('h-captcha');
     });
   });
+  describe('status markers (a code-first form used to confirm nothing)', () => {
+    it('marks the submit control and appends the definition’s success + error panels', () => {
+      const out = resolveFormEmbeds(
+        '<form data-sw-form="contact"><input name="name" /><button type="submit">Send</button></form>',
+        { forms: formsOf(pub()) },
+      );
+      expect(out).toContain('<button type="submit" data-sw-part="submit">Send</button>');
+      // non-ASCII stays literal (the pass serializes in utf8 entity mode, like directives.ts)
+      expect(out).toContain('<p data-sw-part="success" role="status" hidden>Thanks — we got it.</p>');
+      // the message is escaped on the way in (the fixture's error text carries a bare &)
+      expect(out).toContain('<p data-sw-part="error" role="alert" hidden>Sorry, that &amp; failed.</p>');
+    });
+    it('marks a <button> with no type, which submits by default', () => {
+      const out = resolveFormEmbeds('<form data-sw-form="contact"><button>Go</button></form>', { forms: formsOf(pub()) });
+      expect(out).toContain('<button data-sw-part="submit">Go</button>');
+    });
+    it('never mistakes a type="button" control for the submit', () => {
+      const out = resolveFormEmbeds(
+        '<form data-sw-form="contact"><button type="button">+</button></form>',
+        { forms: formsOf(pub()) },
+      );
+      expect(out).not.toContain('data-sw-part="submit"');
+    });
+    it('marks an <input type="submit"> too', () => {
+      const out = resolveFormEmbeds('<form data-sw-form="contact"><input type="submit" value="Go" /></form>', {
+        forms: formsOf(pub()),
+      });
+      expect(out).toMatch(/<input type="submit" value="Go" data-sw-part="submit"/);
+    });
+    it('leaves the author’s own status markup alone — placement, wording and classes', () => {
+      const authoredParts =
+        '<form data-sw-form="contact">' +
+        '<p data-sw-part="success" class="ok" hidden>Bestellung eingegangen</p>' +
+        '<p data-sw-part="error" class="bad" hidden>Fehler</p>' +
+        '<button type="button" data-sw-part="submit">Senden</button>' +
+        '<button type="submit">decoy</button>' +
+        '</form>';
+      const out = resolveFormEmbeds(authoredParts, { forms: formsOf(pub()) });
+      expect(out).toContain('<p data-sw-part="success" class="ok" hidden>Bestellung eingegangen</p>');
+      expect(out).toContain('<p data-sw-part="error" class="bad" hidden>Fehler</p>');
+      expect(out).toContain('<button type="button" data-sw-part="submit">Senden</button>');
+      expect(out).toContain('<button type="submit">decoy</button>'); // the marked one already exists
+      expect(out.match(/data-sw-part="success"/g)).toHaveLength(1);
+      expect(out.match(/data-sw-part="submit"/g)).toHaveLength(1);
+    });
+    it('gives each form on the page its own panels', () => {
+      const out = resolveFormEmbeds('<form data-sw-form="contact"></form><form data-sw-form="newsletter"></form>', {
+        forms: formsOf(pub(), pub({ id: 'newsletter' })),
+      });
+      expect(out.match(/data-sw-part="success"/g)).toHaveLength(2);
+      expect(out.match(/data-sw-part="error"/g)).toHaveLength(2);
+    });
+    it('a form with no submit control still gets its panels', () => {
+      const out = resolveFormEmbeds(authored, { forms: formsOf(pub()) });
+      expect(out).not.toContain('data-sw-part="submit"');
+      expect(out).toContain('data-sw-part="success"');
+    });
+  });
   it('resolves two distinct forms on the same page independently', () => {
     const html = '<form data-sw-form="contact"></form><form data-sw-form="newsletter"></form>';
     const out = resolveFormEmbeds(html, { forms: formsOf(pub(), pub({ id: 'newsletter' })) });

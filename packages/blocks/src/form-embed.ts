@@ -200,6 +200,24 @@ function hasNamedInput(el: Element, name: string): boolean {
   return findAll((e) => e.tagName === 'input' && e.attribs.name === name, el.children).length > 0;
 }
 
+/** Does the form already carry a `data-sw-part="…"` descendant (author-placed status markup)? */
+function hasPart(el: Element, part: string): boolean {
+  return findAll((e) => e.attribs['data-sw-part'] === part, el.children).length > 0;
+}
+
+/**
+ * The form's own submit control. A `<button>` with no `type` submits, so the default matters; a
+ * `type="button"` (a stepper, a modal close) must never be mistaken for it.
+ */
+function submitControl(el: Element): Element | undefined {
+  return findAll(
+    (e) =>
+      (e.tagName === 'button' && (e.attribs.type ?? 'submit').toLowerCase() === 'submit') ||
+      (e.tagName === 'input' && (e.attribs.type ?? '').toLowerCase() === 'submit'),
+    el.children,
+  )[0];
+}
+
 /**
  * The bot-bait honeypot block (the endpoint drops filled posts). Carries its OWN inline hiding style so
  * it stays invisible even on a HAND-AUTHORED `<form data-sw-form>` — that form gets the honeypot injected
@@ -261,6 +279,27 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
         // authors control placement by adding their own `data-sw-part="hcaptcha"` div).
         appendFragment(el, `<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="${escapeAttr(ctx.hcaptchaSiteKey)}"></div>`);
       }
+    }
+    // STATUS MARKERS. FORM_JS reveals `success` on a 2xx, `error` on a failure, and disables `submit`
+    // for the duration of the request. `renderFormMarkup` (the {{sw-form}} helper) emits all three; this
+    // CODE-FIRST path emitted none of them, so a hand-authored `<form data-sw-form>` succeeded SILENTLY,
+    // said nothing when delivery failed, and could be double-posted — while the definition's own
+    // successMessage/errorMessage were rendered nowhere at all. Since code-first is the primary authoring
+    // model, that was the default experience, and it is exactly the class of defect this project keeps
+    // finding: the platform knows, and doesn't say.
+    //
+    // Injected only when ABSENT, keyed on the part rather than the element, so an author who has placed
+    // their own status markup (or marked a specific button among several) keeps their placement, their
+    // wording and their classes untouched.
+    if (!hasPart(el, 'submit')) {
+      const submit = submitControl(el);
+      if (submit) submit.attribs['data-sw-part'] = 'submit';
+    }
+    if (!hasPart(el, 'success')) {
+      appendFragment(el, `<p data-sw-part="success" role="status" hidden>${escapeHtml(form.successMessage)}</p>`);
+    }
+    if (!hasPart(el, 'error')) {
+      appendFragment(el, `<p data-sw-part="error" role="alert" hidden>${escapeHtml(form.errorMessage)}</p>`);
     }
     // eslint-disable-next-line security/detect-object-injection -- FORM_ATTR is a module constant
     if (!ctx.preview) delete el.attribs[FORM_ATTR];

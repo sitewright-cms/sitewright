@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { and, asc, desc, eq, inArray, lte, or, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, notInArray, lt, lte, or, isNull, sql } from 'drizzle-orm';
 import { FormSubmissionSchema, type FormSubmission } from '@sitewright/schema';
 // (FormSubmissionSchema is also used to validate rows on read — see toSubmission.)
 import type { Database } from '../db/client.js';
@@ -127,11 +127,27 @@ export class SubmissionRepository {
       .orderBy(asc(formSubmissions.createdAt))
       .limit(limit);
     if (rows.length === 0) return [];
-    await this.db
-      .update(formSubmissions)
-      .set({ deliveryNextAt: new Date(now.getTime() + leaseMs), deliveryClaimedAt: now })
-      .where(inArray(formSubmissions.id, rows.map((r) => r.id)));
-    return rows.map((r) => ({
+    // Claim each candidate with the same conditions in the WHERE, and keep only the ones this call
+    // actually won. The SELECT above is just a candidate list — treating it as a claim would let two
+    // callers both "claim" a row and both send it. Belt and braces today (one scheduler, guarded by
+    // a re-entrancy flag), but the invariant should be the database's, not a convention's.
+    const won: typeof rows = [];
+    for (const candidate of rows) {
+      const res = await this.db
+        .update(formSubmissions)
+        .set({ deliveryNextAt: new Date(now.getTime() + leaseMs), deliveryClaimedAt: now })
+        .where(
+          and(
+            eq(formSubmissions.id, candidate.id),
+            eq(formSubmissions.deliveryState, 'pending'),
+            or(isNull(formSubmissions.deliveryNextAt), lte(formSubmissions.deliveryNextAt, now)),
+          ),
+        );
+      if ((res as { rowsAffected?: number }).rowsAffected === 1) won.push(candidate);
+    }
+    if (won.length === 0) return [];
+    const rowsClaimed = won;
+    return rowsClaimed.map((r) => ({
       id: r.id,
       projectId: r.projectId,
       formId: r.formId,
@@ -171,35 +187,38 @@ export class SubmissionRepository {
    * Returns false when the row does not exist or was never owed an email in the first place.
    */
   async requeue(projectId: string, id: string): Promise<boolean> {
-    const [row] = await this.db
-      .select({ state: formSubmissions.deliveryState, claimedAt: formSubmissions.deliveryClaimedAt })
-      .from(formSubmissions)
-      .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
-    if (!row) return false;
-    // Accepting `sent` would let one click re-email a lead that already arrived. `na` was never owed.
-    if (row.state === 'sent' || row.state === 'na') return false;
-    // ★ AND: refuse while something is ACTIVELY ATTEMPTING this row, whichever attempt it is on.
+    // ★ ONE conditional statement, not read-then-write.
     //
-    // Requeueing clears the next-attempt time so the row is due immediately. Do that to a row a
-    // sender currently holds and the next pass sends the message that sender is still sending — the
-    // customer gets it twice. An earlier version inferred "in flight" from `attempts === 0 &&
-    // error === null`, which only ever described the FIRST attempt; a row on its third retry, mid
-    // send, looks exactly like one merely backing off (both `pending`, both with a future
-    // `deliveryNextAt`, both carrying the previous error). Nothing about those fields can tell them
-    // apart, which is why the claim is recorded explicitly instead.
+    // The guard used to be a SELECT, a decision, and then an unconditional UPDATE. A claim landing
+    // in that gap — the retry pass works the same backlog an operator is clicking Resend on, and
+    // that is precisely the situation during an outage — meant the decision was made on a pre-claim
+    // snapshot while the write blindly erased the live claim. The next pass then sent a message a
+    // sender still had open. Putting every condition in the WHERE makes the check and the act the
+    // same statement, so a claim that lands first simply causes zero rows to match.
     //
-    // A claim older than the lease is stale — the holder died — so it must NOT block recovery.
-    //
-    // `abandoned` is deliberately requeueable: it is settled, not delivered, so an operator who has
-    // just switched a form's mode back has a way to recover the notification. If it is still not
-    // platform-routed the next pass simply settles it again.
-    if (row.claimedAt !== null && Date.now() - row.claimedAt.getTime() < DELIVERY_LEASE_MS) return false;
-    await this.db
+    // Refused: `sent` (already delivered), `na` (never owed), and anything a sender currently holds.
+    // A claim older than the lease is stale — the holder died — and must not block recovery.
+    const staleBefore = new Date(Date.now() - DELIVERY_LEASE_MS);
+    const res = await this.db
       .update(formSubmissions)
-      .set({ deliveryState: 'pending', deliveryAttempts: 0, deliveryNextAt: null, deliveryError: null, deliveryClaimedAt: null })
-      .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
-    return true;
+      .set({
+        deliveryState: 'pending',
+        deliveryAttempts: 0,
+        deliveryNextAt: null,
+        deliveryError: null,
+        deliveryClaimedAt: null,
+      })
+      .where(
+        and(
+          eq(formSubmissions.projectId, projectId),
+          eq(formSubmissions.id, id),
+          notInArray(formSubmissions.deliveryState, ['sent', 'na']),
+          or(isNull(formSubmissions.deliveryClaimedAt), lt(formSubmissions.deliveryClaimedAt, staleBefore)),
+        ),
+      );
+    return (res as { rowsAffected?: number }).rowsAffected === 1;
   }
+
 
   /** Number of stored submissions for a form (for the per-form storage cap). */
   async countForForm(projectId: string, formId: string): Promise<number> {

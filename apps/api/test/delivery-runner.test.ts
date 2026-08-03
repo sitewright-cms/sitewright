@@ -278,6 +278,36 @@ describe('undelivered summary and resend', () => {
     expect(await repo.requeue(projectId, id)).toBe(true);
   });
 
+  it('★ a claim landing between requeue’s read and its write still wins', async () => {
+    // The race the previous guard lost. It read the row, decided, then wrote unconditionally — so a
+    // claim landing in that gap was erased by a decision made before it existed, and the next pass
+    // sent a message a sender still had open. Simulated by claiming AFTER the state requeue would
+    // have observed and BEFORE requeue runs: with the conditions in the WHERE, zero rows match.
+    const id = await pending();
+    await repo.recordDelivery(id, { state: 'pending', attempts: 2, nextAt: new Date(Date.now() - 1000), error: 'down' });
+    // requeue would have seen an unclaimed row here…
+    const [claimed] = await repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1);
+    expect(claimed?.id).toBe(id);
+    // …but the write is conditional, so the landed claim wins.
+    expect(await repo.requeue(projectId, id)).toBe(false);
+    const after = await row(id);
+    expect(after.deliveryClaimedAt).not.toBeNull(); // the runner's claim survived intact
+    expect(after.deliveryNextAt).not.toBeNull();
+  });
+
+  it('★ two concurrent claims of the same row: exactly one wins', async () => {
+    // claimDue's SELECT is only a candidate list. Treating it as a claim would let two callers both
+    // proceed and both send.
+    const id = await pending();
+    await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(Date.now() - 1000), error: 'down' });
+    const [a, b] = await Promise.all([
+      repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1),
+      repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1),
+    ]);
+    expect(a.length + b.length).toBe(1);
+    void id;
+  });
+
   it('a recorded outcome releases the claim, so the row is requeueable again', async () => {
     const id = await pending();
     await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(Date.now() - 1000), error: 'down' });

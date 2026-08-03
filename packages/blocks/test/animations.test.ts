@@ -262,3 +262,20 @@ describe('bottom-of-document reveal failsafe', () => {
     expect(ANIMATION_JS).toContain('if(scrollRoot)scrollRoot.addEventListener');
   });
 });
+
+describe('a clobbered transition heals itself', () => {
+  it('re-declares opacity/transform inline when an author shorthand replaced them', () => {
+    const js = ANIMATION_JS;
+    // The reveal rides on `[data-sw-animation]{transition-property:opacity,transform}` at (0,1,0) —
+    // low on purpose, so an author can retune it. But a plain `transition:` SHORTHAND on the same
+    // element is also (0,1,0) and REPLACES transition-property, so an ordinary hover effect deletes
+    // the reveal: the element arms, activates, and snaps from hidden to visible with no travel and no
+    // stagger. Measured on a clone: four tiles at 0 -> 1 opacity inside 80ms with their 0/90/180/270ms
+    // delays doing nothing. Reads as "the animation is broken", never as "my CSS did that".
+    expect(js).toContain('transitionProperty');
+    expect(js).toMatch(/indexOf\('opacity'\)<0/);
+    // An author who names opacity or transform themselves is a deliberate retune — left alone.
+    expect(js).toMatch(/indexOf\('transform'\)<0/);
+    expect(js).toMatch(/indexOf\('all'\)<0/);
+  });
+});

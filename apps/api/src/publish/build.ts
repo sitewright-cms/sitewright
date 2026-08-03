@@ -196,6 +196,12 @@ export interface BuildSiteOptions {
   media?: readonly MediaAsset[];
   /** Reads a media binary (assetId, file) — used to copy assets (incl. `kind:'font'`) into the artifact. */
   readMedia?: (assetId: string, file: string) => Promise<Buffer>;
+  /**
+   * Writes a generated image derivative back into the media store, so the next build reads it instead
+   * of re-encoding it (the same cache the on-demand `/media?size=` route fills). Omit where the build
+   * has no writable store — the isolated worker, for one — and it simply encodes every time.
+   */
+  storeMedia?: (assetId: string, file: string, data: Buffer) => Promise<void>;
   /** Max total HTML/CSS bytes written before aborting (default 100 MiB). */
   maxOutputBytes?: number;
   /**
@@ -1141,7 +1147,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
     // AND MINIMAL (only referenced sizes of referenced assets), independent of any preview traffic.
     if (opts.readMedia && thumbRefs.size > 0) {
-      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias);
+      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias, opts.storeMedia);
     }
 
     // Copy the platform textures any page referenced into `_assets/_textures/` so the export is

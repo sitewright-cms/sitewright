@@ -45,6 +45,34 @@ const WEIGHTS: Array<{ value: number; label: string }> = [
 const selectClass = `${glassInput} cursor-pointer`;
 const FORMAT_HINT: Record<string, string> = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' };
 
+/** A font asset as the media list returns it — `url` addresses the PRIMARY (`files[0]`) face. */
+type FontLibraryAsset = Extract<MediaAsset, { kind: 'font' }>;
+
+/**
+ * `@font-face` rules for every face of one library font, addressed the way the app serves media.
+ *
+ * The prefix comes from stripping the PRIMARY face's file name off the asset's own url — never from
+ * cutting at the last `/`. Media is delivered FLAT (`/media/<slug>/<id>-<file>`), so a slash-cut drops
+ * the `<id>-` and every face 404s; legacy assets are nested (`/media/<slug>/<id>/<file>`), where a
+ * slash-cut happens to work. Stripping the file name is the one derivation correct for both, and it
+ * keeps the project segment out of this component.
+ *
+ * Returns `''` when the url doesn't end in the primary face's name — better a fallback face than a
+ * guessed url that 404s.
+ */
+export function fontFaceCss(asset: FontLibraryAsset): string {
+  const primary = asset.files[0]?.file ?? '';
+  if (!primary || !asset.url.endsWith(primary)) return '';
+  const base = asset.url.slice(0, asset.url.length - primary.length);
+  return asset.files
+    .map(
+      (f) =>
+        `@font-face{font-family:"${asset.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
+        `src:url("${base}${f.file}") format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
+    )
+    .join('');
+}
+
 /**
  * Editor for one typography slot (heading, body, or a custom named slot): a family picker + weight
  * selector with a live sample. The family is either a system generic or a self-hosted font from the
@@ -71,25 +99,18 @@ export function FontSlotEditor({
   const [picking, setPicking] = useState(false);
   // Memoize so the @font-face effect below depends on a STABLE reference (a bare `fonts.find` returns
   // a new object every render → the effect would re-inject the <style> on every keystroke).
-  const asset = useMemo(
-    () => (slot.source === 'asset' && slot.assetId ? fonts.find((f) => f.id === slot.assetId) : undefined),
-    [slot.source, slot.assetId, fonts],
-  );
+  const asset = useMemo(() => {
+    if (slot.source !== 'asset' || !slot.assetId) return undefined;
+    const found = fonts.find((f) => f.id === slot.assetId);
+    return found?.kind === 'font' ? found : undefined;
+  }, [slot.source, slot.assetId, fonts]);
 
   // An asset slot renders the sample in its real face — inject the asset's @font-face(s) from the
   // media URL (which the preview route serves inline + the published export self-hosts).
   useEffect(() => {
-    if (!asset || asset.kind !== 'font') return;
-    // Derive the `/media/<slug>/<assetId>/` base from the asset's own (slug-based) url so we never
-    // reconstruct the project segment here; each face just appends its own file name.
-    const base = asset.url.slice(0, asset.url.lastIndexOf('/'));
-    const css = asset.files
-      .map(
-        (f) =>
-          `@font-face{font-family:"${asset.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
-          `src:url(${base}/${f.file}) format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
-      )
-      .join('');
+    if (!asset) return;
+    const css = fontFaceCss(asset);
+    if (!css) return;
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -97,7 +118,10 @@ export function FontSlotEditor({
   }, [asset]);
 
   const isAsset = slot.source === 'asset';
-  const previewFamily = isAsset ? `'${slot.family}', sans-serif` : slot.family;
+  // Name the face the way the injected @font-face names it (`asset.family`) — a slot whose stored
+  // `family` has drifted from its asset's would otherwise preview in the fallback — and carry the
+  // asset's own fallback, as the rendered site's family stack does.
+  const previewFamily = isAsset ? `'${asset?.family ?? slot.family}', ${asset?.fallback ?? 'sans-serif'}` : slot.family;
   return (
     <div className="rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-3">
       <div className="mb-2 flex items-baseline justify-between">

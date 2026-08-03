@@ -218,7 +218,7 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           src={src}
           // Author content runs (true WYSIWYG) but stays opaque-origin — it can't reach this
           // shell's authenticated session. Matches the API route's own `sandbox` CSP.
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
           className="h-full w-full border-0"
         />
       )}

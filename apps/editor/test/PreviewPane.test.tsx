@@ -10,8 +10,10 @@ describe('PreviewPane', () => {
     const iframe = container.querySelector('iframe');
     expect(iframe).toBeTruthy();
     // Scripts run (the doc is served under CSP: sandbox), but the frame is an
-    // opaque origin — `allow-same-origin` must never be present.
-    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
+    // opaque origin — `allow-same-origin` must never be present. The popup tokens are
+    // what let an outbound target=_blank link open at all, and open UN-sandboxed at the
+    // target's own origin; the list must match the response CSP or the stricter one wins.
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-popups-to-escape-sandbox');
     expect(iframe?.getAttribute('sandbox')).not.toContain('allow-same-origin');
     expect(iframe?.getAttribute('src')).toBe('/projects/p/preview/tok');
   });

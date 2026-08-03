@@ -9,6 +9,42 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-08-03
+
+Three things that were quietly broken on every project, found by reviewing cloned sites rather than
+by reading the code — each one had been true for a long time and looked like a content problem.
+
+### Fixed
+
+- **The font preview never showed the font.** Corporate Identity's "The quick brown fox jumps" sample
+  built its `@font-face` url by cutting the asset url at the last `/`, which drops the `<id>-` prefix
+  the FLAT media scheme puts there — `/media/skeleta/TYbf4C-primary-font-400.woff` became
+  `/media/skeleta/primary-font-400.woff` and 404'd. So the sample has been rendering in the fallback
+  for every project since media went flat, and a person choosing a font was picking blind. Measured
+  rather than reasoned: the browser reports `net::ERR_ABORTED`, `document.fonts` marks the face
+  `error`, and the "custom" face and a plain fallback measure the same 711px. The prefix now comes
+  from stripping the primary face's own file name off the url — the one derivation that is right for
+  both the flat and the legacy nested scheme.
+
+- **Every build re-encoded every thumbnail.** The publish/preview build generated each referenced
+  image derivative from its original on every single build, with no cache — so any site-wide edit (a
+  colour, a nav item, a font) was followed by a full re-encode before the next preview could be
+  served. On a 295-image project that was 38 seconds, twice in a row on the same content, and it
+  scaled with IMAGES rather than pages: 8 images 0.78s, 61 images 7.5s, 295 images 38s, about 125ms
+  each. The build now reads derivatives from the same store the on-demand `/media?size=` route
+  already fills, and writes back the ones it does have to encode; a repeat build is a copy, and when
+  every variant is cached the original is not even read. The isolated build worker has no writable
+  store and simply keeps encoding, which is correct — its whole point is that it shares nothing.
+
+- **External links in previews did nothing.** The preview iframe was sandboxed without
+  `allow-popups`, so every `target="_blank"` link on every previewed site silently failed to open —
+  correct markup, right href, nothing overlapping it, and no navigation. A clone review spent its
+  time looking for the fault in 31 authored IMDb links. The sandbox now carries
+  `allow-popups allow-popups-to-escape-sandbox`, on the iframe attribute AND the response CSP, since
+  the stricter of the two wins; the escape token matters as much as the popup one, or the new tab
+  lands on the target site at an opaque origin and breaks there instead. `allow-same-origin` remains
+  out, and a test now says so out loud.
+
 ## [0.12.1] — 2026-08-03
 
 ### Fixed

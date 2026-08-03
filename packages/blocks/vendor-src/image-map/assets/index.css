@@ -1,0 +1,20 @@
+@import url('./imageMap.css');
+@import url('./fullscreen.css');
+@import url('./layers.css');
+
+@import url('./UI/tooltip/tooltip.css');
+@import url('./UI/tooltip/tooltipFullscreen.css');
+@import url('./UI/ui.css');
+@import url('./UI/fullscreenButton.css');
+@import url('./UI/navigator.css');
+@import url('./UI/zoomButtons.css');
+@import url('./UI/objects/object.css');
+@import url('./UI/objects/text.css');
+@import url('./UI/objects/spot.css');
+@import url('./UI/menu/menu.css');
+@import url('./UI/menu/list.css');
+@import url('./UI/menu/item.css');
+@import url('./UI/menu/itemArtboard.css');
+@import url('./UI/menu/search.css');
+@import url('./UI/menu/openButton.css');
+@import url('./UI/menu/closeButton.css');

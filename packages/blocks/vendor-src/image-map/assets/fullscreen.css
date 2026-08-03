@@ -1,0 +1,42 @@
+body.sw-imap-fullscreen-mode {
+  overflow: hidden !important;
+}
+
+.sw-imap-fullscreen-container {
+  position: fixed;
+  z-index: 999995;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  display: flex;
+  background: #0a0a0a;
+}
+
+.sw-imap-fullscreen-container .sw-imap-fullscreen-image-map {
+  width: 100%;
+  height: 100%;
+}
+
+.sw-imap-fullscreen-container .sw-imap-container {
+  height: 100%;
+}
+
+.sw-imap-fullscreen-container .sw-imap-ui-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.sw-imap-fullscreen-container .sw-imap-canvas-wrap {
+  position: inherit;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.sw-imap-fullscreen-container .sw-imap-canvas {
+  overflow: visible;
+}

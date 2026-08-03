@@ -1,0 +1,58 @@
+.sw-imap-object {
+  position: absolute;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all 0.15s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.15s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.15s cubic-bezier(0.55, 0, 0.1, 1);
+
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+}
+
+.sw-imap-object-static,
+.sw-imap-object-static * {
+  cursor: default;
+  pointer-events: none !important;
+}
+
+.sw-imap-object-svg-single,
+.sw-imap-object-svg,
+.sw-imap-object-poly {
+  pointer-events: none;
+}
+.sw-imap-object-svg-single *,
+.sw-imap-object-svg *,
+.sw-imap-object-poly * {
+  pointer-events: all;
+}
+
+/* image backgrounds */
+
+.sw-imap-object img {
+  width: 100%;
+}
+
+.sw-imap-image-backgrounds {
+  z-index: 1;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sw-imap-object-background-image {
+  position: absolute;
+  background-position: center center;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* Glow */
+
+.sw-imap-glowing-objects .sw-imap-object {
+  animation: ObjectGlowAnimation linear 1.5s;
+  animation-iteration-count: infinite;
+}

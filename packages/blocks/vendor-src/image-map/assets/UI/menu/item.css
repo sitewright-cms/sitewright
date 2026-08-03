@@ -1,0 +1,91 @@
+.sw-imap-object-list-item {
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  padding: 0 20px;
+  line-height: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-family: sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.sw-imap-object-list-item p {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.sw-imap-object-list-item.sw-imap-object-list-item-hidden {
+  display: none;
+}
+
+.sw-imap-object-list-item-folder-icon {
+  width: 12px;
+  display: flex;
+  margin-right: 6px;
+}
+
+.sw-imap-object-list-item-folder-icon svg {
+  width: 100%;
+}
+
+/* Embedded menu styles */
+
+.sw-imap-object-menu-on-top .sw-imap-object-list-item {
+  backdrop-filter: blur(2px);
+  border-radius: 20px;
+  border: none;
+  margin-bottom: 4px;
+}
+
+/* Theme - Light */
+
+.sw-imap-ui-light .sw-imap-object-list-item {
+  background: white;
+  color: #222;
+}
+
+.sw-imap-ui-light .sw-imap-object-list-item:hover {
+  background: #f9f9f9;
+}
+
+.sw-imap-ui-light .sw-imap-object-list-item-folder-icon svg path {
+  fill: #222;
+}
+
+.sw-imap-ui-light.sw-imap-object-menu-on-top .sw-imap-object-list-item {
+  color: black;
+  background: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  border: 1px solid #00000060;
+}
+
+/* Theme - Dark */
+
+.sw-imap-ui-dark .sw-imap-object-list-item {
+  background: #222;
+  color: white;
+}
+
+.sw-imap-ui-dark .sw-imap-object-list-item:hover {
+  background: #333;
+}
+
+.sw-imap-ui-dark .sw-imap-object-list-item-folder-icon svg path {
+  fill: white;
+}
+
+.sw-imap-ui-dark.sw-imap-object-menu-on-top .sw-imap-object-list-item {
+  color: white;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}

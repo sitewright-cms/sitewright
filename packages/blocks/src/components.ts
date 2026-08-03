@@ -31,6 +31,12 @@ import {
 // vendor's COLOURLESS layout.css (we theme it ourselves below against its data-vc-* hooks). See
 // vendor-src/datetimepicker.entry.js for the readable runtime source.
 import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/datetimepicker-runtime.js';
+// ImageMap = interactive hotspot maps. Unlike the runtimes above this bundles no npm package: the
+// source under vendor-src/image-map/ is FIRST-PARTY (a licensed fork of Image Map Pro 6.1.11 —
+// see vendor-src/image-map/README.md for what was removed, renamed and rewritten). Notably the
+// fork has no eval, no custom-JS/CSS injection and no window global, so it sits inside the
+// platform's `default-src 'self'` CSP and its "tenants supply data, never code" invariant.
+import { IMAGE_MAP_RUNTIME_JS, IMAGE_MAP_VENDOR_CSS } from './vendor/image-map-runtime.js';
 // ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
@@ -952,6 +958,34 @@ const DATETIMEPICKER_CSS = [
 ].join('');
 const DATETIMEPICKER_JS = DATETIMEPICKER_RUNTIME_JS;
 
+// --- ImageMap -------------------------------------------------------------
+// Interactive hotspot map: an image (or SVG) with polygon/rect/oval/spot regions that highlight,
+// open tooltips, switch "artboards" (floors/layers) and zoom. The authored contract is the marker
+// plus a `<script type="application/json" data-sw-part="config">` payload — data, never code.
+//
+// The runtime's own stylesheet (all `sw-imap-*`) comes from the bundle; the rules after it adopt
+// the site's identity so a map doesn't read as a foreign widget. They are deliberately narrow —
+// the vendor sheet owns layout and interaction states, we only re-skin type and accent.
+const IMAGE_MAP_CSS = [
+  // Until the runtime has a usable config the root is just its no-JS fallback; give it no box of
+  // its own so an <img> inside lays out normally.
+  '[data-sw-component="image-map"]{position:relative}',
+  IMAGE_MAP_VENDOR_CSS,
+  // Adopt the site body font across the map chrome (object list, search, tooltips).
+  '.sw-imap-container,.sw-imap-tooltips-container{font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif)}',
+  // Brand the interactive chrome: zoom/fullscreen buttons, the artboard select and the object
+  // list's hover/active states pick up the CI primary instead of the vendor's neutral blue.
+  '.sw-imap-ui-element:hover{border-color:var(--sw-color-primary,#0a7a5a)}',
+  '.sw-imap-search-box-input-wrap:focus-within{border-color:var(--sw-color-primary,#0a7a5a)}',
+  '.sw-imap-list-item:hover,.sw-imap-list-item.is-active{color:var(--sw-color-primary,#0a7a5a)}',
+  // The map is a pointer-driven surface; keyboard users reach hotspots through the object list.
+  // Keep a visible focus ring on every control rather than the vendor's outline:none.
+  '.sw-imap-ui-element:focus-visible,.sw-imap-list-item:focus-visible{outline:2px solid var(--sw-color-primary,#0a7a5a);outline-offset:2px}',
+  // Reduced motion: the pageload stagger, zoom easing and tooltip fades all stand down.
+  '@media (prefers-reduced-motion:reduce){.sw-imap-container *,.sw-imap-tooltips-container *{transition-duration:0s!important;animation:none!important}}',
+].join('');
+const IMAGE_MAP_JS = IMAGE_MAP_RUNTIME_JS;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
 // (child blocks like Slide/LightboxItem/Tab are styled by their
 // parent's entry — no entry of their own). Insertion order = bundle order.
@@ -964,6 +998,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
   ['ShaderBg', { css: SHADER_BG_CSS, js: SHADER_BG_JS }],
+  ['ImageMap', { css: IMAGE_MAP_CSS, js: IMAGE_MAP_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */
@@ -982,6 +1017,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],
   ['shader-bg', 'ShaderBg'],
+  ['image-map', 'ImageMap'],
 ]);
 
 const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;

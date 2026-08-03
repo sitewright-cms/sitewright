@@ -1,0 +1,133 @@
+.sw-imap-container {
+  display: flex;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.sw-imap-ui-wrap {
+  position: relative;
+}
+
+.sw-imap-canvas-wrap {
+  position: relative;
+  width: auto;
+  height: auto;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+
+.sw-imap-canvas {
+  overflow: hidden;
+}
+
+.sw-imap-translate {
+  width: 100%;
+  height: 100%;
+}
+
+.sw-imap-scale {
+  transform: scale(1, 1) translate(0, 0);
+  transform-origin: 0% 0%;
+  width: 100%;
+  height: 100%;
+}
+
+.sw-imap-objects {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+.sw-imap-image {
+  z-index: 0;
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  display: block !important;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+
+.sw-imap-background {
+  z-index: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.sw-imap-noscroll {
+  overflow: hidden;
+}
+
+.hs-loader-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Scroll Message */
+.sw-imap-ui-scroll-message-wrap {
+  z-index: 4;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.sw-imap-ui-scroll-message-wrap-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.sw-imap-ui-scroll-message-wrap.sw-imap-visible {
+  opacity: 1;
+}
+
+.sw-imap-ui-scroll-message {
+  padding: 10px 30px;
+  line-height: 45px;
+  font-size: 16px;
+  color: white;
+  background: rgba(0, 0, 0, 0.66);
+  border-radius: 40px;
+  font-family: sans-serif;
+}
+
+.sw-imap-ui-scroll-message-button {
+  border: 1px solid white;
+  border-radius: 5px;
+  display: inline-block;
+  line-height: 28px;
+  padding: 0 7px;
+  margin: 0 6px;
+  font-size: 12px;
+}
+
+/* Elementor fixes 💩 */
+
+.elementor-element .sw-imap-objects svg {
+  width: auto;
+}

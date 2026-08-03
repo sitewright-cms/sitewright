@@ -1,0 +1,36 @@
+.sw-imap-menu-button {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  text-align: center;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  margin-left: 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sw-imap-menu-button .sw-imap-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Theme - Light */
+.sw-imap-ui-light .sw-imap-menu-button {
+  fill: black;
+  background: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  border: 1px solid #00000060;
+}
+
+/* Theme - Dark */
+
+.sw-imap-ui-dark .sw-imap-menu-button {
+  fill: white;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}

@@ -1,0 +1,36 @@
+.sw-imap-object-spot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* zoom scaling */
+  transition: all 0.4s cubic-bezier(0.075, 0.82, 0.165, 1);
+  -moz-transition: all 0.4s cubic-bezier(0.075, 0.82, 0.165, 1);
+  -webkit-transition: all 0.4s cubic-bezier(0.075, 0.82, 0.165, 1);
+}
+
+.sw-imap-object-spot-pin {
+  transform-origin: 50% 100%;
+}
+
+.sw-imap-object-icon-shadow {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 0;
+  transform: scale(1, 0.25);
+  /* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#000000+0,000000+100&amp;0.53+0,0.3+10,0.13+28,0.04+44,0+67 */
+  background: -moz-radial-gradient(center, ellipse cover, rgba(0, 0, 0, 0.53) 0%, rgba(0, 0, 0, 0.3) 10%, rgba(0, 0, 0, 0.13) 28%, rgba(0, 0, 0, 0.04) 44%, rgba(0, 0, 0, 0) 67%, rgba(0, 0, 0, 0) 100%);
+  /* FF3.6-15 */
+  background: -webkit-radial-gradient(center, ellipse cover, rgba(0, 0, 0, 0.53) 0%, rgba(0, 0, 0, 0.3) 10%, rgba(0, 0, 0, 0.13) 28%, rgba(0, 0, 0, 0.04) 44%, rgba(0, 0, 0, 0) 67%, rgba(0, 0, 0, 0) 100%);
+  /* Chrome10-25,Safari5.1-6 */
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.53) 0%, rgba(0, 0, 0, 0.3) 10%, rgba(0, 0, 0, 0.13) 28%, rgba(0, 0, 0, 0.04) 44%, rgba(0, 0, 0, 0) 67%, rgba(0, 0, 0, 0) 100%);
+  /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#87000000', endColorstr='#00000000', GradientType=1);
+  /* IE6-9 fallback on horizontal gradient */
+}
+
+.sw-imap-spot-fontawesome-icon {
+  position: relative;
+  z-index: 1;
+}

@@ -428,6 +428,29 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
         }
       })
       .catch(() => {});
+    // BACK TO THE TOP — on whatever element ACTUALLY scrolls, and AFTER the two passes above.
+    // Step 1 already scrolled back with `window.scrollTo(0, 0)`, but that is not enough here for two
+    // compounding reasons. A preview page scrolls its BODY (`overflow:auto`), where `window.scrollTo` is a
+    // no-op; and the style injected above REMOVES that overflow, so the DOCUMENT becomes the scroller and
+    // inherits the offset the body was left at — while `window.scrollY` still reports 0.
+    // Measured on a real preview: after the freeze, `documentElement.scrollTop` was 4228 with
+    // `window.scrollY === 0`, putting the first heading at `top:-3516`. Everything above the viewport then
+    // failed the extractor's `rect.bottom < 0` test and 39 elements became 1 — which `fidelity_check`
+    // reported as `coverage: 0`, indistinguishable from a clone that reproduced nothing. Three of six real
+    // projects scored a silent 0% on exactly this.
+    // Resetting all three candidates is the only version that holds whichever element ends up scrolling.
+    await page
+      .evaluate(() => {
+        const g = globalThis as unknown as {
+          document: { scrollingElement: { scrollTop: number } | null; documentElement: { scrollTop: number }; body: { scrollTop: number } };
+          scrollTo: (x: number, y: number) => void;
+        };
+        for (const t of [g.document.scrollingElement, g.document.documentElement, g.document.body]) {
+          try { if (t) t.scrollTop = 0; } catch { /* detached */ }
+        }
+        try { g.scrollTo(0, 0); } catch { /* jsdom-ish */ }
+      })
+      .catch(() => {});
     await page.waitForTimeout(400).catch(() => {});
   }
 }

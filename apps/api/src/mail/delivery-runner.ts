@@ -65,6 +65,11 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
     // struggling queue that most need it.
     const rowNow = deps.now?.() ?? Date.now();
     const [row] = await deps.submissions.claimDue(new Date(rowNow), DELIVERY_LEASE_MS, 1);
+    // An empty claim means either "nothing is due" or "the one candidate was taken by someone else".
+    // Stopping treats both as the former, which at worst delays other due rows to the next tick a
+    // minute later. Distinguishing them would mean the repository reporting contention up to the
+    // runner, which is not worth an API change for a one-minute delay in a case that should now be
+    // rare — the claim is atomic, so contention means a genuine concurrent claimant.
     if (!row) break;
     result.attempted += 1;
     const attempts = row.attempts + 1;

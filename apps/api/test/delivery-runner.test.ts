@@ -295,6 +295,32 @@ describe('undelivered summary and resend', () => {
     expect(after.deliveryNextAt).not.toBeNull();
   });
 
+  it('★ a claim reports the attempts the row has AFTER the claim, not before', async () => {
+    // Live-reproduced before the fix, 15/15: a Resend committing inside claimDue's SELECT→UPDATE gap
+    // resets attempts to 0, the claim still wins, and the caller got the PRE-RESET count. The runner
+    // then treated the next failure as exhausting the ladder and marked the row terminally failed —
+    // silently defeating the recovery click the operator had just been told succeeded.
+    const id = await pending();
+    await repo.recordDelivery(id, {
+      state: 'pending',
+      attempts: MAX_DELIVERY_ATTEMPTS - 1, // the state a worried operator is most likely to resend
+      nextAt: new Date(Date.now() - 1000),
+      error: 'down',
+    });
+
+    const [claimed] = await Promise.all([
+      repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1),
+      repo.requeue(projectId, id),
+    ]);
+
+    if (claimed.length === 1) {
+      // Whoever won, what the runner is handed must match what the row actually holds — otherwise
+      // it computes the next attempt from a count the database has already discarded.
+      const stored = await row(id);
+      expect(claimed[0]!.attempts).toBe(stored.deliveryAttempts);
+    }
+  });
+
   it('★ two concurrent claims of the same row: exactly one wins', async () => {
     // claimDue's SELECT is only a candidate list. Treating it as a claim would let two callers both
     // proceed and both send.

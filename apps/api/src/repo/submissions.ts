@@ -146,8 +146,27 @@ export class SubmissionRepository {
       if ((res as { rowsAffected?: number }).rowsAffected === 1) won.push(candidate);
     }
     if (won.length === 0) return [];
-    const rowsClaimed = won;
-    return rowsClaimed.map((r) => ({
+    // ★ Re-read AFTER winning. The candidate list was captured before the UPDATE that decided the
+    // claim, and a `requeue` can commit in that gap — it resets attempts to 0 and the next-attempt
+    // time to null, which still satisfies this claim's WHERE, so the claim wins immediately after
+    // and would hand the caller the PRE-RESET count. The runner would then treat the next failure as
+    // exhausting the ladder and mark the row terminally failed, silently defeating the Resend the
+    // operator had just been told succeeded.
+    //
+    // Safe to re-read now rather than racy in turn: this row is claimed, so `requeue` refuses it
+    // until the lease lapses. Nothing else can change it underneath this read.
+    const fresh = await this.db
+      .select({
+        id: formSubmissions.id,
+        projectId: formSubmissions.projectId,
+        formId: formSubmissions.formId,
+        data: formSubmissions.data,
+        createdAt: formSubmissions.createdAt,
+        attempts: formSubmissions.deliveryAttempts,
+      })
+      .from(formSubmissions)
+      .where(inArray(formSubmissions.id, won.map((r) => r.id)));
+    return fresh.map((r) => ({
       id: r.id,
       projectId: r.projectId,
       formId: r.formId,

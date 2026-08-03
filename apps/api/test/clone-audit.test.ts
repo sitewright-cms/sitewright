@@ -252,6 +252,32 @@ describe('behaviouralChecks', () => {
     expect(behaviouralChecks(behaviour({ hasModalTrigger: false, dialogs: 0 })).find((c) => c.id === 'modals')!.pass).toBe(true);
   });
 
+  it('a SYSTEM face passes and says so — there was never anything to load', () => {
+    // The old check only recognised the GENERIC keywords, so every NAMED system face (Verdana, Georgia,
+    // Times New Roman — the web-safe group the picker offers and the importer writes) failed as MISSING,
+    // and an agent's only escape was a webfont the original never had.
+    const c = behaviouralChecks(
+      behaviour({ headingFont: 'Georgia', headingFontKind: 'system', bodyFont: 'Verdana', bodyFontKind: 'system' }),
+    ).find((x) => x.id === 'fonts')!;
+    expect(c.pass).toBe(true);
+    expect(c.detail).toContain('system face (nothing to load)');
+    expect(c.detail).not.toContain('loaded,');
+  });
+
+  it('still reports a real webfont as loaded, and a failed one as MISSING', () => {
+    const ok = behaviouralChecks(behaviour({ headingFont: 'Orbitron', headingFontKind: 'loaded', bodyFontKind: 'loaded' })).find((c) => c.id === 'fonts')!;
+    expect(ok.pass).toBe(true);
+    expect(ok.detail).toContain('"Orbitron"=loaded');
+    const bad = behaviouralChecks(behaviour({ headingFont: 'Orbitron', headingFontKind: 'missing', headingFontLoaded: false })).find((c) => c.id === 'fonts')!;
+    expect(bad.pass).toBe(false);
+    expect(bad.detail).toContain('MISSING');
+  });
+
+  it('reads pre-`kind` facts the old way (boolean only)', () => {
+    const c = behaviouralChecks(behaviour({ headingFont: 'X' })).find((x) => x.id === 'fonts')!;
+    expect(c.detail).toContain('"X"=loaded');
+  });
+
   it('fails when a declared font did not load; mobile menu must be reachable', () => {
     expect(behaviouralChecks(behaviour({ headingFontLoaded: false })).find((c) => c.id === 'fonts')!.pass).toBe(false);
     expect(behaviouralChecks(behaviour({ bodyFontLoaded: false })).find((c) => c.id === 'fonts')!.pass).toBe(false);

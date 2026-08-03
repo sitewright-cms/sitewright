@@ -425,6 +425,25 @@ describe('submissions inbox (authenticated)', () => {
     expect((after.json() as { total: number }).total).toBe(0);
   });
 
+  it('carries each form’s name + field labels, so the inbox is not reading input names', async () => {
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', message: 'Hi', extra: 'x', _elapsed: '5000' } });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const body = res.json() as { forms: Record<string, { name: string; labels: Record<string, string> }> };
+    expect(body.forms.contact).toEqual({ name: 'Contact form', labels: { email: 'Email', message: 'Message' } });
+    // a field the definition does not declare simply has no label — the inbox keeps its raw name
+    expect(body.forms.contact!.labels.extra).toBeUndefined();
+  });
+
+  it('scopes the label map to the requested form', async () => {
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/form/newsletter`, cookies: { sw_session: t },
+      payload: { id: 'newsletter', name: 'Newsletter', fields: [{ name: 'email', label: 'Your email', type: 'email', required: true }], recipient: 'x@y.co' },
+    });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions?formId=newsletter`, cookies: { sw_session: t } });
+    const body = res.json() as { forms: Record<string, unknown> };
+    expect(Object.keys(body.forms)).toEqual(['newsletter']);
+  });
+
   it('lets a project member read and delete a submission (constrained client-write removed)', async () => {
     // A second user, granted access to THIS project as a member.
     const { userId: memberUserId } = await registerAccount(db, 'member@x.test', 'Pw-secret-1');

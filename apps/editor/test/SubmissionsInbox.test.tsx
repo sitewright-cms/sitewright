@@ -42,6 +42,42 @@ describe('SubmissionsInbox', () => {
     expect(screen.getByText('message')).toBeInTheDocument(); // the dt label
   });
 
+  it('heads each field with the author’s LABEL, and names the form rather than its id', async () => {
+    // A submission is stored keyed by input `name` — wiring. This is the other place a person reads
+    // a lead, and it showed `arrival_date` where the author had written "Pickup Date in Windhoek".
+    listSubmissions.mockResolvedValue({
+      items: [{
+        id: 's1',
+        formId: 'order',
+        fields: { arrival_date: '2026-09-14', 'Meal - Chilli Con Carne': '3' },
+        createdAt: '2026-05-31T00:00:00.000Z',
+      }],
+      total: 1,
+      forms: { order: { name: 'Meal Kit Order', labels: { arrival_date: 'Pickup Date in Windhoek' } } },
+    });
+    render(<SubmissionsInbox project={project} />);
+    // the row is headed by the form's NAME, not its id
+    fireEvent.click(await screen.findByText('Meal Kit Order'));
+    const dt = await screen.findByText('Pickup Date in Windhoek');
+    expect(dt).toBeInTheDocument();
+    expect(screen.queryByText('arrival_date')).not.toBeInTheDocument();
+    expect(dt.getAttribute('title')).toBe('arrival_date'); // the raw name stays reachable
+    expect(dt.className).not.toContain('font-mono');
+    // a field the definition does not declare keeps its own name, in mono — it IS the raw key
+    const extra = screen.getByText('Meal - Chilli Con Carne');
+    expect(extra.className).toContain('font-mono');
+  });
+
+  it('falls back to raw names when the form definition is unavailable', async () => {
+    listSubmissions.mockResolvedValue({
+      items: [{ id: 's1', formId: 'contact', fields: { email: 'lead@x.co' }, createdAt: '2026-05-31T00:00:00.000Z' }],
+      total: 1,
+    });
+    render(<SubmissionsInbox project={project} />);
+    fireEvent.click(await screen.findByText('contact'));
+    expect(await screen.findByText('email')).toBeInTheDocument();
+  });
+
   it('deletes a submission after confirming, then reloads', async () => {
     listSubmissions
       .mockResolvedValueOnce({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@x.co' }, createdAt: '2026-05-31T00:00:00.000Z' }], total: 1 })

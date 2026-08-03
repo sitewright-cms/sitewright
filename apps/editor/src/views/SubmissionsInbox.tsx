@@ -16,6 +16,9 @@ import { SkeletonList } from './ui/Skeleton';
 export function SubmissionsInbox({ project, formId }: { project: Project; formId?: string }) {
   const { confirm, dialog } = useDialogs();
   const [items, setItems] = useState<FormSubmission[]>([]);
+  // What each form calls its fields (and itself). Resolved server-side from the definition as it is
+  // NOW, so renaming a label fixes every lead already in here rather than only the next one.
+  const [forms, setForms] = useState<Record<string, { name: string; labels: Record<string, string> }>>({});
   const [total, setTotal] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +43,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
       if (!isActive()) return;
       setItems(res.items);
       setTotal(res.total);
+      setForms(res.forms ?? {});
       setUndelivered(owed);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load submissions');
@@ -112,7 +116,9 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                   aria-label={`${open ? 'Collapse' : 'Expand'} submission from ${s.formId}`}
                   onClick={() => setOpenId(open ? null : s.id)}
                 >
-                  {!formId && <code className="text-xs text-slate-400 dark:text-slate-500">{s.formId}</code>}{!formId && ' '}
+                  {!formId && (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">{forms[s.formId]?.name ?? s.formId}</span>
+                  )}{!formId && ' '}
                   <span className="text-slate-700 dark:text-slate-200">{summary.slice(0, 80)}</span>
                   <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{new Date(s.createdAt).toLocaleString()}</span>
                 </button>
@@ -138,14 +144,29 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                   Delete
                 </button>
               </div>
+              {/* The label column is wider than it was for raw names — "Pickup Date in Windhoek"
+                  needs room that `arrival_date` did not — but capped, so a long one cannot squeeze
+                  the value it belongs to. */}
               {open && (
-                <dl className="mt-3 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 border-t border-slate-100 dark:border-white/10 pt-3 text-xs">
-                  {Object.entries(s.fields).map(([k, v]) => (
-                    <div key={k} className="contents">
-                      <dt className="font-mono text-slate-500 dark:text-slate-400">{k}</dt>
-                      <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
-                    </div>
-                  ))}
+                <dl className="mt-3 grid grid-cols-[minmax(8rem,14rem)_1fr] gap-x-3 gap-y-1 border-t border-slate-100 dark:border-white/10 pt-3 text-xs">
+                  {Object.entries(s.fields).map(([k, v]) => {
+                    // No label → the field is not in the definition (what a hand-authored page posts
+                    // beyond it). Those keys stay MONOSPACE: they are the raw name, and dressing one
+                    // up as prose would hide which are the author's words and which are the wiring.
+                    // The raw name stays reachable on hover either way.
+                    const label = forms[s.formId]?.labels?.[k];
+                    return (
+                      <div key={k} className="contents">
+                        <dt
+                          className={`${label ? '' : 'font-mono '}text-slate-500 dark:text-slate-400`}
+                          title={label ? k : undefined}
+                        >
+                          {label ?? k}
+                        </dt>
+                        <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
+                      </div>
+                    );
+                  })}
                 </dl>
               )}
             </li>

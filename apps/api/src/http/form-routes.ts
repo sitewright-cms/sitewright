@@ -67,6 +67,23 @@ async function loadForm(db: Database, projectId: string, formId: string): Promis
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * Every form definition in a project, keyed by id — the inbox lists submissions across forms, so it
+ * needs them all rather than one at a time. A row whose stored data no longer parses is skipped: a
+ * definition that has drifted is a reason to show raw keys for THAT form, not to fail the inbox.
+ */
+async function loadForms(db: Database, projectId: string): Promise<Form[]> {
+  if (projectId.length > 64) return [];
+  const rows = await db
+    .select()
+    .from(content)
+    .where(and(eq(content.projectId, projectId), eq(content.kind, 'form')));
+  return rows.flatMap((row) => {
+    const parsed = FormSchema.safeParse(row.data);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
 interface ParsedSubmission {
   fields: Record<string, string>;
   honeypotFilled: boolean;
@@ -395,7 +412,18 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         limit: q.limit ? Number(q.limit) : undefined,
         offset: q.offset ? Number(q.offset) : undefined,
       });
-      return reply.send(result);
+      // A submission is stored keyed by input `name`, which is wiring. The inbox is the other place a
+      // person READS a lead — the email already resolves these — so send what each form calls its
+      // fields alongside, resolved from the definition as it is NOW rather than frozen into the row:
+      // renaming a label should fix every lead already sitting here, not only the next one.
+      // Keyed by form id, so a cross-form list carries each set once instead of per row.
+      const defs = await loadForms(db, project.id);
+      const forms = Object.fromEntries(
+        defs
+          .filter((f) => !q.formId || f.id === q.formId)
+          .map((f) => [f.id, { name: f.name, labels: submissionLabels(f.fields) }]),
+      );
+      return reply.send({ ...result, forms });
     },
   );
 

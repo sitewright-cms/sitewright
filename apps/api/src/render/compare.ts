@@ -19,6 +19,7 @@ import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } 
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
 import { BEHAVIOUR_PROBE, CLIP_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
 import { clampShotForModel } from './mcp-image.js';
+import { clampImageForModel } from '@sitewright/image-pipeline';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts } from './clone-audit.js';
 
@@ -382,7 +383,18 @@ export async function captureUrlRegions(
         const png = await page.screenshot({ type: 'png', clip }).catch(() => null);
         if (!png) continue;
         const w = await pngToLosslessWebp(png).catch(() => null);
-        if (w) out[name] = { base64: w.buffer.toString('base64'), mimeType: 'image/webp', width: w.width, height: w.height };
+        if (!w) continue;
+        // CLAMP TO THE MODEL'S DIMENSION LIMIT. The height cap above bounds the PAYLOAD, which is a
+        // different constraint and the only one this code originally had in mind: at deviceScaleFactor
+        // 2 a 1500 CSS-px crop is 3000 PHYSICAL px, and a full-width crop at the 1440 viewport is 2880.
+        // Both are over the 2000px ceiling a many-image request enforces, and going over does not
+        // degrade the response — it REJECTS the whole request and ends the session, unrecoverably,
+        // because the agent cannot know which earlier tool result was the poison. That killed one
+        // agent in run 4 (at turn 124, $18.82 in) and another in run 5 (turn 119, 41.7 min, $17.63),
+        // the second AFTER the fix that only ever covered `captureUrlShots`.
+        const capped = await clampImageForModel(w.buffer, w.width, w.height, { format: 'webp' });
+        const shot = capped ?? w;
+        out[name] = { base64: shot.buffer.toString('base64'), mimeType: 'image/webp', width: shot.width, height: shot.height };
       }
       return out;
     } finally {

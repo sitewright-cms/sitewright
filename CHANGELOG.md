@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.12.4] — 2026-08-03
+
+### Fixed
+
+- **`fidelity_check` was scoring a blank page as a 0% clone.** It returned `coverage: 0` on three of six
+  real projects and the clones were fine in every case — the capture was not, and nothing said so.
+  `settlePage` scrolls a page top-to-bottom for lazy content and comes back with `window.scrollTo(0, 0)`,
+  which is a no-op on a preview page (it scrolls its BODY); the freeze step then removes that overflow so
+  a full-page shot isn't clipped, and the document becomes the scroller carrying the offset the body was
+  left at. Measured in the container: `documentElement.scrollTop` 4228 with `window.scrollY` reading 0,
+  the first heading at `top:-3516`, and 39 extractable elements collapsing to 1 — reported as a clone
+  that matched nothing. The reset now runs after the overflow changes and covers whichever element
+  actually scrolls. Two projects went 0% → 100%, and chrome coverage came back with them.
+- **A failed capture no longer reads as a score.** The element capture swallowed every error into an
+  empty result — deliberately, so the gate degrades rather than throwing, but it made a broken render
+  indistinguishable from a clone that reproduced nothing. That is what the bug above hid behind for six
+  clone runs, and an agent reading `coverage: 0` concluded the tool was structurally incompatible with
+  its job and stopped using it. `fidelity_check` now returns a `capture` field naming the side that could
+  not be looked at, including the merely empty case, since a real page always yields some heading or
+  link. A gate is allowed to fail a page; it is not allowed to say "you scored 0" when it means "I could
+  not look".
+
 ## [0.12.3] — 2026-08-03
 
 ### Fixed

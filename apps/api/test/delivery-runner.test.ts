@@ -246,6 +246,73 @@ describe('undelivered summary and resend', () => {
     expect(await repo.requeue(projectId, id)).toBe(true);
   });
 
+  it('★ REFUSES to requeue a row a runner is mid-attempt on, whichever attempt it is', async () => {
+    // The hole the first version of this guard left. It inferred "in flight" from
+    // `attempts === 0 && error === null`, which describes only the FIRST attempt — a row on its
+    // third retry, currently being sent, looks exactly like one merely backing off: both `pending`,
+    // both with a future next-attempt time, both carrying the previous error. Clicking Resend on
+    // one cleared the lease and the next pass sent it again, to the same customer.
+    const id = await pending();
+    // Due in REAL time: `requeue` reads the wall clock, so a fixture built on the fixed NOW constant
+    // (which is years ahead of it) would never even be claimable and the test would prove nothing.
+    await repo.recordDelivery(id, { state: 'pending', attempts: 2, nextAt: new Date(Date.now() - 1000), error: 'down twice' });
+
+    // A runner claims it and is now inside send().
+    const [claimed] = await repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1);
+    expect(claimed?.id).toBe(id);
+
+    expect(await repo.requeue(projectId, id)).toBe(false);
+    // The lease is intact, so no second pass can take it while the first is still working.
+    expect(await repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1)).toEqual([]);
+  });
+
+  it('a STALE claim does not block recovery — the holder died', async () => {
+    // The counterpart: if the claim could never expire, a process killed mid-send would leave a row
+    // no operator could ever resend.
+    const id = await pending();
+    // Due BEFORE the moment of the claim, or the claim never happens and this proves nothing.
+    await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(Date.now() - DELIVERY_LEASE_MS - 5000), error: 'down' });
+    // Claimed a full lease ago by a process that then died.
+    const [claimed] = await repo.claimDue(new Date(Date.now() - DELIVERY_LEASE_MS - 1000), DELIVERY_LEASE_MS, 1);
+    expect(claimed?.id).toBe(id); // the claim really happened — otherwise this proves nothing
+    expect(await repo.requeue(projectId, id)).toBe(true);
+  });
+
+  it('a recorded outcome releases the claim, so the row is requeueable again', async () => {
+    const id = await pending();
+    await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(Date.now() - 1000), error: 'down' });
+    const [claimed] = await repo.claimDue(new Date(Date.now()), DELIVERY_LEASE_MS, 1);
+    expect(claimed?.id).toBe(id);
+    expect(await repo.requeue(projectId, id)).toBe(false); // held
+    await repo.recordDelivery(id, { state: 'pending', attempts: 1, nextAt: new Date(NOW + 60_000), error: 'down' });
+    expect(await repo.requeue(projectId, id)).toBe(true); // released
+  });
+
+  it('★ a database error while recording does not abandon the rest of the pass', async () => {
+    // Bookkeeping can fail on its own. When it does, the row must stay leased (it becomes due again
+    // by itself) and the remaining rows must still be attempted — an escaping exception used to
+    // take down every row after it in that tick.
+    await pending();
+    await pending();
+    const realRecord = repo.recordDelivery.bind(repo);
+    let first = true;
+    repo.recordDelivery = async (id, outcome) => {
+      if (first) {
+        first = false;
+        throw new Error('SQLITE_BUSY: database is locked');
+      }
+      return realRecord(id, outcome);
+    };
+    const result = await runDueDeliveries({
+      submissions: repo,
+      resolveMail: resolver(async () => { throw new Error('down'); }),
+      now: () => NOW + DELIVERY_LEASE_MS * 2,
+      limit: 5,
+    });
+    repo.recordDelivery = realRecord;
+    expect(result.attempted).toBe(2); // BOTH rows were attempted, not just the one before the fault
+  });
+
   it('refuses to requeue a submission that was never owed an email', async () => {
     const s = await repo.create(projectId, 'contact', { email: 'x@y.z' }, { owesEmail: false });
     expect(await repo.requeue(projectId, s.id)).toBe(false);

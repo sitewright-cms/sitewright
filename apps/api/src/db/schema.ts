@@ -608,6 +608,16 @@ export const formSubmissions = sqliteTable(
     deliveryNextAt: integer('delivery_next_at', { mode: 'timestamp_ms' }),
     /** Last failure, already sanitized by describeDeliveryFailure — safe to show an operator. */
     deliveryError: text('delivery_error'),
+    /**
+     * When something started ATTEMPTING this delivery, or null when nothing holds it.
+     *
+     * An explicit marker because it cannot be inferred: `deliveryNextAt` is in the future both for a
+     * row a runner has claimed AND for one merely backing off, and `pending` covers both too. Set by
+     * the request handler at creation (it sends inline, so it is the first claimant) and by every
+     * runner claim; cleared whenever an outcome is recorded. A claim older than the lease is stale —
+     * the process holding it died — and may be taken over.
+     */
+    deliveryClaimedAt: integer('delivery_claimed_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     index('form_submissions_project_created_idx').on(t.projectId, t.createdAt),

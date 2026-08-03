@@ -135,7 +135,31 @@ function describeFallback(err: unknown): string {
 }
 
 
+/**
+ * Records a failed attempt, and never throws.
+ *
+ * Bookkeeping can fail on its own (a transient database error), and when it does the right outcome
+ * is to leave the row exactly as `claimDue` left it — leased, so it becomes due again by itself —
+ * rather than to let the exception escape and abandon the REST of the pass. An earlier version
+ * protected only the success path, so a database blip while recording a failure took down every
+ * remaining row in that tick with a message that did not even name the submission.
+ */
 async function recordFailure(
+  deps: DeliveryRunnerDeps,
+  row: DueDelivery,
+  attempts: number,
+  now: number,
+  error: string,
+  result: DeliveryRunResult,
+): Promise<void> {
+  try {
+    await recordFailureInner(deps, row, attempts, now, error, result);
+  } catch (err) {
+    deps.log?.('could not record a failed delivery attempt', { id: row.id, err: String(err) });
+  }
+}
+
+async function recordFailureInner(
   deps: DeliveryRunnerDeps,
   row: DueDelivery,
   attempts: number,

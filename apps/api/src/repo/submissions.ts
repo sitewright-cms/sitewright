@@ -57,7 +57,13 @@ export class SubmissionRepository {
       // get the notification twice. Holding it back by one lease covers the transport's own worst
       // case (10s connect + 10s greeting + 15s socket) and still self-heals: if the process dies
       // mid-request, the row simply becomes due when the lease expires.
-      ...(opts.owesEmail ? { deliveryNextAt: new Date(now.getTime() + DELIVERY_LEASE_MS) } : {}),
+      ...(opts.owesEmail
+        ? {
+            deliveryNextAt: new Date(now.getTime() + DELIVERY_LEASE_MS),
+            // The request handler sends inline, so it holds the claim until it records an outcome.
+            deliveryClaimedAt: now,
+          }
+        : {}),
     });
     return submission;
   }
@@ -73,19 +79,21 @@ export class SubmissionRepository {
   ): Promise<void> {
     const values =
       outcome.state === 'sent' || outcome.state === 'abandoned'
-        ? { deliveryState: outcome.state, deliveryNextAt: null, deliveryError: null }
+        ? { deliveryState: outcome.state, deliveryNextAt: null, deliveryError: null, deliveryClaimedAt: null }
         : outcome.state === 'pending'
           ? {
               deliveryState: 'pending' as const,
               deliveryAttempts: outcome.attempts,
               deliveryNextAt: outcome.nextAt,
               deliveryError: outcome.error,
+              deliveryClaimedAt: null, // the attempt concluded; nothing holds it now
             }
           : {
               deliveryState: 'failed' as const,
               deliveryAttempts: outcome.attempts,
               deliveryNextAt: null,
               deliveryError: outcome.error,
+              deliveryClaimedAt: null,
             };
     await this.db.update(formSubmissions).set(values).where(eq(formSubmissions.id, id));
   }
@@ -121,7 +129,7 @@ export class SubmissionRepository {
     if (rows.length === 0) return [];
     await this.db
       .update(formSubmissions)
-      .set({ deliveryNextAt: new Date(now.getTime() + leaseMs) })
+      .set({ deliveryNextAt: new Date(now.getTime() + leaseMs), deliveryClaimedAt: now })
       .where(inArray(formSubmissions.id, rows.map((r) => r.id)));
     return rows.map((r) => ({
       id: r.id,
@@ -164,32 +172,31 @@ export class SubmissionRepository {
    */
   async requeue(projectId: string, id: string): Promise<boolean> {
     const [row] = await this.db
-      .select({
-        state: formSubmissions.deliveryState,
-        attempts: formSubmissions.deliveryAttempts,
-        error: formSubmissions.deliveryError,
-      })
+      .select({ state: formSubmissions.deliveryState, claimedAt: formSubmissions.deliveryClaimedAt })
       .from(formSubmissions)
       .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
     if (!row) return false;
     // Accepting `sent` would let one click re-email a lead that already arrived. `na` was never owed.
     if (row.state === 'sent' || row.state === 'na') return false;
-    // ★ AND: refuse a row whose FIRST attempt has not resolved yet.
+    // ★ AND: refuse while something is ACTIVELY ATTEMPTING this row, whichever attempt it is on.
     //
-    // A brand-new submission is `pending` from the moment it is stored, while the request handler is
-    // still performing its own inline send — that attempt holds no lease, so `create()` holds the row
-    // back by one instead. Requeueing clears that hold, and the next pass then sends a message the
-    // request is in the middle of sending: the customer gets it twice. `pending` alone cannot tell
-    // "in flight" from "failed and backing off"; a recorded attempt or a recorded error can, because
-    // both are written only after an attempt has concluded.
+    // Requeueing clears the next-attempt time so the row is due immediately. Do that to a row a
+    // sender currently holds and the next pass sends the message that sender is still sending — the
+    // customer gets it twice. An earlier version inferred "in flight" from `attempts === 0 &&
+    // error === null`, which only ever described the FIRST attempt; a row on its third retry, mid
+    // send, looks exactly like one merely backing off (both `pending`, both with a future
+    // `deliveryNextAt`, both carrying the previous error). Nothing about those fields can tell them
+    // apart, which is why the claim is recorded explicitly instead.
+    //
+    // A claim older than the lease is stale — the holder died — so it must NOT block recovery.
     //
     // `abandoned` is deliberately requeueable: it is settled, not delivered, so an operator who has
     // just switched a form's mode back has a way to recover the notification. If it is still not
-    // platform-routed the next pass simply abandons it again.
-    if (row.state === 'pending' && row.attempts === 0 && row.error === null) return false;
+    // platform-routed the next pass simply settles it again.
+    if (row.claimedAt !== null && Date.now() - row.claimedAt.getTime() < DELIVERY_LEASE_MS) return false;
     await this.db
       .update(formSubmissions)
-      .set({ deliveryState: 'pending', deliveryAttempts: 0, deliveryNextAt: null, deliveryError: null })
+      .set({ deliveryState: 'pending', deliveryAttempts: 0, deliveryNextAt: null, deliveryError: null, deliveryClaimedAt: null })
       .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
     return true;
   }

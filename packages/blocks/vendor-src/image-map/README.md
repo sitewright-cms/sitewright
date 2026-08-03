@@ -38,6 +38,7 @@ future re-vendor restores one, the suite fails rather than the customer's site.
 | `eval()` of a hotspot's `actions.script` (`run-script` click action) | Tenants supply data, never JavaScript. The published CSP is `default-src 'self'` with no `unsafe-eval`. |
 | `loadCustomCode()` — injected the config's `custom_js` as a `<script>` and `custom_css` as a `<style>` into `<body>` | Same invariant. The `custom_code` config key went with it. |
 | `onclick="${options.script}"` on a tooltip **Button** | The third execution path, and the easiest to miss — inline JavaScript from the config, rendered into an attribute. A tooltip button is a link. |
+| An unrestricted `svg.tagName` / `svg.properties` on an **svg hotspot** | The fourth, and the least visible: the renderer *constructs* an element (`createElementNS(ns, tagName)` + `setAttribute(p.name, p.value)`), so `tagName: "script"` builds an executable SVG script element and `{name:"onload"}` sets a handler. Structured data, so no markup sanitizer would ever look at it. Both are allowlisted now — see below. |
 | `window.ImageMapPro` — instances, `subscribe`/`trigger`, and a dozen imperative helpers | A published site runs no tenant JS on the document origin, so nothing could call it. Replaced by module-scoped `src/runtime.js`. |
 | `window.print = window.debug` + the mobile debug console | Upstream's entry overwrote `window.print()` on every page carrying the runtime. |
 | `functionsDeprecated.js`, `hooksDeprecated.js` — the jQuery bridge | No jQuery on Sitewright sites. |
@@ -96,6 +97,29 @@ Bugs found while porting. Each is a real defect in upstream, not a platform adap
 - **Object titles reached the DOM as `innerHTML`** — in the object list, the artboard headings and
   text objects. All three are `textContent` now; a title is a string, not markup.
 
+## CSS built from config
+
+Every object renderer builds its stylesheet by string concatenation and assigns it to
+`stylesheet.innerHTML`, interpolating ~25 config values on the way. A value carrying `;` or `}`
+therefore closes its declaration AND its rule, and everything after it is new CSS applied to the
+whole page — enough to hide content, deface it, or fetch a tracking pixel through `url()`. Not
+script execution, but not nothing, and the style bags are pass-through by design (the runtime owns
+their defaults) so nothing upstream constrains them.
+
+Four escapes in `shared/utilities.js`, applied at every such interpolation:
+
+| helper | for |
+| --- | --- |
+| `safeCssValue` | any declaration value — strips `;{}<>\`, `url(`, `expression(`, `@import` |
+| `safeCssFilter` | a `filter: name(value)` term — the NAME is a function, so it is allowlisted |
+| `safeCssIdent` | an id that lands in a SELECTOR (`[data-object-id="…"] {`) |
+| `safeCssUrl` | a background image — scheme-checked and quoted, since `safeCssValue` strips `url(` |
+
+The breakout that motivated this was real and found by probing: `filter.name` of
+`blur) } body { … } .z { x:(` escaped the rule entirely. A blanket escape rather than a
+per-property allowlist is deliberate — the per-property approach is how four earlier holes in this
+fork were missed.
+
 ## The tooltip content builders
 
 `tooltip_content` blocks (Heading / Paragraph / Image / Button / Video / YouTube) are assembled as
@@ -113,18 +137,31 @@ hole in the runtime — and the one nearest to looking harmless. All of it is cl
 A config that attempts all of those at once is exercised in the scratchpad probe
 (`tooltip-xss.mjs`) and each removal is asserted in `test/image-map.test.ts`.
 
-### Still to do server-side
+### The server-side half
 
-Two values remain deliberately unescaped, because being markup is their purpose:
+Three config values stay markup by design, because being markup is their purpose:
 
 - a block's `text` (rich text: bold, links), and the YouTube block's `embedCode` (an `<iframe>`);
 - `UI/objects/svgSingle.js` — `element.innerHTML = options.svg.html`, an imported SVG region.
 
-Neither is reachable by a site VISITOR; both come from the map config, which only an authenticated
-editor or agent can write. They should nonetheless be sanitised, and the right layer is
-**server-side**: the config passes through a Zod schema on write and the render path on read, where
-`sanitize-html` is already a dependency. Sanitising once there beats shipping a sanitiser to every
-browser. Do not treat these two as safe until that lands.
+None is reachable by a site VISITOR — all come from the map config, which only an authenticated
+editor or agent can write — but they are sanitised anyway, in **two** places:
+
+- **at render** (`image-map-embed.ts`), the sink that protects the published page, and
+- **at rest** (`ContentRepository.writeRow`), which is what protects everything that is *not* the
+  page renderer: the Studio reading a map back to edit it, `get_content` handing one to an agent, an
+  export shipping one to another instance. `writeRow` is the single low-level write, so `put()`, the
+  bundle import and a revision restore all pass through it.
+
+`text` and `embedCode` go through `sanitizeRichHtml` (https iframes survive, force-sandboxed);
+`svg.html` through the audited `sanitizeSvg`. The **`svg.tagName` / `svg.properties` construction
+path is allowlisted** in both the server (`SVG_SHAPE_TAGS` / `SVG_SHAPE_ATTRS` in
+`@sitewright/schema`) and the runtime (`UI/objects/svg.js`, whose copies the test suite pins to the
+schema's, since a bundled runtime cannot import TypeScript). An unlisted tag degrades to an inert
+`<g>` rather than dropping the hotspot, so a bad value never silently removes content.
+
+Every bundled template survives all of this byte-for-byte — education alone keeps its 396 elements
+and 791 attributes — and the pass is idempotent, so a re-save never degrades a map.
 
 ## Authoring contract
 

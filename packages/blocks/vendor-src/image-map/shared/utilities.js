@@ -585,6 +585,71 @@ export function escapeHtml(text) {
     .replace(/'/g, '&#39;')
 }
 
+/**
+ * A config value made safe to interpolate into a CSS declaration.
+ *
+ * The object renderers build their stylesheet by string concatenation and assign it to
+ * `stylesheet.innerHTML`. A value carrying `;` or `}` therefore CLOSES its declaration and its
+ * rule, and everything after it becomes new CSS applied to the whole page — enough to hide
+ * content, deface it, or fetch a tracking pixel through `url()`. The style bags are deliberately
+ * pass-through in the schema (the runtime owns their defaults), so nothing upstream constrains
+ * them; this is the boundary.
+ *
+ * Allowlisting each property would be the fragile version — there are ~25 of them here and the
+ * next one added would silently miss the check.
+ */
+export function safeCssValue(value) {
+  if (value === null || value === undefined) return ''
+  return String(value)
+    .replace(/[;{}<>\\]/g, '')
+    .replace(/url\s*\(/gi, '')
+    .replace(/expression\s*\(/gi, '')
+    .replace(/@import/gi, '')
+}
+
+/**
+ * An object id safe to put inside a CSS attribute selector.
+ *
+ * `[data-object-id="${options.id}"] {` interpolates a config value into a SELECTOR — an id
+ * containing `"] { … } .x {` closes the selector and opens a rule of its own. Ids are generated
+ * (uuid-ish) in practice, so restricting them to word characters costs nothing.
+ */
+export function safeCssIdent(value) {
+  return String(value ?? '').replace(/[^\w-]/g, '')
+}
+
+/**
+ * A background-image `url(...)` term, or '' when the URL is not one we will emit.
+ *
+ * safeCssValue deliberately strips `url(`, so a legitimate background image needs its own path:
+ * the URL is scheme-checked (safeLinkUrl) and then QUOTED, and any quote or paren inside it is
+ * removed so it cannot close the function early.
+ */
+export function safeCssUrl(value) {
+  const url = safeLinkUrl(value)
+  if (!url) return ''
+  return `url("${url.replace(/["'()\\]/g, '')}")`
+}
+
+/** CSS filter functions a style bag may name. A filter NAME is a function, so it is allowlisted. */
+const CSS_FILTERS = [
+  'blur', 'brightness', 'contrast', 'drop-shadow', 'grayscale',
+  'hue-rotate', 'invert', 'opacity', 'saturate', 'sepia',
+]
+
+/**
+ * One `filter: name(value)` term from a style bag, or '' when the name is not a real filter.
+ *
+ * `${filter.name}(${filter.value})` was the breakout found in testing: a name of
+ * `blur) } body { … } .z { x:(` escapes the rule entirely.
+ */
+export function safeCssFilter(filter) {
+  if (!filter || typeof filter !== 'object') return ''
+  const name = String(filter.name ?? '')
+  if (!CSS_FILTERS.includes(name)) return ''
+  return `${name}(${safeCssValue(filter.value)}) `
+}
+
 /** The tag a Heading block may render as. Anything else falls back to h3. */
 const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div']
 

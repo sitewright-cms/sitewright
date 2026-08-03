@@ -257,3 +257,75 @@ describe('sanitizeImageMapConfig prototype safety', () => {
     expect(({} as Record<string, unknown>).nested).toBeUndefined();
   });
 });
+
+describe('sanitizeImageMapConfig — the svg hotspot CONSTRUCTION path', () => {
+  // ★ Not a markup string: the runtime does createElementNS(ns, svg.tagName) and then
+  // setAttribute(p.name, p.value) per property, so the config picks the element and every attribute
+  // NAME. No markup sanitizer would ever look at these — they are structured data that becomes DOM.
+  const spec = (svg: Record<string, unknown>) =>
+    (sanitizeImageMapConfig({ artboards: [{ children: [{ type: 'svg', svg }] }] }) as {
+      artboards: Array<{ children: Array<{ svg: { tagName?: string; properties?: Array<{ name: string }> } }> }>;
+    }).artboards[0]!.children[0]!.svg;
+
+  it('degrades an executable tag to an inert group rather than building it', () => {
+    expect(spec({ tagName: 'script', properties: [] }).tagName).toBe('g');
+    expect(spec({ tagName: 'foreignObject', properties: [] }).tagName).toBe('g');
+    expect(spec({ tagName: 'a', properties: [] }).tagName).toBe('g');
+    // Degrade, not delete: a bad tag must never silently remove content from the map.
+    expect(spec({ tagName: 'script', properties: [] })).toHaveProperty('tagName');
+  });
+
+  it('drops every attribute outside the allowlist, handlers included', () => {
+    const out = spec({
+      tagName: 'path',
+      properties: [
+        { name: 'd', value: 'M0 0 L1 1' },
+        { name: 'onload', value: 'x()' },
+        { name: 'onclick', value: 'x()' },
+        { name: 'href', value: 'javascript:x()' },
+        { name: 'xlink:href', value: 'javascript:x()' },
+      ],
+    });
+    expect(out.properties?.map((p) => p.name)).toEqual(['d']);
+  });
+
+  it('keeps the geometry and presentation a real region needs', () => {
+    const out = spec({
+      tagName: 'path',
+      properties: [
+        { name: 'd', value: 'M1 1 L9 9 Z' },
+        { name: 'fill-rule', value: 'evenodd' },
+        { name: 'id', value: 'keep-me' },
+        { name: 'transform', value: 'translate(2,2)' },
+      ],
+    });
+    expect(out.tagName).toBe('path');
+    expect(out.properties?.map((p) => p.name)).toEqual(['d', 'fill-rule', 'id', 'transform']);
+  });
+
+  it('drops a property whose value is not a string', () => {
+    const out = spec({ tagName: 'path', properties: [{ name: 'd', value: { evil: true } }, { name: 'd', value: 'M0 0' }] });
+    expect(out.properties).toHaveLength(1);
+  });
+
+  it('still sanitises the html of an svg-single region', () => {
+    const out = spec({ tagName: 'g', html: '<path d="M0 0"/><script>bad()</script>', properties: [] }) as { html: string };
+    expect(out.html).toContain('<path');
+    expect(out.html).not.toContain('<script');
+  });
+
+  it('is idempotent — sanitising a clean config changes nothing', () => {
+    const config = {
+      artboards: [
+        {
+          children: [
+            { type: 'svg', svg: { tagName: 'path', properties: [{ name: 'd', value: 'M0 0 L5 5' }] } },
+            { type: 'rect', tooltip_content: [{ type: 'Paragraph', text: '<b>Hi</b> <a href="/x">link</a>' }] },
+          ],
+        },
+      ],
+    };
+    const once = sanitizeImageMapConfig(config);
+    expect(sanitizeImageMapConfig(once)).toEqual(once);
+  });
+});

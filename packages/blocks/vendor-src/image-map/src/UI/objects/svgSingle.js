@@ -1,3 +1,4 @@
+import { safeCssValue, safeCssFilter } from 'imap-shared/utilities'
 import MapObject from 'imap/UI/objects/mapObject'
 
 export default class SVGSingle extends MapObject {
@@ -16,19 +17,19 @@ export default class SVGSingle extends MapObject {
   createCSSRules(styles) {
     let css = ``
 
-    css += `left: ${this.options.x}%;`
-    css += `top: ${this.options.y}%;`
-    css += `width: ${this.options.width}%;`
-    css += `height: ${this.options.height}%;`
+    css += `left: ${safeCssValue(this.options.x)}%;`
+    css += `top: ${safeCssValue(this.options.y)}%;`
+    css += `width: ${safeCssValue(this.options.width)}%;`
+    css += `height: ${safeCssValue(this.options.height)}%;`
 
-    css += `opacity: ${styles.opacity};`
+    css += `opacity: ${safeCssValue(styles.opacity)};`
 
     css += `filter: `
     for (let filter of styles.filters) {
-      css += `${filter.name}(${filter.value}) `
+      css += safeCssFilter(filter)
     }
     for (let filter of styles.parent_filters) {
-      css += `${filter.name}(${filter.value}) `
+      css += safeCssFilter(filter)
     }
     css += `; `
 

@@ -1,5 +1,5 @@
+import { hexToRgb, htmlToElement, safeCssFilter, safeCssValue } from 'imap-shared/utilities'
 import MapObject from 'imap/UI/objects/mapObject'
-import { htmlToElement, hexToRgb } from 'imap-shared/utilities'
 
 export default class Spot extends MapObject {
   constructor(options, store) {
@@ -45,17 +45,17 @@ export default class Spot extends MapObject {
   createCSSRules(styles) {
     let css = ''
 
-    css += `left: ${this.options.x}%;`
-    css += `top: ${this.options.y}%;`
+    css += `left: ${safeCssValue(this.options.x)}%;`
+    css += `top: ${safeCssValue(this.options.y)}%;`
 
     // The spot is an icon
     if (this.options.default_style.use_icon) {
-      css += `width: ${this.options.default_style.icon_size}px;`
-      css += `height: ${this.options.default_style.icon_size}px;`
+      css += `width: ${safeCssValue(this.options.default_style.icon_size)}px;`
+      css += `height: ${safeCssValue(this.options.default_style.icon_size)}px;`
 
       if (this.options.default_style.icon_type === 'library') {
         let color_fill = hexToRgb(styles.icon_fill) || { r: 0, b: 0, g: 0 }
-        css += `fill: rgba(${color_fill.r}, ${color_fill.g}, ${color_fill.b}, ${styles.opacity});`
+        css += `fill: rgba(${color_fill.r}, ${color_fill.g}, ${color_fill.b}, ${safeCssValue(styles.opacity)});`
       }
 
       let marginLeft = 0
@@ -79,26 +79,26 @@ export default class Spot extends MapObject {
 
     // The spot is not an icon
     if (!this.options.default_style.use_icon) {
-      css += `width: ${this.options.width}px;`
-      css += `height: ${this.options.height}px;`
+      css += `width: ${safeCssValue(this.options.width)}px;`
+      css += `height: ${safeCssValue(this.options.height)}px;`
 
       let color_bg = hexToRgb(styles.background_color) || { r: 0, b: 0, g: 0 }
       let color_border = hexToRgb(styles.border_color) || { r: 0, b: 0, g: 0 }
 
-      css += `opacity: ${styles.opacity};`
-      css += `border-radius: ${styles.border_radius}px;`
-      css += `background: rgba(${color_bg.r}, ${color_bg.g}, ${color_bg.b}, ${styles.background_opacity});`
-      css += `border-width: ${styles.border_width}px;`
-      css += `border-style: ${styles.border_style};`
-      css += `border-color: rgba(${color_border.r}, ${color_border.g}, ${color_border.b}, ${styles.border_opacity});`
+      css += `opacity: ${safeCssValue(styles.opacity)};`
+      css += `border-radius: ${safeCssValue(styles.border_radius)}px;`
+      css += `background: rgba(${color_bg.r}, ${color_bg.g}, ${color_bg.b}, ${safeCssValue(styles.background_opacity)});`
+      css += `border-width: ${safeCssValue(styles.border_width)}px;`
+      css += `border-style: ${safeCssValue(styles.border_style)};`
+      css += `border-color: rgba(${color_border.r}, ${color_border.g}, ${color_border.b}, ${safeCssValue(styles.border_opacity)});`
 
-      css += `margin-top: ${(-this.options.width / 2)}px;`
-      css += `margin-left: ${(-this.options.height / 2)}px;`
+      css += `margin-top: ${(-safeCssValue(this.options.width) / 2)}px;`
+      css += `margin-left: ${(-safeCssValue(this.options.height) / 2)}px;`
     }
 
     css += `filter: `
     for (let filter of styles.parent_filters) {
-      css += `${filter.name}(${filter.value}) `
+      css += safeCssFilter(filter)
     }
     css += `;`
 

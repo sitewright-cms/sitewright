@@ -1,3 +1,4 @@
+import { safeCssIdent, safeCssUrl, safeCssValue } from 'imap-shared/utilities'
 import * as editorConsts from 'imap-shared/consts'
 
 export default class MapObject {
@@ -47,10 +48,13 @@ export default class MapObject {
 
     // If the object has an image background
     if (this.options.default_style.background_type === 'image') {
-      css += `#sw-imap-image-backgrounds-${this.store.getID()} [data-object-id="${this.options.id}"] {`
-      css += `background-image: url(${this.options.default_style.background_image_url});`
-      css += `opacity:${this.options.default_style.background_image_opacity};`
-      css += `transform: scale(${this.options.default_style.background_image_scale}) translate(${this.options.default_style.background_image_offset_x}px, ${this.options.default_style.background_image_offset_y}px);`
+      // Every interpolation here is config: the id lands in a SELECTOR, the url in a url() that
+      // safeCssValue would otherwise strip, and the rest in ordinary declarations.
+      css += `#sw-imap-image-backgrounds-${safeCssIdent(this.store.getID())} [data-object-id="${safeCssIdent(this.options.id)}"] {`
+      const bg = safeCssUrl(this.options.default_style.background_image_url)
+      if (bg) css += `background-image: ${bg};`
+      css += `opacity:${safeCssValue(this.options.default_style.background_image_opacity)};`
+      css += `transform: scale(${safeCssValue(this.options.default_style.background_image_scale)}) translate(${safeCssValue(this.options.default_style.background_image_offset_x)}px, ${safeCssValue(this.options.default_style.background_image_offset_y)}px);`
       css += `}`
     }
 

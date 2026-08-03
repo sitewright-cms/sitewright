@@ -1,4 +1,4 @@
-import { hexToRgb, getElementRect } from 'imap-shared/utilities'
+import { getElementRect, hexToRgb, safeCssFilter, safeCssValue } from 'imap-shared/utilities'
 
 import MapObject from 'imap/UI/objects/mapObject'
 
@@ -18,16 +18,16 @@ export default class Text extends MapObject {
     let css = ''
     let c = hexToRgb(this.options.text.text_color)
 
-    css += 'left: ' + this.options.x + '%;'
-    css += 'top: ' + this.options.y + '%;'
-    css += 'font-family: ' + this.options.text.font_family + ';'
-    css += 'font-size: ' + this.options.text.font_size + 'px;'
-    css += 'font-weight: ' + this.options.text.font_weight + ';'
-    css += 'color: rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + this.options.text.text_opacity + ');'
+    css += 'left: ' + safeCssValue(this.options.x) + '%;'
+    css += 'top: ' + safeCssValue(this.options.y) + '%;'
+    css += 'font-family: ' + safeCssValue(this.options.text.font_family) + ';'
+    css += 'font-size: ' + safeCssValue(this.options.text.font_size) + 'px;'
+    css += 'font-weight: ' + safeCssValue(this.options.text.font_weight) + ';'
+    css += 'color: rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + safeCssValue(this.options.text.text_opacity) + ');'
 
     css += `filter: `
     for (let filter of styles.parent_filters) {
-      css += `${filter.name}(${filter.value}) `
+      css += safeCssFilter(filter)
     }
     css += `;`
 

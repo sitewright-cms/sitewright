@@ -1,4 +1,4 @@
-import { deepExtend, escapeHtml, headingTag, isNumber } from 'imap-shared/utilities'
+import { deepExtend, escapeHtml, headingTag, isNumber, safeCssValue } from 'imap-shared/utilities'
 import { tooltipContentDefaults } from 'imap/scripts/defaults'
 
 export default class Heading {
@@ -30,9 +30,9 @@ export default class Heading {
     `
 
     if (isNumber(this.options.style.lineHeight)) {
-      css += `line-height: ${this.options.style.lineHeight}px;`
+      css += `line-height: ${safeCssValue(this.options.style.lineHeight)}px;`
     } else {
-      css += `line-height: ${this.options.style.lineHeight};`
+      css += `line-height: ${safeCssValue(this.options.style.lineHeight)};`
     }
 
     return css

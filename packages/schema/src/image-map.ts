@@ -44,6 +44,55 @@ const LinkSchema = z
     message: 'link scheme is not allowed (javascript:, data: and vbscript: cannot be linked to)',
   });
 
+/**
+ * SVG elements an `svg` hotspot may be BUILT from, and the attributes it may carry.
+ *
+ * ★ The runtime constructs these itself rather than parsing markup:
+ *
+ *     createElementNS(SVG_NS, options.svg.tagName)
+ *     for (const p of options.svg.properties) element.setAttribute(p.name, p.value)
+ *
+ * so the config chooses the element NAME and every attribute NAME. Unrestricted that is a code
+ * path, not data: `tagName: "script"` builds an executable SVG script element, and
+ * `{name: "onload", value: "…"}` sets an inline handler. It is the same hole as the tooltip
+ * Button's `onclick`, but structured — no markup-string sanitizer would ever see it.
+ *
+ * The allowlists below are the fix, applied at BOTH ends: sanitizeImageMapConfig strips anything
+ * outside them, and the runtime re-checks at the point of use (see UI/objects/svg.js, which pins
+ * itself to these lists in the test suite). Every bundled template uses only `path`/`polyline`
+ * with `d`/`id`/`fill-rule`/`points`, so nothing real is lost.
+ */
+export const SVG_SHAPE_TAGS = [
+  'path', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'line',
+  'g', 'defs', 'use', 'symbol', 'clipPath', 'mask',
+  'linearGradient', 'radialGradient', 'stop', 'pattern',
+  'text', 'tspan', 'title', 'desc',
+] as const;
+
+/**
+ * Attribute names an `svg` hotspot may set. Presentation + geometry only: no `on*` handler can
+ * appear because none is listed, and no `href` because a link inside a region has no purpose here
+ * and is the one remaining way an SVG attribute can carry a `javascript:` URL.
+ */
+export const SVG_SHAPE_ATTRS = [
+  'd', 'points', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height',
+  'transform', 'viewBox', 'preserveAspectRatio',
+  'fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap',
+  'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'clip-rule', 'clip-path',
+  'id', 'class', 'style', 'offset', 'stop-color', 'stop-opacity',
+  'gradientUnits', 'gradientTransform', 'patternUnits', 'spreadMethod',
+] as const;
+
+/** Is this a tag an `svg` hotspot may be built from? */
+export function isSvgShapeTag(tag: unknown): boolean {
+  return typeof tag === 'string' && (SVG_SHAPE_TAGS as readonly string[]).includes(tag);
+}
+
+/** Is this an attribute an `svg` hotspot may set? */
+export function isSvgShapeAttr(name: unknown): boolean {
+  return typeof name === 'string' && (SVG_SHAPE_ATTRS as readonly string[]).includes(name);
+}
+
 /** The tags a Heading block may render as — mirrors HEADING_TAGS in the runtime. */
 export const IMAGE_MAP_HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div'] as const;
 
@@ -147,7 +196,12 @@ export interface ImageMapObject {
   single_object?: boolean;
   parent_id?: string;
   points?: Array<{ x: number; y: number }>;
-  svg?: { html?: string; tagName?: string; viewBox?: string; properties?: unknown[] };
+  svg?: {
+    html?: string;
+    tagName?: (typeof SVG_SHAPE_TAGS)[number];
+    viewBox?: string;
+    properties?: Array<{ name: string; value: string }>;
+  };
   default_style?: Record<string, unknown>;
   mouseover_style?: Record<string, unknown>;
   tooltip?: Record<string, unknown>;
@@ -182,9 +236,15 @@ export const ImageMapObjectSchema: z.ZodType<ImageMapObject> = z.lazy(() =>
     svg: z
       .object({
         html: z.string().max(512 * 1024).optional(),
-        tagName: z.string().max(50).optional(),
+        // The ELEMENT the runtime builds — allowlisted; see SVG_SHAPE_TAGS for why this is not
+        // merely a style choice.
+        tagName: z.enum(SVG_SHAPE_TAGS).optional(),
         viewBox: z.string().max(200).optional(),
-        properties: z.array(z.unknown()).max(200).optional(),
+        // The attributes it sets. `name` is allowlisted for the same reason.
+        properties: z
+          .array(z.object({ name: z.string().max(100), value: z.string().max(64 * 1024) }).passthrough())
+          .max(200)
+          .optional(),
       })
       .partial()
       .optional(),

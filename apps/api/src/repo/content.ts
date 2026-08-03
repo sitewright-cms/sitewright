@@ -1,4 +1,5 @@
 import { newId } from '../id.js';
+import { sanitizeImageMapConfig } from '@sitewright/blocks';
 import { and, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -843,12 +844,20 @@ export class ContentRepository {
     data: unknown,
   ): Promise<void> {
     const now = new Date();
-    const scope = this.scopeForData(kind, data);
+    // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
+    // tooltip block's `text`, a YouTube block's `embedCode`, and an SVG region's `svg.html` — and
+    // the render sink already cleans them on the way OUT (image-map-embed.ts). Cleaning them on the
+    // way IN as well means the STORE is clean too, which matters for every consumer that isn't the
+    // page renderer: the Studio reads a map back to edit it, get_content hands one to an agent, and
+    // an export ships one to another instance. This is the single low-level write — put(), the
+    // bundle import and a revision restore all funnel through here — so no path can skip it.
+    const clean = kind === 'imagemap' ? sanitizeImageMapConfig(data) : data;
+    const scope = this.scopeForData(kind, clean);
     const existing = await this.row(exec, ctx, kind, entityId, scope);
     if (existing) {
       await exec
         .update(content)
-        .set({ data, updatedAt: now })
+        .set({ data: clean, updatedAt: now })
         .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
     } else {
       await exec.insert(content).values({
@@ -857,7 +866,7 @@ export class ContentRepository {
         kind,
         entityId,
         scope,
-        data,
+        data: clean,
         createdAt: now,
         updatedAt: now,
       });

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMPONENT_TYPES, componentAssets, componentTypesInSource } from '../src/components.js';
+import { SVG_SHAPE_ATTRS, SVG_SHAPE_TAGS } from '@sitewright/schema';
 import { IMAGE_MAP_RUNTIME_JS, IMAGE_MAP_VENDOR_CSS } from '../src/vendor/image-map-runtime.js';
 
 const vendorSrc = (rel: string) =>
@@ -176,5 +177,103 @@ describe('ImageMap runtime carries no upstream branding', () => {
 
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
+  });
+});
+
+describe('the svg-hotspot allowlists stay in step', () => {
+  // The runtime CONSTRUCTS an element from svg.tagName + svg.properties, so it re-checks both at
+  // the point of use rather than trusting the store. That means the list exists twice — once in
+  // @sitewright/schema (which the server sanitizes against) and once in the bundled runtime, which
+  // cannot import TypeScript. A drift between them is a hole in exactly one direction and would be
+  // invisible: the server would strip something the runtime still allows, or vice versa.
+  const source = vendorSrc('src/UI/objects/svg.js');
+  const listFrom = (name: string): string[] => {
+    const body = source.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\]`))?.[1];
+    if (!body) throw new Error(`${name} not found in svg.js`);
+    return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+  };
+
+  it('the runtime tag list equals SVG_SHAPE_TAGS', () => {
+    expect(listFrom('SHAPE_TAGS').sort()).toEqual([...SVG_SHAPE_TAGS].sort());
+  });
+
+  it('the runtime attribute list equals SVG_SHAPE_ATTRS', () => {
+    expect(listFrom('SHAPE_ATTRS').sort()).toEqual([...SVG_SHAPE_ATTRS].sort());
+  });
+
+  it('neither list admits a script element or an event handler', () => {
+    for (const tag of SVG_SHAPE_TAGS) expect(['script', 'foreignObject', 'a', 'animate', 'set', 'handler']).not.toContain(tag);
+    for (const attr of SVG_SHAPE_ATTRS) {
+      expect(attr.toLowerCase().startsWith('on'), attr).toBe(false);
+      expect(attr.toLowerCase().includes('href'), attr).toBe(false);
+    }
+  });
+
+  it('the built runtime really carries the guard, not just the source', () => {
+    // Distinctive allowlist members that appear nowhere else in the bundle — if the guard were
+    // dropped in a re-vendor these strings would go with it.
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('radialGradient');
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('preserveAspectRatio');
+    // And the EXCLUDED names are nowhere near it — the list is an allowlist, not a denylist.
+    expect(IMAGE_MAP_RUNTIME_JS).not.toContain('foreignObject');
+  });
+});
+
+describe('ImageMap runtime does not let a config escape its CSS rule', () => {
+  // The object renderers build their stylesheet by string concatenation and assign it to
+  // stylesheet.innerHTML, so a style value carrying `;` or `}` closes its declaration AND its rule
+  // — everything after it becomes CSS applied to the whole page. Not script execution, but enough
+  // to hide content, deface it, or fetch a tracking pixel through url(). The style bags are
+  // pass-through in the schema by design, so the runtime is the boundary.
+  const utils = vendorCode('shared/utilities.js');
+
+  it('strips the characters that end a declaration or a rule', () => {
+    expect(utils).toMatch(/export function safeCssValue/);
+    // ; { } < > and backslash all have to go for a value to be inert.
+    expect(utils).toMatch(/\[;\{\}<>\\\\\]/);
+  });
+
+  it('strips url(), expression() and @import, so a value cannot fetch anything', () => {
+    for (const gone of ['url', 'expression', '@import']) expect(utils).toContain(gone);
+    expect(utils).toMatch(/url\\s\*\\\(/);
+  });
+
+  it('allowlists filter FUNCTION names — the actual breakout found in testing', () => {
+    // `${filter.name}(${filter.value})` with a name of `blur) } body { … } .z { x:(` escapes the
+    // rule entirely, and a filter name is a function, so only an allowlist can hold it.
+    expect(utils).toMatch(/const CSS_FILTERS = \[/);
+    for (const f of ['blur', 'brightness', 'drop-shadow', 'grayscale', 'saturate']) {
+      expect(utils, f).toContain(`'${f}'`);
+    }
+  });
+
+  it('routes every CSS builder through the escapes, not a per-property allowlist', () => {
+    // The per-property approach is how four earlier holes were missed. Each renderer that builds
+    // CSS from a style bag must use the helpers.
+    for (const file of [
+      'src/UI/objects/rect.js',
+      'src/UI/objects/oval.js',
+      'src/UI/objects/poly.js',
+      'src/UI/objects/spot.js',
+      'src/UI/objects/text.js',
+      'src/UI/objects/svg.js',
+      'src/UI/objects/svgSingle.js',
+    ]) {
+      const code = vendorCode(file);
+      expect(code, `${file} escapes its values`).toContain('safeCssValue(');
+      // No raw interpolation of a style bag into a CSS string is left.
+      const cssLines = code.split('\n').filter((l) => l.includes('css +='));
+      for (const line of cssLines) {
+        const raw = line.match(/\$\{(?:this\.)?(?:options|styles)[^}]*\}/g) ?? [];
+        expect(raw, `${file}: ${line.trim()}`).toEqual([]);
+      }
+    }
+  });
+
+  it('the built runtime carries the escapes', () => {
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('drop-shadow');
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('hue-rotate');
+    // The filter loop no longer concatenates a raw name.
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/\$\{filter\.name\}/);
   });
 });

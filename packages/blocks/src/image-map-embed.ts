@@ -22,6 +22,7 @@ import { parseDocument } from 'htmlparser2';
 import { findAll, textContent } from 'domutils';
 import render from 'dom-serializer';
 import type { Element } from 'domhandler';
+import { isSvgShapeAttr, isSvgShapeTag } from '@sitewright/schema';
 import { sanitizeSvg } from '@sitewright/image-pipeline/svg';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { escapeAttr } from './escape.js';
@@ -71,6 +72,29 @@ export function sanitizeSvgFragment(html: string): string {
   return open === -1 || close === -1 || close < open ? '' : wrapped.slice(open + 1, close);
 }
 
+/**
+ * An `svg` hotspot's element spec, with anything the runtime must not build stripped.
+ *
+ * ★ This is NOT a markup string — the runtime does `createElementNS(ns, tagName)` and then
+ * `setAttribute(p.name, p.value)` for each property, so the config picks the element and every
+ * attribute NAME. `tagName: "script"` builds an executable SVG script element and
+ * `{name: "onload"}` sets an inline handler, and neither is a string a markup sanitizer would ever
+ * inspect. An out-of-list tag degrades to `g` (an inert group) rather than dropping the hotspot,
+ * so a bad value never silently removes content; out-of-list attributes are simply not set.
+ */
+function sanitizeSvgSpec(spec: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...spec };
+  if ('tagName' in out) out.tagName = isSvgShapeTag(out.tagName) ? out.tagName : 'g';
+  if (Array.isArray(out.properties)) {
+    out.properties = out.properties.filter(
+      (p): p is { name: string; value: unknown } =>
+        isRecord(p) && isSvgShapeAttr(p.name) && typeof p.value === 'string',
+    );
+  }
+  if (typeof out.html === 'string') out.html = sanitizeSvgFragment(out.html);
+  return out;
+}
+
 /** Is this a plain object we should walk into? */
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -103,8 +127,12 @@ export function sanitizeImageMapConfig(config: unknown): unknown {
     } else if (key === 'embedCode' && typeof value === 'string') {
       // A YouTube block's <iframe>. sanitizeRichHtml keeps https iframes and FORCES a sandbox.
       next = sanitizeRichHtml(value);
+    } else if (key === 'svg' && isRecord(value)) {
+      // An SVG hotspot's element spec: its `html`, plus the tagName/properties the runtime BUILDS
+      // an element from — see sanitizeSvgSpec.
+      next = sanitizeSvgSpec(value);
     } else if (key === 'html' && typeof value === 'string') {
-      // An SVG region's inner markup (config path: …children[].svg.html).
+      // An SVG region's inner markup reached some other way.
       next = sanitizeSvgFragment(value);
     } else {
       next = sanitizeImageMapConfig(value);

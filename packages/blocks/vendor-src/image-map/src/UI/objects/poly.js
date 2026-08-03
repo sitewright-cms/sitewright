@@ -1,4 +1,4 @@
-import { hexToRgb } from 'imap-shared/utilities'
+import { hexToRgb, safeCssFilter, safeCssValue } from 'imap-shared/utilities'
 
 import MapObject from 'imap/UI/objects/mapObject'
 
@@ -39,25 +39,25 @@ export default class Poly extends MapObject {
     let c_stroke = hexToRgb(styles.stroke_color) || { r: 0, b: 0, g: 0 }
 
     if (styles.background_type === 'color') {
-      css += `fill: rgba(${c_bg.r}, ${c_bg.g}, ${c_bg.b}, ${styles.background_opacity}); `
+      css += `fill: rgba(${c_bg.r}, ${c_bg.g}, ${c_bg.b}, ${safeCssValue(styles.background_opacity)}); `
     } else {
       css += `fill: rgba(0, 0, 0, 0); `
     }
 
-    css += `left: ${this.options.x}%;`
-    css += `top: ${this.options.y}%;`
-    css += `width: ${this.options.width}%;`
-    css += `height: ${this.options.height}%;`
+    css += `left: ${safeCssValue(this.options.x)}%;`
+    css += `top: ${safeCssValue(this.options.y)}%;`
+    css += `width: ${safeCssValue(this.options.width)}%;`
+    css += `height: ${safeCssValue(this.options.height)}%;`
 
-    css += `opacity: ${styles.opacity};`
-    css += `stroke: rgba(${c_stroke.r}, ${c_stroke.g}, ${c_stroke.b}, ${styles.stroke_opacity}); `
-    css += `stroke-width: ${styles.stroke_width}px; `
-    css += `stroke-dasharray: ${styles.stroke_dasharray}; `
-    css += `stroke-linecap: ${styles.stroke_linecap}; `
+    css += `opacity: ${safeCssValue(styles.opacity)};`
+    css += `stroke: rgba(${c_stroke.r}, ${c_stroke.g}, ${c_stroke.b}, ${safeCssValue(styles.stroke_opacity)}); `
+    css += `stroke-width: ${safeCssValue(styles.stroke_width)}px; `
+    css += `stroke-dasharray: ${safeCssValue(styles.stroke_dasharray)}; `
+    css += `stroke-linecap: ${safeCssValue(styles.stroke_linecap)}; `
 
     css += `filter: `
     for (let filter of styles.parent_filters) {
-      css += `${filter.name}(${filter.value}) `
+      css += safeCssFilter(filter)
     }
     css += `;`
 

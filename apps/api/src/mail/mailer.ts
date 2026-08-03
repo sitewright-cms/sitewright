@@ -11,8 +11,22 @@ export interface SubmissionMail {
   subject: string;
   formName: string;
   fields: Record<string, string>;
+  /**
+   * Field NAME -> the label the author gave it in the form definition. The body is keyed by input
+   * `name`, which is wiring (`arrival_date`, `_hpt`-adjacent machine keys), not something a merchant
+   * should have to read; a key with no entry here keeps its own name, which is right for the extra
+   * fields a hand-authored page posts beyond its definition.
+   */
+  labels?: Record<string, string>;
   /** Optional Reply-To (the submitter's email), pre-validated by the caller. */
   replyTo?: string;
+}
+
+/** Field name -> author-given label, for the email body. Fields without a label are simply absent. */
+export function submissionLabels(fields: ReadonlyArray<{ name: string; label?: string }>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of fields) if (f.label) out[f.name] = f.label;
+  return out;
 }
 
 /** Delivers a form submission. Returns false when mail is not configured/enabled. */
@@ -247,9 +261,26 @@ export interface MailerSettings {
  * Renders a submission as a readable plain-text email body. Multi-line values
  * (e.g. a textarea) are indented under their key so a value's own newlines can't
  * be mistaken for the next field — and can't fake a `key: value` line.
+ *
+ * Each line is headed by the field's own LABEL where the definition has one. The body is keyed by
+ * input `name`, which is wiring — a merchant was reading `arrival_date:` and `o_rental:` in their
+ * inbox while the author had written "Pickup Date in Windhoek" and "Car Rental or Travel Agent" right
+ * there in the form. A key with no label keeps its own name, which is correct for the extra fields a
+ * hand-authored page posts beyond its definition (they are usually already prose).
+ *
+ * A label is only substituted when it is single-line and non-empty: a stray newline in one would let
+ * a label fake a `key: value` line, the same hazard the value indent above exists to close.
  */
-export function formatSubmissionText(formName: string, fields: Record<string, string>): string {
-  const lines = Object.entries(fields).map(([k, v]) => `${k}:\n  ${v.replace(/\n/g, '\n  ')}`);
+export function formatSubmissionText(
+  formName: string,
+  fields: Record<string, string>,
+  labels: Record<string, string> = {},
+): string {
+  const head = (key: string): string => {
+    const label = Object.hasOwn(labels, key) ? labels[key] : undefined;
+    return label && label.trim() && !/[\r\n]/.test(label) ? label : key;
+  };
+  const lines = Object.entries(fields).map(([k, v]) => `${head(k)}:\n  ${v.replace(/\n/g, '\n  ')}`);
   return `New submission for "${formName}"\n\n${lines.join('\n\n')}\n`;
 }
 
@@ -270,7 +301,7 @@ async function sendViaSmtp(
     from,
     to: mail.recipient,
     subject: mail.subject,
-    text: formatSubmissionText(mail.formName, mail.fields),
+    text: formatSubmissionText(mail.formName, mail.fields, mail.labels),
     ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
   });
 }

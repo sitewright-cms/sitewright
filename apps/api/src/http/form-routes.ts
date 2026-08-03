@@ -16,7 +16,7 @@ import {
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
-import { describeDeliveryFailure, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
+import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { nextAttemptAt } from '../mail/delivery-policy.js';
 import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
@@ -74,31 +74,52 @@ interface ParsedSubmission {
   captchaToken: string | undefined;
 }
 
-/** Validates the public submission body: a flat map of text values only. */
-function parseSubmission(raw: unknown): ParsedSubmission | null {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+/** Why a body was rejected — plain text an author can act on. Never carries a submitted VALUE. */
+interface ParseFailure {
+  reason: string;
+}
+const rejected = (r: ParsedSubmission | ParseFailure): r is ParseFailure => 'reason' in r;
+
+/**
+ * Validates the public submission body: a flat map of text values only.
+ *
+ * Every rejection now NAMES its cap. All of them used to collapse into one `invalid submission`, which
+ * is unhelpful for the one an author actually meets: a big order form sits close to MAX_FIELDS (a real
+ * one measured 44 of 60), and the first time a menu grows past it every order 400s with a message that
+ * says nothing about which limit, or that there is a limit at all. Naming the cap is not a disclosure —
+ * these are fixed constants, identical on every instance, documented in the form guide.
+ */
+function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { reason: 'the body must be a flat object of text values' };
+  }
   const entries = Object.entries(raw as Record<string, unknown>);
-  if (entries.length > MAX_FIELDS) return null;
+  if (entries.length > MAX_FIELDS) {
+    return { reason: `too many fields (${entries.length}; the maximum is ${MAX_FIELDS})` };
+  }
   const fields: Record<string, string> = {};
   let honeypotFilled = false;
   let elapsed: number | undefined;
   let captchaToken: string | undefined;
   let total = 0;
   for (const [key, rawValue] of entries) {
-    if (key.length > MAX_KEY_LEN) return null;
+    if (key.length > MAX_KEY_LEN) return { reason: `a field name is longer than ${MAX_KEY_LEN} characters` };
     // The control fields (honeypot / time-trap / captcha) are ALWAYS single scalars — an array for any of
     // them is malformed (and must not be silently normalized into a value that could weaken the check).
-    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) return null;
+    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
+      return { reason: `"${key}" must be a single value` };
+    }
     // A checkbox GROUP submits several checked values under one name → a string ARRAY; join them into a
     // single readable text value ("A, B, C"). Any non-string element (or nesting) is rejected — still no
     // attachments/objects. The MAX_VALUE_LEN / MAX_TOTAL_BYTES caps below bound the joined size.
     let value: unknown = rawValue;
     if (Array.isArray(rawValue)) {
-      if (rawValue.length > 100 || !rawValue.every((v) => typeof v === 'string')) return null;
+      if (rawValue.length > 100) return { reason: `"${key}" sent more than 100 values` };
+      if (!rawValue.every((v) => typeof v === 'string')) return { reason: `"${key}" contains a value that is not text` };
       value = (rawValue as string[]).join(', ');
     }
     // Text fields ONLY — reject objects/null/binary (no attachments).
-    if (typeof value !== 'string') return null;
+    if (typeof value !== 'string') return { reason: `"${key}" is not text (no objects, nulls or attachments)` };
     // The captcha token is large; pull it out before the per-field length cap
     // (verified server-side, never stored). Real hCaptcha tokens are < 2 KB —
     // ignore an implausibly large value (it would fail verification anyway).
@@ -106,7 +127,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | null {
       captchaToken = value.length <= 8192 ? value : undefined;
       continue;
     }
-    if (value.length > MAX_VALUE_LEN) return null;
+    if (value.length > MAX_VALUE_LEN) return { reason: `"${key}" is longer than ${MAX_VALUE_LEN} characters` };
     if (key === HONEYPOT_FIELD) {
       honeypotFilled = value.trim() !== '';
       continue;
@@ -121,7 +142,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | null {
     // Count only the fields that will actually be stored (the trap fields are skipped),
     // so the cap is a tight bound on the persisted payload.
     total += key.length + value.length;
-    if (total > MAX_TOTAL_BYTES) return null;
+    if (total > MAX_TOTAL_BYTES) return { reason: `the submission exceeds ${MAX_TOTAL_BYTES} bytes in total` };
     // eslint-disable-next-line security/detect-object-injection -- value is a string (checked) and prototype keys are excluded above
     fields[key] = value;
   }
@@ -189,7 +210,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       if (!form) return reply.code(404).send({ error: 'form not found' });
 
       const parsed = parseSubmission(req.body);
-      if (!parsed) return reply.code(400).send({ error: 'invalid submission' });
+      if (rejected(parsed)) return reply.code(400).send({ error: 'invalid submission', reason: parsed.reason });
 
       // Mirror production's VISIBLE behaviour exactly (a filtered post still answers 200, so the
       // visitor sees the same thank-you) but name the reason in the body, so an author who opens
@@ -220,7 +241,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       if (!form) return reply.code(404).send({ error: 'form not found' });
 
       const parsed = parseSubmission(req.body);
-      if (!parsed) return reply.code(400).send({ error: 'invalid submission' });
+      if (rejected(parsed)) return reply.code(400).send({ error: 'invalid submission', reason: parsed.reason });
 
       // Cheap bot filters first (silent 200 drop, no network): honeypot filled or
       // submitted implausibly fast. Don't tip off bots that they were filtered. The
@@ -297,6 +318,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         subject: form.subject || `New "${form.name}" submission`,
         formName: form.name,
         fields: parsed.fields,
+        labels: submissionLabels(form.fields),
         ...(replyTo ? { replyTo } : {}),
       };
       // ★ The TRANSPORT call is the only thing inside this try. Recording the outcome used to sit in

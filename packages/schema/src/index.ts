@@ -13,6 +13,7 @@ export * from './dataset.js';
 export * from './deploy-target.js';
 export * from './form.js';
 export * from './image-map.js';
+export * from './image-map-templates.js';
 export * from './instance-settings.js';
 export * from './json-store.js';
 export * from './media.js';

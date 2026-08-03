@@ -239,3 +239,21 @@ describe('{{sw-imagemap}} through the render engine', () => {
     expect(componentTypesInSource(html)).toEqual(['ImageMap']);
   });
 });
+
+describe('sanitizeImageMapConfig prototype safety', () => {
+  it('does not let a stored config pollute Object.prototype', () => {
+    // JSON.parse produces an OWN "__proto__" property; a plain out[key] = … assignment for that key
+    // runs the prototype SETTER, which would leak into every object in the render process.
+    const config = JSON.parse('{"general":{"name":"x"},"__proto__":{"polluted":"yes"}}') as unknown;
+    const out = sanitizeImageMapConfig(config) as Record<string, unknown>;
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+    expect(Object.keys(out)).toEqual(['general']);
+  });
+
+  it('survives a nested __proto__ too', () => {
+    const config = JSON.parse('{"artboards":[{"children":[{"__proto__":{"nested":"yes"}}]}]}') as unknown;
+    sanitizeImageMapConfig(config);
+    expect(({} as Record<string, unknown>).nested).toBeUndefined();
+  });
+});

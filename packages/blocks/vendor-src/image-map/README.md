@@ -132,6 +132,18 @@ Documented for agents in `COMPONENT_CATALOG` (`@sitewright/schema`). In short: t
 `<script type="application/json" data-sw-part="config">` payload, anything else inside the root is
 the no-JS fallback, and page elements elsewhere drive the map through `data-sw-imap-*` attributes.
 
-Upstream's demo images and its 69 country/region SVG maps are **not** in this drop — they are
-fetched at runtime from the vendor's CloudFront. They are vendored locally instead; see the
-example bundle and the map catalogue.
+## Starter templates
+
+Upstream's demo configs and images are **not** in this drop — its editor fetches them from the
+vendor's CloudFront at runtime, which a self-hosted install cannot depend on. The five demos are
+vendored locally instead:
+
+- configs → `apps/api/assets/imagemaps/templates/<id>.json` (~940 KB total, served on demand)
+- images → `apps/api/assets/imagemaps/*.jpg` (only two of the five use one; the rest are pure SVG)
+- metadata → `IMAGE_MAP_TEMPLATES` in `@sitewright/schema` (small enough to bundle for a picker)
+
+`POST /projects/:id/imagemaps/from-template` materialises one into a project: it copies the images
+into that project's own media library, rewrites the config to point at them, fills in any missing
+artboard id, and stores the map. So nothing a project references lives on the platform.
+
+Upstream's 69 country/region SVG maps were deliberately **not** ported.

@@ -138,7 +138,7 @@ const ObjectActionsSchema = z
 export interface ImageMapObject {
   id: string;
   title?: string;
-  type: (typeof IMAGE_MAP_OBJECT_TYPES)[number];
+  type?: (typeof IMAGE_MAP_OBJECT_TYPES)[number];
   x?: number;
   y?: number;
   width?: number;
@@ -146,7 +146,7 @@ export interface ImageMapObject {
   static?: boolean;
   single_object?: boolean;
   parent_id?: string;
-  points?: number[][];
+  points?: Array<{ x: number; y: number }>;
   svg?: { html?: string; tagName?: string; viewBox?: string; properties?: unknown[] };
   default_style?: Record<string, unknown>;
   mouseover_style?: Record<string, unknown>;
@@ -166,7 +166,8 @@ export const ImageMapObjectSchema: z.ZodType<ImageMapObject> = z.lazy(() =>
     // match the interface exactly, and a default makes them diverge. The runtime deep-extends
     // every object against its own defaults regardless.
     title: z.string().max(500).optional(),
-    type: z.enum(IMAGE_MAP_OBJECT_TYPES),
+    // OPTIONAL: a child inside a group routinely omits it and inherits objectDefaults' 'spot'.
+    type: z.enum(IMAGE_MAP_OBJECT_TYPES).optional(),
     x: Pct.optional(),
     y: Pct.optional(),
     width: Pct.optional(),
@@ -174,8 +175,9 @@ export const ImageMapObjectSchema: z.ZodType<ImageMapObject> = z.lazy(() =>
     static: z.boolean().optional(),
     single_object: z.boolean().optional(),
     parent_id: z.string().max(200).optional(),
-    // Polygon vertices, each [x, y] in percent. Capped so one hotspot cannot carry a runaway path.
-    points: z.array(z.array(z.number().finite()).min(2).max(2)).max(2000).optional(),
+    // Polygon vertices in percent — `{x, y}` objects, which is the shape the runtime's poly
+    // renderer reads. Capped so one hotspot cannot carry a runaway path.
+    points: z.array(z.object({ x: z.number().finite(), y: z.number().finite() })).max(2000).optional(),
     // An imported SVG region. `html` is markup by design — sanitised on write.
     svg: z
       .object({
@@ -199,8 +201,11 @@ export const ImageMapObjectSchema: z.ZodType<ImageMapObject> = z.lazy(() =>
 
 /** One "floor" / layer: its own background and its own hotspots. */
 export const ImageMapArtboardSchema = z.object({
-  // Must be UNIQUE within the map — it is what a switch resolves to, and duplicates make a switch
-  // a silent no-op (the runtime compares the target id against the current artboard's).
+  // REQUIRED and unique within the map. A hotspot's `change-artboard` action targets an artboard
+  // by id, and the runtime assigns no ids of its own — every artboard in an id-less config takes
+  // the same `default-id` from artboardDefaults, so the floor switcher silently does nothing.
+  // (Vendor exports routinely omit it on the FIRST artboard only; the template materialiser fills
+  // those in before storing, so a stored map always switches correctly.)
   id: z.string().min(1).max(200),
   title: z.string().max(500).default(''),
   background_type: z.enum(['none', 'color', 'image']).default('color'),

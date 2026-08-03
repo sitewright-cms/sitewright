@@ -90,19 +90,27 @@ export function sanitizeImageMapConfig(config: unknown): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(config)) {
+    // `JSON.parse` happily produces an OWN "__proto__" property, and a plain `out[key] = …` for
+    // that key runs the prototype setter instead of defining a property — so a stored config could
+    // pollute Object.prototype for the whole render process. Not a legitimate config key; dropped.
+    if (key === '__proto__') continue;
+
+    let next: unknown;
     if (key === 'text' && typeof value === 'string') {
       // A tooltip block's rich text. (An OBJECT `text` is the text-object's style bag — it recurses
       // below like anything else, and its own inner `text` string is rendered with textContent.)
-      out[key] = sanitizeRichHtml(value);
+      next = sanitizeRichHtml(value);
     } else if (key === 'embedCode' && typeof value === 'string') {
       // A YouTube block's <iframe>. sanitizeRichHtml keeps https iframes and FORCES a sandbox.
-      out[key] = sanitizeRichHtml(value);
+      next = sanitizeRichHtml(value);
     } else if (key === 'html' && typeof value === 'string') {
       // An SVG region's inner markup (config path: …children[].svg.html).
-      out[key] = sanitizeSvgFragment(value);
+      next = sanitizeSvgFragment(value);
     } else {
-      out[key] = sanitizeImageMapConfig(value);
+      next = sanitizeImageMapConfig(value);
     }
+    // defineProperty, not assignment: never invokes an inherited setter for any key.
+    Object.defineProperty(out, key, { value: next, writable: true, enumerable: true, configurable: true });
   }
   return out;
 }
@@ -166,7 +174,9 @@ export function resolveImageMapEmbeds(html: string, ctx: ImageMapEmbedContext): 
   if (targets.length === 0) return html;
 
   for (const el of targets as Element[]) {
+    // eslint-disable-next-line security/detect-object-injection -- IMAGE_MAP_ATTR is a module constant
     const id = (el.attribs[IMAGE_MAP_ATTR] ?? '').trim();
+    // eslint-disable-next-line security/detect-object-injection -- own-property checked on the line itself, so an inherited key (constructor, toString) can't resolve
     const map = Object.prototype.hasOwnProperty.call(maps, id) ? maps[id] : undefined;
     if (!map) throw new Error(unknownImageMapMessage(id));
 
@@ -179,6 +189,7 @@ export function resolveImageMapEmbeds(html: string, ctx: ImageMapEmbedContext): 
       : '';
 
     el.attribs['data-sw-component'] = 'image-map';
+    // eslint-disable-next-line security/detect-object-injection -- IMAGE_MAP_ATTR is a module constant
     if (!ctx.preview) delete el.attribs[IMAGE_MAP_ATTR];
     const inner =
       `${fallback}<script type="application/json" data-sw-part="config">${jsonForScript(config)}</script>`;

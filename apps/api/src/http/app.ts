@@ -3951,7 +3951,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
       // SAMEORIGIN framing lets the editor embed it; no third party. `allow-forms` lets a form's
       // submit event fire — this surface's forms post to the DRY RUN, so nothing is stored or mailed.
-      reply.header('content-security-policy', 'sandbox allow-scripts allow-forms');
+      reply.header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
       reply.header('x-frame-options', 'SAMEORIGIN');
       return reply.type('text/html').send(html);
     },
@@ -5357,6 +5357,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ...(buildOpts.minify ? { minifyHtml: true } : {}),
       // readStored accepts image variant / raw file / font face names (superset) — all copied in.
       readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
+      // Generated thumbnails go back into the asset dir — the same cache `ensureThumb` fills — so a
+      // rebuild copies them instead of re-encoding every referenced image from its original.
+      storeMedia: mediaStorage
+        ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
+        : undefined,
     });
   }
 
@@ -5839,6 +5844,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         globalTemplates: inputs.globalTemplates,
         readMedia: mediaStorage
           ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file)
+          : undefined,
+        storeMedia: mediaStorage
+          ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
           : undefined,
       });
       previewBuiltVersion.set(project.id, version);
@@ -6568,7 +6576,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // would fire are handled by pointing preview forms at the dry-run endpoint (build.ts), not by
           // breaking the button. Without it the browser refuses the submit outright, so the one thing
           // the review workflow could never exercise on the surface it runs on was a form.
-          .header('content-security-policy', 'sandbox allow-scripts allow-forms')
+          // `allow-popups allow-popups-to-escape-sandbox` so an outbound `target="_blank"` link actually
+          // opens. Without them the browser silently drops the navigation — every external link on every
+          // previewed site reads as DEAD (a clone review chased 31 IMDb links that were authored
+          // correctly and simply could not fire). The escape token matters as much as the popup one: a
+          // popup that inherits this sandbox lands on the target site at an OPAQUE origin and breaks
+          // there instead. Neither token grants the framed document same-origin access to the editor.
+          .header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox')
           .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);
@@ -7413,7 +7427,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         });
         // `allow-forms` so an embedded form's submit fires here too; this render's forms point at the
         // dry-run endpoint (renderForms above), so a live render never mails anyone.
-        reply.header('content-security-policy', 'sandbox allow-scripts allow-forms');
+        reply.header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
         reply.header('x-frame-options', 'SAMEORIGIN');
         return reply.type('text/html').send(html);
       } catch (err) {

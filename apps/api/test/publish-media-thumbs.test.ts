@@ -212,7 +212,12 @@ describe('materializeImageThumbs', () => {
 
   it('generates ONLY the referenced thumbnails (+ referenced original) FLAT into _assets/', async () => {
     const refs: ThumbRefs = new Map([['a1', { thumbs: new Set(['sm:webp', 'lg:avif']), original: true }]]);
-    await materializeImageThumbs(dir, [{ ...asset, bytes: png.length }], refs, async () => png, idAlias);
+    // A cold store: only the original is present, so every variant is a cache MISS and gets encoded.
+    const coldStore = async (_id: string, file: string): Promise<Buffer> => {
+      if (file === 'p.png') return png;
+      throw Object.assign(new Error('miss'), { code: 'ENOENT' });
+    };
+    await materializeImageThumbs(dir, [{ ...asset, bytes: png.length }], refs, coldStore, idAlias);
     expect(existsSync(join(dir, '_assets', 'a1-p-sm.webp'))).toBe(true);
     expect(existsSync(join(dir, '_assets', 'a1-p-lg.avif'))).toBe(true);
     expect(existsSync(join(dir, '_assets', 'a1-p.png'))).toBe(true); // original referenced ⇒ copied
@@ -246,6 +251,60 @@ describe('materializeImageThumbs', () => {
     const out = join(dir, '_assets', 'sv1-logo.svg');
     expect(existsSync(out)).toBe(true);
     expect(await readFile(out)).toEqual(svgBytes); // byte-for-byte, not rasterized
+  });
+
+  it('reuses a CACHED derivative instead of re-encoding, and never touches the original', async () => {
+    const refs: ThumbRefs = new Map([['a3', { thumbs: new Set(['sm:webp']), original: false }]]);
+    const cached = Buffer.from('RIFFcached-webp-bytes');
+    const reads: string[] = [];
+    await materializeImageThumbs(dir, [{ ...asset, id: 'a3' }], refs, async (_id, file) => {
+      reads.push(file);
+      if (file === 'p-sm.webp') return cached;
+      throw new Error('the original must not be read when every variant is cached');
+    }, idAlias);
+    expect(await readFile(join(dir, '_assets', 'a3-p-sm.webp'))).toEqual(cached);
+    expect(reads).toEqual(['p-sm.webp']); // the 50 MB original was never decoded
+  });
+
+  it('encodes only the MISSING variants and puts each one back in the store', async () => {
+    const refs: ThumbRefs = new Map([['a4', { thumbs: new Set(['sm:webp', 'lg:webp']), original: false }]]);
+    const cached = Buffer.from('RIFFcached-sm');
+    const stored: string[] = [];
+    await materializeImageThumbs(
+      dir,
+      [{ ...asset, id: 'a4', bytes: png.length }],
+      refs,
+      async (_id, file) => {
+        if (file === 'p-sm.webp') return cached;
+        if (file === 'p-lg.webp') throw Object.assign(new Error('miss'), { code: 'ENOENT' });
+        return png; // the original, needed for the lg miss
+      },
+      idAlias,
+      async (_id, file) => {
+        stored.push(file);
+      },
+    );
+    expect(await readFile(join(dir, '_assets', 'a4-p-sm.webp'))).toEqual(cached); // hit: byte-identical
+    expect((await readFile(join(dir, '_assets', 'a4-p-lg.webp'))).toString('ascii', 0, 4)).toBe('RIFF'); // miss: encoded
+    expect(stored).toEqual(['p-lg.webp']); // only the miss is written back
+  });
+
+  it('completes the build when writing back to the store fails', async () => {
+    const refs: ThumbRefs = new Map([['a5', { thumbs: new Set(['sm:webp']), original: false }]]);
+    await materializeImageThumbs(
+      dir,
+      [{ ...asset, id: 'a5', bytes: png.length }],
+      refs,
+      async (_id, file) => {
+        if (file === 'p-sm.webp') throw Object.assign(new Error('miss'), { code: 'ENOENT' });
+        return png;
+      },
+      idAlias,
+      async () => {
+        throw new Error('read-only store');
+      },
+    );
+    expect(existsSync(join(dir, '_assets', 'a5-p-sm.webp'))).toBe(true);
   });
 
   it('skips an asset whose original is missing (ENOENT tolerated, build not failed)', async () => {

@@ -70,7 +70,7 @@ describe('CodePageEditor', () => {
     );
     const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
-    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-popups-to-escape-sandbox');
     expect(iframe.hasAttribute('srcdoc')).toBe(false);
     await waitFor(() => expect(iframe.getAttribute('src')).toBe('/preview/acme/tok-123'));
   });

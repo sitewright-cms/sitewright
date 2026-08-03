@@ -221,6 +221,12 @@ export function rebaseMediaHeadUrl(
  * into the FLAT `<base>/_assets/` dir as `<alias>-<name…>`. Path-confined to `base`. A missing
  * original is tolerated (that image simply 404s, exactly as a missing variant did before) — any other
  * I/O error fails the build.
+ *
+ * CACHE-FIRST. A derivative is read from the media store before it is encoded, under exactly the name
+ * the on-demand `/media?size=` route persists (`thumbFileName`), and `storeMedia` puts a freshly
+ * encoded one back. Thumbnails are immutable per asset (a re-upload mints a new asset id), so a hit is
+ * always current. Without this every build re-encoded every referenced image — ~125 ms each, so a
+ * settings-only edit on a 295-image project spent ~38 s re-encoding bytes it already had.
  */
 export async function materializeImageThumbs(
   base: string,
@@ -228,6 +234,7 @@ export async function materializeImageThumbs(
   refs: ThumbRefs,
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
   alias: AliasFn,
+  storeMedia?: (assetId: string, file: string, data: Buffer) => Promise<void>,
 ): Promise<void> {
   const dir = join(base, ASSET_DIR);
   if (!resolve(dir).startsWith(base + sep)) return; // defensive
@@ -245,6 +252,24 @@ export async function materializeImageThumbs(
     const asset = media.find((a) => a.id === assetId && a.kind === 'image');
     if (!asset || asset.kind !== 'image') continue;
     const a = alias(assetId);
+
+    // Pass 1 — serve what the store already holds, and note what it doesn't.
+    const missing: Array<{ size: SizeToken; format: ThumbFormat; width: number; name: string }> = [];
+    for (const key of want.thumbs) {
+      const [size, format] = key.split(':') as [SizeToken, ThumbFormat];
+      const width = THUMB_SIZES[size];
+      if (!width) continue;
+      const name = thumbFileName(asset.original, size, format);
+      try {
+        await writeConfined(flatMediaName(a, name), await readMedia(assetId, name));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        missing.push({ size, format, width, name });
+      }
+    }
+    // Every variant was cached and the original isn't shipped — nothing to decode, don't even read it.
+    if (missing.length === 0 && !want.original) continue;
+
     let original: Buffer;
     try {
       original = await readMedia(assetId, asset.original);
@@ -255,12 +280,13 @@ export async function materializeImageThumbs(
 
     if (want.original) await writeConfined(flatMediaName(a, asset.original), original);
 
-    for (const key of want.thumbs) {
-      const [size, format] = key.split(':') as [SizeToken, ThumbFormat];
-      const width = THUMB_SIZES[size];
-      if (!width) continue;
+    // Pass 2 — encode only the misses, and put each one back so the NEXT build (and any preview
+    // request for the same variant) is a copy. Caching is best-effort: a read-only or full store
+    // must not fail a build that has the bytes in hand.
+    for (const { format, width, name } of missing) {
       const { buffer } = await generateThumbnail(original, { width, format });
-      await writeConfined(flatMediaName(a, thumbFileName(asset.original, size, format)), buffer);
+      await writeConfined(flatMediaName(a, name), buffer);
+      if (storeMedia) await storeMedia(assetId, name, buffer).catch(() => undefined);
     }
   }
 }

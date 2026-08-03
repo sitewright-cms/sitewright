@@ -23,8 +23,11 @@ interface PreviewPaneProps {
  * components' inlined JS. Loading via `src` lets the document use its OWN response
  * CSP — the endpoint serves it under `Content-Security-Policy: sandbox
  * allow-scripts`, an OPAQUE origin, so component scripts run (true WYSIWYG) yet
- * cannot reach the editor's `window`, cookies, or session. `sandbox="allow-scripts"`
- * on the iframe is belt-and-suspenders; `allow-same-origin` must NEVER be added.
+ * cannot reach the editor's `window`, cookies, or session. The iframe's own `sandbox`
+ * is belt-and-suspenders and must MATCH the response CSP's token list, or the stricter
+ * of the two silently wins: `allow-popups allow-popups-to-escape-sandbox` are what let an
+ * outbound `target="_blank"` link open at all (and land un-sandboxed, at the target's real
+ * origin, rather than opaque and broken). `allow-same-origin` must NEVER be added.
  */
 export function PreviewPane({ src, loading, error, title = 'Live preview', iframeRef }: PreviewPaneProps) {
   // The iframe paints blank-white while it fetches/renders its document. Cover it with an
@@ -47,7 +50,7 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
         ref={iframeRef}
         title={title}
         aria-label={title}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         src={src || 'about:blank'}
         onLoad={() => {
           if (src) setEverLoaded(true);

@@ -73,7 +73,7 @@ describe('SitePreview', () => {
     render(<SitePreview target={{ projectId: 'p', path: '' }} />);
     const frame = await screen.findByTitle('Site preview');
     expect(frame).toHaveAttribute('src', '/preview-site/p/sig123/');
-    expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+    expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
   });
 
   it('copies the share-able preview URL when the button is clicked', async () => {

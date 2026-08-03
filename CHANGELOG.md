@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-08-03
+
+### Fixed
+
+- **The submissions inbox reads the author's labels too.** 0.12.0 gave the notification email the
+  field's own label; the inbox is the OTHER place a person reads a lead, and it still showed
+  `arrival_date` and `rental` in monospace while the author had written "Pickup Date in Windhoek" and
+  "Car Rental or Travel Agent" right there in the form. The list route now sends each form's display
+  name and its field labels alongside the rows, resolved from the definition as it is NOW rather than
+  frozen into the row — renaming a label fixes every lead already sitting in the inbox, not only the
+  next one. A field the definition does not declare keeps its own name IN MONOSPACE, because it is the
+  raw key and dressing one up as prose would hide which are the author's words and which are the
+  wiring; the raw name stays on the `title` either way.
+
 ## [0.12.0] — 2026-08-03
 
 Seven platform defects, all found the same way: by using the platform to finish and review a batch of
@@ -753,7 +767,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/sitewright-cms/sitewright/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/sitewright-cms/sitewright/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/sitewright-cms/sitewright/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/sitewright-cms/sitewright/compare/v0.9.0...v0.10.0

@@ -350,12 +350,43 @@ if (anyUser.length === 0) {
 await app.listen({ host: '0.0.0.0', port: cfg.port });
 process.stdout.write(`[sitewright/api] listening on :${cfg.port}\n`);
 
+// Retry form notifications that did not go out. THE ONLY PLACE AN INTERVAL IS STARTED: createApp is
+// constructed by roughly two hundred test files, and a timer in each of them would be a flakiness
+// generator — so the app exposes a single pass and the schedule lives here.
+//
+// A minute is the resolution the backoff needs (its shortest step is one minute); anything finer
+// just wakes the process up to find nothing due. `unref` so a pending timer never holds the process
+// open during shutdown, and every pass is wrapped: a retry failure must never take the server down.
+const MAIL_RETRY_INTERVAL_MS = 60_000;
+// ★ A pass must never overlap itself. Each attempt is bounded only by the transport's own timeouts,
+// so against a slow-but-alive SMTP server a pass can run far longer than the interval — and two
+// passes walking the same backlog is how one lead gets emailed twice. A plain flag is the right
+// tool: this process is the only scheduler (single-container by design, like the login throttle and
+// the render pool), so there is nothing to coordinate with beyond itself.
+let mailRetryRunning = false;
+const mailRetryTimer = setInterval(() => {
+  if (mailRetryRunning) return; // still working through the last one
+  mailRetryRunning = true;
+  void app
+    .runDueFormDeliveries()
+    .catch((err: unknown) => {
+      process.stderr.write(
+        `[sitewright/api] WARNING: form notification retry pass failed — ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    })
+    .finally(() => {
+      mailRetryRunning = false;
+    });
+}, MAIL_RETRY_INTERVAL_MS);
+mailRetryTimer.unref();
+
 // Graceful shutdown for k8s: on SIGTERM/SIGINT drain Fastify (which terminates the render workers via its
 // onClose hooks), close the DB, then exit — with a force-exit failsafe if close() hangs (so the container
 // never waits for the orchestrator's SIGKILL). 10s < the usual 30s termination grace.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
+    clearInterval(mailRetryTimer);
     void runShutdown({
       close: () => app.close(),
       closeDb: () => client.close(),

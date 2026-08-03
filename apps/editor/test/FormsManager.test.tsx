@@ -6,6 +6,7 @@ const listForms = vi.fn();
 const putForm = vi.fn();
 const deleteForm = vi.fn();
 const formModes = vi.fn();
+const undeliveredSubmissions = vi.fn();
 const getProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
@@ -18,6 +19,7 @@ vi.mock('../src/api', () => ({
     getProjectSmtp: () => getProjectSmtp(),
     // <ProjectSmtp> asks who you are, to decide whether to offer a test-message recipient field.
     me: () => Promise.resolve({ platformRole: null }),
+    undeliveredSubmissions: () => undeliveredSubmissions(),
   },
 }));
 
@@ -31,6 +33,8 @@ beforeEach(() => {
   deleteForm.mockReset();
   formModes.mockReset();
   getProjectSmtp.mockReset();
+  undeliveredSubmissions.mockReset();
+  undeliveredSubmissions.mockResolvedValue({ count: 0, lastError: null });
   getProjectSmtp.mockResolvedValue({ smtp: null });
   listForms.mockResolvedValue({ items: [] });
   putForm.mockResolvedValue({ item: {} });
@@ -178,3 +182,21 @@ describe('FormsManager', () => {
     expect(saved.fields.map((f) => f.name)).toContain('phone');
   });
 });
+
+describe('FormsManager undelivered warning', () => {
+  it('★ warns on the Forms tab when submissions were not emailed', async () => {
+    // An author opens Forms to ask "is this form working?". A silent delivery failure is precisely
+    // the answer they came for, so it is surfaced here as well as in the inbox.
+    undeliveredSubmissions.mockResolvedValue({ count: 3, lastError: 'The mail server rejected the username or password.' });
+    render(<FormsManager project={project} />);
+    expect(await screen.findByText(/3 submissions could not be emailed/)).toBeInTheDocument();
+    expect(screen.getByText(/rejected the username or password/)).toBeInTheDocument();
+  });
+
+  it('stays quiet when everything was delivered', async () => {
+    render(<FormsManager project={project} />);
+    await screen.findByLabelText('New form name');
+    expect(screen.queryByText(/could not be emailed/)).toBeNull();
+  });
+});
+

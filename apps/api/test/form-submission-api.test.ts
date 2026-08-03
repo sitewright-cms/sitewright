@@ -255,8 +255,12 @@ describe('public form submission endpoint', () => {
       data: { n: String(i) },
       createdAt: now,
     }));
-    for (let i = 0; i < rows.length; i += 5000) {
-      await db.insert(formSubmissions).values(rows.slice(i, i + 5000));
+    // Chunk size is bounded by SQLite's ~32k BOUND PARAMETER ceiling, not by memory: the driver
+    // sends columns x rows placeholders in one statement. It was 5000 when the table had five
+    // columns; the delivery-state columns take it to nine, so 5000 rows is ~45k parameters and the
+    // insert fails. Sized with headroom so the next column added here does not break it again.
+    for (let i = 0; i < rows.length; i += 2000) {
+      await db.insert(formSubmissions).values(rows.slice(i, i + 2000));
     }
     const res = await app.inject({
       method: 'POST',
@@ -325,3 +329,131 @@ describe('submissions inbox (authenticated)', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('undelivered notifications are visible and recoverable', () => {
+  /** The delivery state of the single stored submission. */
+  async function state() {
+    const [row] = await db.select().from(formSubmissions);
+    return row!;
+  }
+
+  it('★ a successful send leaves nothing owed', async () => {
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    expect((await state()).deliveryState).toBe('sent');
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/undelivered`, cookies: { sw_session: t } });
+    expect(res.json()).toEqual({ count: 0, lastError: null });
+  });
+
+  it('★ a mail failure leaves a row the operator can SEE, with a reason', async () => {
+    // Before this existed, a throwing mailer produced one server-log line and nothing else: the
+    // visitor was thanked, the lead sat in the inbox, and nobody knew it had not been emailed.
+    mailer.send = async () => { throw Object.assign(new Error('nope'), { code: 'EAUTH' }); };
+    const post = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    expect(post.statusCode).toBe(200); // the visitor is still thanked — that part is deliberate
+    expect(post.json()).toEqual({ ok: true });
+
+    const row = await state();
+    expect(row.deliveryState).toBe('pending');
+    expect(row.deliveryAttempts).toBe(1);
+    expect(row.deliveryNextAt).not.toBeNull(); // scheduled, so the runner will find it
+
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/undelivered`, cookies: { sw_session: t } });
+    const body = res.json() as { count: number; lastError: string };
+    expect(body.count).toBe(1);
+    expect(body.lastError).toMatch(/rejected the username or password/i);
+    expect(body.lastError).not.toMatch(/nope/); // the raw driver message never surfaces
+  });
+
+  it('★ mail that is simply unconfigured is owed too, not silently dropped', async () => {
+    mailer.result = false; // "not configured / mode disabled" rather than a transport error
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    const row = await state();
+    expect(row.deliveryState).toBe('pending');
+    expect(row.deliveryError).toMatch(/not configured/i);
+  });
+
+  it('★ the retry pass delivers it once the operator fixes the problem', async () => {
+    mailer.send = async () => { throw new Error('down'); };
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    expect((await state()).deliveryState).toBe('pending');
+
+    // SMTP is fixed; the next due pass carries the backlog out. `now` is pushed past the backoff
+    // rather than waiting for it — the runner takes the clock as an argument for exactly this.
+    const healthy = new FakeMailer();
+    mailer.send = healthy.send.bind(healthy);
+    const result = await app.runDueFormDeliveries({ now: () => Date.now() + 10 * 60_000 });
+    expect(result).toMatchObject({ attempted: 1, sent: 1 });
+    expect((await state()).deliveryState).toBe('sent');
+    expect(healthy.sent[0]).toMatchObject({ recipient: 'sales@acme.com', replyTo: 'lead@x.co' });
+  });
+
+  it('★ resend requeues a submission and the next pass sends it', async () => {
+    mailer.send = async () => { throw new Error('down'); };
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    const id = (await state()).id;
+
+    const healthy = new FakeMailer();
+    mailer.send = healthy.send.bind(healthy);
+    const resend = await app.inject({ method: 'POST', url: `/projects/${projectId}/submissions/${id}/resend`, cookies: { sw_session: t } });
+    expect(resend.statusCode).toBe(200);
+    // Requeued to due-now, so it goes on the very next pass rather than after the backoff.
+    expect((await app.runDueFormDeliveries()).sent).toBe(1);
+    expect(healthy.sent).toHaveLength(1);
+  });
+
+  it('resend 404s for an unknown submission, and for one never owed an email', async () => {
+    const missing = await app.inject({ method: 'POST', url: `/projects/${projectId}/submissions/nope/resend`, cookies: { sw_session: t } });
+    expect(missing.statusCode).toBe(404);
+
+    const repo = new SubmissionRepository(db);
+    const s = await repo.create(projectId, 'contact', { email: 'x@y.z' }, { owesEmail: false });
+    const notOwed = await app.inject({ method: 'POST', url: `/projects/${projectId}/submissions/${s.id}/resend`, cookies: { sw_session: t } });
+    expect(notOwed.statusCode).toBe(404);
+  });
+});
+
+describe('a submission is never emailed twice', () => {
+  it('★ Resend during an in-flight first send does not produce a second delivery', async () => {
+    // The exact reproduction: a fresh row is `pending` while the REQUEST is still sending it, and
+    // that inline attempt holds no lease — `create()` holds the row back instead. Resend used to
+    // clear that hold, so the next pass sent the message the request was in the middle of sending.
+    let releaseSend: () => void = () => {};
+    const inFlight = new Promise<void>((r) => { releaseSend = r; });
+    let calls = 0;
+    mailer.send = async () => {
+      calls += 1;
+      await inFlight; // the SMTP transaction is still open
+      return true;
+    };
+
+    // Fire the submission WITHOUT awaiting: the handler is now blocked inside the transport.
+    const posting = app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await waitFor(async () => (await db.select().from(formSubmissions)).length === 1);
+    const [row] = await db.select().from(formSubmissions);
+    expect(row!.deliveryState).toBe('pending'); // stored, owed, first attempt still running
+
+    // An impatient operator clicks Resend on it.
+    const resend = await app.inject({ method: 'POST', url: `/projects/${projectId}/submissions/${row!.id}/resend`, cookies: { sw_session: t } });
+    expect(resend.statusCode).toBe(404); // refused: nothing has failed yet
+
+    // A background pass must find nothing to do.
+    expect((await app.runDueFormDeliveries()).attempted).toBe(0);
+
+    releaseSend();
+    await posting;
+    expect(calls).toBe(1); // ONE send, to one customer
+    const [after] = await db.select().from(formSubmissions);
+    expect(after!.deliveryState).toBe('sent');
+  }, 30_000);
+});
+
+/** Polls until `check` is true, so the test does not depend on a fixed sleep. */
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 5000): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() - started > timeoutMs) throw new Error('condition never became true');
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+

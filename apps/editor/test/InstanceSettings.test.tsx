@@ -8,11 +8,13 @@ const getInstanceSettings = vi.fn();
 const putInstanceSettings = vi.fn();
 const testInstanceSmtp = vi.fn();
 const sendInstanceSmtpTest = vi.fn();
+const undeliveredInstanceSubmissions = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getInstanceSettings: () => getInstanceSettings(),
     putInstanceSettings: (body: InstanceSettingsInput) => putInstanceSettings(body),
     testInstanceSmtp: () => testInstanceSmtp(),
+    undeliveredInstanceSubmissions: () => undeliveredInstanceSubmissions(),
     sendInstanceSmtpTest: (to?: string) => sendInstanceSmtpTest(to),
   },
 }));
@@ -26,6 +28,8 @@ const DEFAULTS: InstanceSettingsPublic = {
 beforeEach(() => {
   getInstanceSettings.mockReset();
   putInstanceSettings.mockReset();
+  undeliveredInstanceSubmissions.mockReset();
+  undeliveredInstanceSubmissions.mockResolvedValue({ count: 0, lastError: null }); // nothing owed by default
   putInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
 });
 
@@ -367,6 +371,25 @@ describe('instance SMTP send-test failure', () => {
     render(<InstanceSettings />);
     fireEvent.click(await screen.findByRole('button', { name: 'Send test message' }));
     expect(await screen.findByText(/no instance SMTP is configured/)).toBeInTheDocument();
+  });
+});
+
+describe('instance-wide undelivered warning', () => {
+  it('★ tells the admin how many submissions across ALL projects were not emailed', async () => {
+    // A broken global SMTP breaks every project at once, and this is the screen where it gets fixed.
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    undeliveredInstanceSubmissions.mockResolvedValue({ count: 7, lastError: 'The mail server refused the connection.' });
+    render(<InstanceSettings />);
+    expect(await screen.findByText(/7 form submissions across all projects could not be emailed/)).toBeInTheDocument();
+  });
+
+  it('a failing count never blocks the settings screen', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    undeliveredInstanceSubmissions.mockRejectedValue(new Error('offline'));
+    render(<InstanceSettings />);
+    // The screen still renders; only the count is missing.
+    expect(await screen.findByLabelText('Configure global SMTP')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be emailed/)).toBeNull();
   });
 });
 

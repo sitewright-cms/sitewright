@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Form notifications retry, and a failure is now visible.** Delivery is best-effort by design — the
+  submission is stored and the visitor thanked whether or not the mail leaves — which is right for the
+  visitor and used to be the end of it. A transient SMTP failure meant the notification simply never
+  happened: the lead survived in the inbox, nobody was told it had arrived, and the only trace was one
+  line in a server log. Each submission now carries its own delivery state, so a failure leaves something
+  the platform can retry and a person can see.
+  Retries back off 1m → 5m → 15m → 1h → 6h → 24h and then stop, which covers an outage starting on a
+  Friday evening without hammering a provider that is simply refusing. Each attempt re-reads the form as
+  it is *now*, so correcting the recipient or the SMTP settings actually clears the backlog rather than
+  replaying a snapshot of the mistake. A claimed row carries a short lease, so a process killed
+  mid-send leaves work that becomes due again by itself instead of stuck.
+  The alert is in-app, because emailing someone about broken email is circular: a banner in the
+  submissions inbox with the reason, a warning on the Forms tab, an instance-wide count beside the
+  admin's mail settings — shown even when SMTP is switched off, which is when a backlog is most
+  likely — and a **Resend** action so a backlog built up during an outage can be cleared once the
+  cause is fixed.
+
 ### Security
 
 - **★ The platform mailer was sending SMTP credentials in the clear.** `globalSmtp` and `userSmtp` build a

@@ -253,5 +253,18 @@ export const FormSubmissionSchema = z.object({
   /** Submitted text values, keyed by field name. */
   fields: z.record(z.string().max(100), z.string().max(10_000)),
   createdAt: z.string().datetime(),
+  /**
+   * Whether the notification email for this submission has gone out. The submission itself is never
+   * at risk — it is stored before any delivery is attempted — so this describes the NOTIFICATION.
+   *
+   * `na` a form the platform does not route (contact.php / third-party post elsewhere)
+   * `pending` still owed, and being retried
+   * `failed` retries exhausted; waiting for a human
+   * `sent` delivered
+   * `abandoned` no longer owed — the form was deleted or switched to a non-platform mode
+   *
+   * Defaulted rather than required so a row written before this existed still parses.
+   */
+  deliveryState: z.enum(['na', 'pending', 'failed', 'sent', 'abandoned']).default('na'),
 });
 export type FormSubmission = z.infer<typeof FormSubmissionSchema>;

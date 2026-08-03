@@ -1307,6 +1307,9 @@ export const api = {
     request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Instance-wide count of submissions still owed an email (a broken global SMTP hits every project). */
+  undeliveredInstanceSubmissions: () =>
+    request<{ count: number; lastError: string | null }>('GET', '/admin/submissions/undelivered'),
   /** Open a real session to the saved instance SMTP and authenticate, sending nothing. */
   testInstanceSmtp: () => request<{ ok: boolean; error?: string }>('POST', '/admin/settings/smtp/test'),
   /** Send a REAL test message through the instance SMTP. `to` is honoured for agency staff only;
@@ -1415,6 +1418,15 @@ export const api = {
       'GET',
       `/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
     ),
+  /** How many submissions are still owed an email, and why the last one failed. */
+  undeliveredSubmissions: (projectId: string, formId?: string) =>
+    request<{ count: number; lastError: string | null }>(
+      'GET',
+      `/projects/${projectId}/submissions/undelivered${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
+    ),
+  /** Put one back in the queue after fixing SMTP — the next retry pass carries it. */
+  resendSubmission: (projectId: string, id: string) =>
+    request<{ queued: boolean }>('POST', `/projects/${projectId}/submissions/${id}/resend`),
   deleteSubmission: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/submissions/${encodeURIComponent(id)}`),
 };

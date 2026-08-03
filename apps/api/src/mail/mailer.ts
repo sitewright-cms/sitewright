@@ -163,6 +163,39 @@ export async function sendSmtpTestMessage(
 }
 
 /**
+ * The same explanation as {@link describeSmtpError}, for callers that do NOT know which server was
+ * being talked to — the request path and the retry runner both hand the mailer a submission and let
+ * it load its own config. Interpolating a placeholder host instead would render sentences like
+ * "The server at the mail server:0 does not offer STARTTLS", which is worse than saying less.
+ */
+export function describeDeliveryFailure(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const code = (err as { code?: string } | null)?.code ?? '';
+  if (code === 'ETLS' || /does not support required STARTTLS/i.test(raw)) {
+    return 'The mail server does not offer STARTTLS, so the connection cannot be encrypted. Use the provider’s TLS port (usually 587 with STARTTLS, or 465 with “implicit TLS” enabled).';
+  }
+  if (code === 'EDNS' || /getaddrinfo|ENOTFOUND|EAI_AGAIN/i.test(raw)) {
+    return 'The mail server’s host name could not be resolved. Check it for a typo.';
+  }
+  if (code === 'ECONNECTION' || /ECONNREFUSED/i.test(raw)) {
+    return 'The mail server refused the connection. Check the host and port.';
+  }
+  if (code === 'ETIMEDOUT' || /timed? ?out/i.test(raw)) {
+    return 'The mail server did not respond in time — usually a firewall dropping the connection, or the wrong port.';
+  }
+  if (code === 'EAUTH' || /invalid login|authentication fail|535/i.test(raw)) {
+    return 'The mail server rejected the username or password.';
+  }
+  if (/self.signed|certificate|unable to verify|CERT_/i.test(raw)) {
+    return 'The mail server’s TLS certificate could not be verified. A self-signed certificate is not accepted.';
+  }
+  if (/550|551|553|recipient/i.test(raw)) {
+    return 'The mail server rejected the recipient address.';
+  }
+  return 'The message could not be sent to the mail server.';
+}
+
+/**
  * Turns a nodemailer failure into something an operator can act on.
  *
  * Deliberately does NOT pass the raw message through: it can carry the server's banner and the

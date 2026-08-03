@@ -510,3 +510,21 @@ describe('instance SMTP honours SW_SMTP_ALLOWED_HOSTS', () => {
   }, 30_000);
 });
 
+describe('instance-wide undelivered count', () => {
+  it('★ reports the backlog across ALL projects to an admin, and is admin-only', async () => {
+    // A broken GLOBAL SMTP breaks every project at once; the admin looking at mail settings is the
+    // one who can fix it, so the number has to be reachable from there.
+    const adb = await makeTestDb();
+    db = adb;
+    const app2 = await createApp({ db: adb, encryptionKey: Buffer.from(ENC_KEY, 'base64') });
+    await app2.ready();
+    const admin = (await registerAdmin(app2)).t;
+
+    const empty = await app2.inject({ method: 'GET', url: '/admin/submissions/undelivered', cookies: { sw_session: admin } });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toEqual({ count: 0, lastError: null });
+
+    expect((await app2.inject({ method: 'GET', url: '/admin/submissions/undelivered' })).statusCode).toBe(401);
+  }, 30_000);
+});
+

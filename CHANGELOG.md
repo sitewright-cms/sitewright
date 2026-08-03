@@ -9,6 +9,31 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.12.3] — 2026-08-03
+
+### Fixed
+
+- **The clone-fidelity gate was failing good clones, and it was not the thresholds.** Three defects,
+  found by running the gate against finished clones and their live originals rather than by reading the
+  reports of agents who had used it. Two of those reports blamed causes that turn out not to exist —
+  the body matcher pairs elements by TEXT, not by selector, so renaming classes cannot affect it, and
+  the capture has not resized the layout viewport since #516. What was actually wrong: (1) the font
+  fingerprint measured a canvas set to the element's FIRST family and skipped any family the browser
+  would not confirm, which is exactly a source site whose own `@font-face` 404s — so every clone of one
+  reported a font mismatch it could do nothing about, while both sides rendered the identical 2030px of
+  glyphs; it now measures the element's whole computed family list, i.e. what it really renders. (2) The
+  element inventory found buttons by tag or by a `btn` in the class name, so a CTA authored as
+  `<span class="rounded-full border px-4">` was invisible and the original's real `<button>` counted as
+  missing CONTENT — one page scored 76% for seven buttons that were all there; buttons are now also
+  recognised from appearance, which adds nothing at all to an original and so cannot inflate the score.
+  (3) The behaviour leg's font check accepted only the generic keywords, so Verdana, Georgia, Times New
+  Roman and every other named system face read as MISSING — the same faces the picker offers, the
+  importer writes, and the agent guide recommends. An agent's only escape was a webfont the original
+  never had, which (1) then flagged as a mismatch: two gates pushing opposite ways. Measured across
+  three pairs: 76%→95% and PASS on one, three of four font diffs gone on another, no change on the
+  third. The one diff that survived was a real defect the noise had been hiding.
+  `scorePage`'s `maxFontMiss: 0` is deliberately unchanged — loosening it would have hidden that defect.
+
 ## [0.12.2] — 2026-08-03
 
 Three things that were quietly broken on every project, found by reviewing cloned sites rather than

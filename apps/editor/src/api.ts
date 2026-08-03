@@ -1413,8 +1413,10 @@ export const api = {
   ) => streamAgentChat(`${BASE}/projects/${projectId}/agent/messages`, body, handlers, signal),
 
   // --- form submissions (inbox) ---
+  /** `forms` carries each form's display name + its field labels, so the inbox can show what the
+   *  author called a field instead of the input `name` the submission is keyed by. */
   listSubmissions: (projectId: string, formId?: string) =>
-    request<{ items: FormSubmission[]; total: number }>(
+    request<{ items: FormSubmission[]; total: number; forms?: Record<string, { name: string; labels: Record<string, string> }> }>(
       'GET',
       `/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
     ),

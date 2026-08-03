@@ -299,7 +299,8 @@ import {
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
 import { clampShots } from '../render/mcp-image.js';
-import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot } from '../render/compare.js';
+import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot, captureIssue
+} from '../render/compare.js';
 import { INSPECT_LIMITS } from '../render/inspect-probe.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
@@ -6081,7 +6082,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
           captureUrlElements(target.sourceUrl, { mode: 'pinned', signal: abort.signal }),
         ]);
-        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...scoreFidelity(source, build) });
+        // Say WHICH side could not be looked at, rather than presenting a failed capture as a 0% score —
+        // an agent cannot act on "coverage: 0" when the truth is "the render did not come back".
+        const capture = { build: captureIssue(build), source: captureIssue(source) };
+        const captured = capture.build || capture.source ? { capture } : {};
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...captured, ...scoreFidelity(source, build) });
       },
     );
 

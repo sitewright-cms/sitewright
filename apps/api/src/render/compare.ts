@@ -165,13 +165,18 @@ export async function captureUrlShots(
 /**
  * Capture the fidelity ELEMENTS + whole-bar meta from `url` at Full HD (1920), the same viewport the CLI gate
  * uses — for the `fidelity_check` MCP tool. Reuses the SSRF-pinned render path (via prepPage) exactly like
- * `captureUrlShots`, but runs the in-page extract instead of a screenshot. Returns empty on any failure so the
- * gate degrades to a low-coverage FAIL rather than throwing.
+ * `captureUrlShots`, but runs the in-page extract instead of a screenshot.
+ *
+ * A failure still yields empty items so the gate degrades instead of throwing — but it now SAYS SO via
+ * `failed`. Silently returning empty made a broken capture indistinguishable from a clone that reproduced
+ * nothing: three of six real projects reported `coverage: 0` from a capture bug, and the agent reading that
+ * number concluded the tool was structurally incompatible with its job and stopped using it. A gate is
+ * allowed to fail a page; it is not allowed to say "you scored 0" when it means "I could not look".
  */
 export async function captureUrlElements(
   url: string,
   opts: { mode: CaptureMode; signal?: AbortSignal },
-): Promise<{ items: ChromeEl[]; meta: ChromeMeta; fonts: FontMetrics }> {
+): Promise<{ items: ChromeEl[]; meta: ChromeMeta; fonts: FontMetrics; failed?: string }> {
   const browser = await getBrowser();
   const vp = SCREENSHOT_VIEWPORTS.fullhd;
   return withRenderSlot(async () => {
@@ -194,7 +199,23 @@ export async function captureUrlElements(
     } finally {
       await context.close().catch(() => {});
     }
-  }).catch(() => ({ items: [] as ChromeEl[], meta: {} as ChromeMeta, fonts: {} as FontMetrics }));
+  }).catch((err: unknown) => ({
+    items: [] as ChromeEl[],
+    meta: {} as ChromeMeta,
+    fonts: {} as FontMetrics,
+    failed: err instanceof Error && err.message ? err.message.slice(0, 200) : 'render failed',
+  }));
+}
+
+/**
+ * Why a side of the comparison has nothing to compare — `undefined` when it captured normally. An EMPTY
+ * capture is reported too: a real page always yields some heading/link/paragraph, so zero elements means the
+ * render did not produce a usable page, which is a different fact from "this clone matches nothing".
+ */
+export function captureIssue(side: { items: ChromeEl[]; failed?: string }): string | undefined {
+  if (side.failed) return `capture failed: ${side.failed}`;
+  if (side.items.length === 0) return 'captured, but the page yielded no comparable elements';
+  return undefined;
 }
 
 /**

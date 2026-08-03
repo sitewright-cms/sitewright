@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compareTargets, scoreFidelity } from '../src/render/compare.js';
+import { compareTargets, scoreFidelity, captureIssue } from '../src/render/compare.js';
 import type { ChromeEl, ChromeMeta } from '@sitewright/site-import/fidelity';
 
 const base = { projectId: 'p1', sig: 'SIG', originHostPort: '127.0.0.1:80' };
@@ -76,5 +76,23 @@ describe('scoreFidelity', () => {
     const r = scoreFidelity(side([cel({ text: 'A', role: 'text', tag: 'p', region: 'body' })]), side([]));
     expect(r.pass).toBe(false);
     expect(r.body.coverage).toBe(0);
+  });
+});
+
+describe('captureIssue', () => {
+  const el = { role: 'text', tag: 'p', text: 'x', region: 'body', x: 0, y: 0, w: 10, h: 10 } as unknown as ChromeEl;
+
+  it('says nothing when the capture worked', () => {
+    expect(captureIssue({ items: [el] })).toBeUndefined();
+  });
+
+  it('names a FAILED capture rather than letting it read as a 0% score', () => {
+    // The whole point: a broken render used to be indistinguishable from a clone that reproduced nothing,
+    // and an agent reading `coverage: 0` concluded the tool was useless instead of that it had crashed.
+    expect(captureIssue({ items: [], failed: 'Timeout 30000ms exceeded' })).toBe('capture failed: Timeout 30000ms exceeded');
+  });
+
+  it('flags an EMPTY capture too — a real page always yields something', () => {
+    expect(captureIssue({ items: [] })).toBe('captured, but the page yielded no comparable elements');
   });
 });

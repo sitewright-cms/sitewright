@@ -8,6 +8,7 @@ import { DEFAULT_FORM_MODES, MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema
 import { SubmissionRepository } from '../src/repo/submissions.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import type { Database } from '../src/db/client.js';
+import { formatSubmissionText } from '../src/mail/mailer.js';
 import type { SubmissionMail, SubmissionMailer, ProjectMailer } from '../src/mail/mailer.js';
 
 class FakeMailer implements SubmissionMailer {
@@ -244,6 +245,52 @@ describe('public form submission endpoint', () => {
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
+  it('names the cap it hit instead of one opaque "invalid submission"', async () => {
+    // A big order form sits close to the field cap (a real one measured 44 of 60); the first time a
+    // menu grows past it, EVERY order 400s, and the message used to say nothing about which limit.
+    const tooMany: Record<string, string> = { _elapsed: '5000' };
+    for (let i = 0; i < 70; i += 1) tooMany[`f${i}`] = 'x';
+    const over = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: tooMany });
+    expect(over.statusCode).toBe(400);
+    expect(over.json()).toEqual({ error: 'invalid submission', reason: 'too many fields (71; the maximum is 60)' });
+
+    const long = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'a@b.co', message: 'x'.repeat(10_001), _elapsed: '5000' },
+    });
+    expect(long.json()).toMatchObject({ reason: '"message" is longer than 10000 characters' });
+
+    const nested = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: { deep: true }, _elapsed: '5000' },
+    });
+    expect(nested.json()).toMatchObject({ reason: '"email" is not text (no objects, nulls or attachments)' });
+
+    const notAnObject = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: ['a'] });
+    expect(notAnObject.json()).toMatchObject({ reason: 'the body must be a flat object of text values' });
+  });
+
+  it('heads each email line with the author’s LABEL, and leaves undeclared fields on their own name', async () => {
+    // The body is keyed by input `name` — wiring. A merchant was reading `arrival_date:` while the
+    // author had written "Pickup Date in Windhoek" right there in the form.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'lead@x.co', message: 'Hello', 'Meal - Chilli Con Carne': '3', _elapsed: '5000' },
+    });
+    expect(res.statusCode).toBe(200);
+    const mail = mailer.sent[0]!;
+    expect(mail.labels).toEqual({ email: 'Email', message: 'Message' });
+    const body = formatSubmissionText(mail.formName, mail.fields, mail.labels);
+    expect(body).toContain('Email:\n  lead@x.co');
+    expect(body).toContain('Message:\n  Hello');
+    // no definition entry → keeps its own name, which is already prose on a hand-authored page
+    expect(body).toContain('Meal - Chilli Con Carne:\n  3');
+    expect(body).not.toContain('email:\n');
+  });
+
   describe('dry run — what a preview posts to', () => {
     const stored = async (): Promise<number> =>
       (await new SubmissionRepository(db).list(projectId, {})).total;
@@ -314,7 +361,7 @@ describe('public form submission endpoint', () => {
         payload: { email: { nested: true }, _elapsed: '5000' },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toEqual({ error: 'invalid submission' });
+      expect(res.json()).toMatchObject({ error: 'invalid submission' });
     });
   });
 

@@ -3,7 +3,7 @@ import { FormSchema, isPlatformRoutedMode } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { DueDelivery } from '../repo/submissions.js';
-import { describeDeliveryFailure, type SubmissionMailer, type ProjectMailer, type SubmissionMail } from './mailer.js';
+import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer, type SubmissionMail } from './mailer.js';
 
 /**
  * Works out how to deliver one overdue submission, using the form AS IT IS NOW.
@@ -49,6 +49,9 @@ export function makeDeliveryResolver(deps: {
         subject: form.subject || `New "${form.name}" submission`,
         formName: form.name,
         fields: row.fields,
+        // re-read from the form as it is NOW, like the recipient above — relabelling a field fixes the
+        // wording of everything still owed, not just of submissions that arrive after the edit
+        labels: submissionLabels(form.fields),
         ...(replyTo ? { replyTo } : {}),
       },
       send: (mail) =>

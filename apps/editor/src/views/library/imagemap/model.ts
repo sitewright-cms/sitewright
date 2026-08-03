@@ -1,0 +1,260 @@
+// Pure model helpers for the Image Map Studio — everything that reasons about a map's config
+// without touching React or the DOM, so it can be unit-tested on its own.
+//
+// GEOMETRY IS PERCENT. Every x/y/width/height on a hotspot is a percentage of the artboard, which is
+// what makes a map resolution-independent: the runtime scales the artboard to its container and the
+// hotspots follow. The Studio therefore converts to pixels only at the moment it draws or drags.
+import type { ImageMap, ImageMapArtboard, ImageMapObject, ImageMapTooltipBlock } from '@sitewright/schema';
+
+/** The hotspot shapes the Studio can create. (`svg`/`svg-single`/`group` come from imports.) */
+export const DRAWABLE_TYPES = ['rect', 'oval', 'poly', 'spot', 'text'] as const;
+export type DrawableType = (typeof DRAWABLE_TYPES)[number];
+
+export const TYPE_LABELS: Record<string, string> = {
+  rect: 'Rectangle',
+  oval: 'Oval',
+  poly: 'Polygon',
+  spot: 'Pin',
+  text: 'Text',
+  svg: 'SVG group',
+  'svg-single': 'SVG shape',
+  group: 'Group',
+};
+
+/** A short, collision-free id. Not a UUID — these are only unique within one map. */
+export function newId(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Depth-first walk over an artboard's object tree, including nested group children. */
+export function walkObjects(
+  objects: readonly ImageMapObject[] | undefined,
+  visit: (obj: ImageMapObject, parent: ImageMapObject | null) => void,
+  parent: ImageMapObject | null = null,
+): void {
+  for (const obj of objects ?? []) {
+    visit(obj, parent);
+    walkObjects(obj.children, visit, obj);
+  }
+}
+
+/** Every object in an artboard, flattened, with its nesting depth — what the object list renders. */
+export function flattenObjects(artboard: ImageMapArtboard | undefined): Array<{ obj: ImageMapObject; depth: number }> {
+  const out: Array<{ obj: ImageMapObject; depth: number }> = [];
+  const walk = (objects: readonly ImageMapObject[] | undefined, depth: number): void => {
+    for (const obj of objects ?? []) {
+      out.push({ obj, depth });
+      walk(obj.children, depth + 1);
+    }
+  };
+  walk(artboard?.children, 0);
+  return out;
+}
+
+/** Find one object anywhere in an artboard. */
+export function findObject(artboard: ImageMapArtboard | undefined, id: string): ImageMapObject | undefined {
+  let found: ImageMapObject | undefined;
+  walkObjects(artboard?.children, (obj) => {
+    if (obj.id === id) found = obj;
+  });
+  return found;
+}
+
+/**
+ * Replace one object in an artboard, returning a NEW artboard.
+ *
+ * `update` returning null DELETES the object. Immutable throughout: React state and the undo stack
+ * both depend on a changed object producing a changed reference all the way to the root.
+ */
+export function mapObject(
+  artboard: ImageMapArtboard,
+  id: string,
+  update: (obj: ImageMapObject) => ImageMapObject | null,
+): ImageMapArtboard {
+  // `changed` is threaded through so an untouched branch keeps its IDENTITY, not just its value:
+  // cloning every ancestor-with-children on each edit would re-render the whole tree, and on a map
+  // with hundreds of hotspots that is the difference between a smooth drag and a stuttering one.
+  let changed = false;
+  const walk = (objects: readonly ImageMapObject[] | undefined): ImageMapObject[] => {
+    const out: ImageMapObject[] = [];
+    for (const obj of objects ?? []) {
+      if (obj.id === id) {
+        changed = true;
+        const next = update(obj);
+        if (next) out.push(next);
+        continue;
+      }
+      if (!obj.children) {
+        out.push(obj);
+        continue;
+      }
+      const before = changed;
+      const children = walk(obj.children);
+      out.push(changed === before ? obj : { ...obj, children });
+    }
+    return out;
+  };
+  const children = walk(artboard.children);
+  return changed ? { ...artboard, children } : artboard;
+}
+
+/** Replace one artboard, returning a NEW map. */
+export function mapArtboard(
+  map: ImageMap,
+  artboardId: string,
+  update: (artboard: ImageMapArtboard) => ImageMapArtboard,
+): ImageMap {
+  return {
+    ...map,
+    artboards: map.artboards.map((a) => (a.id === artboardId ? update(a) : a)),
+  };
+}
+
+/** The artboard's own pixel size — its override, else the map default, else a sane 800×600. */
+export function artboardSize(map: ImageMap, artboard: ImageMapArtboard | undefined): { width: number; height: number } {
+  return {
+    width: artboard?.width ?? map.general.width ?? 800,
+    height: artboard?.height ?? map.general.height ?? 600,
+  };
+}
+
+/** Clamp a percentage into the artboard, leaving `size` room so an object can't be dragged fully out. */
+export function clampPct(value: number, size = 0): number {
+  return Math.min(100 - size, Math.max(0, value));
+}
+
+/** Round to 4 decimals — enough for sub-pixel accuracy at any sane artboard size, without noise. */
+export function round(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+/**
+ * A new hotspot of `type`, centred on (x, y) in percent.
+ *
+ * Only the fields that differ from the runtime's own objectDefaults are set: it deep-extends every
+ * object against them, so writing the full default set here would be a second copy to keep in step.
+ */
+export function newObject(type: DrawableType, x: number, y: number, title: string): ImageMapObject {
+  const base: ImageMapObject = {
+    id: newId(type),
+    title,
+    type,
+    x: round(clampPct(x)),
+    y: round(clampPct(y)),
+    default_style: { background_color: '#0a7a5a', background_opacity: 0.35 },
+    mouseover_style: { background_color: '#0a7a5a', background_opacity: 0.6 },
+    tooltip: { enable_tooltip: true },
+    tooltip_content: [],
+    actions: { click: 'no-action' },
+  };
+  if (type === 'poly') {
+    // A triangle the author can then reshape. The BOX is on the artboard; the points are relative
+    // to that box (0–100), which is the form the runtime reads.
+    return {
+      ...base,
+      x: round(clampPct(x - 7, 14)),
+      y: round(clampPct(y - 6, 12)),
+      width: 14,
+      height: 12,
+      points: [
+        { x: 50, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+    };
+  }
+  if (type === 'spot') {
+    // A pin is drawn at its icon size, not as a percentage box.
+    return { ...base, width: 4, height: 4 };
+  }
+  if (type === 'text') {
+    return { ...base, width: 20, height: 6, text: { text: title, font_size: 16, text_color: '#111111' } };
+  }
+  return { ...base, width: 14, height: 12 };
+}
+
+/**
+ * An object's box, in percent of the ARTBOARD. Every type — polygons included — carries its own
+ * x/y/width/height; see {@link polyPointToArtboard} for why a polygon's `points` are not it.
+ */
+export function objectBounds(obj: ImageMapObject): { x: number; y: number; width: number; height: number } {
+  return { x: obj.x ?? 0, y: obj.y ?? 0, width: obj.width ?? 0, height: obj.height ?? 0 };
+}
+
+/**
+ * A polygon vertex converted from its stored form to a position on the artboard, both in percent.
+ *
+ * ★ A polygon's `points` are percentages of the object's OWN BOUNDING BOX, not of the artboard —
+ * this is what the runtime's Poly renderer does:
+ *
+ *     x = artboardWidth * (obj.x / 100) + (point.x / 100) * (artboardWidth * obj.width / 100)
+ *
+ * which reduces to the artboard percentage below. Treating `points` as artboard percentages draws a
+ * wildly distorted shape (and it looks plausible enough on a busy background to miss). The upside of
+ * the real model: moving or resizing a polygon only touches x/y/width/height, and the points come
+ * along untouched.
+ */
+export function polyPointToArtboard(
+  obj: ImageMapObject,
+  point: { x: number; y: number },
+): { x: number; y: number } {
+  const b = objectBounds(obj);
+  return { x: b.x + (point.x / 100) * b.width, y: b.y + (point.y / 100) * b.height };
+}
+
+/** The inverse of {@link polyPointToArtboard}: an artboard position back to a box-relative vertex. */
+export function artboardToPolyPoint(
+  obj: ImageMapObject,
+  at: { x: number; y: number },
+): { x: number; y: number } {
+  const b = objectBounds(obj);
+  return {
+    x: b.width === 0 ? 0 : round(((at.x - b.x) / b.width) * 100),
+    y: b.height === 0 ? 0 : round(((at.y - b.y) / b.height) * 100),
+  };
+}
+
+/** A blank map, ready for its first artboard image. */
+export function emptyMap(id: string, name: string): ImageMap {
+  return {
+    id,
+    general: { name, width: 800, height: 600 },
+    artboards: [
+      { id: newId('artboard'), title: 'Artboard 1', background_type: 'color', background_color: '#f1f5f9', image_url: '', children: [] },
+    ],
+  };
+}
+
+/** A new tooltip content block of `type`, with the minimum a renderer needs. */
+export function newTooltipBlock(type: ImageMapTooltipBlock['type']): ImageMapTooltipBlock {
+  switch (type) {
+    case 'Heading':
+      return { type: 'Heading', text: 'Heading', heading: 'h3' };
+    case 'Paragraph':
+      return { type: 'Paragraph', text: 'Some text.' };
+    case 'Button':
+      return { type: 'Button', text: 'Learn more', url: '#', newTab: false };
+    case 'Image':
+      return { type: 'Image', url: '', linkUrl: '' };
+    case 'Video':
+      return { type: 'Video', src: { mp4: '' }, linkUrl: '', controls: true };
+    case 'YouTube':
+      return { type: 'YouTube', embedCode: '', allowFullscreen: true };
+  }
+}
+
+/** Human label for a tooltip block in the builder list. */
+export function blockLabel(block: ImageMapTooltipBlock): string {
+  if (block.type === 'Heading' || block.type === 'Paragraph' || block.type === 'Button') {
+    return block.text?.replace(/<[^>]*>/g, '').slice(0, 40) || block.type;
+  }
+  if (block.type === 'Image') return block.url ? block.url.split('/').pop() ?? 'Image' : 'Image';
+  return block.type;
+}
+
+/** Total hotspots in a map, nested children included — the count the map list shows. */
+export function countHotspots(map: ImageMap): number {
+  let n = 0;
+  for (const artboard of map.artboards) walkObjects(artboard.children, () => n++);
+  return n;
+}

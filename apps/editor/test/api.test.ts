@@ -1275,3 +1275,48 @@ describe('undelivered-notification helpers', () => {
   });
 });
 
+
+describe('api client — image maps', () => {
+  it('lists, reads, writes and deletes maps on the generic content routes', async () => {
+    const map = { id: 'floor', general: { name: 'Ground' }, artboards: [] };
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [map] }));
+    expect((await api.listImageMaps('p1')).items).toHaveLength(1);
+    expect(fetchMock.mock.calls[0]![0]).toContain('/projects/p1/content/imagemap');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: map }));
+    await api.getImageMap('p1', 'floor');
+    expect(fetchMock.mock.calls[1]![0]).toContain('/content/imagemap/floor');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: map }));
+    await api.putImageMap('p1', map as never);
+    expect(fetchMock.mock.calls[2]![1]).toMatchObject({ method: 'PUT' });
+
+    fetchMock.mockResolvedValue(jsonResponse(204, undefined));
+    await api.deleteImageMap('p1', 'floor');
+    expect(fetchMock.mock.calls[3]![1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('encodes an id that would otherwise break the path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
+    await api.getImageMap('p1', 'a/b c');
+    expect(fetchMock.mock.calls[0]![0]).toContain('a%2Fb%20c');
+  });
+
+  it('reads the bundled templates from the platform route, not a project one', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { templates: [{ id: 'business' }] }));
+    const { templates } = await api.listImageMapTemplates();
+    expect(templates).toHaveLength(1);
+    // Platform data — no project in the path.
+    expect(fetchMock.mock.calls[0]![0]).toContain('/authoring/imagemaps');
+    expect(fetchMock.mock.calls[0]![0]).not.toContain('/projects/');
+  });
+
+  it('materialises a template through the SERVER, which self-hosts its images', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'm' }, importedImages: 2 }));
+    const res = await api.createImageMapFromTemplate('p1', { template: 'real-estate', name: 'Tower' });
+    expect(res.importedImages).toBe(2);
+    expect(fetchMock.mock.calls[0]![0]).toContain('/projects/p1/imagemaps/from-template');
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
+  });
+});

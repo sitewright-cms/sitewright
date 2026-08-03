@@ -98,7 +98,8 @@ describe('render-template API (isolated worker)', () => {
     });
     expect(served.statusCode).toBe(200);
     // Exact value (not just "contains sandbox") so a future broadening to allow-same-origin fails here.
-    expect(served.headers['content-security-policy']).toBe('sandbox allow-scripts');
+    // allow-forms so an embedded form's submit fires; its endpoint is the dry run
+    expect(served.headers['content-security-policy']).toBe('sandbox allow-scripts allow-forms');
     expect(served.body).toBe(html); // the token serves the exact same document
   });
 

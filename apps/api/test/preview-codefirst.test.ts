@@ -121,7 +121,8 @@ describe('code-first preview', () => {
       id: 'contact-page', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section' },
       source: '<section>{{sw-form "contact"}}</section>',
     });
-    expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+    // a PREVIEW posts to the dry run: same validation, nothing stored, nothing mailed
+    expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact/preview"`);
     expect(html).toContain('data-sw-form="contact"'); // preview keeps the reference marker
     expect(html).toContain('<span data-sw-part="label">Email</span>');
     expect(html).toContain('name="_hpt"');

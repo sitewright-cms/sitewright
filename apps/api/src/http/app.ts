@@ -3696,7 +3696,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // publicBaseUrl-absolute endpoints. The hCaptcha sitekey upgrades opted-in forms' widgets.
       const previewForms = resolveFormEndpoints(
         Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
-        (fid) => `/f/${project.id}/${fid}`,
+        // …pointed at the DRY RUN: a preview validates like the real endpoint and then stores/sends
+        // nothing, so testing a form never mails the merchant a lead that does not exist.
+        (fid) => `/f/${project.id}/${fid}/preview`,
       );
       // The sitekey only matters for an hcaptcha-flagged form — skip the extra settings read
       // (per-preview hot path) for the overwhelmingly common case of none.
@@ -3935,8 +3937,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const html = previewStore.get(req.params.token, { projectId: project.id, userId });
       if (html === null) return expired();
       // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
-      // SAMEORIGIN framing lets the editor embed it; no third party.
-      reply.header('content-security-policy', 'sandbox allow-scripts');
+      // SAMEORIGIN framing lets the editor embed it; no third party. `allow-forms` lets a form's
+      // submit event fire — this surface's forms post to the DRY RUN, so nothing is stored or mailed.
+      reply.header('content-security-policy', 'sandbox allow-scripts allow-forms');
       reply.header('x-frame-options', 'SAMEORIGIN');
       return reply.type('text/html').send(html);
     },
@@ -6528,8 +6531,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Don't leak the signed (bearer) URL to third parties via the Referer header on outbound links.
           .header('referrer-policy', 'no-referrer')
           // Sandbox the author content (opaque origin) — scripts run for true WYSIWYG, but can't reach
-          // the editor's same-origin session; forms stay inert (no accidental preview submissions).
-          .header('content-security-policy', 'sandbox allow-scripts')
+          // the editor's same-origin session. `allow-forms` lets the submit EVENT fire; the leads it
+          // would fire are handled by pointing preview forms at the dry-run endpoint (build.ts), not by
+          // breaking the button. Without it the browser refuses the submit outright, so the one thing
+          // the review workflow could never exercise on the surface it runs on was a form.
+          .header('content-security-policy', 'sandbox allow-scripts allow-forms')
           .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);
@@ -7222,7 +7228,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).
       const renderForms = resolveFormEndpoints(
         Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
-        (fid) => `/f/${project.id}/${fid}`,
+        (fid) => `/f/${project.id}/${fid}/preview`, // dry run — a render preview never mails a lead
       );
       // Settings read only when an hcaptcha-flagged form exists (mirrors the /preview gate).
       const renderHcaptchaSiteKey = Object.values(renderForms).some((f) => f.hcaptcha)
@@ -7372,7 +7378,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           emitBrandContentTokens: !!themeFxBodyEnd,
           containerWidth,
         });
-        reply.header('content-security-policy', 'sandbox allow-scripts');
+        // `allow-forms` so an embedded form's submit fires here too; this render's forms point at the
+        // dry-run endpoint (renderForms above), so a live render never mails anyone.
+        reply.header('content-security-policy', 'sandbox allow-scripts allow-forms');
         reply.header('x-frame-options', 'SAMEORIGIN');
         return reply.type('text/html').send(html);
       } catch (err) {

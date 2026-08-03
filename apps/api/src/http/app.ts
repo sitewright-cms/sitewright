@@ -6135,8 +6135,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Resolve the template ref the same way preview/publish do, and hand over the snippet bodies so
         // `{{> partial}}` directives are counted too.
         let auditDefaultLocale = 'en';
+        let auditCriticalCss: string | null = null;
         try {
-          auditDefaultLocale = ((await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings).settings?.defaultLocale ?? 'en';
+          const auditSettings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
+          auditDefaultLocale = auditSettings.settings?.defaultLocale ?? 'en';
+          auditCriticalCss = auditSettings.website?.criticalCss ?? null;
         } catch (err) {
           if (!(err instanceof NotFoundError)) throw err;
         }
@@ -6159,7 +6162,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...WIDGET_PARTIALS,
         };
         const audit = assembleAudit([
-          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string; url?: string }>, pageSource: effectiveSource || null, snippets: auditSnippets }),
+          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string; url?: string }>, pageSource: effectiveSource || null, snippets: auditSnippets, criticalCss: auditCriticalCss }),
           behaviouralChecks(behaviour),
           visualChecks(fidelity),
         ]);

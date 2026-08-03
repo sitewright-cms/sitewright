@@ -3123,6 +3123,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'page' && !wantMerge) {
         body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
       }
+      // A full (non-merge) write must carry `id`, and the path already says what it is. Requiring it in
+      // the BODY as well is pure friction, and the failure was a bare `{"fieldErrors":{"id":["Required"]}}`
+      // that names neither the id nor where it belongs — a caller converting a batch of pages read them,
+      // edited them, wrote them back without the (path-implied) id, and got that on every one. Default it
+      // from the path. An id that is PRESENT and wrong still conflicts in `entityKey`, so the mismatch
+      // guard is untouched; the two path-keyed singletons have no `id` field at all and are skipped.
+      if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp') {
+        const b = body as Record<string, unknown> | null;
+        if (b && typeof b === 'object' && !Array.isArray(b) && b.id === undefined) {
+          body = { ...b, id: req.params.entityId };
+        }
+      }
       // Entries: fold FLAT field values into `values` before anything else looks at the body. Sending
       // them flat is the most common mistake against this API and it fails silently — unknown keys are
       // stripped, the row saves as values:{}, the write reports success, and the loop renders nothing.

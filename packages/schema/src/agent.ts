@@ -871,7 +871,10 @@ SETTINGS: get_content("settings","settings") first, then put_content("settings",
 other field…, website: { …keep the rest…, footer: "<div>…</div>", mainNav: "<div>…</div>" } }) — put_content
 REPLACES the whole entity by default, so send the FULL settings back, not just the slot — OR pass merge:true
 to PATCH just the fields you send, e.g. put_content("settings","settings", { website: { footer: "<div>…</div>" } },
-{ merge:true }), which leaves every other slot/field untouched (the safe way to change one slot). The value is INNER
+{ merge:true }), which leaves every other slot/field untouched (the safe way to change one slot). In a merge
+patch, a value of \`null\` DELETES that key — the only way to REMOVE a field without resending the whole
+entity (e.g. put_content("page","de", { template:null }, { merge:true }) moves a translated page off its
+template so it INHERITS the default language's code again; \`""\` is not a valid template ref). The value is INNER
 markup only; the skeleton wraps it in the landmark (<footer id="footer">, <nav id="main-nav">, <aside …>),
 so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot value can just include a recipe partial, e.g.
 website.footer = "{{> nav-footer}}". Do NOT create pages named "header"/"footer" and do NOT use a template

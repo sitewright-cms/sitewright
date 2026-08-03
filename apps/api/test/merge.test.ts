@@ -31,9 +31,19 @@ describe('deepMerge', () => {
     expect(deepMerge({ x: { y: 2 } }, { x: 1 })).toEqual({ x: 1 });
   });
 
-  it('ignores an undefined patch value (keeps the base) but writes null', () => {
+  it('ignores an undefined patch value (a key the caller left out must not vanish)', () => {
     expect(deepMerge({ a: 1, b: 2 }, { a: undefined })).toEqual({ a: 1, b: 2 });
-    expect(deepMerge({ a: 1 }, { a: null })).toEqual({ a: null });
+  });
+
+  it('DELETES a key whose patch value is null — the only way a merge can remove one', () => {
+    expect(deepMerge({ a: 1, b: 2 }, { a: null })).toEqual({ b: 2 });
+    expect(Object.hasOwn(deepMerge({ a: 1 }, { a: null }) as object, 'a')).toBe(false);
+    // nested, and only the named key goes
+    expect(deepMerge({ x: { y: 1, z: 2 } }, { x: { y: null } })).toEqual({ x: { z: 2 } });
+    // deleting a key the base does not have is a no-op, not an error
+    expect(deepMerge({ a: 1 }, { b: null })).toEqual({ a: 1 });
+    // a null INSIDE an array is untouched — arrays replace wholesale, they are not merged
+    expect(deepMerge({ a: [1, 2] }, { a: [null] })).toEqual({ a: [null] });
   });
 
   it('when base is not a plain object, patch wins (undefined keeps base)', () => {

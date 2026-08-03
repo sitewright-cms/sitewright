@@ -461,6 +461,43 @@ describe('content API — page patch/merge (?merge=1) + import-marker preservati
     const { item } = await getPage(t, projectId, 'about');
     expect((item.data as { swImport?: unknown }).swImport ?? null).toBeNull();
   });
+
+  // Moving a page off a template — "this translation now INHERITS its parent's code" — had no
+  // expressible form: `template: ""` fails `.min(1)`, a merge could only add or overwrite, and a full
+  // write means resending the whole page from a possibly stale snapshot.
+  it('a null in a merge patch CLEARS the field — a page can be moved back onto inheritance', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pageclear');
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/template/tpl_home`, cookies: { sw_session: t },
+      payload: { id: 'tpl_home', name: 'Home layout', source: '<h1>home</h1>' },
+    });
+    await putPage(t, projectId, 'de', { id: 'de', path: 'de', title: 'Start', template: 'tpl_home' });
+    expect((await getPage(t, projectId, 'de')).item.template).toBe('tpl_home');
+
+    const cleared = await putPage(t, projectId, 'de', { template: null }, true);
+    expect(cleared.statusCode).toBe(200);
+    const { item } = await getPage(t, projectId, 'de');
+    expect(item.template).toBeUndefined();
+    expect(item.title).toBe('Start'); // the rest of the page is untouched
+  });
+
+  it('an empty template string is still refused — null is the way to clear, not ""', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pageemptytpl');
+    await putPage(t, projectId, 'de', { id: 'de', path: 'de', title: 'Start' });
+    expect((await putPage(t, projectId, 'de', { template: '' }, true)).statusCode).toBe(400);
+  });
+
+  // The path already says which entity this is; requiring `id` in the body too produced a bare
+  // `{"fieldErrors":{"id":["Required"]}}` that names neither the id nor where it belongs.
+  it('defaults a full write’s id from the path, and still catches one that disagrees', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'pageidpath');
+    const created = await putPage(t, projectId, 'about', { path: 'about', title: 'About' });
+    expect(created.statusCode).toBe(200);
+    expect((await getPage(t, projectId, 'about')).item.id).toBe('about');
+
+    const mismatched = await putPage(t, projectId, 'about', { id: 'elsewhere', path: 'about', title: 'About' });
+    expect(mismatched.statusCode).toBe(409);
+  });
 });
 
 // A full page list carries every page's Handlebars source — 337 KB on a 22-page imported site, past the

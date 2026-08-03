@@ -18,7 +18,15 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  *  - anything else → `patch` REPLACES `base`. In particular ARRAYS replace wholesale: a positional
  *    array merge is ambiguous and would corrupt ordered lists (nav items, redirects, social links).
  *  - a patch value of `undefined` is IGNORED (the base value is kept), so a partial object can never
- *    clear a field just by carrying an explicit `undefined`. Use a full (non-merge) write to remove a key.
+ *    clear a field just by carrying an explicit `undefined` — JSON has no `undefined` anyway, and a
+ *    key the caller simply left out must not vanish.
+ *  - a patch value of `null` DELETES the key. Without it a merge could only ever add or overwrite, and
+ *    some fields cannot be overwritten into absence: `template` is `.min(1)`, so `template: ""` fails
+ *    validation, and `template: null` used to be stored as a literal null and then fail it too. Moving a
+ *    page off a template ref — the whole "this translation now inherits its parent's code" operation —
+ *    had no expressible form: not merge, and a full write means resending the entire page from a
+ *    possibly stale snapshot, which is exactly what `?merge=1` exists to avoid. `null` is unambiguous
+ *    here because no field of the two merge-able kinds (`settings`, `page`) stores a null.
  *
  * Prototype-pollution-safe: `__proto__` / `constructor` / `prototype` keys in `patch` are skipped, and
  * recursion only descends into a key the base OWNS (never an inherited property).
@@ -39,6 +47,11 @@ export function deepMerge(base: unknown, patch: unknown, depth = 0): unknown {
     // eslint-disable-next-line security/detect-object-injection -- own key of a plain object; proto keys filtered above
     const pv = patch[key];
     if (pv === undefined) continue;
+    if (pv === null) {
+      // eslint-disable-next-line security/detect-object-injection -- own key of a plain object; proto keys filtered above
+      delete out[key];
+      continue;
+    }
     // eslint-disable-next-line security/detect-object-injection -- own key; proto vectors filtered; assignment builds a fresh object
     out[key] = Object.hasOwn(out, key) ? deepMerge(out[key], pv, depth + 1) : pv;
   }

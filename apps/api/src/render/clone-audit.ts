@@ -114,10 +114,38 @@ export function countEditDirectives(source: string | null | undefined, snippets:
   return total;
 }
 
+/**
+ * Every LITERAL root-relative reference in a source that points at a file — `src`, `href`, `data`,
+ * `poster`, `data-full`. Dynamic refs (`{{sw-url photo}}`) are not literal and are skipped: they
+ * resolve at render, and whether they resolve is the dataset's business, not this check's.
+ */
+const LITERAL_REF = /\b(?:src|href|data|poster|data-full|data-src)\s*=\s*["'](\/[^"'{}\s]+\.[A-Za-z0-9]{2,5})(?:[?#][^"']*)?["']/g;
+
+/** The two root prefixes a published site actually serves. Anything else root-relative is nothing. */
+const SERVED_PREFIX = /^\/(?:media|authoring)\//;
+
+/**
+ * Root-relative references in `source` that nothing will serve. Two shapes, both seen shipped:
+ * a path left pointing at the SOURCE site's own tree (`/_data/assets/report.pdf` — the importer hosts
+ * what it crawls, but a page authored from the original's markup can carry the original's paths
+ * straight through), and a `/media/...` path whose asset is gone. Both 404 in silence: the page
+ * renders, the link is there, and it is dead only for whoever clicks it.
+ */
+export function deadRefs(source: string | null | undefined, mediaUrls: ReadonlySet<string>): string[] {
+  if (!source) return [];
+  const dead = new Set<string>();
+  for (const m of source.matchAll(LITERAL_REF)) {
+    const ref = m[1]!;
+    if (!SERVED_PREFIX.test(ref)) dead.add(ref);
+    else if (ref.startsWith('/media/') && !mediaUrls.has(ref)) dead.add(ref);
+  }
+  return [...dead];
+}
+
 /** STRUCTURE leg — pure over repo data (datasets, media, the audited page's EFFECTIVE source + snippets). */
 export function structuralChecks(input: {
   datasets: Array<{ id?: string; name?: string; slug?: string }>;
-  media: Array<{ folder?: string }>;
+  media: Array<{ folder?: string; url?: string }>;
   /** The page's TEMPLATE-RESOLVED source (the `page.code` binding), not its raw stored `source`. */
   pageSource: string | null;
   /** Every snippet available to the page, by name — so composed `{{> partial}}` directives count. */
@@ -129,9 +157,11 @@ export function structuralChecks(input: {
   const generic = input.datasets.filter((d) => GENERIC_DS.test((d.name || '').trim()) || GENERIC_DS.test((d.slug || '').trim()));
   const imported = input.media.filter((m) => String(m.folder || '').startsWith('imported'));
   const edits = countEditDirectives(input.pageSource, input.snippets ?? {});
+  const dead = deadRefs(input.pageSource, new Set(input.media.map((m) => m.url ?? '').filter(Boolean)));
   return [
     { leg: 'structure', id: 'datasets', label: 'datasets deduped + meaningfully named', pass: input.datasets.length === 0 || generic.length === 0, detail: `${generic.length} generic-named ("List"/"items") of ${input.datasets.length}` },
     { leg: 'structure', id: 'media-folders', label: 'media out of the transient imported/ tree', pass: imported.length === 0, detail: `${imported.length}/${input.media.length} assets still under imported/` },
+    { leg: 'structure', id: 'assets-resolve', label: 'every file this page links is actually served', pass: dead.length === 0, detail: dead.length === 0 ? 'no dead root-relative references' : `${dead.length} dead: ${dead.slice(0, 5).join(', ')}${dead.length > 5 ? ' …' : ''}` },
     { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-* or a dataset loop)', pass: edits > 0, detail: `${edits} edit affordances on this page (template-resolved, including composed snippets and dataset loops)` },
   ];
 }

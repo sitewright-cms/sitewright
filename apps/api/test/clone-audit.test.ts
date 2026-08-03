@@ -1,10 +1,44 @@
 import { describe, it, expect } from 'vitest';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, deadRefs, type BehaviourFacts } from '../src/render/clone-audit.js';
 import { CLIP_PROBE } from '../src/render/clone-audit-probe.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
   carousels: 1, carouselsEnhanced: 1, dialogs: 1, headingFont: 'primary-font', bodyFont: 'text-font',
   headingFontLoaded: true, bodyFontLoaded: true, navExpected: 3, navReachableMobile: 3, hasModalTrigger: true, ...over,
+});
+
+describe('deadRefs — a link the page will 404 on', () => {
+  const hosted = new Set(['/media/acme/AbC123-report.pdf', '/media/acme/XyZ789-hero.jpg']);
+
+  it('flags a path left pointing at the SOURCE site, and one whose asset is gone', () => {
+    const src =
+      '<a href="/_data/assets/report.pdf">Download</a>' +
+      '<a href="/media/acme/GONE00-old.pdf">Old</a>' +
+      '<img src="/media/acme/XyZ789-hero.jpg">';
+    expect(deadRefs(src, hosted).sort()).toEqual(['/_data/assets/report.pdf', '/media/acme/GONE00-old.pdf']);
+  });
+
+  it('leaves alone what actually resolves, what is dynamic, and what is not ours to judge', () => {
+    const src =
+      '<img src="/media/acme/XyZ789-hero.jpg">' +
+      '<img src="{{sw-url photo}}">' +                       // resolves at render
+      '<img src="../_assets/rel.jpg">' +                     // page-relative, not root
+      '<a href="https://example.com/theirs.pdf">theirs</a>' + // someone else\'s host
+      '<a href="/contact">a route, not a file</a>' +
+      '<img src="/authoring/textures/linen.png">' +          // platform-served
+      '<a href="mailto:a@b.co">mail</a><a href="tel:+264">call</a>';
+    expect(deadRefs(src, hosted)).toEqual([]);
+  });
+
+  it('ignores a query/hash and reports each dead path once', () => {
+    const src = '<a href="/_data/x.pdf?v=2">a</a><a href="/_data/x.pdf#page=3">b</a>';
+    expect(deadRefs(src, hosted)).toEqual(['/_data/x.pdf']);
+  });
+
+  it('reports nothing for an empty or absent source', () => {
+    expect(deadRefs(null, hosted)).toEqual([]);
+    expect(deadRefs('', hosted)).toEqual([]);
+  });
 });
 
 describe('structuralChecks', () => {

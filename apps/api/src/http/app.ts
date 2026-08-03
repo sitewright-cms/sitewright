@@ -6141,7 +6141,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...WIDGET_PARTIALS,
         };
         const audit = assembleAudit([
-          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string }>, pageSource: effectiveSource || null, snippets: auditSnippets }),
+          structuralChecks({ datasets: datasets as Array<{ id?: string; name?: string; slug?: string }>, media: media as Array<{ folder?: string; url?: string }>, pageSource: effectiveSource || null, snippets: auditSnippets }),
           behaviouralChecks(behaviour),
           visualChecks(fidelity),
         ]);

@@ -53,6 +53,7 @@ import {
   type ScriptAsset,
   type MediaFolderRecord,
   type Form,
+  type ImageMap,
   toPublicForm,
   type ImageAsset,
   type MediaAsset,
@@ -5298,6 +5299,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // project artifacts — loaded here rather than in the export bundle.
     const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
     const forms = (await contentRepo.list(ctx, 'form')) as Form[];
+    const imageMaps = (await contentRepo.list(ctx, 'imagemap')) as ImageMap[];
     const bundle: ProjectBundle = {
       // ExportBundle.project omits formatVersion (a format concern, not a DB field); re-add it.
       project: { formatVersion: exp.formatVersion, ...exp.project },
@@ -5307,6 +5309,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       entries: exp.entries,
       translations,
       forms,
+      imageMaps,
     };
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];

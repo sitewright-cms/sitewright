@@ -1,0 +1,190 @@
+// Render-time resolution of IMAGE MAP references, and the sanitizing boundary for a map's config.
+//
+// An author writes `{{sw-imagemap "floor-plan"}}` (or, code-first, `<div data-sw-imagemap="floor-plan">`)
+// and this pass turns it into the component the runtime understands:
+//
+//   <div data-sw-component="image-map">
+//     <img src="…" alt="…">                                   ← no-JS fallback, from artboard 1
+//     <script type="application/json" data-sw-part="config">…  ← the config, as DATA
+//   </div>
+//
+// WHY THE CONFIG IS A <script type="application/json"> BLOCK. It is large — a real map runs to
+// hundreds of KB — so a data-* attribute would mean escaping the whole thing into an attribute
+// value. A non-JavaScript script type is never executed and is not subject to `script-src`, which
+// is why the platform already emits schema.org this way (head.ts). It is data, not code.
+//
+// SANITIZING. Three config values are authored MARKUP by design and reach the DOM unescaped in the
+// runtime: a tooltip block's `text`, the YouTube block's `embedCode`, and an SVG region's
+// `svg.html`. They are cleaned HERE, at the render sink — the same posture the platform takes for
+// `data-sw-html` ("the render sink is authoritative", see ContentRepository.put). Doing it at
+// render rather than on write also covers configs that arrived by import or predate the rule.
+import { parseDocument } from 'htmlparser2';
+import { findAll, textContent } from 'domutils';
+import render from 'dom-serializer';
+import type { Element } from 'domhandler';
+import { sanitizeSvg } from '@sitewright/image-pipeline/svg';
+import { sanitizeRichHtml } from './sanitize-rich.js';
+import { escapeAttr } from './escape.js';
+
+/** The attribute an image-map reference is carried on. */
+export const IMAGE_MAP_ATTR = 'data-sw-imagemap';
+
+/** A stored map as the render surface supplies it: its config, plus the id it is addressed by. */
+export interface RenderImageMap {
+  id: string;
+  /** The stored config object (schema: ImageMapSchema). */
+  config: Record<string, unknown>;
+}
+
+export interface ImageMapEmbedContext {
+  /** Stored maps keyed by entity id. ABSENT → image maps unsupported on this surface; the pass is
+   *  a byte-identical no-op rather than an authoring error (mirrors resolveFormEmbeds). */
+  imageMaps?: Record<string, RenderImageMap>;
+  /** PREVIEW keeps the `data-sw-imagemap` marker (parity with the data-sw-* directives); publish
+   *  strips it, leaving clean static HTML. */
+  preview?: boolean;
+}
+
+/**
+ * JSON safe to place inside a `<script>` element.
+ *
+ * Escaping `<`, `>` and `&` as \uXXXX (still valid JSON) neutralises `</script>`, `<!--` and
+ * `<script>` breakouts while keeping the payload parseable. Same treatment head.ts gives JSON-LD.
+ */
+export function jsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
+/**
+ * An SVG region's inner markup, sanitized.
+ *
+ * `sanitizeSvg` expects a whole `<svg>` document (it refuses anything without an `<svg` tag), while
+ * a region carries only the INNER markup — a `<path>`, a `<g>`. Wrapping and unwrapping reuses that
+ * audited sanitizer instead of growing a second one that would have to be kept in step with it.
+ */
+export function sanitizeSvgFragment(html: string): string {
+  if (typeof html !== 'string' || html === '') return '';
+  const wrapped = sanitizeSvg(`<svg xmlns="http://www.w3.org/2000/svg">${html}</svg>`);
+  if (!wrapped) return '';
+  const open = wrapped.indexOf('>');
+  const close = wrapped.lastIndexOf('</svg>');
+  return open === -1 || close === -1 || close < open ? '' : wrapped.slice(open + 1, close);
+}
+
+/** Is this a plain object we should walk into? */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * A deep copy of `config` with every author-authored markup value sanitized.
+ *
+ * Walks the whole config rather than the known paths: a map is a deep, recursive tree (artboards →
+ * objects → nested group children → tooltip blocks), and a walk cannot miss a nesting depth the
+ * way a hand-written path list can. The keys it acts on are exactly the three that reach the DOM
+ * as markup; everything else is copied through untouched.
+ */
+export function sanitizeImageMapConfig(config: unknown): unknown {
+  if (Array.isArray(config)) return config.map(sanitizeImageMapConfig);
+  if (!isRecord(config)) return config;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (key === 'text' && typeof value === 'string') {
+      // A tooltip block's rich text. (An OBJECT `text` is the text-object's style bag — it recurses
+      // below like anything else, and its own inner `text` string is rendered with textContent.)
+      out[key] = sanitizeRichHtml(value);
+    } else if (key === 'embedCode' && typeof value === 'string') {
+      // A YouTube block's <iframe>. sanitizeRichHtml keeps https iframes and FORCES a sandbox.
+      out[key] = sanitizeRichHtml(value);
+    } else if (key === 'html' && typeof value === 'string') {
+      // An SVG region's inner markup (config path: …children[].svg.html).
+      out[key] = sanitizeSvgFragment(value);
+    } else {
+      out[key] = sanitizeImageMapConfig(value);
+    }
+  }
+  return out;
+}
+
+/** The first artboard's background image, for the no-JS fallback. */
+function fallbackImage(config: Record<string, unknown>): { url: string; alt: string } | null {
+  const artboards = config.artboards;
+  if (!Array.isArray(artboards) || artboards.length === 0) return null;
+  const first = artboards[0];
+  if (!isRecord(first)) return null;
+  const url = typeof first.image_url === 'string' ? first.image_url : '';
+  if (url === '') return null;
+  const general = isRecord(config.general) ? config.general : {};
+  const alt = typeof first.title === 'string' && first.title !== ''
+    ? first.title
+    : typeof general.name === 'string'
+      ? general.name
+      : 'Image map';
+  return { url, alt };
+}
+
+/**
+ * The complete markup for a stored map: the component marker, a no-JS fallback image, and the
+ * sanitized config as a JSON data block.
+ */
+export function renderImageMapMarkup(map: RenderImageMap, opts: { class?: string } = {}): string {
+  const config = sanitizeImageMapConfig(map.config) as Record<string, unknown>;
+  const cls = opts.class ? ` class="${escapeAttr(opts.class)}"` : '';
+  const img = fallbackImage(config);
+  const fallback = img ? `<img src="${escapeAttr(img.url)}" alt="${escapeAttr(img.alt)}" />` : '';
+  return (
+    `<div data-sw-component="image-map"${cls}>${fallback}` +
+    `<script type="application/json" data-sw-part="config">${jsonForScript(config)}</script></div>`
+  );
+}
+
+/** The message rendered in place of an unknown map reference. */
+export function unknownImageMapMessage(id: string): string {
+  return `Unknown image map "${id}"`;
+}
+
+/**
+ * The `data-sw-imagemap` resolution pass. Runs inside renderTemplate after resolveDirectives;
+ * a no-op when the fragment carries no reference or the surface provides no maps.
+ *
+ * The carrier element's own attributes are preserved (so an author can size and place it with
+ * utility classes); its CONTENT is replaced by the fallback image + config block.
+ */
+export function resolveImageMapEmbeds(html: string, ctx: ImageMapEmbedContext): string {
+  if (typeof html !== 'string' || !html.includes(IMAGE_MAP_ATTR)) return html;
+  const maps = ctx.imageMaps;
+  if (!maps) return html;
+
+  const doc = parseDocument(html, { decodeEntities: true });
+  const targets = findAll(
+    (el) => Object.prototype.hasOwnProperty.call(el.attribs, IMAGE_MAP_ATTR),
+    doc.children,
+  );
+  // The substring can appear in prose ("…use data-sw-imagemap…") — only re-serialize when a real
+  // attribute carrier exists, so such pages keep byte-identical output.
+  if (targets.length === 0) return html;
+
+  for (const el of targets as Element[]) {
+    const id = (el.attribs[IMAGE_MAP_ATTR] ?? '').trim();
+    const map = Object.prototype.hasOwnProperty.call(maps, id) ? maps[id] : undefined;
+    if (!map) throw new Error(unknownImageMapMessage(id));
+
+    const config = sanitizeImageMapConfig(map.config) as Record<string, unknown>;
+    const img = fallbackImage(config);
+    // Keep any author-authored fallback content; otherwise supply one from the first artboard.
+    const authored = textContent(el).trim() !== '' || el.children.length > 0;
+    const fallback = authored ? render(el.children, { decodeEntities: false }) : img
+      ? `<img src="${escapeAttr(img.url)}" alt="${escapeAttr(img.alt)}" />`
+      : '';
+
+    el.attribs['data-sw-component'] = 'image-map';
+    if (!ctx.preview) delete el.attribs[IMAGE_MAP_ATTR];
+    const inner =
+      `${fallback}<script type="application/json" data-sw-part="config">${jsonForScript(config)}</script>`;
+    el.children = parseDocument(inner, { decodeEntities: true }).children;
+    for (const kid of el.children) kid.parent = el;
+  }
+
+  return render(doc.children, { decodeEntities: false });
+}

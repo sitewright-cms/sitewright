@@ -455,6 +455,7 @@ export const SW_HELPERS: readonly SwHelper[] = [
   { name: 'sw-flag', syntax: '{{sw-flag "code" ["classes"]}}', summary: 'Inlines a FULL-COLOR country-flag SVG by ISO 3166-1 alpha-2 code; "code-circle" for the round variant. Flags are a poor proxy for languages — map locale→country first.' },
   { name: 'sw-folder', syntax: '{{#sw-folder "name"}}…{{/sw-folder}}', summary: 'Block helper that loops the images of a media FOLDER (galleries); the block context is each image (url/alt/width/height).' },
   { name: 'sw-form', syntax: '{{sw-form "id"}}', summary: 'Embeds a configured web FORM by id (locale-suffix aware). Never hand-wire the endpoint; submissions land in the inbox.' },
+  { name: 'sw-imagemap', syntax: '{{sw-imagemap "id" [class=]}}', summary: 'Embeds a stored INTERACTIVE IMAGE MAP by id: an image or SVG with clickable/hoverable hotspots, rich tooltips, multiple artboards (floors/layers), zoom and a searchable object list. Renders the component wrapper, a no-JS fallback <img>, and the map config as a JSON data block. Drive it from elsewhere on the page with the data-sw-imap-* attributes.' },
   { name: 'sw-html', syntax: '{{sw-html value}}', summary: 'Outputs SANITIZED rich HTML from a value (safe-HTML allowlist incl. https-sandboxed iframes; script/on*/form stripped). For trusted rich-text fields.' },
   // NOTE: this used to say a bare name was a "Lucide line glyph" — it is not, and the icons guide,
   // search_icons and the import guide all said Phosphor. An agent following the contradiction picked the

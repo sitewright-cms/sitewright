@@ -21,6 +21,12 @@ import { renderIconSvg } from './icon-render.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
+import {
+  renderImageMapMarkup,
+  resolveImageMapEmbeds,
+  unknownImageMapMessage,
+  type RenderImageMap,
+} from './image-map-embed.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { addComponentBlockMarkers } from './components.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
@@ -116,6 +122,13 @@ export interface TemplateContext {
    * doesn't support forms ({{sw-form}} renders '', the pass is a no-op).
    */
   forms?: Record<string, RenderForm>;
+  /**
+   * Stored IMAGE MAPS keyed by entity id — consumed by the `{{sw-imagemap}}` helper and the
+   * `data-sw-imagemap` resolution pass (image-map-embed.ts). Pure data; the context crosses the
+   * render-pool's JSON IPC. ABSENT → the surface doesn't support image maps ({{sw-imagemap}}
+   * renders '', the pass is a no-op) — the same posture as `forms`.
+   */
+  imageMaps?: Record<string, RenderImageMap>;
   /** Instance hCaptcha site key (public) — rendered into platform-routed forms that opt in. */
   hcaptchaSiteKey?: string;
   /**
@@ -842,6 +855,23 @@ function createInstance(): typeof Handlebars {
     // eslint-disable-next-line security/detect-object-injection -- verified own-property key
     return new Handlebars.SafeString(renderFormMarkup(resolvedId, root.forms[resolvedId]!, cls));
   });
+  // {{sw-imagemap "floor-plan" class="rounded-xl"}} → the complete markup of a stored image map:
+  // the `data-sw-component="image-map"` wrapper, a no-JS fallback <img> taken from the first
+  // artboard, and the map CONFIG as a `<script type="application/json">` data block. The config's
+  // three authored-markup values (tooltip text, a YouTube embedCode, an SVG region's html) are
+  // sanitized on the way out. Unknown id → loud render error; a surface with NO imageMaps map
+  // renders '' (image maps unsupported there, not an authoring error) — mirrors {{sw-form}}.
+  hb.registerHelper('sw-imagemap', function swImageMap(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const id = typeof args[0] === 'string' ? args[0] : '';
+    const root = (options.data?.root ?? {}) as { imageMaps?: Record<string, RenderImageMap> };
+    if (!root.imageMaps) return new Handlebars.SafeString('');
+    const map = Object.prototype.hasOwnProperty.call(root.imageMaps, id) ? root.imageMaps[id] : undefined;
+    if (!map) throw new Error(unknownImageMapMessage(id));
+    const hash = (options.hash ?? {}) as Record<string, unknown>;
+    const cls = typeof hash.class === 'string' && hash.class !== '' ? { class: hash.class } : {};
+    return new Handlebars.SafeString(renderImageMapMarkup(map, cls));
+  });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   //
   // {{#each dataset.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
@@ -1148,7 +1178,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
   // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
-  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms };
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps };
   let html: string;
   try {
     html = template(data, {
@@ -1194,6 +1224,14 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
     });
   } catch (err) {
     throw new TemplateError(err instanceof Error ? err.message : 'form embed failed');
+  }
+  // Resolve `data-sw-imagemap` references (helper-emitted markup already carries its config, so
+  // this pass exists for HAND-AUTHORED carriers) into the component marker + sanitized config
+  // block. No-op without a reference or when the surface provides no maps.
+  try {
+    html = resolveImageMapEmbeds(html, { imageMaps: ctx.imageMaps, preview: ctx.preview });
+  } catch (err) {
+    throw new TemplateError(err instanceof Error ? err.message : 'image map embed failed');
   }
   // Pair every `data-sw-component="x"` with the `data-sw-block="X"` its stylesheet is keyed on, so
   // source that authored only the component marker still gets the component's CSS (unsized slides /

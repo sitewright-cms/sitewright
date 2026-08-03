@@ -295,6 +295,9 @@ importers:
       '@sitewright/core':
         specifier: workspace:*
         version: link:../core
+      '@sitewright/image-pipeline':
+        specifier: workspace:*
+        version: link:../image-pipeline
       '@sitewright/schema':
         specifier: workspace:*
         version: link:../schema

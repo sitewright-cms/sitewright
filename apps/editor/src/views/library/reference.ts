@@ -389,6 +389,21 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'You can also embed by attribute: <div data-sw-form="contact"></div>.',
       },
       {
+        id: 'h-imagemap',
+        syntax: '{{sw-imagemap "id" [class=…]}}',
+        name: 'sw-imagemap',
+        keywords: 'image map hotspot floor plan interactive tooltip region seating chart svg',
+        description:
+          'Embeds a stored Image Map by its id: an image or SVG with clickable hotspots, rich tooltips, multiple floors/layers, zoom and a searchable object list. The map is built in the Image Map Studio; this just places it. Errors at render if the id is unknown.',
+        args: [
+          { name: '"id"', desc: 'The Image Map id (from the Library).' },
+          { name: 'class=', desc: 'Optional CSS classes for the wrapper — size and place the map with utilities.' },
+        ],
+        example: '{{sw-imagemap "ground-floor"}}\n{{sw-imagemap "campus" class="mx-auto max-w-4xl rounded-xl"}}',
+        note:
+          'Drive the map from elsewhere on the page with no JavaScript: data-sw-imap-trigger-object-on-mouseover="Studio A" on a list item highlights that hotspot and opens its tooltip, and data-sw-imap-change-artboard="First" switches floors. You can also embed by attribute: <div data-sw-imagemap="ground-floor"></div>.',
+      },
+      {
         id: 'h-label',
         syntax: '{{sw-label}}',
         name: 'sw-label',

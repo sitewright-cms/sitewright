@@ -73,6 +73,7 @@ import {
   usesButtonEffects,
   resolveShopChannels,
   resolveFormEndpoints,
+  type RenderImageMap,
   mediaForRender,
   RICH_CONTENT_SAFELIST,
   ciRichClasses,
@@ -688,6 +689,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const formEndpoint = (formId: string): string =>
       `${formBase}/f/${bundle.project.id}/${formId}${previewMode ? '/preview' : ''}`;
     const resolvedForms = resolveFormEndpoints(forms, formEndpoint);
+    // Stored image maps, keyed by entity id — consumed by {{sw-imagemap}} and the
+    // data-sw-imagemap pass. Built once (same for every page); the config's authored-markup
+    // values are sanitized inside that pass, not here.
+    const imageMaps: Record<string, RenderImageMap> = Object.fromEntries(
+      (bundle.imageMaps ?? []).map((m) => [m.id, { id: m.id, config: m as unknown as Record<string, unknown> }]),
+    );
     let bytes = 0;
     // Absolute URLs for sitemap.xml (when a production site URL is configured);
     // noindex pages are excluded.
@@ -902,6 +909,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // instance hCaptcha sitekey, and this page's root path (for the page-relative
           // contact.php endpoint). Slots render with this same ctx — chrome forms work too.
           forms: resolvedForms,
+          imageMaps,
           hcaptchaSiteKey: opts.hcaptchaSiteKey,
           siteRoot,
         };

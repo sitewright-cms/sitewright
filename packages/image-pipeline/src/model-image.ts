@@ -41,14 +41,18 @@ export function clampedImageSize(width: number, height: number): { width: number
  * certain one, so this never throws.
  */
 export async function clampImageForModel(
-  jpegBytes: Buffer,
+  bytes: Buffer,
   width: number,
   height: number,
+  opts: { format?: 'jpeg' | 'webp' } = {},
 ): Promise<{ buffer: Buffer; width: number; height: number } | null> {
   if (!exceedsModelImageLimit(width, height)) return null;
   const size = clampedImageSize(width, height);
   try {
-    const buffer = await sharp(jpegBytes).resize(size.width, size.height, { fit: 'fill' }).jpeg({ quality: 78 }).toBuffer();
+    const pipeline = sharp(bytes).resize(size.width, size.height, { fit: 'fill' });
+    // Region crops are lossless WebP and stay WebP — re-encoding a UI crop as JPEG would put ringing
+    // on exactly the hairlines and text edges the crop exists to let an agent judge.
+    const buffer = await (opts.format === 'webp' ? pipeline.webp({ lossless: true }) : pipeline.jpeg({ quality: 78 })).toBuffer();
     return { buffer, ...size };
   } catch {
     return null;

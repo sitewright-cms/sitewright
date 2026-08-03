@@ -67,3 +67,33 @@ describe('clampImageForModel', () => {
     expect(await clampImageForModel(Buffer.from('not-an-image'), 5000, 5000)).toBeNull();
   });
 });
+
+describe('every image an agent receives is inside the model dimension limit', () => {
+  it('clamps a REGION crop, which is captured at 2x and was the path that killed two agents', async () => {
+    // The region crop caps height at 1500 CSS px — a PAYLOAD bound, which is a different constraint
+    // from the model's DIMENSION ceiling and the only one the original code had in mind. At
+    // deviceScaleFactor 2 that crop is 3000 physical px, and a full-width crop at the 1440 viewport is
+    // 2880. Both exceed 2000, and exceeding it does not degrade the response: it rejects the whole
+    // request and ends the session. Run 4 lost an agent at turn 124; run 5 lost another at turn 119 —
+    // the second one AFTER a fix that only ever covered `captureUrlShots`.
+    const png = await sharp({
+      create: { width: 2880, height: 3000, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    }).png().toBuffer();
+    const webp = await sharp(png).webp({ lossless: true }).toBuffer();
+
+    const out = await clampImageForModel(webp, 2880, 3000, { format: 'webp' });
+    expect(out, 'an over-limit crop must come back resized, not untouched').not.toBeNull();
+    expect(Math.max(out!.width, out!.height)).toBeLessThanOrEqual(MODEL_IMAGE_MAX_EDGE);
+    // Region crops are lossless WebP and must STAY WebP: re-encoding a UI crop as JPEG puts ringing on
+    // exactly the hairlines and text edges the crop exists to let an agent judge.
+    const meta = await sharp(out!.buffer).metadata();
+    expect(meta.format).toBe('webp');
+  });
+
+  it('leaves an already-small crop alone', async () => {
+    const webp = await sharp({
+      create: { width: 800, height: 600, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    }).webp().toBuffer();
+    expect(await clampImageForModel(webp, 800, 600, { format: 'webp' })).toBeNull();
+  });
+});

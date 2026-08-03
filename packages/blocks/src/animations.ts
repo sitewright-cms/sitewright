@@ -254,6 +254,24 @@ export const ANIMATION_JS = `(function(){
     // animates in the open, not behind the still-visible overlay. A failsafe in swWhenReady guarantees
     // observation begins even if the ready signal never arrives.
     Array.prototype.forEach.call(els,function(el){
+      // SELF-HEAL A CLOBBERED TRANSITION. The reveal rides on
+      // \`[data-sw-animation]{transition-property:opacity,transform}\`, which is (0,1,0) — deliberately
+      // low, so an author can retune it. But a plain \`transition:\` SHORTHAND on the same element is
+      // also (0,1,0), and a shorthand REPLACES transition-property rather than adding to it. So an
+      // ordinary hover effect — \`.card{transition:outline-color .2s ease}\` — silently deletes the
+      // reveal: the element still arms, still activates, and simply snaps from hidden to visible with
+      // no travel and no stagger. Measured on a clone: four tiles jumped 0 → 1 opacity inside 80ms
+      // while their 0/90/180/270ms delays did nothing, and the author's markup was entirely correct.
+      // It reads as "the animation is broken", never as "my CSS did that", and the same shorthand
+      // appeared on four separate classes in that one site.
+      // So: if opacity/transform are no longer being transitioned, put them back INLINE (which beats
+      // any stylesheet rule) while KEEPING whatever the author was transitioning. An author who names
+      // opacity or transform themselves is left completely alone — that is a deliberate retune.
+      var tp=(getComputedStyle(el).transitionProperty||'');
+      if(tp.indexOf('opacity')<0&&tp.indexOf('transform')<0&&tp.indexOf('all')<0){
+        el.style.transitionProperty=(tp&&tp!=='none'?tp+',':'')+'opacity,transform';
+        if(!el.style.transitionDuration)el.style.transitionDuration=${SW_DURATION_DEFAULT}+'ms';
+      }
       var delay=swMs(el,'${SW_TIMING_ATTRS.delay}',0);
       if(delay>0)el.style.transitionDelay=delay+'ms';
       var duration=swMs(el,'${SW_TIMING_ATTRS.duration}',0);

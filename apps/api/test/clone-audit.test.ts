@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, deadRefs, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, deadRefs, platformClassOverrides, authorCss, type BehaviourFacts } from '../src/render/clone-audit.js';
 import { CLIP_PROBE } from '../src/render/clone-audit-probe.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
@@ -38,6 +38,35 @@ describe('deadRefs — a link the page will 404 on', () => {
   it('reports nothing for an empty or absent source', () => {
     expect(deadRefs(null, hosted)).toEqual([]);
     expect(deadRefs('', hosted)).toEqual([]);
+  });
+});
+
+describe('platformClassOverrides — redefining the platform instead of keying off it', () => {
+  it('flags a rule whose SUBJECT is a platform class, wherever it sits', () => {
+    expect(platformClassOverrides('.sw-container{width:1200px}')).toEqual(['sw-container']);
+    expect(platformClassOverrides('div.sw-container{width:1000px}')).toEqual(['sw-container']);
+    expect(platformClassOverrides('#page-content .sw-top-padding{padding-top:0}')).toEqual(['sw-top-padding']);
+    // inside an at-rule, and reported once however many times it is redefined
+    expect(platformClassOverrides('@media (max-width:768px){.sw-container{width:auto}}')).toEqual(['sw-container']);
+    expect(platformClassOverrides('.sw-container{a:1}@media screen{div.sw-container{b:2}}')).toEqual(['sw-container']);
+  });
+
+  it('leaves alone the way a scroll response is SUPPOSED to be written', () => {
+    // the platform class is the STATE HOOK here, not the subject — this is the documented pattern
+    expect(platformClassOverrides('html.sw-scrolled .rbs-topnav{background:#171627}')).toEqual([]);
+    expect(platformClassOverrides('html.sw-nav-hidden #main-nav{translate:0 -100%}')).toEqual([]);
+    expect(platformClassOverrides('.my-card{color:red}')).toEqual([]);
+    expect(platformClassOverrides('')).toEqual([]);
+    expect(platformClassOverrides(null)).toEqual([]);
+  });
+
+  it('reads a selector list per branch', () => {
+    expect(platformClassOverrides('html.sw-scrolled .mine, .sw-bleed{margin:0}')).toEqual(['sw-bleed']);
+  });
+
+  it('authorCss folds the critical sheet together with the page’s own <style>', () => {
+    const css = authorCss('.a{x:1}', '<div></div><style>.sw-container{width:9px}</style><p>hi</p>');
+    expect(platformClassOverrides(css)).toEqual(['sw-container']);
   });
 });
 

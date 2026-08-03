@@ -142,6 +142,61 @@ export function deadRefs(source: string | null | undefined, mediaUrls: ReadonlyS
   return [...dead];
 }
 
+
+/** The platform's own class namespace. An author defining one of these is redefining the platform. */
+const PLATFORM_CLASS = /\.(sw-[a-z0-9-]+)/;
+
+/** Iterate a stylesheet's top-level `prelude { … }` blocks, descending into at-rules. */
+function* cssRules(css: string, depth = 0): Generator<{ selector: string; body: string }> {
+  if (depth > 8) return;
+  let i = 0;
+  while (i < css.length) {
+    const open = css.indexOf('{', i);
+    if (open < 0) return;
+    let level = 1;
+    let j = open + 1;
+    while (j < css.length && level > 0) {
+      if (css[j] === '{') level += 1;
+      else if (css[j] === '}') level -= 1;
+      j += 1;
+    }
+    const prelude = css.slice(i, open).trim();
+    const body = css.slice(open + 1, j - 1);
+    if (prelude.startsWith('@')) yield* cssRules(body, depth + 1);
+    else if (prelude) yield { selector: prelude, body };
+    i = j;
+  }
+}
+
+/**
+ * Author selectors that REDEFINE a platform class rather than keying off one.
+ *
+ * The distinction is the rule's SUBJECT — its last compound. `html.sw-scrolled .my-header{…}` is
+ * exactly how a scroll response is meant to be authored and is fine; `.sw-container{width:1200px}` is
+ * not, because the platform's own rule for that class lives in `@layer sw-normalize` and UNLAYERED
+ * author CSS beats any layer whatever its specificity. The platform rule simply stops applying — and
+ * with it the setting that drives it. Measured on a real site: a redeclared `.sw-container` left the
+ * Website → Content width control inert, with nothing anywhere saying so.
+ */
+export function platformClassOverrides(css: string | null | undefined): string[] {
+  if (!css) return [];
+  const hits = new Set<string>();
+  for (const { selector } of cssRules(css)) {
+    for (const one of selector.split(',')) {
+      const subject = one.trim().split(/[\s>+~]+/).pop() ?? '';
+      const m = PLATFORM_CLASS.exec(subject);
+      if (m) hits.add(m[1]!);
+    }
+  }
+  return [...hits];
+}
+
+/** The CSS an author owns on this page: the site-wide critical sheet + the page's own <style> blocks. */
+export function authorCss(criticalCss: string | null | undefined, pageSource: string | null | undefined): string {
+  const inline = [...(pageSource ?? '').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1] ?? '');
+  return [criticalCss ?? '', ...inline].join('\n');
+}
+
 /** STRUCTURE leg — pure over repo data (datasets, media, the audited page's EFFECTIVE source + snippets). */
 export function structuralChecks(input: {
   datasets: Array<{ id?: string; name?: string; slug?: string }>;
@@ -150,6 +205,8 @@ export function structuralChecks(input: {
   pageSource: string | null;
   /** Every snippet available to the page, by name — so composed `{{> partial}}` directives count. */
   snippets?: Readonly<Record<string, string>>;
+  /** `website.criticalCss` — scanned with the page's own <style> for platform classes it redefines. */
+  criticalCss?: string | null;
 }): AuditCheck[] {
   // Test the USER-FACING name + slug (what rename_dataset actually changes) — NOT the immutable `id`, which
   // the importer sets ("items") and rename keeps, so a properly-renamed dataset (name "Featured Listings",
@@ -158,9 +215,11 @@ export function structuralChecks(input: {
   const imported = input.media.filter((m) => String(m.folder || '').startsWith('imported'));
   const edits = countEditDirectives(input.pageSource, input.snippets ?? {});
   const dead = deadRefs(input.pageSource, new Set(input.media.map((m) => m.url ?? '').filter(Boolean)));
+  const shadowed = platformClassOverrides(authorCss(input.criticalCss, input.pageSource));
   return [
     { leg: 'structure', id: 'datasets', label: 'datasets deduped + meaningfully named', pass: input.datasets.length === 0 || generic.length === 0, detail: `${generic.length} generic-named ("List"/"items") of ${input.datasets.length}` },
     { leg: 'structure', id: 'media-folders', label: 'media out of the transient imported/ tree', pass: imported.length === 0, detail: `${imported.length}/${input.media.length} assets still under imported/` },
+    { leg: 'structure', id: 'platform-classes', label: 'no platform class redefined out from under its setting', pass: shadowed.length === 0, detail: shadowed.length === 0 ? 'no author rule redefines an sw-* class' : `redefined: ${shadowed.map((c) => `.${c}`).join(', ')} — unlayered author CSS beats @layer, so the platform rule (and any setting driving it) stops applying; rename to your own class` },
     { leg: 'structure', id: 'assets-resolve', label: 'every file this page links is actually served', pass: dead.length === 0, detail: dead.length === 0 ? 'no dead root-relative references' : `${dead.length} dead: ${dead.slice(0, 5).join(', ')}${dead.length > 5 ? ' …' : ''}` },
     { leg: 'structure', id: 'editable', label: 'page content client-editable (data-sw-* or a dataset loop)', pass: edits > 0, detail: `${edits} edit affordances on this page (template-resolved, including composed snippets and dataset loops)` },
   ];

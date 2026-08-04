@@ -181,7 +181,7 @@ import { pinnedFetchDetailed, type PinnedResult } from '../import/pinned-fetch.j
 import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
-import { PublishError, type PageBuildFailure, type ReleaseManifest } from '../publish/build.js';
+import { PublishError, slotHint, type PageBuildFailure, type ReleaseManifest } from '../publish/build.js';
 import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
@@ -3900,14 +3900,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
         // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
         // serializes the renders, so the six calls can't amplify into a parallel memory spike.
+        const slotErrors: string[] = [];
         const renderSlot = async (name: string, src: string | undefined): Promise<string | undefined> => {
           if (!src) return undefined;
           try {
             return await renderPool.render(src, slotCtx);
           } catch (err) {
-            // Best-effort in preview — a broken slot is omitted (publish hard-validates it). Log at
-            // debug so it's visible to an operator rather than silently swallowed.
-            req.log?.debug({ slot: name, err: err instanceof Error ? err.message : String(err) }, 'preview slot skipped');
+            // Still best-effort — a broken slot is omitted so it can never break the page preview —
+            // but no longer INVISIBLE. ★ A slot is site-wide chrome: when it fails, the header or
+            // footer disappears from every page at once, and a debug-level log is not something an
+            // author (or an agent) will ever see. It is reported with the render now, and at warn.
+            const message = err instanceof Error ? err.message : String(err);
+            slotErrors.push(`${name}: ${slotHint(message)}`);
+            req.log?.warn({ slot: name, errMsg: message }, 'preview slot failed to render — chrome omitted');
             return undefined;
           }
         };
@@ -3935,7 +3940,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           criticalCss: website?.criticalCss,
           containerWidth: website?.containerWidth,
           customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
-          preloader: fxCode.preloader,
+          // NO preloader in the single-page canvas — for CUSTOM code either, now. A preloader is
+          // whole-site chrome: the built-in effects have never rendered here (their CSS and the
+          // runtime that clears them ship only in the full build), so emitting custom code here put an
+          // author's fixed overlay on the canvas with nothing to remove it. Both kinds are previewed
+          // in the whole-site draft preview, which is where a loading state means anything.
+          preloader: undefined,
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
           bodyClass: websiteEffectsClasses(website?.effects),
           stickyHeader: website?.effects?.stickyHeader,
@@ -3946,7 +3956,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
         const screenshots = await previewScreenshots(req, sourceHtml);
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
-        return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug, ...(screenshots ? { screenshots } : {}) });
+        return reply.send({
+          html: sourceHtml,
+          token: sourceToken,
+          slug: project.slug,
+          // Site-wide chrome that failed to render, so the caller can say WHY the header/footer is
+          // missing instead of showing a page that is quietly wrong everywhere.
+          ...(slotErrors.length ? { slotErrors } : {}),
+          ...(screenshots ? { screenshots } : {}),
+        });
       } catch (err) {
         if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
         return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });

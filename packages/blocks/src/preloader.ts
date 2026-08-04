@@ -70,6 +70,27 @@ export interface PreloaderOptions {
 }
 
 /**
+ * A CUSTOM preloader's markup, wrapped in the platform's own overlay so the lifecycle governs it.
+ *
+ * ★ Custom code used to be emitted RAW, as its own first-body-child element. Nothing then cleared it:
+ * the runtime that removes `sw-loading` (and unlocks scrolling) only shipped when a BUILT-IN effect
+ * was chosen, and custom code only applies when the effect is `none` — the two conditions are exactly
+ * opposite, so the one configuration that emitted an overlay was the one with no code to remove it.
+ * Every page sat behind the overlay forever. Wrapping means the author writes the SPINNER and the
+ * platform keeps the show/hide contract; their own CSS still wins on the overlay's look, since it
+ * loads after the platform's.
+ */
+export function customPreloaderHtml(code: string, opts: PreloaderOptions = {}): string {
+  if (!code.trim()) return '';
+  const loading = opts.preview ? '' : 'sw-loading ';
+  return (
+    `<div data-sw-preloader class="${loading}sw-preloader-custom" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">` +
+    code +
+    '</div>'
+  );
+}
+
+/**
  * The preloader slot HTML — `<div data-sw-preloader class="sw-loading sw-preloader-<effect>">…</div>` —
  * for the chosen effect, or '' when disabled ('none'/undefined). Emitted as the first body child.
  */
@@ -108,6 +129,10 @@ export const PRELOADER_CSS = [
   '[data-sw-preloader] .pl-mark path{fill:var(--sw-color-primary,#4f46e5)}',
   '[data-sw-preloader] .pl-logo-img{max-width:280px;max-height:192px;width:auto;height:auto;display:block}',
   '[data-sw-preloader] .pl-stack{display:grid;place-items:center;gap:32px;text-align:center}',
+  // A CUSTOM overlay brings its own look: drop the platform's frosted background and blur so the
+  // author's markup + CSS decides. The show/hide contract above still governs it, which is the point
+  // of wrapping custom code rather than emitting it raw.
+  '[data-sw-preloader].sw-preloader-custom{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;display:block}',
   // 1 · spinner
   '[data-sw-preloader] .pl-spinner{width:116px;height:116px;border-radius:50%;border:10px solid color-mix(in srgb,var(--sw-color-primary,#4f46e5) 18%,transparent);border-top-color:var(--sw-color-primary,#4f46e5);animation:sw-pl-spin .9s linear infinite}',
   '@keyframes sw-pl-spin{to{transform:rotate(360deg)}}',

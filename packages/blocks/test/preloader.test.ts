@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { preloaderHtml, usesPreloader, PRELOADER_CSS, PRELOADER_JS } from '../src/preloader.js';
+import { customPreloaderHtml, preloaderHtml, usesPreloader, PRELOADER_CSS, PRELOADER_JS } from '../src/preloader.js';
 
 describe('preloaderHtml', () => {
   it('returns empty for none / undefined (disabled)', () => {
@@ -64,6 +64,24 @@ describe('preloaderHtml', () => {
 });
 
 describe('usesPreloader', () => {
+  it('wraps CUSTOM code in the platform overlay, so the runtime can clear it', () => {
+    // ★ THE BUG: custom code was emitted RAW and nothing ever cleared it — the runtime that removes
+    // `sw-loading` shipped only for a BUILT-IN effect, and custom code only applies when the effect is
+    // 'none'. The two conditions are exactly opposite, so the one configuration that emitted an
+    // overlay was the one with nothing to remove it, and every page sat behind it forever.
+    const html = customPreloaderHtml('<div class="my-spinner"></div>');
+    expect(html).toContain('data-sw-preloader');
+    expect(html).toContain('sw-loading');
+    expect(html).toContain('sw-preloader-custom');
+    expect(html).toContain('<div class="my-spinner"></div>');
+    // Detected by the same marker gate, so the runtime + CSS ship for it.
+    expect(usesPreloader(html)).toBe(true);
+    // A custom overlay brings its own look — the platform's frosted background steps aside.
+    expect(PRELOADER_CSS).toContain('.sw-preloader-custom{background:none');
+    // Nothing to wrap → nothing emitted.
+    expect(customPreloaderHtml('   ')).toBe('');
+  });
+
   it('detects the marker, ignores everything else', () => {
     expect(usesPreloader('<div data-sw-preloader></div>')).toBe(true);
     expect(usesPreloader('<div class="loading"></div>')).toBe(false);

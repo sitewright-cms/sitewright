@@ -781,7 +781,9 @@ page.data).
 SNIPPETS — reusable source fragments INCLUDED with the Handlebars partial syntax {{> name}}.
 Create one with put_content("snippet", "<name>", { id:"<name>", name:"<name>", source:"<…>" }),
 then drop {{> <name>}} in any page / template / other snippet. Factor out anything repeated (a card,
-a contact block) so you edit it in ONE place. The include runs in the CURRENT context, so {{> card}}
+a contact block) so you edit it in ONE place. ★ NOT in a CHROME SLOT (mainNav / footer / sidebars /
+bottom): slots render without partials, so {{> snippet}} there fails and the whole slot is dropped —
+inline the markup into the slot instead. The include runs in the CURRENT context, so {{> card}}
 inside {{#each dataset.x}} sees the item. (\`name\` must be a bare partial name — letters/digits/-/_ only.)
 
 REFERENCE COOKBOOK (built-in global snippets) — worked recipes that show HOW to compose a component
@@ -1125,8 +1127,9 @@ page body INTO a slot, first: convert every inline \`style="width:95%"\`→a Tai
 \`<div>\`, and wrap every binding used as a URL in \`{{sw-url …}}\`. The validator reports ONE violation per
 save, so fix them up front rather than discovering them one 400 at a time.
 USE THE DEFAULT NAV AS THE STARTING POINT — DON'T HAND-ROLL A MENU WITH HARD-CODED ITEMS, and don't assume
-the bare partial is enough. The mainNav SLOT is already populated (the importer put the foreign header there;
-new projects ship {{> nav-header}}) — start from what's in the slot and ADAPT it; you do NOT need to fetch the
+the bare partial is enough. The mainNav SLOT is already populated (the importer put the foreign header
+there; a new project ships the default nav's MARKUP inline — a slot cannot hold {{> nav-header}}, see
+SNIPPETS) — start from what's in the slot and ADAPT it; you do NOT need to fetch the
 snippet (get_content("snippet","nav-header") only resolves if the project actually has that snippet entity —
 an imported project does NOT, so it 404s; the data-driven recipe is in get_guide("nav")). The default is a
 data-driven desktop bar + pure-CSS mobile drawer + language/theme toggles; ADAPT it to the original's exact

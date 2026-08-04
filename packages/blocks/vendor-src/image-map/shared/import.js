@@ -26,6 +26,16 @@ function extendArtboards(artboards) {
 
   for (let artboard of artboards) {
     let extendedArtboard = utilities.deepExtend({}, defaults.artboardDefaults, artboard)
+    // ★ An artboard that names an IMAGE gets an image background, unless it says otherwise.
+    //
+    // The default is `background_type: 'color'` (white), so a config carrying `image_url` and nothing
+    // else painted a blank white box and silently ignored the image — which is exactly what every
+    // code-first example in the docs did, and what anyone writing the obvious config gets. Inferred
+    // ONLY when the config left `background_type` unset: an explicit choice still wins, so a map that
+    // deliberately pairs an image_url with a colour background is untouched.
+    if (artboard && artboard.background_type === undefined && typeof artboard.image_url === 'string' && artboard.image_url !== '') {
+      extendedArtboard.background_type = 'image'
+    }
     extendedArtboard.children = extendObjects(artboard.children)
     extendedArtboards.push(extendedArtboard)
   }

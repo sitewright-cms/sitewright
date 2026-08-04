@@ -813,6 +813,54 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
   });
 
+  it('says WHY a chrome slot with a snippet fails, instead of just "partial not found"', async () => {
+    // ★ A slot renders without partials — deliberate — but the bare Handlebars message reads like a
+    // missing snippet rather than a capability the surface lacks. An agent factored its menu into a
+    // snippet, referenced it from mainNav, and lost the entire header with no idea why.
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          project: {
+            formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+            identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+            settings: { defaultLocale: 'en', locales: ['en'] },
+            website: { mainNav: '<div>{{> my_menu}}</div>' },
+          },
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+        }),
+        snippets: { my_menu: '<a href="/">Home</a>' },
+      }),
+    ).rejects.toThrow(/chrome slot renders WITHOUT partials/);
+  });
+
+  it('a CUSTOM preloader ships the runtime that clears it', async () => {
+    // ★ THE BUG, end to end: the clearing runtime shipped only when `preloaderEffect !== 'none'`, and
+    // custom code only applies when it IS 'none' — opposite conditions. The one configuration that
+    // emitted an overlay was the one with nothing to remove it, so every page of the site sat behind
+    // a fixed pane forever. Found by an agent rebuilding a real site's loading animation.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { preloaderEffect: 'none', preloaderCode: '<style>.mine{color:red}</style><div class="mine">…</div>' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<div class="mine">…</div>'); // the author's markup, verbatim
+    expect(home).toContain('data-sw-preloader'); // …inside the platform's overlay
+    expect(home).toContain('sw-preloader-custom');
+    expect(home).toContain('preloader.js'); // ← the whole point: something now clears it
+    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading');
+  });
+
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {
     // Regression: `copyMedia` skips images (they are generated on demand), so the preloader logo must
     // resolve via `relImage` (records + materializes a thumbnail) — a bare `rel()` shipped a 404.

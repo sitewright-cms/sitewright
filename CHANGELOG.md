@@ -11,6 +11,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A custom preloader no longer covers the page forever.** The runtime that clears the overlay
+  shipped only when a BUILT-IN effect was chosen, and `effects.preloaderCode` only applies when the
+  effect is `none` — exactly opposite conditions, so the one configuration that emitted an overlay
+  was the one with nothing to remove it. Custom markup is now wrapped in the platform's own
+  `[data-sw-preloader]` overlay (the author writes the spinner, the platform keeps the show/hide
+  contract) and the runtime ships for it. The single-page editor canvas renders no preloader at all
+  now, custom or built-in — a preloader is whole-site chrome, previewed in the draft preview.
+- **An image map paints the image an artboard names.** `background_type` defaults to `color`, so a
+  config carrying `image_url` and nothing else rendered a blank white artboard and ignored the image
+  — including every code-first example in the component catalog. The type is inferred from a present
+  `image_url` when the config doesn't set one; an explicit choice still wins.
+- **A chrome slot says why a snippet does not work in it.** Slots render without partials (by design,
+  so the editor's click-to-edit bridge has nothing to drift against), but the error was Handlebars'
+  bare "The partial X could not be found" — and in the draft preview the slot was dropped silently,
+  so the header simply vanished from every page. The message now names the reason, preview logs it at
+  warn and reports it with the render, and the authoring guide says so up front.
+
+### Fixed
+
 - **A deleted page leaves the draft preview.** The preview rebuilt on the newest content timestamp,
   which a delete cannot move — the row is removed, so the maximum stays wherever it already was. A
   deleted page therefore kept serving out of the last build until an unrelated edit happened to bump

@@ -239,6 +239,18 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(controller).toMatch(/if \(currentTime > 2\) \{[\s\S]*?transform = ''[\s\S]*?return/);
   });
 
+  it('sizes itself to the box the AUTHOR gave it, not to that box’s parent', () => {
+    // ★ Upstream measured `root.parentNode`, so a `max-width` (or any width) on the embed itself was
+    // ignored and the map drew at the parent's width — over whatever sat beside it. Measured on a
+    // real page: a 493px-capped embed drew a 696px canvas at a 760px viewport.
+    const map = vendorCode('src/imageMap.js');
+    expect(map).toContain('contentWidth(this.root)');
+    expect(map).not.toMatch(/parentWidth = this\.root\.parentNode\.getBoundingClientRect\(\)\.width/);
+    // Padding/border come off, or a padded wrapper overflows by exactly its padding.
+    expect(map).toMatch(/paddingLeft[\s\S]{0,200}borderLeftWidth/);
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('paddingLeft');
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

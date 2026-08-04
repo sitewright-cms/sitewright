@@ -1037,12 +1037,35 @@ export function componentTypesInSource(html: string | null | undefined): string[
     const type = COMPONENT_NAME_TO_TYPE.get(name);
     if (type) seen.add(type);
   }
-  // A form embedded by REFERENCE — `{{sw-form "id"}}` or an authored `data-sw-form="id"` — only
-  // gains its `data-sw-component="form"` marker at render (the form-embed pass), so the source
-  // scan must catch the reference itself. Anchored to the two real spellings (helper call /
-  // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
-  if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
+  for (const { token, type } of REFERENCE_EMBEDS) {
+    if (referenceEmbedRe(token).test(html)) seen.add(type);
+  }
   return [...seen];
+}
+
+/**
+ * Components embedded BY REFERENCE — `{{sw-x "id"}}` or an authored `data-sw-x="id"`.
+ *
+ * ★ THESE MUST BE LISTED HERE OR THEY SHIP NO RUNTIME. Such a component gains its
+ * `data-sw-component` marker only at RENDER time (the form-embed / image-map-embed pass), and the
+ * publish path scans page SOURCES — so a source scan sees no marker, no chunk is emitted and no
+ * script is linked. The page still renders the component's no-JS fallback, which is why the failure
+ * looks like "the image is there but nothing is interactive" rather than like an error.
+ *
+ * Adding a `{{sw-*}}` helper that emits `data-sw-component` means adding a row here;
+ * `components.test.ts` renders each helper and fails if its marker isn't reachable from the source.
+ */
+const REFERENCE_EMBEDS: ReadonlyArray<{ token: string; type: string }> = [
+  { token: 'sw-form', type: 'Form' },
+  { token: 'sw-imagemap', type: 'ImageMap' },
+];
+
+/**
+ * Anchored to the two real spellings (helper call / attribute) so prose — or a future `sw-formatter`
+ * helper — cannot over-ship a component's assets.
+ */
+function referenceEmbedRe(token: string): RegExp {
+  return new RegExp(`(?:\\{\\{\\s*|data-)${token}\\b`);
 }
 
 /**

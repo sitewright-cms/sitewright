@@ -160,6 +160,51 @@ describe('componentTypesInSource (code-first detection)', () => {
     expect(componentTypesInSource('<p>about sw-form</p>')).toEqual([]);
     expect(componentTypesInSource('{{sw-formation "x"}}')).toEqual([]);
   });
+
+  it('detects an IMAGE MAP embedded by reference — {{sw-imagemap}} or data-sw-imagemap', () => {
+    // ★ THE REGRESSION THIS GUARDS. Publish scans page SOURCES, and the `data-sw-component="image-map"`
+    // marker only exists after the helper renders. Missing this, a published page linked no
+    // c-imagemap.js and shipped no runtime — so the map rendered its no-JS fallback <img> and
+    // NOTHING was interactive. It looks like a styling problem, not a missing script.
+    expect(componentTypesInSource('<section>{{sw-imagemap "plan"}}</section>')).toEqual(['ImageMap']);
+    expect(componentTypesInSource('<section>{{ sw-imagemap "plan" }}</section>')).toEqual(['ImageMap']);
+    expect(componentTypesInSource('<div data-sw-imagemap="plan"></div>')).toEqual(['ImageMap']);
+    // …and stays anchored, so prose can't over-ship a 118KB runtime.
+    expect(componentTypesInSource('<p>use data-sw-imagemap to embed one</p>')).toEqual(['ImageMap']); // a real attribute spelling
+    expect(componentTypesInSource('<p>about the sw-imagemaps feature</p>')).toEqual([]);
+    expect(componentTypesInSource('{{sw-imagemapper "x"}}')).toEqual([]);
+  });
+
+  it('every component whose markup is EMITTED AT RENDER is reachable from a source scan', async () => {
+    // The mechanical guard. A component embedded by reference gains its data-sw-component marker
+    // only when its embed pass runs, so `componentTypesInSource` has to recognise the REFERENCE.
+    // Forget that and the component silently ships no JS. Rather than trusting a hand-kept list,
+    // read the embed modules and require each marker they emit to be reachable.
+    const { readFile } = await import('node:fs/promises');
+    const { fileURLToPath } = await import('node:url');
+    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+    const emitted = new Set<string>();
+    for (const file of ['form-embed.ts', 'image-map-embed.ts']) {
+      const text = await readFile(srcDir + file, 'utf8');
+      for (const m of text.matchAll(/data-sw-component="([a-z-]+)"/g)) {
+        // Skip mentions inside comments — only a marker in emitted markup counts.
+        const line = text.slice(text.lastIndexOf('\n', m.index) + 1, m.index);
+        if (!line.trimStart().startsWith('//') && !line.trimStart().startsWith('*')) emitted.add(m[1]!);
+      }
+    }
+    expect([...emitted].sort()).toEqual(['form', 'image-map']);
+
+    // Each of those must be produced by scanning a plausible AUTHORED source (helper + attribute),
+    // because that is all publish ever sees.
+    const reachable = new Set(
+      [...emitted].flatMap((name) => {
+        const token = name === 'image-map' ? 'sw-imagemap' : `sw-${name}`;
+        return [...componentTypesInSource(`{{${token} "x"}}`), ...componentTypesInSource(`<div data-${token}="x"></div>`)];
+      }),
+    );
+    expect(reachable.has('Form')).toBe(true);
+    expect(reachable.has('ImageMap')).toBe(true);
+  });
 });
 
 describe('component registry', () => {

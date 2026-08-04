@@ -783,6 +783,20 @@ function Shape({
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: renderIconSvg(iconNameOf(obj), '') }}
         />
+        {/* The ground shadow, in the runtime's own geometry: a full-box radial ellipse squashed to a
+            quarter of its height and centred on the marker's anchor. Drawn here too, because an
+            option only the page honours is an editor that lies about what it will publish. */}
+        {style.icon_shadow ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-1/2 -z-10 h-full w-full"
+            style={{
+              transform: 'scale(1, 0.25)',
+              background:
+                'radial-gradient(ellipse at center, rgba(0,0,0,.53) 0%, rgba(0,0,0,.3) 10%, rgba(0,0,0,.13) 28%, rgba(0,0,0,.04) 44%, rgba(0,0,0,0) 67%)',
+            }}
+          />
+        ) : null}
       </button>
     );
   }

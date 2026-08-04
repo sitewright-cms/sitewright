@@ -276,6 +276,14 @@ describe('ObjectDetails', () => {
     expect(patch.width).toBe(12);
   });
 
+  it('offers the ground shadow as a control, since the runtime draws one', () => {
+    const onChange = iconDetails();
+    fireEvent.click(screen.getByRole('button', { name: 'Style' }));
+    fireEvent.click(screen.getByLabelText('Ground shadow'));
+    const patch = onChange.mock.calls[0]![0] as { default_style: Record<string, unknown> };
+    expect(patch.default_style.icon_shadow).toBe(true);
+  });
+
   it('does not offer Width/Height on an icon — the runtime never reads them', () => {
     // ★ THE BUG. They were shown for every shape, so an author sized an icon with two controls that
     // did nothing at all.
@@ -677,6 +685,30 @@ describe('Canvas', () => {
       // `color`, not a fill attribute: the artwork is currentColor, so one stored icon serves both
       // the resting and the hover fill.
       expect(icon.style.color).toBe('rgb(18, 52, 86)');
+    });
+
+    it('draws the ground shadow the page draws, and only when the hotspot asks for one', () => {
+      // An option only the RUNTIME honours is an editor that lies about what it will publish — the
+      // same editor-vs-page split that made borders and sizes look broken.
+      const withShadow = { use_icon: true, icon_size_pct: 10, icon_name: 'map-pin:fill', icon_shadow: true };
+      canvas({
+        artboard: { ...MAP.artboards[0]!, children: [shape({ id: 'p', title: 'Marker', type: 'spot', default_style: withShadow })] },
+      });
+      const icon = screen.getByTestId('imap-shape-icon');
+      const shadow = icon.querySelector('span[style*="radial-gradient"]');
+      expect(shadow).toBeTruthy();
+      // The runtime's own geometry: a full-box ellipse squashed to a quarter, centred on the anchor.
+      expect((shadow as HTMLElement).style.transform).toBe('scale(1, 0.25)');
+      expect((shadow as HTMLElement).className).toContain('top-1/2');
+
+      cleanup();
+      canvas({
+        artboard: {
+          ...MAP.artboards[0]!,
+          children: [shape({ id: 'p', title: 'Marker', type: 'spot', default_style: { ...withShadow, icon_shadow: false } })],
+        },
+      });
+      expect(screen.getByTestId('imap-shape-icon').querySelector('span[style*="radial-gradient"]')).toBeNull();
     });
 
     it('still draws an IMPORTED non-icon spot as its own box, pulse and all', () => {

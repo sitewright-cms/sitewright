@@ -287,6 +287,7 @@ describe('Canvas', () => {
       onChange: () => {},
       drawing: null,
       onDraw: () => {},
+      onCancelDraw: () => {},
       onPickImage: () => {},
       onDropImage: () => {},
       ...props,
@@ -447,6 +448,27 @@ describe('Canvas', () => {
       expect(onDraw).not.toHaveBeenCalled();
     });
 
+    it('puts the tool down on Escape once there is no trace to cancel', () => {
+      // The polygon tool deliberately stays in hand after a shape closes, so Escape has to be a way
+      // out — otherwise the only exit is finding the toolbar button you pressed and pressing it again.
+      const onCancelDraw = vi.fn();
+      const onSelect = vi.fn();
+      canvas({ drawing: 'poly', onCancelDraw, onSelect, selectedId: 'o1' });
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onCancelDraw).toHaveBeenCalled();
+      // The shape just drawn stays selected, so the author can go straight to naming it.
+      expect(onSelect).not.toHaveBeenCalledWith(null);
+    });
+
+    it('cancels the trace first, and only then the tool', () => {
+      const onCancelDraw = vi.fn();
+      const { box } = canvas({ drawing: 'poly', onCancelDraw });
+      trace(box, [[10, 10], [40, 40]]);
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryAllByTestId('imap-trace-point')).toHaveLength(0);
+      expect(onCancelDraw).not.toHaveBeenCalled(); // still in hand, ready for the next outline
+    });
+
     it('abandons a half-drawn trace when the author puts the tool down', () => {
       const { box, rerender } = canvas({ drawing: 'poly' });
       trace(box, [[10, 10], [40, 40]]);
@@ -460,6 +482,7 @@ describe('Canvas', () => {
             onChange={() => {}}
             drawing={null}
             onDraw={() => {}}
+            onCancelDraw={() => {}}
             onPickImage={() => {}}
             onDropImage={() => {}}
           />

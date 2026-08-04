@@ -544,6 +544,7 @@ function MapEditor({
               onChange={patchObject}
               drawing={drawing}
               onDraw={draw}
+              onCancelDraw={() => setDrawing(null)}
               onPickImage={() => setPicking(true)}
               onDropImage={(file) => void dropImage(file)}
               uploading={uploading}

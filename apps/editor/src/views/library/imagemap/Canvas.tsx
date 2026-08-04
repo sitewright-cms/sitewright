@@ -72,6 +72,8 @@ interface CanvasProps {
   /** The tool in hand: null = select/move, otherwise the next gesture draws this shape. */
   drawing: DrawableType | null;
   onDraw: (type: DrawableType, spec: DrawSpec) => void;
+  /** Put the current tool down (Escape) — back to select/move. */
+  onCancelDraw: () => void;
   /** Open the media picker for this artboard's background. */
   onPickImage: () => void;
   /** An image file dropped straight onto the canvas. */
@@ -105,6 +107,7 @@ export function Canvas({
   onChange,
   drawing,
   onDraw,
+  onCancelDraw,
   onPickImage,
   onDropImage,
   uploading = false,
@@ -334,6 +337,21 @@ export function Canvas({
     return () => window.removeEventListener('keydown', onKey);
   }, [trace, finishTrace]);
 
+  // Escape puts the tool down. The polygon tool deliberately stays in hand after a shape closes, so
+  // there has to be a way out that isn't "find the toolbar button you pressed and press it again".
+  useEffect(() => {
+    if (!drawing || trace) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onCancelDraw();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawing, trace, onCancelDraw]);
+
   // Delete / nudge the selection. Bound to the window so it works wherever focus sits inside the
   // Studio, but ignored while typing in a field.
   useEffect(() => {
@@ -363,11 +381,13 @@ export function Canvas({
       else if (e.key === 'ArrowRight') nudge(step, 0);
       else if (e.key === 'ArrowUp') nudge(0, -step);
       else if (e.key === 'ArrowDown') nudge(0, step);
-      else if (e.key === 'Escape') onSelect(null);
+      // With a tool in hand Escape means "put it down" (above) — leave the new shape selected so
+      // the author can go straight to naming it.
+      else if (e.key === 'Escape' && !drawing) onSelect(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, objects, onChange, onSelect, trace, vertex]);
+  }, [selectedId, objects, onChange, onSelect, trace, vertex, drawing]);
 
   function onDrop(e: React.DragEvent): void {
     e.preventDefault();
@@ -402,9 +422,9 @@ export function Canvas({
             undo one, Esc to cancel
           </span>
         ) : tracing ? (
-          <span className="text-sky-600 dark:text-sky-400">Click along the outline you want to make clickable</span>
+          <span className="text-sky-600 dark:text-sky-400">Click along the outline you want to make clickable — Esc to put the tool down</span>
         ) : drawing ? (
-          <span className="text-sky-600 dark:text-sky-400">Drag to size it, or click to drop one</span>
+          <span className="text-sky-600 dark:text-sky-400">Drag to size it, or click to drop one — Esc to put the tool down</span>
         ) : null}
         <div className="ml-auto flex items-center gap-1">
           <button type="button" aria-label="Zoom out" className="rounded px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}>

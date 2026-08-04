@@ -56,6 +56,65 @@ describe('buildSite preview options', () => {
     expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('Home');
   });
 
+  it('a page that cannot render fails the PUBLISH, but only ITSELF in the preview', async () => {
+    // ★ THE BUG THIS EXISTS FOR: one dangling reference used to abort the whole draft build, so every
+    // page of the project kept serving its last good output — with a 200 and no signal anywhere. An
+    // author edited and watched nothing change.
+    const broken = [
+      { id: 'home', path: '', title: 'Home', source: '<h1>Home</h1>' },
+      { id: 'bad', path: 'bad', title: 'Bad', source: '{{sw-imagemap "does-not-exist"}}' },
+      { id: 'last', path: 'last', title: 'Last', source: '<h1>Last</h1>' },
+    ] as unknown as ProjectBundle['pages'];
+
+    // PUBLISH: fatal, and the error names the page.
+    await expect(
+      buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(broken) }),
+    ).rejects.toThrow(/page "bad"/);
+
+    // PREVIEW: every other page is CURRENT, and the broken one serves an error document in its place.
+    const manifest = await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: bundle(broken),
+    });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('Home');
+    // …including the pages AFTER the broken one — an abort stopped at the first failure.
+    expect(await readFile(join(outDir, 'last/index.html'), 'utf8')).toContain('Last');
+    const bad = await readFile(join(outDir, 'bad/index.html'), 'utf8');
+    expect(bad).toContain('This page could not be rendered');
+    expect(bad).toContain('does-not-exist');
+    expect(manifest.pageFailures).toEqual([
+      { page: 'bad', path: '/bad', message: expect.stringContaining('does-not-exist') },
+    ]);
+  });
+
+  it('a clean build reports no page failures at all', async () => {
+    const manifest = await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: bundle(pages),
+      includeDrafts: true,
+    });
+    expect(manifest.pageFailures).toBeUndefined();
+  });
+
+  it('escapes the error it reports — the message carries authored text', async () => {
+    const evil = [
+      { id: 'x', path: '', title: 'X', source: '{{sw-imagemap "</pre><script>alert(1)</script>"}}' },
+    ] as unknown as ProjectBundle['pages'];
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: bundle(evil),
+    });
+    const html = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
   it('previewRuntime is injected inline into every rendered page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
@@ -388,15 +447,45 @@ describe('preview-site API (signed path)', () => {
     expect(none.json()).toEqual({ path: null });
   });
 
-  it('a broken page source fails the build gracefully (404, no crash) and arms a cooldown', async () => {
+  it('a broken page SERVES its error, and the pages around it stay current', async () => {
+    // ★ This used to 404 the broken page and, worse, leave every OTHER page of the project on its
+    // last good build — silently, with a 200. The build now isolates the failure to its own route.
     const { t, projectId } = await setup('bk@acme.test');
     const cookies = { sw_session: t };
-    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '{{#each items}}' });
+    const base = `/projects/${projectId}`;
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Home v1</h1>' });
+    await putPage(base, cookies, { id: 'bad', path: 'bad', title: 'Bad', source: '{{#each items}}' });
     const pbase = await signedBase(projectId, t);
-    const res = await app.inject({ method: 'GET', url: pbase });
-    expect(res.statusCode).toBe(404);
-    const retry = await app.inject({ method: 'GET', url: pbase });
-    expect(retry.statusCode).toBe(404);
+
+    const broken = await app.inject({ method: 'GET', url: `${pbase}bad/` });
+    expect(broken.statusCode).toBe(200);
+    expect(broken.body).toContain('This page could not be rendered');
+
+    // The healthy page rebuilds — the whole point. Edit it and the preview shows the edit.
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Home v2</h1>' });
+    const home = await app.inject({ method: 'GET', url: pbase });
+    expect(home.statusCode).toBe(200);
+    expect(home.body).toContain('Home v2');
+  });
+
+  it('preview-url reports which pages failed, so the editor can say so off the broken page', async () => {
+    const { t, projectId } = await setup('bkr@acme.test');
+    const cookies = { sw_session: t };
+    const base = `/projects/${projectId}`;
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>H</h1>' });
+    await putPage(base, cookies, { id: 'bad', path: 'bad', title: 'Bad', source: '{{#each items}}' });
+
+    const res = await app.inject({ method: 'GET', url: `${base}/preview-url`, cookies });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { base: string; pageFailures: Array<{ page: string; path: string }> };
+    expect(body.base).toContain('/preview-site/');
+    expect(body.pageFailures.map((f) => f.page)).toEqual(['bad']);
+    expect(body.pageFailures[0]!.path).toBe('/bad');
+
+    // …and it CLEARS once the page renders again, or the banner would outlive the problem.
+    await putPage(base, cookies, { id: 'bad', path: 'bad', title: 'Bad', source: '<h1>Fixed</h1>' });
+    const after = await app.inject({ method: 'GET', url: `${base}/preview-url`, cookies });
+    expect((after.json() as { pageFailures: unknown[] }).pageFailures).toEqual([]);
   });
 
   it('agent-presence returns a connected count (0 with no agents)', async () => {

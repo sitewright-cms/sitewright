@@ -1111,8 +1111,18 @@ export const api = {
    */
   previewLocate: (projectId: string, entity: string) =>
     request<{ path: string | null }>('GET', `/projects/${projectId}/preview-locate?entity=${encodeURIComponent(entity)}`),
-  /** The SIGNED, share-able preview base (`/preview/<id>/<sig>/`) — members-only to mint. */
-  previewBase: (projectId: string) => request<{ base: string }>('GET', `/projects/${projectId}/preview-url`),
+  /**
+   * The SIGNED, share-able preview base (`/preview/<id>/<sig>/`) — members-only to mint.
+   *
+   * Also reports any page the draft build could not render. Those pages still SERVE (an error
+   * document naming the problem, in place of the page), so the preview is never stale — this is how
+   * the shell can say so while the author is looking at a page that is perfectly fine.
+   */
+  previewBase: (projectId: string) =>
+    request<{ base: string; pageFailures?: Array<{ page: string; path: string; message: string }> }>(
+      'GET',
+      `/projects/${projectId}/preview-url`,
+    ),
   /** Revocable, stable SHARE links for the draft preview (viewable by UNAUTHENTICATED clients). */
   listPreviewShares: (projectId: string) =>
     request<{ items: Array<{ id: string; label: string; createdAt: number; url: string }> }>('GET', `/projects/${projectId}/preview-shares`),

@@ -7,7 +7,9 @@ const { agentPresence, previewLocate, previewBase, agentStatus, drawerStatus } =
   previewLocate: vi.fn<(id: string, entity: string) => Promise<{ path: string | null }>>(() =>
     Promise.resolve({ path: null }),
   ),
-  previewBase: vi.fn<(id: string) => Promise<{ base: string }>>(() => Promise.resolve({ base: '/preview-site/p/sig123/' })),
+  previewBase: vi.fn<
+    (id: string) => Promise<{ base: string; pageFailures?: Array<{ page: string; path: string; message: string }> }>
+  >(() => Promise.resolve({ base: '/preview-site/p/sig123/' })),
   agentStatus: vi.fn<(id: string) => Promise<{ enabled: boolean }>>(() => Promise.resolve({ enabled: false })),
   // Lets a test drive the live turn status the drawer would report up to the shell.
   drawerStatus: { current: 'idle' as 'idle' | 'thinking' | 'working' },
@@ -74,6 +76,33 @@ describe('SitePreview', () => {
     const frame = await screen.findByTitle('Site preview');
     expect(frame).toHaveAttribute('src', '/preview-site/p/sig123/');
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
+  });
+
+  it('names the pages the draft build could not render, and says the rest is current', async () => {
+    // ★ A broken page no longer freezes the preview — but the author still has to LEARN about it, and
+    // they may never browse onto that page. This is the only signal that reaches them off it.
+    stubEventSource();
+    previewBase.mockResolvedValue({
+      base: '/preview-site/p/sig123/',
+      pageFailures: [{ page: 'bad', path: '/bad', message: 'render error: unknown image map "gone"' }],
+    });
+    render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    expect(await screen.findByText('1 page could not be rendered')).toBeInTheDocument();
+    expect(screen.getByText('/bad')).toBeInTheDocument();
+    expect(screen.getByText(/unknown image map/)).toBeInTheDocument();
+    expect(screen.getByText(/every other page in this preview is up to date/i)).toBeInTheDocument();
+    // Dismissible — it must not sit on top of the preview forever.
+    await act(async () => {
+      screen.getByRole('button', { name: 'Dismiss' }).click();
+    });
+    expect(screen.queryByText('1 page could not be rendered')).not.toBeInTheDocument();
+  });
+
+  it('shows no failure banner when every page rendered', async () => {
+    stubEventSource();
+    render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    await screen.findByTitle('Site preview');
+    expect(screen.queryByText(/could not be rendered/)).not.toBeInTheDocument();
   });
 
   it('copies the share-able preview URL when the button is clicked', async () => {

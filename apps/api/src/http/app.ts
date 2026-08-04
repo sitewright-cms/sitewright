@@ -181,7 +181,7 @@ import { pinnedFetchDetailed, type PinnedResult } from '../import/pinned-fetch.j
 import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
-import { PublishError, type ReleaseManifest } from '../publish/build.js';
+import { PublishError, type PageBuildFailure, type ReleaseManifest } from '../publish/build.js';
 import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
@@ -1157,6 +1157,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewBuiltVersion = new Map<string, string>();
   const previewBuilds = new Map<string, Promise<void>>();
   const previewBuildFail = new Map<string, { version: string; at: number }>();
+  // Pages the LAST draft build could not render (it served each an error document and carried on).
+  // Reported with the preview URL so the shell can say so even when the author is looking at a page
+  // that is perfectly fine — the whole point being that a broken page is now a local problem.
+  const previewPageFailures = new Map<string, PageBuildFailure[]>();
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
   const previewStore = new PreviewStore();
@@ -2787,6 +2791,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
       previewBuildFail.delete(project.id);
+      previewPageFailures.delete(project.id);
       return reply.code(204).send();
     },
   );
@@ -2860,6 +2865,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // The published site / preview build are keyed by slug — drop the stale build so the new slug rebuilds.
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
+      previewPageFailures.delete(project.id);
     }
     return reply.send({ project: updated });
   });
@@ -2886,6 +2892,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     previewBuiltVersion.delete(project.id);
     previewBuilds.delete(project.id);
     previewBuildFail.delete(project.id);
+    previewPageFailures.delete(project.id);
     await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
     await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
   }
@@ -5998,7 +6005,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           /* preview tolerates a missing JSON source */
         }
       }
-      await buildRunner.run({
+      const manifest = await buildRunner.run({
         outDir: preview.dirFor(project.slug),
         bundle: inputs.bundle,
         publishedAt: new Date().toISOString(),
@@ -6020,6 +6027,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           : undefined,
       });
       previewBuiltVersion.set(project.id, version);
+      // A draft build no longer aborts on a page it cannot render — it serves an error document at
+      // that page's own route and carries on. Remember which pages those were, so the failure is
+      // reportable from anywhere in the editor and not only by browsing onto the broken page.
+      const failures = manifest.pageFailures ?? [];
+      if (failures.length > 0) {
+        previewPageFailures.set(project.id, failures);
+        app.log.warn(
+          { projectId: project.id, pages: failures.map((f) => f.page), errMsg: failures[0]?.message },
+          'preview build: pages served an error document',
+        );
+      } else {
+        previewPageFailures.delete(project.id);
+      }
     }
 
     // Bring the on-disk draft build up to date before serving a page. A burst of edits during a
@@ -6106,8 +6126,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { projectId: string } }>(
       '/projects/:projectId/preview-url',
       async (req, reply) => {
-        const { project } = await resolveProject(req, 'content:read');
-        return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/` });
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        // Bring the draft up to date before answering, so `pageFailures` describes the CURRENT
+        // content rather than whichever build happened to run last. The shell asks for this on every
+        // reload, which is exactly when an author wants to know a page stopped rendering.
+        await ensurePreviewBuild(ctx, project).catch(() => {}); // a build failure is reported below / logged
+        return reply.send({
+          base: `/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/`,
+          // Pages that could not be rendered. Each still SERVES — an error document naming the
+          // problem — so the preview as a whole is never stale; this is how the rest of the editor
+          // gets to say so too.
+          pageFailures: previewPageFailures.get(project.id) ?? [],
+        });
       },
     );
 

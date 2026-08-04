@@ -35,6 +35,10 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [base, setBase] = useState<string | null>(null);
   const baseRef = useRef<string | null>(null);
   const [src, setSrc] = useState('');
+  // Pages the draft build could not render. Each still serves an error document in place, so the
+  // preview is current everywhere else — this is what tells the author about a page they are not on.
+  const [pageFailures, setPageFailures] = useState<Array<{ page: string; path: string; message: string }>>([]);
+  const [failuresDismissed, setFailuresDismissed] = useState(false);
   const [connectedCount, setConnectedCount] = useState(0);
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -70,6 +74,7 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
         if (!active) return;
         baseRef.current = r.base;
         setBase(r.base);
+        setPageFailures(r.pageFailures ?? []);
         setSrc(previewUrlFrom(r.base, target.path));
       })
       .catch(() => {
@@ -128,6 +133,19 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     [projectId, go, reloadCurrent],
   );
 
+  // Re-read the build's page failures whenever content changes: the edit that just landed may be the
+  // one that broke a page — or the one that fixed it. One call per debounced burst; the endpoint
+  // brings the draft up to date before answering, so this is never a stale answer.
+  const refreshFailures = useCallback(() => {
+    api
+      .previewBase(projectId)
+      .then((r) => {
+        setPageFailures(r.pageFailures ?? []);
+        setFailuresDismissed(false);
+      })
+      .catch(() => {}); // best-effort: the banner just doesn't update
+  }, [projectId]);
+
   // Subscribe to the change stream: debounce, track the agent "working" state, then reload/navigate.
   useEffect(() => {
     const source = new EventSource(eventsUrl(projectId), { withCredentials: true });
@@ -147,14 +165,17 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
         workingTimer.current = setTimeout(() => setWorking(false), WORKING_LULL_MS);
       }
       if (handle) clearTimeout(handle);
-      handle = setTimeout(() => void onChange(lastEntity), CHANGE_DEBOUNCE_MS);
+      handle = setTimeout(() => {
+        void onChange(lastEntity);
+        refreshFailures();
+      }, CHANGE_DEBOUNCE_MS);
     });
     return () => {
       if (handle) clearTimeout(handle);
       if (workingTimer.current) clearTimeout(workingTimer.current);
       source.close();
     };
-  }, [projectId, onChange]);
+  }, [projectId, onChange, refreshFailures]);
 
   // The child runtime reports the iframe's location so we can target reloads + title the tab. The
   // reported pathname is under the signed base; strip it back to a bare route.
@@ -209,6 +230,9 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
 
   const showPill = working || connectedCount > 0;
 
+  // The failure banner owns the top strip while it is up, so the two chips step down out of its way.
+  const bannerUp = pageFailures.length > 0 && !failuresDismissed;
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-white">
       {src && (
@@ -222,18 +246,48 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           className="h-full w-full border-0"
         />
       )}
+      {bannerUp && (
+        <div className="absolute inset-x-3 top-3 z-20 rounded-xl bg-red-600/95 px-4 py-2.5 text-white shadow-lg backdrop-blur">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1 text-[12px] leading-5">
+              <p className="font-bold">
+                {pageFailures.length === 1
+                  ? '1 page could not be rendered'
+                  : `${pageFailures.length} pages could not be rendered`}{' '}
+                <span className="font-normal opacity-90">
+                  — every other page in this preview is up to date.
+                </span>
+              </p>
+              {pageFailures.slice(0, 3).map((f) => (
+                <p key={f.page} className="truncate opacity-90">
+                  <code className="rounded bg-black/25 px-1">{f.path}</code> {f.message}
+                </p>
+              ))}
+              {pageFailures.length > 3 && <p className="opacity-75">…and {pageFailures.length - 3} more.</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => setFailuresDismissed(true)}
+              className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-bold text-white/80 hover:bg-white/15 hover:text-white"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {base && (
         <button
           onClick={copyShareUrl}
           title={shareUrl}
-          className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-white opacity-60 shadow-sm backdrop-blur transition hover:opacity-100"
+          className={`absolute left-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-white opacity-60 shadow-sm backdrop-blur transition hover:opacity-100 ${bannerUp ? 'top-24' : 'top-3'}`}
         >
           {copied ? 'Link copied' : 'Copy preview link'}
         </button>
       )}
       {showPill && (
         // pointer-events-none so the indicator never intercepts clicks meant for the preview.
-        <div className="pointer-events-none absolute right-3 top-3 z-10">
+        <div className={`pointer-events-none absolute right-3 z-10 ${bannerUp ? 'top-24' : 'top-3'}`}>
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm ring-1 ${
               working ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'

@@ -77,6 +77,7 @@ import {
   mediaForRender,
   RICH_CONTENT_SAFELIST,
   ciRichClasses,
+  escapeHtml,
 } from '@sitewright/blocks';
 import { minifyJs, minifyCss, MINIFIER_VERSION } from './minify.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
@@ -157,11 +158,60 @@ function referencedSnippets(rootSources: readonly (string | undefined)[], snippe
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
 
+/** One page that could not be rendered, in a build that carried on without it. */
+export interface PageBuildFailure {
+  /** The page's entity id — what an editor link or a log line needs to name it. */
+  page: string;
+  /** Its route, so the failure can be reported as a place a visitor would go. */
+  path: string;
+  /** The template error, verbatim. */
+  message: string;
+}
+
 /** Metadata about one published build. */
 export interface ReleaseManifest {
   publishedAt: string;
   routes: number;
   bytes: number;
+  /**
+   * Pages that failed to render, DRAFT PREVIEW ONLY — a publish still fails whole on the first bad
+   * page, because a broken page must never reach a live site. Empty/absent when everything rendered.
+   */
+  pageFailures?: PageBuildFailure[];
+}
+
+/**
+ * The document a failed page serves in the draft preview.
+ *
+ * ★ The alternative — and what this replaces — was failing the WHOLE build: one page with a dangling
+ * reference froze every page of the project on its last good build, serving stale HTML with a 200 and
+ * no signal anywhere. The author edits, nothing changes, and nothing says why. Here the damage stays
+ * on the page that has the problem, and that page says what the problem is.
+ *
+ * Self-contained and inert: no styles, scripts or assets from the site, because whatever the site
+ * ships may itself be what failed.
+ */
+function previewErrorPage(failure: PageBuildFailure, title: string | undefined): string {
+  const head =
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    `<title>Preview error — ${escapeHtml(title ?? failure.page)}</title>` +
+    '<style>' +
+    'body{margin:0;padding:48px 24px;font:16px/1.6 system-ui,sans-serif;color:#1e293b;background:#f8fafc}' +
+    'main{max-width:44rem;margin:0 auto}' +
+    'h1{margin:0 0 8px;font-size:22px}' +
+    'p{margin:0 0 16px;color:#475569}' +
+    'code{background:#e2e8f0;border-radius:4px;padding:1px 5px;font-size:14px}' +
+    'pre{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #dc2626;border-radius:8px;' +
+    'padding:14px 16px;overflow-x:auto;font-size:14px;white-space:pre-wrap;color:#b91c1c}' +
+    '</style></head><body><main>';
+  return (
+    `${head}<h1>This page could not be rendered</h1>` +
+    `<p>Every other page in this preview is up to date — only <code>${escapeHtml(failure.path)}</code> is affected.</p>` +
+    `<pre>${escapeHtml(failure.message)}</pre>` +
+    `<p>Page <code>${escapeHtml(failure.page)}</code>. Fix the source and the preview rebuilds on the next change.</p>` +
+    '</main></body></html>'
+  );
 }
 
 // Output path segments come from validated routes, but we still reject anything
@@ -744,21 +794,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Each route (incl. every locale variant, which is its own Page) renders ONCE
     // at its own path. Guard against two routes resolving to the same output file.
     const writtenPaths = new Set<string>();
+    // Pages a DRAFT build rendered an error document for instead of aborting on — see the catch below.
+    const pageFailures: PageBuildFailure[] = [];
     {
-      for (const route of routes) {
+      const renderRoute = async (route: (typeof routes)[number], full: string): Promise<void> => {
         // Code-first: the page renders from its Handlebars `source` (resolved below into `bodyHtml`).
         const page = route.page;
         const pageLocale = localeOf(page);
         const navForPage = navByLocale.get(pageLocale) ?? nav;
         const outSlug = route.slug;
-        const full = resolve(tmp, relPathForSlug(outSlug));
-        if (full !== tmp && !full.startsWith(tmp + sep)) {
-          throw new PublishError('route output escapes the publish directory');
-        }
-        if (writtenPaths.has(full)) {
-          throw new PublishError(`output path collision at "/${outSlug ?? ''}" — two pages resolve to the same URL`);
-        }
-        writtenPaths.add(full);
         // Sitemap: indexable pages only (skip noindex), absolute URLs. lastmod is a
         // W3C date (YYYY-MM-DD) — the subset crawlers reliably accept.
         if (siteUrl && !page.noindex) {
@@ -1145,6 +1189,42 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, finalHtml, 'utf8');
         bytes += Buffer.byteLength(finalHtml);
+      };
+
+      for (const route of routes) {
+        const outSlug = route.slug;
+        const path = `/${outSlug ?? ''}`;
+        const full = resolve(tmp, relPathForSlug(outSlug));
+        // Never isolated: writing outside the output directory is a containment failure, not a
+        // content mistake.
+        if (full !== tmp && !full.startsWith(tmp + sep)) {
+          throw new PublishError('route output escapes the publish directory');
+        }
+        if (writtenPaths.has(full)) {
+          const message = `output path collision at "${path}" — two pages resolve to the same URL`;
+          if (!previewMode) throw new PublishError(message);
+          // The first page already OWNS this file; the second is the one that cannot be rendered.
+          pageFailures.push({ page: route.page.id, path, message });
+          continue;
+        }
+        writtenPaths.add(full);
+        try {
+          await renderRoute(route, full);
+        } catch (err) {
+          // ★ A PUBLISH still fails whole — a broken page must not reach a live site. A DRAFT PREVIEW
+          // keeps going: failing the build meant one dangling reference froze EVERY page of the
+          // project on its last good output, served with a 200 and no signal anywhere, so an author
+          // edited and watched nothing change. The blast radius is now the page that has the problem.
+          if (!previewMode) throw err;
+          const message = err instanceof Error ? err.message : String(err);
+          pageFailures.push({ page: route.page.id, path, message });
+          const doc = previewErrorPage({ page: route.page.id, path, message }, route.page.title);
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
+          await writeFile(full, doc, 'utf8');
+          bytes += Buffer.byteLength(doc);
+        }
+        // The output cap is a property of the BUILD, not of one page, so it is checked out here and
+        // stays fatal — an isolated page failure must not let a runaway project fill the disk.
         if (bytes > maxOutputBytes) {
           throw new PublishError('published site exceeds the maximum output size');
         }
@@ -1287,6 +1367,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    // AFTER release.json: a published manifest describes the release, and there are no failures in one
+    // (a publish throws on the first). This rides back to the caller so a draft build can be REPORTED
+    // as partial rather than passing for clean.
+    if (pageFailures.length > 0) manifest.pageFailures = pageFailures;
 
     // Swap the completed build into place (brief gap only between rm and rename).
     await rm(base, { recursive: true, force: true });

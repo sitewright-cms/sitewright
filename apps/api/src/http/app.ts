@@ -3721,10 +3721,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const hcaptchaSiteKey = Object.values(previewForms).some((f) => f.hcaptcha)
         ? (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey
         : undefined;
+      // Stored image maps for {{sw-imagemap}} / data-sw-imagemap — the same shape the publish path
+      // builds in build.ts. WITHOUT this key the helper renders '' (its "this surface has no image
+      // maps" contract), so an authored map came out as NOTHING in the preview with no error at all.
+      //
+      // Gated on the source mentioning image maps, because a materialised template config runs to
+      // hundreds of KB and this is the per-keystroke preview path — a page that embeds none must not
+      // pay for the read. Once one IS mentioned, ALL of the project's maps load: the id can come from
+      // a variable, so the set of referenced ids is not statically knowable.
+      const mapScan = [pageSource, ...Object.values(partials), website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
+        .filter((s): s is string => typeof s === 'string')
+        .join('\n');
+      const previewImageMaps = mapScan.includes('sw-imagemap')
+        ? Object.fromEntries(
+            ((await contentRepo.list(ctx, 'imagemap')) as ImageMap[]).map((m) => [
+              m.id,
+              { id: m.id, config: m as unknown as Record<string, unknown> },
+            ]),
+          )
+        : undefined;
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial/form
       // set (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
       // memory ceiling). Mirrors the owner render-template guard.
-      if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length + JSON.stringify(previewForms).length > 4 * 1024 * 1024) {
+      if (
+        JSON.stringify(localeData).length +
+          JSON.stringify(item).length +
+          JSON.stringify(partials).length +
+          JSON.stringify(previewForms).length +
+          // Image maps count too: a template-derived config is hundreds of KB, and several of them
+          // would spike this process's heap on the way into the worker.
+          (previewImageMaps ? JSON.stringify(previewImageMaps).length : 0) >
+        4 * 1024 * 1024
+      ) {
         return reply.code(413).send({ error: 'project data is too large to render' });
       }
       try {
@@ -3828,6 +3856,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           markEntries: true,
           media: renderMedia,
           forms: previewForms,
+          // Omitted entirely (not `{}`) when the page embeds none: the helper distinguishes "this
+          // surface has no image maps" from "that id is unknown", and only the latter should throw.
+          ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
           ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
         });
         // Slots render through the SAME isolated worker; a broken slot is skipped here
@@ -3853,6 +3884,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           preview: true,
           media: renderMedia,
           forms: previewForms,
+          // A slot (footer, sidebar, global modal) may embed a map too — same parity as forms.
+          ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
           ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
         };
         // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already

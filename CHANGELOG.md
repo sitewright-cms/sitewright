@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **One broken page no longer freezes the whole draft preview.** A page that could not render — a
+  dangling `{{sw-imagemap}}`/`{{sw-form}}` id, a bad Handlebars source — failed the entire build, so
+  every page of the project kept serving its last good output, with a 200 and no signal anywhere: an
+  author edited and watched nothing change. A draft build now isolates the failure to the page that
+  has it, serving an error document at that page's own route and rebuilding everything else. The
+  preview shell names the affected pages, so a failure is visible from a page that is perfectly fine.
+  A PUBLISH still fails whole on the first bad page — a broken page must not reach a live site.
+
+### Fixed
+
 - **An image map fits the box the page gave it.** The runtime sized its canvas from the embed's
   PARENT, so any width on the embed itself — `max-width`, a width class, a narrower column — was
   ignored and the map drew straight over whatever sat beside it. Measured on a real page: a 493px

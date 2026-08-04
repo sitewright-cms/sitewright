@@ -6052,8 +6052,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       project: Awaited<ReturnType<ProjectRepository['get']>>,
     ): Promise<void> {
       for (let i = 0; i < 4; i++) {
-        const latest = await contentRepo.latestContentUpdate(ctx);
-        const version = latest ? String(latest.getTime()) : 'empty';
+        // Timestamp AND row count: a DELETE removes a row outright, so a newest-updated_at alone
+        // never moves and the deleted page keeps serving out of the last build (verified live).
+        const version = await contentRepo.previewContentVersion(ctx);
         if (previewBuiltVersion.get(project.id) === version) return;
         const failed = previewBuildFail.get(project.id);
         if (failed && failed.version === version && Date.now() - failed.at < PREVIEW_BUILD_COOLDOWN_MS) return;

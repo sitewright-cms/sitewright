@@ -185,6 +185,20 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/webcraftplugins/i);
   });
 
+  it('animates a tooltip IN by default, and travels away from the hotspot', () => {
+    // ★ Upstream shipped `tooltip_animation: 'none'`, so a tooltip snapped into existence. A plain
+    // 200ms opacity fade barely registers either — the motion that reads as "arriving" is a fade
+    // PLUS a few pixels of travel, away from the hotspot it belongs to.
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('fade-up');
+    expect(IMAGE_MAP_RUNTIME_JS).toMatch(/tooltip_animation:"fade-up"/);
+    // The override has to out-specify the vendor's own `.sw-imap-tooltip-wrap .sw-imap-tooltip`, or
+    // it silently loses and the duration stays 200ms.
+    const { css } = componentAssets(['ImageMap']);
+    expect(css).toContain('.sw-imap-tooltip-wrap .sw-imap-tooltip{transition-duration:.34s');
+    // …and reduced motion still stands the whole thing down.
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{[^}]*transition-duration:0s/);
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

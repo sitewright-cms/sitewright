@@ -353,6 +353,29 @@ export default class TooltipController {
       return
     }
 
+    // FADE-UP — the default. A plain opacity fade over 200ms is so slight it reads as no animation
+    // at all; rising a few pixels while fading in is what makes a tooltip feel like it ARRIVED.
+    //
+    // The offset direction follows the tooltip's own placement, so it always travels AWAY from the
+    // hotspot it belongs to: one above the hotspot rises, one below it descends. Anything else looks
+    // like it is sliding into the thing it is describing.
+    if (this.store.state.tooltips.tooltip_animation === 'fade-up') {
+      let position = this.tooltips[id].style.position || 'top'
+      let offset = position === 'bottom' ? '-8px' : position === 'left' ? '8px' : position === 'right' ? '-8px' : '8px'
+      let axis = position === 'left' || position === 'right' ? 'X' : 'Y'
+      el.style.transitionProperty = 'none'
+      el.style.opacity = 0
+      el.style.transform = `translate${axis}(${offset})`
+      clearTimeout(this.tooltipAnimationTimeouts[id])
+      this.tooltipAnimationTimeouts[id] = requestAnimationFrame(() => {
+        el.style.transitionProperty = 'opacity, transform'
+        el.style.opacity = 1
+        el.style.transform = 'none'
+      })
+
+      return
+    }
+
     if (this.store.state.tooltips.tooltip_animation === 'fade') {
       el.style.transitionProperty = 'none'
       el.style.opacity = 0

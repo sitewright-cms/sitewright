@@ -223,6 +223,35 @@ export class ContentRepository {
   }
 
   /**
+   * A version string for the project's publishable content — what the DRAFT PREVIEW rebuilds on.
+   *
+   * ★ It counts the rows as well as timestamping them, because `MAX(updated_at)` alone cannot see a
+   * DELETE. Content rows are removed outright, so deleting a page leaves the maximum wherever it was
+   * (usually on some other, newer row) — the version never moves, no rebuild is triggered, and the
+   * deleted page keeps SERVING in the preview until an unrelated edit happens to bump the clock.
+   * Measured on a live instance before this existed: a page deleted a minute earlier still returned
+   * 200 with its old content.
+   *
+   * One aggregate query, on the indexed `project_id`. Separate from {@link latestContentUpdate},
+   * which answers a different question (has anything changed since the last release?) for the
+   * publish "dirty" signal.
+   */
+  async previewContentVersion(ctx: ProjectContext): Promise<string> {
+    const [row] = await this.db
+      .select({ latest: sql<number | null>`max(${content.updatedAt})`, rows: sql<number>`count(*)` })
+      .from(content)
+      .where(
+        and(
+          eq(content.projectId, ctx.projectId),
+          notInArray(content.kind, ['deploy_target', 'project_smtp', 'ai_config']),
+        ),
+      );
+    const rows = Number(row?.rows ?? 0);
+    if (rows === 0) return 'empty';
+    return `${Number(row?.latest ?? 0)}:${rows}`;
+  }
+
+  /**
    * Fetch one entity's data. `scope` narrows the (kind, entityId) key: pass the OWNING DATASET SLUG for
    * an `entry` (its id is only unique within its dataset); leave it `''` for every project-global kind.
    */

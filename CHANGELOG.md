@@ -11,6 +11,10 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A deleted page leaves the draft preview.** The preview rebuilt on the newest content timestamp,
+  which a delete cannot move — the row is removed, so the maximum stays wherever it already was. A
+  deleted page therefore kept serving out of the last build until an unrelated edit happened to bump
+  the clock. The version counts rows as well as timestamping them now.
 - **One broken page no longer freezes the whole draft preview.** A page that could not render — a
   dangling `{{sw-imagemap}}`/`{{sw-form}}` id, a bad Handlebars source — failed the entire build, so
   every page of the project kept serving its last good output, with a 200 and no signal anywhere: an

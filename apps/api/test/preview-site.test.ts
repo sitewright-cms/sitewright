@@ -468,6 +468,27 @@ describe('preview-site API (signed path)', () => {
     expect(home.body).toContain('Home v2');
   });
 
+  it('a DELETED page leaves the preview — a delete moves the build version too', async () => {
+    // ★ The draft rebuilt on "newest content updatedAt", which a DELETE cannot move: the row is gone,
+    // so the maximum stays wherever it already was and no rebuild is triggered. Measured on a live
+    // instance: a page deleted a minute earlier still served 200 with its old content.
+    const { t, projectId } = await setup('del@acme.test');
+    const cookies = { sw_session: t };
+    const base = `/projects/${projectId}`;
+    await putPage(base, cookies, { id: 'gone', path: 'gone', title: 'Gone', source: '<h1>Delete me</h1>' });
+    // …then touch ANOTHER page, so the doomed one is no longer the newest row. That is the case the
+    // old version string could not see: deleting it leaves `max(updated_at)` exactly where it is.
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>H</h1>' });
+    const pbase = await signedBase(projectId, t);
+    expect((await app.inject({ method: 'GET', url: `${pbase}gone/` })).statusCode).toBe(200);
+
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/page/gone`, cookies });
+    expect(del.statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: `${pbase}gone/` })).statusCode).toBe(404);
+    // …and the rest of the site is still there.
+    expect((await app.inject({ method: 'GET', url: pbase })).body).toContain('H');
+  });
+
   it('preview-url reports which pages failed, so the editor can say so off the broken page', async () => {
     const { t, projectId } = await setup('bkr@acme.test');
     const cookies = { sw_session: t };

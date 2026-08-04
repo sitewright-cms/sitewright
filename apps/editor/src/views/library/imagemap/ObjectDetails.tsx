@@ -3,7 +3,10 @@ import type { ImageMap, ImageMapObject } from '@sitewright/schema';
 import { fieldLabel, glassInput, ghostButton, toggleInput } from '../../../theme';
 import { FilePicker } from '../../files/FilePicker';
 import type { AcceptFilter } from '../../files/FileBrowser';
-import { TYPE_LABELS, objectBounds, round } from './model';
+import { TYPE_LABELS, ICON_SIZE_MAX, ICON_SIZE_MIN, ICON_SIZE_PX, iconNameOf, isIconSpot, objectBounds, round } from './model';
+import { BrandColorField } from '../../settings/ColorPicker';
+import { IconField } from './IconField';
+import { iconSvg } from './icon-svg';
 import { TooltipBuilder } from './TooltipBuilder';
 
 /**
@@ -22,6 +25,8 @@ interface ObjectDetailsProps {
   projectId?: string;
   onChange: (patch: Partial<ImageMapObject>) => void;
   onDelete: () => void;
+  /** The project's CI tokens, offered as one-click swatches beside every colour control. */
+  palette: ReadonlyArray<{ key: string; value: string }>;
 }
 
 /** FilePicker accept predicates — the picker filters by ASSET, not by a mime string. */
@@ -34,7 +39,22 @@ function styleValue<T>(bag: Record<string, unknown> | undefined, key: string, fa
   return (v === undefined || v === null ? fallback : v) as T;
 }
 
-export function ObjectDetails({ map, object, projectId, onChange, onDelete }: ObjectDetailsProps) {
+export function ObjectDetails({ map, object, projectId, onChange, onDelete, palette }: ObjectDetailsProps) {
+  const icon = isIconSpot(object);
+  const iconSize = styleValue(object.default_style as Record<string, unknown> | undefined, 'icon_size', ICON_SIZE_PX);
+  /**
+   * Size writes to THREE places at once. `icon_size` is what the runtime draws and what it offsets
+   * the anchor by; `width`/`height` are what the Studio's own hit box uses. Letting them drift makes
+   * the shape you can grab a different size from the shape you can see.
+   */
+  const setIconSize = (raw: number): void => {
+    const size = Math.min(ICON_SIZE_MAX, Math.max(ICON_SIZE_MIN, Number.isFinite(raw) ? raw : ICON_SIZE_PX));
+    onChange({
+      width: size,
+      height: size,
+      default_style: { ...(object.default_style ?? {}), icon_size: size },
+    });
+  };
   const [tab, setTab] = useState<'shape' | 'style' | 'tooltip' | 'action'>('shape');
   const bounds = objectBounds(object);
   const actions = object.actions ?? {};
@@ -158,6 +178,28 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
           </div>
         )}
 
+        {tab === 'shape' && icon && (
+          <div className="mt-3">
+            <IconField
+              value={iconNameOf(object)}
+              onChange={(name) =>
+                onChange({
+                  default_style: {
+                    ...(object.default_style ?? {}),
+                    // BOTH: `icon_name` is what re-opens the picker on this hotspot, `icon_svg` is
+                    // the artwork the RUNTIME paints — a bundled runtime cannot resolve a name
+                    // against the platform's icon library, so it travels with the config.
+                    icon_name: name,
+                    icon_svg: iconSvg(name),
+                    icon_type: 'library',
+                    use_icon: true,
+                  },
+                })
+              }
+            />
+          </div>
+        )}
+
         {tab === 'style' && (
           <div className="space-y-4">
             {(
@@ -168,17 +210,57 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
             ).map(([which, label]) => (
               <fieldset key={which} className="rounded-xl border border-slate-200 p-2.5 dark:border-slate-700">
                 <legend className="px-1 text-xs font-bold text-slate-700 dark:text-slate-200">{label}</legend>
+                {icon ? (
+                  // An ICON draws as artwork: it has a fill and a size, and no border or background
+                  // opacity — the runtime reads none of those for an icon spot, so offering them
+                  // would be a control that does nothing.
+                  <div className="space-y-2">
+                    <div>
+                      <span className={fieldLabel}>Icon colour</span>
+                      <BrandColorField
+                        label={`${label} icon colour`}
+                        palette={palette}
+                        value={styleValue(object[which] as Record<string, unknown> | undefined, 'icon_fill', '#4f46e5')}
+                        onChange={(v) => patchStyle(which, 'icon_fill', v)}
+                      />
+                    </div>
+                    {which === 'default_style' && (
+                      <div>
+                        <label className={fieldLabel} htmlFor="imap-icon-size">
+                          Size {iconSize}px
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="imap-icon-size"
+                            type="range"
+                            min={ICON_SIZE_MIN}
+                            max={ICON_SIZE_MAX}
+                            className="w-full accent-[var(--sw-brand-1,#0a7a5a)]"
+                            value={iconSize}
+                            onChange={(e) => setIconSize(Number.parseInt(e.target.value, 10))}
+                          />
+                          <input
+                            aria-label="Icon size in pixels"
+                            className={`${glassInput} w-20 shrink-0`}
+                            type="number"
+                            min={ICON_SIZE_MIN}
+                            max={ICON_SIZE_MAX}
+                            value={iconSize}
+                            onChange={(e) => setIconSize(Number.parseInt(e.target.value, 10))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className={fieldLabel} htmlFor={`imap-${which}-color`}>
-                      Fill
-                    </label>
-                    <input
-                      id={`imap-${which}-color`}
-                      type="color"
-                      className="h-9 w-full cursor-pointer rounded-lg border border-slate-300 bg-transparent dark:border-slate-600"
-                      value={styleValue(object[which] as Record<string, unknown> | undefined, 'background_color', '#0a7a5a')}
-                      onChange={(e) => patchStyle(which, 'background_color', e.target.value)}
+                    <span className={fieldLabel}>Fill</span>
+                    <BrandColorField
+                      label={`${label} fill`}
+                      palette={palette}
+                      value={styleValue(object[which] as Record<string, unknown> | undefined, 'background_color', '#4f46e5')}
+                      onChange={(v) => patchStyle(which, 'background_color', v)}
                     />
                   </div>
                   <div>
@@ -199,18 +281,15 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
                   {/* A text hotspot has no border on the published page — the runtime renders it as
                       a text element and never reads border_*. Offering the control would be a lie. */}
                   <div className={object.type === 'text' ? 'hidden' : undefined}>
-                    <label className={fieldLabel} htmlFor={`imap-${which}-border`}>
-                      Border colour
-                    </label>
-                    <input
-                      id={`imap-${which}-border`}
-                      type="color"
-                      className="h-9 w-full cursor-pointer rounded-lg border border-slate-300 bg-transparent dark:border-slate-600"
+                    <span className={fieldLabel}>Border colour</span>
+                    <BrandColorField
+                      label={`${label} border colour`}
+                      palette={palette}
                       value={outlineValue(which, 'color', '#ffffff')}
-                      onChange={(e) => patchStyle(which, outlineKey('color'), e.target.value)}
+                      onChange={(v) => patchStyle(which, outlineKey('color'), v)}
                     />
                   </div>
-                  <div>
+                  <div className={object.type === 'text' ? 'hidden' : undefined}>
                     <label className={fieldLabel} htmlFor={`imap-${which}-bw`}>
                       Border width
                     </label>
@@ -225,6 +304,7 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
                     />
                   </div>
                 </div>
+                )}
               </fieldset>
             ))}
             <p className="text-[11px] text-slate-500 dark:text-slate-400">

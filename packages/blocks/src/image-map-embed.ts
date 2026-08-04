@@ -134,6 +134,19 @@ export function sanitizeImageMapConfig(config: unknown): unknown {
     } else if (key === 'html' && typeof value === 'string') {
       // An SVG region's inner markup reached some other way.
       next = sanitizeSvgFragment(value);
+    } else if (key === 'icon_svg' && typeof value === 'string') {
+      // ★ A SPOT's icon artwork. The runtime hands this straight to `template.innerHTML`
+      // (shared/utilities.js htmlToElement), so an unsanitized value is live DOM from config — the
+      // same shape as the five paths above, on the key an ICON hotspot uses for everything it draws.
+      // `<script>` will not run from innerHTML, but an `onerror`/`onbegin` handler inside the
+      // fragment will, and `<use href="data:…">` pulls in an external document.
+      next = sanitizeSvgFragment(value);
+    } else if (key === 'icon_url' && typeof value === 'string') {
+      // ★ A custom icon's URL. spot.js interpolates it into `<img src="${…}">` and innerHTMLs the
+      // result, so a value containing a quote closes the attribute and adds its own —
+      // `x" onerror="…` is a working handler. safeLinkUrl's allowlist is the same gate every other
+      // authored URL passes.
+      next = safeAssetUrl(value);
     } else {
       next = sanitizeImageMapConfig(value);
     }
@@ -141,6 +154,22 @@ export function sanitizeImageMapConfig(config: unknown): unknown {
     Object.defineProperty(out, key, { value: next, writable: true, enumerable: true, configurable: true });
   }
   return out;
+}
+
+/**
+ * An asset URL that is safe to put in a `src`.
+ *
+ * Deliberately narrow: http/https, a site-relative path, or a data: IMAGE (which cannot execute).
+ * Anything else — `javascript:`, a bare `data:text/html`, a value carrying a quote — becomes ''.
+ */
+function safeAssetUrl(value: string): string {
+  const url = value.trim();
+  if (url === '') return '';
+  if (/["'<>]/.test(url)) return '';
+  if (/^\//.test(url) && !/^\/\//.test(url)) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^data:image\/(png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/=]+$/i.test(url)) return url;
+  return '';
 }
 
 /** The first artboard's background image, for the no-JS fallback. */

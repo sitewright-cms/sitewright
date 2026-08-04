@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import type { ImageMapArtboard, ImageMapObject } from '@sitewright/schema';
 import {
   artboardSize,
-  DOT_SIZE_PX,
-  isDot,
-  PIN_SIZE_PX,
+  DEFAULT_ICON_NAME,
+  ICON_SIZE_PX,
+  iconNameOf,
+  isIconSpot,
   storedType,
   artboardToPolyPoint,
   boundsFromDrag,
@@ -165,7 +166,7 @@ describe('immutable edits', () => {
 
 describe('newObject', () => {
   it('centres a pin on the click and keeps it inside the artboard', () => {
-    const pin = newObject('spot', 99, 99, 'Pin');
+    const pin = newObject('icon', 99, 99, 'Pin');
     expect(pin.x).toBeLessThanOrEqual(100);
     expect(pin.y).toBeLessThanOrEqual(100);
     expect(pin.type).toBe('spot');
@@ -358,47 +359,51 @@ describe('drag-to-size', () => {
   });
 });
 
-describe('pins and dots', () => {
-  // ★ THE MISMATCH THIS GUARDS. The runtime draws a `spot` two ways — an icon marker when
-  // `use_icon` is true, a plain box when it is false — and the Studio used to draw a dot either
-  // way. So a Pin was a dot in the editor and a pointer on the page: the author positioned one
-  // shape and published another.
-  it('stores a Pin as an icon spot, anchored and sized like the runtime draws it', () => {
-    const pin = newObject('spot', 40, 50, 'Pin');
-    expect(pin.type).toBe('spot');
-    const style = pin.default_style as Record<string, unknown>;
+describe('the ICON hotspot', () => {
+  // ★ It replaced separate Pin and Dot tools. Both were one fixed icon each, so a map that wanted a
+  // bed, a car or a flag was stuck — and the two disagreed with the page in different ways.
+  it('stores as the `spot` the runtime already knows, with the icon turned on', () => {
+    const icon = newObject('icon', 40, 50, 'Icon');
+    expect(icon.type).toBe('spot');
+    expect(storedType('icon')).toBe('spot');
+    const style = icon.default_style as Record<string, unknown>;
     expect(style.use_icon).toBe(true);
-    expect(style.icon_is_pin).toBe(true);
-    expect(style.icon_size).toBe(PIN_SIZE_PX);
-    expect(isDot(pin)).toBe(false);
+    expect(style.icon_type).toBe('library');
+    expect(isIconSpot(icon)).toBe(true);
   });
 
-  it('stores a Dot as the SAME `spot` type with the icon off — no new type for the runtime to learn', () => {
-    const dot = newObject('dot', 40, 50, 'Dot');
-    expect(dot.type).toBe('spot');
-    expect(storedType('dot')).toBe('spot');
-    const style = dot.default_style as Record<string, unknown>;
-    expect(style.use_icon).toBe(false);
-    expect(isDot(dot)).toBe(true);
+  it('defaults to a filled map pin', () => {
+    const icon = newObject('icon', 10, 10, 'Icon');
+    expect(iconNameOf(icon)).toBe(DEFAULT_ICON_NAME);
+    expect(DEFAULT_ICON_NAME).toBe('map-pin:fill');
   });
 
-  it('gives a Dot a round radius at its own size, and a pulsing border', () => {
-    const dot = newObject('dot', 10, 10, 'Dot');
-    const style = dot.default_style as Record<string, unknown>;
-    // The runtime writes border_radius in px; at least half the box makes it a circle at any size.
-    expect(style.border_radius as number).toBeGreaterThanOrEqual(DOT_SIZE_PX / 2);
-    expect(style.border_width as number).toBeGreaterThan(0);
-    expect(style.pulse).toBe(true);
+  it('carries its ARTWORK, not just the icon name', () => {
+    // The runtime cannot resolve a name against the platform's icon library — a bundled runtime has
+    // no access to it — so a hotspot that stored only the name would render nothing on the page.
+    const style = newObject('icon', 10, 10, 'Icon').default_style as Record<string, unknown>;
+    expect(String(style.icon_svg)).toContain('<svg');
+    expect(String(style.icon_svg)).toContain('path');
   });
 
-  it('sizes both in PIXELS, because that is what the runtime reads for a spot', () => {
-    // A percentage-sized marker would be a thumbnail on a floor plan and a billboard on a diagram.
-    expect(newObject('spot', 0, 0, 'P').width).toBe(PIN_SIZE_PX);
-    expect(newObject('dot', 0, 0, 'D').width).toBe(DOT_SIZE_PX);
+  it('is sized in PIXELS, which is what the runtime reads for a spot', () => {
+    const icon = newObject('icon', 0, 0, 'Icon');
+    expect(icon.width).toBe(ICON_SIZE_PX);
+    expect((icon.default_style as Record<string, unknown>).icon_size).toBe(ICON_SIZE_PX);
+  });
+
+  it('takes the project palette: CI primary at rest, secondary on hover', () => {
+    const icon = newObject('icon', 0, 0, 'Icon', { fill: '#123456', hoverFill: '#abcdef' });
+    expect((icon.default_style as Record<string, unknown>).icon_fill).toBe('#123456');
+    expect((icon.mouseover_style as Record<string, unknown>).icon_fill).toBe('#abcdef');
+  });
+
+  it('reads an imported non-icon spot as NOT an icon, so it keeps drawing as its own box', () => {
+    expect(isIconSpot({ id: 'x', type: 'spot', default_style: { use_icon: false } })).toBe(false);
   });
 
   it('every drawable tool maps to a type the runtime knows', () => {
-    for (const tool of ['rect', 'oval', 'poly', 'spot', 'dot', 'text'] as const) {
+    for (const tool of ['rect', 'oval', 'poly', 'icon', 'text'] as const) {
       expect(['rect', 'oval', 'poly', 'spot', 'text']).toContain(storedType(tool));
     }
   });

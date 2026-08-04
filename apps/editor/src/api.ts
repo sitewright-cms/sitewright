@@ -958,6 +958,11 @@ export const api = {
     request<void>('DELETE', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
 
   // --- image maps (interactive hotspot maps; embedded with {{sw-imagemap "id"}}) ---
+  /** URL of the map-only preview document — the map alone, no site chrome (iframe `src`). */
+  imageMapPreviewUrl: (projectId: string, ref: { map: string } | { template: string }): string => {
+    const q = 'map' in ref ? `map=${encodeURIComponent(ref.map)}` : `template=${encodeURIComponent(ref.template)}`;
+    return `${BASE}/projects/${projectId}/imagemaps/preview?${q}`;
+  },
   listImageMaps: (projectId: string) =>
     request<{ items: ImageMap[] }>('GET', `/projects/${projectId}/content/imagemap`),
   getImageMap: (projectId: string, id: string) =>

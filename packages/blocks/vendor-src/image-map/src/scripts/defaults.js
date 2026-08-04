@@ -393,7 +393,7 @@ export const imageMapDefaults = {
     // Motion by default. The runtime has always supported these; upstream shipped them OFF, so a
     // tooltip snapped into existence. `fade` is the unobtrusive one; prefers-reduced-motion still
     // stands it down (the platform stylesheet zeroes transition-duration under it).
-    tooltip_animation: 'fade', // none, fade, grow
+    tooltip_animation: 'fade-up', // none, fade, fade-up, grow
     fullscreen_tooltips: 'mobile-only', // none, mobile-only, always
     fullscreen_background: '#ffffff',
     fullscreen_background_opacity: 0.75,

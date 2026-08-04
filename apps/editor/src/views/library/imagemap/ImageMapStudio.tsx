@@ -765,6 +765,26 @@ function MapSettings({
         <fieldset className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
           <legend className="px-1 text-xs font-bold text-slate-700 dark:text-slate-200">Visitor controls</legend>
           <div className="space-y-2">
+            <div>
+              <label className={fieldLabel} htmlFor="imap-tooltip-anim">
+                Tooltip animation
+              </label>
+              <select
+                id="imap-tooltip-anim"
+                className={glassInput}
+                value={String((map.tooltips as Record<string, unknown> | undefined)?.tooltip_animation ?? 'fade-up')}
+                onChange={(e) => setBag('tooltips', { tooltip_animation: e.target.value })}
+              >
+                <option value="fade-up">Fade up (default)</option>
+                <option value="fade">Fade</option>
+                <option value="grow">Grow</option>
+                <option value="none">None</option>
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                A tooltip travels away from its hotspot as it fades in. Visitors who ask for reduced motion get it
+                instantly either way.
+              </p>
+            </div>
             <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"

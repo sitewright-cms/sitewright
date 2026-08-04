@@ -986,6 +986,13 @@ const IMAGE_MAP_CSS = [
   // transition of its own — so a polygon's hover state snapped while every other shape eased. Name
   // the paint properties on the child, and lengthen the whole thing enough to read as motion.
   '.sw-imap-object{transition-duration:.28s}',
+  // Tooltip motion: the vendor animates opacity/transform over 200ms with a curve that starts
+  // fast, so a fade barely registers. A slightly longer ease-out is what makes it read as
+  // ARRIVING rather than appearing. Named properties only — `all` would also animate the
+  // left/top the positioner writes, and the tooltip would visibly slide from its last spot.
+  // ★ Two classes, matching the vendor's own `.sw-imap-tooltip-wrap .sw-imap-tooltip` — a single
+  // class LOSES to it and the override silently does nothing (measured: still 0.2s).
+  '.sw-imap-tooltip-wrap .sw-imap-tooltip{transition-duration:.34s;transition-timing-function:cubic-bezier(.16,1,.3,1)}',
   '.sw-imap-object-poly polygon{transition:fill .28s cubic-bezier(.4,0,.2,1),stroke .28s cubic-bezier(.4,0,.2,1),stroke-width .28s cubic-bezier(.4,0,.2,1)}',
   // PULSING DOT. A ring that grows out of the dot and fades, on the dot's OWN border colour, so it
   // reads as the border pulsing rather than as a separate decoration. `inset:0` + `border-radius`

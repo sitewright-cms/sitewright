@@ -23,8 +23,11 @@ export default class Spot extends MapObject {
       // Icon
       if (this.options.default_style.icon_type === 'library') {
         let svg = htmlToElement(this.options.default_style.icon_svg)
-        svg.style.width = `${this.options.default_style.icon_size}px`
-        svg.style.height = `${this.options.default_style.icon_size}px`
+        // Fill the (px- or percent-sized) hotspot rather than restating the size: with a percent
+        // icon there is no pixel number to write here, and the container already has the geometry.
+        svg.style.width = '100%'
+        svg.style.height = '100%'
+        svg.style.display = 'block'
         element.appendChild(svg)
       }
 
@@ -61,25 +64,36 @@ export default class Spot extends MapObject {
 
     // The spot is an icon
     if (this.options.default_style.use_icon) {
-      css += `width: ${safeCssValue(this.options.default_style.icon_size)}px;`
-      css += `height: ${safeCssValue(this.options.default_style.icon_size)}px;`
+      // ★ PERCENT sizing, when the config asks for it. A px icon is a fixed dot on a map that scales
+      // with its container — big on a phone, tiny on a wall display. `icon_size_pct` is a percentage
+      // of the artboard WIDTH, so the marker grows and shrinks with everything else on the map.
+      // `aspect-ratio` keeps it square; percent margins resolve against the containing block's WIDTH,
+      // so `-pct%` on the TOP margin is exactly one icon-height and the pin still points at its
+      // coordinate. Falls back to px so every existing map and bundled template is untouched.
+      let pct = this.options.default_style.icon_size_pct
+      if (typeof pct === 'number' && pct > 0) {
+        css += `width: ${safeCssValue(pct)}%;`
+        css += `height: auto;`
+        css += `aspect-ratio: 1;`
+      } else {
+        css += `width: ${safeCssValue(this.options.default_style.icon_size)}px;`
+        css += `height: ${safeCssValue(this.options.default_style.icon_size)}px;`
+      }
 
       if (this.options.default_style.icon_type === 'library') {
         let color_fill = hexToRgb(styles.icon_fill) || { r: 0, b: 0, g: 0 }
         css += `fill: rgba(${color_fill.r}, ${color_fill.g}, ${color_fill.b}, ${safeCssValue(styles.opacity)});`
       }
 
-      let marginLeft = 0
-      let marginTop = 0
-
-      marginLeft = -this.options.default_style.icon_size / 2
-      if (this.options.default_style.icon_is_pin) {
-        marginTop = -this.options.default_style.icon_size
+      // Anchor offsets, in whichever unit the icon is sized in.
+      if (typeof pct === 'number' && pct > 0) {
+        css += `margin-left: ${safeCssValue(-pct / 2)}%;`
+        css += `margin-top: ${safeCssValue(this.options.default_style.icon_is_pin ? -pct : -pct / 2)}%;`
       } else {
-        marginTop = -this.options.default_style.icon_size / 2
+        let size = this.options.default_style.icon_size
+        css += `margin-top: ${safeCssValue(this.options.default_style.icon_is_pin ? -size : -size / 2)}px;`
+        css += `margin-left: ${safeCssValue(-size / 2)}px;`
       }
-      css += `margin-top: ${marginTop}px;`
-      css += `margin-left: ${marginLeft}px;`
 
       if (this.options.default_style.icon_is_pin) {
         css += `transform-origin: 50% 100%;`

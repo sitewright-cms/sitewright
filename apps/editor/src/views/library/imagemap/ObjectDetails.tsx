@@ -3,7 +3,7 @@ import type { ImageMap, ImageMapObject } from '@sitewright/schema';
 import { fieldLabel, glassInput, ghostButton, toggleInput } from '../../../theme';
 import { FilePicker } from '../../files/FilePicker';
 import type { AcceptFilter } from '../../files/FileBrowser';
-import { TYPE_LABELS, ICON_SIZE_MAX, ICON_SIZE_MIN, ICON_SIZE_PX, iconNameOf, isIconSpot, objectBounds, round } from './model';
+import { TYPE_LABELS, ICON_PCT_MAX, ICON_PCT_MIN, artboardSize, iconNameOf, iconPct, isIconSpot, objectBounds, round } from './model';
 import { BrandColorField } from '../../settings/ColorPicker';
 import { IconField } from './IconField';
 import { iconSvg } from './icon-svg';
@@ -40,24 +40,10 @@ function styleValue<T>(bag: Record<string, unknown> | undefined, key: string, fa
 }
 
 export function ObjectDetails({ map, object, projectId, onChange, onDelete, palette }: ObjectDetailsProps) {
-  const icon = isIconSpot(object);
-  const iconSize = styleValue(object.default_style as Record<string, unknown> | undefined, 'icon_size', ICON_SIZE_PX);
-  /**
-   * Size writes to THREE places at once. `icon_size` is what the runtime draws and what it offsets
-   * the anchor by; `width`/`height` are what the Studio's own hit box uses. Letting them drift makes
-   * the shape you can grab a different size from the shape you can see.
-   */
-  const setIconSize = (raw: number): void => {
-    const size = Math.min(ICON_SIZE_MAX, Math.max(ICON_SIZE_MIN, Number.isFinite(raw) ? raw : ICON_SIZE_PX));
-    onChange({
-      width: size,
-      height: size,
-      default_style: { ...(object.default_style ?? {}), icon_size: size },
-    });
-  };
   const [tab, setTab] = useState<'shape' | 'style' | 'tooltip' | 'action'>('shape');
   const bounds = objectBounds(object);
   const actions = object.actions ?? {};
+  const icon = isIconSpot(object);
 
   const patchStyle = (which: 'default_style' | 'mouseover_style', key: string, value: unknown): void => {
     onChange({ [which]: { ...(object[which] ?? {}), [key]: value } } as Partial<ImageMapObject>);
@@ -68,23 +54,38 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete, pale
    *
    * ★ A POLYGON IS AN SVG, so its outline is a `stroke_*`, while every other shape uses a CSS
    * `border_*`. The editor calls both "Border" — which is the right word for an author — but wrote
-   * `border_*` for all of them, so setting a polygon's border did NOTHING and looked like the
-   * control was broken.
+   * `border_*` for all of them, so setting a polygon's border did NOTHING.
    */
   const outlineKey = (base: 'color' | 'width' | 'opacity'): string =>
     object.type === 'poly' ? `stroke_${base}` : `border_${base}`;
 
-  /**
-   * Reading falls BACK across the pair, so a polygon that already carries `border_*` (written by the
-   * editor before this was fixed) still shows the author's value instead of silently reverting to 0.
-   * The runtime honours the same fallback, so what they see is what renders.
-   */
+  /** Reading falls BACK across the pair, so a polygon that already carries `border_*` still shows it. */
   const outlineValue = <T,>(which: 'default_style' | 'mouseover_style', base: 'color' | 'width' | 'opacity', fallback: T): T => {
     const bag = object[which] as Record<string, unknown> | undefined;
     const primary = bag?.[outlineKey(base)];
     if (primary !== undefined) return primary as T;
     const other = bag?.[object.type === 'poly' ? `border_${base}` : `stroke_${base}`];
     return (other === undefined ? fallback : other) as T;
+  };
+
+  // The artboard this hotspot lives on — a percent size is a percent OF something.
+  const board = map.artboards.find((a) => (a.children ?? []).some((c) => c.id === object.id)) ?? map.artboards[0];
+  const boardWidth = artboardSize(board).width;
+  const sizePct = iconPct(object, boardWidth);
+
+  /**
+   * Size writes the PERCENT the runtime prefers, plus a px mirror for anything that only knows the
+   * old field, plus the Studio's own hit box — letting those drift makes the shape you can grab a
+   * different size from the shape you can see.
+   */
+  const setIconPct = (raw: number): void => {
+    const pct = Math.min(ICON_PCT_MAX, Math.max(ICON_PCT_MIN, Number.isFinite(raw) ? raw : ICON_PCT_MIN));
+    const px = round((pct / 100) * boardWidth);
+    onChange({
+      width: pct,
+      height: pct,
+      default_style: { ...(object.default_style ?? {}), icon_size_pct: pct, icon_size: px },
+    });
   };
 
   const tabBtn = (id: typeof tab, label: string) => (
@@ -138,7 +139,9 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete, pale
             )}
             {(
               <div className="grid grid-cols-2 gap-2">
-                {(['x', 'y', 'width', 'height'] as const).map((key) => (
+                {/* An ICON is sized by its own control, in percent — the runtime never reads
+                    width/height for one, so offering them here was two controls that did nothing. */}
+                {(icon ? (['x', 'y'] as const) : (['x', 'y', 'width', 'height'] as const)).map((key) => (
                   <div key={key}>
                     <label className={fieldLabel} htmlFor={`imap-${key}`}>
                       {key === 'width' ? 'Width' : key === 'height' ? 'Height' : key.toUpperCase()} (%)
@@ -227,28 +230,22 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete, pale
                     {which === 'default_style' && (
                       <div>
                         <label className={fieldLabel} htmlFor="imap-icon-size">
-                          Size {iconSize}px
+                          Size {sizePct}% of the map
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            id="imap-icon-size"
-                            type="range"
-                            min={ICON_SIZE_MIN}
-                            max={ICON_SIZE_MAX}
-                            className="w-full accent-[var(--sw-brand-1,#0a7a5a)]"
-                            value={iconSize}
-                            onChange={(e) => setIconSize(Number.parseInt(e.target.value, 10))}
-                          />
-                          <input
-                            aria-label="Icon size in pixels"
-                            className={`${glassInput} w-20 shrink-0`}
-                            type="number"
-                            min={ICON_SIZE_MIN}
-                            max={ICON_SIZE_MAX}
-                            value={iconSize}
-                            onChange={(e) => setIconSize(Number.parseInt(e.target.value, 10))}
-                          />
-                        </div>
+                        <input
+                          id="imap-icon-size"
+                          type="range"
+                          min={ICON_PCT_MIN}
+                          max={ICON_PCT_MAX}
+                          step="0.5"
+                          className="w-full accent-[var(--sw-brand-1,#0a7a5a)]"
+                          value={sizePct}
+                          onChange={(e) => setIconPct(Number.parseFloat(e.target.value))}
+                        />
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          A share of the map's width, so the marker scales with the map instead of
+                          looming on a phone and vanishing on a large screen.
+                        </p>
                       </div>
                     )}
                   </div>

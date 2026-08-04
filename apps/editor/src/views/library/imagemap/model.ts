@@ -232,6 +232,9 @@ export function newObject(
         use_icon: true,
         icon_is_pin: true,
         icon_type: 'library',
+        // Both: the percentage is what the Studio edits and the runtime prefers; the px value keeps
+        // any consumer that only knows the old field working.
+        icon_size_pct: ICON_PCT_DEFAULT,
         icon_size: iconSize,
         icon_name: DEFAULT_ICON_NAME,
         // The artwork travels WITH the config: the runtime cannot resolve a name against the
@@ -310,9 +313,25 @@ export const MIN_BOX = 0.5;
  */
 export const ICON_SIZE_PX = 40;
 
-/** The size range the Studio's icon slider offers, in px. */
-export const ICON_SIZE_MIN = 12;
-export const ICON_SIZE_MAX = 160;
+/**
+ * An icon's size as a PERCENTAGE of the artboard width — the one control the Studio offers.
+ *
+ * ★ Percent, not pixels: a map scales to its container, so a pixel marker is a fixed dot that looms
+ * on a phone and disappears on a wall display. A percentage marker grows and shrinks with the map,
+ * like every other hotspot. The runtime honours `icon_size_pct` and falls back to px, so imported
+ * templates keep their pixel sizes.
+ */
+export const ICON_PCT_DEFAULT = 5;
+export const ICON_PCT_MIN = 1;
+export const ICON_PCT_MAX = 25;
+
+/** An icon's percent size, falling back to whatever a px-sized (imported) icon works out to. */
+export function iconPct(obj: ImageMapObject, artboardWidth: number): number {
+  const style = (obj.default_style ?? {}) as { icon_size_pct?: unknown; icon_size?: unknown };
+  if (typeof style.icon_size_pct === 'number' && style.icon_size_pct > 0) return style.icon_size_pct;
+  const px = typeof style.icon_size === 'number' ? style.icon_size : ICON_SIZE_PX;
+  return artboardWidth > 0 ? round((px / artboardWidth) * 100) : ICON_PCT_DEFAULT;
+}
 
 /**
  * The colours a NEW hotspot is born with.

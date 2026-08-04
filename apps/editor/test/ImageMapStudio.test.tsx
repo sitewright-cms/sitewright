@@ -236,13 +236,59 @@ describe('ObjectDetails', () => {
     expect(onChange).toHaveBeenCalledWith({ default_style: expect.objectContaining({ background_color: '#123456' }) });
   });
 
+  const ICON = {
+    id: 'i1',
+    title: 'Marker',
+    type: 'spot' as const,
+    x: 5,
+    y: 5,
+    width: 5,
+    height: 5,
+    default_style: { use_icon: true, icon_size_pct: 5, icon_size: 40, icon_name: 'map-pin:fill' },
+  };
+  const iconDetails = (onChange = vi.fn()) => {
+    render(<ObjectDetails palette={[]} map={MAP} object={ICON} projectId="p1" onChange={onChange} onDelete={() => {}} />);
+    return onChange;
+  };
+
   it('hides border controls on an ICON, which the runtime paints no border on', () => {
-    const icon = { id: 'i1', title: 'Marker', type: 'spot' as const, x: 5, y: 5, default_style: { use_icon: true, icon_size: 40, icon_name: 'map-pin:fill' } };
-    render(<ObjectDetails palette={[]} map={MAP} object={icon} projectId="p1" onChange={() => {}} onDelete={() => {}} />);
+    iconDetails();
     fireEvent.click(screen.getByRole('button', { name: 'Style' }));
     expect(screen.queryByLabelText(/Border width/i)).toBeNull();
-    // …and offers the thing an icon DOES have: a size.
-    expect(screen.getByLabelText('Icon size in pixels')).toBeTruthy();
+  });
+
+  it('offers ONE size control for an icon, in percent of the map', () => {
+    // ★ A px size is a fixed dot on a map that scales to its container — it looms on a phone and
+    // vanishes on a large screen. Percent scales with everything else.
+    const onChange = iconDetails();
+    fireEvent.click(screen.getByRole('button', { name: 'Style' }));
+    const slider = screen.getByLabelText(/^Size .* of the map/) as HTMLInputElement;
+    expect(slider.type).toBe('range');
+    // ONE control: no second number field competing with it.
+    expect(screen.queryByLabelText(/pixels/i)).toBeNull();
+
+    fireEvent.change(slider, { target: { value: '12' } });
+    const patch = onChange.mock.calls[0]![0] as { width: number; default_style: Record<string, unknown> };
+    expect(patch.default_style.icon_size_pct).toBe(12);
+    // The px mirror follows, against THIS artboard's width (800) — anything reading the old field
+    // still gets a sane value rather than a stale one.
+    expect(patch.default_style.icon_size).toBe(96);
+    expect(patch.width).toBe(12);
+  });
+
+  it('does not offer Width/Height on an icon — the runtime never reads them', () => {
+    // ★ THE BUG. They were shown for every shape, so an author sized an icon with two controls that
+    // did nothing at all.
+    iconDetails();
+    expect(screen.queryByLabelText('Width (%)')).toBeNull();
+    expect(screen.queryByLabelText('Height (%)')).toBeNull();
+    // Position still belongs here.
+    expect(screen.getByLabelText('X (%)')).toBeTruthy();
+  });
+
+  it('still offers Width/Height on shapes the runtime DOES size that way', () => {
+    render(<ObjectDetails palette={[]} map={MAP} object={MAP.artboards[0]!.children![0]!} projectId="p1" onChange={() => {}} onDelete={() => {}} />);
+    expect(screen.getByLabelText('Width (%)')).toBeTruthy();
   });
 
   it('offers only actions the runtime can perform — never a script', () => {

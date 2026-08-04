@@ -197,6 +197,74 @@ describe('preview API — code-first source page', () => {
     expect((res.json() as { html: string }).html).toContain('Stored heading');
   });
 
+  it('renders an embedded IMAGE MAP — the preview surface must supply them, or the helper emits nothing', async () => {
+    // ★ THE REGRESSION THIS GUARDS. `{{sw-imagemap}}` renders '' when the render context carries no
+    // `imageMaps` key at all — that is its "this surface does not support image maps" contract, and
+    // it is deliberately silent. The publish path supplied them and this preview route did not, so an
+    // author who embedded a map and hit Preview saw an EMPTY page with no error anywhere.
+    const { t, projectId } = await setup('imap@acme.test', poolApp);
+    const map = {
+      id: 'floor-plan',
+      general: { name: 'Floor plan' },
+      artboards: [
+        {
+          id: 'ab1',
+          title: 'Ground',
+          background_type: 'image',
+          image_url: '/media/site/abc123-plan.png',
+          width: 1600,
+          height: 900,
+          children: [
+            { id: 'p1', title: 'Reception', type: 'poly', x: 10, y: 10, width: 20, height: 20, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 100 }] },
+          ],
+        },
+      ],
+    };
+    const stored = await poolApp.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/imagemap/floor-plan`,
+      cookies: { sw_session: t },
+      payload: map,
+    });
+    expect(stored.statusCode, stored.body).toBeLessThan(300);
+
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', source: '<div>{{sw-imagemap "floor-plan"}}</div>' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const { html } = res.json() as { html: string };
+    expect(html).toContain('data-sw-component="image-map"');
+    // The config travelled into the page as its JSON data block…
+    expect(html).toContain('"Reception"');
+    // …the no-JS fallback image is there…
+    expect(html).toContain('/media/site/abc123-plan.png');
+    // …and the preview shell shipped the runtime, because it scans the RENDERED markup for the
+    // component marker — so the map is actually interactive, not just present. Asserted on the JS
+    // banner, not the CSS: a stylesheet alone would render a static image and look fine in a
+    // screenshot while nothing responded to a click.
+    expect(html).toContain('sw-imap-container'); // the component CSS
+    expect(html).toContain('Sitewright Image Map runtime'); // the runtime JS itself
+  });
+
+  it('a page that embeds NO image map does not pay for the lookup, and still renders', async () => {
+    // The maps load only when the source mentions them: a materialised template config runs to
+    // hundreds of KB and this is the per-keystroke preview path.
+    const { t, projectId } = await setup('nomap@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '', title: 'Home', source: '<h1>No maps here</h1>' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const { html } = res.json() as { html: string };
+    expect(html).toContain('No maps here');
+    expect(html).not.toContain('data-sw-component="image-map"');
+  });
+
   it('a body carrying its own source still renders VERBATIM (previewing an UNSAVED draft)', async () => {
     // The stored-page fallback must not hijack the editor's live preview of unsaved edits.
     const { t, projectId } = await setup('draft@acme.test', poolApp);

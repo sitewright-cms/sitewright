@@ -61,6 +61,7 @@ import {
   preloaderHtml,
   PRELOADER_CSS,
   PRELOADER_JS,
+  customPreloaderHtml,
   backToTopHtml,
   BACK_TO_TOP_CSS,
   BACK_TO_TOP_JS,
@@ -157,6 +158,21 @@ function referencedSnippets(rootSources: readonly (string | undefined)[], snippe
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
+
+/**
+ * A chrome-slot render error, with the one explanation that is never obvious from Handlebars' own.
+ *
+ * ★ A slot cannot compose SNIPPETS. Slots render with no partials — deliberately, so the editor's
+ * click-to-edit bridge over slot content has nothing to drift against — but the error you get is
+ * Handlebars' bare "The partial X could not be found", which reads like a missing snippet rather
+ * than a capability the surface does not have. An agent rebuilding a site hit exactly this: it
+ * factored its menu into a snippet, referenced it from `mainNav`, and the entire header vanished.
+ */
+export function slotHint(message: string): string {
+  return /partial .* could not be found/i.test(message)
+    ? `${message} — a chrome slot renders WITHOUT partials, so {{> snippet}} cannot be used here; inline the markup into the slot instead`
+    : message;
+}
 
 /** One page that could not be rendered, in a build that carried on without it. */
 export interface PageBuildFailure {
@@ -671,10 +687,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
     const usesThemeToggleRuntime = !!website?.enableThemes && usesMarker(usesThemeToggle);
-    // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
-    // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
-    // theme choice rather than an authored marker.
-    const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    // PRELOADER runtime — ships when the site shows an overlay AT ALL: a built-in effect, or CUSTOM
+    // code. ★ Gating on the built-in effect alone was a page-killer, because the two conditions are
+    // exactly opposite: custom code only applies when the effect is 'none', which was precisely when
+    // the runtime did NOT ship. The one configuration that emitted an overlay was the one with
+    // nothing to clear it, so every page sat behind it forever.
+    const usesPreloaderRuntime =
+      (website?.effects?.preloaderEffect ?? 'none') !== 'none' || Boolean(website?.effects?.preloaderCode?.trim());
     // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
     // The platform injects the button markup (renderDocument), so this is gated on the setting only.
     const usesBackToTopRuntime = website?.effects?.backToTop !== false;
@@ -786,7 +805,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         return renderTemplate(src, ctx);
       } catch (err) {
         throw new PublishError(
-          err instanceof TemplateError ? `website ${name} template error: ${err.message}` : `website ${name} failed to render`,
+          err instanceof TemplateError ? `website ${name} template error: ${slotHint(err.message)}` : `website ${name} failed to render`,
         );
       }
     };
@@ -987,15 +1006,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // PRELOADER overlay (first body child). The logo resolves to a MATERIALIZED `lg` thumbnail
         // (`relImage` records the ref so it lands in the export — `copyMedia` skips images now that
         // they're generated on demand; a bare `rel()` would ship a dangling 404). Page-relative, so
-        // logo-* effects work at any page depth; non-logo effects ignore it (built-in mark fallback).
-        const preloaderMarkup = usesPreloaderRuntime
-          ? preloaderHtml(website?.effects?.preloaderEffect, { logo: relImage(identity.logo, 'lg') })
-          : undefined;
-        const backToTopMarkup = usesBackToTopRuntime ? backToTopHtml(true) : undefined;
         // Custom effect code (the "None / Custom Code" slots): nav/button code injects at body-end
         // (after the tenant's scripts); a custom preloader is the first-body-child overlay. Each
         // applies only when its built-in effect is 'none', so a site without custom code is unchanged.
         const fxCode = websiteEffectsCustomCode(website?.effects);
+        // logo-* effects work at any page depth; non-logo effects ignore it (built-in mark fallback).
+        // Custom code becomes the overlay's CONTENTS, inside the platform's own `[data-sw-preloader]`
+        // wrapper — the author writes the spinner, the platform keeps the show/hide contract.
+        const preloaderMarkup = fxCode.preloader
+          ? customPreloaderHtml(fxCode.preloader)
+          : usesPreloaderRuntime
+            ? preloaderHtml(website?.effects?.preloaderEffect, { logo: relImage(identity.logo, 'lg') })
+            : undefined;
+        const backToTopMarkup = usesBackToTopRuntime ? backToTopHtml(true) : undefined;
         // --- Per-page runtime selection (see the site-wide union + sub-conditions above) ------------
         // A runtime ships on THIS page when the page's own source, a shared chrome slot (rendered on
         // every page), or a snippet the page composes trips its marker — so content-driven runtimes
@@ -1073,7 +1096,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           sidebarRight: sidebarRightHtml,
           footer: footerHtml,
           bottom: bottomHtml,
-          preloader: fxCode.preloader ?? preloaderMarkup,
+          preloader: preloaderMarkup,
           backToTop: backToTopMarkup,
           // CONSENT MANAGER mount — auto-injected when consent is enabled (no authored {{sw-consent}}). The
           // copy localizes from the page's reserved consent_* translations → English defaults. grantAll only

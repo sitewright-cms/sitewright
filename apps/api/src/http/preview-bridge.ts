@@ -46,6 +46,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'link-edit', hrefKey, href, textKey, text } (data-sw-href)
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
+ *                     { source:'sitewright-preview', type:'open-imagemap', id }                     (data-sw-imagemap → Studio)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *                     { source:'sitewright-preview', type:'pick-media' }                            (rich toolbar → open media picker)
  *                     { source:'sitewright-preview', type:'edit-media', url, alt, width, height }     (dbl-click img → edit dialog)
@@ -801,6 +802,22 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
   }
 
+  // --- Image maps ([data-sw-imagemap]): a click opens the map in the STUDIO, which is where a map is
+  //     edited. Only a STORED map qualifies — the marker carries the entity id, and the preview keeps
+  //     it (publish strips it). A map whose config is inlined in the page source has no id and no
+  //     Studio to open, so it is left alone rather than opening the wrong thing. Capture phase, so
+  //     this beats the runtime's own hotspot click (which would follow the hotspot's link). ---
+  function onImageMapClick(e) {
+    if (!editing) return;
+    var el = closestAttr(e.target, 'data-sw-imagemap');
+    if (!el) return;
+    var id = el.getAttribute('data-sw-imagemap') || '';
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post({ type: 'open-imagemap', id: id });
+  }
+
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
 
   // ---- Editable-regions manifest + locate/edit (drives the editor's Regions side-panel) ------------
@@ -1139,6 +1156,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // bubble-phase handler (e.g. the carousel's data-click-next "advance on slide click") fires —
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
+      document.addEventListener('click', onImageMapClick, true);
       document.addEventListener('click', rzClick, true); // image-resize handle select / dismiss
       document.addEventListener('dblclick', tbImgDblClick, true); // double-click an image → edit dialog
       // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
@@ -1150,6 +1168,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     } else {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
+      document.removeEventListener('click', onImageMapClick, true);
       document.removeEventListener('click', rzClick, true);
       document.removeEventListener('dblclick', tbImgDblClick, true);
       document.removeEventListener('mousemove', rzMove, true); // clear any in-flight drag listeners

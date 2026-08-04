@@ -251,6 +251,18 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('paddingLeft');
   });
 
+  it('paints an artboard that names an image WITH that image, not a white box', () => {
+    // ★ `background_type` defaults to 'color', so a config carrying `image_url` and nothing else
+    // rendered a blank white artboard and ignored the image — which is what every code-first example
+    // in the docs did, and what anyone writing the obvious config got. Measured in a browser before
+    // this existed: `image=NO, bg=rgb(255,255,255)`.
+    const imp = vendorCode('shared/import.js');
+    expect(imp).toMatch(/background_type === undefined[\s\S]*?image_url[\s\S]*?background_type = 'image'/);
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('background_type');
+    // An EXPLICIT choice still wins — a map deliberately pairing an image_url with a colour is untouched.
+    expect(imp).toContain('artboard.background_type === undefined');
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

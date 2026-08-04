@@ -870,7 +870,9 @@ function createInstance(): typeof Handlebars {
     if (!map) throw new Error(unknownImageMapMessage(id));
     const hash = (options.hash ?? {}) as Record<string, unknown>;
     const cls = typeof hash.class === 'string' && hash.class !== '' ? { class: hash.class } : {};
-    return new Handlebars.SafeString(renderImageMapMarkup(map, cls));
+    // `preview` carries the map's id into the markup, so the editor can open it in the Studio.
+    const previewing = Boolean((options.data?.root as { preview?: unknown } | undefined)?.preview);
+    return new Handlebars.SafeString(renderImageMapMarkup(map, { ...cls, preview: previewing }));
   });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   //
@@ -1178,7 +1180,9 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
   // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
-  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps };
+  // `preview` rides along so a helper can emit the editor-only markers the directive passes add
+  // (today: {{sw-imagemap}} naming its map so a click can open the Studio). Never true on publish.
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps, preview: ctx.preview };
   let html: string;
   try {
     html = template(data, {

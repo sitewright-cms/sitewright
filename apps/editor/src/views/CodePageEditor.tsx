@@ -26,6 +26,7 @@ import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSe
 import { useDialogs } from './ui/Dialogs';
 import { FilePicker } from './files/FilePicker';
 import { ImageDialog } from './files/ImageDialog';
+import { ImageMapStudio } from './library/imagemap/ImageMapStudio';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
@@ -160,6 +161,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [mediaEdit, setMediaEdit] = useState<{ url: string; alt: string; width: string; height: string } | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
+  // A map clicked in the preview → the Image Map Studio, opened on that map. Only a STORED map is
+  // clickable (the marker carries its id); a config inlined in the page source has no Studio to open.
+  const [openImageMap, setOpenImageMap] = useState<string | null>(null);
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -533,6 +537,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       ) {
         // Clicked a rendered dataset row in the preview → open that entry's editor.
         setOpenEntry({ dataset: d.dataset, id: d.id });
+      } else if (d.type === 'open-imagemap' && typeof d.id === 'string' && d.id !== '' && !DANGEROUS_KEYS.has(d.id)) {
+        // Clicked a rendered image map in the preview → edit it where maps are edited.
+        setOpenImageMap(d.id);
       } else if (d.type === 'regions' && Array.isArray(d.items)) {
         // The bridge enumerated every editable region (content mode) → drive the Regions rail. Empty on
         // leaving content mode. The items are validated structurally before any action (edit-region only
@@ -1135,6 +1142,20 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setOpenEntry(null);
           }}
           onClose={() => setOpenEntry(null)}
+        />
+      )}
+
+      {/* Clicking a rendered image map opens the Studio on that map; saving re-renders the preview so
+          the change is visible here without a reload, and the Studio stays open to keep working. */}
+      {openImageMap && (
+        <ImageMapStudio
+          projectId={project.id}
+          initialMapId={openImageMap}
+          onSaved={() => {
+            inlineKeyRef.current = null;
+            setPreviewNonce((n) => n + 1);
+          }}
+          onClose={() => setOpenImageMap(null)}
         />
       )}
 

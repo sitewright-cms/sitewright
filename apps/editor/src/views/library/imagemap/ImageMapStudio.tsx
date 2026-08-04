@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ImageMap, ImageMapObject, ImageMapTemplate } from '@sitewright/schema';
 import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/Toast';
@@ -42,6 +42,13 @@ import {
 interface ImageMapStudioProps {
   onClose: () => void;
   projectId?: string;
+  /**
+   * Open straight onto this map instead of the list — how a click on a map in the PAGE EDITOR arrives
+   * here. The map is edited where maps are edited; there is no second, lesser editor on the page.
+   */
+  initialMapId?: string;
+  /** A map was saved. The page editor re-renders its preview so the change shows without a reload. */
+  onSaved?: (id: string) => void;
 }
 
 type View =
@@ -50,7 +57,7 @@ type View =
   // A DEMO is looked at, never edited — and never copied into the project. See `demo` below.
   | { kind: 'demo'; template: ImageMapTemplate };
 
-export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
+export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: ImageMapStudioProps) {
   const toast = useToast();
   const { confirm, dialog } = useDialogs();
   // The project's CI tokens: every new hotspot is born in the brand's colours, and every colour
@@ -65,6 +72,11 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
   // Raised by the open editor. The modal closes on Escape and on a backdrop click, and a map is a
   // lot of positioning to redo, so an unsaved editor asks first.
   const [dirty, setDirty] = useState(false);
+
+  // Deep-link into one map, ONCE the maps are loaded — `editing` is resolved against this list, so
+  // switching the view before it arrives would render an empty editor. A ref, not state: re-running on
+  // every reload would drag an author back to this map after they navigated away.
+  const jumpedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -106,6 +118,15 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
       live = false;
     };
   }, [projectId]);
+
+  // Deep link: once the maps are in, open the requested one. Guarded by a ref so a later reload of the
+  // list (after a save, or coming back from a demo) cannot yank an author back to where they started.
+  useEffect(() => {
+    if (jumpedRef.current || !initialMapId || loading) return;
+    if (!maps.some((m) => m.id === initialMapId)) return;
+    jumpedRef.current = true;
+    setView({ kind: 'edit', id: initialMapId });
+  }, [initialMapId, loading, maps]);
 
   async function createBlank(): Promise<void> {
     if (!projectId) return;
@@ -176,6 +197,7 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
           map={editing}
           projectId={projectId}
           palette={palette}
+          onSaved={onSaved}
           confirmLeave={() =>
             confirm({
               title: 'Leave this map?',
@@ -363,6 +385,7 @@ function MapEditor({
   confirmLeave,
   onBack,
   onDirtyChange,
+  onSaved,
 }: {
   map: ImageMap;
   projectId: string;
@@ -373,6 +396,8 @@ function MapEditor({
   onBack: () => void;
   /** Lifted so the enclosing modal can guard Escape / backdrop-click on unsaved work. */
   onDirtyChange: (dirty: boolean) => void;
+  /** Announce a successful save, so a surface that EMBEDS this map can re-render itself. */
+  onSaved?: (id: string) => void;
 }) {
   const toast = useToast();
   const [map, setMap] = useState<ImageMap>(initial);
@@ -458,6 +483,7 @@ function MapEditor({
       await api.putImageMap(projectId, map);
       setDirty(false);
       onDirtyChange(false);
+      onSaved?.(map.id);
       toast.show('Map saved', 'success');
     } catch (err) {
       // The schema is the authority; surface WHY rather than a generic failure.

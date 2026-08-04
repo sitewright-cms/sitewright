@@ -740,7 +740,10 @@ describe('buildSite', () => {
     // custom preloader is the FIRST body child — it sits right after the opening <body> tag, before
     // the <main id="page-content"> landmark (whereas the nav code lands at body-end, after <main>).
     const bodyOpenEnd = home.indexOf('>', home.indexOf('<body')) + 1;
-    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 60)).toContain('id="pre-fx"');
+    // The platform's overlay is the first body child; the author's markup is its content. (It used to
+    // be emitted raw — and then nothing ever cleared it. See the custom-preloader runtime test.)
+    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 60)).toContain('data-sw-preloader');
+    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 200)).toContain('id="pre-fx"');
     expect(home.indexOf('id="pre-fx"')).toBeLessThan(home.indexOf('<main id="page-content"'));
     expect(home.indexOf('id="nav-fx"')).toBeGreaterThan(home.indexOf('<main id="page-content"'));
     // the brand's text-on-brand tokens are DECLARED (themes off) so a forked fill effect stays legible
@@ -811,6 +814,54 @@ describe('buildSite', () => {
     expect(home).toContain('preloader.js'); // runtime linked
     // The runtime file is emitted at the site root.
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
+  });
+
+  it('says WHY a chrome slot with a snippet fails, instead of just "partial not found"', async () => {
+    // ★ A slot renders without partials — deliberate — but the bare Handlebars message reads like a
+    // missing snippet rather than a capability the surface lacks. An agent factored its menu into a
+    // snippet, referenced it from mainNav, and lost the entire header with no idea why.
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          project: {
+            formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+            identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+            settings: { defaultLocale: 'en', locales: ['en'] },
+            website: { mainNav: '<div>{{> my_menu}}</div>' },
+          },
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+        }),
+        snippets: { my_menu: '<a href="/">Home</a>' },
+      }),
+    ).rejects.toThrow(/chrome slot renders WITHOUT partials/);
+  });
+
+  it('a CUSTOM preloader ships the runtime that clears it', async () => {
+    // ★ THE BUG, end to end: the clearing runtime shipped only when `preloaderEffect !== 'none'`, and
+    // custom code only applies when it IS 'none' — opposite conditions. The one configuration that
+    // emitted an overlay was the one with nothing to remove it, so every page of the site sat behind
+    // a fixed pane forever. Found by an agent rebuilding a real site's loading animation.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { preloaderEffect: 'none', preloaderCode: '<style>.mine{color:red}</style><div class="mine">…</div>' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<div class="mine">…</div>'); // the author's markup, verbatim
+    expect(home).toContain('data-sw-preloader'); // …inside the platform's overlay
+    expect(home).toContain('sw-preloader-custom');
+    expect(home).toContain('preloader.js'); // ← the whole point: something now clears it
+    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading');
   });
 
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {

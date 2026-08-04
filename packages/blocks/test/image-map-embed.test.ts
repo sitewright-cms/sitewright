@@ -221,6 +221,18 @@ describe('{{sw-imagemap}} through the render engine', () => {
     expect(componentAssets(componentTypesInSource(html)).js).toContain('data-sw-component');
   });
 
+  it('names the map it came from in PREVIEW, so a click can open the Studio', () => {
+    // ★ The Studio hands out `{{sw-imagemap "id"}}` as the embed code, and that markup carried no id —
+    // so a map placed the intended way could be seen in the editor and never opened from it, while a
+    // hand-authored `data-sw-imagemap` carrier could. Preview only: a published page has nothing to edit.
+    const preview = renderTemplate('{{sw-imagemap "floor"}}', { imageMaps: { floor: map(BASIC) }, preview: true });
+    expect(preview).toContain(`${IMAGE_MAP_ATTR}="floor"`);
+    const published = renderTemplate('{{sw-imagemap "floor"}}', { imageMaps: { floor: map(BASIC) } });
+    expect(published).not.toContain(IMAGE_MAP_ATTR);
+    // …and the marker rides on the component wrapper itself, which is what a click resolves against.
+    expect(preview).toMatch(new RegExp(`<div data-sw-component="image-map" ${IMAGE_MAP_ATTR}="floor"`));
+  });
+
   it('renders nothing on a surface with no maps, rather than erroring', () => {
     // Mirrors {{sw-form}}: the snippet hover preview supplies no maps, and that is not an
     // authoring mistake.

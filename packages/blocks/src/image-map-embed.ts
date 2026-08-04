@@ -193,13 +193,18 @@ function fallbackImage(config: Record<string, unknown>): { url: string; alt: str
  * The complete markup for a stored map: the component marker, a no-JS fallback image, and the
  * sanitized config as a JSON data block.
  */
-export function renderImageMapMarkup(map: RenderImageMap, opts: { class?: string } = {}): string {
+export function renderImageMapMarkup(map: RenderImageMap, opts: { class?: string; preview?: boolean } = {}): string {
   const config = sanitizeImageMapConfig(map.config) as Record<string, unknown>;
   const cls = opts.class ? ` class="${escapeAttr(opts.class)}"` : '';
   const img = fallbackImage(config);
   const fallback = img ? `<img src="${escapeAttr(img.url)}" alt="${escapeAttr(img.alt)}" />` : '';
+  // ★ In PREVIEW the markup names the map it came from, exactly as the code-first `data-sw-imagemap`
+  // form does. That id is what makes the map reachable from the editor: a click opens it in the
+  // Studio. Without it the helper — which is the embed code the Studio itself hands out — produced a
+  // map that could be seen and never edited. Publish emits no marker (nothing to edit on a live site).
+  const marker = opts.preview && map.id ? ` ${IMAGE_MAP_ATTR}="${escapeAttr(map.id)}"` : '';
   return (
-    `<div data-sw-component="image-map"${cls}>${fallback}` +
+    `<div data-sw-component="image-map"${marker}${cls}>${fallback}` +
     `<script type="application/json" data-sw-part="config">${jsonForScript(config)}</script></div>`
   );
 }

@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Click an image map in the page editor to edit it.** A map placed on a page opens in the Image Map
+  Studio, on that map; saving re-renders the page preview so the change is visible without a reload,
+  and the Studio stays open. Only a STORED map is clickable — the embed markup now carries the map's
+  id in preview (the `{{sw-imagemap}}` embed code the Studio hands out did not, so a map placed the
+  intended way could be seen in the editor and never opened from it), and a config inlined in the page
+  source has no map entity to open, so the click falls through to the map's own behaviour.
+
 ### Fixed
 
 - **A custom preloader no longer covers the page forever.** The runtime that clears the overlay

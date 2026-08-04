@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup, act } from '@testing-library/react';
 import { StrictMode, type ComponentProps } from 'react';
 import type { ImageMap, ImageMapObject } from '@sitewright/schema';
 import { ToastProvider } from '../src/views/ui/Toast';
@@ -72,6 +72,31 @@ describe('ImageMapStudio — the map list', () => {
     expect(screen.getByRole('heading', { name: 'Examples' })).toBeTruthy();
     expect(screen.getByText('Business')).toBeTruthy();
     expect(screen.getByText(/1 artboard · 10 hotspots/)).toBeTruthy();
+  });
+
+  it('opens straight onto a map when the page editor asks for one', async () => {
+    // ★ A map is edited in the Studio, so a click on a map in the PAGE EDITOR has to land in the
+    // editor for THAT map — not in the list, with the author hunting for the one they just clicked.
+    render(<ImageMapStudio projectId="p1" initialMapId="floor" onClose={() => {}} />);
+    // The map editor for m2, not the list: its toolbar and its own name in the header.
+    expect(await screen.findByRole('button', { name: '← All maps' })).toBeTruthy();
+    expect(screen.getByText(/Ground floor/)).toBeTruthy();
+  });
+
+  it('reports a save, so the surface embedding the map can re-render', async () => {
+    const onSaved = vi.fn();
+    vi.spyOn(api, 'putImageMap').mockResolvedValue({ item: MAP });
+    render(<ImageMapStudio projectId="p1" initialMapId="floor" onSaved={onSaved} onClose={() => {}} />);
+    await screen.findByRole('button', { name: '← All maps' });
+    // Change something so Save is enabled, then save. (The hotspot's title names both its rail entry
+    // and its canvas shape, so scope to the rail — as openEditor does.)
+    const rail = within(screen.getByText('Hotspots').closest('div')!);
+    fireEvent.click(rail.getByRole('button', { name: 'Reception' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Lobby' } });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Save' }).click();
+    });
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('floor'));
   });
 
   it('offers the embed code for a page', async () => {

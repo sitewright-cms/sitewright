@@ -740,7 +740,10 @@ describe('buildSite', () => {
     // custom preloader is the FIRST body child — it sits right after the opening <body> tag, before
     // the <main id="page-content"> landmark (whereas the nav code lands at body-end, after <main>).
     const bodyOpenEnd = home.indexOf('>', home.indexOf('<body')) + 1;
-    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 60)).toContain('id="pre-fx"');
+    // The platform's overlay is the first body child; the author's markup is its content. (It used to
+    // be emitted raw — and then nothing ever cleared it. See the custom-preloader runtime test.)
+    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 60)).toContain('data-sw-preloader');
+    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 200)).toContain('id="pre-fx"');
     expect(home.indexOf('id="pre-fx"')).toBeLessThan(home.indexOf('<main id="page-content"'));
     expect(home.indexOf('id="nav-fx"')).toBeGreaterThan(home.indexOf('<main id="page-content"'));
     // the brand's text-on-brand tokens are DECLARED (themes off) so a forked fill effect stays legible

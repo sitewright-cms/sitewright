@@ -133,6 +133,10 @@ export const PRELOADER_CSS = [
   // author's markup + CSS decides. The show/hide contract above still governs it, which is the point
   // of wrapping custom code rather than emitting it raw.
   '[data-sw-preloader].sw-preloader-custom{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;display:block}',
+  // Custom code that carries its OWN `data-sw-preloader` (the docs used to show one, and it was inert
+  // because no preloader CSS shipped with custom code at all) must not be hidden by the overlay rules
+  // now that they do ship: inside our wrapper it is just a div, and the wrapper owns the lifecycle.
+  '[data-sw-preloader].sw-preloader-custom [data-sw-preloader]{position:static;inset:auto;opacity:1;visibility:visible;pointer-events:auto;background:none;-webkit-backdrop-filter:none;backdrop-filter:none;transition:none}',
   // 1 · spinner
   '[data-sw-preloader] .pl-spinner{width:116px;height:116px;border-radius:50%;border:10px solid color-mix(in srgb,var(--sw-color-primary,#4f46e5) 18%,transparent);border-top-color:var(--sw-color-primary,#4f46e5);animation:sw-pl-spin .9s linear infinite}',
   '@keyframes sw-pl-spin{to{transform:rotate(360deg)}}',

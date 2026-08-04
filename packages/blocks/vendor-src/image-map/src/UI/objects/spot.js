@@ -42,14 +42,14 @@ export default class Spot extends MapObject {
         element.appendChild(img)
       }
 
-      // Shadow
+      // Shadow — sized off the ICON BOX, not off `icon_size`.
+      //
+      // The px form (`width: icon_size`, `top: icon_size / 2`) is exactly `100%` and `50%` of that
+      // box, so a pixel icon renders byte-identically. A PERCENT icon (icon_size_pct) has no pixel
+      // size to restate: written in px the shadow kept whatever `icon_size` happened to say and
+      // drifted out from under the marker at every container width but one.
       if (this.options.default_style.icon_shadow) {
-        let shadowStyle = `width: ${this.options.default_style.icon_size}px;`
-        shadowStyle += `height: ${this.options.default_style.icon_size}px;`
-        shadowStyle += `left: 0;`
-        shadowStyle += `top: ${this.options.default_style.icon_size / 2}px;`
-
-        let shadowHtml = `<div style="${shadowStyle}" class="sw-imap-object-icon-shadow"></div>`
+        let shadowHtml = `<div style="width: 100%;height: 100%;left: 0;top: 50%;" class="sw-imap-object-icon-shadow"></div>`
         element.appendChild(htmlToElement(shadowHtml))
       }
     }
@@ -82,7 +82,15 @@ export default class Spot extends MapObject {
 
       if (this.options.default_style.icon_type === 'library') {
         let color_fill = hexToRgb(styles.icon_fill) || { r: 0, b: 0, g: 0 }
-        css += `fill: rgba(${color_fill.r}, ${color_fill.g}, ${color_fill.b}, ${safeCssValue(styles.opacity)});`
+        let rgba = `rgba(${color_fill.r}, ${color_fill.g}, ${color_fill.b}, ${safeCssValue(styles.opacity)})`
+        // ★ BOTH properties, because artwork colours itself in one of two ways and the config has no
+        // idea which. A bare `<path>` inherits the CSS `fill` set here; every icon from the platform's
+        // own library carries `fill="currentColor"`, and a presentation ATTRIBUTE on the element beats
+        // an inherited property — so `fill` alone left those icons painted in the page's text colour
+        // while the Studio (which sets `color`) showed the chosen one. Setting both makes the two
+        // surfaces agree whatever the artwork does.
+        css += `fill: ${rgba};`
+        css += `color: ${rgba};`
       }
 
       // Anchor offsets, in whichever unit the icon is sized in.

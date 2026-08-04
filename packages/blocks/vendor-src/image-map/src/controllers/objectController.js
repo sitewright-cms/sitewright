@@ -204,11 +204,16 @@ export default class ObjectController {
     function animateFallDown() {
       window.requestAnimationFrame(function () {
         currentTime += 0.01666
-        let y = easeOutBounce(undefined, currentTime, -200, 200, 2)
-        object.element.style.transform = `translateY(${y}px)`
-        if (currentTime <= 2) {
-          animateFallDown()
+        if (currentTime > 2) {
+          // ★ LAND on the resting position. The loop counts frames while the style reset below runs
+          // off a 2000 ms timer, so on any frame budget that isn't a perfect 60 Hz the last frame
+          // wrote its easing value AFTER the reset — leaving every marker permanently ~1.2px below
+          // its own coordinate. Measured on a real map before this line existed.
+          object.element.style.transform = ''
+          return
         }
+        object.element.style.transform = `translateY(${easeOutBounce(undefined, currentTime, -200, 200, 2)}px)`
+        animateFallDown()
       })
     }
 

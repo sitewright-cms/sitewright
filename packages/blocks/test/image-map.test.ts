@@ -207,6 +207,38 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('aspect-ratio');
   });
 
+  it('paints a library icon in the CONFIGURED colour, whatever the artwork uses to colour itself', () => {
+    // ★ Artwork colours itself one of two ways: a bare `<path>` inherits the CSS `fill` property,
+    // while every icon from the platform's own library carries `fill="currentColor"` — and a
+    // presentation ATTRIBUTE on the element beats an inherited property. With `fill` alone, a
+    // hotspot using a library icon painted in the PAGE'S text colour and ignored `icon_fill`
+    // outright, while the Studio (which sets `color`) showed the colour the author picked. Measured
+    // on a real map: config #000000, rendered rgb(34,34,34) — the site's body text colour.
+    const spot = vendorCode('src/UI/objects/spot.js');
+    expect(spot).toMatch(/css \+= `fill: \$\{rgba\};`/);
+    expect(spot).toMatch(/css \+= `color: \$\{rgba\};`/);
+    // The SHIPPED bundle sets both from the SAME value — not just the source.
+    expect(IMAGE_MAP_RUNTIME_JS).toMatch(/`fill: \$\{(\w+)\};`,\w+\+=`color: \$\{\1\};`/);
+  });
+
+  it("sizes an icon's ground shadow off the icon BOX, so it scales with a percent marker", () => {
+    // The px form was exactly 100%/50% of the box, so a pixel icon is unchanged — but written in px
+    // the shadow kept whatever `icon_size` said and slid out from under a percent marker at every
+    // container width but one.
+    const spot = vendorCode('src/UI/objects/spot.js');
+    expect(spot).toContain('width: 100%;height: 100%;left: 0;top: 50%;');
+    expect(spot).not.toContain('icon_size / 2');
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('width: 100%;height: 100%;left: 0;top: 50%;');
+  });
+
+  it('lands a pageload animation ON the hotspot coordinate instead of near it', () => {
+    // The fall-down loop counted frames while the style reset ran off a 2000ms timer, so on any
+    // frame budget that is not a perfect 60Hz the LAST frame wrote its easing value after the reset
+    // — leaving every marker permanently ~1.2px below its own coordinate (measured).
+    const controller = vendorCode('src/controllers/objectController.js');
+    expect(controller).toMatch(/if \(currentTime > 2\) \{[\s\S]*?transform = ''[\s\S]*?return/);
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

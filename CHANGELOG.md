@@ -9,6 +9,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An icon hotspot is painted in the colour the author picked.** Every icon in the platform's
+  library draws with `fill="currentColor"`, and a presentation attribute on the element beats the
+  inherited CSS `fill` the runtime was setting — so a marker ignored `icon_fill` and came out in the
+  page's body-text colour, while the Studio showed the chosen one. The runtime now sets both
+  properties from the same value, at rest and on hover.
+- **An icon's ground shadow scales with the marker.** It was sized from the pixel `icon_size` even
+  when the icon is sized as a percentage of the map, so it slid out from under the marker at every
+  container width but one. It is now expressed against the icon's own box — identical for a pixel
+  icon, correct for a percent one — and the Studio draws it too, with a toggle in the Style tab.
+- **A pageload animation lands on the hotspot's coordinate.** `fall-down` counted frames while the
+  style reset ran off a timer, so the last frame could write its easing value after the reset and
+  leave every marker permanently ~1.2px below its own coordinate.
+
 ## [0.13.0] — 2026-08-04
 
 Interactive image maps: an image or SVG overlaid with clickable regions that highlight, open rich

@@ -248,6 +248,17 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete, pale
                         </p>
                       </div>
                     )}
+                    {which === 'default_style' && (
+                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          className="toggle toggle-sm"
+                          checked={Boolean(styleValue(object.default_style, 'icon_shadow', false))}
+                          onChange={(e) => patchStyle('default_style', 'icon_shadow', e.target.checked)}
+                        />
+                        Ground shadow
+                      </label>
+                    )}
                   </div>
                 ) : (
                 <div className="grid grid-cols-2 gap-2">

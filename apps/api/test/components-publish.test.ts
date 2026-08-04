@@ -82,6 +82,59 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
   });
 
+  it('ships the IMAGE MAP runtime for a page that embeds a map by reference', async () => {
+    // ★ THE REGRESSION THIS GUARDS, end to end through the real publish. `{{sw-imagemap}}` grows its
+    // `data-sw-component="image-map"` marker only at RENDER, and publish selects runtimes by scanning
+    // page SOURCES — so the marker was never seen, no c-imagemap.js was emitted, and nothing linked
+    // it. The page still rendered the map's no-JS fallback <img>, so it looked like a styling problem
+    // ("the background is there, the overlays aren't") rather than a missing script.
+    const proj = client.project(projectId);
+    const map = {
+      id: 'plan',
+      general: { name: 'Plan' },
+      artboards: [
+        {
+          id: 'ab1',
+          title: 'Ground',
+          background_type: 'image',
+          image_url: '/media/site/abc123-plan.png',
+          width: 1600,
+          height: 900,
+          children: [
+            { id: 'p1', title: 'Wing', type: 'poly', x: 10, y: 10, width: 20, height: 20, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 100 }] },
+          ],
+        },
+      ],
+    };
+    expect((await proj.putContent('imagemap', 'plan', map)).statusCode).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>{{sw-imagemap "plan"}}</section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('data-sw-component="image-map"');
+    // The config data block and the no-JS fallback are the EASY half — they were always there.
+    expect(index.body).toContain('"Wing"');
+    // …the runtime is the half that was missing. Without this link the map is a static picture.
+    expect(index.body).toContain('<script defer src="c-imagemap.js?v=');
+
+    const runtime = await client.get(`/sites/${slug}/c-imagemap.js`);
+    expect(runtime.statusCode).toBe(200);
+    expect(runtime.body).toContain('Sitewright Image Map runtime');
+    // And the component's CSS shipped, or the hotspots have no fill to paint.
+    expect(index.body).toContain('sw-imap-container');
+  });
+
+  it('ships NO image-map runtime for a page that embeds no map', async () => {
+    const proj = client.project(projectId);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><p>No maps</p></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.body).not.toContain('c-imagemap.js');
+  });
+
   it('splits chrome vs content: a SHARED-SLOT component ships on every page; a page-body one ships only there', async () => {
     const proj = client.project(projectId);
     // A carousel lives in the shared BOTTOM slot (site chrome rendered on every page); the modal lives

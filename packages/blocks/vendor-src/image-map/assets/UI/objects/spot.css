@@ -29,8 +29,3 @@
   filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#87000000', endColorstr='#00000000', GradientType=1);
   /* IE6-9 fallback on horizontal gradient */
 }
-
-.sw-imap-spot-fontawesome-icon {
-  position: relative;
-  z-index: 1;
-}

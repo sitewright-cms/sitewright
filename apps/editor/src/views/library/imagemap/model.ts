@@ -6,15 +6,33 @@
 // hotspots follow. The Studio therefore converts to pixels only at the moment it draws or drags.
 import type { ImageMap, ImageMapArtboard, ImageMapObject, ImageMapTooltipBlock } from '@sitewright/schema';
 
-/** The hotspot shapes the Studio can create. (`svg`/`svg-single`/`group` come from imports.) */
-export const DRAWABLE_TYPES = ['rect', 'oval', 'poly', 'spot', 'text'] as const;
+/**
+ * The hotspot shapes the Studio can draw. (`svg`/`svg-single`/`group` come from imports.)
+ *
+ * ★ `dot` IS NOT A CONFIG TYPE. The runtime knows `spot`, which draws either an icon
+ * (`use_icon: true` → the pin marker) or a plain box (`use_icon: false` → a dot). A Dot is the
+ * second of those with a round radius, so it is a Studio-level TOOL over the same stored type — no
+ * new type in the schema, and nothing for the runtime to learn. {@link storedType} maps back.
+ */
+export const DRAWABLE_TYPES = ['rect', 'oval', 'poly', 'spot', 'dot', 'text'] as const;
 export type DrawableType = (typeof DRAWABLE_TYPES)[number];
+
+/** The `type` a drawable is STORED as — every tool but Dot is its own type. */
+export function storedType(type: DrawableType): string {
+  return type === 'dot' ? 'spot' : type;
+}
+
+/** Is this stored object drawn as a plain dot rather than the pin marker? */
+export function isDot(obj: ImageMapObject): boolean {
+  return obj.type === 'spot' && (obj.default_style as { use_icon?: unknown } | undefined)?.use_icon === false;
+}
 
 export const TYPE_LABELS: Record<string, string> = {
   rect: 'Rectangle',
   oval: 'Oval',
   poly: 'Polygon',
   spot: 'Pin',
+  dot: 'Dot',
   text: 'Text',
   svg: 'SVG group',
   'svg-single': 'SVG shape',
@@ -179,8 +197,37 @@ export function newObject(type: DrawableType, x: number, y: number, title: strin
     };
   }
   if (type === 'spot') {
-    // A pin is drawn at its icon size, not as a percentage box.
-    return { ...base, width: 4, height: 4 };
+    // A PIN is the marker icon, sized in PIXELS by `icon_size` and anchored by its tip. Its width /
+    // height are unused by the runtime for an icon spot, so they stay at the config default.
+    return {
+      ...base,
+      width: PIN_SIZE_PX,
+      height: PIN_SIZE_PX,
+      default_style: { ...base.default_style, use_icon: true, icon_is_pin: true, icon_size: PIN_SIZE_PX, icon_fill: '#0a7a5a' },
+      mouseover_style: { ...base.mouseover_style, icon_fill: '#0f9e74' },
+    };
+  }
+  if (type === 'dot') {
+    // A DOT is the same stored `spot` with the icon turned OFF — the runtime then draws a box with
+    // this background, border and radius. Sized in PIXELS (the non-icon spot branch reads px), and
+    // given a radius past half its size so it is a circle at any size.
+    return {
+      ...base,
+      type: 'spot',
+      width: DOT_SIZE_PX,
+      height: DOT_SIZE_PX,
+      default_style: {
+        ...base.default_style,
+        use_icon: false,
+        background_opacity: 1,
+        border_radius: DOT_SIZE_PX,
+        border_width: 3,
+        border_color: '#ffffff',
+        border_opacity: 1,
+        pulse: true,
+      },
+      mouseover_style: { ...base.mouseover_style, background_opacity: 1, border_radius: DOT_SIZE_PX, border_width: 3, border_color: '#ffffff' },
+    };
   }
   if (type === 'text') {
     return { ...base, width: 20, height: 6, text: { text: title, font_size: 16, text_color: '#111111' } };
@@ -198,7 +245,8 @@ function baseObject(type: DrawableType, x: number, y: number, title: string): Im
   return {
     id: newId(type),
     title,
-    type,
+    // A Dot is stored as the `spot` the runtime knows — see {@link storedType}.
+    type: storedType(type) as ImageMapObject['type'],
     x: round(clampPct(x)),
     y: round(clampPct(y)),
     default_style: { background_color: '#0a7a5a', background_opacity: 0.35 },
@@ -233,6 +281,16 @@ export interface Bounds extends Point {
  * every box-relative vertex would divide by it.
  */
 export const MIN_BOX = 0.5;
+
+/**
+ * A pin's and a dot's size, in PIXELS.
+ *
+ * Pixels, not percent, because that is what the runtime reads for a spot: an icon spot is sized by
+ * `icon_size`, and a non-icon spot by `width`/`height` in px. A marker that scaled with the artboard
+ * would be a thumbnail on a floor plan and a billboard on a diagram.
+ */
+export const PIN_SIZE_PX = 40;
+export const DOT_SIZE_PX = 18;
 
 /**
  * How far the pointer must travel before a press-drag-release is read as SIZING the shape rather

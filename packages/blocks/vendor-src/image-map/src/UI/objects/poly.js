@@ -36,7 +36,18 @@ export default class Poly extends MapObject {
   createCSSRules(styles) {
     let css = ''
     let c_bg = hexToRgb(styles.background_color) || { r: 0, b: 0, g: 0 }
-    let c_stroke = hexToRgb(styles.stroke_color) || { r: 0, b: 0, g: 0 }
+    // A polygon's outline is an SVG STROKE, but every other shape calls the same thing a BORDER —
+    // and that is the word the editor puts on the control. So a border set on a polygon is honoured
+    // here when no stroke width was set explicitly, rather than silently doing nothing.
+    let strokeWidth = styles.stroke_width
+    let strokeColor = styles.stroke_color
+    let strokeOpacity = styles.stroke_opacity
+    if (!strokeWidth && styles.border_width) {
+      strokeWidth = styles.border_width
+      strokeColor = styles.border_color
+      strokeOpacity = styles.border_opacity
+    }
+    let c_stroke = hexToRgb(strokeColor) || { r: 0, b: 0, g: 0 }
 
     if (styles.background_type === 'color') {
       css += `fill: rgba(${c_bg.r}, ${c_bg.g}, ${c_bg.b}, ${safeCssValue(styles.background_opacity)}); `
@@ -50,8 +61,8 @@ export default class Poly extends MapObject {
     css += `height: ${safeCssValue(this.options.height)}%;`
 
     css += `opacity: ${safeCssValue(styles.opacity)};`
-    css += `stroke: rgba(${c_stroke.r}, ${c_stroke.g}, ${c_stroke.b}, ${safeCssValue(styles.stroke_opacity)}); `
-    css += `stroke-width: ${safeCssValue(styles.stroke_width)}px; `
+    css += `stroke: rgba(${c_stroke.r}, ${c_stroke.g}, ${c_stroke.b}, ${safeCssValue(strokeOpacity)}); `
+    css += `stroke-width: ${safeCssValue(strokeWidth)}px; `
     css += `stroke-dasharray: ${safeCssValue(styles.stroke_dasharray)}; `
     css += `stroke-linecap: ${safeCssValue(styles.stroke_linecap)}; `
 

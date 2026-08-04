@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ImageMapArtboard, ImageMapObject } from '@sitewright/schema';
+import { IMAGE_MAP_PIN_ICON_PATH, type ImageMapArtboard, type ImageMapObject } from '@sitewright/schema';
 import {
   artboardSize,
   artboardToPolyPoint,
   boundsFromDrag,
   clampPct,
+  DOT_SIZE_PX,
   DRAG_THRESHOLD,
   insertPolyVertex,
   normalizePoly,
   objectBounds,
+  PIN_SIZE_PX,
   polyPointToArtboard,
   removePolyVertex,
   round,
@@ -91,6 +93,61 @@ interface CanvasProps {
  * here is the region, not a preview of the published styling.
  */
 const EDITOR_MIN_OPACITY = 0.18;
+
+/** A style value as a number, falling back when the config carries something else. */
+function num(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** A style colour + opacity pair as CSS, matching how the runtime composes the same two fields. */
+function rgba(color: unknown, opacity: unknown, fallback: string): string {
+  const hex = typeof color === 'string' && color !== '' ? color : fallback;
+  const alpha = typeof opacity === 'number' ? opacity : 1;
+  return alpha >= 1 ? hex : `color-mix(in srgb, ${hex} ${Math.round(alpha * 100)}%, transparent)`;
+}
+
+/**
+ * The AUTHORED outline for a box shape (rect / oval / text), as the runtime paints it.
+ *
+ * The canvas used to draw a fixed hairline here, so an author who set a border saw no change in the
+ * editor and a red 6px line on the published page — which reads as "the border control is broken".
+ *
+ * A zero-width border still needs SOMETHING to grab: when the author has set none, a faint dashed
+ * hairline stands in. Same bargain as {@link EDITOR_MIN_OPACITY} — what is drawn is the region, not
+ * a pixel-exact preview of an invisible shape.
+ */
+function borderOf(obj: ImageMapObject): React.CSSProperties {
+  // ★ A TEXT hotspot has no border on the page: the runtime renders it as a text element, sized to
+  // its own content, and never reads border_*. Painting one here would promise something the page
+  // does not deliver — so text keeps the editor's own hairline, which is a handle, not a preview.
+  if (obj.type === 'text') return { border: '1px dashed rgba(15,23,42,.55)' };
+  const style = (obj.default_style ?? {}) as Record<string, unknown>;
+  const width = num(style.border_width, 0);
+  if (width <= 0) return { border: '1px dashed rgba(15,23,42,.55)' };
+  return {
+    borderWidth: width,
+    borderStyle: (style.border_style as string) || 'solid',
+    borderColor: rgba(style.border_color, style.border_opacity, '#ffffff'),
+  };
+}
+
+/**
+ * The same, for a POLYGON — whose outline is an SVG stroke.
+ *
+ * ★ Reads `stroke_*` and falls back to `border_*`, exactly as the runtime does: the editor labels
+ * the control "Border" for every shape, so a polygon can legitimately carry either.
+ */
+function outlineOf(obj: ImageMapObject, selected: boolean): { stroke: string; strokeWidth: number; strokeDasharray?: string } {
+  const style = (obj.default_style ?? {}) as Record<string, unknown>;
+  const width = num(style.stroke_width, 0) || num(style.border_width, 0);
+  if (width > 0) {
+    const color = style.stroke_width ? style.stroke_color : style.border_color;
+    const opacity = style.stroke_width ? style.stroke_opacity : style.border_opacity;
+    return { stroke: rgba(color, opacity, '#ffffff'), strokeWidth: width };
+  }
+  // No authored outline: a hairline so the region can still be seen and grabbed.
+  return { stroke: selected ? '#0ea5e9' : '#0f172a', strokeWidth: selected ? 2 : 1, strokeDasharray: selected ? undefined : '4 3' };
+}
 
 function fillOf(obj: ImageMapObject): string {
   const style = (obj.default_style ?? {}) as { background_color?: unknown; background_opacity?: unknown };
@@ -602,9 +659,7 @@ function Shape({
             style={{ pointerEvents: inert ? 'none' : 'all' }}
             points={pts.map((p) => `${p.x},${p.y}`).join(' ')}
             fill={fillOf(obj)}
-            stroke={selected ? '#0ea5e9' : '#0f172a'}
-            strokeWidth={selected ? 2 : 1}
-            strokeDasharray={selected ? undefined : '4 3'}
+            {...outlineOf(obj, selected)}
             vectorEffect="non-scaling-stroke"
             onPointerDown={(e) => onPointerDown(e, 'move')}
           />
@@ -667,14 +722,53 @@ function Shape({
   }
 
   if (obj.type === 'spot') {
+    const style = (obj.default_style ?? {}) as Record<string, unknown>;
+    const dot = style.use_icon === false;
+    // PIXELS, matching the runtime: an icon spot is sized by `icon_size`, a dot by width/height.
+    // Drawing either as a percentage box is what made the Studio's pin a dot and the page's a
+    // pointer — the author placed one shape and published another.
+    const size = dot ? num(obj.width, DOT_SIZE_PX) : num(style.icon_size, PIN_SIZE_PX);
+
+    if (dot) {
+      return (
+        <button
+          type="button"
+          aria-label={obj.title || 'Dot'}
+          data-testid="imap-shape-dot"
+          className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-move ${style.pulse ? 'sw-imap-studio-pulse' : ''} ${ring}`}
+          style={{
+            left: `${b.x}%`,
+            top: `${b.y}%`,
+            width: size,
+            height: num(obj.height, DOT_SIZE_PX),
+            background: fillOf(obj),
+            // A dot is a circle at any size: the runtime writes border_radius in px, and a radius at
+            // least half the box rounds it fully.
+            borderRadius: num(style.border_radius, size),
+            borderStyle: (style.border_style as string) || 'solid',
+            borderWidth: num(style.border_width, 0),
+            borderColor: rgba(style.border_color, style.border_opacity, '#ffffff'),
+            ...inertStyle,
+          }}
+          onPointerDown={(e) => onPointerDown(e, 'move')}
+        />
+      );
+    }
     return (
       <button
         type="button"
         aria-label={obj.title || 'Pin'}
-        className={`absolute z-10 h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-move rounded-full border-2 border-white shadow ${ring}`}
-        style={{ left: `${b.x}%`, top: `${b.y}%`, background: fillOf(obj) || '#0a7a5a', ...inertStyle }}
+        data-testid="imap-shape-pin"
+        // Anchored by its TIP, exactly as the runtime anchors it (margin-top: -icon_size), so the
+        // point of the marker sits on the hotspot's coordinate in both places.
+        className={`absolute z-10 -translate-x-1/2 -translate-y-full cursor-move ${ring}`}
+        style={{ left: `${b.x}%`, top: `${b.y}%`, width: size, height: size, ...inertStyle }}
         onPointerDown={(e) => onPointerDown(e, 'move')}
-      />
+      >
+        <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="drop-shadow">
+          <path d={IMAGE_MAP_PIN_ICON_PATH} fill={rgba(style.icon_fill, 1, '#0a7a5a')} />
+        </svg>
+      </button>
     );
   }
 
@@ -688,8 +782,11 @@ function Shape({
         width: `${b.width}%`,
         height: `${b.height}%`,
         background: fillOf(obj),
-        border: selected ? '2px solid #0ea5e9' : '1px dashed #0f172a',
-        borderRadius: obj.type === 'oval' ? '50%' : 4,
+        // The runtime's `.sw-imap-object` is border-box; without matching it, a thick border grew
+        // the shape here by twice its width and the editor drew a bigger region than the page.
+        boxSizing: 'border-box',
+        ...borderOf(obj),
+        borderRadius: obj.type === 'oval' ? '50%' : num((obj.default_style as Record<string, unknown> | undefined)?.border_radius, 4),
         ...inertStyle,
       }}
     >

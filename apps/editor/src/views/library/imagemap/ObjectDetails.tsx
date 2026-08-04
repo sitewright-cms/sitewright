@@ -43,6 +43,30 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
     onChange({ [which]: { ...(object[which] ?? {}), [key]: value } } as Partial<ImageMapObject>);
   };
 
+  /**
+   * The style key that actually paints a shape's outline.
+   *
+   * ★ A POLYGON IS AN SVG, so its outline is a `stroke_*`, while every other shape uses a CSS
+   * `border_*`. The editor calls both "Border" — which is the right word for an author — but wrote
+   * `border_*` for all of them, so setting a polygon's border did NOTHING and looked like the
+   * control was broken.
+   */
+  const outlineKey = (base: 'color' | 'width' | 'opacity'): string =>
+    object.type === 'poly' ? `stroke_${base}` : `border_${base}`;
+
+  /**
+   * Reading falls BACK across the pair, so a polygon that already carries `border_*` (written by the
+   * editor before this was fixed) still shows the author's value instead of silently reverting to 0.
+   * The runtime honours the same fallback, so what they see is what renders.
+   */
+  const outlineValue = <T,>(which: 'default_style' | 'mouseover_style', base: 'color' | 'width' | 'opacity', fallback: T): T => {
+    const bag = object[which] as Record<string, unknown> | undefined;
+    const primary = bag?.[outlineKey(base)];
+    if (primary !== undefined) return primary as T;
+    const other = bag?.[object.type === 'poly' ? `border_${base}` : `stroke_${base}`];
+    return (other === undefined ? fallback : other) as T;
+  };
+
   const tabBtn = (id: typeof tab, label: string) => (
     <button
       key={id}
@@ -172,7 +196,9 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
                       onChange={(e) => patchStyle(which, 'background_opacity', Number.parseFloat(e.target.value))}
                     />
                   </div>
-                  <div>
+                  {/* A text hotspot has no border on the published page — the runtime renders it as
+                      a text element and never reads border_*. Offering the control would be a lie. */}
+                  <div className={object.type === 'text' ? 'hidden' : undefined}>
                     <label className={fieldLabel} htmlFor={`imap-${which}-border`}>
                       Border colour
                     </label>
@@ -180,8 +206,8 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
                       id={`imap-${which}-border`}
                       type="color"
                       className="h-9 w-full cursor-pointer rounded-lg border border-slate-300 bg-transparent dark:border-slate-600"
-                      value={styleValue(object[which] as Record<string, unknown> | undefined, 'border_color', '#ffffff')}
-                      onChange={(e) => patchStyle(which, 'border_color', e.target.value)}
+                      value={outlineValue(which, 'color', '#ffffff')}
+                      onChange={(e) => patchStyle(which, outlineKey('color'), e.target.value)}
                     />
                   </div>
                   <div>
@@ -194,8 +220,8 @@ export function ObjectDetails({ map, object, projectId, onChange, onDelete }: Ob
                       type="number"
                       min="0"
                       max="20"
-                      value={styleValue(object[which] as Record<string, unknown> | undefined, 'border_width', 0)}
-                      onChange={(e) => patchStyle(which, 'border_width', Number.parseInt(e.target.value, 10) || 0)}
+                      value={outlineValue(which, 'width', 0)}
+                      onChange={(e) => patchStyle(which, outlineKey('width'), Number.parseInt(e.target.value, 10) || 0)}
                     />
                   </div>
                 </div>

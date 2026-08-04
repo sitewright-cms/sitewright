@@ -199,6 +199,14 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{[^}]*transition-duration:0s/);
   });
 
+  it('sizes an icon hotspot in PERCENT when the config asks, so it scales with the map', () => {
+    // ★ A px marker is a fixed dot on a map that scales to its container — it looms on a phone and
+    // vanishes on a wall display. The percent branch keeps it proportional; px stays the fallback so
+    // every imported template is untouched.
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('icon_size_pct');
+    expect(IMAGE_MAP_RUNTIME_JS).toContain('aspect-ratio');
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

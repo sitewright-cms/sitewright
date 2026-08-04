@@ -10,8 +10,8 @@ import {
   insertPolyVertex,
   normalizePoly,
   objectBounds,
-  ICON_SIZE_PX,
   iconNameOf,
+  iconPct,
   isIconSpot,
   polyPointToArtboard,
   removePolyVertex,
@@ -532,6 +532,7 @@ export function Canvas({
                 obj={obj}
                 selected={obj.id === selectedId}
                 inert={drawing !== null}
+                artboardWidth={aw}
                 activeVertex={obj.id === selectedId ? vertex : null}
                 onPointerDown={(e, target) => {
                   if (typeof target === 'object') setVertex(target.vertex);
@@ -622,6 +623,7 @@ function Shape({
   obj,
   selected,
   inert,
+  artboardWidth,
   activeVertex,
   onPointerDown,
   onRemoveVertex,
@@ -631,6 +633,8 @@ function Shape({
   selected: boolean;
   /** A draw tool is active: the shape stays visible but lets the pointer through to the canvas. */
   inert: boolean;
+  /** The artboard's own pixel width — what an icon's percent size is a percent OF. */
+  artboardWidth: number;
   /** Which vertex is armed for Delete, when this shape is the selected one. */
   activeVertex: number | null;
   onPointerDown: (e: React.PointerEvent, target: DragTarget) => void;
@@ -727,9 +731,6 @@ function Shape({
 
   if (obj.type === 'spot') {
     const style = (obj.default_style ?? {}) as Record<string, unknown>;
-    // An ICON is sized in PIXELS by `icon_size` — that is what the runtime reads, and a marker that
-    // scaled with the artboard would be a thumbnail on a floor plan and a billboard on a diagram.
-    const size = num(style.icon_size, ICON_SIZE_PX);
     const fill = rgba(style.icon_fill, 1, '#4f46e5');
 
     // A legacy non-icon spot (imported templates carry them) still draws as its plain box.
@@ -768,8 +769,11 @@ function Shape({
         // Anchored by its BOTTOM CENTRE, exactly as the runtime anchors a pin
         // (`margin-top: -icon_size`), so the point of a marker lands on the hotspot's coordinate.
         className={`absolute z-10 -translate-x-1/2 -translate-y-full cursor-move ${ring}`}
-        style={{ left: `${b.x}%`, top: `${b.y}%`, width: size, height: size, color: fill, ...inertStyle }}
-      onPointerDown={(e) => onPointerDown(e, 'move')}
+        // PERCENT of the artboard width, matching the runtime — `aspect-ratio` keeps it square, and
+        // percent margins/sizes both resolve against the container's WIDTH, which is what makes the
+        // two agree at any canvas size. A px width here would only look right at one zoom level.
+        style={{ left: `${b.x}%`, top: `${b.y}%`, width: `${iconPct(obj, artboardWidth)}%`, aspectRatio: '1', color: fill, ...inertStyle }}
+        onPointerDown={(e) => onPointerDown(e, 'move')}
       >
         {/* Rendered from the icon's NAME through the platform's own renderer, not from the
             `icon_svg` stored on the object: the editor should never inject config-supplied markup

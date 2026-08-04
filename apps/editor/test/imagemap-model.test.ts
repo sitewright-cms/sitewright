@@ -1,17 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import type { ImageMapArtboard, ImageMapObject } from '@sitewright/schema';
 import {
+  artboardSize,
   artboardToPolyPoint,
+  boundsFromDrag,
   clampPct,
   countHotspots,
   emptyMap,
   findObject,
   flattenObjects,
+  insertPolyVertex,
   mapArtboard,
   mapObject,
+  newArtboard,
   newObject,
+  normalizePoly,
   objectBounds,
+  polyFromPoints,
   polyPointToArtboard,
+  removePolyVertex,
+  RUNTIME_ARTBOARD_SIZE,
+  sizedObject,
   walkObjects,
 } from '../src/views/library/imagemap/model';
 
@@ -176,5 +185,171 @@ describe('emptyMap', () => {
     expect(map.artboards[0]!.children).toEqual([]);
     // An artboard id is REQUIRED — without one a floor switcher silently does nothing.
     expect(map.artboards[0]!.id).toBeTruthy();
+  });
+
+  it('sizes its artboard explicitly, and puts no size on the map', () => {
+    const map = emptyMap('m1', 'My map');
+    expect(map.artboards[0]).toMatchObject(RUNTIME_ARTBOARD_SIZE);
+    // ★ `general.width`/`height` are a fiction: imageMapDefaults.general has neither, and the
+    // runtime sizes from the artboard alone. Writing them there would look authoritative and do
+    // nothing.
+    expect(map.general).not.toHaveProperty('width');
+    expect(map.general).not.toHaveProperty('height');
+  });
+});
+
+describe('artboard size', () => {
+  it('is the artboard’s own, when it has one', () => {
+    expect(artboardSize({ ...newArtboard('A'), width: 1365, height: 768 })).toEqual({ width: 1365, height: 768 });
+  });
+
+  it('falls back to exactly what the runtime would use', () => {
+    // The runtime deep-extends every artboard against artboardDefaults (848×480) and never consults
+    // `general` — so any other fallback here would draw an aspect ratio visitors never see.
+    expect(artboardSize({ id: 'a', title: 'A', background_type: 'color', image_url: '', children: [] })).toEqual({
+      width: 848,
+      height: 480,
+    });
+    expect(artboardSize(undefined)).toEqual(RUNTIME_ARTBOARD_SIZE);
+  });
+
+  it('gives every new artboard a size, so the Studio and the page cannot drift apart', () => {
+    expect(newArtboard('Second')).toMatchObject(RUNTIME_ARTBOARD_SIZE);
+  });
+});
+
+describe('tracing a polygon', () => {
+  // Vertices as the author clicked them: positions on the ARTBOARD, in percent.
+  const traced = [
+    { x: 20, y: 30 },
+    { x: 60, y: 25 },
+    { x: 70, y: 70 },
+    { x: 25, y: 65 },
+  ];
+
+  it('boxes the trace and stores the vertices relative to that box', () => {
+    const poly = polyFromPoints(traced, 'Roof');
+    expect(poly.type).toBe('poly');
+    expect(poly.title).toBe('Roof');
+    // The box is the extent of what was traced: x 20–70, y 25–70.
+    expect(poly).toMatchObject({ x: 20, y: 25, width: 50, height: 45 });
+    expect(poly.points).toEqual([
+      { x: 0, y: 11.1111 },
+      { x: 80, y: 0 },
+      { x: 100, y: 100 },
+      { x: 10, y: 88.8889 },
+    ]);
+  });
+
+  it('draws back exactly where it was traced', () => {
+    // The whole point of the box-relative form: it must survive the round trip, or a traced outline
+    // lands somewhere other than the contour the author followed.
+    const poly = polyFromPoints(traced, 'Roof');
+    const back = (poly.points ?? []).map((p) => polyPointToArtboard(poly, p));
+    for (const [i, point] of traced.entries()) {
+      expect(back[i]!.x).toBeCloseTo(point.x, 3);
+      expect(back[i]!.y).toBeCloseTo(point.y, 3);
+    }
+  });
+
+  it('survives a trace with no width — a straight line does not divide by zero', () => {
+    const line = polyFromPoints([{ x: 40, y: 10 }, { x: 40, y: 50 }, { x: 40, y: 90 }], 'Edge');
+    expect(line.width).toBeGreaterThan(0);
+    expect(line.points!.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+  });
+
+  it('keeps a trace that ran off the artboard inside it', () => {
+    const poly = polyFromPoints([{ x: -20, y: 50 }, { x: 50, y: 130 }, { x: 90, y: 40 }], 'Clamped');
+    expect(poly.x).toBeGreaterThanOrEqual(0);
+    expect(poly.y).toBeGreaterThanOrEqual(0);
+    expect(poly.x! + poly.width!).toBeLessThanOrEqual(100);
+    expect(poly.y! + poly.height!).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('polygon vertices', () => {
+  const poly = polyFromPoints(
+    [
+      { x: 10, y: 10 },
+      { x: 50, y: 10 },
+      { x: 50, y: 50 },
+      { x: 10, y: 50 },
+    ],
+    'Square',
+  );
+
+  it('inserts a vertex at the midpoint of the edge it was asked for', () => {
+    const points = insertPolyVertex(poly, 0);
+    expect(points).toHaveLength(5);
+    expect(points[1]).toEqual({ x: 50, y: 0 }); // halfway along the top edge, in box space
+  });
+
+  it('inserts on the closing edge, back to the first vertex', () => {
+    const points = insertPolyVertex(poly, 3);
+    expect(points).toHaveLength(5);
+    expect(points[4]).toEqual({ x: 0, y: 50 }); // halfway down the left edge
+  });
+
+  it('removes the vertex asked for', () => {
+    expect(removePolyVertex(poly, 1)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]);
+  });
+
+  it('refuses to take a triangle below three points, or to touch an index that isn’t there', () => {
+    const triangle = polyFromPoints([{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 25, y: 40 }], 'Tri');
+    expect(removePolyVertex(triangle, 0)).toBeNull();
+    expect(removePolyVertex(poly, 9)).toBeNull();
+    expect(removePolyVertex(poly, -1)).toBeNull();
+  });
+});
+
+describe('normalizePoly', () => {
+  it('shrinks the box back onto the shape without moving the shape', () => {
+    const poly = polyFromPoints([{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 50 }], 'Wedge');
+    // Drag one vertex well outside the box — points may legitimately leave 0–100.
+    const dragged = { ...poly, points: [{ x: -50, y: 0 }, ...poly.points!.slice(1)] };
+    const before = (dragged.points ?? []).map((p) => polyPointToArtboard(dragged, p));
+
+    const tidy = normalizePoly(dragged);
+    const after = (tidy.points ?? []).map((p) => polyPointToArtboard(tidy, p));
+    for (const [i, point] of before.entries()) {
+      expect(after[i]!.x).toBeCloseTo(point.x, 3);
+      expect(after[i]!.y).toBeCloseTo(point.y, 3);
+    }
+    // The box now hugs the vertices, so the resize handles sit on the shape again.
+    expect(Math.min(...tidy.points!.map((p) => p.x))).toBeCloseTo(0, 3);
+    expect(Math.max(...tidy.points!.map((p) => p.x))).toBeCloseTo(100, 3);
+  });
+
+  it('leaves a degenerate polygon alone rather than inventing a box for it', () => {
+    const two = { ...newObject('poly', 10, 10, 'P'), points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] };
+    expect(normalizePoly(two)).toBe(two);
+  });
+});
+
+describe('drag-to-size', () => {
+  it('reads a box out of a drag in any direction', () => {
+    expect(boundsFromDrag({ x: 10, y: 10 }, { x: 40, y: 50 })).toEqual({ x: 10, y: 10, width: 30, height: 40 });
+    // Dragged up and to the left — same box.
+    expect(boundsFromDrag({ x: 40, y: 50 }, { x: 10, y: 10 })).toEqual({ x: 10, y: 10, width: 30, height: 40 });
+  });
+
+  it('keeps the box on the artboard', () => {
+    const b = boundsFromDrag({ x: 80, y: 80 }, { x: 140, y: 140 });
+    expect(b.x + b.width).toBeLessThanOrEqual(100);
+    expect(b.y + b.height).toBeLessThanOrEqual(100);
+  });
+
+  it('never produces a zero-sized shape', () => {
+    const b = boundsFromDrag({ x: 50, y: 50 }, { x: 50, y: 50 });
+    expect(b.width).toBeGreaterThan(0);
+    expect(b.height).toBeGreaterThan(0);
+  });
+
+  it('builds a hotspot at the dragged size, with a tooltip and no action', () => {
+    const rect = sizedObject('rect', { x: 5, y: 6, width: 30, height: 20 }, 'Wing');
+    expect(rect).toMatchObject({ type: 'rect', x: 5, y: 6, width: 30, height: 20, title: 'Wing' });
+    expect(rect.tooltip).toEqual({ enable_tooltip: true });
+    expect(rect.actions?.click).toBe('no-action');
+    expect(sizedObject('text', { x: 0, y: 0, width: 10, height: 5 }, 'Label').text).toMatchObject({ text: 'Label' });
   });
 });

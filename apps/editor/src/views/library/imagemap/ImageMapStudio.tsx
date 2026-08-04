@@ -5,19 +5,25 @@ import { useToast } from '../../ui/Toast';
 import { useCopy } from '../../ui/useCopy';
 import { api } from '../../../api';
 import { fieldLabel, ghostButton, glassInput, primaryButton, toggleInput } from '../../../theme';
-import { Canvas } from './Canvas';
+import { Canvas, type DrawSpec } from './Canvas';
 import { ACCEPT_IMAGE, ObjectDetails, AssetField } from './ObjectDetails';
+import { FilePicker } from '../../files/FilePicker';
 import {
   DRAWABLE_TYPES,
   TYPE_LABELS,
+  artboardSize,
   countHotspots,
   emptyMap,
   findObject,
   flattenObjects,
   mapArtboard,
   mapObject,
+  newArtboard,
   newId,
   newObject,
+  polyFromPoints,
+  sizedObject,
+  RUNTIME_ARTBOARD_SIZE,
   type DrawableType,
 } from './model';
 
@@ -188,9 +194,16 @@ function MapList({
         {loading ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         ) : maps.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
-            No image maps yet. Start from a template below, or create an empty one.
-          </p>
+          <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center dark:border-slate-600">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No image maps yet</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">
+              Create one, drop in the image you want to make interactive, then trace the parts of it that should respond
+              — a floor plan’s rooms, a product’s parts, a map’s regions.
+            </p>
+            <button type="button" className={`${primaryButton} mt-3`} disabled={busy} onClick={onCreateBlank}>
+              New map
+            </button>
+          </div>
         ) : (
           <ul className="grid gap-2 sm:grid-cols-2">
             {maps.map((m) => (
@@ -220,10 +233,11 @@ function MapList({
       </section>
 
       <section>
-        <h3 className="mb-1 text-sm font-bold text-slate-800 dark:text-slate-100">Start from a template</h3>
+        <h3 className="mb-1 text-sm font-bold text-slate-800 dark:text-slate-100">Examples</h3>
         <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-          Any images a template uses are copied into this project’s media library, so the published site is
-          self-contained.
+          Finished maps to open and pick apart — how a floor switcher is wired, what a tooltip can hold, how a traced
+          region is shaped. They’re demonstrations, not starting points: your own map begins with your own image. Opening
+          one copies its images into this project’s media library.
         </p>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
@@ -268,6 +282,8 @@ function MapEditor({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const artboard = useMemo(
     () => map.artboards.find((a) => a.id === artboardId) ?? map.artboards[0],
@@ -283,14 +299,22 @@ function MapEditor({
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
 
-  const edit = useCallback(
-    (next: ImageMap): void => {
-      setMap(next);
+  /**
+   * Apply an update to the map.
+   *
+   * An UPDATER, not a value: the image probe below lands after an await, by which time a captured
+   * `map` would be stale and would undo whatever the author did while the image was loading.
+   */
+  const editWith = useCallback(
+    (update: (current: ImageMap) => ImageMap): void => {
+      setMap(update);
       setDirty(true);
       onDirtyChange(true);
     },
     [onDirtyChange],
   );
+
+  const edit = useCallback((next: ImageMap): void => editWith(() => next), [editWith]);
 
   const patchObject = useCallback(
     (id: string, patch: Partial<ImageMapObject>): void => {
@@ -315,23 +339,70 @@ function MapEditor({
     }
   }
 
-  function draw(type: DrawableType, x: number, y: number): void {
+  function draw(type: DrawableType, spec: DrawSpec): void {
     if (!artboard) return;
-    const obj = newObject(type, x, y, `${TYPE_LABELS[type]} ${flattenObjects(artboard).length + 1}`);
+    const title = `${TYPE_LABELS[type]} ${flattenObjects(artboard).length + 1}`;
+    const obj =
+      spec.kind === 'poly'
+        ? polyFromPoints(spec.points, title)
+        : spec.kind === 'bounds'
+          ? sizedObject(type, spec.bounds, title)
+          : newObject(type, spec.x, spec.y, title);
     edit(mapArtboard(map, artboard.id, (a) => ({ ...a, children: [...(a.children ?? []), obj] })));
     setSelectedId(obj.id);
-    setDrawing(null);
+    // The polygon tool stays in hand: tracing one region is almost never the whole job, and picking
+    // the tool again between every outline is the friction that made this feature unusable. The box
+    // shapes drop back to select, so the author can adjust what they just drew.
+    if (type !== 'poly') setDrawing(null);
+  }
+
+  /**
+   * Point the artboard at an image and take the artboard's size FROM that image.
+   *
+   * The size matters as much as the URL: the artboard's own width/height set the aspect ratio the
+   * runtime lays hotspots out in, so an artboard shaped differently from its background stretches
+   * every region the author draws. The probe is fire-and-forget — the URL applies at once, and the
+   * dimensions follow a beat later without blocking the picker.
+   */
+  const setBackground = useCallback(
+    (url: string, artboardIdForImage: string): void => {
+      editWith((current) =>
+        mapArtboard(current, artboardIdForImage, (a) => ({
+          ...a,
+          image_url: url,
+          background_type: url ? 'image' : 'color',
+        })),
+      );
+      if (!url) return;
+      const probe = new Image();
+      probe.onload = () => {
+        if (!probe.naturalWidth || !probe.naturalHeight) return;
+        editWith((current) =>
+          mapArtboard(current, artboardIdForImage, (a) => ({ ...a, width: probe.naturalWidth, height: probe.naturalHeight })),
+        );
+      };
+      probe.src = url;
+    },
+    [editWith],
+  );
+
+  /** An image file dropped on the canvas: into the media library first, so the export stays whole. */
+  async function dropImage(file: File): Promise<void> {
+    if (!artboard) return;
+    setUploading(true);
+    try {
+      const { item } = await api.uploadMedia(projectId, file);
+      setBackground(item.url, artboard.id);
+      toast.show(`“${file.name}” added to your library`, 'success');
+    } catch (err) {
+      toast.show(err instanceof Error ? `Could not add that image: ${err.message}` : 'Could not add that image', 'error');
+    } finally {
+      setUploading(false);
+    }
   }
 
   function addArtboard(): void {
-    const a = {
-      id: newId('artboard'),
-      title: `Artboard ${map.artboards.length + 1}`,
-      background_type: 'color' as const,
-      background_color: '#f1f5f9',
-      image_url: '',
-      children: [],
-    };
+    const a = newArtboard(`Artboard ${map.artboards.length + 1}`);
     edit({ ...map, artboards: [...map.artboards, a] });
     setArtboardId(a.id);
     setSelectedId(null);
@@ -379,7 +450,6 @@ function MapEditor({
             {TYPE_LABELS[t]}
           </button>
         ))}
-        {drawing && <span className="text-xs text-sky-600 dark:text-sky-400">Click the canvas to place it</span>}
         <div className="ml-auto flex items-center gap-2">
           <button type="button" className={ghostButton} onClick={() => setShowSettings((v) => !v)}>
             Map settings
@@ -463,17 +533,20 @@ function MapEditor({
               artboardId={artboard.id}
               projectId={projectId}
               onChange={edit}
+              onSetBackground={(url) => setBackground(url, artboard.id)}
               onClose={() => setShowSettings(false)}
             />
           ) : (
             <Canvas
-              map={map}
               artboard={artboard}
               selectedId={selectedId}
               onSelect={setSelectedId}
               onChange={patchObject}
               drawing={drawing}
               onDraw={draw}
+              onPickImage={() => setPicking(true)}
+              onDropImage={(file) => void dropImage(file)}
+              uploading={uploading}
             />
           )}
         </div>
@@ -493,11 +566,21 @@ function MapEditor({
             />
           ) : (
             <p className="p-4 text-xs text-slate-500 dark:text-slate-400">
-              Select a hotspot to edit it, or pick a shape from the toolbar and click the canvas to add one.
+              Select a hotspot to edit it, or pick a shape from the toolbar and draw one on the canvas.
             </p>
           )}
         </aside>
       </div>
+
+      {picking && (
+        <FilePicker
+          projectId={projectId}
+          accept={ACCEPT_IMAGE}
+          title="Choose the image to make interactive"
+          onPick={(url) => setBackground(url, artboard.id)}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -507,15 +590,21 @@ function MapSettings({
   artboardId,
   projectId,
   onChange,
+  onSetBackground,
   onClose,
 }: {
   map: ImageMap;
   artboardId: string;
   projectId: string;
   onChange: (map: ImageMap) => void;
+  /** Set the artboard's background AND take its size from the image — see the editor's setBackground. */
+  onSetBackground: (url: string) => void;
   onClose: () => void;
 }) {
   const artboard = map.artboards.find((a) => a.id === artboardId);
+  const size = artboardSize(artboard);
+  const setSize = (patch: { width?: number; height?: number }): void =>
+    onChange(mapArtboard(map, artboardId, (a) => ({ ...a, ...size, ...patch })));
   const flag = (bag: Record<string, unknown> | undefined, key: string, fallback: boolean): boolean => {
     const v = bag?.[key];
     return typeof v === 'boolean' ? v : fallback;
@@ -548,32 +637,40 @@ function MapSettings({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {artboard && (
           <div>
-            <label className={fieldLabel} htmlFor="imap-w">
-              Artboard width (px)
-            </label>
-            <input
-              id="imap-w"
-              className={glassInput}
-              type="number"
-              value={map.general.width ?? 800}
-              onChange={(e) => onChange({ ...map, general: { ...map.general, width: Number.parseInt(e.target.value, 10) || 800 } })}
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={fieldLabel} htmlFor="imap-w">
+                  Artboard width (px)
+                </label>
+                <input
+                  id="imap-w"
+                  className={glassInput}
+                  type="number"
+                  value={size.width}
+                  onChange={(e) => setSize({ width: Number.parseInt(e.target.value, 10) || RUNTIME_ARTBOARD_SIZE.width })}
+                />
+              </div>
+              <div>
+                <label className={fieldLabel} htmlFor="imap-h">
+                  Artboard height (px)
+                </label>
+                <input
+                  id="imap-h"
+                  className={glassInput}
+                  type="number"
+                  value={size.height}
+                  onChange={(e) => setSize({ height: Number.parseInt(e.target.value, 10) || RUNTIME_ARTBOARD_SIZE.height })}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              This artboard’s own size — it sets the shape hotspots are laid out in, so it should match its background
+              image. Choosing an image sets both for you.
+            </p>
           </div>
-          <div>
-            <label className={fieldLabel} htmlFor="imap-h">
-              Artboard height (px)
-            </label>
-            <input
-              id="imap-h"
-              className={glassInput}
-              type="number"
-              value={map.general.height ?? 600}
-              onChange={(e) => onChange({ ...map, general: { ...map.general, height: Number.parseInt(e.target.value, 10) || 600 } })}
-            />
-          </div>
-        </div>
+        )}
 
         {artboard && (
           <fieldset className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -601,14 +698,7 @@ function MapSettings({
                 projectId={projectId}
                 value={artboard.image_url ?? ''}
                 placeholder="Choose from the media library"
-                onChange={(url) =>
-                  onChange({
-                    ...map,
-                    artboards: map.artboards.map((a) =>
-                      a.id === artboard.id ? { ...a, image_url: url, background_type: url ? 'image' : 'color' } : a,
-                    ),
-                  })
-                }
+                onChange={onSetBackground}
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Pick from this project’s library so the published site stays self-contained.

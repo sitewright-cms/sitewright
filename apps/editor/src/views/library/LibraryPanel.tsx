@@ -190,7 +190,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           key: 'imagemap',
           icon: <MapPin className="h-5 w-5" />,
           title: 'Image map studio',
-          blurb: 'Draw clickable hotspots over an image or SVG — tooltips, links, floors. Embed with {{sw-imagemap}}.',
+          blurb: 'Drop in an image, then trace its parts into clickable hotspots — tooltips, links, floors. Embed with {{sw-imagemap}}.',
           onOpen: () => setImapOpen(true),
         },
       ],

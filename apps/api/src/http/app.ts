@@ -56,6 +56,7 @@ import {
   type Form,
   type ImageMap,
   IMAGE_MAP_TEMPLATES,
+  isImageMapTemplateId,
   toPublicForm,
   type ImageAsset,
   type MediaAsset,
@@ -79,6 +80,7 @@ import {
   renderDocument,
   componentTypesInSource,
   componentAssets,
+  renderImageMapMarkup,
   systemI18nData,
   usesDialog,
   usesParallax,
@@ -4492,6 +4494,64 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         throw err;
       }
     });
+
+    // Render ONE image map to a self-contained document — JUST the map, no site chrome.
+    //
+    // The Studio's Preview used to render a whole PROJECT PAGE that embedded the map, so the author
+    // got a header, a footer and the site's typography wrapped around the thing they were editing.
+    // This is the map alone, on a neutral surface, filling the frame.
+    //
+    // Serves either a STORED map (`?map=<id>`) or a bundled DEMO (`?template=<id>`) — a demo renders
+    // straight from the bundled config and writes NOTHING into the project, which is the whole point
+    // of a demo: look at it without it becoming yours.
+    //
+    // Served directly as `text/html` under `sandbox allow-scripts`, like the snippet preview: an
+    // OPAQUE origin, so the inlined runtime executes (a map is nothing without it) while the
+    // document can neither reach the editor that framed it nor read anything same-origin.
+    app.get<{ Params: { projectId: string }; Querystring: { map?: string; template?: string } }>(
+      '/projects/:projectId/imagemaps/preview',
+      { config: rl(60) },
+      async (req, reply) => {
+        const { ctx } = await resolveProject(req, 'content:read');
+        const html = (body: string, code = 200) =>
+          reply
+            .code(code)
+            .header('content-security-policy', "sandbox allow-scripts; default-src 'none'; img-src * data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
+            .header('x-frame-options', 'SAMEORIGIN')
+            .type('text/html')
+            .send(body);
+        const notice = (msg: 'This map no longer exists.' | 'That demo does not exist.', code = 404) =>
+          html(
+            `<!doctype html><meta charset="utf-8"><body style="margin:0;font:13px/1.5 system-ui,sans-serif;color:#64748b;display:grid;place-items:center;height:100vh;padding:1rem;text-align:center">${msg}</body>`,
+            code,
+          );
+
+        let config: unknown = null;
+        const templateId = typeof req.query.template === 'string' ? req.query.template : '';
+        if (templateId) {
+          if (!isImageMapTemplateId(templateId)) return notice('That demo does not exist.');
+          config = await readTemplateConfig(templateId);
+          if (!config) return notice('That demo does not exist.');
+        } else {
+          const id = typeof req.query.map === 'string' ? req.query.map : '';
+          const stored = id ? await contentRepo.get(ctx, 'imagemap', id).catch(() => null) : null;
+          if (!stored) return notice('This map no longer exists.');
+          config = stored;
+        }
+
+        const assets = componentAssets(['ImageMap']);
+        const markup = renderImageMapMarkup({ id: 'preview', config: config as Record<string, unknown> });
+        return html(
+          '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+            `<style>html,body{margin:0;height:100%}body{display:grid;place-items:center;padding:16px;box-sizing:border-box;` +
+            `background:#f8fafc;font-family:ui-sans-serif,system-ui,sans-serif}.sw-imap-stage{width:100%;max-width:1200px}` +
+            `@media (prefers-color-scheme:dark){body{background:#0f172a}}</style>` +
+            `<style>${assets.css}</style>` +
+            `<div class="sw-imap-stage">${markup}</div>` +
+            `<script>${assets.js}</script>`,
+        );
+      },
+    );
 
     // Materialise a bundled IMAGE MAP TEMPLATE into this project.
     //

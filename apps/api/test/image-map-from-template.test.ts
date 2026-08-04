@@ -315,3 +315,53 @@ describe('image maps are sanitised AT REST, not only at render', () => {
     }
   });
 });
+
+describe('the map-only preview document', () => {
+  // The Studio's Preview used to render a whole PROJECT PAGE that embedded the map, so the author
+  // judged their work through a header, a footer and the site's typography. This serves the map
+  // alone — and, for a DEMO, without writing anything into the project.
+  it('serves a stored map as a self-contained document that runs the runtime', async () => {
+    const { t, projectId } = await setup('imap-prev@acme.test');
+    const map = {
+      id: 'plan',
+      general: { name: 'Plan' },
+      artboards: [
+        { id: 'ab', title: 'A', background_type: 'image', image_url: '/media/site/x-plan.png', width: 800, height: 600,
+          children: [{ id: 'h', title: 'Wing', type: 'rect', x: 10, y: 10, width: 10, height: 10 }] },
+      ],
+    };
+    expect((await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/imagemap/plan`, cookies: { sw_session: t }, payload: map })).statusCode).toBe(200);
+
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/imagemaps/preview?map=plan`, cookies: { sw_session: t } });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    // An OPAQUE origin that may still run scripts: a map without its runtime is a picture.
+    expect(res.headers['content-security-policy']).toContain('sandbox allow-scripts');
+    expect(res.body).toContain('data-sw-component="image-map"');
+    expect(res.body).toContain('Sitewright Image Map runtime');
+    expect(res.body).toContain('"Wing"');
+    // …and NOTHING of a project page: no nav, no footer, no site shell.
+    expect(res.body).not.toContain('id="page-content"');
+    expect(res.body).not.toContain('<header');
+    expect(res.body).not.toContain('<footer');
+  });
+
+  it('serves a DEMO straight from the bundle, storing nothing in the project', async () => {
+    const { t, projectId } = await setup('imap-demo@acme.test');
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/imagemaps/preview?template=engineering`, cookies: { sw_session: t } });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.body).toContain('data-sw-component="image-map"');
+    // ★ Looking at an example must not make it yours: no imagemap content, no media, nothing.
+    const stored = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/imagemap`, cookies: { sw_session: t } });
+    expect((stored.json() as { items: unknown[] }).items).toEqual([]);
+  });
+
+  it('404s an unknown map or demo rather than leaking which', async () => {
+    const { t, projectId } = await setup('imap-404@acme.test');
+    for (const q of ['map=nope', 'template=nope']) {
+      const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/imagemaps/preview?${q}`, cookies: { sw_session: t } });
+      expect(res.statusCode, q).toBe(404);
+      expect(res.headers['content-type']).toContain('text/html');
+    }
+  });
+});

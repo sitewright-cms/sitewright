@@ -1,4 +1,4 @@
-import { hexToRgb, htmlToElement, safeCssFilter, safeCssValue } from 'imap-shared/utilities'
+import { hexToRgb, htmlToElement, safeCssFilter, safeCssValue, safeLinkUrl } from 'imap-shared/utilities'
 import MapObject from 'imap/UI/objects/mapObject'
 
 export default class Spot extends MapObject {
@@ -29,9 +29,14 @@ export default class Spot extends MapObject {
       }
 
       if (this.options.default_style.icon_type === 'custom' && this.options.default_style.icon_url.length > 0) {
-        let iconHtml = `<img src="${this.options.default_style.icon_url}" style="width: ${this.options.default_style.icon_size}px; height: ${this.options.default_style.icon_size}px">`
-
-        element.appendChild(htmlToElement(iconHtml))
+        // ★ setAttribute, not an interpolated markup string. Built as HTML, a URL carrying a quote
+        // closed the attribute and added its own — `x" onerror="…` is a working handler. The server
+        // also gates this value (image-map-embed safeAssetUrl); this is the second of the two ends.
+        let img = document.createElement('img')
+        img.setAttribute('src', safeLinkUrl(this.options.default_style.icon_url))
+        img.style.width = `${this.options.default_style.icon_size}px`
+        img.style.height = `${this.options.default_style.icon_size}px`
+        element.appendChild(img)
       }
 
       // Shadow

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { IMAGE_MAP_PIN_ICON_PATH, type ImageMapArtboard, type ImageMapObject } from '@sitewright/schema';
+import type { ImageMapArtboard, ImageMapObject } from '@sitewright/schema';
+import { renderIconSvg } from '@sitewright/blocks';
 import {
   artboardSize,
   artboardToPolyPoint,
   boundsFromDrag,
   clampPct,
-  DOT_SIZE_PX,
   DRAG_THRESHOLD,
   insertPolyVertex,
   normalizePoly,
   objectBounds,
-  PIN_SIZE_PX,
+  ICON_SIZE_PX,
+  iconNameOf,
+  isIconSpot,
   polyPointToArtboard,
   removePolyVertex,
   round,
@@ -349,8 +351,10 @@ export function Canvas({
       setBoxDraft(null);
       // A drag sizes the shape; a plain click drops it at its default size. A PIN has no size to
       // drag out — the runtime draws it at its icon size — so it is always placed at the press.
+      // An ICON has no box to drag out — the runtime draws it at `icon_size` — so it is always
+      // placed at the press.
       const dragged =
-        drawing !== 'spot' &&
+        drawing !== 'icon' &&
         Math.abs(end.x - start.x) >= DRAG_THRESHOLD &&
         Math.abs(end.y - start.y) >= DRAG_THRESHOLD;
       onDraw(drawing, dragged ? { kind: 'bounds', bounds: boundsFromDrag(start, end) } : { kind: 'point', x: start.x, y: start.y });
@@ -723,28 +727,29 @@ function Shape({
 
   if (obj.type === 'spot') {
     const style = (obj.default_style ?? {}) as Record<string, unknown>;
-    const dot = style.use_icon === false;
-    // PIXELS, matching the runtime: an icon spot is sized by `icon_size`, a dot by width/height.
-    // Drawing either as a percentage box is what made the Studio's pin a dot and the page's a
-    // pointer — the author placed one shape and published another.
-    const size = dot ? num(obj.width, DOT_SIZE_PX) : num(style.icon_size, PIN_SIZE_PX);
+    // An ICON is sized in PIXELS by `icon_size` — that is what the runtime reads, and a marker that
+    // scaled with the artboard would be a thumbnail on a floor plan and a billboard on a diagram.
+    const size = num(style.icon_size, ICON_SIZE_PX);
+    const fill = rgba(style.icon_fill, 1, '#4f46e5');
 
-    if (dot) {
+    // A legacy non-icon spot (imported templates carry them) still draws as its plain box.
+    if (!isIconSpot(obj)) {
       return (
         <button
           type="button"
-          aria-label={obj.title || 'Dot'}
-          data-testid="imap-shape-dot"
+          aria-label={obj.title || 'Spot'}
+          data-testid="imap-shape-spot"
+          // A legacy spot may still carry `pulse` — the runtime honours it, so the editor must too,
+          // or removing the Dot TOOL would quietly create a new editor-vs-page mismatch.
           className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-move ${style.pulse ? 'sw-imap-studio-pulse' : ''} ${ring}`}
           style={{
             left: `${b.x}%`,
             top: `${b.y}%`,
-            width: size,
-            height: num(obj.height, DOT_SIZE_PX),
+            width: num(obj.width, 18),
+            height: num(obj.height, 18),
+            boxSizing: 'border-box',
             background: fillOf(obj),
-            // A dot is a circle at any size: the runtime writes border_radius in px, and a radius at
-            // least half the box rounds it fully.
-            borderRadius: num(style.border_radius, size),
+            borderRadius: num(style.border_radius, 4),
             borderStyle: (style.border_style as string) || 'solid',
             borderWidth: num(style.border_width, 0),
             borderColor: rgba(style.border_color, style.border_opacity, '#ffffff'),
@@ -754,20 +759,26 @@ function Shape({
         />
       );
     }
+
     return (
       <button
         type="button"
-        aria-label={obj.title || 'Pin'}
-        data-testid="imap-shape-pin"
-        // Anchored by its TIP, exactly as the runtime anchors it (margin-top: -icon_size), so the
-        // point of the marker sits on the hotspot's coordinate in both places.
+        aria-label={obj.title || 'Icon'}
+        data-testid="imap-shape-icon"
+        // Anchored by its BOTTOM CENTRE, exactly as the runtime anchors a pin
+        // (`margin-top: -icon_size`), so the point of a marker lands on the hotspot's coordinate.
         className={`absolute z-10 -translate-x-1/2 -translate-y-full cursor-move ${ring}`}
-        style={{ left: `${b.x}%`, top: `${b.y}%`, width: size, height: size, ...inertStyle }}
-        onPointerDown={(e) => onPointerDown(e, 'move')}
+        style={{ left: `${b.x}%`, top: `${b.y}%`, width: size, height: size, color: fill, ...inertStyle }}
+      onPointerDown={(e) => onPointerDown(e, 'move')}
       >
-        <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="drop-shadow">
-          <path d={IMAGE_MAP_PIN_ICON_PATH} fill={rgba(style.icon_fill, 1, '#0a7a5a')} />
-        </svg>
+        {/* Rendered from the icon's NAME through the platform's own renderer, not from the
+            `icon_svg` stored on the object: the editor should never inject config-supplied markup
+            into its own document, even sanitised. The stored svg is what the RUNTIME paints. */}
+        <span
+          className="block h-full w-full [&>svg]:h-full [&>svg]:w-full"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: renderIconSvg(iconNameOf(obj), '') }}
+        />
       </button>
     );
   }

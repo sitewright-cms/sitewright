@@ -334,3 +334,54 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
     </div>
   );
 }
+
+/**
+ * A {@link ColorField} with the project's CI palette beside it.
+ *
+ * Reaching for the brand's own colours is the common case, and hunting them down in a colour wheel
+ * is the wrong amount of work for it — one click sets primary, secondary or any custom token, and
+ * the full picker is still there for everything else. The swatch of the CURRENT value is ringed, so
+ * "is this on-brand?" is answerable at a glance.
+ */
+export function BrandColorField({
+  value,
+  onChange,
+  label,
+  palette,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  /** The project's CI tokens, in display order. Empty renders the picker alone. */
+  palette: ReadonlyArray<{ key: string; value: string }>;
+}) {
+  const current = value.trim().toLowerCase();
+  return (
+    <div className="flex items-center gap-2">
+      <ColorField value={value} onChange={onChange} label={label} />
+      {palette.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {palette.map((token) => {
+            const active = token.value.trim().toLowerCase() === current;
+            return (
+              <button
+                key={token.key}
+                type="button"
+                title={`${token.key} — ${token.value}`}
+                // Named per FIELD: a panel can carry several colour controls, and "Use primary"
+                // three times over is ambiguous to a screen reader and to a test.
+                aria-label={`Use ${token.key} for ${label}`}
+                aria-pressed={active}
+                onClick={() => onChange(token.value)}
+                className={`h-5 w-5 rounded-full border transition hover:scale-110 ${
+                  active ? 'border-transparent ring-2 ring-offset-1 ring-sky-500 dark:ring-offset-slate-900' : 'border-black/15 dark:border-white/20'
+                }`}
+                style={{ background: token.value }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

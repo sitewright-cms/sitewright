@@ -80,22 +80,29 @@ describe('ImageMapStudio — the map list', () => {
     expect(screen.getByTitle('Copy the embed code for a page')).toBeTruthy();
   });
 
-  it('materialises a template through the API rather than writing one client-side', async () => {
-    const create = vi
-      .spyOn(api, 'createImageMapFromTemplate')
-      .mockResolvedValue({ item: { ...MAP, id: 'business-1' }, importedImages: 0 });
+  it('opens a demo as a PREVIEW and writes nothing into the project', async () => {
+    // ★ It used to materialise the template on click — a new map in the project plus its images
+    // copied into the media library — just from looking at an example.
+    const create = vi.spyOn(api, 'createImageMapFromTemplate');
     studio();
     fireEvent.click(await screen.findByRole('button', { name: /Business/ }));
-    // The server copies any images into the project's media library — the client never does.
-    await waitFor(() => expect(create).toHaveBeenCalledWith('p1', { template: 'business' }));
+    expect(await screen.findByTestId('imap-demo-frame')).toBeTruthy();
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByText(/nothing is added to your project/i)).toBeTruthy();
   });
 
-  it('asks before deleting, and says what breaks', async () => {
+  it('asks before deleting through a real dialog, and says what breaks', async () => {
     const del = vi.spyOn(api, 'deleteImageMap').mockResolvedValue(undefined);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const native = vi.spyOn(window, 'confirm');
     studio();
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-    expect(confirm.mock.calls[0]?.[0]).toMatch(/page embedding it will fail to render/);
+    // A styled, themed, stacking dialog — never the native confirm, which blocks the whole tab.
+    expect(await screen.findByText(/page embedding this map will fail to render/)).toBeTruthy();
+    expect(native).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText(/page embedding this map/)).toBeNull());
     expect(del).not.toHaveBeenCalled();
   });
 
@@ -161,15 +168,17 @@ describe('ImageMapStudio — the editor', () => {
     expect(screen.getByRole('button', { name: 'Ground' })).toBeTruthy();
   });
 
-  it('warns before leaving with unsaved changes', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('warns before leaving with unsaved changes, through a dialog', async () => {
+    const native = vi.spyOn(window, 'confirm');
     const { rail } = await openEditor();
     fireEvent.click(rail.getByRole('button', { name: 'Reception' }));
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Lobby' } });
     fireEvent.click(screen.getByRole('button', { name: '← All maps' }));
-    expect(confirm).toHaveBeenCalled();
+    expect(await screen.findByText(/It has unsaved changes/)).toBeTruthy();
+    expect(native).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     // Declined → still in the editor.
-    expect(screen.getByText('Artboards')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Artboards')).toBeTruthy());
   });
 
   it('exposes the map settings, including the visitor controls', async () => {
@@ -186,7 +195,7 @@ describe('ObjectDetails', () => {
   const object = MAP.artboards[0]!.children![0]!;
   const details = (over: Partial<ImageMapObject> = {}, onChange = vi.fn()) => {
     render(
-      <ObjectDetails map={MAP} object={{ ...object, ...over }} projectId="p1" onChange={onChange} onDelete={() => {}} />,
+      <ObjectDetails palette={[]} map={MAP} object={{ ...object, ...over }} projectId="p1" onChange={onChange} onDelete={() => {}} />,
     );
     return onChange;
   };
@@ -203,12 +212,37 @@ describe('ObjectDetails', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('writes fill + opacity into the right style bag', () => {
-    const onChange = details();
+  it('writes fill into the right style bag, and offers the CI palette as one click', () => {
+    // The colour control is the platform's own picker now, not a bare <input type="color">, and it
+    // carries the project's CI tokens beside it — reaching for the brand's colours is the common
+    // case and hunting them down in a colour wheel is the wrong amount of work for it.
+    const onChange = vi.fn();
+    render(
+      <ObjectDetails
+        palette={[
+          { key: 'primary', value: '#123456' },
+          { key: 'secondary', value: '#abcdef' },
+        ]}
+        map={MAP}
+        object={MAP.artboards[0]!.children![0]!}
+        projectId="p1"
+        onChange={onChange}
+        onDelete={() => {}}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Style' }));
     const rest = within(screen.getByRole('group', { name: 'At rest' }));
-    fireEvent.change(rest.getByLabelText('Fill'), { target: { value: '#ff0000' } });
-    expect(onChange).toHaveBeenCalledWith({ default_style: expect.objectContaining({ background_color: '#ff0000' }) });
+    fireEvent.click(rest.getByRole('button', { name: 'Use primary for At rest fill' }));
+    expect(onChange).toHaveBeenCalledWith({ default_style: expect.objectContaining({ background_color: '#123456' }) });
+  });
+
+  it('hides border controls on an ICON, which the runtime paints no border on', () => {
+    const icon = { id: 'i1', title: 'Marker', type: 'spot' as const, x: 5, y: 5, default_style: { use_icon: true, icon_size: 40, icon_name: 'map-pin:fill' } };
+    render(<ObjectDetails palette={[]} map={MAP} object={icon} projectId="p1" onChange={() => {}} onDelete={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Style' }));
+    expect(screen.queryByLabelText(/Border width/i)).toBeNull();
+    // …and offers the thing an icon DOES have: a size.
+    expect(screen.getByLabelText('Icon size in pixels')).toBeTruthy();
   });
 
   it('offers only actions the runtime can perform — never a script', () => {
@@ -567,15 +601,15 @@ describe('Canvas', () => {
       expect(onDraw).toHaveBeenCalledWith('rect', { kind: 'point', x: 10, y: 10 });
     });
 
-    it('places a pin at the press however far the pointer then travels', () => {
-      // A pin has no size to drag out — the runtime draws it at its icon size, so sizing one from a
+    it('places an ICON at the press however far the pointer then travels', () => {
+      // An icon has no box to drag out — the runtime draws it at `icon_size`, so sizing one from a
       // drag would produce a giant marker the author never asked for.
       const onDraw = vi.fn();
-      const { box } = canvas({ drawing: 'spot', onDraw });
+      const { box } = canvas({ drawing: 'icon', onDraw });
       pointer(box, 'pointerdown', at(30, 40));
       pointer(box, 'pointermove', at(80, 90));
       pointer(box, 'pointerup', at(80, 90));
-      expect(onDraw).toHaveBeenCalledWith('spot', { kind: 'point', x: 30, y: 40 });
+      expect(onDraw).toHaveBeenCalledWith('icon', { kind: 'point', x: 30, y: 40 });
     });
   });
 
@@ -585,25 +619,32 @@ describe('Canvas', () => {
     // and an authored border is painted rather than replaced by a fixed editor hairline.
     const shape = (over: Partial<ImageMapObject> & { id: string }): ImageMapObject => ({ title: over.id, type: 'rect', x: 10, y: 10, width: 20, height: 20, ...over });
 
-    it('draws a Pin as the marker artwork, not as a dot', () => {
+    it('draws an ICON as its chosen artwork, coloured by the hotspot fill', () => {
       canvas({
-        artboard: { ...MAP.artboards[0]!, children: [shape({ id: 'p', title: 'Pin', type: 'spot', default_style: { use_icon: true, icon_is_pin: true, icon_size: 40 } })] },
+        artboard: {
+          ...MAP.artboards[0]!,
+          children: [shape({ id: 'p', title: 'Marker', type: 'spot', default_style: { use_icon: true, icon_size: 40, icon_name: 'map-pin:fill', icon_fill: '#123456' } })],
+        },
       });
-      const pin = screen.getByTestId('imap-shape-pin');
-      expect(pin.querySelector('svg path')).toBeTruthy();
-      expect(screen.queryByTestId('imap-shape-dot')).toBeNull();
+      const icon = screen.getByTestId('imap-shape-icon');
+      expect(icon.querySelector('svg')).toBeTruthy();
+      // `color`, not a fill attribute: the artwork is currentColor, so one stored icon serves both
+      // the resting and the hover fill.
+      expect(icon.style.color).toBe('rgb(18, 52, 86)');
     });
 
-    it('draws a Dot as a circle with a pulsing ring', () => {
+    it('still draws an IMPORTED non-icon spot as its own box, pulse and all', () => {
+      // Removing the Dot TOOL must not stop the editor drawing a dot a template brought in — the
+      // runtime still paints it, so the two would silently disagree again.
       canvas({
         artboard: {
           ...MAP.artboards[0]!,
           children: [shape({ id: 'd', title: 'Dot', type: 'spot', width: 18, height: 18, default_style: { use_icon: false, border_radius: 18, border_width: 3, pulse: true } })],
         },
       });
-      const dot = screen.getByTestId('imap-shape-dot');
+      const dot = screen.getByTestId('imap-shape-spot');
       expect(dot.className).toContain('sw-imap-studio-pulse');
-      expect(screen.queryByTestId('imap-shape-pin')).toBeNull();
+      expect(screen.queryByTestId('imap-shape-icon')).toBeNull();
     });
 
     it('paints the AUTHORED border on a box shape', () => {

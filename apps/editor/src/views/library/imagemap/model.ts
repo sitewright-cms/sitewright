@@ -5,34 +5,48 @@
 // what makes a map resolution-independent: the runtime scales the artboard to its container and the
 // hotspots follow. The Studio therefore converts to pixels only at the moment it draws or drags.
 import type { ImageMap, ImageMapArtboard, ImageMapObject, ImageMapTooltipBlock } from '@sitewright/schema';
+import { iconSvg } from './icon-svg';
 
 /**
  * The hotspot shapes the Studio can draw. (`svg`/`svg-single`/`group` come from imports.)
  *
- * ★ `dot` IS NOT A CONFIG TYPE. The runtime knows `spot`, which draws either an icon
- * (`use_icon: true` → the pin marker) or a plain box (`use_icon: false` → a dot). A Dot is the
- * second of those with a round radius, so it is a Studio-level TOOL over the same stored type — no
- * new type in the schema, and nothing for the runtime to learn. {@link storedType} maps back.
+ * ★ `icon` IS NOT A CONFIG TYPE. The runtime knows `spot`, which draws either an icon
+ * (`use_icon: true`) or a plain box. An Icon hotspot is the first of those, so it is a Studio-level
+ * TOOL over the same stored type — nothing new for the runtime or the schema to learn.
+ * {@link storedType} maps back.
+ *
+ * It replaced the separate Pin and Dot tools: both were one icon each, and an author who wanted
+ * anything else was stuck. A map's markers are its vocabulary — a bed, a car, a flag — so the tool
+ * is "pick an icon", defaulting to a filled map-pin, rather than two fixed shapes.
  */
-export const DRAWABLE_TYPES = ['rect', 'oval', 'poly', 'spot', 'dot', 'text'] as const;
+export const DRAWABLE_TYPES = ['rect', 'oval', 'poly', 'icon', 'text'] as const;
 export type DrawableType = (typeof DRAWABLE_TYPES)[number];
 
-/** The `type` a drawable is STORED as — every tool but Dot is its own type. */
+/** The `type` a drawable is STORED as — every tool but Icon is its own type. */
 export function storedType(type: DrawableType): string {
-  return type === 'dot' ? 'spot' : type;
+  return type === 'icon' ? 'spot' : type;
 }
 
-/** Is this stored object drawn as a plain dot rather than the pin marker? */
-export function isDot(obj: ImageMapObject): boolean {
-  return obj.type === 'spot' && (obj.default_style as { use_icon?: unknown } | undefined)?.use_icon === false;
+/** Is this stored object drawn as an ICON (rather than a plain box)? */
+export function isIconSpot(obj: ImageMapObject): boolean {
+  return obj.type === 'spot' && (obj.default_style as { use_icon?: unknown } | undefined)?.use_icon !== false;
 }
+
+/** The icon this hotspot draws, in `<name>[:<weight>]` / `brand:<slug>` / `flag:<code>` form. */
+export function iconNameOf(obj: ImageMapObject): string {
+  const name = (obj.default_style as { icon_name?: unknown } | undefined)?.icon_name;
+  return typeof name === 'string' && name !== '' ? name : DEFAULT_ICON_NAME;
+}
+
+/** The default marker: a filled map pin, the thing most people reach for first. */
+export const DEFAULT_ICON_NAME = 'map-pin:fill';
 
 export const TYPE_LABELS: Record<string, string> = {
   rect: 'Rectangle',
   oval: 'Oval',
   poly: 'Polygon',
-  spot: 'Pin',
-  dot: 'Dot',
+  spot: 'Icon',
+  icon: 'Icon',
   text: 'Text',
   svg: 'SVG group',
   'svg-single': 'SVG shape',
@@ -178,8 +192,16 @@ export function round(n: number): number {
  * Only the fields that differ from the runtime's own objectDefaults are set: it deep-extends every
  * object against them, so writing the full default set here would be a second copy to keep in step.
  */
-export function newObject(type: DrawableType, x: number, y: number, title: string): ImageMapObject {
-  const base = baseObject(type, x, y, title);
+export function newObject(
+  type: DrawableType,
+  x: number,
+  y: number,
+  title: string,
+  palette: HotspotPalette = DEFAULT_PALETTE,
+): ImageMapObject {
+  const base = baseObject(type, x, y, title, palette);
+  const { fill, hoverFill } = palette;
+  const iconSize = ICON_SIZE_PX;
   if (type === 'poly') {
     // A click with the polygon tool that never became a trace. Three vertices the author can
     // reshape — but tracing (see {@link polyFromPoints}) is the path this tool is really for.
@@ -196,37 +218,28 @@ export function newObject(type: DrawableType, x: number, y: number, title: strin
       ],
     };
   }
-  if (type === 'spot') {
-    // A PIN is the marker icon, sized in PIXELS by `icon_size` and anchored by its tip. Its width /
-    // height are unused by the runtime for an icon spot, so they stay at the config default.
+  if (type === 'icon') {
+    // An ICON is a `spot` the runtime draws from `icon_svg`. Two values are stored: `icon_name` is
+    // what the editor re-opens the picker with, `icon_svg` is what the runtime paints — a bundled
+    // runtime cannot resolve a name against the platform's icon library, so the artwork travels
+    // with the config (and is sanitised at rest, like every other authored fragment).
     return {
       ...base,
-      width: PIN_SIZE_PX,
-      height: PIN_SIZE_PX,
-      default_style: { ...base.default_style, use_icon: true, icon_is_pin: true, icon_size: PIN_SIZE_PX, icon_fill: '#0a7a5a' },
-      mouseover_style: { ...base.mouseover_style, icon_fill: '#0f9e74' },
-    };
-  }
-  if (type === 'dot') {
-    // A DOT is the same stored `spot` with the icon turned OFF — the runtime then draws a box with
-    // this background, border and radius. Sized in PIXELS (the non-icon spot branch reads px), and
-    // given a radius past half its size so it is a circle at any size.
-    return {
-      ...base,
-      type: 'spot',
-      width: DOT_SIZE_PX,
-      height: DOT_SIZE_PX,
+      width: iconSize,
+      height: iconSize,
       default_style: {
         ...base.default_style,
-        use_icon: false,
-        background_opacity: 1,
-        border_radius: DOT_SIZE_PX,
-        border_width: 3,
-        border_color: '#ffffff',
-        border_opacity: 1,
-        pulse: true,
+        use_icon: true,
+        icon_is_pin: true,
+        icon_type: 'library',
+        icon_size: iconSize,
+        icon_name: DEFAULT_ICON_NAME,
+        // The artwork travels WITH the config: the runtime cannot resolve a name against the
+        // platform's icon library, so a hotspot without this renders nothing on the page.
+        icon_svg: iconSvg(DEFAULT_ICON_NAME),
+        icon_fill: fill,
       },
-      mouseover_style: { ...base.mouseover_style, background_opacity: 1, border_radius: DOT_SIZE_PX, border_width: 3, border_color: '#ffffff' },
+      mouseover_style: { ...base.mouseover_style, icon_fill: hoverFill },
     };
   }
   if (type === 'text') {
@@ -241,16 +254,22 @@ export function newObject(type: DrawableType, x: number, y: number, title: strin
  * Only the fields that differ from the runtime's own objectDefaults are set: it deep-extends every
  * object against them, so writing the full default set here would be a second copy to keep in step.
  */
-function baseObject(type: DrawableType, x: number, y: number, title: string): ImageMapObject {
+function baseObject(
+  type: DrawableType,
+  x: number,
+  y: number,
+  title: string,
+  palette: HotspotPalette = DEFAULT_PALETTE,
+): ImageMapObject {
   return {
     id: newId(type),
     title,
-    // A Dot is stored as the `spot` the runtime knows — see {@link storedType}.
+    // An Icon is stored as the `spot` the runtime knows — see {@link storedType}.
     type: storedType(type) as ImageMapObject['type'],
     x: round(clampPct(x)),
     y: round(clampPct(y)),
-    default_style: { background_color: '#0a7a5a', background_opacity: 0.35 },
-    mouseover_style: { background_color: '#0a7a5a', background_opacity: 0.6 },
+    default_style: { background_color: palette.fill, background_opacity: 0.35 },
+    mouseover_style: { background_color: palette.hoverFill, background_opacity: 0.6 },
     tooltip: { enable_tooltip: true },
     tooltip_content: [],
     actions: { click: 'no-action' },
@@ -258,8 +277,8 @@ function baseObject(type: DrawableType, x: number, y: number, title: string): Im
 }
 
 /** A hotspot sized by a drag rather than dropped at a default size. */
-export function sizedObject(type: DrawableType, bounds: Bounds, title: string): ImageMapObject {
-  const base = baseObject(type, bounds.x, bounds.y, title);
+export function sizedObject(type: DrawableType, bounds: Bounds, title: string, palette: HotspotPalette = DEFAULT_PALETTE): ImageMapObject {
+  const base = baseObject(type, bounds.x, bounds.y, title, palette);
   const sized = { ...base, width: bounds.width, height: bounds.height };
   return type === 'text' ? { ...sized, text: { text: title, font_size: 16, text_color: '#111111' } } : sized;
 }
@@ -289,8 +308,26 @@ export const MIN_BOX = 0.5;
  * `icon_size`, and a non-icon spot by `width`/`height` in px. A marker that scaled with the artboard
  * would be a thumbnail on a floor plan and a billboard on a diagram.
  */
-export const PIN_SIZE_PX = 40;
-export const DOT_SIZE_PX = 18;
+export const ICON_SIZE_PX = 40;
+
+/** The size range the Studio's icon slider offers, in px. */
+export const ICON_SIZE_MIN = 12;
+export const ICON_SIZE_MAX = 160;
+
+/**
+ * The colours a NEW hotspot is born with.
+ *
+ * ★ The project's CI primary and secondary, not a hard-coded green. A hotspot is site furniture;
+ * arriving in the brand's own colours is the difference between "styled" and "a thing to restyle".
+ * Hover uses SECONDARY so the change is visible without being chosen.
+ */
+export interface HotspotPalette {
+  fill: string;
+  hoverFill: string;
+}
+
+/** Only used when a project's identity has not loaded yet — the platform's own brand tokens. */
+export const DEFAULT_PALETTE: HotspotPalette = { fill: '#4f46e5', hoverFill: '#0ea5e9' };
 
 /**
  * How far the pointer must travel before a press-drag-release is read as SIZING the shape rather
@@ -340,9 +377,9 @@ export function polyGeometry(points: ReadonlyArray<Point>): Bounds & { points: P
  * back onto the artboard. {@link polyGeometry} itself stays pure, because {@link normalizePoly}
  * re-derives an existing shape's box with it and must not move the shape while doing so.
  */
-export function polyFromPoints(points: ReadonlyArray<Point>, title: string): ImageMapObject {
+export function polyFromPoints(points: ReadonlyArray<Point>, title: string, palette: HotspotPalette = DEFAULT_PALETTE): ImageMapObject {
   const geometry = polyGeometry(points.map((p) => ({ x: clampPct(p.x), y: clampPct(p.y) })));
-  return { ...baseObject('poly', geometry.x, geometry.y, title), ...geometry };
+  return { ...baseObject('poly', geometry.x, geometry.y, title, palette), ...geometry };
 }
 
 /**

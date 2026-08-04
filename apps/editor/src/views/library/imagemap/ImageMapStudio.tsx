@@ -3,9 +3,10 @@ import type { ImageMap, ImageMapObject, ImageMapTemplate } from '@sitewright/sch
 import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/Toast';
 import { useCopy } from '../../ui/useCopy';
-import { api, previewDocUrl } from '../../../api';
+import { api } from '../../../api';
 import { fieldLabel, ghostButton, glassInput, primaryButton, toggleInput } from '../../../theme';
 import { Canvas, type DrawSpec } from './Canvas';
+import { useDialogs } from '../../ui/Dialogs';
 import { ACCEPT_IMAGE, ObjectDetails, AssetField } from './ObjectDetails';
 import { FilePicker } from '../../files/FilePicker';
 import {
@@ -24,7 +25,9 @@ import {
   polyFromPoints,
   sizedObject,
   RUNTIME_ARTBOARD_SIZE,
+  DEFAULT_PALETTE,
   type DrawableType,
+  type HotspotPalette,
 } from './model';
 
 /**
@@ -41,10 +44,19 @@ interface ImageMapStudioProps {
   projectId?: string;
 }
 
-type View = { kind: 'list' } | { kind: 'edit'; id: string };
+type View =
+  | { kind: 'list' }
+  | { kind: 'edit'; id: string }
+  // A DEMO is looked at, never edited — and never copied into the project. See `demo` below.
+  | { kind: 'demo'; template: ImageMapTemplate };
 
 export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
   const toast = useToast();
+  const { confirm, dialog } = useDialogs();
+  // The project's CI tokens: every new hotspot is born in the brand's colours, and every colour
+  // control offers them as one-click swatches. Best-effort — a project with no settings yet just
+  // gets the platform defaults.
+  const [palette, setPalette] = useState<ReadonlyArray<{ key: string; value: string }>>([]);
   const [view, setView] = useState<View>({ kind: 'list' });
   const [maps, setMaps] = useState<ImageMap[]>([]);
   const [templates, setTemplates] = useState<ImageMapTemplate[]>([]);
@@ -75,6 +87,26 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    let live = true;
+    void api
+      .getSettings(projectId)
+      .then((res) => {
+        const colors = (res.item?.identity as { colors?: Record<string, string> } | undefined)?.colors ?? {};
+        const tokens = Object.entries(colors)
+          .filter(([, v]) => typeof v === 'string' && v !== '')
+          .map(([key, value]) => ({ key, value }));
+        if (live) setPalette(tokens);
+      })
+      .catch(() => {
+        /* the swatch row is an assist; its absence must never block the Studio */
+      });
+    return () => {
+      live = false;
+    };
+  }, [projectId]);
+
   async function createBlank(): Promise<void> {
     if (!projectId) return;
     const name = 'Untitled map';
@@ -91,28 +123,27 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
     }
   }
 
-  async function createFromTemplate(template: ImageMapTemplate): Promise<void> {
-    if (!projectId) return;
-    setBusy(true);
-    try {
-      const { item, importedImages } = await api.createImageMapFromTemplate(projectId, { template: template.id });
-      await load();
-      setView({ kind: 'edit', id: item.id });
-      toast.show(importedImages > 0
-          ? `Added “${template.name}” — ${importedImages} image${importedImages === 1 ? '' : 's'} copied into your library`
-          : `Added “${template.name}”`,
-        'success',
-      );
-    } catch {
-      toast.show('Could not create the map from that template', 'error');
-    } finally {
-      setBusy(false);
-    }
+  /**
+   * Open a DEMO. It renders straight from the bundled config and writes NOTHING into the project.
+   *
+   * ★ It used to MATERIALISE the template — a new map in the project, its images copied into the
+   * media library — just from clicking it. Looking at an example is not the same as wanting a copy
+   * of it, and undoing that meant deleting a map plus the assets it dragged in.
+   */
+  function openDemo(template: ImageMapTemplate): void {
+    setView({ kind: 'demo', template });
   }
 
   async function remove(map: ImageMap): Promise<void> {
     if (!projectId) return;
-    if (!window.confirm(`Delete “${map.general.name}”? Any page embedding it will fail to render until the reference is removed.`)) return;
+    // A real dialog, not window.confirm — the platform has `useDialogs` for exactly this, and a
+    // native confirm is unstyled, unthemeable and blocks the whole tab.
+    const ok = await confirm({
+      title: `Delete “${map.general.name}”?`,
+      message: 'Any page embedding this map will fail to render until you remove the reference.',
+      confirmLabel: 'Delete map',
+    });
+    if (!ok) return;
     try {
       await api.deleteImageMap(projectId, map.id);
       await load();
@@ -128,8 +159,13 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
       title={editing ? `Image Map — ${editing.general.name}` : 'Image Maps'}
       onClose={onClose}
       size="screen"
-      onBeforeClose={() =>
-        !dirty || window.confirm('This map has unsaved changes. Close the studio and lose them?')
+      onBeforeClose={async () =>
+        !dirty ||
+        (await confirm({
+          title: 'Close the studio?',
+          message: 'This map has unsaved changes. Closing loses them.',
+          confirmLabel: 'Discard changes',
+        }))
       }
     >
       {!projectId ? (
@@ -139,6 +175,14 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
           key={editing.id}
           map={editing}
           projectId={projectId}
+          palette={palette}
+          confirmLeave={() =>
+            confirm({
+              title: 'Leave this map?',
+              message: 'It has unsaved changes. Leaving loses them.',
+              confirmLabel: 'Discard changes',
+            })
+          }
           onDirtyChange={setDirty}
           onBack={() => {
             setView({ kind: 'list' });
@@ -146,6 +190,8 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
             void load();
           }}
         />
+      ) : view.kind === 'demo' ? (
+        <DemoPreview projectId={projectId} template={view.template} onBack={() => setView({ kind: 'list' })} />
       ) : (
         <MapList
           maps={maps}
@@ -154,11 +200,46 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
           busy={busy}
           onOpen={(id) => setView({ kind: 'edit', id })}
           onCreateBlank={createBlank}
-          onCreateFromTemplate={createFromTemplate}
+          onCreateFromTemplate={openDemo}
           onDelete={remove}
         />
       )}
+      {/* The confirm/prompt host. One per Studio; the dialogs stack over this modal correctly. */}
+      {dialog}
     </Modal>
+  );
+}
+
+/**
+ * A DEMO, shown running and nothing else.
+ *
+ * No editor: a demo exists to answer "what can this thing do", and giving it an editor invites
+ * changes to something that is not the author's and cannot be saved. No project write either — see
+ * `openDemo`.
+ */
+function DemoPreview({ projectId, template, onBack }: { projectId: string; template: ImageMapTemplate; onBack: () => void }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 dark:border-slate-700">
+        <button type="button" className={ghostButton} onClick={onBack}>
+          ← All maps
+        </button>
+        <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
+        <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{template.name}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {template.summary} · {template.hotspots} hotspots
+        </span>
+        <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          Example — nothing is added to your project
+        </span>
+      </div>
+      <iframe
+        title={`${template.name} demo`}
+        data-testid="imap-demo-frame"
+        src={api.imageMapPreviewUrl(projectId, { template: template.id })}
+        className="min-h-0 flex-1 border-0 bg-white"
+      />
+    </div>
   );
 }
 
@@ -205,27 +286,40 @@ function MapList({
             </button>
           </div>
         ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {maps.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(m.id)}>
-                  <span className="block truncate text-sm font-bold text-slate-800 dark:text-slate-100">{m.general.name}</span>
-                  <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    {m.artboards.length} artboard{m.artboards.length === 1 ? '' : 's'} · {countHotspots(m)} hotspot
-                    {countHotspots(m) === 1 ? '' : 's'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`${ghostButton} px-2 py-1 text-[11px]`}
-                  onClick={() => copy(`{{sw-imagemap "${m.id}"}}`, m.id)}
-                  title="Copy the embed code for a page"
-                >
-                  Copy embed
-                </button>
-                <button type="button" className={`${ghostButton} px-2 py-1 text-[11px] text-rose-600 dark:text-rose-400`} onClick={() => onDelete(m)}>
-                  Delete
-                </button>
+              <li key={m.id}>
+                {/* The author's OWN maps are the point of this screen, so they read as the primary
+                    thing: a card with real presence and the platform's lift-on-hover, against the
+                    quieter example tiles below. */}
+                <div className="waves-effect group relative flex h-full flex-col rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-400 hover:shadow-lg dark:border-slate-700 dark:bg-white/5 dark:hover:border-sky-500">
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(m.id)}>
+                    <span className="block truncate text-sm font-bold text-slate-900 group-hover:text-sky-700 dark:text-slate-100 dark:group-hover:text-sky-300">
+                      {m.general.name}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                      {m.artboards.length} artboard{m.artboards.length === 1 ? '' : 's'} · {countHotspots(m)} hotspot
+                      {countHotspots(m) === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                  <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-2 dark:border-slate-700/60">
+                    <button
+                      type="button"
+                      className={`${ghostButton} px-2 py-1 text-[11px]`}
+                      onClick={() => copy(`{{sw-imagemap "${m.id}"}}`, m.id)}
+                      title="Copy the embed code for a page"
+                    >
+                      Copy embed
+                    </button>
+                    <button
+                      type="button"
+                      className={`${ghostButton} ml-auto px-2 py-1 text-[11px] text-rose-600 dark:text-rose-400`}
+                      onClick={() => onDelete(m)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -265,11 +359,17 @@ function MapList({
 function MapEditor({
   map: initial,
   projectId,
+  palette,
+  confirmLeave,
   onBack,
   onDirtyChange,
 }: {
   map: ImageMap;
   projectId: string;
+  /** The project's CI tokens — swatches on every colour control, and the colours a new hotspot gets. */
+  palette: ReadonlyArray<{ key: string; value: string }>;
+  /** Ask before discarding unsaved work. Owned by the shell, which renders the dialog. */
+  confirmLeave: () => Promise<boolean>;
   onBack: () => void;
   /** Lifted so the enclosing modal can guard Escape / backdrop-click on unsaved work. */
   onDirtyChange: (dirty: boolean) => void;
@@ -328,25 +428,23 @@ function MapEditor({
   );
 
   /**
-   * Show the map as a VISITOR gets it: the real runtime, in the real preview document.
+   * Show the map as a VISITOR gets it: the real runtime, and NOTHING else.
    *
-   * Rendered through the ordinary page-preview route with a throwaway page that embeds this map, so
-   * it exercises the SAME path a published page does — the helper, the component scan that decides
-   * whether the runtime ships, the sanitiser, all of it. A preview that re-implemented any of that
-   * would agree with the Studio and disagree with the page, which is the whole failure it exists to
-   * catch. The server previews the STORED map, so unsaved work is saved first.
+   * It renders through the map-only preview document — no page, no header, no footer, no site
+   * typography. The first version embedded the map in a whole project page, which wrapped the thing
+   * under inspection in a lot of things that were not it.
+   *
+   * The server previews the STORED map, so unsaved work is saved first.
    */
-  async function openPreview(): Promise<void> {
+  async function togglePreview(): Promise<void> {
+    if (previewSrc) {
+      setPreviewSrc(null);
+      return;
+    }
     setPreviewing(true);
     try {
       if (dirty) await save();
-      const res = await api.preview(projectId, {
-        id: 'sw-imagemap-preview',
-        path: 'sw-imagemap-preview',
-        title: map.general.name || 'Image map',
-        source: `<div class="mx-auto max-w-5xl p-6">{{sw-imagemap "${map.id}"}}</div>`,
-      } as never);
-      setPreviewSrc(previewDocUrl(res.slug, res.token));
+      setPreviewSrc(api.imageMapPreviewUrl(projectId, { map: map.id }));
     } catch (err) {
       toast.show(err instanceof Error ? `Could not build the preview: ${err.message}` : 'Could not build the preview', 'error');
     } finally {
@@ -372,12 +470,17 @@ function MapEditor({
   function draw(type: DrawableType, spec: DrawSpec): void {
     if (!artboard) return;
     const title = `${TYPE_LABELS[type]} ${flattenObjects(artboard).length + 1}`;
+    // Born in the project's own colours: CI primary at rest, secondary on hover.
+    const colors: HotspotPalette = {
+      fill: palette.find((c) => c.key === 'primary')?.value ?? DEFAULT_PALETTE.fill,
+      hoverFill: palette.find((c) => c.key === 'secondary')?.value ?? DEFAULT_PALETTE.hoverFill,
+    };
     const obj =
       spec.kind === 'poly'
-        ? polyFromPoints(spec.points, title)
+        ? polyFromPoints(spec.points, title, colors)
         : spec.kind === 'bounds'
-          ? sizedObject(type, spec.bounds, title)
-          : newObject(type, spec.x, spec.y, title);
+          ? sizedObject(type, spec.bounds, title, colors)
+          : newObject(type, spec.x, spec.y, title, colors);
     edit(mapArtboard(map, artboard.id, (a) => ({ ...a, children: [...(a.children ?? []), obj] })));
     setSelectedId(obj.id);
     // The polygon tool stays in hand: tracing one region is almost never the whole job, and picking
@@ -458,8 +561,10 @@ function MapEditor({
           type="button"
           className={ghostButton}
           onClick={() => {
-            if (dirty && !window.confirm('This map has unsaved changes. Leave and lose them?')) return;
-            onBack();
+            void (async () => {
+              if (dirty && !(await confirmLeave())) return;
+              onBack();
+            })();
           }}
         >
           ← All maps
@@ -481,18 +586,36 @@ function MapEditor({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          <button type="button" className={ghostButton} disabled={previewing} onClick={() => void openPreview()}>
-            {previewing ? 'Building…' : 'Preview'}
+          {/* ONE button in ONE place. Preview and "back to editing" are the same action — a
+              toggle — so they must not jump between two positions as the mode flips. */}
+          <button type="button" className={ghostButton} disabled={previewing} onClick={() => void togglePreview()}>
+            {previewing ? 'Building…' : previewSrc ? 'Back to editing' : 'Preview'}
           </button>
-          <button type="button" className={ghostButton} onClick={() => setShowSettings((v) => !v)}>
-            Map settings
-          </button>
+          {!previewSrc && (
+            <button type="button" className={ghostButton} onClick={() => setShowSettings((v) => !v)}>
+              Map settings
+            </button>
+          )}
           <button type="button" className={primaryButton} disabled={!dirty || saving} onClick={save}>
             {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
           </button>
         </div>
       </div>
 
+      {previewSrc ? (
+        /* PREVIEW TAKES THE WHOLE BODY. Every rail, tool and inspector goes away: the point of the
+           mode is to see the map as a visitor does, and a map is a wide thing that was being judged
+           through a slot between two sidebars. */
+        <iframe
+          title="Image map preview"
+          data-testid="imap-preview-frame"
+          /* `src`, never `srcDoc`: a srcdoc document inherits THIS app's script-src, which blocks the
+             inlined runtime — the map would render its fallback image and nothing else, the very
+             failure this pane exists to reveal. */
+          src={previewSrc}
+          className="min-h-0 flex-1 border-0 bg-white"
+        />
+      ) : (
       <div className="flex min-h-0 flex-1">
         {/* Left: artboards + object list */}
         <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700">
@@ -560,28 +683,7 @@ function MapEditor({
 
         {/* Middle: the canvas */}
         <div className="min-w-0 flex-1">
-          {previewSrc ? (
-            <div className="flex h-full flex-col">
-              <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs dark:border-slate-700">
-                <span className="font-bold text-slate-700 dark:text-slate-200">Preview</span>
-                <span className="text-slate-500 dark:text-slate-400">
-                  The saved map, rendered by the real runtime — hover a hotspot to test its tooltip.
-                </span>
-                <button type="button" className={`${ghostButton} ml-auto`} onClick={() => setPreviewSrc(null)}>
-                  Back to editing
-                </button>
-              </div>
-              {/* `src`, never `srcDoc`: a srcdoc document inherits THIS app's script-src, which
-                  blocks the inlined runtime — so the map would render its fallback image and nothing
-                  else, the very failure this pane exists to reveal. */}
-              <iframe
-                title="Image map preview"
-                data-testid="imap-preview-frame"
-                src={previewSrc}
-                className="min-h-0 flex-1 border-0 bg-white"
-              />
-            </div>
-          ) : showSettings ? (
+          {showSettings ? (
             <MapSettings
               map={map}
               artboardId={artboard.id}
@@ -614,6 +716,7 @@ function MapEditor({
               object={selected}
               projectId={projectId}
               onChange={(patch) => patchObject(selected.id, patch)}
+              palette={palette}
               onDelete={() => {
                 edit(mapArtboard(map, artboard.id, (a) => mapObject(a, selected.id, () => null)));
                 setSelectedId(null);
@@ -626,6 +729,7 @@ function MapEditor({
           )}
         </aside>
       </div>
+      )}
 
       {picking && (
         <FilePicker

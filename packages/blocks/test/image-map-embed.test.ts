@@ -329,3 +329,39 @@ describe('sanitizeImageMapConfig — the svg hotspot CONSTRUCTION path', () => {
     expect(sanitizeImageMapConfig(once)).toEqual(once);
   });
 });
+
+describe('an ICON hotspot is config that becomes DOM', () => {
+  // ★ A SIXTH and SEVENTH path in the same family as the five the epic already found. The runtime
+  // hands `icon_svg` to `template.innerHTML` and builds `<img src="${icon_url}">` as a markup
+  // string, so both are live DOM straight from config — and neither was sanitized. `<script>` will
+  // not run from innerHTML, but an event handler inside the fragment will.
+  const sanitize = (style: Record<string, unknown>) =>
+    (sanitizeImageMapConfig({ artboards: [{ children: [{ default_style: style }] }] }) as {
+      artboards: Array<{ children: Array<{ default_style: Record<string, unknown> }> }>;
+    }).artboards[0]!.children[0]!.default_style;
+
+  it('strips a handler out of the icon artwork', () => {
+    const out = sanitize({ icon_svg: '<svg><image href="x" onerror="alert(1)"/><animate onbegin="alert(1)"/></svg>' });
+    expect(String(out.icon_svg)).not.toContain('onerror');
+    expect(String(out.icon_svg)).not.toContain('onbegin');
+  });
+
+  it('keeps ordinary icon artwork intact', () => {
+    const out = sanitize({ icon_svg: '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/></svg>' });
+    expect(String(out.icon_svg)).toContain('<path');
+    expect(String(out.icon_svg)).toContain('M4 4h16v16H4z');
+  });
+
+  it('drops a custom icon URL that would break out of its attribute', () => {
+    // spot.js built `<img src="${…}">` as a string, so a quote closed the attribute and added one:
+    // `x" onerror="…` is a working handler.
+    expect(sanitize({ icon_url: 'x" onerror="alert(1)' }).icon_url).toBe('');
+    expect(sanitize({ icon_url: 'javascript:alert(1)' }).icon_url).toBe('');
+    expect(sanitize({ icon_url: 'data:text/html,<script>alert(1)</script>' }).icon_url).toBe('');
+  });
+
+  it('keeps the icon URLs an author actually uses', () => {
+    expect(sanitize({ icon_url: '/media/acme/ab12-marker.png' }).icon_url).toBe('/media/acme/ab12-marker.png');
+    expect(sanitize({ icon_url: 'https://cdn.example.com/pin.svg' }).icon_url).toBe('https://cdn.example.com/pin.svg');
+  });
+});

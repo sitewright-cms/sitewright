@@ -110,11 +110,37 @@ export function mapArtboard(
   };
 }
 
-/** The artboard's own pixel size — its override, else the map default, else a sane 800×600. */
-export function artboardSize(map: ImageMap, artboard: ImageMapArtboard | undefined): { width: number; height: number } {
+/**
+ * The runtime's artboard size when the config doesn't give one.
+ *
+ * ★ AN ARTBOARD OWNS ITS PIXEL SIZE — `general` does not. The runtime deep-extends every artboard
+ * against `artboardDefaults` (shared/import.js) and then reads `artboard.width`/`height` directly
+ * (imageMap.js), with no fallback; `imageMapDefaults.general` has no width or height at all. So an
+ * artboard with no explicit size is 848×480 on the published page whatever the map-level config
+ * says, and a Studio that previewed `general` instead was drawing a different aspect ratio from the
+ * one visitors get — every hotspot landing somewhere else. Only these two numbers are real.
+ */
+export const RUNTIME_ARTBOARD_SIZE = { width: 848, height: 480 } as const;
+
+/** The artboard's pixel size, exactly as the runtime resolves it. */
+export function artboardSize(artboard: ImageMapArtboard | undefined): { width: number; height: number } {
   return {
-    width: artboard?.width ?? map.general.width ?? 800,
-    height: artboard?.height ?? map.general.height ?? 600,
+    width: artboard?.width ?? RUNTIME_ARTBOARD_SIZE.width,
+    height: artboard?.height ?? RUNTIME_ARTBOARD_SIZE.height,
+  };
+}
+
+/** A new artboard, sized explicitly so the Studio and the published page can never disagree. */
+export function newArtboard(title: string): ImageMapArtboard {
+  return {
+    id: newId('artboard'),
+    title,
+    background_type: 'color',
+    background_color: '#f1f5f9',
+    image_url: '',
+    width: RUNTIME_ARTBOARD_SIZE.width,
+    height: RUNTIME_ARTBOARD_SIZE.height,
+    children: [],
   };
 }
 
@@ -135,21 +161,10 @@ export function round(n: number): number {
  * object against them, so writing the full default set here would be a second copy to keep in step.
  */
 export function newObject(type: DrawableType, x: number, y: number, title: string): ImageMapObject {
-  const base: ImageMapObject = {
-    id: newId(type),
-    title,
-    type,
-    x: round(clampPct(x)),
-    y: round(clampPct(y)),
-    default_style: { background_color: '#0a7a5a', background_opacity: 0.35 },
-    mouseover_style: { background_color: '#0a7a5a', background_opacity: 0.6 },
-    tooltip: { enable_tooltip: true },
-    tooltip_content: [],
-    actions: { click: 'no-action' },
-  };
+  const base = baseObject(type, x, y, title);
   if (type === 'poly') {
-    // A triangle the author can then reshape. The BOX is on the artboard; the points are relative
-    // to that box (0–100), which is the form the runtime reads.
+    // A click with the polygon tool that never became a trace. Three vertices the author can
+    // reshape — but tracing (see {@link polyFromPoints}) is the path this tool is really for.
     return {
       ...base,
       x: round(clampPct(x - 7, 14)),
@@ -171,6 +186,139 @@ export function newObject(type: DrawableType, x: number, y: number, title: strin
     return { ...base, width: 20, height: 6, text: { text: title, font_size: 16, text_color: '#111111' } };
   }
   return { ...base, width: 14, height: 12 };
+}
+
+/**
+ * Everything a hotspot has before its shape decides its geometry.
+ *
+ * Only the fields that differ from the runtime's own objectDefaults are set: it deep-extends every
+ * object against them, so writing the full default set here would be a second copy to keep in step.
+ */
+function baseObject(type: DrawableType, x: number, y: number, title: string): ImageMapObject {
+  return {
+    id: newId(type),
+    title,
+    type,
+    x: round(clampPct(x)),
+    y: round(clampPct(y)),
+    default_style: { background_color: '#0a7a5a', background_opacity: 0.35 },
+    mouseover_style: { background_color: '#0a7a5a', background_opacity: 0.6 },
+    tooltip: { enable_tooltip: true },
+    tooltip_content: [],
+    actions: { click: 'no-action' },
+  };
+}
+
+/** A hotspot sized by a drag rather than dropped at a default size. */
+export function sizedObject(type: DrawableType, bounds: Bounds, title: string): ImageMapObject {
+  const base = baseObject(type, bounds.x, bounds.y, title);
+  const sized = { ...base, width: bounds.width, height: bounds.height };
+  return type === 'text' ? { ...sized, text: { text: title, font_size: 16, text_color: '#111111' } } : sized;
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Bounds extends Point {
+  width: number;
+  height: number;
+}
+
+/**
+ * Smallest box a shape may be drawn or normalised to, in percent of the artboard.
+ *
+ * A polygon traced as a straight line has no height; without a floor its box would be zero and
+ * every box-relative vertex would divide by it.
+ */
+export const MIN_BOX = 0.5;
+
+/**
+ * How far the pointer must travel before a press-drag-release is read as SIZING the shape rather
+ * than as a click that drops one at its default size. In percent of the artboard.
+ */
+export const DRAG_THRESHOLD = 1.5;
+
+/** The box a press-drag-release describes, in whichever direction it was dragged. */
+export function boundsFromDrag(start: Point, end: Point): Bounds {
+  const x = clampPct(Math.min(start.x, end.x));
+  const y = clampPct(Math.min(start.y, end.y));
+  return {
+    x: round(x),
+    y: round(y),
+    width: round(Math.max(MIN_BOX, Math.min(100 - x, Math.abs(end.x - start.x)))),
+    height: round(Math.max(MIN_BOX, Math.min(100 - y, Math.abs(end.y - start.y)))),
+  };
+}
+
+/**
+ * The box and box-relative vertices for a polygon given its vertices in ARTBOARD percent — the form
+ * tracing produces, and the inverse of what {@link polyPointToArtboard} does when drawing.
+ */
+export function polyGeometry(points: ReadonlyArray<Point>): Bounds & { points: Point[] } {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const width = Math.max(MIN_BOX, Math.max(...xs) - minX);
+  const height = Math.max(MIN_BOX, Math.max(...ys) - minY);
+  return {
+    x: round(minX),
+    y: round(minY),
+    width: round(width),
+    height: round(height),
+    points: xs.map((x, i) => ({
+      x: round(((x - minX) / width) * 100),
+      y: round((((ys[i] ?? 0) - minY) / height) * 100),
+    })),
+  };
+}
+
+/**
+ * A polygon traced vertex by vertex over the artboard — the tool's whole reason for existing.
+ *
+ * This is the boundary where a pointer becomes geometry, so it is where a stray vertex is pulled
+ * back onto the artboard. {@link polyGeometry} itself stays pure, because {@link normalizePoly}
+ * re-derives an existing shape's box with it and must not move the shape while doing so.
+ */
+export function polyFromPoints(points: ReadonlyArray<Point>, title: string): ImageMapObject {
+  const geometry = polyGeometry(points.map((p) => ({ x: clampPct(p.x), y: clampPct(p.y) })));
+  return { ...baseObject('poly', geometry.x, geometry.y, title), ...geometry };
+}
+
+/**
+ * A polygon's box shrunk back onto its vertices, with the shape left exactly where it was.
+ *
+ * Dragging a vertex changes only that vertex, so the box slowly stops describing the shape — the
+ * resize handles drift away from it and a later box-resize scales from the wrong origin. Re-deriving
+ * the box from the artboard-space vertices is value-preserving: the transform is affine, so the
+ * points move into the new box by exactly the amount the box moved.
+ */
+export function normalizePoly(obj: ImageMapObject): ImageMapObject {
+  const points = obj.points ?? [];
+  if (points.length < 3) return obj;
+  return { ...obj, ...polyGeometry(points.map((p) => polyPointToArtboard(obj, p))) };
+}
+
+/** A vertex inserted at the midpoint of the edge leaving vertex `index`, wrapping at the end. */
+export function insertPolyVertex(obj: ImageMapObject, index: number): Point[] {
+  const points = obj.points ?? [];
+  if (points.length < 2) return [...points];
+  const a = points[index % points.length]!;
+  const b = points[(index + 1) % points.length]!;
+  const next = [...points];
+  // Points are box-relative and the box-to-artboard transform is affine, so the midpoint of two
+  // vertices is the midpoint of the drawn edge — no conversion needed.
+  next.splice(index + 1, 0, { x: round((a.x + b.x) / 2), y: round((a.y + b.y) / 2) });
+  return next;
+}
+
+/** A polygon without vertex `index`, or null when removing it would leave fewer than three. */
+export function removePolyVertex(obj: ImageMapObject, index: number): Point[] | null {
+  const points = obj.points ?? [];
+  if (points.length <= 3 || index < 0 || index >= points.length) return null;
+  return points.filter((_, i) => i !== index);
 }
 
 /**
@@ -218,10 +366,8 @@ export function artboardToPolyPoint(
 export function emptyMap(id: string, name: string): ImageMap {
   return {
     id,
-    general: { name, width: 800, height: 600 },
-    artboards: [
-      { id: newId('artboard'), title: 'Artboard 1', background_type: 'color', background_color: '#f1f5f9', image_url: '', children: [] },
-    ],
+    general: { name },
+    artboards: [newArtboard('Artboard 1')],
   };
 }
 

@@ -13,6 +13,24 @@ import Store from 'imap/store/store'
 import * as Importer from 'imap-shared/import'
 import { trigger } from 'imap/runtime'
 
+/**
+ * An element's CONTENT width — what a child laid out inside it may occupy.
+ *
+ * `getBoundingClientRect().width` is the border box, so a wrapper with padding would hand the map a
+ * width it cannot fit into and the canvas would overflow by exactly that padding.
+ */
+function contentWidth(el) {
+  if (!el || !el.getBoundingClientRect) return 0
+  let box = el.getBoundingClientRect().width
+  let style = window.getComputedStyle(el)
+  let inset =
+    parseFloat(style.paddingLeft || 0) +
+    parseFloat(style.paddingRight || 0) +
+    parseFloat(style.borderLeftWidth || 0) +
+    parseFloat(style.borderRightWidth || 0)
+  return Math.max(0, box - (isNaN(inset) ? 0 : inset))
+}
+
 export class ImageMap {
   constructor(selector, config, launchParams) {
     // Generic properties
@@ -185,7 +203,25 @@ export class ImageMap {
 
     await new Promise((r) => setTimeout(r, 50))
 
-    let parentWidth = this.root.parentNode.getBoundingClientRect().width
+    // ★ The box the AUTHOR gave the map — its OWN content width, not its parent's.
+    //
+    // Upstream measured the parent, so anything sizing the embed itself (`max-width`, a width class,
+    // a narrower column) was ignored and the map drew at the parent's width straight over whatever
+    // sat next to it. Measured on a real page: a 493px-capped embed drew a 696px canvas at a 760px
+    // viewport — 203px of overflow. The ResizeObserver already watches this element, so measuring it
+    // is also what the map re-measures on.
+    //
+    // Padding and border come off explicitly: the value feeds a canvas laid out INSIDE this box, and
+    // a padded wrapper would otherwise overflow by exactly its padding.
+    //
+    // Two guards. It falls back to the parent when the root has no width of its own yet — an
+    // unlaid-out root would size the canvas to nothing and the map would never appear. And it is
+    // never wider than the parent offers, which is what a root whose own width is CONTENT-driven
+    // (a flex item, an inline-block) would otherwise ask for: at measure time the root has already
+    // been filled with the map's markup, so it would report the image's natural width.
+    let outer = contentWidth(this.root.parentNode)
+    let own = contentWidth(this.root)
+    let parentWidth = own > 0 && outer > 0 ? Math.min(own, outer) : own || outer
     let containerWidth
     let canvasWidth, canvasHeight
 

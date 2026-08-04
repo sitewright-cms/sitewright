@@ -11,6 +11,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **An image map fits the box the page gave it.** The runtime sized its canvas from the embed's
+  PARENT, so any width on the embed itself — `max-width`, a width class, a narrower column — was
+  ignored and the map drew straight over whatever sat beside it. Measured on a real page: a 493px
+  embed drew a 696px canvas at a 760px viewport. It measures its own content box now (padding and
+  border excluded), falling back to the parent when it has no width of its own and never exceeding
+  what the parent offers.
+
 - **An icon hotspot is painted in the colour the author picked.** Every icon in the platform's
   library draws with `fill="currentColor"`, and a presentation attribute on the element beats the
   inherited CSS `fill` the runtime was setting — so a marker ignored `icon_fill` and came out in the

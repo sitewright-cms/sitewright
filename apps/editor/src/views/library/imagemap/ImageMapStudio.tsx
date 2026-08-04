@@ -3,7 +3,7 @@ import type { ImageMap, ImageMapObject, ImageMapTemplate } from '@sitewright/sch
 import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/Toast';
 import { useCopy } from '../../ui/useCopy';
-import { api } from '../../../api';
+import { api, previewDocUrl } from '../../../api';
 import { fieldLabel, ghostButton, glassInput, primaryButton, toggleInput } from '../../../theme';
 import { Canvas, type DrawSpec } from './Canvas';
 import { ACCEPT_IMAGE, ObjectDetails, AssetField } from './ObjectDetails';
@@ -127,7 +127,7 @@ export function ImageMapStudio({ onClose, projectId }: ImageMapStudioProps) {
     <Modal
       title={editing ? `Image Map — ${editing.general.name}` : 'Image Maps'}
       onClose={onClose}
-      size="studio"
+      size="screen"
       onBeforeClose={() =>
         !dirty || window.confirm('This map has unsaved changes. Close the studio and lose them?')
       }
@@ -284,6 +284,9 @@ function MapEditor({
   const [showSettings, setShowSettings] = useState(false);
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // The live PREVIEW: the saved map rendered by the real runtime, in the real preview document.
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const artboard = useMemo(
     () => map.artboards.find((a) => a.id === artboardId) ?? map.artboards[0],
@@ -323,6 +326,33 @@ function MapEditor({
     },
     [artboard, edit, map],
   );
+
+  /**
+   * Show the map as a VISITOR gets it: the real runtime, in the real preview document.
+   *
+   * Rendered through the ordinary page-preview route with a throwaway page that embeds this map, so
+   * it exercises the SAME path a published page does — the helper, the component scan that decides
+   * whether the runtime ships, the sanitiser, all of it. A preview that re-implemented any of that
+   * would agree with the Studio and disagree with the page, which is the whole failure it exists to
+   * catch. The server previews the STORED map, so unsaved work is saved first.
+   */
+  async function openPreview(): Promise<void> {
+    setPreviewing(true);
+    try {
+      if (dirty) await save();
+      const res = await api.preview(projectId, {
+        id: 'sw-imagemap-preview',
+        path: 'sw-imagemap-preview',
+        title: map.general.name || 'Image map',
+        source: `<div class="mx-auto max-w-5xl p-6">{{sw-imagemap "${map.id}"}}</div>`,
+      } as never);
+      setPreviewSrc(previewDocUrl(res.slug, res.token));
+    } catch (err) {
+      toast.show(err instanceof Error ? `Could not build the preview: ${err.message}` : 'Could not build the preview', 'error');
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   async function save(): Promise<void> {
     setSaving(true);
@@ -451,6 +481,9 @@ function MapEditor({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
+          <button type="button" className={ghostButton} disabled={previewing} onClick={() => void openPreview()}>
+            {previewing ? 'Building…' : 'Preview'}
+          </button>
           <button type="button" className={ghostButton} onClick={() => setShowSettings((v) => !v)}>
             Map settings
           </button>
@@ -527,7 +560,28 @@ function MapEditor({
 
         {/* Middle: the canvas */}
         <div className="min-w-0 flex-1">
-          {showSettings ? (
+          {previewSrc ? (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs dark:border-slate-700">
+                <span className="font-bold text-slate-700 dark:text-slate-200">Preview</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  The saved map, rendered by the real runtime — hover a hotspot to test its tooltip.
+                </span>
+                <button type="button" className={`${ghostButton} ml-auto`} onClick={() => setPreviewSrc(null)}>
+                  Back to editing
+                </button>
+              </div>
+              {/* `src`, never `srcDoc`: a srcdoc document inherits THIS app's script-src, which
+                  blocks the inlined runtime — so the map would render its fallback image and nothing
+                  else, the very failure this pane exists to reveal. */}
+              <iframe
+                title="Image map preview"
+                data-testid="imap-preview-frame"
+                src={previewSrc}
+                className="min-h-0 flex-1 border-0 bg-white"
+              />
+            </div>
+          ) : showSettings ? (
             <MapSettings
               map={map}
               artboardId={artboard.id}

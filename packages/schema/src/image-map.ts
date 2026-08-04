@@ -62,6 +62,21 @@ const LinkSchema = z
  * itself to these lists in the test suite). Every bundled template uses only `path`/`polyline`
  * with `d`/`id`/`fill-rule`/`points`, so nothing real is lost.
  */
+/**
+ * The marker artwork a PIN is drawn with — by the runtime on a published page, and by the Studio
+ * on its canvas, which is the point: the two used to disagree (a pointer on the page, a plain dot
+ * in the editor), so an author positioned one shape and published another.
+ *
+ * The tip is at the BOTTOM CENTRE of the 24×24 box, because a pin is anchored by its tip: the
+ * runtime offsets it a full icon-height upward so the point lands on the hotspot's coordinate.
+ *
+ * ★ A COPY. The bundled runtime cannot import TypeScript, so the original lives in
+ * `packages/blocks/vendor-src/image-map/src/scripts/icons.js`; `image-map.test.ts` reads that file
+ * and fails if the two drift. Change one, change the other.
+ */
+export const IMAGE_MAP_PIN_ICON_PATH =
+  'M12 1a8 8 0 0 0-8 8c0 5.4 6.9 13.1 7.2 13.4a1 1 0 0 0 1.6 0C13.1 22.1 20 14.4 20 9a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z';
+
 export const SVG_SHAPE_TAGS = [
   'path', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'line',
   'g', 'defs', 'use', 'symbol', 'clipPath', 'mask',

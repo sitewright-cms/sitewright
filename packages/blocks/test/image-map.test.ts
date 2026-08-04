@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMPONENT_TYPES, componentAssets, componentTypesInSource } from '../src/components.js';
-import { SVG_SHAPE_ATTRS, SVG_SHAPE_TAGS } from '@sitewright/schema';
+import { IMAGE_MAP_PIN_ICON_PATH, SVG_SHAPE_ATTRS, SVG_SHAPE_TAGS } from '@sitewright/schema';
 import { IMAGE_MAP_RUNTIME_JS, IMAGE_MAP_VENDOR_CSS } from '../src/vendor/image-map-runtime.js';
 
 const vendorSrc = (rel: string) =>
@@ -175,6 +175,16 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(IMAGE_MAP_VENDOR_CSS).not.toMatch(/#[a-zA-Z][\w-]*\s*[,{]/);
   });
 
+  it('ships no third-party icon licence — the chrome artwork is ours', () => {
+    // Upstream's chrome icons were Font Awesome **Pro** glyphs, banner and all: paid-licence
+    // artwork redistributed in every published page. The whole bundle is checked, not just icons.js,
+    // because the glyphs were also duplicated as standalone .svg assets.
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/fontawesome|Font Awesome|Fonticons/i);
+    expect(IMAGE_MAP_VENDOR_CSS).not.toMatch(/fontawesome/i);
+    // …and no request to the upstream vendor's own domain can be made from a default.
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/webcraftplugins/i);
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });
@@ -199,6 +209,16 @@ describe('the svg-hotspot allowlists stay in step', () => {
 
   it('the runtime attribute list equals SVG_SHAPE_ATTRS', () => {
     expect(listFrom('SHAPE_ATTRS').sort()).toEqual([...SVG_SHAPE_ATTRS].sort());
+  });
+
+  it('the runtime pin artwork equals IMAGE_MAP_PIN_ICON_PATH, so Studio and page draw the same marker', () => {
+    // A bundled runtime cannot import TypeScript, so the Studio's copy of the marker is exactly
+    // that — a copy. When the two drifted, the editor drew a dot and the page drew a pointer, and an
+    // author positioned one shape while publishing another.
+    const icons = vendorSrc('src/scripts/pin-icon.js');
+    const path = icons.match(/PIN_ICON_PATH\s*=\s*\n?\s*'([^']+)'/)?.[1];
+    expect(path, 'PIN_ICON_PATH not found in icons.js').toBeTruthy();
+    expect(path).toBe(IMAGE_MAP_PIN_ICON_PATH);
   });
 
   it('neither list admits a script element or an event handler', () => {

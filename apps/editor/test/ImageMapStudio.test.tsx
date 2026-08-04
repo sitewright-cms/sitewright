@@ -579,6 +579,55 @@ describe('Canvas', () => {
     });
   });
 
+  describe('shapes match what the page draws', () => {
+    // Measured agreement between the Studio canvas and the real runtime lives in a browser harness;
+    // these pin the DECISIONS that harness caught — a pin is a marker, a dot is a pulsing circle,
+    // and an authored border is painted rather than replaced by a fixed editor hairline.
+    const shape = (over: Partial<ImageMapObject> & { id: string }): ImageMapObject => ({ title: over.id, type: 'rect', x: 10, y: 10, width: 20, height: 20, ...over });
+
+    it('draws a Pin as the marker artwork, not as a dot', () => {
+      canvas({
+        artboard: { ...MAP.artboards[0]!, children: [shape({ id: 'p', title: 'Pin', type: 'spot', default_style: { use_icon: true, icon_is_pin: true, icon_size: 40 } })] },
+      });
+      const pin = screen.getByTestId('imap-shape-pin');
+      expect(pin.querySelector('svg path')).toBeTruthy();
+      expect(screen.queryByTestId('imap-shape-dot')).toBeNull();
+    });
+
+    it('draws a Dot as a circle with a pulsing ring', () => {
+      canvas({
+        artboard: {
+          ...MAP.artboards[0]!,
+          children: [shape({ id: 'd', title: 'Dot', type: 'spot', width: 18, height: 18, default_style: { use_icon: false, border_radius: 18, border_width: 3, pulse: true } })],
+        },
+      });
+      const dot = screen.getByTestId('imap-shape-dot');
+      expect(dot.className).toContain('sw-imap-studio-pulse');
+      expect(screen.queryByTestId('imap-shape-pin')).toBeNull();
+    });
+
+    it('paints the AUTHORED border on a box shape', () => {
+      // The canvas used to draw a fixed hairline, so setting a border changed nothing in the editor
+      // and everything on the page — which reads as a broken control.
+      canvas({
+        artboard: { ...MAP.artboards[0]!, children: [shape({ id: 'r', title: 'Boxed', default_style: { border_width: 6, border_color: '#ff0000', border_opacity: 1 } })] },
+      });
+      const box = screen.getByRole('button', { name: 'Boxed' }).parentElement!;
+      expect(box.style.borderWidth).toBe('6px');
+      expect(box.style.borderColor).toBe('rgb(255, 0, 0)'); // jsdom normalises the hex
+      // …and matches the runtime's box model, or a thick border makes the editor's shape bigger.
+      expect(box.style.boxSizing).toBe('border-box');
+    });
+
+    it('promises no border on TEXT, which the runtime never paints one on', () => {
+      canvas({
+        artboard: { ...MAP.artboards[0]!, children: [shape({ id: 't', title: 'Label', type: 'text', default_style: { border_width: 6, border_color: '#ff0000' } })] },
+      });
+      const box = screen.getByRole('button', { name: 'Label' }).parentElement!;
+      expect(box.style.borderColor).not.toBe('rgb(255, 0, 0)');
+    });
+  });
+
   describe('getting the image in', () => {
     const BARE = { id: 'bare', title: 'Bare', background_type: 'color' as const, image_url: '', width: 800, height: 600, children: [] };
 

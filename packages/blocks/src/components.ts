@@ -981,7 +981,20 @@ const IMAGE_MAP_CSS = [
   // The map is a pointer-driven surface; keyboard users reach hotspots through the object list.
   // Keep a visible focus ring on every control rather than the vendor's outline:none.
   '.sw-imap-ui-element:focus-visible,.sw-imap-list-item:focus-visible{outline:2px solid var(--sw-color-primary,#0a7a5a);outline-offset:2px}',
-  // Reduced motion: the pageload stagger, zoom easing and tooltip fades all stand down.
+  // HOVER MOTION. The vendor transitions `all` in 150ms on the hotspot element, which covers a rect,
+  // an oval and a dot. A POLYGON's paint lives on the <polygon> INSIDE its svg, and that child has no
+  // transition of its own — so a polygon's hover state snapped while every other shape eased. Name
+  // the paint properties on the child, and lengthen the whole thing enough to read as motion.
+  '.sw-imap-object{transition-duration:.28s}',
+  '.sw-imap-object-poly polygon{transition:fill .28s cubic-bezier(.4,0,.2,1),stroke .28s cubic-bezier(.4,0,.2,1),stroke-width .28s cubic-bezier(.4,0,.2,1)}',
+  // PULSING DOT. A ring that grows out of the dot and fades, on the dot's OWN border colour, so it
+  // reads as the border pulsing rather than as a separate decoration. `inset:0` + `border-radius`
+  // and `border-color` inherited means it tracks whatever size and colour the author picks.
+  '.sw-imap-object-pulse::after{content:"";position:absolute;inset:0;border-radius:inherit;' +
+    'border:2px solid;border-color:inherit;pointer-events:none;' +
+    'animation:sw-imap-pulse 2s cubic-bezier(.22,.61,.36,1) infinite}',
+  '@keyframes sw-imap-pulse{0%{transform:scale(1);opacity:.85}70%{opacity:0}100%{transform:scale(2.6);opacity:0}}',
+  // Reduced motion: the pageload stagger, zoom easing, tooltip fades and the dot pulse all stand down.
   '@media (prefers-reduced-motion:reduce){.sw-imap-container *,.sw-imap-tooltips-container *{transition-duration:0s!important;animation:none!important}}',
 ].join('');
 const IMAGE_MAP_JS = IMAGE_MAP_RUNTIME_JS;

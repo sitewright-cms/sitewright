@@ -472,3 +472,40 @@ button:disabled,
   width: 1.15em;
   flex: none;
 }
+
+/* The Image Map Studio's DOT hotspot, pulsing exactly as the published runtime draws it
+   (`.sw-imap-object-pulse` in the ImageMap component CSS). The editor cannot load that stylesheet —
+   it styles a published page, not this app — so the ring is duplicated here, and
+   `ImageMapStudio.test.tsx` pins the two keyframes to the same shape. What the author sees while
+   placing a dot is what a visitor gets. */
+.sw-imap-studio-pulse {
+  position: absolute;
+}
+.sw-imap-studio-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid;
+  border-color: inherit;
+  pointer-events: none;
+  animation: sw-imap-pulse 2s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+@keyframes sw-imap-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-imap-studio-pulse::after {
+    animation: none;
+  }
+}

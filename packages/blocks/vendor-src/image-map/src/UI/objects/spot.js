@@ -9,6 +9,12 @@ export default class Spot extends MapObject {
     let element = document.createElement('div')
     element.classList.add('sw-imap-object-spot')
 
+    // A DOT (use_icon:false) may ring itself with an animated halo. The halo is a ::after on this
+    // element, so it inherits the dot's own border colour and needs no extra node.
+    if (!this.options.default_style.use_icon && this.options.default_style.pulse) {
+      element.classList.add('sw-imap-object-pulse')
+    }
+
     if (this.options.default_style.use_icon) {
       if (this.options.default_style.icon_is_pin) {
         element.classList.add('sw-imap-object-spot-pin')

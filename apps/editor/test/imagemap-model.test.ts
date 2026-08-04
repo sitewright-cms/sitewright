@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import type { ImageMapArtboard, ImageMapObject } from '@sitewright/schema';
 import {
   artboardSize,
+  DOT_SIZE_PX,
+  isDot,
+  PIN_SIZE_PX,
+  storedType,
   artboardToPolyPoint,
   boundsFromDrag,
   clampPct,
@@ -351,5 +355,51 @@ describe('drag-to-size', () => {
     expect(rect.tooltip).toEqual({ enable_tooltip: true });
     expect(rect.actions?.click).toBe('no-action');
     expect(sizedObject('text', { x: 0, y: 0, width: 10, height: 5 }, 'Label').text).toMatchObject({ text: 'Label' });
+  });
+});
+
+describe('pins and dots', () => {
+  // ★ THE MISMATCH THIS GUARDS. The runtime draws a `spot` two ways — an icon marker when
+  // `use_icon` is true, a plain box when it is false — and the Studio used to draw a dot either
+  // way. So a Pin was a dot in the editor and a pointer on the page: the author positioned one
+  // shape and published another.
+  it('stores a Pin as an icon spot, anchored and sized like the runtime draws it', () => {
+    const pin = newObject('spot', 40, 50, 'Pin');
+    expect(pin.type).toBe('spot');
+    const style = pin.default_style as Record<string, unknown>;
+    expect(style.use_icon).toBe(true);
+    expect(style.icon_is_pin).toBe(true);
+    expect(style.icon_size).toBe(PIN_SIZE_PX);
+    expect(isDot(pin)).toBe(false);
+  });
+
+  it('stores a Dot as the SAME `spot` type with the icon off — no new type for the runtime to learn', () => {
+    const dot = newObject('dot', 40, 50, 'Dot');
+    expect(dot.type).toBe('spot');
+    expect(storedType('dot')).toBe('spot');
+    const style = dot.default_style as Record<string, unknown>;
+    expect(style.use_icon).toBe(false);
+    expect(isDot(dot)).toBe(true);
+  });
+
+  it('gives a Dot a round radius at its own size, and a pulsing border', () => {
+    const dot = newObject('dot', 10, 10, 'Dot');
+    const style = dot.default_style as Record<string, unknown>;
+    // The runtime writes border_radius in px; at least half the box makes it a circle at any size.
+    expect(style.border_radius as number).toBeGreaterThanOrEqual(DOT_SIZE_PX / 2);
+    expect(style.border_width as number).toBeGreaterThan(0);
+    expect(style.pulse).toBe(true);
+  });
+
+  it('sizes both in PIXELS, because that is what the runtime reads for a spot', () => {
+    // A percentage-sized marker would be a thumbnail on a floor plan and a billboard on a diagram.
+    expect(newObject('spot', 0, 0, 'P').width).toBe(PIN_SIZE_PX);
+    expect(newObject('dot', 0, 0, 'D').width).toBe(DOT_SIZE_PX);
+  });
+
+  it('every drawable tool maps to a type the runtime knows', () => {
+    for (const tool of ['rect', 'oval', 'poly', 'spot', 'dot', 'text'] as const) {
+      expect(['rect', 'oval', 'poly', 'spot', 'text']).toContain(storedType(tool));
+    }
   });
 });

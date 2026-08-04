@@ -1,4 +1,5 @@
 import * as utilities from 'imap-shared/utilities'
+import { PIN_ICON_SVG } from 'imap/scripts/pin-icon'
 
 export const artboardDefaults = {
   id: 'default-id', // UUID generated in the editor
@@ -61,12 +62,18 @@ export const objectDefaults = {
     use_icon: true,
     icon_size: 44,
     icon_type: 'library', // or 'custom'
-    icon_svg:
-      '<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 384 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0zM192 128a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"/></svg>',
+    // The default marker. Plain geometry authored for this platform — the upstream default was a
+    // Font Awesome glyph carrying its own licence banner, which has no business in our output.
+    // A teardrop whose TIP is at the bottom centre of the viewBox, so the pin points at its anchor.
+    icon_svg: PIN_ICON_SVG,
     icon_fill: '#000000',
     icon_url: '',
     icon_is_pin: true,
     icon_shadow: false,
+
+    // A DOT is a spot drawn as a plain circle rather than an icon (use_icon:false + a round
+    // border_radius). `pulse` rings it with an animated halo — see `.sw-imap-object-pulse`.
+    pulse: false,
 
     parent_filters: [],
 
@@ -292,10 +299,13 @@ export const tooltipContentDefaults = {
   },
   video: {
     type: 'Video',
+    // Empty by default. Upstream shipped sample clips hosted on the vendor's own domain, so an
+    // author who added a video block and set no source pointed a visitor's browser at THEM over
+    // plain http — a third-party request from a published page, from a default nobody chose.
     src: {
-      webm: 'http://webcraftplugins.com/uploads/example_video.webm',
-      mp4: 'http://webcraftplugins.com/uploads/example_video.mp4',
-      ogv: 'http://webcraftplugins.com/uploads/example_video.ogv',
+      webm: '',
+      mp4: '',
+      ogv: '',
     },
     linkUrl: '',
     autoplay: false,
@@ -380,7 +390,10 @@ export const imageMapDefaults = {
     show_tooltips: 'mouseover', // mouseover, click
     sticky_tooltips: false,
     constrain_tooltips: true,
-    tooltip_animation: 'none', // none, fade, grow
+    // Motion by default. The runtime has always supported these; upstream shipped them OFF, so a
+    // tooltip snapped into existence. `fade` is the unobtrusive one; prefers-reduced-motion still
+    // stands it down (the platform stylesheet zeroes transition-duration under it).
+    tooltip_animation: 'fade', // none, fade, grow
     fullscreen_tooltips: 'mobile-only', // none, mobile-only, always
     fullscreen_background: '#ffffff',
     fullscreen_background_opacity: 0.75,

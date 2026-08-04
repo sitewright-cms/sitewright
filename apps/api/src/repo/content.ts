@@ -1,4 +1,5 @@
 import { newId } from '../id.js';
+import { sanitizeImageMapConfig } from '@sitewright/blocks';
 import { and, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -9,6 +10,7 @@ import {
   AiConfigSchema,
   EntrySchema,
   FormSchema,
+  ImageMapSchema,
   SmtpStoredSchema,
   MediaAssetSchema,
   MediaFolderRecordSchema,
@@ -25,6 +27,7 @@ import {
   type WebsiteSettings,
   type Entry,
   type Form,
+  type ImageMap,
   type MediaAsset,
   type MediaFolderRecord,
   type Page,
@@ -83,6 +86,10 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Web form definitions (fields + inline messages + server-side recipient/mode).
   // The recipient is never rendered into exported HTML (see the Form renderer).
   ['form', FormSchema],
+  // Interactive hotspot maps (artboards + hotspots + tooltip content). The three config values
+  // that are authored MARKUP are sanitized at the RENDER sink (image-map-embed.ts), matching the
+  // data-sw-html posture noted in put().
+  ['imagemap', ImageMapSchema],
   // Per-project SMTP for the `userSmtp` form mode (encrypted password). Singleton
   // per project; managed via dedicated routes (excluded from generic content).
   ['project_smtp', SmtpStoredSchema],
@@ -469,15 +476,16 @@ export class ContentRepository {
     // parallel (alongside the base bundle) rather than serially. NOTE: `form` rows are exported
     // whole, so `form.recipient`/`subject`/`mode` travel too — already readable by any member via
     // the content API (form is not a DEDICATED_KIND) and required to restore a working form.
-    const [base, snippets, translations, forms, media, mediaFolders] = await Promise.all([
+    const [base, snippets, translations, forms, imageMaps, media, mediaFolders] = await Promise.all([
       this.exportBundle(ctx, project),
       this.list(ctx, 'snippet') as Promise<Snippet[]>,
       this.list(ctx, 'translation') as Promise<PageTranslation[]>,
       this.list(ctx, 'form') as Promise<Form[]>,
+      this.list(ctx, 'imagemap') as Promise<ImageMap[]>,
       this.list(ctx, 'media') as Promise<MediaAsset[]>,
       this.list(ctx, 'mediafolder') as Promise<MediaFolderRecord[]>,
     ]);
-    return { ...base, snippets, translations, forms, media, mediaFolders };
+    return { ...base, snippets, translations, forms, imageMaps, media, mediaFolders };
   }
 
   /**
@@ -517,6 +525,7 @@ export class ContentRepository {
         snippets: z.array(SnippetSchema).max(EXPORT_BUNDLE_CAPS.snippets).default([]),
         translations: z.array(PageTranslationSchema).max(EXPORT_BUNDLE_CAPS.translations).default([]),
         forms: z.array(FormSchema).max(EXPORT_BUNDLE_CAPS.forms).default([]),
+        imageMaps: z.array(ImageMapSchema).max(EXPORT_BUNDLE_CAPS.imageMaps).default([]),
         media: z.array(MediaAssetSchema).max(EXPORT_BUNDLE_CAPS.media).default([]),
         mediaFolders: z.array(MediaFolderRecordSchema).max(EXPORT_BUNDLE_CAPS.mediaFolders).default([]),
       })
@@ -580,6 +589,10 @@ export class ContentRepository {
       }
       for (const form of input.forms) {
         await this.writeRow(exec, ctx, 'form', form.id, form);
+        imported += 1;
+      }
+      for (const map of input.imageMaps) {
+        await this.writeRow(exec, ctx, 'imagemap', map.id, map);
         imported += 1;
       }
       for (const asset of input.media) {
@@ -831,12 +844,20 @@ export class ContentRepository {
     data: unknown,
   ): Promise<void> {
     const now = new Date();
-    const scope = this.scopeForData(kind, data);
+    // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
+    // tooltip block's `text`, a YouTube block's `embedCode`, and an SVG region's `svg.html` — and
+    // the render sink already cleans them on the way OUT (image-map-embed.ts). Cleaning them on the
+    // way IN as well means the STORE is clean too, which matters for every consumer that isn't the
+    // page renderer: the Studio reads a map back to edit it, get_content hands one to an agent, and
+    // an export ships one to another instance. This is the single low-level write — put(), the
+    // bundle import and a revision restore all funnel through here — so no path can skip it.
+    const clean = kind === 'imagemap' ? sanitizeImageMapConfig(data) : data;
+    const scope = this.scopeForData(kind, clean);
     const existing = await this.row(exec, ctx, kind, entityId, scope);
     if (existing) {
       await exec
         .update(content)
-        .set({ data, updatedAt: now })
+        .set({ data: clean, updatedAt: now })
         .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
     } else {
       await exec.insert(content).values({
@@ -845,7 +866,7 @@ export class ContentRepository {
         kind,
         entityId,
         scope,
-        data,
+        data: clean,
         createdAt: now,
         updatedAt: now,
       });

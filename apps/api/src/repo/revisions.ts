@@ -17,6 +17,7 @@ export const REVISIONED_KINDS: ReadonlySet<ContentKind> = new Set<ContentKind>([
   'dataset',
   'entry',
   'form',
+  'imagemap',
   'settings',
 ]);
 

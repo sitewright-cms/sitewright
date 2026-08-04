@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, FileCode2, Grid2x2, Layers, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
+import { Boxes, FileCode2, Grid2x2, Layers, MapPin, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { Tabs, type TabDef } from '../ui/Tabs';
@@ -14,6 +14,7 @@ import { TexturePicker } from './TexturePicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { ParallaxBuilder } from './ParallaxBuilder';
 import { SvgAnimStudio } from './SvgAnimStudio';
+import { ImageMapStudio } from './imagemap/ImageMapStudio';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -96,6 +97,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
   const [btnOpen, setBtnOpen] = useState(false);
   const [pxOpen, setPxOpen] = useState(false);
   const [svgOpen, setSvgOpen] = useState(false);
+  const [imapOpen, setImapOpen] = useState(false);
 
   const groups: { label: string; accent: Accent; cards: LibraryCardDef[] }[] = [
     {
@@ -184,6 +186,13 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           blurb: 'Import an SVG → animate each element (draw-on / fade / zoom / flip / reveal) → export.',
           onOpen: () => setSvgOpen(true),
         },
+        {
+          key: 'imagemap',
+          icon: <MapPin className="h-5 w-5" />,
+          title: 'Image map studio',
+          blurb: 'Draw clickable hotspots over an image or SVG — tooltips, links, floors. Embed with {{sw-imagemap}}.',
+          onOpen: () => setImapOpen(true),
+        },
       ],
     },
   ];
@@ -218,6 +227,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
       {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
+      {imapOpen && <ImageMapStudio onClose={() => setImapOpen(false)} projectId={projectId} />}
     </SidePanel>
   );
 }

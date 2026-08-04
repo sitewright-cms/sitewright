@@ -1,0 +1,71 @@
+/* layers */
+.sw-imap-ui-layers-menu-wrap {
+  z-index: 1;
+  position: relative;
+}
+
+.sw-imap-ui-layers-menu-wrap .sw-imap-icon {
+  position: absolute;
+  top: 14px;
+  right: 15px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.sw-imap-ui-element.sw-imap-ui-layers-select {
+  z-index: 1;
+  padding: 0 40px 0 20px !important;
+  line-height: 44px !important;
+  height: 44px !important;
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  visibility: visible !important;
+
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+
+  /* wordpress fixes */
+  /* vertical-align: inherit;
+  margin: 0;
+  font-family: sans-serif;
+  font-weight: inherit;
+  color: #222;
+  outline-color: rgb(34, 34, 34);
+  outline-style: none;
+  outline-width: 0px;
+  border: 1px solid rgb(166, 166, 166); */
+}
+
+.sw-imap-ui-layers-select:active {
+  filter: none;
+}
+
+/* Theme - Light */
+.sw-imap-ui-light .sw-imap-ui-layers-select {
+  color: black;
+  background: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  border: 1px solid #00000060;
+}
+
+.sw-imap-ui-light .sw-imap-ui-layers-menu-wrap .sw-imap-icon {
+  fill: black;
+}
+
+/* Theme - Dark */
+
+.sw-imap-ui-dark .sw-imap-ui-layers-select {
+  color: white;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.sw-imap-ui-dark .sw-imap-ui-layers-menu-wrap .sw-imap-icon {
+  fill: white;
+}

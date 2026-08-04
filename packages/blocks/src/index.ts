@@ -23,6 +23,7 @@ export * from './sanitize-rich.js';
 export * from './rich-toolbar.js';
 export * from './directives.js';
 export * from './form-embed.js';
+export * from './image-map-embed.js';
 export * from './head.js';
 export * from './icons.js';
 export * from './phosphor-icons.js';

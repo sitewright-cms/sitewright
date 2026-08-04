@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/blocks",
-  "version": "0.12.4",
+  "version": "0.13.0",
   "description": "Framework-free block library for Sitewright: block descriptors (palette + prop-field metadata) and a pure, XSS-safe HTML renderer that mirrors the published Astro output. Shared by the editor and the live-preview endpoint.",
   "license": "Apache-2.0",
   "type": "module",
@@ -47,13 +47,14 @@
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
+    "@sitewright/image-pipeline": "workspace:*",
     "@sitewright/schema": "workspace:*",
     "dom-serializer": "^2.0.0",
     "domhandler": "^5.0.3",
     "domutils": "^3.2.2",
     "handlebars": "^4.7.9",
     "htmlparser2": "^9.1.0",
-    "sanitize-html": "^2.13.1"
+    "sanitize-html": "^2.17.5"
   },
   "devDependencies": {
     "@phosphor-icons/core": "^2.1.1",

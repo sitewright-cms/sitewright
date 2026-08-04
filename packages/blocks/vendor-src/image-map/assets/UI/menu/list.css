@@ -1,0 +1,16 @@
+.sw-imap-object-list {
+  z-index: 1;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sw-imap-object-list-artboard-container {
+  transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.25s cubic-bezier(0.55, 0, 0.1, 1);
+  overflow: hidden;
+}
+
+.sw-imap-object-list-artboard-container.sw-imap-collapsed {
+  height: 41px !important;
+}

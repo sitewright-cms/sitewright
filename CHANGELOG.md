@@ -9,6 +9,59 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-08-04
+
+Interactive image maps: an image or SVG overlaid with clickable regions that highlight, open rich
+tooltips, switch floors and zoom. Built by porting a licensed third-party product into the platform
+rather than wrapping it — which meant taking its capabilities apart until only data was left.
+
+### Added
+
+- **`data-sw-component="image-map"` — interactive hotspot maps.** Polygon, rectangle, oval, pin, text
+  and imported-SVG regions over an image, each with a rich tooltip, an optional link, and grouping;
+  multiple "artboards" (floor plans, map layers) with a switcher; pinch/scroll zoom with a navigator;
+  fullscreen; and a searchable object list. Page elements elsewhere drive the map with no JavaScript
+  at all, through `data-sw-imap-*` attributes — `data-sw-imap-trigger-object-on-mouseover="Studio A"`
+  on a list item highlights that hotspot and opens its tooltip. Degrades to the plain image with JS
+  off, or if a config will not parse.
+- **Image maps are stored content (`imagemap`) and embedded by reference.** `{{sw-imagemap "id"}}`,
+  or `<div data-sw-imagemap="id">` code-first. Both resolve at render into the component wrapper, a
+  no-JS fallback image, and the config as a `<script type="application/json">` data block. Version
+  history, project export/import and the MCP generic content tools all carry them, so an agent can
+  author a map like any other content.
+- **The Image Map Studio** (System Library → Image map studio). Pick a background, draw regions over
+  it, drag and resize them, edit polygon vertices, give each a tooltip and an action, and arrange
+  them across artboards. Every asset field goes through the project's own file picker — there are no
+  bare URL boxes — so a published site stays self-contained.
+- **Five starter templates**, ported from the vendor's demo set: a real-estate building whose floors
+  each open their own plan (10 artboards), a US national-parks vector map (130 regions), a jet-engine
+  blueprint, a 401-region anatomical diagram, and an infographic. Creating from one copies its images
+  into the project's media library and rewrites the config, so nothing a project references lives on
+  the platform.
+
+### Security
+
+- **The runtime executes no tenant code.** The upstream product had four paths that did: a
+  `run-script` hotspot action (an `eval`), a `custom_js` block injected as a `<script>`, an
+  `onclick="…"` on a tooltip button, and — the one that hides best — an SVG hotspot whose element
+  name and attribute names both come from the config, so `tagName: "script"` built an executable SVG
+  script element. All four are gone or allowlisted, asserted against the generated bundle so a future
+  re-vendor cannot restore them.
+- **A map config cannot escape into the page.** Tooltip rich text and embeds are sanitized, at the
+  render sink and again at rest; hotspot links are scheme-checked; object titles render as text; and
+  every config value reaching CSS is escaped, after a probe found a filter name could close its rule
+  and apply arbitrary CSS to the whole page.
+
+### Fixed
+
+- **Nine defects in the ported runtime**, each a real bug in the original: three store actions whose
+  promises never settled (one could wedge the action queue that awaits it), a rejected action that
+  blocked the queue permanently, attribute bindings installed once per map so two maps fired every
+  trigger twice, a tooltip container appended to `document.body` and removed document-wide by an id
+  that defaults to `0` — so a second map's init deleted the first map's tooltips — and an object-list
+  search that built a `RegExp` from raw visitor input.
+
+
 ## [0.12.4] — 2026-08-03
 
 ### Fixed

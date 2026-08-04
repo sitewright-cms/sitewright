@@ -512,4 +512,86 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
     ],
   },
+  {
+    type: 'ImageMap',
+    marker: 'image-map',
+    summary:
+      'An interactive hotspot map: an image (or SVG) overlaid with clickable/hoverable regions — polygons, rectangles, ovals, pin spots and text — each with a rich tooltip, an optional link, and optional grouping. Supports multiple "artboards" (floor plans, map layers) with a switcher, pinch/scroll zoom with a navigator, fullscreen, and a searchable object list. Use it for floor plans, seating charts, campus/venue maps, product diagrams and region maps.',
+    authoring: 'markup',
+    parts: [
+      {
+        part: '(the marked element)',
+        element: 'div',
+        required: true,
+        description:
+          'A block element carrying data-sw-component="image-map". The runtime REPLACES its contents once it has a valid config, so put a plain <img> of the base image inside as the no-JS fallback.',
+      },
+      {
+        part: 'config',
+        element: 'script',
+        required: true,
+        description:
+          'A <script type="application/json" data-sw-part="config"> child holding the map config object: {general, artboards:[{title, image_url, width, height, children:[…hotspots]}], …}. It is DATA — the browser never executes it, and the platform CSP allows it for exactly that reason. Escape <, > and & as \\u003c/\\u003e/\\u0026 so no value can close the element early.',
+      },
+    ],
+    attributes: [
+      {
+        name: 'data-sw-imap-map',
+        on: 'any element on the page',
+        description:
+          'Names which map an external trigger targets (matching the config\'s general.name). Omit it when the page has a single map — triggers then resolve to it automatically.',
+      },
+      {
+        name: 'data-sw-imap-highlight-object-on-mouseover / -on-click',
+        on: 'any element on the page',
+        description:
+          'Value = a hotspot TITLE. Hovering/clicking this element highlights that hotspot on the map (and switches to its artboard first if needed). The mouseover form releases the highlight on mouseout.',
+      },
+      {
+        name: 'data-sw-imap-trigger-object-on-mouseover / -on-click',
+        on: 'any element on the page',
+        description: 'As highlight, but ALSO opens the hotspot\'s tooltip — the full hover effect. The usual choice for a list beside the map.',
+      },
+      {
+        name: 'data-sw-imap-unhighlight-object-… / -untrigger-object-…',
+        on: 'any element on the page',
+        description: 'The inverse: clears the named hotspot\'s highlight and tooltip.',
+      },
+      {
+        name: 'data-sw-imap-show-tooltip-on-mouseover / -on-click, -hide-tooltip-…',
+        on: 'any element on the page',
+        description: 'Opens or closes just the named hotspot\'s tooltip, without highlighting it.',
+      },
+      {
+        name: 'data-sw-imap-focus-object-on-mouseover / -on-click',
+        on: 'any element on the page',
+        description: 'Zooms and pans the map to centre the named hotspot (requires zooming enabled in the config).',
+      },
+      {
+        name: 'data-sw-imap-change-artboard',
+        on: 'any element on the page',
+        description: 'Value = an artboard TITLE. Clicking switches the map to that floor/layer — how you build your own floor switcher.',
+      },
+    ],
+    skeleton: `<div data-sw-component="image-map">
+  <img src="/media/acme/a1b2c3-ground-floor.jpg" alt="Ground floor plan" />
+  <script type="application/json" data-sw-part="config">{"general":{"name":"Floors"},"artboards":[{"title":"Ground","image_url":"/media/acme/a1b2c3-ground-floor.jpg","use_image_size":true,"children":[{"title":"Reception","type":"rect","x":12,"y":30,"width":18,"height":12,"tooltip_content":[{"type":"Heading","text":"Reception"},{"type":"Paragraph","text":"Open 9–17"}]}]}]}</script>
+</div>`,
+    noJs:
+      'The fallback <img> inside the marked element is left exactly as authored — the visitor sees the base image, just without hotspots. The same applies if the config fails to parse, so a bad config degrades to a plain picture rather than a blank box.',
+    notes:
+      'AUTHOR THE CONFIG, NOT THE BEHAVIOUR — hotspot geometry (x/y/width/height) is in PERCENT of the artboard, so a map stays correct at every screen width. Hotspot `type` is one of "rect", "oval", "poly" (with a `points` array), "spot" (an icon pin), "text", "svg" / "svg-single" (regions imported from an SVG, e.g. a country map) or "group". Each hotspot takes `default_style` and `mouseover_style` (background/border/stroke colour + opacity), and `tooltip_content` — an array of {type:"Heading"|"Paragraph"|"Image"|"Button"|"Video"|"YouTube"} blocks. LINKS: set actions:{click:"follow-link", link:"/somewhere", open_link_in_new_window:true}; only http(s)/mailto/tel links are followed. There is deliberately NO script action — hotspots run no JavaScript. MULTIPLE FLOORS: give `artboards` more than one entry and the runtime renders a switcher; drive it yourself with data-sw-imap-change-artboard. IMAGES: reference media-library URLs (/media/<slug>/<id>-<name>) so the published export stays self-contained — never hotlink an external image. The runtime ships only on pages that carry the marker.',
+    examples: [
+      {
+        label: 'Floor plan with an external list that highlights rooms',
+        code: '<div class="grid gap-6 md:grid-cols-[2fr_1fr]">\n  <div data-sw-component="image-map">\n    <img src="/media/acme/a1b2c3-floor.jpg" alt="Floor plan" />\n    <script type="application/json" data-sw-part="config">{"general":{"name":"Floor"},"artboards":[{"title":"Ground","image_url":"/media/acme/a1b2c3-floor.jpg","use_image_size":true,"children":[{"title":"Studio A","type":"rect","x":10,"y":20,"width":25,"height":30,"tooltip_content":[{"type":"Paragraph","text":"48 m²"}]}]}]}</script>\n  </div>\n  <ul class="space-y-2">\n    <li data-sw-imap-trigger-object-on-mouseover="Studio A" class="cursor-pointer rounded p-2 hover:bg-base-200">Studio A</li>\n  </ul>\n</div>',
+        note: 'The list lives OUTSIDE the map and drives it through data-sw-imap-* — no JavaScript, and the list stays fully styleable with utilities.',
+      },
+      {
+        label: 'Two floors with your own switcher',
+        code: '<div class="mb-3 flex gap-2">\n  <button data-sw-imap-change-artboard="Ground" class="btn btn-sm">Ground</button>\n  <button data-sw-imap-change-artboard="First" class="btn btn-sm">First</button>\n</div>\n<div data-sw-component="image-map">\n  <img src="/media/acme/a1b2c3-ground.jpg" alt="Ground floor" />\n  <script type="application/json" data-sw-part="config">{"general":{"name":"Building"},"artboards":[{"title":"Ground","image_url":"/media/acme/a1b2c3-ground.jpg","use_image_size":true,"children":[]},{"title":"First","image_url":"/media/acme/d4e5f6-first.jpg","use_image_size":true,"children":[]}]}</script>\n</div>',
+        note: 'Each artboard is a floor with its own image and hotspots; the buttons switch between them by title.',
+      },
+    ],
+  },
 ];

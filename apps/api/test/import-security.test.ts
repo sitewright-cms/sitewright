@@ -94,6 +94,7 @@ function bundleWith(url: string): ProjectExportBundle {
     project: { id: 'p', name: 'X', slug: 'old', identity: { name: 'X', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
     pages: [{ id: 'home', path: '', title: 'Home', data: { hero: url } }],
     templates: [],
+    imageMaps: [],
     snippets: [],
     datasets: [],
     entries: [],

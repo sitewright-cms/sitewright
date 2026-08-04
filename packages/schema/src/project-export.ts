@@ -8,6 +8,7 @@ import { SnippetSchema } from './snippet.js';
 import { DatasetSchema, EntrySchema } from './dataset.js';
 import { PageTranslationSchema } from './translation.js';
 import { FormSchema } from './form.js';
+import { ImageMapSchema } from './image-map.js';
 import { MediaAssetSchema, MediaFolderRecordSchema } from './media.js';
 import { IdSchema, SlugSchema } from './primitives.js';
 import { mergeLegacyIdentity } from './migrate-identity.js';
@@ -39,6 +40,7 @@ export const EXPORT_BUNDLE_CAPS = {
   entries: 50_000,
   translations: 20_000,
   forms: 500,
+  imageMaps: 200,
   media: 20_000,
   mediaFolders: 2000,
 } as const;
@@ -77,6 +79,7 @@ export const ProjectExportBundleSchema = z.object({
   entries: z.array(EntrySchema).max(EXPORT_BUNDLE_CAPS.entries).default([]),
   translations: z.array(PageTranslationSchema).max(EXPORT_BUNDLE_CAPS.translations).default([]),
   forms: z.array(FormSchema).max(EXPORT_BUNDLE_CAPS.forms).default([]),
+  imageMaps: z.array(ImageMapSchema).max(EXPORT_BUNDLE_CAPS.imageMaps).default([]),
   media: z.array(MediaAssetSchema).max(EXPORT_BUNDLE_CAPS.media).default([]),
   mediaFolders: z.array(MediaFolderRecordSchema).max(EXPORT_BUNDLE_CAPS.mediaFolders).default([]),
 });

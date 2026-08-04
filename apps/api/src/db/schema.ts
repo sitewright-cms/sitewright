@@ -27,6 +27,31 @@ export const users = sqliteTable('users', {
 });
 
 /** A client website project — the tenancy boundary (there is one implicit platform). */
+/**
+ * Every content kind, as a value list.
+ *
+ * The `content.kind` and `content_revisions.kind` text columns and the {@link ContentKind} union
+ * are all derived from this — they used to be three hand-maintained copies of the same list.
+ * There is no SQL CHECK, so adding a kind stays a type-level change with no migration.
+ */
+export const CONTENT_KIND_VALUES = [
+  'settings',
+  'page',
+  'template',
+  'snippet',
+  'dataset',
+  'entry',
+  'media',
+  'mediafolder',
+  'deploy_target',
+  'translation',
+  'form',
+  'imagemap',
+  'project_smtp',
+  'ai_config',
+  'preview_share',
+] as const;
+
 export const projects = sqliteTable(
   'projects',
   {
@@ -471,7 +496,7 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config', 'preview_share'],
+      enum: CONTENT_KIND_VALUES,
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -516,7 +541,7 @@ export const contentRevisions = sqliteTable(
     // Mirrors content.kind (same text enum, no SQL CHECK). Recording is gated to the user-editable
     // subset in code (REVISIONED_KINDS) — credentials + media binaries are never snapshotted.
     kind: text('kind', {
-      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp', 'ai_config', 'preview_share'],
+      enum: CONTENT_KIND_VALUES,
     }).notNull(),
     entityId: text('entity_id').notNull(),
     /** Uniqueness scope mirroring `content.scope` (dataset slug for `entry`, else `''`) so an entry's
@@ -632,18 +657,4 @@ export const formSubmissions = sqliteTable(
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */
 export type ProjectRole = 'owner' | 'member';
-export type ContentKind =
-  | 'settings'
-  | 'page'
-  | 'template'
-  | 'snippet'
-  | 'translation'
-  | 'dataset'
-  | 'entry'
-  | 'media'
-  | 'mediafolder'
-  | 'deploy_target'
-  | 'form'
-  | 'project_smtp'
-  | 'ai_config'
-  | 'preview_share';
+export type ContentKind = (typeof CONTENT_KIND_VALUES)[number];

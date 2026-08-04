@@ -1,4 +1,4 @@
-import { timingSafeEqual, createHmac, createHash } from 'node:crypto';
+import { timingSafeEqual, createHmac, createHash, randomUUID } from 'node:crypto';
 import { gzip as gzipCb } from 'node:zlib';
 import { promisify } from 'node:util';
 import { createReadStream } from 'node:fs';
@@ -6,6 +6,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newId, isShortAssetId } from '../id.js';
+import { readTemplateConfig, readTemplateImage } from '../imagemap-assets.js';
 import { readTexture } from '../textures.js';
 import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
 import { sql } from 'drizzle-orm';
@@ -53,6 +54,8 @@ import {
   type ScriptAsset,
   type MediaFolderRecord,
   type Form,
+  type ImageMap,
+  IMAGE_MAP_TEMPLATES,
   toPublicForm,
   type ImageAsset,
   type MediaAsset,
@@ -4368,6 +4371,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // more than on a blind fetch — this route STORES the response as a retrievable media asset, and it is
     // reachable by the `import_image` MCP tool, i.e. by an agent loop reading untrusted third-party content.
     const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
+    // Where a materialised template's images land, so they are easy to find (and to delete with the
+    // map). Organisational only — a media URL carries no folder segment.
+    const TEMPLATE_MEDIA_FOLDER = 'image-maps';
+    const FromTemplateBody = z.object({
+      template: z.string().min(1).max(100),
+      /** Entity id for the new map; generated from the template id when omitted. */
+      id: z.string().min(1).max(100).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/).optional(),
+      /** Display name; the template's own name when omitted. */
+      name: z.string().min(1).max(200).optional(),
+    });
     app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rl(20) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
@@ -4445,6 +4458,67 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid import' });
         throw err;
       }
+    });
+
+    // Materialise a bundled IMAGE MAP TEMPLATE into this project.
+    //
+    // The template's images are copied into the project's OWN media library and the config is
+    // rewritten to point at them, so the resulting map is self-contained: nothing it references
+    // lives on the platform, and a publish/export carries it like any other project image. This is
+    // the only supported way to use a template — the /authoring/imagemaps/* URLs are a source, not
+    // a destination.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/imagemaps/from-template', { config: rl(20) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const parsed = FromTemplateBody.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
+
+      const template = IMAGE_MAP_TEMPLATES.find((t) => t.id === parsed.data.template);
+      const config = template ? await readTemplateConfig(template.id) : null;
+      if (!template || !config) return reply.code(404).send({ error: 'unknown image map template' });
+
+      // Copy each referenced image into the media library, collecting the URL rewrites.
+      const rewrites = new Map<string, string>();
+      for (const authoringUrl of template.images) {
+        const filename = authoringUrl.split('/').pop() as string;
+        const bytes = await readTemplateImage(filename);
+        if (!bytes) return reply.code(500).send({ error: 'template image is missing' });
+        const saved = await createMediaAsset(ctx, project.slug, bytes, {
+          filename,
+          mimetype: 'image/jpeg',
+          folder: TEMPLATE_MEDIA_FOLDER,
+        });
+        rewrites.set(authoringUrl, saved.url);
+      }
+
+      // Rewrite over the SERIALISED config: an image URL can appear on an artboard background, a
+      // hotspot's background image or inside tooltip content, and a whole-string replace reaches
+      // every one of them without a path list that can miss a nesting level.
+      let json = JSON.stringify(config);
+      for (const [from, to] of rewrites) json = json.split(from).join(to);
+      const rewritten = JSON.parse(json) as Record<string, unknown>;
+
+      // Give every artboard an id. Vendor exports omit it on the first artboard, and the runtime
+      // assigns none — so without this every artboard shares artboardDefaults' `default-id` and the
+      // floor switcher does nothing. Existing ids are kept, because the hotspots' change-artboard
+      // actions already point at them.
+      const artboards = Array.isArray(rewritten.artboards) ? (rewritten.artboards as Array<Record<string, unknown>>) : [];
+      const usedArtboardIds = new Set(artboards.map((a) => a.id).filter((v): v is string => typeof v === 'string' && v !== ''));
+      rewritten.artboards = artboards.map((artboard) => {
+        if (typeof artboard.id === 'string' && artboard.id !== '') return artboard;
+        let fresh = `artboard-${randomUUID().slice(0, 8)}`;
+        while (usedArtboardIds.has(fresh)) fresh = `artboard-${randomUUID().slice(0, 8)}`;
+        usedArtboardIds.add(fresh);
+        return { ...artboard, id: fresh };
+      });
+
+      const id = parsed.data.id ?? `${template.id}-${randomUUID().slice(0, 8)}`;
+      const name = parsed.data.name ?? template.name;
+      const data = { ...rewritten, id, general: { ...(rewritten.general as object), name } };
+
+      // put() validates against ImageMapSchema and records a revision like any other content write.
+      const stored = await contentRepo.put(ctx, 'imagemap', id, data);
+      return reply.code(201).send({ item: stored, importedImages: rewrites.size });
     });
 
     // Clear this project's DERIVED thumbnail cache: removes every on-demand-generated sm/md/lg/xl
@@ -5298,6 +5372,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // project artifacts — loaded here rather than in the export bundle.
     const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
     const forms = (await contentRepo.list(ctx, 'form')) as Form[];
+    const imageMaps = (await contentRepo.list(ctx, 'imagemap')) as ImageMap[];
     const bundle: ProjectBundle = {
       // ExportBundle.project omits formatVersion (a format concern, not a DB field); re-add it.
       project: { formatVersion: exp.formatVersion, ...exp.project },
@@ -5307,6 +5382,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       entries: exp.entries,
       translations,
       forms,
+      imageMaps,
     };
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
@@ -6977,6 +7053,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       .header('access-control-allow-origin', '*')
       .header('cross-origin-resource-policy', 'cross-origin')
       .type('image/png')
+      .send(bytes);
+  });
+
+  // The bundled IMAGE MAP starter templates: metadata for the picker (STATIC platform data — the
+  // ~940 KB of config stays on disk, see imagemap-assets.ts).
+  app.get('/authoring/imagemaps', { config: rl(60) }, async () => ({ templates: IMAGE_MAP_TEMPLATES }));
+
+  // One template's CONFIG, for previewing it before it is materialised into a project. `:id` is
+  // ALLOWLIST-validated against the catalog inside readTemplateConfig (no path traversal).
+  app.get<{ Params: { id: string } }>('/authoring/imagemaps/templates/:id', { config: rl(60) }, async (req, reply) => {
+    const config = await readTemplateConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'not found' });
+    return reply.header('cache-control', 'public, max-age=3600').send({ config });
+  });
+
+  // Serve one template image. ALLOWLIST-validated in readTemplateImage. Immutable + CORS so the
+  // editor preview loads it from any origin — a PROJECT's copy is imported into its media library,
+  // so nothing published ever points here.
+  app.get<{ Params: { file: string } }>('/authoring/imagemaps/:file', { config: rl(MEDIA_ASSET_RL_MAX) }, async (req, reply) => {
+    const { file } = req.params;
+    const bytes = await readTemplateImage(file);
+    if (!bytes) return reply.code(404).send({ error: 'not found' });
+    // Type from the extension rather than a hardcoded image/jpeg — today every template image is a
+    // JPEG, but `nosniff` means a wrong type would simply fail to render rather than fall back.
+    const ext = file.slice(file.lastIndexOf('.') + 1).toLowerCase();
+    const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+    return reply
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .header('access-control-allow-origin', '*')
+      .header('cross-origin-resource-policy', 'cross-origin')
+      .type(type)
       .send(bytes);
   });
 

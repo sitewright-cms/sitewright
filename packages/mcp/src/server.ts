@@ -45,6 +45,7 @@ const GENERIC_KIND = z.enum([
   'dataset',
   'entry',
   'form',
+  'imagemap',
 ]);
 
 // --- put_content "teach on error" -------------------------------------------------------------

@@ -89,6 +89,8 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
     | 'preview'
     | 'markEntries'
     | 'forms'
+    // Consumed by {{sw-imagemap}} + the data-sw-imagemap pass; not a readable `{{imageMaps.*}}` namespace.
+    | 'imageMaps'
     | 'hcaptchaSiteKey'
     | 'siteRoot'
     // A TRANSPORT input merged into the page object as the `page.parent` binding (documented under the

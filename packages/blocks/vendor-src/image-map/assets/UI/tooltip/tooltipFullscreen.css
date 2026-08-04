@@ -1,0 +1,69 @@
+.sw-imap-tooltips-container.is-fullscreen {
+  display: none;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  overflow-y: auto;
+  z-index: 999997;
+
+  opacity: 0;
+  transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.sw-imap-tooltips-container.is-fullscreen .sw-imap-fullscreen-tooltip {
+  pointer-events: auto;
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  min-height: 100%;
+  padding: 40px;
+  align-items: center;
+  justify-content: center;
+
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+
+  transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.sw-imap-tooltips-container.is-fullscreen .sw-imap-fullscreen-tooltip .sw-imap-tooltip-content {
+  position: relative;
+  background: #111;
+  padding: 20px;
+  border-radius: 10px;
+
+  transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition: all 0.35s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.sw-imap-tooltips-container.is-fullscreen .sw-imap-fullscreen-tooltip .sw-imap-tooltip-close-button {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  z-index: 99;
+
+  background: white;
+  color: #111;
+  border-radius: 100%;
+  right: -22px;
+  top: -22px;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+
+.sw-imap-tooltips-container.is-fullscreen .sw-imap-fullscreen-tooltip .sw-imap-tooltip-close-button .sw-imap-icon {
+  width: 20px;
+  height: 20px;
+  padding: 12px;
+  box-sizing: content-box;
+}

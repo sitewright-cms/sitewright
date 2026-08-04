@@ -6,6 +6,8 @@ import type {
   Form,
   FormModes,
   FormSubmission,
+  ImageMap,
+  ImageMapTemplate,
   InstanceSettingsInput,
   InstanceSettingsPublic,
   MediaAsset,
@@ -954,6 +956,22 @@ export const api = {
     request<{ item: Template }>('PUT', `/projects/${projectId}/content/template/${encodeURIComponent(template.id)}`, template),
   deleteTemplate: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
+
+  // --- image maps (interactive hotspot maps; embedded with {{sw-imagemap "id"}}) ---
+  listImageMaps: (projectId: string) =>
+    request<{ items: ImageMap[] }>('GET', `/projects/${projectId}/content/imagemap`),
+  getImageMap: (projectId: string, id: string) =>
+    request<{ item: ImageMap }>('GET', `/projects/${projectId}/content/imagemap/${encodeURIComponent(id)}`),
+  putImageMap: (projectId: string, map: ImageMap) =>
+    request<{ item: ImageMap }>('PUT', `/projects/${projectId}/content/imagemap/${encodeURIComponent(map.id)}`, map),
+  deleteImageMap: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/imagemap/${encodeURIComponent(id)}`),
+  /** The bundled starter templates (metadata only — platform data, not project-scoped). */
+  listImageMapTemplates: () => request<{ templates: ImageMapTemplate[] }>('GET', '/authoring/imagemaps'),
+  /** Materialise a template INTO a project: its images are copied into the project's own media
+   *  library and the config rewritten, so the new map references nothing on the platform. */
+  createImageMapFromTemplate: (projectId: string, body: { template: string; id?: string; name?: string }) =>
+    request<{ item: ImageMap; importedImages: number }>('POST', `/projects/${projectId}/imagemaps/from-template`, body),
 
   // --- snippets (code-first reusable Handlebars partials, included via {{> name}}) ---
   listSnippets: (projectId: string) =>

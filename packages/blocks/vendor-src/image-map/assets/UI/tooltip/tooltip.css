@@ -1,0 +1,108 @@
+/* Container */
+
+.sw-imap-tooltips-container {
+  position: relative;
+  z-index: 999997;
+}
+
+/* Tooltip */
+
+.sw-imap-tooltip-wrap {
+  position: absolute;
+  pointer-events: none;
+  height: 0;
+}
+.sw-imap-tooltip-wrap {
+  pointer-events: none;
+}
+.sw-imap-tooltip-wrap .sw-imap-tooltip {
+  display: none;
+  position: relative;
+  pointer-events: all;
+  opacity: 0;
+
+  transition-duration: 0.2s;
+  -moz-transition-duration: 0.2s;
+  -webkit-transition-duration: 0.2s;
+
+  transition-timing-function: cubic-bezier(0.55, 0, 0.1, 1);
+  -moz-transition-timing-function: cubic-bezier(0.55, 0, 0.1, 1);
+  -webkit-transition-timing-function: cubic-bezier(0.55, 0, 0.1, 1);
+
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+}
+
+/* Arrow */
+
+.hs-arrow {
+  position: absolute;
+}
+
+.hs-arrow-top {
+  left: 50%;
+  top: 0;
+  margin-left: -8px;
+  margin-top: -8px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+
+  border-bottom: 8px solid black;
+}
+
+.hs-arrow-bottom {
+  left: 50%;
+  top: 100%;
+  margin-left: -8px;
+  margin-top: 0;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+
+  border-top: 8px solid black;
+}
+
+.hs-arrow-right {
+  left: 100%;
+  top: 50%;
+  margin-left: 0;
+  margin-top: -8px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+
+  border-left: 8px solid black;
+}
+
+.hs-arrow-left {
+  left: 0;
+  top: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+
+  border-right: 8px solid black;
+}
+
+/* Animation */
+
+.sw-imap-tooltip-wrap.sw-imap-tooltip-position-top .sw-imap-tooltip {
+  transform-origin: 50% 100%;
+}
+.sw-imap-tooltip-wrap.sw-imap-tooltip-position-bottom .sw-imap-tooltip {
+  transform-origin: 50% 0%;
+}
+.sw-imap-tooltip-wrap.sw-imap-tooltip-position-left .sw-imap-tooltip {
+  transform-origin: 100% 50%;
+}
+.sw-imap-tooltip-wrap.sw-imap-tooltip-position-right .sw-imap-tooltip {
+  transform-origin: 0% 50%;
+}

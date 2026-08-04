@@ -1,0 +1,46 @@
+.sw-imap-object-list-item-artboard {
+  position: relative;
+  padding: 0;
+  line-height: 40px;
+  background: #f5f5f5;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 15%);
+  z-index: 2;
+  font-family: sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #222;
+  display: flex;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+.sw-imap-object-list-item-artboard:hover {
+  background: #eee;
+}
+
+.sw-imap-object-list-item-artboard span {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 20px;
+  flex: 1;
+}
+
+.sw-imap-object-list-item-artboard .sw-imap-icon {
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  z-index: 4;
+  fill: #b7b7b7;
+}
+
+.sw-imap-object-list-item-artboard.sw-imap-collapsed-artboard-item .sw-imap-icon {
+  transform: rotateZ(90deg);
+}

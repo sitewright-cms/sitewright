@@ -38,6 +38,15 @@ const STATEFUL =
  */
 const ALLOWED: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\.sw-lightbox-/, 'vendored SmartPhoto CSS + our overrides OF it — zeroing ours would hand the vendor the win'],
+  [
+    /\.sw-imap-/,
+    "the Image Map's own chrome (canvas, tooltips, object list, zoom/fullscreen controls). Same case as " +
+      'sw-lightbox: this is vendored widget-internal CSS plus our re-skin OF it, and zeroing ours would ' +
+      'hand the vendor sheet the win. Crucially the map is not styled with utilities at all — every ' +
+      "colour, size and radius a hotspot or tooltip uses comes from the map's CONFIG, which is the " +
+      'documented way to restyle it. The author-facing surface is the root [data-sw-component="image-map"], ' +
+      'which sets no visual property.',
+  ],
   [/\[data-sw-part="container"\]|\[data-sw-part="track"\]|\[data-sw-part="slide"\]/, 'Embla mechanics: the track is the flex row and a slide must be able to shrink'],
   [/data-kenburns/, 'the Ken Burns layer must fill its slide for the pan to work at all'],
   [/\[data-sw-part="dots"\] button$/, 'the dot BOX (display/cursor/border-reset) — its look is softened separately'],

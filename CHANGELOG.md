@@ -9,6 +9,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **The rich-text size menu covers the platform's whole type scale.** Ten steps — `text-xs` through
+  `text-6xl`, the range the design guide itself uses — behind the ONE existing size button, so the
+  toolbar does not grow by a single pixel. Each row now renders its own label at its own size (capped,
+  or a 6XL row would be 60px tall), so the menu reads as a scale rather than ten words. Since the
+  toolbar emits no `h1`–`h6`, size is how rich content makes a line read as a headline, and the scale
+  had to reach that far. Every new size lands in `RICH_CONTENT_SAFELIST` automatically, which is what
+  compiles it into the PUBLISHED sheet.
+
+### Fixed
+
+- **A rich-text toolbar menu is no longer clipped by the dialog around it.** The list popovers were
+  positioned absolutely inside the toolbar, so the dataset entry modal's own overflow cut them off —
+  survivable at five items, but the ten-step size scale lost its last rows with no way to scroll to
+  them. They are now portalled to `<body>`, positioned against the trigger, flipped above when there
+  is no room below, capped to the space actually available, and layered above the elevated modal.
+
 ### Changed
 
 - **The platform injects no heading tags, and rich content no longer carries them.** A heading is a

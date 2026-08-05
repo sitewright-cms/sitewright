@@ -3,6 +3,7 @@ import {
   RICH_COLORS,
   RICH_HIGHLIGHTS,
   RICH_SIZES,
+  RICH_SIZE_PREVIEW_MAX,
   RICH_ALIGNS,
   RICH_COLOR_CLASSES,
   RICH_HIGHLIGHT_CLASSES,
@@ -20,6 +21,7 @@ const RICH_TB_DATA = {
   colors: RICH_COLORS,
   highlights: RICH_HIGHLIGHTS,
   sizes: RICH_SIZES,
+  sizePreviewMax: RICH_SIZE_PREVIEW_MAX,
   aligns: RICH_ALIGNS,
   colorClasses: [...RICH_COLOR_CLASSES],
   highlightClasses: [...RICH_HIGHLIGHT_CLASSES],
@@ -223,7 +225,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-tb .sw-tb-sep{width:1px;height:15px;margin:0 2px;background:#e2e8f0;flex:0 0 auto}' +
       // Popover (colour/highlight swatch grids · font/size/align menus · link URL input · the overflow "more"
       // list). Fixed-position, max-z, own styling — never depends on the rendered site CSS.
-      '.sw-tb-pop{position:fixed;z-index:2147483647;display:none;box-sizing:border-box;padding:8px;border-radius:10px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.22);font:500 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#334155;max-width:290px}' +
+      '.sw-tb-pop{position:fixed;z-index:2147483647;display:none;box-sizing:border-box;padding:8px;border-radius:10px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.22);font:500 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#334155;max-width:290px;max-height:19rem;overflow-y:auto}' +
       '.sw-tb-pop .sw-tb-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin:0 0 5px}' +
       '.sw-tb-pop .sw-tb-grid{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px}' +
       '.sw-tb-pop .sw-tb-grid:last-child{margin-bottom:0}' +
@@ -492,7 +494,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function setTbActive(id) { tbActiveId = id; if (!toolbar) return; var bs = toolbar.querySelectorAll('button'); for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('sw-tb-on', id != null && bs[i].getAttribute('data-tbid') === id); }
   function tbHeading(text) { var h = document.createElement('p'); h.className = 'sw-tb-h'; h.textContent = text; return h; }
   function tbSwatchBtn(label, styleText, glyph, onPick) { var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-tb-sw'; b.title = label; b.setAttribute('aria-label', label); if (styleText) b.setAttribute('style', styleText); b.textContent = glyph; b.addEventListener('mousedown', function (e) { e.preventDefault(); }); b.addEventListener('click', function (e) { e.preventDefault(); onPick(); }); return b; }
-  function tbItemBtn(label, iconId, onPick) { var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-tb-item'; b.setAttribute('aria-label', label); if (iconId) b.innerHTML = tbSvg(iconId); b.appendChild(document.createTextNode(label)); b.addEventListener('mousedown', function (e) { e.preventDefault(); }); b.addEventListener('click', function (e) { e.preventDefault(); onPick(); }); return b; }
+  function tbItemBtn(label, iconId, onPick, previewSize) { var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-tb-item'; b.setAttribute('aria-label', label); if (iconId) b.innerHTML = tbSvg(iconId); if (previewSize) b.style.fontSize = 'min(' + previewSize + ',' + RTB.sizePreviewMax + ')'; b.appendChild(document.createTextNode(label)); b.addEventListener('mousedown', function (e) { e.preventDefault(); }); b.addEventListener('click', function (e) { e.preventDefault(); onPick(); }); return b; }
   function tbShowPop(anchor) {
     var p = tbPop; p.style.display = 'block';
     var r = anchor ? anchor.getBoundingClientRect() : (toolbar ? toolbar.getBoundingClientRect() : { left: 20, right: 60, top: 40, bottom: 60 });
@@ -525,7 +527,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function tbOpenMenu(rich, cmd, anchor, items, applyFn) {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
     p.appendChild(tbHeading(cmd.label));
-    for (var i = 0; i < items.length; i++) (function (it) { p.appendChild(tbItemBtn(it.label, null, function () { applyFn(it.cls); tbFinish(); })); })(items[i]);
+    for (var i = 0; i < items.length; i++) (function (it) { p.appendChild(tbItemBtn(it.label, null, function () { applyFn(it.cls); tbFinish(); }, cmd.kind === 'size' ? it.value : null)); })(items[i]);
     tbShowPop(anchor); setTbActive(cmd.id);
   }
   function tbOpenLink(rich, cmd, anchor) {

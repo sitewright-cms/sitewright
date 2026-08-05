@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bold,
   Italic,
@@ -29,6 +30,7 @@ import {
   RICH_COLORS,
   RICH_HIGHLIGHTS,
   RICH_SIZES,
+  RICH_SIZE_PREVIEW_MAX,
   RICH_ALIGNS,
   RICH_COLOR_CLASSES,
   RICH_HIGHLIGHT_CLASSES,
@@ -85,7 +87,7 @@ const btnClass =
   'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 dark:text-slate-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400';
 
 /** Which command's popover is open (color/highlight/font/size/align/link), or null. */
-type OpenMenu = null | { id: string; kind: RichCmd['kind'] };
+type OpenMenu = null | { id: string; kind: RichCmd['kind']; at?: DOMRect };
 
 /**
  * A compact WYSIWYG editor for a dataset `richtext` field — a `contentEditable` surface driven by the shared
@@ -142,7 +144,11 @@ export function RichTextField({
   useEffect(() => {
     if (!menu) return;
     const onDown = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) setMenu(null);
+      const t = e.target as Node;
+      // The list popovers are PORTALLED out of the toolbar, so containment alone would dismiss them on
+      // their own item clicks — treat the portal as part of the toolbar.
+      const inMenu = t instanceof Element && !!t.closest('[data-sw-rich-menu]');
+      if (!inMenu && toolbarRef.current && !toolbarRef.current.contains(t)) setMenu(null);
     };
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
@@ -194,7 +200,7 @@ export function RichTextField({
   const colorGroup = new Set<string>([...RICH_COLOR_CLASSES, ...ci.colors.map((c) => c.cls)]);
   const fontGroup = new Set<string>(ci.fonts.map((f) => f.cls));
 
-  const run = (cmd: RichCmd) => {
+  const run = (cmd: RichCmd, at?: DOMRect) => {
     const el = ref.current;
     if (!el) return;
     switch (cmd.kind) {
@@ -230,7 +236,7 @@ export function RichTextField({
       case 'size':
       case 'align':
       case 'font':
-        setMenu((m) => (m?.id === cmd.id ? null : { id: cmd.id, kind: cmd.kind }));
+        setMenu((m) => (m?.id === cmd.id ? null : { id: cmd.id, kind: cmd.kind, at }));
         return; // popover applies the class
       case 'link': {
         // Capture the caret + read the anchor NOW, from the LIVE selection (kept by the toolbar button's
@@ -282,7 +288,7 @@ export function RichTextField({
   };
 
   const toolbar = (
-    <div ref={toolbarRef} className="relative flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-white/60 dark:bg-slate-900/60 px-1.5 py-1">
+    <div ref={toolbarRef} data-sw-rich-toolbar className="relative flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-white/60 dark:bg-slate-900/60 px-1.5 py-1">
       {/* The `source` command is rendered as the always-visible ml-auto toggle below (it must stay reachable
           in source mode, when the rest of the toolbar is hidden), so skip it here to avoid a duplicate. */}
       {!source &&
@@ -290,7 +296,7 @@ export function RichTextField({
           c === null ? (
             <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
           ) : c.id === 'source' || (c.id === 'media' && !projectId) ? null : (
-            <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id || active.has(c.id)} onClick={() => run(c)} />
+            <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id || active.has(c.id)} onClick={(at) => run(c, at)} />
           ),
         )}
       <button
@@ -330,12 +336,13 @@ export function RichTextField({
       {menu?.kind === 'font' && (
         <MenuPopover
           title="Font"
+          at={menu.at}
           items={[{ label: 'Default', cls: '' }, ...ci.fonts.map((f) => ({ label: f.label, cls: f.cls }))]}
           onPick={(cls) => applySwatch('font', cls)}
         />
       )}
-      {menu?.kind === 'size' && <MenuPopover title="Text size" items={RICH_SIZES} onPick={(cls) => applySwatch('size', cls)} />}
-      {menu?.kind === 'align' && <MenuPopover title="Alignment" items={RICH_ALIGNS} onPick={(cls) => applySwatch('align', cls)} />}
+      {menu?.kind === 'size' && <MenuPopover title="Text size" items={RICH_SIZES} at={menu.at} preview onPick={(cls) => applySwatch('size', cls)} />}
+      {menu?.kind === 'align' && <MenuPopover title="Alignment" items={RICH_ALIGNS} at={menu.at} onPick={(cls) => applySwatch('align', cls)} />}
       {menu?.kind === 'link' && (
         <div className="absolute left-1.5 top-full z-30 mt-1 flex flex-col gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-lg">
           <div className="flex items-center gap-1.5">
@@ -483,7 +490,7 @@ function computeActive(): Set<string> {
   return s;
 }
 
-function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean; onClick: () => void }) {
+function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean; onClick: (at: DOMRect) => void }) {
   const Icon = ICONS[cmd.id] ?? Pilcrow;
   return (
     <button
@@ -492,7 +499,7 @@ function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean
       title={cmd.label}
       className={`${btnClass} ${active ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : ''}`}
       onMouseDown={(e) => e.preventDefault() /* keep the editable's selection */}
-      onClick={onClick}
+      onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())}
     >
       <Icon className="h-4 w-4" />
     </button>
@@ -574,17 +581,49 @@ function Swatch({
 }
 
 /** A simple labelled dropdown menu (font / size / alignment). */
+/** A list menu (font / size / alignment). A `preview` item renders its own label at the literal size the
+ *  swatch carries, so the size menu reads as a SCALE rather than ten words — capped, or a 6XL row is 60px
+ *  tall. The list scrolls: the scale is long by design, and the toolbar stays ONE button wide because of it.
+ *
+ *  PORTALLED to <body> and positioned `fixed` against the trigger, not absolutely inside the toolbar. A
+ *  richtext field lives inside the dataset ENTRY MODAL, whose own overflow clipped an absolute popover: the
+ *  five-item menu fit, the ten-item one was cut off after three rows — reachable options silently lost. It
+ *  flips above the trigger when there is no room below and caps itself to the space actually available, the
+ *  same placement the on-page toolbar's popover already does. */
 function MenuPopover({
   title,
   items,
   onPick,
+  at,
+  preview = false,
 }: {
   title: string;
   items: readonly RichSwatch[];
   onPick: (cls: string) => void;
+  at?: DOMRect;
+  preview?: boolean;
 }) {
-  return (
-    <div className="absolute left-1.5 top-full z-30 mt-1 w-max min-w-[9rem] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-lg">
+  const GAP = 6;
+  const MAX = 304; // 19rem
+  const anchor = at ?? new DOMRect(16, 16, 0, 0);
+  const below = window.innerHeight - anchor.bottom - GAP * 2;
+  const above = anchor.top - GAP * 2;
+  const flip = below < Math.min(MAX, 160) && above > below;
+  const maxHeight = Math.max(120, Math.min(MAX, flip ? above : below));
+  const style: CSSProperties = {
+    position: 'fixed',
+    left: Math.max(GAP, Math.min(anchor.left, window.innerWidth - 180)),
+    ...(flip ? { bottom: window.innerHeight - anchor.top + GAP } : { top: anchor.bottom + GAP }),
+    maxHeight,
+  };
+  return createPortal(
+    <div
+      data-sw-rich-menu
+      style={style}
+      // Above the ELEVATED modal layer (z-[70] in ui/Modal) — a richtext field is most often edited inside
+      // the dataset entry modal, and at z-[60] the portalled menu rendered BEHIND it. Below toasts (100).
+      className="z-[80] flex w-max min-w-[9rem] flex-col overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-lg"
+    >
       <p className="px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{title}</p>
       {items.map((s) => (
         <button
@@ -592,12 +631,14 @@ function MenuPopover({
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(s.cls)}
-          className="block w-full rounded px-2 py-1 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+          style={preview && s.value ? { fontSize: `min(${s.value}, ${RICH_SIZE_PREVIEW_MAX})` } : undefined}
+          className="block w-full shrink-0 rounded px-2 py-1 text-left text-sm leading-snug text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
         >
           {s.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

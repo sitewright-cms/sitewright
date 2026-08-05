@@ -19,7 +19,7 @@ scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
 | suite | result |
 |---|---|
 | `@sitewright/api` | **20 passed, 2 skipped** — and re-runnable against the same slot |
-| `@sitewright/editor` | **54 passed, 37 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
+| `@sitewright/editor` | **68 passed, 36 failed** (was 0 passing: every spec died at sign-up) |
 
 Authentication was the single blocker and is fixed — see `helpers.ts`. What remains is genuine UI drift:
 the specs now get far enough to discover that controls have been renamed, moved, or replaced by a
@@ -61,6 +61,21 @@ known to be a product defect, but that is exactly what working through them will
   MEMBERS, not its literal text — the source-order version passes the unit test (which reads the
   unminified string) and fails only here, against the real published artifact.
 
+- **A published site is not served without a LOCAL deploy target.** `POST /publish` alone is not enough —
+  the local target CARRIES the serve options. A `beforeAll` that published and then navigated to
+  `/sites/<slug>/` landed on an empty page and every test in the file failed on a missing element.
+- **Chromium needs a resolver rule to reach a published site.** `/sites/<slug>/` 301s to
+  `<slug>.<SW_SITES_DOMAIN>` and the DinD host has no wildcard DNS, so `page.goto` dies on the redirect.
+  `apps/editor/playwright.config.ts` now passes
+  `--host-resolver-rules=MAP *.<SITES_DOMAIN> <SITES_DOMAIN>` (the port survives the redirect). This is
+  what a spec needs when it NAVIGATES; `fetchLiveSite()`'s Host header is for reading over HTTP.
+- **ONE admin session per worker.** Every seed needs an admin to issue the invite, and a full run seeds
+  ~50 users. `/auth/login` allows 20 per window, so the suite tripped its own 429 and reported it as
+  "the seeded platform admin must be able to log in" — which reads like a broken slot. `helpers.ts`
+  caches the admin context.
+- **The lightbox builds ONE overlay PER GALLERY.** A bare `.sw-lightbox` locator matches every gallery
+  on the page (strict-mode violation). Scope to the visible one.
+
 ★ The recurring shape in all three of the above, and in the API suite's CSP assertion: **a spec pinned
 an exact string that some legitimate transform later rewrote** — a widened sandbox, a cache-busting
 query, a minifier's selector order. Assert the property you actually care about, not the byte sequence
@@ -79,7 +94,6 @@ Regenerate with the commands above. As of the last run:
 - `blog-template.spec.ts:8:1 › global:blog-article: enabling the template seeds page.data defaults and renders them`
 - `client-source-edit.spec.ts:12:1 › client edits a code page’s bound region (content), template stays immutable`
 - `code-page-settings.spec.ts:10:1 › code page settings: stacked modal sets draft + nav, persisted across reopen`
-- `components.spec.ts:164:1 › defaults: fade effect with overlay arrows mid-left/right and bottom-center dots`
 - `datasets.spec.ts:105:1 › entry editor modal: status toggle + duplicate`
 - `datasets.spec.ts:148:1 › duplicate a dataset, then edit an existing entry key`
 - `datasets.spec.ts:187:1 › rename a dataset slug migrates its entries; bindings use the new slug`

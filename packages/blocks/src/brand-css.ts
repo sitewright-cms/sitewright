@@ -1,15 +1,23 @@
 // Brand tokens → CSS custom properties for the rendered document (the single source
 // of truth now that the legacy Astro renderer is gone).
-import { isSafeCssTokenValue, type BrandTokens } from '@sitewright/schema';
+import { containsCssComment, isSafeCssTokenValue, type BrandTokens } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we
 // never emit anything that could break out of a CSS declaration (`;{}<>`) or
 // invoke a CSS function such as `url()`/`expression()` (which could exfiltrate or
 // fetch) — so parentheses and quotes are rejected too. Whitespace controls,
 // backslash (CSS hex escapes like `\28` → `(`) and NUL are also denied so a value
-// cannot straddle a `/* */` comment or reconstruct a blocked character.
+// cannot reconstruct a blocked character.
 // eslint-disable-next-line no-control-regex -- intentionally denying NUL/control chars
 const SAFE = /^[^;{}<>()'"\\\n\r\t\f\x00]*$/;
+
+// …and NOT a CSS comment. This alphabet permits `/` and `*`, so `Arial/*` used to pass: the comment it
+// opened ran past the closing `}` of this very `:root` block and on into the rest of the stylesheet.
+// Measured — one poisoned `typography.fontFamilies` value emptied every later `--sw-*` token and killed
+// the next rule in the sheet, on the PUBLISHED document. `containsCssComment` is the schema's single
+// definition, shared rather than re-derived (a fourth hand-copied regex is how this drifted in the
+// first place).
+const safeDecl = (v: string): boolean => SAFE.test(v) && !containsCssComment(v);
 
 function emit(
   prefix: string,
@@ -19,7 +27,7 @@ function emit(
   if (!map) return;
   for (const [key, value] of Object.entries(map)) {
     const v = String(value);
-    if (!SAFE.test(key) || !SAFE.test(v)) continue;
+    if (!SAFE.test(key) || !safeDecl(v)) continue;
     lines.push(`  --sw-${prefix}-${key}: ${v};`);
   }
 }

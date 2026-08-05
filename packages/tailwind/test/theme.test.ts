@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { brandToTailwindTheme, compileUtilityCss } from '../src/index.js';
+import { renderThemeBlock } from '../src/tokens.js';
 import type { Brand } from '@sitewright/schema';
 
 describe('brandToTailwindTheme', () => {
@@ -32,5 +33,26 @@ describe('brandToTailwindTheme', () => {
 
   it('re-exports the compiler from the package barrel', () => {
     expect(typeof compileUtilityCss).toBe('function');
+  });
+});
+
+// `renderThemeBlock`'s own value alphabet permits `/` and `*`, so a font stack opening a CSS comment
+// used to reach the compiled `@theme static { … }` block and run past its closing brace into the rest
+// of the PUBLISHED stylesheet. The comment check is shared with the schema, not re-derived here.
+describe('renderThemeBlock rejects CSS comment sequences', () => {
+  it('drops a var whose value opens a comment, keeping the ones after it', () => {
+    const css = renderThemeBlock({ '--font-evil': 'Arial/*', '--font-good': 'Georgia', '--color-primary': '#ff0000' });
+    expect(css).not.toContain('/*');
+    expect(css).not.toContain('--font-evil');
+    expect(css).toContain('--font-good: Georgia;');
+    expect(css).toContain('--color-primary: #ff0000;');
+  });
+
+  it('drops a var whose value closes a comment', () => {
+    expect(renderThemeBlock({ '--font-evil': '*/ Arial' })).not.toContain('*/');
+  });
+
+  it('still emits ordinary values', () => {
+    expect(renderThemeBlock({ '--font-body': '"Inter", sans-serif' })).toContain('--font-body: "Inter", sans-serif;');
   });
 });

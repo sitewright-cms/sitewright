@@ -157,19 +157,44 @@ export const CssColorSchema = z
 
 // A CSS token value cannot contain the declaration break-out characters
 // (`;{}<>`), a BACKSLASH (CSS hex escapes like `\3b` decode to `;`, reconstructing
-// a blocked char), or whitespace controls / NUL (which could straddle a comment).
+// a blocked char), or whitespace controls / NUL.
 // Mirrors the renderer's `SAFE` guard (brand-css.ts) at the schema boundary.
 // eslint-disable-next-line no-control-regex -- intentionally denying NUL/control chars
 const CSS_VALUE_SAFE = /^[^;{}<>\\\n\r\t\f\x00]*$/;
 
+/**
+ * True when a value opens or closes a CSS COMMENT.
+ *
+ * Denying whitespace controls is NOT sufficient for this and used to be mistaken for it: `/*` needs no
+ * whitespace, and an opened comment runs to the next `*​/` or end of file — swallowing the rest of the
+ * `:root{…}` block, its closing brace, and whatever stylesheet follows. Measured with a single poisoned
+ * `typography.fontFamilies` value: every later custom property came back empty AND the next rule in the
+ * sheet stopped applying.
+ *
+ * Exported so the schema boundary and BOTH downstream emitters (`brand-css.ts`'s `SAFE`,
+ * `@sitewright/tailwind`'s `renderThemeBlock`) enforce one definition. Each of those keeps its own value
+ * ALPHABET — they legitimately differ on parentheses — but none of them may allow a comment.
+ */
+export function containsCssComment(v: string): boolean {
+  return CSS_RICH_COMMENT.test(v);
+}
+
 /** A short design-token value (string or number); strings cannot contain CSS-breaking characters. */
 export const TokenValueSchema = z.union([
   z.number(),
-  z.string().max(64).regex(CSS_VALUE_SAFE, 'invalid token value'),
+  z
+    .string()
+    .max(64)
+    .regex(CSS_VALUE_SAFE, 'invalid token value')
+    .refine((v) => !containsCssComment(v), 'invalid token value'),
 ]);
 
 /** A CSS string value (e.g. a font-family stack) with no declaration break-out characters. */
-export const CssStringSchema = z.string().max(200).regex(CSS_VALUE_SAFE, 'invalid CSS value');
+export const CssStringSchema = z
+  .string()
+  .max(200)
+  .regex(CSS_VALUE_SAFE, 'invalid CSS value')
+  .refine((v) => !containsCssComment(v), 'invalid CSS value');
 
 // ── Rich CSS token values (`identity.cssTokens`) ──────────────────────────────────────────────
 // A DELIBERATELY WIDER value alphabet than TokenValueSchema, which bans parentheses and so cannot

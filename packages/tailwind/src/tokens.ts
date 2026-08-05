@@ -1,3 +1,4 @@
+import { containsCssComment } from '@sitewright/schema';
 import type { TailwindTheme } from './theme.js';
 
 // A theme variable NAME must be a safe CSS identifier — defense-in-depth so a brand key cannot
@@ -14,6 +15,11 @@ export const SAFE_TOKEN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 // cannot break out of its declaration to inject arbitrary rules. Real colors (hex/oklch/rgb)
 // and font stacks (`"Inter", sans-serif`) never contain these.
 const SAFE_VALUE = /^[^;{}<>\n\r]+$/;
+
+// …nor open a CSS COMMENT. The alphabet above permits `/` and `*`, so `Arial/*` passed and its comment
+// ran past this block's closing `}` into the rest of the compiled stylesheet — on the PUBLISHED site.
+// Shares the schema's single definition rather than re-deriving the check locally.
+const safeThemeValue = (v: string): boolean => SAFE_VALUE.test(v) && !containsCssComment(v);
 
 /** The colored surface roles that get an auto-derived readable `-content` foreground. */
 const CONTRAST_ROLES = ['primary', 'secondary', 'accent', 'neutral'] as const;
@@ -63,7 +69,7 @@ export function brandVars(theme: TailwindTheme): Record<string, string> {
 /** Emit an `@theme { … }` block from a var map. Vars with structurally-unsafe values are dropped. */
 export function renderThemeBlock(vars: Record<string, string>): string {
   const lines = Object.entries(vars)
-    .filter(([, v]) => SAFE_VALUE.test(v))
+    .filter(([, v]) => safeThemeValue(v))
     .map(([k, v]) => `  ${k}: ${v};`);
   // `static`, so every brand variable is EMITTED whether or not Tailwind's own output happens to
   // reference it. Tailwind tree-shakes a plain `@theme` against the CSS it generates — which stopped

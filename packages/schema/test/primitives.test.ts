@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   AssetRefSchema,
   CssColorSchema,
+  CssStringSchema,
   CssTokenValueSchema,
   IdSchema,
   NavTargetSchema,
   RoutePathSchema,
   SlugSchema,
   TokenValueSchema,
+  containsCssComment,
   isSafeCssTokenValue,
   safeRecord,
 } from '../src/primitives.js';
@@ -180,5 +182,31 @@ describe('CssTokenValueSchema / isSafeCssTokenValue', () => {
   it('bounds the length', () => {
     expect(() => CssTokenValueSchema.parse('a'.repeat(301))).toThrow();
     expect(CssTokenValueSchema.parse('a'.repeat(300))).toHaveLength(300);
+  });
+});
+
+// The schema boundary itself. Denying whitespace controls was mistaken for denying comments — `/*`
+// needs no whitespace — so a font stack or design token could carry one all the way to the emitters.
+describe('CSS comment sequences are rejected at the boundary', () => {
+  it('CssStringSchema rejects a value opening or closing a comment', () => {
+    expect(CssStringSchema.safeParse('Arial/*').success).toBe(false);
+    expect(CssStringSchema.safeParse('*/ Arial').success).toBe(false);
+  });
+
+  it('TokenValueSchema rejects the same', () => {
+    expect(TokenValueSchema.safeParse('1rem/*').success).toBe(false);
+    expect(TokenValueSchema.safeParse('*/1rem').success).toBe(false);
+  });
+
+  it('still accepts ordinary values', () => {
+    expect(CssStringSchema.safeParse('Georgia, serif').success).toBe(true);
+    expect(TokenValueSchema.safeParse('1.5rem').success).toBe(true);
+    expect(TokenValueSchema.safeParse(16).success).toBe(true);
+  });
+
+  it('containsCssComment is the shared predicate both emitters reuse', () => {
+    expect(containsCssComment('a/*b')).toBe(true);
+    expect(containsCssComment('a*/b')).toBe(true);
+    expect(containsCssComment('a/b*c')).toBe(false);
   });
 });

@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **A brand token could open a CSS comment and delete the rest of the stylesheet.** `/*` needs no
+  whitespace, so denying whitespace controls never denied comments — and the value alphabets at the
+  schema boundary (`CssStringSchema`, `TokenValueSchema`) and in both emitters (`brand-css.ts`'s `SAFE`,
+  `@sitewright/tailwind`'s `renderThemeBlock`) all permitted `/` and `*`. A single
+  `typography.fontFamilies` value of `Arial/*` opened a comment that ran past the closing brace of the
+  generated `:root{…}` / `@theme{…}` block and on into whatever followed. Measured in a browser: every
+  later `--sw-*` token resolved empty **and the next rule in the sheet stopped applying** — on the
+  PUBLISHED document, reachable by any `content:write` actor (an invited client, an API key, the agent
+  loop), not just the project owner. The check now lives in one place, `containsCssComment`, shared by
+  the boundary and both emitters; each keeps its own value alphabet (they legitimately differ on
+  parentheses) but none may carry a comment.
+
 ### Fixed
 
 - **Most of the WYSIWYG toolbar had no visible effect — on either surface.** Both rich-text toolbars

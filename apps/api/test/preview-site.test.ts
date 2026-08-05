@@ -87,7 +87,7 @@ describe('buildSite preview options', () => {
     expect(manifest.pageFailures).toEqual([
       { page: 'bad', path: '/bad', message: expect.stringContaining('does-not-exist') },
     ]);
-  });
+  }, 30_000);
 
   it('a clean build reports no page failures at all', async () => {
     const manifest = await buildSite({

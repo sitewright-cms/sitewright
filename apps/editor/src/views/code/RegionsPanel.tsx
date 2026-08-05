@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Type, Pilcrow, Link2, Image as ImageIcon, Settings2, Rows3, LayoutList, Languages } from 'lucide-react';
+import { Type, Pilcrow, Link2, Image as ImageIcon, Settings2, Rows3, LayoutList, Languages, MapPin } from 'lucide-react';
 import type { Dataset, Entry } from '@sitewright/schema';
 import { SidePanel } from '../ui/SidePanel';
 import { api } from '../../api';
@@ -8,10 +8,11 @@ import { entryLabel } from '../../lib/entry-form';
 /** One editable region in the page, as enumerated by the preview bridge (rendered DOM). */
 export interface RegionItem {
   rid: number;
-  kind: 'text' | 'translate' | 'html' | 'href' | 'image' | 'bg' | 'control' | 'entry';
+  kind: 'text' | 'translate' | 'html' | 'href' | 'image' | 'bg' | 'control' | 'entry' | 'imagemap';
   label: string;
   /** entry only */
   dataset?: string;
+  /** entry: the entry id · imagemap: the stored map's id (what the Studio opens). */
   id?: string;
 }
 
@@ -24,6 +25,7 @@ const KIND_ICON: Record<RegionItem['kind'], ReactNode> = {
   bg: <ImageIcon className="h-3.5 w-3.5" />,
   control: <Settings2 className="h-3.5 w-3.5" />,
   entry: <Rows3 className="h-3.5 w-3.5" />,
+  imagemap: <MapPin className="h-3.5 w-3.5" />,
 };
 
 function Row({ item, display, onEdit }: { item: RegionItem; display: string; onEdit: (rid: number) => void }) {

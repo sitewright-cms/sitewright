@@ -183,6 +183,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Dataset rows: same always-on marker, in teal to distinguish a structured entry from inline content.
       '[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,background-color .12s}' +
       '[data-sw-entry].sw-entry-on:hover{background:rgba(20,184,166,.08)}' +
+      // Image maps: the same teal treatment as a dataset row, because they mean the same thing —
+      // a click opens a dedicated editor (the Studio) rather than editing in place. The hover tint is
+      // an INSET box-shadow, not a background: the map paints its own image over the element's
+      // background, so a background tint would be invisible on the one region it has to mark.
+      '[data-sw-imagemap].sw-imap-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,box-shadow .12s}' +
+      '[data-sw-imagemap].sw-imap-on:hover{box-shadow:inset 0 0 0 9999px rgba(20,184,166,.12)}' +
       // --- Editable-region OVERLAY HUD: the field-name BADGES + the active OUTLINE live in a body-level,
       // position:fixed, max-z layer (built in JS below) — NOT as a host ::before. So they are never
       // clipped by the host's (or an ancestor's) overflow, never covered by host content, immune to host
@@ -827,7 +833,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   // the editor; an inbound edit-region scrolls to + flashes the target (when on-screen) and triggers the
   // SAME edit a click would (entry → open-entry modal, image → file picker, control/link → popover,
   // rich → focus or source modal, plain text → focus or a centred popover when off-screen).
-  var REGION_SEL = '[data-sw-text],[data-sw-translate],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
+  var REGION_SEL = '[data-sw-text],[data-sw-translate],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry],[data-sw-imagemap]';
   // A box for a popover anchor — the element's own, or viewport-centred when it has no layout box (hidden).
   function rectOf(el) {
     if (el.getClientRects().length) return el.getBoundingClientRect();
@@ -835,6 +841,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     return { left: x, top: y, bottom: y + 20, right: x + w, width: w, height: 20 };
   }
   function regionInfo(el) {
+    if (el.hasAttribute('data-sw-imagemap')) {
+      return { kind: 'imagemap', id: el.getAttribute('data-sw-imagemap') || '', label: el.getAttribute('data-sw-imagemap') || 'image map' };
+    }
     if (el.hasAttribute('data-sw-entry')) {
       var t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
       return { kind: 'entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '', label: t ? t.slice(0, 80) : (el.getAttribute('data-sw-entry') || 'entry') };
@@ -906,6 +915,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     }
     var onScreen = el.getClientRects().length;
     if (kind === 'entry') { post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' }); return; }
+    if (kind === 'imagemap') { post({ type: 'open-imagemap', id: el.getAttribute('data-sw-imagemap') || '' }); return; }
     if (kind === 'control') { openControlPop(el); return; }
     if (kind === 'image' || kind === 'bg') { pickImage(el); return; }
     if (kind === 'href') { openPop(el); return; }
@@ -950,10 +960,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   };
   ICONS.bg = ICONS.image;
   function isEditable(el) {
-    return !!(el && el.hasAttribute && (el.hasAttribute('data-sw-text') || el.hasAttribute('data-sw-html') || el.hasAttribute('data-sw-href') || el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg') || el.hasAttribute('data-sw-translate') || el.hasAttribute('data-sw-control') || el.hasAttribute('data-sw-entry')));
+    return !!(el && el.hasAttribute && (el.hasAttribute('data-sw-text') || el.hasAttribute('data-sw-html') || el.hasAttribute('data-sw-href') || el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg') || el.hasAttribute('data-sw-translate') || el.hasAttribute('data-sw-control') || el.hasAttribute('data-sw-entry') || el.hasAttribute('data-sw-imagemap')));
   }
   function dirLabel(el, kind) {
     if (kind === 'entry') return el.getAttribute('data-sw-dataset') || el.getAttribute('data-sw-entry') || 'entry';
+    if (kind === 'imagemap') return el.getAttribute('data-sw-imagemap') || 'image map';
     if (kind === 'control') return el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-control') || 'control';
     if (kind === 'image') return el.getAttribute('data-sw-src') || 'image';
     if (kind === 'bg') return el.getAttribute('data-sw-bg') || 'background';
@@ -1144,6 +1155,14 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     eachEl('[data-sw-entry]', function (el) {
       if (on) el.classList.add('sw-entry-on');
       else el.classList.remove('sw-entry-on');
+    });
+    // Image maps — a hover affordance; the click is handled by one delegated document listener
+    // (onImageMapClick). Marked only when the map is STORED: the marker carries the id, and a map
+    // whose config is inlined in the page has no Studio to open, so marking it would promise an
+    // editor that never opens.
+    eachEl('[data-sw-imagemap]', function (el) {
+      if (on && (el.getAttribute('data-sw-imagemap') || '')) el.classList.add('sw-imap-on');
+      else el.classList.remove('sw-imap-on');
     });
     // Editor-only control chips — shown + clickable only in content mode.
     eachEl('[data-sw-control]', function (el) {

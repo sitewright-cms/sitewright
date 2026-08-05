@@ -11,6 +11,14 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **An image map is marked like every other editable region.** In content mode it carries the same
+  dashed teal outline as a dataset row — both mean "a click opens a dedicated editor" — with an inset
+  hover tint (a background tint would be invisible under the map's own image), and it is listed in
+  the Regions rail, which opens it too. Only a STORED map is marked; a config inlined in the page has
+  no Studio to open, so an outline there would promise an editor that never appears.
+
+### Added
+
 - **Click an image map in the page editor to edit it.** A map placed on a page opens in the Image Map
   Studio, on that map; saving re-renders the page preview so the change is visible without a reload,
   and the Studio stays open. Only a STORED map is clickable — the embed markup now carries the map's

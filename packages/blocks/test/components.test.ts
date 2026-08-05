@@ -471,7 +471,7 @@ describe('component registry', () => {
     expect(js).toContain("ensureScrim().classList.add('is-open')");
     expect(js).toContain("scrim.classList.remove('is-open')");
     // Built at init so it's painted (opacity:0) before the first open → the .is-open add transitions.
-    expect(js).toContain('if(m.length)ensureScrim()');
+    expect(js).toContain('if(m.length){ensureScrim();');
   });
 
   it('Modal enforces single-open by default; data-allow-multiple="true" opts into stacking', () => {
@@ -513,6 +513,34 @@ describe('component registry', () => {
     // Overhangs the corner (needs the dialog's overflow:visible) at the agreed geometry.
     expect(css).toContain('top:-1rem;right:-1.5rem');
     expect(css).toContain('width:3.25rem;height:2.25rem');
+  });
+
+  it('Modal panel follows a card widened by CSS the NAME-based class split cannot see', () => {
+    const js = componentAssets(['Modal']).js;
+    // The split recognises `max-w-2xl`; it cannot recognise `.bng-modal{max-width:680px}`, an id rule or
+    // an inline style — those size the CARD, leaving the panel (which centres it and anchors the close) at
+    // 32rem. So the runtime MEASURES the card on open and pins the panel to match. Behavioral coverage —
+    // including the release-before-measure that follows a narrowing card back down — is in
+    // modal.behavior.test.ts; these assertions pin the shipped shape.
+    expect(js).toContain('function syncPanelWidth(dialog)');
+    expect(js).toContain('bw>pw+.5');
+    // BOTH properties: the :where() default max-width:32rem would clamp a bare width straight back down.
+    expect(js).toContain("panel.style.width=bw+'px';panel.style.maxWidth=bw+'px'");
+    // Released first so a card that got NARROWER is followed down, not left pinned to a stale number.
+    expect(js).toContain("panel.style.width='';panel.style.maxWidth='';panel.style.minWidth='';body.style.maxWidth='';body.style.minWidth='';");
+    // Runs on every open (nothing is measurable while the dialog is display:none) — our own trigger path
+    // synchronously, plus an attribute observer so an author's direct showModal() gets the same geometry.
+    expect(js).toContain('syncPanelWidth(dialog);');
+    expect(js).toContain("attributeFilter:['open']");
+    // …and on resize, rAF-coalesced, only while modals exist on the page.
+    expect(js).toContain("window.addEventListener('resize',queueSync)");
+    // NEITHER box may exceed the container's content box, or there is nothing for margin:auto to centre
+    // in and the close leaves the safety gutter. min-width is released on both: it outranks width, so a
+    // min-w-* utility (panel) or an author's inline min-width (card) would otherwise ignore the clamp.
+    expect(js).toContain("if(pw>avail){panel.style.minWidth='0';panel.style.width=avail+'px';panel.style.maxWidth=avail+'px';pw=avail;}");
+    expect(js).toContain("if(bw>avail){body.style.minWidth='0';body.style.maxWidth=avail+'px';bw=avail;}");
+    // The card is found as a DIRECT child, so a nested component's same-named part is never measured.
+    expect(js).toContain("childPart(dialog,'panel'),body=childPart(panel,'body')");
   });
 
   it('Modal PAINT lives on the BODY (zero-specificity), the PANEL is neutral, and the backdrop blurs', () => {

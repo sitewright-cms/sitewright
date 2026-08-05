@@ -322,6 +322,13 @@ Quick rules vs the similar-looking DaisyUI classes:
   max-width 32rem), everything else + the inline style on [data-sw-part="body"] — so CSS selecting
   the <dialog> itself silently no-ops. Target #<id> [data-sw-part="panel"] for width/placement and
   #<id> [data-sw-part="body"] for background/padding/rounding.
+  WIDTH is the one to get right: write it as a UTILITY on the <dialog> (class="max-w-3xl", or
+  "max-w-[680px]" for an exact match) — that is the only spelling the split recognises. A width inside
+  your OWN class on the dialog (class="site-modal" + .site-modal{max-width:680px}) does NOT no-op: the
+  class rides along to the BODY, so it sizes the card while the panel that centres it and anchors the
+  close stays 32rem. The runtime measures the card on open and corrects that, but write the utility.
+  Size against the CONTAINER, never the viewport: the dialog keeps a 2rem gutter for the overhanging
+  close, so width:92vw does not fit on a phone — the panel's own width:100% already fills the space.
 - Cookie / consent banner → DON'T author one. Enable the Consent Manager (website.consent.enabled)
   and the banner AUTO-INJECTS on every page (it also gates third-party scripts/iframes + derives CSP).
   See the consent guide.

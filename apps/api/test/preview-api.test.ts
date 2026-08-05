@@ -99,7 +99,9 @@ describe('preview API', () => {
       cookies: { sw_session: a.t },
     });
     expect(unknown.statusCode).toBe(404);
-  });
+    // The only test here that sets up TWO tenants — four password hashes before the first assertion.
+    // Comfortable alone (~1s), past the 5s default when the whole suite is competing for the CPU.
+  }, 30_000);
 
   it('requires authentication', async () => {
     const { projectId } = await setup('a@acme.test');

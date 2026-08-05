@@ -145,9 +145,20 @@ describe('Banner runtime behavior (jsdom)', () => {
     expect(root().hasAttribute('hidden')).toBe(false);
   });
 
+  // The reveal rides a DOUBLE rAF, which jsdom serves as two nested setTimeout(16) — 32ms nominal, but
+  // two macrotasks slip past a fixed 70ms window when the whole suite is competing for the CPU (a real
+  // CI flake). Poll for the thing itself so the wait is bounded by the runtime, not by the machine.
+  // The two paths land on DIFFERENT markers — a plain banner on [data-sw-banner-shown], an animated one
+  // on .sw-animation-active — so wait for either rather than assuming which one this case takes.
+  const settled = (): boolean =>
+    root().hasAttribute('data-sw-banner-shown') || root().classList.contains('sw-animation-active');
+  const revealed = async (): Promise<void> => {
+    for (let i = 0; i < 200 && !settled(); i++) await new Promise((r) => setTimeout(r, 10));
+  };
+
   it('a plain banner uses the built-in reveal flag (next frame), not the animation classes', async () => {
     mountAndRun(banner('data-frequency="once"'));
-    await new Promise((r) => setTimeout(r, 70)); // let the reveal rAF fire
+    await revealed();
     expect(root().hasAttribute('data-sw-banner-shown')).toBe(true);
     expect(root().classList.contains('sw-animation-init')).toBe(false);
   });
@@ -159,7 +170,7 @@ describe('Banner runtime behavior (jsdom)', () => {
     expect(root().hasAttribute('hidden')).toBe(false);
     expect(root().style.transitionDuration).toBe('800ms');
     expect(root().style.transitionDelay).toBe('120ms');
-    await new Promise((r) => setTimeout(r, 70));
+    await revealed();
     expect(root().classList.contains('sw-animation-active')).toBe(true); // entrance triggered
     expect(root().hasAttribute('data-sw-banner-shown')).toBe(false); // the animation path skips the built-in flag
   });
@@ -172,7 +183,7 @@ describe('Banner runtime behavior (jsdom)', () => {
 
   it('reverses the animation entrance on dismiss (drops sw-animation-active) and still records the dismissal', async () => {
     mountAndRun(banner('data-frequency="once" data-sw-animation="zoom-in"'));
-    await new Promise((r) => setTimeout(r, 70));
+    await revealed();
     expect(root().classList.contains('sw-animation-active')).toBe(true);
     click('dismiss');
     expect(root().classList.contains('sw-animation-active')).toBe(false); // entrance reversed
@@ -181,7 +192,7 @@ describe('Banner runtime behavior (jsdom)', () => {
 
   it('clears the entrance data-sw-delay on dismiss so the exit reversal starts immediately (no snap)', async () => {
     mountAndRun(banner('data-frequency="once" data-sw-animation="fade-up" data-sw-delay="300" data-sw-duration="400"'));
-    await new Promise((r) => setTimeout(r, 70));
+    await revealed();
     expect(root().style.transitionDelay).toBe('300ms'); // entrance staggered by the delay
     click('dismiss');
     // The sticky inline delay is reset to 0 so the exit fade is NOT held off (and then hidden after the duration).
@@ -192,7 +203,7 @@ describe('Banner runtime behavior (jsdom)', () => {
   it('treats an EMPTY data-sw-animation="" as a plain banner (strips it so the built-in CSS reveal applies)', async () => {
     mountAndRun(banner('data-frequency="once" data-sw-animation=""'));
     expect(root().hasAttribute('data-sw-animation')).toBe(false); // normalized away in enhance()
-    await new Promise((r) => setTimeout(r, 70));
+    await revealed();
     expect(root().hasAttribute('data-sw-banner-shown')).toBe(true); // built-in reveal path
     expect(root().classList.contains('sw-animation-init')).toBe(false);
   });

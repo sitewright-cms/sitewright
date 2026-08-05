@@ -99,6 +99,25 @@ export let ready = function (fn) {
   }
 }
 
+/**
+ * The scroll offset that `pageX` / `pageY` are measured against.
+ *
+ * ★ NOT `window.scrollX/scrollY`. The two disagree whenever the DOCUMENT is not the scroller: this
+ * platform's own draft preview scrolls `<body>` (`html{overflow:hidden}` gives the sandboxed frame a
+ * real scrollbar), and there Chrome reports `window.scrollY` as the BODY's scroll while `pageY` keeps
+ * using `documentElement.scrollTop`, which is 0. Measured with the body scrolled 345px:
+ * `pageY === clientY`, `window.scrollY === 345`.
+ *
+ * Every rect this runtime hit-tests against the pointer is built in that same "page space", so mixing
+ * the two put the tooltip's hover BRIDGE a full scroll-height away from the pointer — the tooltip
+ * closed the instant you left the hotspot, and a tooltip Button could never be reached. Anything
+ * comparing a rect to a pointer must use THIS.
+ */
+export let getPageScroll = function () {
+  var el = document.documentElement
+  return { x: (el && el.scrollLeft) || 0, y: (el && el.scrollTop) || 0 }
+}
+
 export let getElementRect = function (element) {
   if (Object.prototype.toString.call(element) == '[object String]') {
     element = document.querySelector(element)
@@ -122,8 +141,8 @@ export let getElementRect = function (element) {
     // relative to viewport
     // jquery offset()
     offset: {
-      left: element.getBoundingClientRect().left + window.scrollX,
-      top: element.getBoundingClientRect().top + window.scrollY,
+      left: element.getBoundingClientRect().left + getPageScroll().x,
+      top: element.getBoundingClientRect().top + getPageScroll().y,
     },
 
     // relative to parent

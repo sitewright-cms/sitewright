@@ -263,6 +263,25 @@ describe('ImageMap runtime carries no upstream branding', () => {
     expect(imp).toContain('artboard.background_type === undefined');
   });
 
+  it('measures the pointer and its hit-test rects in the SAME space', () => {
+    // ★ THE BUG: every rect the runtime hit-tests against the mouse was built as
+    // `getBoundingClientRect() + window.scrollY`, and compared against `e.pageY`. Those agree only
+    // while the DOCUMENT is the scroller. The platform's own draft preview scrolls <body> and
+    // REDEFINES window.scrollY to return body.scrollTop (preview-site-runtime, so scroll-linked page
+    // JS keeps working) — while pageY keeps using documentElement.scrollTop, which is 0 there.
+    // Measured with the body scrolled 345px: pageY === clientY, window.scrollY === 345. The tooltip's
+    // hover BRIDGE therefore sat 345px from the pointer: the tooltip closed the moment you left the
+    // hotspot, and a tooltip Button could never be pressed.
+    const utils = vendorCode('shared/utilities.js');
+    expect(utils).toContain('export let getPageScroll');
+    expect(utils).toMatch(/getPageScroll[\s\S]{0,220}documentElement/);
+    // No file in the runtime may reach for window.scrollX/scrollY again.
+    for (const rel of ['shared/utilities.js', 'src/controllers/tooltipController.js', 'src/controllers/eventController.js', 'src/store/getters.js']) {
+      expect(vendorCode(rel), rel).not.toMatch(/window\.(scrollX|scrollY|pageXOffset|pageYOffset)/);
+    }
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/window\.scroll[XY]/);
+  });
+
   it('carries its licence notice in the bundle itself', () => {
     expect(IMAGE_MAP_RUNTIME_JS).toContain('used under licence');
   });

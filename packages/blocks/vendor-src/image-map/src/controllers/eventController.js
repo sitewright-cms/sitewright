@@ -1,4 +1,4 @@
-import { getEventCoordinates, isMobile } from 'imap-shared/utilities'
+import { getEventCoordinates, getPageScroll, isMobile } from 'imap-shared/utilities'
 import * as consts from 'imap/consts'
 
 export default class EventController {
@@ -627,7 +627,7 @@ export default class EventController {
       return {
         offset: {
           left: 0,
-          top: window.scrollY,
+          top: getPageScroll().y,
         },
         offsetWidth: window.innerWidth - objectMenuWidth,
         offsetHeight: window.innerHeight,

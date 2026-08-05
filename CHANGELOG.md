@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An image map's tooltip can be reached with the mouse.** Every rect the runtime hit-tests against
+  the pointer was built as `getBoundingClientRect() + window.scrollY` and compared against
+  `event.pageY` — which agree only while the DOCUMENT is the scroller. The draft preview scrolls
+  `<body>` and redefines `window.scrollY` to return `body.scrollTop`, while `pageY` keeps using
+  `documentElement.scrollTop` (0 there), so on any scrolled page the tooltip's hover bridge sat a
+  full scroll-height away from the pointer: the tooltip closed the instant you left the hotspot and a
+  tooltip Button could never be pressed. The runtime now measures both in the same space.
+
 ### Added
 
 - **An image map is marked like every other editable region.** In content mode it carries the same

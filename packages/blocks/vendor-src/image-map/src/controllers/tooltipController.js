@@ -1,4 +1,4 @@
-import { getElementRect, hexToRgb, isMobile, isPointInsidePolygon } from 'imap-shared/utilities'
+import { getElementRect, getPageScroll, hexToRgb, isMobile, isPointInsidePolygon } from 'imap-shared/utilities'
 import * as consts from 'imap/consts'
 import * as editorConsts from 'imap-shared/consts'
 import Tooltip from 'imap/UI/tooltip/tooltip'
@@ -504,8 +504,9 @@ export default class TooltipController {
     // need to use getBoundingClientRect() because element.offsetWidth is undefined?
     // window scroll must be added, because the mouse coordiates and the tooltip's rect includes scroll
     let objectRect = this.store.getObjectController().objects[id].getBoundingClientRect()
-    let objectCenterX = objectRect.x + window.scrollX + objectRect.width / 2
-    let objectCenterY = objectRect.y + window.scrollY + objectRect.height / 2
+    let pageScroll = getPageScroll()
+    let objectCenterX = objectRect.x + pageScroll.x + objectRect.width / 2
+    let objectCenterY = objectRect.y + pageScroll.y + objectRect.height / 2
 
     // Cache tooltip dimensions and coords
     let tooltipRect = getElementRect(this.getTooltipElement(id))
@@ -638,8 +639,8 @@ export default class TooltipController {
     // Limit the rect of the object to the bounds of the wrap
     if (this.store.getIsFullscreen() && this.store.state.tooltips.constrain_tooltips) {
       // In fullscreen mode compensate for the scroll
-      let canvasOffsetLeft = this.store.getCanvasWrapRect().offset.left - window.scrollX
-      let canvasOffsetTop = this.store.getCanvasWrapRect().offset.top - window.scrollY
+      let canvasOffsetLeft = this.store.getCanvasWrapRect().offset.left - getPageScroll().x
+      let canvasOffsetTop = this.store.getCanvasWrapRect().offset.top - getPageScroll().y
 
       if (sx + canvasOffsetLeft < 0) {
         sw = sw + sx + canvasOffsetLeft

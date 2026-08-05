@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -36,13 +36,13 @@ test('sw-control: a control sets a page.data value (preview updates) and is stri
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
-
-  await page.goto(href!);
-  await expect(page.locator('h1.tag')).toHaveText('Hello World');
-  await expect(page.locator('[data-sw-control]')).toHaveCount(0); // chip stripped on publish
+  await deployLocally(page);
+  // Local hosting serves on a subdomain the DinD host has no DNS for, so read the published HTML with
+  // an explicit Host header rather than navigating to it.
+  const live = await fetchLiveSite(page, `ctrl-${stamp}`);
+  expect(live.status).toBe(200);
+  expect(live.html).toContain('Hello World');
+  expect(live.html).not.toContain('data-sw-control'); // chip stripped on publish
 });
 
 // as="file" opens the FILE picker (filtered to uploaded files) and sets the target to the chosen URL.

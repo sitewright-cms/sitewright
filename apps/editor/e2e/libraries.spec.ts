@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -28,19 +28,17 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-  // Publish via the header, then fetch the live page over HTTP.
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const viewLink = page.getByRole('menuitem', { name: 'View published site' });
-  const href = await viewLink.getAttribute('href');
-  expect(href).toBeTruthy();
-
-  const launch = await page.request.get(`${new URL(page.url()).origin}${href!.replace(/\/$/, '')}/launch/`);
-  const body = await launch.text();
+  // Deploy to Local Hosting via the header, then fetch the live page over HTTP.
+  await deployLocally(page);
+  const launch = await fetchLiveSite(page, `lib-${stamp}`, '/launch/');
+  expect(launch.status).toBe(200);
+  const body = launch.html;
   expect(body).toContain('data-bg="/media/x.jpg"');
   expect(body).toContain('waves-effect waves-light');
-  expect(body).toContain('<script defer src="../lazyload.js"></script>');
-  expect(body).toContain('<script defer src="../ripple.js"></script>');
+  // Match the src WITHOUT pinning the cache-busting `?v=<hash>` published assets carry — an exact-string
+  // assertion here would break every time that hash scheme legitimately changes.
+  expect(body).toMatch(/<script defer src="\.\.\/lazyload\.js(\?v=[^"]*)?"><\/script>/);
+  expect(body).toMatch(/<script defer src="\.\.\/ripple\.js(\?v=[^"]*)?"><\/script>/);
 
   // The Library is a LEFT hover side-panel; hovering its edge tab expands the fixed-size panel to
   // reveal the section buttons. Each section title opens a searchable gallery modal (which pins the

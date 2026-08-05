@@ -19,7 +19,7 @@ scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
 | suite | result |
 |---|---|
 | `@sitewright/api` | **20 passed, 2 skipped** — and re-runnable against the same slot |
-| `@sitewright/editor` | **47 passed, 44 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
+| `@sitewright/editor` | **48 passed, 43 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
 
 Authentication was the single blocker and is fixed — see `helpers.ts`. What remains is genuine UI drift:
 the specs now get far enough to discover that controls have been renamed, moved, or replaced by a
@@ -29,11 +29,24 @@ known to be a product defect, but that is exactly what working through them will
 ## Known clusters
 
 - **`Publish` → target-driven deploy** (~7 specs). There is no one-click `Publish` button or `Publish
-  actions` menu any more. `PublishBar` now offers `Deploy` (which opens the target wizard while no target
-  exists) or `Deploy to <name>` once one does, plus `View the live site`. `/sites/<slug>/` does not serve
-  until a Local Hosting target carries the serve options. These specs need migrating to that flow, not
-  relabelling. Note the SPA keeps project selection in STATE, so `page.reload()` drops back to the project
-  list — a target created over the API is not visible to an already-mounted `PublishBar`; drive the wizard.
+  actions` menu any more. `deployLocally()` in `helpers.ts` now encodes the current flow; three things
+  about it are not guessable and cost a run each to find:
+  1. **The wizard's modal stays OPEN after "Save target"** (it returns to the target list — you may be
+     adding several). `PublishDeployModal` bumps the bar's refresh signal *on close*, so until you
+     dismiss it the bar still reads plain `Deploy`, i.e. "no target". This is by design, not a bug —
+     the target is already persisted server-side at that point.
+  2. **Pick the type card by ROLE, not text.** `getByText('Local Hosting')` also matches the
+     "already configured" note and the saved-target row; clicking those closes the wizard.
+  3. **Local hosting serves on `<slug>.<SW_SITES_DOMAIN>`**, and `/sites/<slug>/` 301s there. The E2E
+     slot sets that domain (an API spec covers subdomain serving) but the DinD host has no wildcard
+     DNS, so neither a browser navigation nor a redirect-following request can reach the name. Use
+     `fetchLiveSite()`, which sends an explicit `Host` header — the same technique
+     `apps/api/e2e/forms.spec.ts` uses.
+
+  Also: the SPA keeps project selection in STATE, so `page.reload()` drops back to the project list; a
+  target created over the API is invisible to an already-mounted `PublishBar`. Drive the wizard.
+- **Published assets carry a cache-busting `?v=<hash>`.** Assertions that pin an exact
+  `<script defer src="../lazyload.js"></script>` no longer match. Match the src and allow the query.
 - **`Save changes`** (~5 specs). The label still exists in `CodeEditorModal` and `TargetConfigForm`, so
   these are likely a modal that no longer opens the same way rather than a rename — check before editing.
 - **The preview iframe's on-page toolbar** (~4 specs, `.sw-tb button` inside `iframe[title="Preview"]`).
@@ -43,7 +56,7 @@ known to be a product defect, but that is exactly what working through them will
 
 ## Full failing list
 
-See `git log` for the run that produced it; regenerate with the commands above. As of the revival:
+Regenerate with the commands above. As of the last run:
 
 - `api-keys.spec.ts:8:1 › create, view, and revoke a project API key from the editor`
 - `assets-operations.spec.ts:13:1 › assets: image preview modal, rename, copy, delete via modal dialogs`
@@ -82,7 +95,6 @@ See `git log` for the run that produced it; regenerate with the commands above. 
 - `shop.spec.ts:9:1 › published cart: add-to-cart opens the drawer and builds the WhatsApp order link`
 - `shop.spec.ts:110:1 › published cart: the form channel submits the order to the /f submissions inbox`
 - `shop.spec.ts:176:1 › published cart: editable note + backdrop/Esc/close-only dismissal + ripple class`
-- `sw-control.spec.ts:8:1 › sw-control: a control sets a page.data value (preview updates) and is stripped on publish`
 - `template-reference.spec.ts:8:1 › library: template reference — open, search, filter by group`
 - `typography.spec.ts:9:1 › typography slots: edit heading/body font + weight, persist, and publish applies them`
 - `typography.spec.ts:53:1 › google fonts: pick a heading webfont, self-host on select, publish loads it locally`

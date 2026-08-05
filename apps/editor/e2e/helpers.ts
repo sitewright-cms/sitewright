@@ -80,3 +80,46 @@ export async function signInAsAdmin(page: Page): Promise<void> {
   await page.goto('/');
 }
 
+
+/**
+ * Deploy the open project to Local Hosting and return the path its live site is served at.
+ *
+ * Replaces the old one-click `Publish` + `Publish actions` menu, which no longer exists. Deploying is
+ * TARGET-DRIVEN now: with no target the Deploy button opens the wizard, and `/sites/<slug>/` does not
+ * serve until a Local Hosting target carries the serve options. Configured through the UI on purpose —
+ * creating the target over the API leaves the already-mounted PublishBar unaware of it, and a reload
+ * does not help because the SPA keeps project selection in STATE, so it lands back on the project list.
+ */
+export async function deployLocally(page: Page): Promise<string> {
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  // Pick the card by its heading text — `getByText('Local Hosting')` also matches the "already
+  // configured" note and the summary row, and clicking those closes the wizard instead.
+  await page.getByRole('button').filter({ hasText: 'Local Hosting' }).first().click();
+  await page.getByRole('button', { name: 'Save target' }).click();
+  // Saving returns the wizard to its target LIST and leaves the modal open (you may be adding several).
+  // PublishDeployModal bumps the bar's refresh signal ON CLOSE, so the bar still reads "Deploy" — i.e.
+  // "no target" — until the modal is dismissed. Close it, as a user does, or the split button never appears.
+  await page.getByRole('button', { name: 'Close' }).first().click();
+  await page.getByRole('button', { name: /^Deploy to / }).click();
+  const view = page.getByRole('link', { name: 'View the live site' });
+  await expect(view).toBeVisible({ timeout: 60_000 });
+  const href = await view.getAttribute('href');
+  // Local hosting serves on `<slug>.<SW_SITES_DOMAIN>` when that is configured (the /sites/<slug>/ path
+  // 301s there), so do NOT pin a path shape — assert only that a live address was advertised.
+  expect(href, 'the deployed site must advertise a live address').toBeTruthy();
+  return href!;
+}
+
+/**
+ * Fetch a page of the deployed local site.
+ *
+ * Local hosting SERVES on `<slug>.<SW_SITES_DOMAIN>` when that is configured (which the E2E slot does,
+ * because apps/api/e2e/forms.spec.ts covers subdomain serving) and `/sites/<slug>/` 301s there. The DinD
+ * host has no wildcard DNS, so neither a browser navigation nor a redirect-following request can reach
+ * that name — send an explicit Host header instead, the same technique the API spec uses.
+ */
+export async function fetchLiveSite(page: Page, slug: string, path = '/'): Promise<{ status: number; html: string }> {
+  const host = `${slug}.${process.env.SW_E2E_SITES_DOMAIN ?? new URL(baseURL()).hostname}${new URL(baseURL()).port ? `:${new URL(baseURL()).port}` : ''}`;
+  const res = await page.request.get(`${baseURL()}${path}`, { headers: { Host: host } });
+  return { status: res.status(), html: await res.text() };
+}

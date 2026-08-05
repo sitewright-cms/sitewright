@@ -233,3 +233,83 @@ describe('rich-dom class application', () => {
     expect(el.querySelector('p')!.hasAttribute('class')).toBe(false);
   });
 });
+
+// contentEditable writes inline style properties on its own: delete formatted text, type again, and
+// Chromium carries the deleted run's typing style into the new text as `style="font-size:12px"`. An
+// inline declaration beats a utility class, so from then on the size/colour buttons set a class that
+// changes nothing on screen. `color`/`background-color` also survive the render sanitizer, so a stale
+// inline colour would win on the PUBLISHED page too — not just in the field.
+describe('rich-dom clears the inline style property a group owns', () => {
+  it('applyInlineClass drops an inline font-size when a size class is applied', () => {
+    const el = editableSelectingP('<p><span style="font-size: 12px">sized</span></p>');
+    const span = el.querySelector('span')!;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    applyInlineClass(el, RICH_SIZE_CLASSES, 'text-4xl', ['font-size']);
+    const out = el.querySelector('span')!;
+    expect(out.getAttribute('class')).toContain('text-4xl');
+    expect(out.style.fontSize).toBe('');
+    expect(el.innerHTML).not.toContain('font-size');
+  });
+
+  it('drops an inline colour nested INSIDE the selection, not just on the wrapper', () => {
+    const el = editableSelectingP('<p>a <span style="color: rgb(1, 2, 3)">b</span> c</p>');
+    applyInlineClass(el, RICH_COLOR_CLASSES, 'text-red-600', ['color']);
+    expect(el.innerHTML).toContain('text-red-600');
+    expect(el.innerHTML).not.toContain('color: rgb(1, 2, 3)');
+  });
+
+  it('leaves style properties the group does NOT own alone', () => {
+    const el = editableSelectingP('<p><span style="font-size: 12px; font-weight: bold">x</span></p>');
+    const span = el.querySelector('span')!;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    applyInlineClass(el, RICH_SIZE_CLASSES, 'text-lg', ['font-size']);
+    // The size went; the bold — which the size control has no business touching — stayed.
+    expect(el.innerHTML).not.toContain('font-size');
+    expect(el.querySelector('[style]')!.getAttribute('style')).toContain('font-weight');
+  });
+
+  it('removes the style attribute entirely once nothing is left in it', () => {
+    const el = editableSelectingP('<p><span style="font-size: 12px">x</span></p>');
+    const span = el.querySelector('span')!;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    applyInlineClass(el, RICH_SIZE_CLASSES, 'text-lg', ['font-size']);
+    expect(el.querySelector('span')!.hasAttribute('style')).toBe(false);
+  });
+
+  it('applyBlockClass drops an inline text-align that would beat the alignment class', () => {
+    const el = editableSelectingP('<p style="text-align: right">aligned</p>');
+    applyBlockClass(el, RICH_ALIGN_CLASSES, 'text-center', ['text-align']);
+    const p = el.querySelector('p')!;
+    expect(p.getAttribute('class')).toContain('text-center');
+    expect(p.style.textAlign).toBe('');
+  });
+
+  it('stepBlockIndent drops an inline padding-left', () => {
+    const el = editableSelectingP('<p style="padding-left: 99px">indent</p>');
+    stepBlockIndent(el, 1);
+    const p = el.querySelector('p')!;
+    expect(p.getAttribute('class')).toBe('pl-4');
+    expect(p.style.paddingLeft).toBe('');
+  });
+
+  it('with no owned properties passed, inline styles are untouched (back-compatible default)', () => {
+    const el = editableSelectingP('<p><span style="font-size: 12px">x</span></p>');
+    applyInlineClass(el, RICH_SIZE_CLASSES, 'text-lg');
+    expect(el.innerHTML).toContain('font-size');
+  });
+});

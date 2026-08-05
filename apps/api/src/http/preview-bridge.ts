@@ -301,18 +301,35 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   // ---- DOM apply (mirrors apps/editor/src/lib/rich-dom.ts) ----
   function tbSelRange(rich) { var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null; var r = sel.getRangeAt(0); if (r.collapsed || !rich.contains(r.commonAncestorContainer)) return null; return r; }
-  function tbApplyInline(rich, group, cls) {
+  // The inline style property each group OWNS — cleared when its class is applied so the CLASS decides.
+  // contentEditable writes these itself (delete formatted text, retype, and Chromium carries the old
+  // typing style in as inline CSS), and an inline declaration beats a utility class — the control then
+  // looks broken. Mirrors RICH_GROUP_STYLE_PROPS in apps/editor/src/lib/rich-dom.ts.
+  var TB_STYLE_PROPS = { color: ['color'], highlight: ['background-color'], size: ['font-size'], font: ['font-family'], align: ['text-align'], indent: ['padding-left'] };
+  function tbClearStyle(el, props) {
+    if (!props || !props.length || !el.hasAttribute || !el.hasAttribute('style')) return;
+    for (var i = 0; i < props.length; i++) el.style.removeProperty(props[i]);
+    if (!el.getAttribute('style')) el.removeAttribute('style');
+  }
+  function tbClearStyleDeep(root, props) {
+    tbClearStyle(root, props);
+    var s = root.querySelectorAll ? root.querySelectorAll('[style]') : [];
+    for (var i = 0; i < s.length; i++) tbClearStyle(s[i], props);
+  }
+  function tbApplyInline(rich, group, cls, props) {
     var r = tbSelRange(rich); if (!r) return;
     // Fast path: selection covers a whole <span> wrapper → retag its group class in place (no nested spans).
     var host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
     if (host && host !== rich && host.tagName === 'SPAN' && host.textContent === r.toString()) {
       var retag = tbSetGroup(host.getAttribute('class'), group, cls || undefined);
       if (retag) host.setAttribute('class', retag); else host.removeAttribute('class');
+      tbClearStyleDeep(host, props);
       return;
     }
     var holder = document.createElement('div'); holder.appendChild(r.extractContents());
     var kids = holder.querySelectorAll('[class]');
     for (var i = 0; i < kids.length; i++) { var c = tbSetGroup(kids[i].getAttribute('class'), group); if (c) kids[i].setAttribute('class', c); else kids[i].removeAttribute('class'); }
+    tbClearStyleDeep(holder, props);
     var ins;
     if (cls) { var span = document.createElement('span'); span.className = cls; while (holder.firstChild) span.appendChild(holder.firstChild); ins = span; }
     else { ins = document.createDocumentFragment(); while (holder.firstChild) ins.appendChild(holder.firstChild); }
@@ -330,8 +347,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     for (var el = start; el; el = el.nextElementSibling) { out.push(el); if (el === end) break; }
     return out;
   }
-  function tbApplyBlock(rich, group, cls) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbSetGroup(bs[i].getAttribute('class'), group, cls || undefined); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
-  function tbStepBlockIndent(rich, dir) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbStepIndent(bs[i].getAttribute('class'), dir); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); } }
+  function tbApplyBlock(rich, group, cls, props) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbSetGroup(bs[i].getAttribute('class'), group, cls || undefined); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); tbClearStyle(bs[i], props); } }
+  function tbStepBlockIndent(rich, dir) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbStepIndent(bs[i].getAttribute('class'), dir); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); tbClearStyle(bs[i], TB_STYLE_PROPS.indent); } }
   function tbInsertTable() { try { document.execCommand('insertHTML', false, '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>'); } catch (e) {} }
   // The <a> enclosing the current selection within the rich region (for edit-in-place / pre-fill), or null.
   function tbCurrentAnchor(rich) {
@@ -511,7 +528,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
     var isColor = cmd.kind === 'color';
     p.appendChild(tbHeading(cmd.label));
-    function pick(cls) { if (isColor) tbApplyInline(rich, tbColorGroup(), cls); else tbApplyInline(rich, RTB.highlightClasses, cls); tbFinish(); }
+    function pick(cls) { if (isColor) tbApplyInline(rich, tbColorGroup(), cls, TB_STYLE_PROPS.color); else tbApplyInline(rich, RTB.highlightClasses, cls, TB_STYLE_PROPS.highlight); tbFinish(); }
     function grid(list) {
       var g = document.createElement('div'); g.className = 'sw-tb-grid';
       for (var i = 0; i < list.length; i++) (function (sw) {
@@ -589,9 +606,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // Popover commands: a second click on the open control closes it (toggle).
     if (tbPop && tbPop.style.display !== 'none' && tbActiveId === cmd.id) { tbClosePop(); return; }
     if (cmd.kind === 'color' || cmd.kind === 'highlight') tbOpenSwatch(rich, cmd, anchor);
-    else if (cmd.kind === 'size') tbOpenMenu(rich, cmd, anchor, RTB.sizes, function (c) { tbApplyInline(rich, RTB.sizeClasses, c); });
-    else if (cmd.kind === 'align') tbOpenMenu(rich, cmd, anchor, RTB.aligns, function (c) { tbApplyBlock(rich, RTB.alignClasses, c); });
-    else if (cmd.kind === 'font') tbOpenMenu(rich, cmd, anchor, [{ label: 'Default', cls: '' }].concat(ciFonts), function (c) { tbApplyInline(rich, tbFontGroup(), c); });
+    else if (cmd.kind === 'size') tbOpenMenu(rich, cmd, anchor, RTB.sizes, function (c) { tbApplyInline(rich, RTB.sizeClasses, c, TB_STYLE_PROPS.size); });
+    else if (cmd.kind === 'align') tbOpenMenu(rich, cmd, anchor, RTB.aligns, function (c) { tbApplyBlock(rich, RTB.alignClasses, c, TB_STYLE_PROPS.align); });
+    else if (cmd.kind === 'font') tbOpenMenu(rich, cmd, anchor, [{ label: 'Default', cls: '' }].concat(ciFonts), function (c) { tbApplyInline(rich, tbFontGroup(), c, TB_STYLE_PROPS.font); });
     else if (cmd.kind === 'link') tbOpenLink(rich, cmd, anchor);
   }
   function tbButton(cmd) {

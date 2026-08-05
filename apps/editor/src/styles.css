@@ -29,6 +29,26 @@
   }
 }
 
+/* The WYSIWYG rich-text toolbars emit EXISTING Tailwind utilities into AUTHOR content (never inline
+   styles — see packages/blocks/src/rich-toolbar.ts). Those classes are applied at RUNTIME, in the
+   contentEditable, so this SPA's source scan never sees a single one of them: a utility used to reach
+   the sheet only when the editor's own UI happened to use the same class somewhere else. Measured on
+   the pre-fix build, 14 of the 44 emittable classes had NO rule at all (every highlight but four, half
+   the colours, `text-justify`, `pl-12`, `pl-16`) and the rest were live BY ACCIDENT — so most of the
+   toolbar wrote a class that changed nothing on screen.
+
+   `@source inline(...)` compiles the toolbar's whole bounded vocabulary unconditionally. It is the
+   editor-side twin of the publish build's `RICH_CONTENT_SAFELIST` feed (apps/api/src/publish/build.ts)
+   — same reason, different sink. Keep it in step with that constant: `rich-utilities.test.ts` fails if
+   this list and `RICH_CONTENT_SAFELIST` ever diverge, so a new swatch cannot silently ship dead. */
+@source inline(
+  "text-slate-500 text-red-600 text-orange-600 text-amber-500 text-green-600 text-teal-600 text-blue-600 text-indigo-600 text-purple-600 text-pink-600"
+);
+@source inline("bg-yellow-200 bg-green-200 bg-blue-200 bg-pink-200 bg-purple-200 bg-orange-200 bg-slate-200");
+@source inline("text-xs text-sm text-lg text-xl text-2xl text-3xl text-4xl text-5xl text-6xl");
+@source inline("text-left text-center text-right text-justify");
+@source inline("pl-4 pl-8 pl-12 pl-16");
+
 /* Manual dark mode: rebind the `dark:` variant to key off `<html data-theme="dark">` (stamped by the
    color-mode runtime — src/lib/color-mode.ts + the FOUC guard in index.html) instead of Tailwind's
    default `prefers-color-scheme` media query. This lets the in-app Appearance switcher (light / dark /
@@ -339,6 +359,13 @@ button:disabled,
    Unlayered → beats preflight (which lives in @layer base). */
 .sw-rich-edit {
   line-height: 1.55;
+  /* Authored content previews at the SITE's type scale, NOT this SPA's readability floor. The `@theme`
+     override above lifts `--text-xs` to 14px for editor chrome, which made the toolbar's "Tiny" and
+     "Small" steps render identically in the field while the published page renders 12px vs 14px —
+     a size control that visibly did nothing. Rebinding the var inside the editable restores the real
+     scale (the generated `.text-xs` reads `var(--text-xs)`, so scoping it is enough). */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
 }
 .sw-rich-edit:empty::before {
   content: attr(data-placeholder);

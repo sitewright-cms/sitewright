@@ -112,6 +112,8 @@ import {
   PHOSPHOR_WEIGHTS,
   searchTextures,
   TEXTURE_NAMES,
+  RICH_CONTENT_SAFELIST,
+  ciRichClasses,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import {
@@ -767,7 +769,24 @@ async function styledSourceDocument(
   // nav / button effect + shape + accent schemes ALWAYS compile into the preview sheet (the publish path
   // adds them the same way via `themeClassNames`). Without this the selected global button configuration
   // is not applied in the page-editor preview.
-  const compileCandidates = [...new Set([...(shell.bodyClass ?? '').split(/\s+/).filter(Boolean), ...classNames])];
+  // The on-page `data-sw-html` WYSIWYG toolbar (preview-bridge) applies its utilities to the LIVE DOM of
+  // this very document — long after this sheet was compiled. A scan of the rendered body therefore never
+  // sees them: the author picked a colour, the class landed, and nothing changed on screen until a save
+  // re-rendered the page and the class finally became a candidate. Compile the toolbar's whole BOUNDED
+  // vocabulary (standard palettes + this project's CI colour/font classes) into the preview sheet up
+  // front, so every control takes effect the moment it is clicked.
+  //
+  // This is an EDITING surface, so the full set ships unconditionally — unlike publish/build.ts, which
+  // feeds only the classes a project's stored content actually uses, keeping a utility-free site
+  // utility-free. Bounded either way: ~34 standard classes plus the project's own brand tokens.
+  const compileCandidates = [
+    ...new Set([
+      ...(shell.bodyClass ?? '').split(/\s+/).filter(Boolean),
+      ...classNames,
+      ...RICH_CONTENT_SAFELIST,
+      ...ciRichClasses(brand),
+    ]),
+  ];
   // Platform-runtime markers in the rendered body/slots → inline the first-party runtime(s) so they work
   // live in the sandboxed preview (its CSP allows scripts). The marker-gated BODY-effect runtimes
   // (animation, parallax, svg-anim, marquee, lazyload, ripple, cart, consent) are resolved from the

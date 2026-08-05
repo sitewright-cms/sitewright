@@ -11,6 +11,40 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Most of the WYSIWYG toolbar had no visible effect — on either surface.** Both rich-text toolbars
+  emit Tailwind utility CLASSES, and both applied them somewhere the matching rule did not exist, so a
+  control captured the selection, wrapped it, set exactly the right class, and changed nothing on
+  screen. In the dataset richtext field the editor SPA's stylesheet is compiled from the editor's own
+  source, which never sees a class applied at runtime — measured, **14 of the 44 emittable classes had
+  no rule at all** (every highlight but four, half the colours, `text-justify`, `pl-12`, `pl-16`), and
+  the rest were live only because the editor's own chrome happened to use the same utility somewhere
+  else. In the page-editor preview the sheet is compiled from the RENDERED markup, which by definition
+  cannot contain a class the author has not picked yet, so every pick waited for a save and a re-render.
+  The editor now compiles the toolbar's whole bounded vocabulary via `@source inline(...)` (kept in step
+  with `RICH_CONTENT_SAFELIST` by a test that fails on drift), and the preview sheet is seeded with the
+  same set plus the project's CI classes.
+- **Brand colours and fonts in the dataset richtext field.** `font-heading`/`font-body` resolved to
+  nothing at all, and `text-primary` and friends resolved to the editor chrome's own DaisyUI defaults —
+  a colour, but the same wrong one in every project. The field now carries the open project's real brand
+  (colour tokens, font slots incl. custom named ones, and `@font-face` for self-hosted faces), derived
+  from the same `ciRichPalette` that builds the swatches, so the menu cannot offer a choice the sheet
+  has no rule for.
+- **The size scale collapsed at the bottom.** The editor lifts `--text-xs` to 14px as a UI readability
+  floor; that leaked into author content, so the toolbar's "Tiny" and "Small" rendered identically in
+  the field while the published page rendered 12px and 14px. Authored content now previews at the site's
+  scale.
+- **A stranded inline style could permanently beat the toolbar.** Deleting formatted text and typing
+  again makes contentEditable carry the old run's "typing style" in as inline CSS, and an inline
+  declaration outranks a utility class — so from that point on the size and colour buttons set classes
+  that did nothing. Worse for colour: `color`/`background-color` survive the render sanitizer (unlike
+  `font-size`), so a stale inline colour would have won on the published page too. Each control now
+  clears the inline property it owns, on both surfaces.
+- **The active toolbar button was invisible in dark mode.** The pressed state composited to
+  rgb(27,33,74) on a rgb(14,22,42) bar — a measured **1.17:1**, so an author could not tell which marks
+  were on. It now measures **3.97:1**, clearing the 3:1 an interactive affordance needs. Hovering an
+  active button also no longer washes it out (a translucent `hover:` utility outranked the active fill,
+  so pointing at a button that was on made it look off).
+
 - **The E2E suites run again.** They sit outside CI on purpose (serial, shared DinD host), and nothing
   noticed when they stopped working: the browser suite was at **zero passing**. Registration became
   invitation-only — unconditionally, there is no self-registration setting any more — which removed the

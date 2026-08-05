@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fontFaceCss } from '../src/views/settings/FontSlotEditor';
+import { fontFaceCss } from '../src/lib/font-face-css';
 import type { MediaAsset } from '../src/api';
 
 type FontAsset = Extract<MediaAsset, { kind: 'font' }>;

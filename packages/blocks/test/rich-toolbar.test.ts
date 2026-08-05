@@ -4,6 +4,7 @@ import {
   RICH_COLORS,
   RICH_HIGHLIGHTS,
   RICH_SIZES,
+  RICH_SIZE_PREVIEW_MAX,
   RICH_ALIGNS,
   RICH_INDENT_STEPS,
   RICH_COLOR_CLASSES,
@@ -114,6 +115,36 @@ describe('RICH_TOOLBAR', () => {
     // …and every size the menu offers must be in the safelist, or it compiles in preview and vanishes
     // on the published site.
     for (const cls of sizes) if (cls !== '') expect(RICH_CONTENT_SAFELIST).toContain(cls);
+  });
+});
+
+describe('RICH_SIZES', () => {
+  it('covers the platform type scale, ascending, with exactly one clear entry', () => {
+    // The full range the design guide uses (its hero tops out at text-6xl). It lives behind ONE toolbar
+    // button, so extending the scale never lengthens the bar.
+    expect(RICH_SIZES.map((s) => s.cls)).toEqual([
+      'text-xs', 'text-sm', '', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl', 'text-5xl', 'text-6xl',
+    ]);
+    expect(RICH_SIZES.filter((s) => s.cls === '')).toHaveLength(1); // one "Normal" that clears the group
+    expect(new Set(RICH_SIZES.map((s) => s.label)).size).toBe(RICH_SIZES.length);
+  });
+
+  it('carries a literal preview size on every row, in ascending order', () => {
+    // The menu renders each row AT its own size, so it reads as a scale — and it must not depend on the
+    // utility sheet being compiled into the surface drawing it (the editor SPA has no site stylesheet).
+    const rems = RICH_SIZES.map((s) => {
+      expect(s.value, s.label).toMatch(/^[\d.]+rem$/);
+      return parseFloat(s.value as string);
+    });
+    expect(rems).toEqual([...rems].sort((a, b) => a - b));
+    // The cap keeps a 6XL row from being 60px tall; it must sit inside the range, or it caps nothing.
+    const cap = parseFloat(RICH_SIZE_PREVIEW_MAX);
+    expect(cap).toBeGreaterThan(Math.min(...rems));
+    expect(cap).toBeLessThan(Math.max(...rems));
+  });
+
+  it('every size compiles — the safelist is what carries them into the published sheet', () => {
+    for (const s of RICH_SIZES) if (s.cls) expect(RICH_CONTENT_SAFELIST).toContain(s.cls);
   });
 });
 

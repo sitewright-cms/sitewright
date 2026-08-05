@@ -35,6 +35,20 @@ describe('RichTextField', () => {
     render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
     fireEvent.click(screen.getByRole('button', { name: 'Text size' }));
     expect(screen.getByRole('button', { name: 'Large' })).toBeInTheDocument();
+    // The whole scale is behind this one button — that is what keeps the toolbar short.
+    for (const name of ['Tiny', 'Small', 'Normal', 'Extra large', '2XL', '4XL', '6XL']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    // Each row previews itself at its own size, capped so a 6XL row doesn't dominate the menu.
+    expect(screen.getByRole('button', { name: 'Small' })).toHaveStyle({ fontSize: 'min(0.875rem, 1.75rem)' });
+    expect(screen.getByRole('button', { name: '6XL' })).toHaveStyle({ fontSize: 'min(3.75rem, 1.75rem)' });
+    // The menu is PORTALLED out of the toolbar and positioned fixed. Absolutely positioned, the entry
+    // modal's own overflow clipped it: the five-item list fit, the ten-item one lost its last rows.
+    const pop = document.querySelector('[data-sw-rich-menu]') as HTMLElement;
+    expect(pop).not.toBeNull();
+    expect(pop.closest('[data-sw-rich-toolbar]')).toBeNull(); // not a toolbar descendant any more
+    expect(pop.style.position).toBe('fixed');
+    expect(parseFloat(pop.style.maxHeight)).toBeGreaterThan(0);
   });
 
   it('opens the alignment menu', () => {

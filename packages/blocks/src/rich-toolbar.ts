@@ -56,19 +56,32 @@ export const RICH_HIGHLIGHTS: readonly RichSwatch[] = [
   { label: 'Slate', cls: 'bg-slate-200', value: '#e2e8f0' },
 ];
 
-/** Text-size swatches. `''` is the normal/base size (clears any size class).
- *  The scale runs up to display sizes because SIZE is how rich content makes a line read as a heading:
- *  the toolbar emits no h1–h6 (see RICH_TOOLBAR), so an author reaches for size + the heading font +
- *  bold instead of a tag that would silently join the page's outline. */
+/** Text-size swatches, in ascending order. `''` is the normal/base size (clears any size class).
+ *  `value` is the LITERAL size the row previews itself at, so the menu reads as a scale without needing
+ *  the utility sheet compiled into the surface drawing it (same reason the colour swatches carry a hex).
+ *
+ *  The scale runs the platform's own type range (the design guide's hero tops out at `text-6xl`), because
+ *  SIZE is how rich content makes a line read as a headline: the toolbar emits no h1–h6 (see
+ *  RICH_TOOLBAR), so an author reaches for size + the heading font + bold instead of a tag that would
+ *  silently join the page's outline. Every entry here lands in RICH_CONTENT_SAFELIST automatically, which
+ *  is what gets it compiled into the PUBLISHED sheet — the source scan never sees rich content.
+ *  It lives behind ONE toolbar button (kind 'size' opens a menu), so the bar does not grow with the scale. */
 export const RICH_SIZES: readonly RichSwatch[] = [
-  { label: 'Small', cls: 'text-sm' },
-  { label: 'Normal', cls: '' },
-  { label: 'Large', cls: 'text-lg' },
-  { label: 'Extra large', cls: 'text-xl' },
-  { label: 'Huge', cls: 'text-2xl' },
-  { label: 'Display', cls: 'text-3xl' },
-  { label: 'Display large', cls: 'text-4xl' },
+  { label: 'Tiny', cls: 'text-xs', value: '0.75rem' },
+  { label: 'Small', cls: 'text-sm', value: '0.875rem' },
+  { label: 'Normal', cls: '', value: '1rem' },
+  { label: 'Large', cls: 'text-lg', value: '1.125rem' },
+  { label: 'Extra large', cls: 'text-xl', value: '1.25rem' },
+  { label: '2XL', cls: 'text-2xl', value: '1.5rem' },
+  { label: '3XL', cls: 'text-3xl', value: '1.875rem' },
+  { label: '4XL', cls: 'text-4xl', value: '2.25rem' },
+  { label: '5XL', cls: 'text-5xl', value: '3rem' },
+  { label: '6XL', cls: 'text-6xl', value: '3.75rem' },
 ];
+
+/** How large a size row may PREVIEW itself. Without a ceiling a 6XL row is 60px tall and the menu becomes
+ *  a scroll marathon; the labels carry the distinction past this point. */
+export const RICH_SIZE_PREVIEW_MAX = '1.75rem';
 
 /** Block text-alignment swatches (applied to the enclosing block, not a span). */
 export const RICH_ALIGNS: readonly RichSwatch[] = [

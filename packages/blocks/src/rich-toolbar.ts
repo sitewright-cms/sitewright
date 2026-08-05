@@ -56,13 +56,18 @@ export const RICH_HIGHLIGHTS: readonly RichSwatch[] = [
   { label: 'Slate', cls: 'bg-slate-200', value: '#e2e8f0' },
 ];
 
-/** Text-size swatches. `''` is the normal/base size (clears any size class). */
+/** Text-size swatches. `''` is the normal/base size (clears any size class).
+ *  The scale runs up to display sizes because SIZE is how rich content makes a line read as a heading:
+ *  the toolbar emits no h1–h6 (see RICH_TOOLBAR), so an author reaches for size + the heading font +
+ *  bold instead of a tag that would silently join the page's outline. */
 export const RICH_SIZES: readonly RichSwatch[] = [
   { label: 'Small', cls: 'text-sm' },
   { label: 'Normal', cls: '' },
   { label: 'Large', cls: 'text-lg' },
   { label: 'Extra large', cls: 'text-xl' },
   { label: 'Huge', cls: 'text-2xl' },
+  { label: 'Display', cls: 'text-3xl' },
+  { label: 'Display large', cls: 'text-4xl' },
 ];
 
 /** Block text-alignment swatches (applied to the enclosing block, not a span). */
@@ -194,8 +199,12 @@ export const RICH_TOOLBAR: ReadonlyArray<RichCmd | null> = [
   { id: 'font', label: 'Font', kind: 'font' },
   { id: 'size', label: 'Text size', kind: 'size' },
   null,
-  { id: 'h2', label: 'Heading 2', kind: 'exec', cmd: 'formatBlock', arg: 'h2' },
-  { id: 'h3', label: 'Heading 3', kind: 'exec', cmd: 'formatBlock', arg: 'h3' },
+  // NO h1–h6 CONTROLS, deliberately. Rich content is a FRAGMENT dropped into a region of a page that
+  // already has its own heading outline, so a heading authored here joins that outline at whatever level
+  // the author happened to click — heading spam a search engine reads and the page's author never chose.
+  // A heading LOOK is a size + the heading font + bold (all still one click each); a heading TAG belongs
+  // in the page's own markup, where the author controls the document structure. The sanitizer enforces
+  // the same rule at the render sink, so the HTML-source editor cannot reintroduce one either.
   { id: 'paragraph', label: 'Paragraph', kind: 'exec', cmd: 'formatBlock', arg: 'p' },
   { id: 'quote', label: 'Quote', kind: 'exec', cmd: 'formatBlock', arg: 'blockquote' },
   null,

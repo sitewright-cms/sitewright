@@ -2,6 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { CART_CSS, CART_JS, usesCart, resolveShopChannels } from '../src/cart.js';
 
 describe('cart stylesheet', () => {
+
+  // A shop's cart drawer is on EVERY page, so a heading in it would inject a level into every document
+  // outline the author never wrote. It is a div carrying the look the <h2> used to get for free.
+  it('builds the drawer title as a DIV, never a heading', () => {
+    expect(CART_JS).toContain("part('div','title',cfg.title)");
+    expect(CART_JS).not.toMatch(/mk\('h[1-6]'/);
+    expect(CART_JS).not.toMatch(/createElement\('h[1-6]'\)/);
+    // Losing the heading must not cost the dialog its accessible name.
+    expect(CART_JS).toContain("dialog.setAttribute('aria-label',cfg.title)");
+    // …and the title still renders as it did: explicit size + the project's heading font/weight.
+    expect(CART_CSS).toContain('[data-sw-part="head"] [data-sw-part="title"]');
+    expect(CART_CSS).toContain('font-family:var(--sw-font-heading)');
+    expect(CART_CSS).not.toContain('[data-sw-part="head"] h2');
+  });
   it('hides the cart until the runtime marks it enhanced (PE: no inert UI pre-JS)', () => {
     expect(CART_CSS).toContain('[data-sw-cart]{display:none}');
     expect(CART_CSS).toContain('[data-sw-cart][data-sw-enhanced="true"]{display:block}');

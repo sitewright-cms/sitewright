@@ -108,7 +108,10 @@ export function isSvgShapeAttr(name: unknown): boolean {
   return typeof name === 'string' && (SVG_SHAPE_ATTRS as readonly string[]).includes(name);
 }
 
-/** The tags a Heading block may render as — mirrors HEADING_TAGS in the runtime. */
+/** Accepted values for a Heading block's `heading`. h1–h6 are retained ONLY so maps stored before they
+ *  were dropped keep validating: the runtime renders every Heading block as a `<div>` (or `<p>`) — see
+ *  headingTag(). A tooltip headline is a VISUAL heading, not a structural one, and a map full of them
+ *  would inject headings into a page outline the author never wrote. */
 export const IMAGE_MAP_HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div'] as const;
 
 /** Per-block presentation shared by every tooltip content block. */

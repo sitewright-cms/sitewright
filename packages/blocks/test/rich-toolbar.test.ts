@@ -98,6 +98,23 @@ describe('RICH_TOOLBAR', () => {
       expect(ids).toContain(id);
     }
   });
+
+  it('offers NO heading control — rich content must not write the page outline', () => {
+    // Rich content is a fragment inside a page that already has a heading structure; a heading picked
+    // here joins that outline at whatever level was clicked. A heading LOOK is size + font + bold.
+    const cmds = RICH_TOOLBAR.filter((c): c is RichCmd => c !== null);
+    for (const c of cmds) {
+      expect(c.arg ?? '', c.id).not.toMatch(/^h[1-6]$/);
+      expect(c.id).not.toMatch(/^h[1-6]$/);
+    }
+    // The replacement has to actually reach heading sizes, or removing the buttons costs the author.
+    const sizes = RICH_SIZES.map((sw) => sw.cls);
+    expect(sizes).toContain('text-3xl');
+    expect(sizes).toContain('text-4xl');
+    // …and every size the menu offers must be in the safelist, or it compiles in preview and vanishes
+    // on the published site.
+    for (const cls of sizes) if (cls !== '') expect(RICH_CONTENT_SAFELIST).toContain(cls);
+  });
 });
 
 describe('ciRichPalette', () => {

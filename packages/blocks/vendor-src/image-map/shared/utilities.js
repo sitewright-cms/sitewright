@@ -669,15 +669,23 @@ export function safeCssFilter(filter) {
   return `${name}(${safeCssValue(filter.value)}) `
 }
 
-/** The tag a Heading block may render as. Anything else falls back to h3. */
-const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div']
+/** The only tags a Heading block may render as. */
+const HEADING_TAGS = ['p', 'div']
 
 /**
- * A safe tag name for a Heading block. Upstream interpolated `options.heading` straight into
- * `<${tag}>`, so a config could name any element (`img src=x onerror=…`) and have it built.
+ * The tag a Heading block renders as. Upstream interpolated `options.heading` straight into
+ * `<${tag}>`, so a config could name any element (`img src=x onerror=…`) and have it built — hence
+ * the allowlist.
+ *
+ * It no longer includes h1–h6. A tooltip's headline is a VISUAL heading, not a structural one: the
+ * map sits inside a page that already has its own outline, and every tooltip contributing an <h3>
+ * to it is heading spam a search engine reads and the author never wrote. The block already carries
+ * its whole appearance (font, size, weight, colour, spacing) as inline style, so a <div> renders
+ * identically. Stored configs still say "h3" — they map here, so no migration is needed.
  */
 export function headingTag(tag) {
-  return HEADING_TAGS.includes(String(tag).toLowerCase()) ? String(tag).toLowerCase() : 'h3'
+  const t = String(tag).toLowerCase()
+  return HEADING_TAGS.includes(t) ? t : 'div'
 }
 
 export function traverseObjectTree(array, childrenArrayName, callback) {

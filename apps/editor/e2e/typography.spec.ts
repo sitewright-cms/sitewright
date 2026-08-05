@@ -46,7 +46,9 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   expect(html).toMatch(/--sw-font-body:[^;]*serif/);
   expect(html).toMatch(/--sw-font-heading:[^;]*monospace/);
   expect(html).toContain('body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}');
-  expect(html).toContain('h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading)');
+  // The `.sw-h*` look-alikes (what rich-content headings are rewritten to) take the heading face too,
+  // so they share this selector — don't anchor the assertion on `h6{`.
+  expect(html).toContain('h1,h2,h3,h4,h5,h6,.sw-h1,.sw-h2,.sw-h3,.sw-h4,.sw-h5,.sw-h6{font-family:var(--sw-font-heading)');
 });
 
 // Google Fonts: browse the bundled catalog, SELECT a weight (the server downloads + self-hosts it),

@@ -489,7 +489,7 @@ export function emptyMap(id: string, name: string): ImageMap {
 export function newTooltipBlock(type: ImageMapTooltipBlock['type']): ImageMapTooltipBlock {
   switch (type) {
     case 'Heading':
-      return { type: 'Heading', text: 'Heading', heading: 'h3' };
+      return { type: 'Heading', text: 'Heading', heading: 'div' };
     case 'Paragraph':
       return { type: 'Paragraph', text: 'Some text.' };
     case 'Button':

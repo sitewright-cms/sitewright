@@ -96,7 +96,11 @@ export const CART_CSS = [
   '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
   '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--sw-color-base-300,#e5e7eb)}',
-  '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
+  // The drawer title is a DIV, not a heading: the cart ships on every page of a shop, so an <h2> here
+  // would inject a heading into every document outline that the author never wrote. It carries the look
+  // the <h2> used to get for free — the heading font/weight from the typography block (which styles
+  // h1–h6) plus the explicit size — so nothing changes visually.
+  '[data-sw-cart] [data-sw-part="head"] [data-sw-part="title"]{margin:0;font-size:1.125rem;font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight,700)}',
   // Flex-centered SQUARE so the (symmetric) icon sits at the box center → the hover rotate() pivots dead-centre
   // (a baseline-positioned text glyph sits off-centre and appears to hinge around an edge when rotated).
   '[data-sw-cart] [data-sw-part="close"]{display:flex;align-items:center;justify-content:center;width:2rem;height:2rem;border:0;background:none;cursor:pointer}',
@@ -381,7 +385,11 @@ export const CART_JS = `(function(){
     var count=part('span','count');toggle.appendChild(count);
 
     var dialog=document.createElement('dialog');
-    var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close');close.type='button';close.setAttribute('aria-label','Close cart');close.appendChild(closeIcon());ripple(close);
+    dialog.setAttribute('aria-label',cfg.title);
+    // Title as a DIV (see the CSS note): a per-page drawer must not add to the document outline. The
+    // dialog carries the title as its aria-label instead, so it keeps an accessible name — a <dialog>
+    // never took one from a contained heading anyway.
+    var head=part('div','head');var h=part('div','title',cfg.title);var close=part('button','close');close.type='button';close.setAttribute('aria-label','Close cart');close.appendChild(closeIcon());ripple(close);
     head.appendChild(h);head.appendChild(close);
     var list=part('ul','items');
     var empty=part('p','empty',cfg.emptyLabel);

@@ -31,6 +31,7 @@ const vendorCode = (rel: string) =>
  * than on a customer's site.
  */
 describe('ImageMap component registration', () => {
+
   it('is a registered component type', () => {
     expect(COMPONENT_TYPES.has('ImageMap')).toBe(true);
   });
@@ -111,6 +112,24 @@ describe('ImageMap runtime executes no tenant code', () => {
     expect(src).toContain('headingTag(this.options.heading)');
     expect(src).not.toMatch(/<\$\{this\.options\.heading\}/);
     expect(vendorSrc('shared/utilities.js')).toMatch(/const HEADING_TAGS = \[/);
+  });
+
+  it('renders a tooltip headline WITHOUT a heading tag', () => {
+    // A tooltip headline is a VISUAL heading, not a structural one: a map with a dozen hotspots would
+    // otherwise contribute a dozen <h3>s to a page outline its author never chose, which is SEO noise.
+    // The block already carries its whole appearance as inline style, so a <div> looks identical.
+    // The allowlist is where this is enforced — anything unlisted (including every stored "h3",
+    // which the schema still accepts so old maps validate) falls through to `div`.
+    const util = vendorCode('shared/utilities.js');
+    expect(util).toMatch(/const HEADING_TAGS = \['p', 'div'\]/);
+    expect(util).toMatch(/HEADING_TAGS\.includes\(t\) \? t : 'div'/);
+    // …and nothing anywhere in the SHIPPED bundle can still name one — not the markup it builds, and
+    // not the block DEFAULTS it deep-merges into every tooltip. The quotes here are the ones in the
+    // module's VALUE, not the escaped `\\"` of its source text: matching the escaped form instead is an
+    // assertion that can never fail, and it hid a leftover `heading: 'h3'` default until it was fixed.
+    expect(IMAGE_MAP_RUNTIME_JS).toMatch(/\["p","div"\]/); // the shape does match when it should
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/"h[1-6]"/);
+    expect(IMAGE_MAP_RUNTIME_JS).not.toMatch(/<h[1-6][\s>]/);
   });
 
   it('publishes no global and does not touch window.print', () => {

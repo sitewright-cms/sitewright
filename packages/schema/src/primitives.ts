@@ -165,11 +165,14 @@ const CSS_VALUE_SAFE = /^[^;{}<>\\\n\r\t\f\x00]*$/;
 /**
  * True when a value opens or closes a CSS COMMENT.
  *
- * Denying whitespace controls is NOT sufficient for this and used to be mistaken for it: `/*` needs no
- * whitespace, and an opened comment runs to the next `*​/` or end of file — swallowing the rest of the
- * `:root{…}` block, its closing brace, and whatever stylesheet follows. Measured with a single poisoned
- * `typography.fontFamilies` value: every later custom property came back empty AND the next rule in the
- * sheet stopped applying.
+ * Denying whitespace controls is NOT sufficient for this and used to be mistaken for it: a comment
+ * OPENER needs no whitespace, and once opened it runs to the next closer or to end of file — swallowing
+ * the rest of the `:root{…}` block, its closing brace, and whatever stylesheet follows. Measured with a
+ * single poisoned `typography.fontFamilies` value: every later custom property came back empty AND the
+ * next rule in the sheet stopped applying.
+ *
+ * (Both sequences are spelled out in `CSS_RICH_COMMENT` above; naming the closer literally in prose here
+ * would end this very block comment — the reason the sentence talks around it.)
  *
  * Exported so the schema boundary and BOTH downstream emitters (`brand-css.ts`'s `SAFE`,
  * `@sitewright/tailwind`'s `renderThemeBlock`) enforce one definition. Each of those keeps its own value

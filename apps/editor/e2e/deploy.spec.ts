@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // by a PRIVATE KEY, then deploy it — the deploy runs in a streaming modal whose progress/result/error
 // is shown live. Here the target points at a closed port, so the modal surfaces the failure.
 test('deploy: save an SFTP key-auth target and stream the deploy (failure shows in the deploy modal)', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`deploy-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `deploy-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Deploy Site');
   await page.getByLabel('Project slug').fill(`deploy-${stamp}`);

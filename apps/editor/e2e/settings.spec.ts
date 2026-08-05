@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -11,11 +12,7 @@ const stamp = Date.now();
 // save, then reload and confirm everything persisted (full round-trip).
 
 test('edit Corporate Identity + Website settings, save, and persist across reload', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`settings-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `settings-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Acme Site');
   await page.getByLabel('Project slug').fill(`acme-${stamp}`);
@@ -100,11 +97,7 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
 // sRGB hex — 8-digit #rrggbbaa when alpha < 1. Verifies an alpha edit converts live across
 // the lenses and round-trips through the bound input, save, and reload.
 test('Corporate Identity: edit a brand color via the multi-space picker (alpha → 8-digit hex)', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`color-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `color-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Color Site');
   await page.getByLabel('Project slug').fill(`color-${stamp}`);
@@ -140,11 +133,7 @@ test('Corporate Identity: edit a brand color via the multi-space picker (alpha �
 // edit its source in CodeMirror, save the modal, persist the settings, and confirm it round-trips.
 test('edit a website partial in the code-editor modal, save, and persist across reload', async ({ page }) => {
   const marker = `E2EPARTIAL${stamp}`;
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`partials-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `partials-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Partials Site');
   await page.getByLabel('Project slug').fill(`partials-${stamp}`);
@@ -184,11 +173,7 @@ test('edit a website partial in the code-editor modal, save, and persist across 
 // source toggle (the "Edit data" button in Website Settings). Verifies the source-view round-trips
 // through Apply → modal Save → settings Save → reload.
 test('edit website.data via the JSON source view, save, and persist across reload', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`wdata-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `wdata-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Data Site');
   await page.getByLabel('Project slug').fill(`data-${stamp}`);
@@ -225,11 +210,7 @@ test('edit website.data via the JSON source view, save, and persist across reloa
 // The Business type (schema.org @type) is picked from a searchable modal — a known list plus
 // Default / Disabled. Verifies the pick round-trips through save + reload.
 test('Corporate Identity: pick a schema.org business type via the modal, save, and persist', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`btype-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `btype-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Biz Site');
   await page.getByLabel('Project slug').fill(`biz-${stamp}`);
@@ -259,11 +240,7 @@ test('Corporate Identity: pick a schema.org business type via the modal, save, a
 // keyed channels). The cart's display TEXT is translatable (Translations & Labels), not here.
 // Verifies the toggle + a keyed WhatsApp channel round-trip through save + reload.
 test('Website Settings: enable the shop + add a keyed WhatsApp channel via the modal, save, and persist', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`shopui-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `shopui-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Shop UI Site');
   await page.getByLabel('Project slug').fill(`shopui-${stamp}`);
@@ -296,11 +273,7 @@ test('Website Settings: enable the shop + add a keyed WhatsApp channel via the m
 // them, and Discard reverts the edit (toasting "Changes discarded") and re-disables both — without
 // any Save round-trip.
 test('Corporate Identity: Save/Discard gate on unsaved changes and Discard reverts', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`discard-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `discard-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Discard Site');
   await page.getByLabel('Project slug').fill(`discard-${stamp}`);

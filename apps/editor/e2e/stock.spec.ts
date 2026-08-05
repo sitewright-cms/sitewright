@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,12 +9,7 @@ const stamp = Date.now();
 // network) is covered deterministically by the API E2E (apps/api/e2e/stock.spec.ts).
 
 test('media manager exposes a Stock images picker with a loaded provider list', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`stock-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `stock-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Stock Site');
   await page.getByLabel('Project slug').fill(`stock-${stamp}`);

@@ -20,6 +20,12 @@ enforced, not aspirational.
   Docker-in-Docker environment on an **isolated per-agent slot** via
   [`scripts/e2e-deploy.sh`](scripts/e2e-deploy.sh) (ports `2005–2010`), never by hand
   against the shared `2003` container — see _Parallel / multi-agent work_ below.
+  These suites are deliberately outside CI (serial, shared host), which means nothing
+  notices when they rot — the browser suite once sat at **zero passing** because the
+  sign-up flow every spec used had been removed. So **run both suites before cutting a
+  release**, and seed users with the shared helpers rather than hand-copying a flow:
+  `apps/api/e2e/helpers.ts` / `apps/editor/e2e/helpers.ts` (`signUp`, `signInAsAdmin`).
+  Current status and the outstanding drift: [`apps/editor/e2e/KNOWN-DRIFT.md`](apps/editor/e2e/KNOWN-DRIFT.md).
 
 ## Parallel / multi-agent work
 

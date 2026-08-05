@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -19,11 +20,7 @@ test('register a passkey and sign in with it', async ({ page }) => {
   });
 
   const email = `pk-e2e-${stamp}@e2e.test`;
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(email);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, email);
 
   // Security tab → add a passkey (the name prompt, then the virtual authenticator auto-approves).
   await page.getByRole('button', { name: 'Account' }).click();

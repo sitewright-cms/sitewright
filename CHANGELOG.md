@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The E2E suites run again.** They sit outside CI on purpose (serial, shared DinD host), and nothing
+  noticed when they stopped working: the browser suite was at **zero passing**. Registration became
+  invitation-only — unconditionally, there is no self-registration setting any more — which removed the
+  login screen's register affordance, and 47 of 52 specs each carried their own hand-copied copy of that
+  dead UI flow, so each waited 30s for a button that is never rendered. `scripts/e2e-deploy.sh` tried to
+  compensate by PUTting `allowSelfRegistration` at `/admin/settings`, where nothing reads it — the
+  endpoint answers 200 and ignores the key, so the breakage was invisible from both ends. Specs now seed
+  users through ONE shared helper doing the real operator flow (admin invites → invitee registers →
+  accepts) over `page.request`, which shares the browser's cookie jar; the deploy script verifies the
+  seeded admin can actually log in and fails there with that message. **Editor: 0 → 47 passing.** The API
+  suite is green (20) and re-runnable — it previously passed only once per fresh slot, because a spec
+  asserted "no stock key configured" after a sibling had configured one, and claimed clearing was
+  impossible when `stock: null` has always done it. A CSP assertion that pinned an exact sandbox token
+  list (which the API had deliberately widened) now asserts the invariant instead: sandboxed, scripts
+  allowed, never `allow-same-origin`. Remaining UI drift is inventoried in
+  `apps/editor/e2e/KNOWN-DRIFT.md`, and both suites are now a documented pre-release gate.
+
 ### Added
 
 - **The rich-text size menu covers the platform's whole type scale.** Ten steps — `text-xs` through

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,11 +9,7 @@ const stamp = Date.now();
 // renders as a named chip in this same rail) so the row selectors stay unambiguous.
 test('snippets rail: create, edit source, persist across reload, delete', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`rail-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `rail-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Rail Site');
   await page.getByLabel('Project slug').fill(`rail-${stamp}`);
@@ -55,11 +52,7 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
 // free-text name is decoupled from the stable id, so a rename keeps page references intact).
 test('templates rail: 2-column grid + rename a template in the editor, persist across reload', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`tplrename-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `tplrename-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Tpl Site');
   await page.getByLabel('Project slug').fill(`tpl-${stamp}`);
@@ -104,11 +97,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
 // edit modal lets the snippet be RENAMED (re-keying its {{> id}}), which round-trips through the API.
 test('snippets rail: eye preview renders the snippet, and a snippet can be renamed', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`snip2-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `snip2-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Snip Site');
   await page.getByLabel('Project slug').fill(`snip2-${stamp}`);

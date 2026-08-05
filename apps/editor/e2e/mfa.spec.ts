@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 import { authenticator } from 'otplib';
 
 const stamp = Date.now();
@@ -7,11 +8,7 @@ const stamp = Date.now();
 // deploy sets one): enrol from the user menu, then sign out and back in through the code step.
 test('enrol in TOTP, then sign in through the second-factor step', async ({ page }) => {
   const email = `mfa-${stamp}@e2e.test`;
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(email);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, email);
 
   // Open the account menu → Account Settings → Security → start enrolment.
   await page.getByRole('button', { name: 'Account' }).click();

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // land in the form's folded-in submissions list — the full Phase 3b loop through the
 // real stack.
 test('author a form in the editor and see a submission in its submissions list', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`forms-ui-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `forms-ui-${stamp}@e2e.test`);
 
   await page.getByRole('button', { name: 'New project' }).click();
 

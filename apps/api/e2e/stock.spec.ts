@@ -28,11 +28,15 @@ test('stock: provider availability, search gating, and tenant isolation', async 
   const byName = Object.fromEntries(((await providers.json()).providers as Array<{ name: string; available: boolean }>).map((p) => [p.name, p.available]));
   expect(byName.openverse).toBe(true); // keyless → always available
 
-  // A keyed provider with no instance key configured → 400.
-  // NOTE: this asserts INSTANCE-wide state, and the "admin configures provider keys" test below writes
-  // exactly that. There is no way to clear a stored key (StockKeysInputSchema: "omit a key to keep the
-  // stored one", and empty string is rejected), so this only holds on a FRESH deployment — which is what
-  // `scripts/e2e-deploy.sh up` gives. Re-running the suite against an already-used slot will fail here.
+  // A keyed provider with no instance key configured → 400. This asserts INSTANCE-wide state that the
+  // "admin configures provider keys" test below WRITES, so establish it rather than assuming it: send
+  // `stock: null`, which clears every stored key (a per-provider object only ever sets or retains — an
+  // omitted key keeps the stored one and an empty string is rejected). Without this the spec passed
+  // exactly once per fresh slot and failed on every re-run, which is no use in a gate you want to run
+  // repeatedly. (A stale comment here claimed clearing was impossible; `stock: null` has always done it.)
+  const cleaner = await adminContext(playwright, baseURL!);
+  expect((await cleaner.put('/admin/settings', { data: { stock: null } })).status()).toBe(200);
+  await cleaner.dispose();
   expect((await ctx.get(`${base}/stock/search?provider=pexels&q=cats`)).status()).toBe(400);
   // Unknown provider / empty query → 400.
   expect((await ctx.get(`${base}/stock/search?provider=bogus&q=cats`)).status()).toBe(400);

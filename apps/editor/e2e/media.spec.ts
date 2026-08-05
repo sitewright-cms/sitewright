@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -12,12 +13,7 @@ const PNG_1X1 = Buffer.from(
 // was retired). Code-first pages reference media by its `/media/…` URL in the template source; the
 // optimized <picture> export is covered by the API publish-build tests.
 test('upload an image into the media library and see the optimized thumbnail', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`media-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `media-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Media Site');
   await page.getByLabel('Project slug').fill(`media-${stamp}`);
@@ -38,11 +34,7 @@ test('upload an image into the media library and see the optimized thumbnail', a
 // download link), and a virtual folder groups it. Exercises the Assets overhaul end-to-end through
 // the panel (folder rows, the /file/ attachment link, and folder persistence across a reload).
 test('upload a non-image file into a folder and see it listed with a download link', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`assets-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `assets-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Assets Site');
   await page.getByLabel('Project slug').fill(`assets-${stamp}`);

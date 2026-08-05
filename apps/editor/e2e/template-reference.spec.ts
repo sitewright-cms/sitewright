@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // The Library side-panel exposes a "Template reference" modal documenting the Handlebars helpers,
 // data-sw-* directives, bindings, and loop variables — searchable + group-filterable.
 test('library: template reference — open, search, filter by group', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`ref-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `ref-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Ref Site');
   await page.getByLabel('Project slug').fill(`ref-${stamp}`);

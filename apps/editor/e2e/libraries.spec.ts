@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // The Library reference panel + the lazyload/ripple runtimes shipping on publish.
 
 test('library panel: open, search, and copy an example; lazyload + ripple publish', async ({ page, context }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`lib-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `lib-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Library Site');
   await page.getByLabel('Project slug').fill(`lib-${stamp}`);
@@ -21,7 +18,7 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('launch');
   await page.getByLabel('Page title').fill('Launch');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await page.getByRole('button', { name: /^Launch/ }).click();
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();

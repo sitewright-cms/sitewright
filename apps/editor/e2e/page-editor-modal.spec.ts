@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,11 +9,7 @@ const stamp = Date.now();
 // to the page list with a confirm when changes would be discarded.
 
 test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-with-confirm', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`pemodal-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `pemodal-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Modal Site');
   await page.getByLabel('Project slug').fill(`pemodal-${stamp}`);

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // Home, so two new pages become Home's children; Home's source loops them with {{#each page.children}}.
 test('page.children: a parent page lists its child pages in the preview', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`pchild-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `pchild-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Children Site');
   await page.getByLabel('Project slug').fill(`pchild-${stamp}`);
@@ -21,7 +18,7 @@ test('page.children: a parent page lists its child pages in the preview', async 
     await page.getByRole('button', { name: 'New page' }).click();
     await page.getByLabel('Page path').fill(path);
     await page.getByLabel('Page title').fill(title);
-    await page.getByRole('button', { name: 'Add page' }).click();
+    await page.getByRole('button', { name: 'Create page' }).click();
   }
 
   // Open Home and author an overview that loops its children.

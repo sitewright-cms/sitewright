@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // An entry created with a custom KEY is directly addressable in a template via
 // {{item.<dataset>.<key>.<field>}} — no loop.
 test('keyed dataset access: set an entry key, then read it directly with {{item.…}}', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`keyed-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `keyed-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Keyed Site');
   await page.getByLabel('Project slug').fill(`keyed-${stamp}`);

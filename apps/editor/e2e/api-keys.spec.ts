@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // Project settings → API keys: create a PAT (token shown once), see it listed,
 // then revoke it — all from the editor UI.
 test('create, view, and revoke a project API key from the editor', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`keys-ui-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `keys-ui-${stamp}@e2e.test`);
 
   await page.getByRole('button', { name: 'New project' }).click();
 

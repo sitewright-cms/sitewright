@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 // The "Regions" rail lists every editable region the bridge finds in content mode and reaches content
 // the page would otherwise hide — here a {{sw-control}} inside a display:none "settings" wrapper, which
 // has no in-place click target. Clicking its row opens the control's popover (centred) and the edit applies.
 test('Regions panel: lists editable regions and reaches a hidden control', async ({ page }) => {
   const s = Date.now();
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`regions-${s}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `regions-${s}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Regions Site');
   await page.getByLabel('Project slug').fill(`regions-${s}`);

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -7,11 +8,7 @@ const stamp = Date.now();
 // bottom code-rail tabs reachable.
 test('preview keeps scroll across a reload; bottom rails stay visible over the taller modal', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`scroll-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `scroll-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Scroll Site');
   await page.getByLabel('Project slug').fill(`scroll-${stamp}`);

@@ -1,0 +1,91 @@
+# E2E drift backlog
+
+The browser suite is out of `pnpm verify` and out of CI on purpose — the specs are serial and target the
+shared DinD host, so running them in the PR pipeline would race across concurrent branches (see
+`.github/workflows/ci.yml`). The cost of that is real: nothing noticed when the suite stopped working at
+all, and it stayed broken long enough for the UI to move underneath it.
+
+**Run it before cutting a release.** From a clean tree:
+
+```bash
+eval "$(scripts/e2e-deploy.sh up)"                    # claims an isolated slot, exports E2E_BASE_URL
+pnpm -F @sitewright/api    exec playwright test       # API-only, no browser
+pnpm -F @sitewright/editor exec playwright test       # the browser suite
+scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
+```
+
+## Status
+
+| suite | result |
+|---|---|
+| `@sitewright/api` | **20 passed, 2 skipped** — and re-runnable against the same slot |
+| `@sitewright/editor` | **47 passed, 44 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
+
+Authentication was the single blocker and is fixed — see `helpers.ts`. What remains is genuine UI drift:
+the specs now get far enough to discover that controls have been renamed, moved, or replaced by a
+different interaction model. Each entry below needs checking against the current UI; none of them is
+known to be a product defect, but that is exactly what working through them will establish.
+
+## Known clusters
+
+- **`Publish` → target-driven deploy** (~7 specs). There is no one-click `Publish` button or `Publish
+  actions` menu any more. `PublishBar` now offers `Deploy` (which opens the target wizard while no target
+  exists) or `Deploy to <name>` once one does, plus `View the live site`. `/sites/<slug>/` does not serve
+  until a Local Hosting target carries the serve options. These specs need migrating to that flow, not
+  relabelling. Note the SPA keeps project selection in STATE, so `page.reload()` drops back to the project
+  list — a target created over the API is not visible to an already-mounted `PublishBar`; drive the wizard.
+- **`Save changes`** (~5 specs). The label still exists in `CodeEditorModal` and `TargetConfigForm`, so
+  these are likely a modal that no longer opens the same way rather than a rename — check before editing.
+- **The preview iframe's on-page toolbar** (~4 specs, `.sw-tb button` inside `iframe[title="Preview"]`).
+- **`Account` dialog** (~2 specs): `Access keys` / `API key name` have moved or been renamed.
+- The long tail: `+ Add nav placeholder`, `Page template`, `Nav: header`, `Copy brand-mark.png`,
+  `Template reference` search, `1 submission`, `/posts-copy`, `Services (Copy)`, `Discard`, `Save`.
+
+## Full failing list
+
+See `git log` for the run that produced it; regenerate with the commands above. As of the revival:
+
+- `api-keys.spec.ts:8:1 › create, view, and revoke a project API key from the editor`
+- `assets-operations.spec.ts:13:1 › assets: image preview modal, rename, copy, delete via modal dialogs`
+- `blog-template.spec.ts:8:1 › global:blog-article: enabling the template seeds page.data defaults and renders them`
+- `client-source-edit.spec.ts:12:1 › client edits a code page’s bound region (content), template stays immutable`
+- `code-page-settings.spec.ts:10:1 › code page settings: stacked modal sets draft + nav, persisted across reopen`
+- `components.spec.ts:164:1 › defaults: fade effect with overlay arrows mid-left/right and bottom-center dots`
+- `datasets.spec.ts:105:1 › entry editor modal: status toggle + duplicate`
+- `datasets.spec.ts:148:1 › duplicate a dataset, then edit an existing entry key`
+- `datasets.spec.ts:187:1 › rename a dataset slug migrates its entries; bindings use the new slug`
+- `deploy.spec.ts:9:1 › deploy: save an SFTP key-auth target and stream the deploy (failure shows in the deploy modal)`
+- `file-picker.spec.ts:12:1 › file picker: use a URL as-is, then upload + pick a library image for the logo`
+- `forms-ui.spec.ts:9:1 › author a form in the editor and see a submission in its submissions list`
+- `gallery.spec.ts:13:1 › sw-folder gallery: folder images render in the preview`
+- `header-settings.spec.ts:6:1 › header gear menu unifies settings + inline agent indicator + publish toast`
+- `i18n-translation.spec.ts:17:1 › add translation scaffolds a locale that inherits the main language layout, published under /<locale>`
+- `inplace-wysiwyg.spec.ts:45:1 › data-sw-html: in-place rich editing (contenteditable + toolbar) persists`
+- `inplace-wysiwyg.spec.ts:70:1 › rich-text toolbar: superscript wraps the selection in <sup>`
+- `inplace-wysiwyg.spec.ts:85:1 › rich-text </>: HTML source editor round-trips and is sanitized on render`
+- `inplace-wysiwyg.spec.ts:118:1 › rich-text </>: discarding dirty HTML source confirms first`
+- `inplace-wysiwyg.spec.ts:185:1 › field-name badge: hovering an editable region reveals a ::before label naming its key`
+- `libraries.spec.ts:8:1 › library panel: open, search, and copy an example; lazyload + ripple publish`
+- `mcp-admin.spec.ts:8:1 › admin: edit agent (MCP) instructions, see the endpoint list + connect guide, and persist`
+- `mfa.spec.ts:9:1 › enrol in TOTP, then sign in through the second-factor step`
+- `nav-placeholder.spec.ts:9:1 › create nav placeholders (external + dropdown) and round-trip their settings`
+- `oauth-consent.spec.ts:12:1 › OAuth consent → code → token, then the access token works`
+- `oauth-dcr.spec.ts:10:1 › dynamically-registered client completes the OAuth flow`
+- `oidc.spec.ts:10:1 › admin configures an OIDC provider; the login screen offers it`
+- `pages-list.spec.ts:10:1 › pages list: auto-home, row actions, list settings, template lock + fork`
+- `passkeys.spec.ts:8:1 › register a passkey and sign in with it`
+- `publish-options.spec.ts:8:1 › publish options: enabling a preview token gates the live site behind ?token= (live, no republish)`
+- `publish.spec.ts:6:1 › build a code page, publish the project, and view the live site`
+- `regions-panel.spec.ts:7:1 › Regions panel: lists editable regions and reaches a hidden control`
+- `settings.spec.ts:14:1 › edit Corporate Identity + Website settings, save, and persist across reload`
+- `settings.spec.ts:275:1 › Corporate Identity: Save/Discard gate on unsaved changes and Discard reverts`
+- `shop.spec.ts:9:1 › published cart: add-to-cart opens the drawer and builds the WhatsApp order link`
+- `shop.spec.ts:110:1 › published cart: the form channel submits the order to the /f submissions inbox`
+- `shop.spec.ts:176:1 › published cart: editable note + backdrop/Esc/close-only dismissal + ripple class`
+- `sw-control.spec.ts:8:1 › sw-control: a control sets a page.data value (preview updates) and is stripped on publish`
+- `template-reference.spec.ts:8:1 › library: template reference — open, search, filter by group`
+- `typography.spec.ts:9:1 › typography slots: edit heading/body font + weight, persist, and publish applies them`
+- `typography.spec.ts:53:1 › google fonts: pick a heading webfont, self-host on select, publish loads it locally`
+- `typography.spec.ts:110:1 › custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var`
+- `typography.spec.ts:140:1 › local font upload: upload a .ttf for the body, self-host on save, publish loads it locally`
+- `user-menu.spec.ts:8:1 › user menu: mint an access key, change password, and re-login`

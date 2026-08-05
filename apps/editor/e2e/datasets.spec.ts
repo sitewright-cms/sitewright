@@ -1,16 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // The dataset manager (CMS): define a dataset + schema and add an entry. Code-first pages
 // consume datasets via `{{#each dataset.<set>}}` in the template source (no block-binding UI).
 test('define a dataset, its schema, and add an entry', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`data-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `data-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Data Site');
   await page.getByLabel('Project slug').fill(`data-${stamp}`);
@@ -37,11 +33,7 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
 
 // Deleting a dataset is guarded by a confirmation dialog: cancelling keeps it, confirming removes it.
 test('deleting a dataset requires confirmation (cancel keeps it, confirm removes it)', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`datadel-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `datadel-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Del Site');
   await page.getByLabel('Project slug').fill(`datadel-${stamp}`);
@@ -71,11 +63,7 @@ test('deleting a dataset requires confirmation (cancel keeps it, confirm removes
 // An `image`-type entry field renders the reusable AssetField/FilePicker (not a bare text input),
 // so editors browse the library or paste/import a URL — same control as the identity logo fields.
 test('dataset image field uses the file picker (browse a URL into an entry)', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`dataimg-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `dataimg-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Gallery Site');
   await page.getByLabel('Project slug').fill(`dataimg-${stamp}`);
@@ -115,11 +103,7 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
 
 // The entry editor is a modal with a draft/published SWITCH (top-right); entries can be duplicated.
 test('entry editor modal: status toggle + duplicate', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`dataedit-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `dataedit-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Editorial');
   await page.getByLabel('Project slug').fill(`dataedit-${stamp}`);
@@ -162,11 +146,7 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
 // Duplicating a dataset clones its schema + entries under "<slug>-copy"; an existing entry's KEY can
 // be changed via the gated "Edit key" button (which recreates the entry, with a warning).
 test('duplicate a dataset, then edit an existing entry key', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`datadup-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `datadup-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Dup Site');
   await page.getByLabel('Project slug').fill(`datadup-${stamp}`);
@@ -206,11 +186,7 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
 // must be updated to the new slug by hand (the modal warns) — the old slug then renders nothing.
 test('rename a dataset slug migrates its entries; bindings use the new slug', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`datarename-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `datarename-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Rename Site');
   await page.getByLabel('Project slug').fill(`datarename-${stamp}`);
@@ -260,11 +236,7 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
 // different text field to the front re-titles existing entries (after Save schema).
 test('drag-reorder schema fields to change which field is the entry title', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`fieldorder-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `fieldorder-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Field Order');
   await page.getByLabel('Project slug').fill(`fieldorder-${stamp}`);

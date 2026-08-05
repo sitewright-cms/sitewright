@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // the CodeMirror editor, watch the live styled preview, save, and confirm it persisted.
 
 test('code-first authoring: CodeMirror editor, live styled preview, save + persist', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`code-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `code-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`code-${stamp}`);
@@ -20,7 +17,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
@@ -49,11 +46,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
 });
 
 test('Shift+Tab auto-indents the selection to its syntactic depth (not a plain dedent)', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`indent-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `indent-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Indent Site');
   await page.getByLabel('Project slug').fill(`indent-${stamp}`);
@@ -62,7 +55,7 @@ test('Shift+Tab auto-indents the selection to its syntactic depth (not a plain d
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('reindent');
   await page.getByLabel('Page title').fill('Reindent');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await page.getByRole('button', { name: /^Reindent/ }).click();
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 

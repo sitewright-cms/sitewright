@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 const ownerEmail = `owner-cs-${stamp}@e2e.test`;
@@ -10,11 +11,7 @@ const clientEmail = `client-cs-${stamp}@e2e.test`;
 
 test('client edits a code page’s bound region (content), template stays immutable', async ({ page }) => {
   // --- Owner: register, make a CODE page (the scaffold carries a data-sw-text region) ---
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(ownerEmail);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, ownerEmail);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`cs-${stamp}`);

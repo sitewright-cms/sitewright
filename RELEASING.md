@@ -10,7 +10,14 @@ record**, reported at `GET /version`.
 
 ## Cutting a release
 
-1. **Pick the version** (`X.Y.Z`) and make sure `main` is green.
+1. **Pick the version** (`X.Y.Z`) and make sure `main` is green — `pnpm verify` AND both E2E suites
+   (they are not in CI; see [CONTRIBUTING.md](CONTRIBUTING.md) and
+   [`apps/editor/e2e/KNOWN-DRIFT.md`](apps/editor/e2e/KNOWN-DRIFT.md)):
+   ```bash
+   eval "$(scripts/e2e-deploy.sh up)"
+   pnpm -F @sitewright/api exec playwright test && pnpm -F @sitewright/editor exec playwright test
+   scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"
+   ```
 2. **Bump the workspace versions** (keeps `package.json`s in step with the tag — cosmetic, the image version
    comes from the tag):
    ```bash

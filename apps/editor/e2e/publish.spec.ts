@@ -1,14 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 test('build a code page, publish the project, and view the live site', async ({ page, baseURL }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`publish-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `publish-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Live Site');
   await page.getByLabel('Project slug').fill(`live-${stamp}`);

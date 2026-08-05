@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 // A tiny but valid 1x1 PNG (red pixel) — enough for the image pipeline to accept.
@@ -10,11 +11,7 @@ const PNG_1X1 = Buffer.from(
 // {{#sw-folder}} loops a MEDIA FOLDER: upload an image into a folder, loop it in the page source, and
 // see the optimized image render in the live preview (validates the media→render-context plumbing).
 test('sw-folder gallery: folder images render in the preview', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`gallery-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `gallery-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Gallery Site');
   await page.getByLabel('Project slug').fill(`gallery-${stamp}`);

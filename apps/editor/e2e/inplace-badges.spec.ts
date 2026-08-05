@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 // The content editor marks editable regions with a top-level OVERLAY badge HUD (in the preview iframe):
 // clickable, uniform badges that are never clipped by the host's overflow, show MULTIPLE directives per
 // element, and expose the editable STACK under the pointer. This exercises all of that end-to-end.
 test('content editor: overlay badge HUD — clickable, multi-directive, unclipped, stacked', async ({ page }) => {
   const s = Date.now();
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`badges-${s}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `badges-${s}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Badge Site');
   await page.getByLabel('Project slug').fill(`badges-${s}`);

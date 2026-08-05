@@ -40,7 +40,16 @@ test('media + preview URLs are slug-based end to end', async ({ playwright, base
   expect(respSlug).toBe(slug);
   const doc = await ctx.get(`/preview/${slug}/${token}`);
   expect(doc.status()).toBe(200);
-  expect(doc.headers()['content-security-policy']).toBe('sandbox allow-scripts');
+  // Assert the INVARIANT, not the exact token list: author content is sandboxed and must never get
+  // `allow-same-origin` (that is what would let it reach the editor's session). The permissive tokens
+  // are UX decisions that legitimately change — `allow-forms` so a preview form's submit event fires,
+  // `allow-popups allow-popups-to-escape-sandbox` so an outbound target="_blank" link is not silently
+  // dropped — and pinning the exact string is what left this spec asserting a value the API stopped
+  // sending months ago, unnoticed because the suite does not run in CI.
+  const csp = doc.headers()['content-security-policy'] ?? '';
+  expect(csp).toMatch(/^sandbox\b/);
+  expect(csp).toContain('allow-scripts');
+  expect(csp).not.toContain('allow-same-origin');
   // A mismatched slug for a real token is a uniform opaque 404 (never leaks existence).
   expect((await ctx.get(`/preview/no-such-project-${stamp}/${token}`)).status()).toBe(404);
 

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -7,11 +8,7 @@ const stamp = Date.now();
 
 /** Registers a throwaway account + project, then adds two sibling pages under Home. */
 async function setup(page: Page, suffix: string) {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`reorder-${suffix}-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `reorder-${suffix}-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Reorder Site');
   await page.getByLabel('Project slug').fill(`reorder-${suffix}-${stamp}`);
@@ -24,7 +21,7 @@ async function setup(page: Page, suffix: string) {
     await page.getByRole('button', { name: 'New page' }).click();
     await page.getByLabel('Page path').fill(slug);
     await page.getByLabel('Page title').fill(title);
-    await page.getByRole('button', { name: 'Add page' }).click();
+    await page.getByRole('button', { name: 'Create page' }).click();
     // Wait for the new row's title to land before adding the next page.
     await expect(page.locator('main ul li span.truncate.font-medium', { hasText: title })).toBeVisible();
   }

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -7,11 +8,7 @@ const stamp = Date.now();
 // Set draft + header nav + order + dropdown, save, and confirm persistence.
 
 test('code page settings: stacked modal sets draft + nav, persisted across reopen', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`cset-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `cset-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Settings Site');
   await page.getByLabel('Project slug').fill(`cset-${stamp}`);
@@ -21,7 +18,7 @@ test('code page settings: stacked modal sets draft + nav, persisted across reope
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); // the Page-settings gear is source-mode-only
 

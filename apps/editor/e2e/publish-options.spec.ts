@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // locally-published site behind ?token= and rewrites the Preview link to carry it.
 test('publish options: enabling a preview token gates the live site behind ?token= (live, no republish)', async ({ page, baseURL }) => {
   const slug = `opt-${stamp}`;
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`opt-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `opt-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Opt Site');
   await page.getByLabel('Project slug').fill(slug);

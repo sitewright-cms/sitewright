@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // editor settings, persisted, and reflected in the published page CSS.
 
 test('typography slots: edit heading/body font + weight, persist, and publish applies them', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`typo-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `typo-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Type Site');
   await page.getByLabel('Project slug').fill(`typo-${stamp}`);
@@ -54,11 +51,7 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
 // Google Fonts: browse the bundled catalog, SELECT a weight (the server downloads + self-hosts it),
 // the slot persists, and the published page references the LOCAL woff2 — never Google.
 test('google fonts: pick a heading webfont, self-host on select, publish loads it locally', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`gfont-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `gfont-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Font Site');
   await page.getByLabel('Project slug').fill(`gfont-${stamp}`);
@@ -115,11 +108,7 @@ const TTF_BYTES = Buffer.concat([Buffer.from([0x00, 0x01, 0x00, 0x00]), Buffer.a
 
 // Custom named slot → a `font-<name>` utility + `--sw-font-<name>` var on the published page.
 test('custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`named-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `named-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Named Site');
   await page.getByLabel('Project slug').fill(`named-${stamp}`);
@@ -149,11 +138,7 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
 
 // Local font upload: a .ttf is self-hosted PROJECT-scoped and the published page loads it locally.
 test('local font upload: upload a .ttf for the body, self-host on save, publish loads it locally', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`upload-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `upload-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Upload Site');
   await page.getByLabel('Project slug').fill(`upload-${stamp}`);

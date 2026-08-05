@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signInAsAdmin, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // preview through the merged partials), and listed in the Snippets rail's "Global" section —
 // read-only + copyable for a project user, editable for an instance admin (the second test).
 test('a global snippet renders via {{> name}} and is listed (copyable) in the Snippets rail', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`gsnip-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `gsnip-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Snip Site');
   await page.getByLabel('Project slug').fill(`gsnip-${stamp}`);
@@ -48,11 +45,8 @@ test('a global snippet renders via {{> name}} and is listed (copyable) in the Sn
 // same name-prompt → code-editor flow as a project snippet.
 test('an instance admin can create + delete a global snippet from the Snippets rail', async ({ page }) => {
   const name = `gadmin${stamp}`; // a valid partial identifier (letters/digits, ≤100)
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill('admin@e2e.test'); // in SW_E2E_ADMIN_EMAILS → instance admin
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  // The admin is SEEDED by the deploy, so this is a login — registering an existing email would fail.
+  await signInAsAdmin(page);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Admin Globals');
   await page.getByLabel('Project slug').fill(`gadmin-${stamp}`);

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signUpWithProject } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,15 +7,7 @@ const stamp = Date.now();
 // a backdrop click is vetoed while the editor has unsaved changes (it asks to discard).
 
 async function register(page: Page, suffix: string) {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`adminux-${suffix}-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
-  await page.getByRole('button', { name: 'New project' }).click();
-  await page.getByLabel('Project name').fill('Admin UX');
-  await page.getByLabel('Project slug').fill(`adminux-${suffix}-${stamp}`);
-  await page.getByRole('button', { name: 'Create project' }).click();
+  await signUpWithProject(page, `adminux-${suffix}-${stamp}@e2e.test`, 'Admin UX', `adminux-${suffix}-${stamp}`);
 }
 
 test('buttons get a ripple: pointerdown injects a .waves-ripple inside the .waves-effect', async ({ page }) => {
@@ -40,7 +33,7 @@ test('modal: a backdrop click is vetoed while dirty (asks to discard); × closes
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await expect(page.locator('.cm-content')).toBeVisible();

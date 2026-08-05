@@ -51,19 +51,17 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\033[36m[e2e-deploy]\033[0m %s\n' "$*" >&2; }
 
-# A deployed instance is invitation-only by default (registration is no longer an env var). The E2E
-# specs create throwaway users via /auth/register, so open self-registration once at deploy: log in as
-# the SEEDED admin (SW_ADMIN_EMAIL/SW_ADMIN_PASSWORD), then flip the persisted `allowSelfRegistration`.
-open_self_registration() {
-  local port="$1" base jar rc
+# Registration is INVITATION-ONLY, unconditionally — there is no self-registration setting any more.
+# This used to log in as the admin and PUT `allowSelfRegistration` at /admin/settings; that key no longer
+# exists, so the endpoint answered 200 and ignored it, and the deploy reported success while every spec
+# that tried to sign up still got a 403. The suites now seed users the way an operator does (admin issues
+# an invite -> invitee registers against it -> accepts; see apps/*/e2e/helpers.ts), so all a slot owes them
+# is a WORKING SEEDED ADMIN. Prove exactly that, and fail loudly here rather than as N mystery timeouts.
+check_seeded_admin() {
+  local port="$1" base
   base="http://${SW_E2E_HOST}:${port}"
-  jar="$(mktemp)"
-  curl -fsS -c "$jar" -X POST "${base}/auth/login" -H 'content-type: application/json' \
-    -d "{\"email\":\"${SW_E2E_ADMIN_EMAILS}\",\"password\":\"${SW_E2E_ADMIN_PASSWORD}\"}" >/dev/null 2>&1 \
-    || { rm -f "$jar"; return 1; }
-  curl -fsS -b "$jar" -X PUT "${base}/admin/settings" -H 'content-type: application/json' \
-    -d '{"allowSelfRegistration":true}' >/dev/null 2>&1
-  rc=$?; rm -f "$jar"; return $rc
+  curl -fsS -o /dev/null -X POST "${base}/auth/login" -H 'content-type: application/json' \
+    -d "{\"email\":\"${SW_E2E_ADMIN_EMAILS}\",\"password\":\"${SW_E2E_ADMIN_PASSWORD}\"}" 2>/dev/null
 }
 err() { printf '\033[31m[e2e-deploy] ERROR:\033[0m %s\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
@@ -243,12 +241,13 @@ cmd_up() {
     die "deploy failed health check on slot $port"
   fi
 
-  # Open self-registration for the E2E specs (the instance is invitation-only by default now).
-  if ! open_self_registration "$port"; then
+  # The specs seed every user through the admin's invite flow, so a slot without a usable admin is dead
+  # on arrival. Check it here, where the message can say so.
+  if ! check_seeded_admin "$port"; then
     docker logs --tail 40 "$container" >&2 || true
     docker rm -f "$container" >/dev/null 2>&1 || true
     if [ "$_up_built" = 1 ]; then docker rmi -f "$image" >/dev/null 2>&1 || true; rm -rf "$deploy_dir"; fi
-    die "could not open self-registration on slot $port (admin login / settings write failed)"
+    die "the seeded admin (${SW_E2E_ADMIN_EMAILS}) cannot log in on slot $port — the suites cannot seed users without it"
   fi
 
   log "Slot ready: http://${SW_E2E_HOST}:${port}  (container $container)"

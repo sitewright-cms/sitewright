@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // {{sw-control}}: a content-editor-only control chip sets a whitelisted page / page.data value from
 // inside the preview. The chip shows ONLY in content mode and is stripped from the published output.
 test('sw-control: a control sets a page.data value (preview updates) and is stripped on publish', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`ctrl-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `ctrl-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Control Site');
   await page.getByLabel('Project slug').fill(`ctrl-${stamp}`);
@@ -50,11 +47,7 @@ test('sw-control: a control sets a page.data value (preview updates) and is stri
 
 // as="file" opens the FILE picker (filtered to uploaded files) and sets the target to the chosen URL.
 test('sw-control as="file": opens the file picker and sets a page.data file URL', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`ctrlfile-${Date.now()}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `ctrlfile-${Date.now()}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Control File');
   await page.getByLabel('Project slug').fill(`ctrlfile-${Date.now()}`);
@@ -85,11 +78,7 @@ test('sw-control as="file": opens the file picker and sets a page.data file URL'
 // as="select" renders a dropdown of the author's own options="…" list and writes the chosen value.
 test('sw-control as="select": renders a dropdown of author options and sets the value', async ({ page }) => {
   const s = Date.now();
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`ctrlsel-${s}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `ctrlsel-${s}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Control Select');
   await page.getByLabel('Project slug').fill(`ctrlsel-${s}`);

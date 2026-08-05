@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,11 +7,7 @@ const stamp = Date.now();
 // re-login with the new one; confirm Access keys now live here too.
 test('user menu: mint an access key, change password, and re-login', async ({ page }) => {
   const email = `user-menu-${stamp}@e2e.test`;
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(email);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, email);
 
   // A project makes the Access keys tab active (keys are project-scoped, owner-only).
   await page.getByRole('button', { name: 'New project' }).click();

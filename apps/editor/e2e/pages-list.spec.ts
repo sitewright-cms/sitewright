@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -7,11 +8,7 @@ const stamp = Date.now();
 // settings from the list persist directly; templates lock the page's code editor.
 
 test('pages list: auto-home, row actions, list settings, template lock + fork', async ({ page, context }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`plist-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `plist-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('List Site');
   await page.getByLabel('Project slug').fill(`plist-${stamp}`);
@@ -27,7 +24,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('services');
   await page.getByLabel('Page title').fill('Services');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: 'Create page' }).click();
   await expect(page.getByRole('button', { name: /^Services/ })).toBeVisible();
 
   // COPY → a "(Copy)" row appears under a suffixed path; DELETE it (confirm) → gone.

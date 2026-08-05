@@ -1,15 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
 // The instance-admin MCP panel: editable agent instructions, the endpoint list, and the connect guide.
 // Runs as admin@e2e.test, which SW_ADMIN_EMAILS allowlists as an instance admin on the test container.
 test('admin: edit agent (MCP) instructions, see the endpoint list + connect guide, and persist', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill('admin@e2e.test');
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, 'admin@e2e.test');
 
   // Idempotent: if this admin already exists (a rerun / seeded), sign in instead of registering.
   const alreadyExists = await page

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 // A tiny valid 1x1 PNG (so the server's image pipeline accepts the picker upload).
@@ -9,11 +10,7 @@ const PNG_1X1 = Buffer.from(
 
 // The FilePicker (modal) wired to an asset field: pick a library file OR paste/use a URL.
 test('file picker: use a URL as-is, then upload + pick a library image for the logo', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`picker-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `picker-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Picker Site');
   await page.getByLabel('Project slug').fill(`picker-${stamp}`);

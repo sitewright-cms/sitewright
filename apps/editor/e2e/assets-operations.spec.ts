@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 const PNG_1X1 = Buffer.from(
@@ -10,11 +11,7 @@ const PNG_1X1 = Buffer.from(
 // and delete (confirm dialog) — all modal-based, no native browser dialogs.
 
 test('assets: image preview modal, rename, copy, delete via modal dialogs', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`assetops-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `assetops-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Asset Ops');
   await page.getByLabel('Project slug').fill(`assetops-${stamp}`);
@@ -50,11 +47,7 @@ test('assets: image preview modal, rename, copy, delete via modal dialogs', asyn
 
 // The project selector + New Project modal flow, and switching projects from the header.
 test('project selector: search, create, auto-open, and switch', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email').fill(`psel-${stamp}@e2e.test`);
-  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await signUp(page, `psel-${stamp}@e2e.test`);
 
   // After auth the selector auto-opens; create the first project from it.
   const selector = page.getByRole('dialog', { name: 'SiteWright' });

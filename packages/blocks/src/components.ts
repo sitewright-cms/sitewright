@@ -410,7 +410,9 @@ const MODAL_CSS = [
   // author's width utilities — `max-w-*`/`w-11/12`/`w-full` — resolve stably here, unlike on a shrink-wrap
   // parent), (2) be the position:relative anchor for the overhanging close, (3) center via margin:auto
   // (top-aligning a too-tall panel — no top clip). Defaults at ZERO specificity (:where) so the moved
-  // author WIDTH utilities win; `width:100%` → full width on mobile, `max-width` caps desktop only.
+  // author WIDTH utilities win; `width:100%` → full width on mobile, `max-width` caps desktop only. A width
+  // the split could NOT recognise (a project CSS class, an id rule, an inline style) sizes the card instead,
+  // and the JS then measures the card and pins these two properties to match — see syncPanelWidth.
   `:where(${mdlgp()}){position:relative;margin:auto;width:100%;max-width:32rem}`,
   // GUARANTEE (normal specificity): the panel is never its OWN scroll box and paints nothing, so the
   // overhanging close (its child) is never clipped and all scrolling stays on the container. outline:none
@@ -504,6 +506,66 @@ const MODAL_JS = `(function(){
     if(locks>0)locks--;
     if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;if(scrim)scrim.classList.remove('is-open');}
   }
+  // Direct-child lookup for a part — never a NESTED component's same-named part (a Tabs inside a modal
+  // has its own [data-sw-part="panel"]s, a Banner its own body).
+  function childPart(parent,name){
+    if(!parent)return null;
+    for(var i=0;i<parent.children.length;i++){if(parent.children[i].getAttribute('data-sw-part')===name)return parent.children[i];}
+    return null;
+  }
+  // WIDTH GUARANTEE. The class split below is NAME-based: it recognises \`max-w-2xl\` and cannot recognise
+  // \`.bng-modal{max-width:680px}\`, so a width expressed ANY other way — a project CSS class, an id rule,
+  // an inline style (moved onto the body wholesale), a <style> block — sizes the CARD while the PANEL
+  // keeps its 32rem default. The panel is what CENTRES the card (margin:auto) and what the close button is
+  // anchored to, so the card overflows to one side: visibly off-centre, with the close sitting INSIDE it
+  // instead of on its corner. Measured on a real site: a 680px card in the 512px panel came out 84px
+  // off-centre with the close 144px inside the card.
+  //
+  // Rather than teach the name parser every possible spelling of "width", MEASURE THE RESULT: whatever
+  // made the card wider than the panel, the panel adopts that width and both invariants hold again.
+  // Inline width AND max-width are both set — the :where() default max-width:32rem would otherwise clamp
+  // the width straight back down. Released before measuring so a card that got NARROWER (a \`width:92vw\`
+  // on a shrunken viewport) is followed back down instead of staying pinned to a stale number; half a
+  // pixel of slack so sub-pixel rounding can't pin a panel that is already the right size.
+  function syncPanelWidth(dialog){
+    var panel=childPart(dialog,'panel'),body=childPart(panel,'body');
+    if(!panel||!body)return;
+    panel.style.width='';panel.style.maxWidth='';panel.style.minWidth='';body.style.maxWidth='';body.style.minWidth='';
+    // NEITHER box may be wider than the container's CONTENT box. Past that there is nothing for
+    // margin:auto to centre in (the box start-aligns and overflows one way), and the close — anchored to
+    // the panel's corner — leaves the padding, which is the SAFETY GUTTER that exists to keep it on
+    // screen. The panel is a flex item, so a plain over-wide \`width\` already shrinks to fit on its own;
+    // \`min-width\` is the one that does NOT, and min-width outranks width, so the author's is released
+    // here — platform containment outranks a minimum that cannot fit. Clamped in JS rather than CSS
+    // because a stylesheet \`max-width:100%\` on the card would ALSO clamp it to the panel's 32rem default,
+    // which is the very thing the measurement below exists to move.
+    var cs=getComputedStyle(dialog);
+    var avail=dialog.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+    var pw=panel.getBoundingClientRect().width,bw=body.getBoundingClientRect().width;
+    if(avail>0){
+      if(pw>avail){panel.style.minWidth='0';panel.style.width=avail+'px';panel.style.maxWidth=avail+'px';pw=avail;}
+      // min-width is released on the card for the same reason, and it has to be INLINE: the stylesheet
+      // already guarantees the card min-width:0, but an author's inline style — which the split moves onto
+      // the card wholesale — outranks a stylesheet, and min-width beats max-width, so the clamp alone
+      // would be ignored.
+      if(bw>avail){body.style.minWidth='0';body.style.maxWidth=avail+'px';bw=avail;}
+    }
+    if(bw>pw+.5){panel.style.width=bw+'px';panel.style.maxWidth=bw+'px';}
+  }
+  // Re-measure every OPEN modal when the viewport changes (rAF-coalesced): a card sized in vw/% is a
+  // different width after a resize or an orientation flip, and the panel must follow it.
+  var syncQueued=0;
+  function syncOpenModals(){
+    syncQueued=0;
+    Array.prototype.forEach.call(document.querySelectorAll('dialog[open]'),function(d){
+      if(d.closest('[data-sw-component="modal"]'))syncPanelWidth(d);
+    });
+  }
+  function queueSync(){
+    if(syncQueued)return;
+    syncQueued=1;
+    if(window.requestAnimationFrame)window.requestAnimationFrame(syncOpenModals);else setTimeout(syncOpenModals,16);
+  }
   // DEFAULT single-modal: opening a modal dismisses any OTHER open SW modal first (so a modal opened from
   // inside a modal REPLACES it). data-allow-multiple="true" (on the marker — the <dialog> in the lighter
   // form, the wrapper in the legacy one) OPTS OUT BOTH WAYS: opening it never dismisses others, AND it is
@@ -520,6 +582,8 @@ const MODAL_JS = `(function(){
     // promoted + autoplayed by the shared lazyload runtime the moment the opening dialog makes it visible,
     // and paused when it closes — the visibility change fires that IntersectionObserver either way.
     dialog.showModal();lock();
+    // Only now is there anything to measure — a shut modal is display:none, so every box is zero.
+    syncPanelWidth(dialog);
   }
   function wireTrigger(t,dialog){
     t.addEventListener('click',function(e){
@@ -557,6 +621,13 @@ const MODAL_JS = `(function(){
     // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
     // so the lock is always released exactly once per open.
     dialog.addEventListener('close',unlock);
+    // The width sync must run on EVERY open, not only our own trigger path — author script (or any tool)
+    // calling showModal() directly deserves the same geometry. <dialog> fires no 'open' event, so watch
+    // the attribute; the callback lands on the microtask checkpoint, still before paint. openOn() also
+    // syncs synchronously, so the normal path never depends on this timing.
+    if(window.MutationObserver){
+      new MutationObserver(function(){if(dialog.open)syncPanelWidth(dialog);}).observe(dialog,{attributes:true,attributeFilter:['open']});
+    }
     // Build the neutral PANEL + the visible BODY inside the <dialog>, leaving the <dialog> itself a
     // transparent, full-viewport SCROLLER — so a TALL modal scrolls at the SCREEN edge (not inside its
     // body) and the overhanging close is never clipped. The author's class is SPLIT off the <dialog>:
@@ -565,14 +636,12 @@ const MODAL_JS = `(function(){
     // (bg/rounded/padding/shadow; an author overflow-hidden clips the card WITHOUT touching the
     // panel-anchored close). Nodes are MOVED, not re-serialized, so listeners / form state / iframes
     // survive. Idempotent (skips if a panel already exists); honours an author-supplied [data-sw-part="body"].
-    var panel=null;
-    for(var pi=0;pi<dialog.children.length;pi++){if(dialog.children[pi].getAttribute('data-sw-part')==='panel'){panel=dialog.children[pi];break;}}
+    var panel=childPart(dialog,'panel');
     if(!panel){
       panel=document.createElement('div');
       panel.setAttribute('data-sw-part','panel');
       // Find or create the BODY (the visible card). Content lives in the body; the panel paints nothing.
-      var body=null;
-      for(var bi=0;bi<dialog.children.length;bi++){if(dialog.children[bi].getAttribute('data-sw-part')==='body'){body=dialog.children[bi];break;}}
+      var body=childPart(dialog,'body');
       if(body){
         // Author supplied a body part: move it AND any sibling nodes into the panel, preserving order.
         while(dialog.firstChild){panel.appendChild(dialog.firstChild);}
@@ -628,7 +697,7 @@ const MODAL_JS = `(function(){
       dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
     }
   }
-  function init(){var m=document.querySelectorAll('[data-sw-component="modal"]');if(m.length)ensureScrim();Array.prototype.forEach.call(m,enhance);}
+  function init(){var m=document.querySelectorAll('[data-sw-component="modal"]');if(m.length){ensureScrim();window.addEventListener('resize',queueSync);}Array.prototype.forEach.call(m,enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 

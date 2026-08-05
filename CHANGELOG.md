@@ -11,6 +11,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A modal stays centred, and its close button stays on the corner, whatever width the author asked
+  for.** The runtime splits the author's classes off the `<dialog>` by NAME — `max-w-2xl` is
+  recognisably a width, `.bng-modal{max-width:680px}` is not — so a width expressed as a project CSS
+  class, an id rule or an inline style sized the CARD while the PANEL that centres it and anchors the
+  close kept its 32rem default. Measured on a real site at 1440px: a 680px card in a 512px panel came
+  out 84px off-centre with the close sitting 144px inside it. The panel is now MEASURED against the
+  card on every open and on resize, and adopts its width. **A modal now also always shrinks to fit a
+  narrow screen and keeps a 2rem margin down both sides**, whatever width was asked for and however it
+  was spelled: neither box may exceed the container's content box, and `min-width` — which outranks
+  `width` and blocks a flex item from shrinking — is released on both, so a `min-w-*` utility or an
+  author's inline `min-width` can no longer strand the card, or its close button, off the side of a
+  phone. Verified across 13 width configurations (utility, project class, id rule, inline style, and
+  all of them at once) at five phone widths. Authoring is unchanged — a width utility on the
+  `<dialog>` remains the direct route, and is now spelled out in the component catalog and the agent
+  guide.
+
 - **An image map's tooltip can be reached with the mouse.** Every rect the runtime hit-tests against
   the pointer was built as `getBoundingClientRect() + window.scrollY` and compared against
   `event.pageY` — which agree only while the DOCUMENT is the scroller. The draft preview scrolls

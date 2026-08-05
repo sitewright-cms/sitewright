@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -14,7 +14,7 @@ async function newProject(page: import('@playwright/test').Page, tag: string): P
   return slug;
 }
 
-test('add translation scaffolds a locale that inherits the main language layout, published under /<locale>', async ({ page, baseURL }) => {
+test('add translation scaffolds a locale that inherits the main language layout, published under /<locale>', async ({ page }) => {
   const slug = await newProject(page, 'i18n');
 
   // Author the home page with a recognizable layout marker (the inherited structure).
@@ -42,15 +42,15 @@ test('add translation scaffolds a locale that inherits the main language layout,
   await expect(page.getByText('inherited')).toBeVisible();
 
   // Publish, then both / and /de/ must render the SAME main-language layout (inheritance).
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await expect(page.getByRole('link', { name: /Preview/ })).toBeVisible();
-  const en = await page.request.get(`${baseURL}/sites/${slug}/`);
-  const de = await page.request.get(`${baseURL}/sites/${slug}/de/`);
-  expect(en.status()).toBe(200);
-  expect(de.status()).toBe(200);
-  expect(await en.text()).toContain('inherit-marker');
-  expect(await de.text()).toContain('inherit-marker'); // /de inherited the English layout
-  expect(await de.text()).toContain('<html lang="de"');
+  await deployLocally(page);
+  // Local hosting serves on a subdomain the DinD host has no DNS for — read it with a Host header.
+  const en = await fetchLiveSite(page, slug);
+  const de = await fetchLiveSite(page, slug, '/de/');
+  expect(en.status).toBe(200);
+  expect(de.status).toBe(200);
+  expect(en.html).toContain('inherit-marker');
+  expect(de.html).toContain('inherit-marker'); // /de inherited the English layout
+  expect(de.html).toContain('<html lang="de"');
 });
 
 test('Website Settings: removing a language warns about page deletion and cascades', async ({ page }) => {

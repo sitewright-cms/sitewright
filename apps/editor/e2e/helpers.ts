@@ -35,29 +35,43 @@ export const E2E_PASSWORD = 'Pw-secret-1';
 const baseURL = (): string => process.env.E2E_BASE_URL ?? 'http://dind.local:2003';
 
 /**
+ * ONE admin session per worker, not one per seeded user.
+ *
+ * Every seed needs an admin to issue the invite, and a full run seeds ~50 users — which is ~50 logins
+ * against `/auth/login`, whose rate limiter allows 20 per window. The suite tripped its own 429 and
+ * reported it as "the seeded platform admin must be able to log in", which reads like a broken slot.
+ * Logging in once and reusing the context removes the whole class of failure.
+ */
+let adminCtx: Promise<APIRequestContext> | null = null;
+function admin(): Promise<APIRequestContext> {
+  adminCtx ??= (async () => {
+    const ctx = await request.newContext({ baseURL: baseURL() });
+    const res = await ctx.post('/auth/login', { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+    expect(res.status(), 'the seeded platform admin must be able to log in').toBe(200);
+    return ctx;
+  })();
+  return adminCtx;
+}
+
+/** Invite `email` and return the token. Uses the shared admin session. */
+async function inviteUser(email: string, role: 'developer' | 'admin'): Promise<string> {
+  const res = await (await admin()).post('/admin/invites', { data: { email, role } });
+  expect(res.status(), `inviting ${email}`).toBe(201);
+  return (await res.json()).token as string;
+}
+
+/**
  * Invite → register → accept, leaving `page` signed in as `email` and sitting on the app root.
  *
  * `role` defaults to `developer`, which is what creating a project requires; pass `admin` for the
  * specs that assert instance-admin surfaces.
  */
 export async function signUp(page: Page, email: string, role: 'developer' | 'admin' = 'developer'): Promise<void> {
-  // A SEPARATE context for the admin: logging the admin in through `page.request` would put ITS session
-  // in the browser jar, and the spec would be driving the UI as the wrong user.
-  const admin = await request.newContext({ baseURL: baseURL() });
-  try {
-    const login = await admin.post('/auth/login', { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
-    expect(login.status(), 'the seeded platform admin must be able to log in').toBe(200);
-    const inv = await admin.post('/admin/invites', { data: { email, role } });
-    expect(inv.status(), `inviting ${email}`).toBe(201);
-    const token = (await inv.json()).token as string;
-
-    const reg = await page.request.post('/auth/register', { data: { email, password: E2E_PASSWORD } });
-    expect(reg.status(), `registering ${email} against its invite`).toBe(201);
-    const accepted = await page.request.post('/invites/accept', { data: { token } });
-    expect(accepted.status(), `accepting the invite for ${email}`).toBe(200);
-  } finally {
-    await admin.dispose();
-  }
+  const token = await inviteUser(email, role);
+  const reg = await page.request.post('/auth/register', { data: { email, password: E2E_PASSWORD } });
+  expect(reg.status(), `registering ${email} against its invite`).toBe(201);
+  const accepted = await page.request.post('/invites/accept', { data: { token } });
+  expect(accepted.status(), `accepting the invite for ${email}`).toBe(200);
   await page.goto('/');
 }
 
@@ -128,4 +142,16 @@ export async function liveSiteRequest(page: Page, slug: string, path = '/'): Pro
 export async function fetchLiveSite(page: Page, slug: string, path = '/'): Promise<{ status: number; html: string }> {
   const res = await liveSiteRequest(page, slug, path);
   return { status: res.status(), html: await res.text() };
+}
+
+/**
+ * The API-context form of `signUp`, for a `beforeAll` that seeds over HTTP rather than driving a page.
+ * Same invite -> register -> accept chain; returns that user's context. Dispose it when done.
+ */
+export async function seedApiUser(baseUrl: string, email: string, role: 'developer' | 'admin' = 'developer') {
+  const token = await inviteUser(email, role);
+  const ctx = await request.newContext({ baseURL: baseUrl });
+  expect((await ctx.post('/auth/register', { data: { email, password: E2E_PASSWORD } })).status()).toBe(201);
+  expect((await ctx.post('/invites/accept', { data: { token } })).status()).toBe(200);
+  return ctx;
 }

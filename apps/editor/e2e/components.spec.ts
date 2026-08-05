@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { seedApiUser } from './helpers.js';
 import { deflateSync } from 'node:zlib';
 
 // Interactive components against a deployed instance: the Embla-powered Carousel and the
@@ -62,9 +63,9 @@ async function uploadPng(ctx: APIRequestContext, base: string, name: string, rgb
 // One slide per color so the visible slide is identifiable by its <img> src.
 let imgs: string[] = [];
 
-test.beforeAll(async ({ playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL: baseURL! });
-  expect((await ctx.post('/auth/register', { data: { email: `comp-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
+test.beforeAll(async ({ baseURL }) => {
+  // Registration is invitation-only — seed through the admin's invite flow, like every other spec.
+  const ctx = await seedApiUser(baseURL!, `comp-${stamp}@e2e.test`);
   const proj = await ctx.post('/projects', { data: { name: 'Components Site', slug } });
   expect(proj.status()).toBe(201);
   const base = `/projects/${((await proj.json()) as { project: { id: string } }).project.id}`;
@@ -152,6 +153,9 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   expect(
     (await ctx.put(`${base}/content/page/home`, { data: { id: 'home', path: '', title: 'Components', source } })).status(),
   ).toBe(200);
+  // A Local Hosting target is what makes /sites/<slug>/ serve — publishing alone is not enough, because
+  // the local target CARRIES the serve options. Without it every spec here navigated to an empty page.
+  expect([201, 409]).toContain((await ctx.post(`${base}/deploy-targets`, { data: { name: 'Local', protocol: 'local' } })).status());
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
   await ctx.dispose();
 });
@@ -436,7 +440,9 @@ test('lightbox: gallery viewer with thumbnail strip, counter, arrows, keyboard, 
   const hrefs = await items.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')!));
 
   await items.first().click();
-  const overlay = page.locator('.sw-lightbox');
+  // One overlay is built PER GALLERY, so the bare class matches every gallery on this page —
+  // scope to the one that is actually open.
+  const overlay = page.locator('.sw-lightbox:visible').first();
   await expect(overlay).toBeVisible();
   await expect(overlay).toHaveAttribute('role', 'dialog');
 
@@ -475,7 +481,9 @@ test('lightbox switches: data-thumbnails / data-arrows omit the strip and arrows
   const items = root.locator('[data-sw-part="item"]');
 
   await items.first().click();
-  const overlay = page.locator('.sw-lightbox');
+  // One overlay is built PER GALLERY, so the bare class matches every gallery on this page —
+  // scope to the one that is actually open.
+  const overlay = page.locator('.sw-lightbox:visible').first();
   await expect(overlay).toBeVisible();
   // The switches drop those parts from the runtime-built DOM entirely.
   await expect(overlay.locator('.sw-lightbox-nav')).toHaveCount(0);

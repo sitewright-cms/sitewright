@@ -1,6 +1,6 @@
 import * as consts from 'imap/consts'
 import * as editorConsts from 'imap-shared/consts'
-import { getElementRect, isMobile } from 'imap-shared/utilities'
+import { getElementRect, getPageScroll, isMobile } from 'imap-shared/utilities'
 
 export default {
   getImageMap: function () {
@@ -215,7 +215,7 @@ export default {
     return {
       offset: {
         left: window.innerWidth - 44,
-        top: window.scrollY,
+        top: getPageScroll().y,
       },
       offsetWidth: 44,
       offsetHeight: 44,

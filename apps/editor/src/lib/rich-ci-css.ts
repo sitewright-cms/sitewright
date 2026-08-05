@@ -13,18 +13,30 @@
 // next to the field. Scoping to `.sw-rich-edit` (specificity 0,2,0) also means these rules beat any
 // same-named editor-chrome utility (0,1,0), so a brand token always wins inside author content.
 import { ciRichPalette, fontSlotStacks } from '@sitewright/blocks';
-import type { CorporateIdentity } from '@sitewright/schema';
+import { isSafeCssTokenValue, type CorporateIdentity } from '@sitewright/schema';
 import { fontFaceCss, type FontLibraryAsset } from './font-face-css';
 
 /** The scope every generated rule is nested under — the rich-text editable itself. */
 export const RICH_CI_SCOPE = '.sw-rich-edit';
 
-// Defense in depth. Values reaching here are schema-validated (`CssColorSchema`, and font families pass
-// the render pipeline's own family regex), but this string is injected into a <style> on the ADMIN
-// origin, so a stray `}` would end the rule and let author-controlled text write arbitrary CSS into the
-// editor chrome. Anything that isn't a plain token / plain value is dropped rather than escaped.
+// Defense in depth: this string is injected into a <style> on the ADMIN origin, and the values in it
+// are project content, writable by any `content:write` actor (an invited client, an API key, the agent
+// loop) — not necessarily by the admin reading it.
+//
+// The VALUE guard is `isSafeCssTokenValue`, the schema package's single predicate for "safe to emit
+// into a stylesheet we control", deliberately reused rather than re-derived: it already denies the
+// breakout characters, `/*`…`*/` (an unterminated comment swallows the rest of the block, including
+// its closing brace, silently eating every declaration after it), fetching functions like `url()`,
+// `@import`, invisible format characters, and unbalanced parens. A local regex here would be a fourth
+// hand-copy of that rule and would drift from it — which is exactly what its own doc comment warns
+// about, and what an earlier version of this file got wrong by allowing `/*` through.
 const SAFE_TOKEN = /^[A-Za-z0-9_-]+$/;
-const SAFE_VALUE = /^[^{}<>;@\\]{1,200}$/;
+const MAX_VALUE_LEN = 200;
+
+/** A value safe to emit into the generated sheet: the shared CSS predicate, plus a length bound. */
+function safeValue(v: string): boolean {
+  return v.length > 0 && v.length <= MAX_VALUE_LEN && isSafeCssTokenValue(v);
+}
 
 /**
  * A stylesheet giving the project's CI colour + font utilities real values inside the rich-text editable:
@@ -56,7 +68,7 @@ export function richCiCss(
   for (const c of colors) {
     // `cls` is `text-<token>`; the token itself is what needs validating.
     const token = c.cls.slice('text-'.length);
-    if (!c.value || !SAFE_TOKEN.test(token) || !SAFE_VALUE.test(c.value)) continue;
+    if (!c.value || !SAFE_TOKEN.test(token) || !safeValue(c.value)) continue;
     rules.push(`${RICH_CI_SCOPE} .${c.cls}{color:${c.value}}`);
   }
   for (const f of fontSwatches) {
@@ -65,7 +77,7 @@ export function richCiCss(
     // A named slot resolves through the shared stack resolver; a legacy `fontFamilies` entry is a raw
     // stack (and wins on key clash, matching brandToTailwindTheme's precedence).
     const stack = typeof legacy[slot] === 'string' ? String(legacy[slot]) : stacks[slot]?.stack;
-    if (!stack || !SAFE_VALUE.test(stack)) continue;
+    if (!stack || !safeValue(stack)) continue;
     // family ONLY — the site's `font-<slot>` utility sets no weight either (weight is applied to real
     // heading ELEMENTS), so matching that keeps the field a true preview.
     rules.push(`${RICH_CI_SCOPE} .${f.cls}{font-family:${stack}}`);

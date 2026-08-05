@@ -43,11 +43,12 @@ export function CiPaletteForProject({ projectId, children }: { projectId?: strin
   const [identity, setIdentity] = useState<CorporateIdentity | null>(null);
   const [fonts, setFonts] = useState<FontLibraryAsset[]>([]);
   useEffect(() => {
-    if (!projectId) {
-      setIdentity(null);
-      setFonts([]);
-      return;
-    }
+    // Clear on ANY project change, not just on closing one. These values now paint (they drive the
+    // rich-text field's brand colours + fonts), so carrying the previous project's identity across the
+    // new fetch would show one project's brand inside another's content for a round trip.
+    setIdentity(null);
+    setFonts([]);
+    if (!projectId) return;
     let cancelled = false;
     api
       .getSettings(projectId)

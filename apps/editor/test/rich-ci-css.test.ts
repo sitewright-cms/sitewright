@@ -81,9 +81,68 @@ describe('richCiCss', () => {
     expect(css).toContain(`${RICH_CI_SCOPE} .font-boombox{font-family:ui-monospace,`);
   });
 
-  it('drops a value that could break out of its rule (CSS injection on the admin origin)', () => {
-    const css = richCiCss(identity({ colors: { primary: 'red}body{display:none' } } as Partial<CorporateIdentity>));
-    expect(css).not.toContain('display:none');
+  // This sheet is injected into a <style> on the ADMIN origin, and its values are project content —
+  // writable by any `content:write` actor (invited client, API key, agent loop), not only by the admin
+  // reading it. The guard is `isSafeCssTokenValue`, the schema package's shared predicate; these cases
+  // pin the behaviours a local hand-rolled regex got wrong.
+  describe('rejects values that could subvert the generated stylesheet', () => {
+    it('drops a value that would break out of its rule', () => {
+      const css = richCiCss(identity({ colors: { primary: 'red}body{display:none' } } as Partial<CorporateIdentity>));
+      expect(css).not.toContain('display:none');
+    });
+
+    // An unterminated comment swallows the rest of the block — including its closing brace — so every
+    // declaration after it silently disappears. Reachable through the LEGACY `fontFamilies` stack,
+    // which is used raw (it bypasses familyStack's quoting) and is not restricted by CssColorSchema.
+    it('drops a font stack that opens a CSS comment', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: 'Arial/*' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).not.toContain('/*');
+      // The poisoned slot emits no rule at all (asserted on the RULE — "Arial" alone would false-match
+      // the default sans-serif stack, which legitimately lists it).
+      expect(css).not.toContain('.font-heading{');
+      // …and the rules an open comment would have swallowed are still intact.
+      expect(css).toContain(`${RICH_CI_SCOPE} .text-primary{color:#123456}`);
+    });
+
+    it('drops a font stack that closes a CSS comment', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: '*/ Arial' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).not.toContain('*/');
+    });
+
+    it('drops a value carrying a fetching function', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: 'Georgia, url(https://evil.example/x)' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).not.toContain('evil.example');
+    });
+
+    it('drops a value with unbalanced parens (it would consume the rest of the sheet)', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: 'var(--x' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).not.toContain('var(--x');
+    });
+
+    it('still emits an ordinary legacy stack', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: 'Georgia, serif' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).toContain(`${RICH_CI_SCOPE} .font-heading{font-family:Georgia, serif}`);
+    });
   });
 
   it('is empty without an identity — the standard palettes still come from the compiled sheet', () => {

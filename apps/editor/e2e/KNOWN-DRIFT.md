@@ -19,7 +19,7 @@ scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
 | suite | result |
 |---|---|
 | `@sitewright/api` | **20 passed, 2 skipped** — and re-runnable against the same slot |
-| `@sitewright/editor` | **48 passed, 43 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
+| `@sitewright/editor` | **49 passed, 42 failed, 13 did not run** (was 0 passing: every spec died at sign-up) |
 
 Authentication was the single blocker and is fixed — see `helpers.ts`. What remains is genuine UI drift:
 the specs now get far enough to discover that controls have been renamed, moved, or replaced by a
@@ -47,6 +47,15 @@ known to be a product defect, but that is exactly what working through them will
   target created over the API is invisible to an already-mounted `PublishBar`. Drive the wizard.
 - **Published assets carry a cache-busting `?v=<hash>`.** Assertions that pin an exact
   `<script defer src="../lazyload.js"></script>` no longer match. Match the src and allow the query.
+- **The published CSS is MINIFIED, and the minifier SORTS selector lists.** A rule authored as
+  `h1,…,h6,.sw-h1,…,.sw-h6{…}` is emitted as `.sw-h1,…,.sw-h6,h1,…,h6{…}`. Assert the selector's
+  MEMBERS, not its literal text — the source-order version passes the unit test (which reads the
+  unminified string) and fails only here, against the real published artifact.
+
+★ The recurring shape in all three of the above, and in the API suite's CSP assertion: **a spec pinned
+an exact string that some legitimate transform later rewrote** — a widened sandbox, a cache-busting
+query, a minifier's selector order. Assert the property you actually care about, not the byte sequence
+that happened to express it.
 - **`Save changes`** (~5 specs). The label still exists in `CodeEditorModal` and `TargetConfigForm`, so
   these are likely a modal that no longer opens the same way rather than a rename — check before editing.
 - **The preview iframe's on-page toolbar** (~4 specs, `.sw-tb button` inside `iframe[title="Preview"]`).
@@ -68,9 +77,9 @@ Regenerate with the commands above. As of the last run:
 - `datasets.spec.ts:148:1 › duplicate a dataset, then edit an existing entry key`
 - `datasets.spec.ts:187:1 › rename a dataset slug migrates its entries; bindings use the new slug`
 - `deploy.spec.ts:9:1 › deploy: save an SFTP key-auth target and stream the deploy (failure shows in the deploy modal)`
-- `file-picker.spec.ts:12:1 › file picker: use a URL as-is, then upload + pick a library image for the logo`
 - `forms-ui.spec.ts:9:1 › author a form in the editor and see a submission in its submissions list`
 - `gallery.spec.ts:13:1 › sw-folder gallery: folder images render in the preview`
+- `global-snippets.spec.ts:46:1 › an instance admin can create + delete a global snippet from the Snippets rail`
 - `header-settings.spec.ts:6:1 › header gear menu unifies settings + inline agent indicator + publish toast`
 - `i18n-translation.spec.ts:17:1 › add translation scaffolds a locale that inherits the main language layout, published under /<locale>`
 - `inplace-wysiwyg.spec.ts:45:1 › data-sw-html: in-place rich editing (contenteditable + toolbar) persists`
@@ -96,8 +105,7 @@ Regenerate with the commands above. As of the last run:
 - `shop.spec.ts:110:1 › published cart: the form channel submits the order to the /f submissions inbox`
 - `shop.spec.ts:176:1 › published cart: editable note + backdrop/Esc/close-only dismissal + ripple class`
 - `template-reference.spec.ts:8:1 › library: template reference — open, search, filter by group`
-- `typography.spec.ts:9:1 › typography slots: edit heading/body font + weight, persist, and publish applies them`
-- `typography.spec.ts:53:1 › google fonts: pick a heading webfont, self-host on select, publish loads it locally`
-- `typography.spec.ts:110:1 › custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var`
-- `typography.spec.ts:140:1 › local font upload: upload a .ttf for the body, self-host on save, publish loads it locally`
+- `typography.spec.ts:60:1 › google fonts: pick a heading webfont, self-host on select, publish loads it locally`
+- `typography.spec.ts:116:1 › custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var`
+- `typography.spec.ts:146:1 › local font upload: upload a .ttf for the body, self-host on save, publish loads it locally`
 - `user-menu.spec.ts:8:1 › user menu: mint an access key, change password, and re-login`

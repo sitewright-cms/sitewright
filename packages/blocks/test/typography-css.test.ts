@@ -32,7 +32,7 @@ describe('typographyCss', () => {
     expect(css).toMatch(/--sw-font-heading:[^;]*Georgia[^;]*serif/);
     expect(css).toMatch(/--sw-font-body:[^;]*system-ui[^;]*sans-serif/);
     expect(css).toContain('body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}');
-    expect(css).toContain('h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}');
+    expect(css).toContain('h1,h2,h3,h4,h5,h6,.sw-h1,.sw-h2,.sw-h3,.sw-h4,.sw-h5,.sw-h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}');
   });
 
   it('honours configured system slots + weights', () => {

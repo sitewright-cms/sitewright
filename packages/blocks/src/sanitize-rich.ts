@@ -25,7 +25,8 @@ const RICH_OPTIONS: sanitizeHtml.IOptions = {
     // Sectioning + structure
     'div', 'span', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'hgroup',
     'address', 'figure', 'figcaption', 'details', 'summary', 'p', 'br', 'hr', 'blockquote', 'pre',
-    // Headings (h1 included — this is general HTML, not just a sub-region)
+    // Headings ARE allowed through the gate, but transformTags below rewrites every one of them to a
+    // <p class="sw-h*">: see the note there. Dropping them from this list instead would DELETE the text.
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
     // Inline text marks
     'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'mark', 'sub', 'sup', 'small', 'code', 'q',
@@ -86,6 +87,29 @@ const RICH_OPTIONS: sanitizeHtml.IOptions = {
   exclusiveFilter: (frame) =>
     frame.tag === 'iframe' && !(typeof frame.attribs.src === 'string' && /^https:\/\//i.test(frame.attribs.src)),
   transformTags: {
+    // NO HEADING TAGS SURVIVE. This sink is a FRAGMENT dropped into a region of a page that already has
+    // its own outline (`data-sw-html` / `{{sw-html}}`), so an <h3> here joins that outline at whatever
+    // level someone happened to pick — heading spam the page's author never chose. It is also the only
+    // enforcement point that covers the HTML-SOURCE editor, where the toolbar's rules do not apply.
+    //
+    // REWRITTEN, not discarded: dropping the tag would take the text with it and silently gut existing
+    // content. A `<p class="sw-h3">` keeps the words, and `sw-h1`–`sw-h6` reproduce exactly what an
+    // h1–h6 rendered as before (the UA size scale the platform baseline deliberately keeps, plus the
+    // project's heading font/weight), so nothing moves visually. Platform CSS rather than Tailwind
+    // utilities on purpose: these classes are synthesised at RENDER, so the publish build's source scan
+    // would never see them and a utility would compile in preview and vanish on the published site.
+    ...Object.fromEntries(
+      (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const).map((h) => [
+        h,
+        (_tagName: string, attribs: Record<string, string>) => {
+          // Append, don't clobber — an author's own classes on the heading are kept. Deduped so
+          // markup that already names the look-alike class doesn't end up carrying it twice.
+          const classes = (attribs.class ?? '').split(/\s+/).filter(Boolean);
+          if (!classes.includes(`sw-${h}`)) classes.push(`sw-${h}`);
+          return { tagName: 'p', attribs: { ...attribs, class: classes.join(' ') } };
+        },
+      ]),
+    ),
     // We fully control `rel`: drop any author value (so a bare `rel="opener"` can't slip through) and
     // set `noopener noreferrer` only when the link opens a new browsing context.
     a: (tagName, attribs) => {

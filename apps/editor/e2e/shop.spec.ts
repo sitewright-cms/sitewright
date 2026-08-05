@@ -246,7 +246,7 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
   expect(layout.footBottom ?? 0).toBeGreaterThanOrEqual(layout.vh - 1); // checkout footer flush with viewport bottom
 
   // A click INSIDE the drawer body (its header title) must NOT close it.
-  await cart.locator('[data-sw-part="head"] h2').click();
+  await cart.locator('[data-sw-part="head"] [data-sw-part="title"]').click();
   await expect(dialog).toBeVisible();
 
   // A click on the BACKDROP (far left, outside the right-side panel) closes it.

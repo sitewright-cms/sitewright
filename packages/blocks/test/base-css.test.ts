@@ -57,6 +57,23 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('.prose :where(p, ul, ol, blockquote, figure, pre, table, hr, h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *))');
       expect(css).toContain('.prose > :where(:first-child):not(:where(.not-prose, .not-prose *)) { margin-top: 0; }');
     });
+    it('ships heading LOOK-ALIKES for rich content that was rewritten out of h1-h6', () => {
+      // The render sink turns an h1-h6 in rich content into <p class="sw-hN"> so a fragment cannot join
+      // the page's outline; these rules are what stop that being a VISIBLE change. They reproduce the UA
+      // size scale this file deliberately keeps, plus bold. (The heading FONT comes from typographyCss,
+      // which selects them alongside h1-h6 — asserted in typography-css.test.ts.)
+      for (const [cls, size] of [['sw-h1', '2em'], ['sw-h2', '1.5em'], ['sw-h3', '1.17em'], ['sw-h4', '1em'], ['sw-h5', '.83em'], ['sw-h6', '.67em']]) {
+        expect(css).toContain(`.${cls} { font-size: ${size}; font-weight: bold; }`);
+      }
+      // Weak layer, so an author utility (text-2xl / font-normal) still overrides the look-alike.
+      const ruleIdx = css.indexOf('.sw-h1 { font-size: 2em;');
+      const layerOpen = css.lastIndexOf('@layer sw-normalize {', ruleIdx);
+      expect(layerOpen).toBeGreaterThan(-1);
+      expect(ruleIdx).toBeGreaterThan(layerOpen);
+      // Inside .prose they need the extra heading top-margin too, or a rewritten headline sits tighter
+      // than the h2-h6 it replaced (the bare `p` selector already gives it margin: 1em 0).
+      expect(css).toContain('.prose :where(h2, h3, h4, h5, h6, .sw-h2, .sw-h3, .sw-h4, .sw-h5, .sw-h6):not(:where(.not-prose, .not-prose *)) { margin-top: 1.5em; }');
+    });
     it('tames the UA list indent to a sane 1.25rem (not the ~40px browser default)', () => {
       expect(css).toContain('ul, ol { padding-inline-start: 1.25rem; }');
       // It must sit in the weak layer so daisyUI .menu + author pl-* utilities still win.

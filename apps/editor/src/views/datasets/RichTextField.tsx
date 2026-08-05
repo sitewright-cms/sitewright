@@ -10,8 +10,6 @@ import {
   Highlighter,
   Type,
   AArrowUp,
-  Heading2,
-  Heading3,
   Pilcrow,
   Quote,
   List,
@@ -68,8 +66,6 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   highlight: Highlighter,
   font: Type,
   size: AArrowUp,
-  h2: Heading2,
-  h3: Heading3,
   paragraph: Pilcrow,
   quote: Quote,
   bulletList: List,
@@ -479,9 +475,7 @@ function computeActive(): Set<string> {
   try {
     for (const [id, cmd] of Object.entries(EXEC_STATE)) if (document.queryCommandState(cmd)) s.add(id);
     const block = String(document.queryCommandValue('formatBlock') || '').toLowerCase();
-    if (block === 'h2') s.add('h2');
-    else if (block === 'h3') s.add('h3');
-    else if (block === 'blockquote') s.add('quote');
+    if (block === 'blockquote') s.add('quote');
     else if (block === 'p' || block === 'div') s.add('paragraph');
   } catch {
     /* execCommand/query unsupported (e.g. jsdom) */

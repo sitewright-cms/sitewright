@@ -119,28 +119,16 @@ function BlockFields({
   onChange: (block: ImageMapTooltipBlock) => void;
 }) {
   switch (block.type) {
+    // No tag picker: a headline block always renders as a <div>. Its size/weight/font come from the
+    // block's own style options, and a tooltip must not add to the page's heading outline.
     case 'Heading':
       return (
-        <>
-          <div>
-            <label className={fieldLabel} htmlFor={`tt-${index}-text`}>
-              Heading
-            </label>
-            <input id={`tt-${index}-text`} className={glassInput} value={block.text ?? ''} onChange={(e) => onChange({ ...block, text: e.target.value })} />
-          </div>
-          <div>
-            <label className={fieldLabel} htmlFor={`tt-${index}-tag`}>
-              Level
-            </label>
-            <select id={`tt-${index}-tag`} className={glassInput} value={block.heading ?? 'h3'} onChange={(e) => onChange({ ...block, heading: e.target.value as typeof block.heading })}>
-              {['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div'].map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
+        <div>
+          <label className={fieldLabel} htmlFor={`tt-${index}-text`}>
+            Heading
+          </label>
+          <input id={`tt-${index}-text`} className={glassInput} value={block.text ?? ''} onChange={(e) => onChange({ ...block, text: e.target.value })} />
+        </div>
       );
 
     case 'Paragraph':

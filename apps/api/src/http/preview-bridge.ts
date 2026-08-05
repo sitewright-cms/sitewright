@@ -108,8 +108,6 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     highlight: '<path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a1.4 1.4 0 0 1-2 0l-5-5a1.4 1.4 0 0 1 0-2L15 5"/>',
     font: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
     size: '<path d="M3.5 13h6"/><path d="m2 16 4.5-9 4.5 9"/><path d="M18 16V7"/><path d="m14 11 4-4 4 4"/>',
-    h2: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17 10c1.5-1.5 4 0 4 2 0 1-1 2-2 2.5L17 18h4"/>',
-    h3: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.5-1 3.5 0 3.5 1.5s-1.5 2-2 2"/><path d="M17 17c1.5 1 4 .5 4-1.5s-2-2.5-3-1.5"/>',
     paragraph: '<path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/>',
     quote: '<path d="M7 6H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2c0 2-1 3-2 3"/><path d="M17 6h-3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2c0 2-1 3-2 3"/>',
     bulletList: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><circle cx="3.5" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none"/>',
@@ -412,8 +410,6 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       var id = bs[i].getAttribute('data-tbid'), on = false;
       try {
         if (TB_STATE[id]) on = document.queryCommandState(TB_STATE[id]);
-        else if (id === 'h2') on = block === 'h2';
-        else if (id === 'h3') on = block === 'h3';
         else if (id === 'quote') on = block === 'blockquote';
         else if (id === 'paragraph') on = block === 'p' || block === 'div';
       } catch (e) {}

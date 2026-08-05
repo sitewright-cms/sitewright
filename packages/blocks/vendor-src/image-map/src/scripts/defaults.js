@@ -201,7 +201,9 @@ export const tooltipContentDefaults = {
   heading: {
     type: 'Heading',
     text: '',
-    heading: 'h3',
+    // A DIV, not an h3: a tooltip headline is a visual heading, never a structural one — see
+    // headingTag(), which collapses any h1-h6 a stored config still names.
+    heading: 'div',
     other: {
       id: '',
       classes: '',

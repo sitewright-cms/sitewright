@@ -347,6 +347,17 @@ form:invalid [type="submit"] {
      \`.prose\` lists while looking intentional everywhere else. Weak layer → daisyUI \`.menu\` and author
      utilities (\`pl-0\`, \`list-none\` + \`pl-*\`, \`px-*\`) still win. */
   ul, ol { padding-inline-start: 1.25rem; }
+  /* Heading LOOK without a heading TAG. Rich-content headings are rewritten to <p class="sw-h*"> at the
+     render sink (sanitize-rich) so a fragment dropped into a page can't join its outline; these rules
+     give the paragraph exactly what the h1-h6 it replaced was getting - the UA size scale kept above,
+     and bold. The heading FONT comes from typographyCss, which selects these classes alongside h1-h6.
+     Weak layer, so an author utility (text-2xl, font-normal) still wins. */
+  .sw-h1 { font-size: 2em; font-weight: bold; }
+  .sw-h2 { font-size: 1.5em; font-weight: bold; }
+  .sw-h3 { font-size: 1.17em; font-weight: bold; }
+  .sw-h4 { font-size: 1em; font-weight: bold; }
+  .sw-h5 { font-size: .83em; font-weight: bold; }
+  .sw-h6 { font-size: .67em; font-weight: bold; }
 }
 
 /* Rich/markdown content opt-in: class="prose" restores a readable vertical rhythm to authored
@@ -357,7 +368,7 @@ form:invalid [type="submit"] {
    class-level specificity and scopes out \`.not-prose\` subtrees. */
 @layer sw-normalize {
   .prose :where(p, ul, ol, blockquote, figure, pre, table, hr, h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *)) { margin: 1em 0; }
-  .prose :where(h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *)) { margin-top: 1.5em; }
+  .prose :where(h2, h3, h4, h5, h6, .sw-h2, .sw-h3, .sw-h4, .sw-h5, .sw-h6):not(:where(.not-prose, .not-prose *)) { margin-top: 1.5em; }
   .prose > :where(:first-child):not(:where(.not-prose, .not-prose *)) { margin-top: 0; }
   .prose > :where(:last-child):not(:where(.not-prose, .not-prose *)) { margin-bottom: 0; }
 }

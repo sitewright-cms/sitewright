@@ -11,11 +11,16 @@ describe('RichTextField', () => {
   it('renders the formatting toolbar (mirrors the on-page editor commands)', () => {
     render(<RichTextField value="" onChange={() => {}} ariaLabel="body" />);
     for (const name of [
-      'Bold', 'Italic', 'Heading 2', 'Quote', 'Bulleted list', 'Numbered list',
+      'Bold', 'Italic', 'Paragraph', 'Quote', 'Bulleted list', 'Numbered list',
       'Text color', 'Highlight', 'Text size', 'Alignment', 'Increase indent', 'Link', 'Insert table',
       'Edit HTML source',
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    // No heading buttons: rich content is a fragment inside a page that already owns its heading
+    // outline, so the toolbar offers size + font + bold for the LOOK and never a heading TAG.
+    for (const name of ['Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
     }
   });
 

@@ -4,13 +4,58 @@ import { sanitizeRichHtml } from '../src/sanitize-rich.js';
 describe('sanitizeRichHtml — broad safe-HTML allowlist', () => {
   it('keeps the rich-text + structural/sectioning/media surface', () => {
     const html =
-      '<section><article><h2>h</h2><p><strong>a</strong> <em>b</em> <code>e</code></p>' +
+      '<section><article><p class="sw-h2">h</p><p><strong>a</strong> <em>b</em> <code>e</code></p>' +
       '<figure><img src="/m/a.jpg" alt="x" /><figcaption>cap</figcaption></figure>' +
       '<details><summary>more</summary><p>body</p></details>' +
       '<ul><li>x</li></ul>' +
       '<table><thead><tr><th scope="col">H</th></tr></thead><tbody><tr><td colspan="2">c</td></tr></tbody></table>' +
       '</article></section>';
     expect(sanitizeRichHtml(html)).toBe(html);
+  });
+
+  // Rich content is a FRAGMENT dropped into a page that already has its own heading outline, so no
+  // h1-h6 may survive this sink — including from the HTML-source editor, which the toolbar cannot police.
+  // Rewritten rather than discarded: dropping the tag would take the author's words with it.
+  it('rewrites every heading level to a paragraph carrying its look-alike class', () => {
+    for (const h of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
+      expect(sanitizeRichHtml(`<${h}>Title</${h}>`)).toBe(`<p class="sw-${h}">Title</p>`);
+    }
+  });
+
+  it('keeps the text, the attributes and any author classes when rewriting a heading', () => {
+    const out = sanitizeRichHtml('<h3 class="text-primary mt-4" id="x" dir="rtl">Kept <strong>words</strong></h3>');
+    expect(out).toContain('Kept <strong>words</strong>'); // nothing is lost
+    expect(out).toContain('class="text-primary mt-4 sw-h3"'); // author classes first, look-alike appended
+    expect(out).toContain('id="x"');
+    expect(out).toContain('dir="rtl"');
+    expect(out).not.toMatch(/<h[1-6][\s>]/);
+  });
+
+  it('is idempotent over the rewrite — a second pass does not stack another class', () => {
+    const once = sanitizeRichHtml('<h2>Twice</h2>');
+    expect(sanitizeRichHtml(once)).toBe(once);
+    // …and markup that already names the look-alike class does not end up carrying it twice.
+    expect(sanitizeRichHtml('<h2 class="sw-h2">Already</h2>')).toBe('<p class="sw-h2">Already</p>');
+  });
+
+  it('rewrites a heading wherever it appears, however it is written', () => {
+    expect(sanitizeRichHtml('<H2>Shout</H2>')).toBe('<p class="sw-h2">Shout</p>'); // uppercase
+    expect(sanitizeRichHtml('<div><h3>Deep</h3></div>')).toBe('<div><p class="sw-h3">Deep</p></div>');
+    expect(sanitizeRichHtml('<ul><li><h4>In list</h4></li></ul>')).toBe('<ul><li><p class="sw-h4">In list</p></li></ul>');
+    expect(sanitizeRichHtml('<h2>Unclosed')).toBe('<p class="sw-h2">Unclosed</p>');
+  });
+
+  it('rewriting a heading does NOT smuggle its attributes past the allowlist', () => {
+    // transformTags returns attribs wholesale, so the filtering that follows it is load-bearing.
+    expect(sanitizeRichHtml('<h2 onclick="alert(1)" class="a">Evil</h2>')).toBe('<p class="a sw-h2">Evil</p>');
+    expect(sanitizeRichHtml('<h2 style="color:red;position:fixed">S</h2>')).toBe('<p style="color:red" class="sw-h2">S</p>');
+    expect(sanitizeRichHtml('<h2 data-sw-component="modal">D</h2>')).toBe('<p class="sw-h2">D</p>');
+  });
+
+  it('leaves NON-heading blocks alone (the rewrite is not a blanket block transform)', () => {
+    expect(sanitizeRichHtml('<p>plain</p>')).toBe('<p>plain</p>');
+    expect(sanitizeRichHtml('<blockquote>q</blockquote>')).toBe('<blockquote>q</blockquote>');
+    expect(sanitizeRichHtml('<div class="a">d</div>')).toBe('<div class="a">d</div>');
   });
 
   it('keeps class / id / aria-* / role for styling + a11y', () => {

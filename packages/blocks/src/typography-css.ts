@@ -139,7 +139,10 @@ export function typographyCss(
     ),
     '}',
     'body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}',
-    'h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}',
+    // `.sw-h1`-`.sw-h6` are the heading LOOK-ALIKES the rich-content sink rewrites headings into
+    // (see sanitize-rich): they must take the heading font here, or a rewritten headline would
+    // silently fall back to the body face.
+    'h1,h2,h3,h4,h5,h6,.sw-h1,.sw-h2,.sw-h3,.sw-h4,.sw-h5,.sw-h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}',
   ].join('');
 }
 

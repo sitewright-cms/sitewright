@@ -9,6 +9,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The platform injects no heading tags, and rich content no longer carries them.** A heading is a
+  structural claim about the PAGE, so only the page's own source should make one — anything else
+  quietly rewrites the outline a search engine reads. Audited by rendering: every component showcase
+  page was diffed served-HTML vs post-JS DOM, which found two injectors (grep alone had missed the
+  second). An image map's tooltip headline and the mini-shop cart drawer's title are now `<div>`s
+  carrying exactly the look their `<h3>`/`<h2>` had, and the cart `<dialog>` gained an `aria-label` so
+  losing the heading costs it no accessible name. The rich-text toolbars drop their Heading 2/3
+  buttons — the size menu now runs up to `text-3xl`/`text-4xl`, so a headline is size + `font-heading`
+  + bold — and the render sink rewrites any `h1`–`h6` in a `data-sw-html` / `{{sw-html}}` / richtext
+  value to `<p class="sw-h1…6">`, which closes the HTML-source editor as a way back in. Rewritten,
+  never discarded, so no existing content loses its words: the six `sw-h*` classes reproduce the UA
+  size scale plus the project's heading font/weight, measured identical to the real tags at all six
+  levels and inside `.prose`. Headings authored in a page's own source are untouched.
+
 ### Fixed
 
 - **A modal stays centred, and its close button stays on the corner, whatever width the author asked

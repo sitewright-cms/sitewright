@@ -1,4 +1,4 @@
-import { expect, request, type Page } from '@playwright/test';
+import { expect, request, type APIResponse, type Page } from '@playwright/test';
 
 /**
  * Seed a signed-in E2E user for a BROWSER spec.
@@ -118,8 +118,14 @@ export async function deployLocally(page: Page): Promise<string> {
  * host has no wildcard DNS, so neither a browser navigation nor a redirect-following request can reach
  * that name — send an explicit Host header instead, the same technique the API spec uses.
  */
+export async function liveSiteRequest(page: Page, slug: string, path = '/'): Promise<APIResponse> {
+  const u = new URL(baseURL());
+  const host = `${slug}.${process.env.SW_E2E_SITES_DOMAIN ?? u.hostname}${u.port ? `:${u.port}` : ''}`;
+  return page.request.get(`${baseURL()}${path}`, { headers: { Host: host } });
+}
+
+/** The common case: assert a 200 and hand back the HTML. */
 export async function fetchLiveSite(page: Page, slug: string, path = '/'): Promise<{ status: number; html: string }> {
-  const host = `${slug}.${process.env.SW_E2E_SITES_DOMAIN ?? new URL(baseURL()).hostname}${new URL(baseURL()).port ? `:${new URL(baseURL()).port}` : ''}`;
-  const res = await page.request.get(`${baseURL()}${path}`, { headers: { Host: host } });
+  const res = await liveSiteRequest(page, slug, path);
   return { status: res.status(), html: await res.text() };
 }

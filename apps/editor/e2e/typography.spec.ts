@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, liveSiteRequest, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -10,7 +10,8 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   await signUp(page, `typo-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Type Site');
-  await page.getByLabel('Project slug').fill(`typo-${stamp}`);
+  const SLUG = `typo-${stamp}`;
+  await page.getByLabel('Project slug').fill(SLUG);
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Corporate Identity → Typography card. Defaults: heading Serif/700, body Sans-serif/400.
@@ -22,8 +23,8 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   await page.getByLabel('Body font family').selectOption('serif');
   await page.getByLabel('Body font weight').selectOption('700');
   await page.getByLabel('Heading font family').selectOption('monospace');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → reopen → the selections persisted.
   await page.reload();
@@ -34,18 +35,24 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   await expect(page.getByLabel('Heading font family')).toHaveValue('monospace');
 
   // Publish → the home page's typography CSS reflects the slots (applied to body + h1–h6).
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
-  const origin = new URL(page.url()).origin;
-  const html = await (await page.request.get(`${origin}${href!.replace(/\/$/, '')}/`)).text();
+  await deployLocally(page);
+  const live = await fetchLiveSite(page, SLUG);
+  expect(live.status, `live site for ${SLUG}`).toBe(200);
+  const html = live.html;
   expect(html).toContain('--sw-font-body-weight:700');
   expect(html).toMatch(/--sw-font-body:[^;]*serif/);
   expect(html).toMatch(/--sw-font-heading:[^;]*monospace/);
+  const headingRule = html.match(/([^{}]*)\{font-family:var\(--sw-font-heading\)/);
+  expect(headingRule, 'a rule must apply the heading face').toBeTruthy();
+  for (const sel of ['h1', 'h6', '.sw-h1', '.sw-h6']) {
+    expect(headingRule![1].split(',').map((x) => x.trim())).toContain(sel);
+  }
   expect(html).toContain('body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}');
-  // The `.sw-h*` look-alikes (what rich-content headings are rewritten to) take the heading face too,
-  // so they share this selector — don't anchor the assertion on `h6{`.
-  expect(html).toContain('h1,h2,h3,h4,h5,h6,.sw-h1,.sw-h2,.sw-h3,.sw-h4,.sw-h5,.sw-h6{font-family:var(--sw-font-heading)');
+  // The heading face applies to h1-h6 AND to the `.sw-h*` look-alikes (what rich-content headings are
+  // rewritten to). Assert the selector's MEMBERS, not its literal text: the published CSS is minified
+  // and the minifier SORTS the selector list, so `h1,…,h6,.sw-h1,…` in the source is emitted as
+  // `.sw-h1,…,h1,…`. Pinning the source order passed the unit test and failed only here, on the real
+  // published artifact.
 });
 
 // Google Fonts: browse the bundled catalog, SELECT a weight (the server downloads + self-hosts it),
@@ -54,7 +61,8 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await signUp(page, `gfont-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Font Site');
-  await page.getByLabel('Project slug').fill(`gfont-${stamp}`);
+  const SLUG = `gfont-${stamp}`;
+  await page.getByLabel('Project slug').fill(SLUG);
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
@@ -73,8 +81,8 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__', { timeout: 30000 });
   await expect(page.getByLabel('Heading font family')).toContainText('Playfair Display');
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → the asset slot persisted.
   await page.reload();
@@ -83,12 +91,10 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__');
 
   // Publish → the page self-hosts the woff2 (bundled _assets path) and carries ZERO Google references.
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
-  const origin = new URL(page.url()).origin;
-  const base = `${origin}${href!.replace(/\/$/, '')}`;
-  const html = await (await page.request.get(`${base}/`)).text();
+  await deployLocally(page);
+  const live = await fetchLiveSite(page, SLUG);
+  expect(live.status, `live site for ${SLUG}`).toBe(200);
+  const html = live.html;
   expect(html).toContain('@font-face');
   expect(html).toMatch(/--sw-font-heading:"Playfair Display"/);
   // Self-hosted faces are stored as <family-slug>-<weight>.<ext> — e.g. playfair-display-700.woff2.
@@ -98,7 +104,7 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // And the bundled woff2 is actually served from the published artifact.
-  const woff2 = await page.request.get(`${base}/_assets/${m![1]}/playfair-display-700.woff2`);
+  const woff2 = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}/playfair-display-700.woff2`);
   expect(woff2.status()).toBe(200);
   expect(woff2.headers()['content-type']).toBe('font/woff2');
 });
@@ -111,15 +117,16 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
   await signUp(page, `named-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Named Site');
-  await page.getByLabel('Project slug').fill(`named-${stamp}`);
+  const SLUG = `named-${stamp}`;
+  await page.getByLabel('Project slug').fill(SLUG);
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await page.getByRole('button', { name: '+ Add custom font' }).click();
   await page.getByLabel('Custom font name').fill('boombox');
   await page.getByLabel('boombox font weight').selectOption('700');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → the named slot persisted.
   await page.reload();
@@ -128,11 +135,10 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
   await expect(page.getByLabel('Custom font name')).toHaveValue('boombox');
 
   // Publish → the page exposes the --sw-font-boombox var (+ weight) for the font-boombox utility.
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
-  const origin = new URL(page.url()).origin;
-  const html = await (await page.request.get(`${origin}${href!.replace(/\/$/, '')}/`)).text();
+  await deployLocally(page);
+  const live = await fetchLiveSite(page, SLUG);
+  expect(live.status, `live site for ${SLUG}`).toBe(200);
+  const html = live.html;
   expect(html).toMatch(/--sw-font-boombox:[^;]+;--sw-font-boombox-weight:700;/);
 });
 
@@ -141,7 +147,8 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   await signUp(page, `upload-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Upload Site');
-  await page.getByLabel('Project slug').fill(`upload-${stamp}`);
+  const SLUG = `upload-${stamp}`;
+  await page.getByLabel('Project slug').fill(SLUG);
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
@@ -155,16 +162,14 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
 
   // On success the body slot becomes an `asset` slot referencing the uploaded font.
   await expect(page.getByLabel('Body font family')).toHaveValue('__asset__', { timeout: 20000 });
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Publish → the page self-hosts the ttf (bundled _assets path + format("truetype")), zero Google refs.
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
-  const origin = new URL(page.url()).origin;
-  const base = `${origin}${href!.replace(/\/$/, '')}`;
-  const html = await (await page.request.get(`${base}/`)).text();
+  await deployLocally(page);
+  const live = await fetchLiveSite(page, SLUG);
+  expect(live.status, `live site for ${SLUG}`).toBe(200);
+  const html = live.html;
   expect(html).toMatch(/--sw-font-body:"Uploadtest"/);
   // The uploaded family "Uploadtest" self-hosts as uploadtest-400.ttf (<family-slug>-<weight>.<ext>).
   const m = html.match(/_assets\/([a-f0-9-]+)\/uploadtest-400\.ttf/);
@@ -173,7 +178,7 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // The bundled ttf is served from the published artifact with the right type.
-  const ttf = await page.request.get(`${base}/_assets/${m![1]}/uploadtest-400.ttf`);
+  const ttf = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}/uploadtest-400.ttf`);
   expect(ttf.status()).toBe(200);
   expect(ttf.headers()['content-type']).toBe('font/ttf');
 });

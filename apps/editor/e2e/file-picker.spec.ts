@@ -44,8 +44,8 @@ test('file picker: use a URL as-is, then upload + pick a library image for the l
   await expect(page.getByRole('textbox', { name: 'Logo (light bg)' })).toHaveValue('https://cdn.example.com/logo-light.svg');
 
   // Persist + reload → both the self-hosted logo and the light-bg variant survive.
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: /Picker Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();

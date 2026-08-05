@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -22,26 +22,28 @@ test('deploy: save an SFTP key-auth target and stream the deploy (failure shows 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await expect(page.getByRole('link', { name: /Preview/ })).toBeVisible();
+  await deployLocally(page);
 
-  // Open the Publish & Deploy modal directly on its DEPLOY tab via the publish ⋯ menu (the path
-  // publish.spec uses). Page-wide field locators (there is one deploy form on the page).
-  await page.getByRole('button', { name: 'Publish actions' }).click();
-  await page.getByRole('menuitem', { name: 'Deploy…' }).click();
-
-  // Configure an SFTP target authenticated by a PRIVATE KEY (the key-auth UI), at a closed port.
-  await page.getByLabel('Deploy protocol').selectOption('sftp');
-  await page.getByLabel('Deploy host', { exact: true }).fill('127.0.0.1'); // exact: 'Deploy host' is a substring of 'Deploy host fingerprint'
-  await page.getByLabel('Deploy port').fill('1');
-  await page.getByLabel('Deploy user').fill('deployer');
-  await page.getByLabel('Deploy auth method').selectOption('key');
-  await page
-    .getByLabel('Deploy private key')
+  // Add a SECOND target through the wizard: SFTP authenticated by a PRIVATE KEY, at a closed port.
+  // (The old inline "Deploy…" form behind a "Publish actions" menu is gone — targets are configured in
+  // the wizard and the transport runs from the header's split Deploy button.)
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Publish & Deploy Options' }).click();
+  const wizard = page.getByRole('dialog', { name: 'Deploy targets' });
+  await wizard.getByRole('button').filter({ hasText: 'SSH / SFTP Upload' }).first().click();
+  await wizard.getByLabel('Name', { exact: true }).fill('Key SFTP');
+  await wizard.getByLabel('Host', { exact: true }).fill('127.0.0.1');
+  await wizard.getByLabel('Port', { exact: true }).fill('1');
+  await wizard.getByLabel('User', { exact: true }).fill('deployer');
+  await wizard.getByLabel('SFTP auth method').selectOption('key');
+  await wizard
+    .getByLabel(/^Private key/)
     .fill('-----BEGIN OPENSSH PRIVATE KEY-----\nZHVtbXkta2V5LWNvbnRlbnRz\n-----END OPENSSH PRIVATE KEY-----');
-  await page.getByLabel('Target name').fill('Key SFTP');
-  await page.getByRole('button', { name: 'Save target' }).click();
-  const deployBtn = page.getByRole('button', { name: 'Deploy to Key SFTP' });
+  await wizard.getByRole('button', { name: 'Save target' }).click();
+
+  // Deploy from the target's OWN row in the wizard: the header's split button defaults to the local
+  // target, and a `local` target is served by publishing rather than by the deploy transport.
+  const deployBtn = wizard.getByRole('button', { name: 'Deploy to Key SFTP' });
   await expect(deployBtn).toBeVisible();
 
   // Deploy → the streaming Deploy modal opens and reports the connection failure.

@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
-test('build a code page, publish the project, and view the live site', async ({ page, baseURL }) => {
+test('build a code page, publish the project, and view the live site', async ({ page }) => {
   await signUp(page, `publish-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Live Site');
@@ -22,44 +22,37 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-  // Publish, then open the "…" actions menu (secondary actions live behind it now).
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await page.getByRole('button', { name: 'Publish actions' }).click();
+  // Deploy to Local Hosting — there is no one-click Publish + "…" actions menu any more.
+  await deployLocally(page);
 
-  // Menu items carry role="menuitem" (the links/buttons live inside a role="menu").
-  const viewLink = page.getByRole('menuitem', { name: 'View published site' });
-  await expect(viewLink).toBeVisible();
-  const href = await viewLink.getAttribute('href');
-  expect(href).toMatch(/^\/sites\/[\w-]+\/$/);
-
-  // The zip artifact downloads (stay on the editor — don't navigate away).
+  // The zip artifact downloads. It is a menuitem in the deploy split-button's dropdown now.
+  await page.getByRole('button', { name: 'Choose a deploy target' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('menuitem', { name: 'Download site zip' }).click(),
   ]);
   expect(await download.suggestedFilename()).toMatch(/\.zip$/);
 
-  // Deploy form: a connection to a closed port surfaces an error (full UI→API→adapter path).
-  // (Clicking a menu link doesn't close the menu, so Deploy is still reachable.)
-  await page.getByRole('menuitem', { name: 'Deploy…' }).click();
-  await page.getByLabel('Deploy protocol').selectOption('ftp');
-  await page.getByLabel('Deploy host').fill('127.0.0.1');
-  await page.getByLabel('Deploy port').fill('1');
-  await page.getByLabel('Deploy user').fill('u');
-  await page.getByLabel('Deploy password').fill('pw');
-  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
-  await expect(page.getByText(/deploy failed/i)).toBeVisible({ timeout: 20_000 });
+  // A second, REMOTE target saved through the wizard — credentials encrypted at rest — and deploying to
+  // it at a closed port must surface the failure (full UI→API→adapter path).
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Publish & Deploy Options' }).click();
+  const wizard = page.getByRole('dialog', { name: 'Deploy targets' });
+  await wizard.getByRole('button').filter({ hasText: 'FTP / FTPS Upload' }).first().click();
+  await wizard.getByLabel('Name', { exact: true }).fill('My Webspace');
+  await wizard.getByLabel('Host', { exact: true }).fill('127.0.0.1');
+  await wizard.getByLabel('Port', { exact: true }).fill('1');
+  await wizard.getByLabel('User', { exact: true }).fill('u');
+  await wizard.getByLabel(/^Password/).fill('pw');
+  await wizard.getByRole('button', { name: 'Save target' }).click();
+  await wizard.getByRole('button', { name: 'Deploy to My Webspace' }).click();
+  await expect(page.getByText(/deploy failed/i)).toBeVisible({ timeout: 25_000 });
 
-  // Save the (FTP) connection as a reusable target — credentials encrypted at rest.
-  await page.getByLabel('Target name').fill('My Webspace');
-  await page.getByRole('button', { name: 'Save target' }).click();
-  await expect(page.getByRole('button', { name: 'Deploy to My Webspace' })).toBeVisible();
-
-  // The published static page renders the code-authored content (in a separate tab).
-  const live = await page.context().newPage();
-  await live.goto(`${baseURL}${href}`);
-  await expect(live.locator('body')).toContainText('We Are Live');
+  // The published static page renders the code-authored content. Local hosting serves on a subdomain
+  // the DinD host has no DNS for, so read it with an explicit Host header.
+  const live = await fetchLiveSite(page, `live-${stamp}`);
+  expect(live.status).toBe(200);
+  expect(live.html).toContain('We Are Live');
   // The preview-only inline-edit marker MUST NOT reach published HTML.
-  expect(await live.content()).not.toContain('data-sw-text="headline"'); // the directive marker is stripped on publish
-  await live.close();
+  expect(live.html).not.toContain('data-sw-text="headline"');
 });

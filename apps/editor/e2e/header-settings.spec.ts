@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { deployLocally, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -42,9 +42,9 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Project Members' })).toBeHidden();
 
-  // Publishing surfaces a transient TOAST (the persistent "Published · N pages" line was removed).
-  await page.getByRole('button', { name: 'Publish' }).click();
-  await expect(page.getByText(/Published · \d+ page/)).toBeVisible();
+  // Deploying surfaces a transient TOAST naming the target it went to.
+  await deployLocally(page);
+  await expect(page.getByText(/Published to Local Hosting · \d+ page/)).toBeVisible();
 
   // The agent indicator opens AI agent details, whose Connect-an-agent guide has 4 tabs
   // (ChatGPT / Claude.ai / Le Chat hosted + local CLI).

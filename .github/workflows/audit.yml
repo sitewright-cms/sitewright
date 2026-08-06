@@ -61,3 +61,12 @@ jobs:
       - name: Full advisory list (informational)
         if: always()
         run: pnpm audit --audit-level low || true
+
+      # The FULL signature sweep. `pnpm verify` runs this same script with `--changed`, so a PR only
+      # ever verifies what it touched — correct for a gate that must be a function of the diff, but it
+      # means an entry nobody has touched since the check landed would never be re-examined. Upstream
+      # can republish, and keys rotate, so the whole tree gets swept here on the time axis instead.
+      # Also prints the provenance coverage, which is the number the ratchet in #832 tracks.
+      - name: Registry signatures (full tree)
+        if: always()
+        run: node scripts/registry-signatures.mjs

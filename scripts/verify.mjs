@@ -21,10 +21,14 @@ const GATES = [
     // so `pnpm audit` itself never lies about what is in the tree.
     cmd: ['node', 'scripts/audit-gate.mjs'],
   },
-  // Proves the bytes the lockfile pins are the bytes npm signed for that version — the check that
-  // notices a substituted tarball at the moment a lockfile entry is written, which is when a
-  // dependency change is actually decided. ~8s for the whole tree.
-  { name: 'Registry signatures', cmd: ['node', 'scripts/registry-signatures.mjs'] },
+  // Proves the bytes the lockfile pins are the bytes npm signed — checked at the moment a lockfile
+  // entry is WRITTEN, which is when a dependency change is actually being decided.
+  //
+  // `--changed` keeps this a function of the diff, which is the rule for everything in this script:
+  // on a PR that touches no dependency it verifies nothing, makes no network call, and costs ~40ms,
+  // so the gate stays fast and works offline. The full sweep is a function of TIME and belongs in
+  // the scheduled audit (.github/workflows/audit.yml), which runs it nightly.
+  { name: 'Registry signatures', cmd: ['node', 'scripts/registry-signatures.mjs', '--changed', 'origin/main'] },
   // A raw NUL byte makes git call a source file BINARY, so its diffs stop rendering and every
   // later change to it is invisible to review. Cheap to check, silent and permanent if missed —
   // it hid the OIDC auth implementation from review for months.

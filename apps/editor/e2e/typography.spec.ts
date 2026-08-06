@@ -97,14 +97,15 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   const html = live.html;
   expect(html).toContain('@font-face');
   expect(html).toMatch(/--sw-font-heading:"Playfair Display"/);
-  // Self-hosted faces are stored as <family-slug>-<weight>.<ext> — e.g. playfair-display-700.woff2.
-  const m = html.match(/_assets\/([a-f0-9-]+)\/playfair-display-700\.woff2/);
+  // Self-hosted faces are FLAT: `_assets/<id>-<family-slug>-<weight>.<ext>` (the same flat scheme the
+  // media library uses) — not a per-asset folder.
+  const m = html.match(/_assets\/([\w-]+-playfair-display-700\.woff2)/);
   expect(m).toBeTruthy();
-  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/playfair-display-700\.woff2\) format\("woff2"\)/);
+  expect(html).toMatch(/src:url\(_assets\/[\w-]+-playfair-display-700\.woff2\) format\("woff2"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // And the bundled woff2 is actually served from the published artifact.
-  const woff2 = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}/playfair-display-700.woff2`);
+  const woff2 = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}`);
   expect(woff2.status()).toBe(200);
   expect(woff2.headers()['content-type']).toBe('font/woff2');
 });
@@ -139,7 +140,8 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
   const live = await fetchLiveSite(page, SLUG);
   expect(live.status, `live site for ${SLUG}`).toBe(200);
   const html = live.html;
-  expect(html).toMatch(/--sw-font-boombox:[^;]+;--sw-font-boombox-weight:700;/);
+  // No trailing `;` — the minifier drops it on the last declaration before `}`.
+  expect(html).toMatch(/--sw-font-boombox:[^;]+;--sw-font-boombox-weight:700[;}]/);
 });
 
 // Local font upload: a .ttf is self-hosted PROJECT-scoped and the published page loads it locally.
@@ -172,13 +174,13 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   const html = live.html;
   expect(html).toMatch(/--sw-font-body:"Uploadtest"/);
   // The uploaded family "Uploadtest" self-hosts as uploadtest-400.ttf (<family-slug>-<weight>.<ext>).
-  const m = html.match(/_assets\/([a-f0-9-]+)\/uploadtest-400\.ttf/);
+  const m = html.match(/_assets\/([\w-]+-uploadtest-400\.ttf)/);
   expect(m).toBeTruthy();
-  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/uploadtest-400\.ttf\) format\("truetype"\)/);
+  expect(html).toMatch(/src:url\(_assets\/[\w-]+-uploadtest-400\.ttf\) format\("truetype"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // The bundled ttf is served from the published artifact with the right type.
-  const ttf = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}/uploadtest-400.ttf`);
+  const ttf = await liveSiteRequest(page, SLUG, `/_assets/${m![1]}`);
   expect(ttf.status()).toBe(200);
   expect(ttf.headers()['content-type']).toBe('font/ttf');
 });

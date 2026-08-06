@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedApiUser } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -6,10 +7,10 @@ const stamp = Date.now();
 // {{sw-add-to-cart}} + {{sw-cart}} helpers with website.shop configured. On the PUBLISHED static site
 // the first-party cart.js runtime must wire the buttons → a localStorage cart → the WhatsApp deep
 // link. This exercises the real browser runtime (not just the rendered markup).
-test('published cart: add-to-cart opens the drawer and builds the WhatsApp order link', async ({ page, playwright, baseURL }) => {
+test('published cart: add-to-cart opens the drawer and builds the WhatsApp order link', async ({ page, baseURL }) => {
   // --- set up + publish a shop over HTTP (PR-1 has no shop settings UI yet — that is PR-3) ---
-  const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shop-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
+  // Registration is invitation-only — seed through the admin's invite flow.
+  const ctx = await seedApiUser(baseURL!, `shop-${stamp}@e2e.test`);
   const slug = `shop-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Shop Site', slug } });
   expect(proj.status()).toBe(201);
@@ -51,6 +52,8 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
       '</section>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
+  // A Local Hosting target is what makes /sites/<slug>/ serve — publishing alone is not enough.
+  expect([201, 409]).toContain((await ctx.post(`${base}/deploy-targets`, { data: { name: 'Local', protocol: 'local' } })).status());
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   // The runtime is shipped only-when-used.
@@ -107,9 +110,9 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
 // The `form` channel: the cart drawer renders an inline order form that POSTs the order + contact
 // details to the resolved /f endpoint (the existing spam-guarded submission pipeline). The order then
 // lands in the merchant's submissions inbox.
-test('published cart: the form channel submits the order to the /f submissions inbox', async ({ page, playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shopform-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
+test('published cart: the form channel submits the order to the /f submissions inbox', async ({ page, baseURL }) => {
+  // Registration is invitation-only — seed through the admin's invite flow.
+  const ctx = await seedApiUser(baseURL!, `shopform-${stamp}@e2e.test`);
   const slug = `shopform-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Shop Form Site', slug } });
   expect(proj.status()).toBe(201);
@@ -138,6 +141,8 @@ test('published cart: the form channel submits the order to the /f submissions i
     source: '<section class="p-8">{{sw-add-to-cart sku="w1" name="Widget" price="12.50"}}{{sw-cart}}</section>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
+  // A Local Hosting target is what makes /sites/<slug>/ serve — publishing alone is not enough.
+  expect([201, 409]).toContain((await ctx.post(`${base}/deploy-targets`, { data: { name: 'Local', protocol: 'local' } })).status());
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   await page.goto(`/sites/${slug}/`);
@@ -173,9 +178,9 @@ test('published cart: the form channel submits the order to the /f submissions i
 // Cart drawer UX: a right-side drawer that opens on the toggle, shows the EDITABLE note, and closes
 // ONLY via the backdrop / Esc / close icon — never on a click in the drawer's own body. Buttons carry
 // the self-contained "waves-effect" ripple class.
-test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple class', async ({ page, playwright, baseURL }) => {
-  const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shopdrawer-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
+test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple class', async ({ page, baseURL }) => {
+  // Registration is invitation-only — seed through the admin's invite flow.
+  const ctx = await seedApiUser(baseURL!, `shopdrawer-${stamp}@e2e.test`);
   const slug = `shopdrawer-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Drawer Site', slug } });
   const projectId = (await proj.json()).project.id as string;
@@ -204,6 +209,8 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
     source: '<section class="p-8">{{sw-add-to-cart sku="w1" name="Widget" price="9.00"}}{{sw-cart}}</section>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
+  // A Local Hosting target is what makes /sites/<slug>/ serve — publishing alone is not enough.
+  expect([201, 409]).toContain((await ctx.post(`${base}/deploy-targets`, { data: { name: 'Local', protocol: 'local' } })).status());
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   await page.goto(`/sites/${slug}/`);
@@ -212,7 +219,8 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
   const toggle = cart.locator('[data-sw-part="toggle"]');
 
   // The floating toggle carries the ripple class.
-  await expect(toggle).toHaveClass(/waves-effect/);
+  // The ripple rides the inner `.sw-cart-tab` (the visible pill), not the outer toggle button.
+  await expect(toggle.locator('.sw-cart-tab')).toHaveClass(/waves-effect/);
 
   await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
   await toggle.click();

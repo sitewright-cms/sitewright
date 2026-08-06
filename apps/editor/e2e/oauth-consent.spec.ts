@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 // RFC 7636 reference PKCE pair.
@@ -12,10 +13,7 @@ const REDIRECT = 'http://127.0.0.1:8976/callback';
 test('OAuth consent → code → token, then the access token works', async ({ page, playwright, baseURL }) => {
   const api = page.request; // shares the browser cookie jar
 
-  const reg = await api.post('/auth/register', {
-    data: { email: `oauth-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  expect(reg.status()).toBe(201);
+  await signUp(page, `oauth-${stamp}@e2e.test`);
   const proj = await api.post('/projects', { data: { name: 'OAuth Site', slug: `oauth-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type FrameLocator } from '@playwright/test';
 import { signUp } from './helpers.js';
 
 const stamp = Date.now();
@@ -21,6 +21,24 @@ async function setSource(page: import('@playwright/test').Page, src: string) {
 }
 
 // data-sw-text gets the same in-place plaintext editing as the legacy {{edit}} marker.
+/**
+ * Click a rich-text toolbar command in the preview.
+ *
+ * The floating toolbar renders SVG icons (not letter glyphs) with an aria-label and a stable
+ * `data-tbid`, and it COLLAPSES trailing groups into a "More formatting" overflow menu when the bar is
+ * narrower than its commands — so whether a given command is directly present depends on the viewport.
+ * Try the bar, then the overflow. Overflow rows carry the label but no data-tbid.
+ */
+async function tbClick(preview: FrameLocator, id: string, label: string): Promise<void> {
+  const direct = preview.locator(`.sw-tb button[data-tbid="${id}"]`);
+  if (await direct.count()) {
+    await direct.click();
+    return;
+  }
+  await preview.locator('.sw-tb button[aria-label="More formatting"]').click();
+  await preview.locator(`.sw-tb-pop button[aria-label="${label}"]`).click();
+}
+
 test('data-sw-text: inline plaintext edit in the preview, two-way + persists', async ({ page }) => {
   await setup(page, 'swtext');
   await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
@@ -55,7 +73,7 @@ test('data-sw-html: in-place rich editing (contenteditable + toolbar) persists',
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
   await expect(preview.locator('.sw-tb')).toBeVisible();
-  await preview.locator('.sw-tb button', { hasText: /^B$/ }).click();
+  await tbClick(preview, 'bold', 'Bold');
   await expect(region.locator('b, strong')).toHaveCount(1);
 
   // Persist → reopen → the rich region's rendered content keeps the bold markup.
@@ -76,7 +94,7 @@ test('rich-text toolbar: superscript wraps the selection in <sup>', async ({ pag
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
   await expect(preview.locator('.sw-tb')).toBeVisible();
-  await preview.locator('.sw-tb button', { hasText: 'x²' }).click(); // superscript
+  await tbClick(preview, 'superscript', 'Superscript');
   await expect(region.locator('sup')).toHaveCount(1);
 });
 
@@ -93,7 +111,7 @@ test('rich-text </>: HTML source editor round-trips and is sanitized on render',
   await expect(preview.locator('.sw-tb')).toBeVisible();
 
   // Open the HTML source modal via the toolbar's </> button; it is seeded with the current HTML.
-  await preview.locator('.sw-tb button', { hasText: '</>' }).click();
+  await tbClick(preview, 'source', 'Edit HTML source');
   const modal = page.getByRole('dialog', { name: /Edit HTML/ });
   await expect(modal).toBeVisible();
   await expect(modal.locator('.cm-content')).toContainText('Original');
@@ -124,7 +142,7 @@ test('rich-text </>: discarding dirty HTML source confirms first', async ({ page
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
   await expect(preview.locator('.sw-tb')).toBeVisible();
-  await preview.locator('.sw-tb button', { hasText: '</>' }).click();
+  await tbClick(preview, 'source', 'Edit HTML source');
   const modal = page.getByRole('dialog', { name: /Edit HTML/ });
   await expect(modal).toBeVisible();
 
@@ -182,31 +200,38 @@ test('data-sw-href: shows the in-preview edit overlay (resting outline) in conte
 
 // A hover/focus label badge (CSS ::before) names the field a region binds to, anchored to the element
 // (its host is promoted to position:relative) with a high z-index so it is never covered.
-test('field-name badge: hovering an editable region reveals a ::before label naming its key', async ({ page }) => {
+test('field-name badge: hovering an editable region reveals a HUD badge naming its key', async ({ page }) => {
   await setup(page, 'badge');
   await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
   await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
 
-  const region = page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-text="tagline"]');
   await expect(region).toBeVisible();
-  // Hidden at rest (display:none — so it never interferes with clicks)…
-  expect(await region.evaluate((el) => getComputedStyle(el, '::before').display)).toBe('none');
-  // …revealed on hover, naming the field, with the host promoted so the absolute badge anchors here.
-  await region.hover();
-  await expect.poll(() => region.evaluate((el) => getComputedStyle(el, '::before').display)).not.toBe('none');
-  const badge = await region.evaluate((el) => ({
-    content: getComputedStyle(el, '::before').content,
-    position: getComputedStyle(el).position,
-  }));
-  expect(badge.content).toContain('tagline');
-  expect(badge.position).toBe('relative');
 
-  // …and hidden again once the cursor leaves (so it never lingers over content).
-  await page.mouse.move(0, 0);
-  await expect.poll(() => region.evaluate((el) => getComputedStyle(el, '::before').display)).toBe('none');
+  // The badge is NOT a host ::before any more. It lives in a body-level, position:fixed HUD layer
+  // (`.sw-ov`), deliberately: there it can never be clipped by the host's overflow, never covered by
+  // host content, is immune to host styling, and — unlike a pseudo-element — is CLICKABLE.
+  // `hideHud` hides the ROW rather than removing its children, so assert VISIBILITY, not node count.
+  const badges = preview.locator('.sw-ov .sw-ov-badge');
+  await expect(badges.first()).toBeHidden(); // nothing showing at rest
+
+  await region.hover();
+  await expect(badges.first()).toBeVisible();
+  await expect(badges.first()).toContainText('tagline'); // names the field it edits
+  // The full typed description is its accessible name (the styled tooltip renders from data-tip).
+  expect(await badges.first().getAttribute('aria-label')).toContain('tagline');
+
+  // …and it clears once the pointer leaves the preview, so it never lingers over content. The HUD hides
+  // on a SCHEDULE (scheduleHide) rather than synchronously, so poll rather than asserting immediately.
+  // The HUD hides when a move lands on a NON-editable point (or the pointer leaves the frame), and it
+  // hides on a SCHEDULE rather than synchronously — so move within the preview, below the heading, and
+  // poll. Moving to the page chrome is not enough: the iframe gets no mouseleave from that.
+  const box = (await page.locator('iframe[title="Preview"]').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 20);
+  await expect(badges.first()).toBeHidden({ timeout: 10_000 });
 });
 
-// Undo/redo (header buttons) revert + reapply inline content edits.
 test('undo/redo: header buttons revert and reapply an inline edit', async ({ page }) => {
   await setup(page, 'undo');
   await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');

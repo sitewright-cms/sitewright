@@ -1,0 +1,11 @@
+{
+  "id": "svc_strategy",
+  "dataset": "services",
+  "status": "published",
+  "values": {
+    "icon": "compass",
+    "title": "Strategy & UX",
+    "summary": "Research, positioning, and user journeys that turn visitors into customers.",
+    "price": "from $4k"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "services",
+  "name": "Services",
+  "slug": "services",
+  "fields": [
+    {
+      "name": "title",
+      "type": "text",
+      "required": true,
+      "localized": false
+    },
+    {
+      "name": "icon",
+      "type": "text",
+      "required": false,
+      "localized": false
+    },
+    {
+      "name": "summary",
+      "type": "text",
+      "required": false,
+      "localized": false
+    },
+    {
+      "name": "price",
+      "type": "text",
+      "required": false,
+      "localized": false
+    }
+  ]
+}

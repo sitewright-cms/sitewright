@@ -1,0 +1,16 @@
+{
+  "kind": "image",
+  "id": "BzufXH",
+  "filename": "brand-logo.png",
+  "folder": "Brand",
+  "bytes": 120537,
+  "alt": "Northwind Web Studio logo",
+  "format": "png",
+  "width": 512,
+  "height": 512,
+  "placeholder": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAAAQAwCdASoUABQAPu1wsVKppiSiqAgBMB2JZwDNhBanFAAA/u/9vyWlEIOHwtKQgAA=",
+  "hasAlpha": true,
+  "animated": false,
+  "original": "brand-logo.png",
+  "url": "/media/example/BzufXH-brand-logo.png"
+}

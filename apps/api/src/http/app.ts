@@ -999,6 +999,12 @@ export interface AppOptions {
   /** Absolute path to the published-sites root; enables publish/serve when set. */
   publishRoot?: string;
   /**
+   * Called once per registered route (Fastify's `onRoute`). Exists so the committed route contract
+   * (`contract/http-routes.json`) can be generated EXACTLY — see the hook's registration for why
+   * `printRoutes` cannot be trusted for this. Not set by the server; the contract test passes it.
+   */
+  onRoute?: (route: { method: string | string[]; url: string }) => void;
+  /**
    * Absolute path to the live-PREVIEW draft-sites root; enables the always-on whole-site
    * preview (`/preview-site/:projectId/:sig/*`, minted member-only via `/projects/:id/preview-url`)
    * when set. Separate from `publishRoot`: these are ephemeral, rebuilt-on-change draft builds
@@ -1332,6 +1338,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Request-side only — long-running RESPONSES (streaming/SSE) are unaffected. See REQUEST_TIMEOUT_MS.
     requestTimeout: REQUEST_TIMEOUT_MS,
   });
+
+  // Introspection seam for the COMMITTED route contract (`contract/http-routes.json`). Fastify's only
+  // post-`ready()` introspection is `printRoutes`, and that pretty-printer is LOSSY: it collapses every
+  // wildcard route — including `/sites/:slug/*` and `/preview-site/:projectId/:sig/*`, two of the routes
+  // published output depends on — into a single unprefixed `*`. A contract artifact generated from a
+  // source that silently drops routes is worse than none, so the hook reports them exactly. Unset in
+  // production; adding it here (before any route registers) is the only point `onRoute` can be attached.
+  if (opts.onRoute) app.addHook('onRoute', opts.onRoute);
 
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
   // loading BEFORE routes are registered, so these are awaited up front.

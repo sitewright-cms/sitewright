@@ -16,6 +16,7 @@
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
     "set-version": "node scripts/set-version.mjs",
     "export-example": "node scripts/export-example.mjs",
+    "contract:update": "node scripts/contract-update.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {

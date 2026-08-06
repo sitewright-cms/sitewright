@@ -1,0 +1,20 @@
+{
+  "id": "blog",
+  "path": "blog",
+  "title": "Blog",
+  "description": "Notes on web design, performance, and building sites that earn their keep.",
+  "template": "global:blog-overview",
+  "parent": "home",
+  "translationGroup": "blog",
+  "nav": {
+    "title": "Blog",
+    "slots": [
+      "header"
+    ],
+    "order": 5
+  },
+  "data": {
+    "heading": "From the studio",
+    "intro": "Notes on web design, performance, and building sites that earn their keep."
+  }
+}

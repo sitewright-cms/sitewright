@@ -22,6 +22,14 @@
 // advisory stops matching the tree, this exits non-zero and tells you to delete the line.
 import { spawnSync } from 'node:child_process';
 
+// Every field below comes from the registry and none of its shapes are guaranteed. An unhandled
+// throw would already exit non-zero, but only because that is Node's default — and "fails closed by
+// accident" is not a property you can rely on. Make it a decision.
+process.on('uncaughtException', (e) => {
+  console.error(`✖ audit gate crashed, so nothing was audited: ${e?.stack ?? e}`);
+  process.exit(1);
+});
+
 /**
  * Moderate-or-higher advisories we have consciously accepted, keyed by GHSA id.
  * An entry needs a reason someone can re-evaluate later — "not exploitable here", not "known issue".
@@ -77,7 +85,12 @@ const accepted = [];
 const below = [];
 
 for (const a of advisories) {
-  const rank = SEVERITY_RANK[a.severity] ?? SEVERITY_RANK.critical; // unknown severity => treat as worst
+  // `Object.hasOwn`, not a bare lookup: a severity of "constructor" or "toString" would otherwise
+  // resolve to an inherited Object.prototype member instead of undefined, so `??` would never reach
+  // the critical fallback. It still fails closed today (those values are not numbers, so every
+  // comparison below is false and the entry gates) — but by accident, and this file's whole point is
+  // that its safety is deliberate.
+  const rank = Object.hasOwn(SEVERITY_RANK, a.severity) ? SEVERITY_RANK[a.severity] : SEVERITY_RANK.critical;
   if (rank < FLOOR) {
     below.push(a);
     continue;
@@ -87,7 +100,11 @@ for (const a of advisories) {
   (waivable ? accepted : gating).push(a);
 }
 
-const line = (a) => `${a.severity.padEnd(8)} ${a.module_name} — ${a.title} (${a.github_advisory_id})`;
+// Every field here comes from the registry, so none of it is guaranteed to be a string. A missing
+// `severity` used to throw inside .padEnd() — which still exited non-zero, but as an uncaught stack
+// trace that aborted the report mid-loop and hid every advisory after it.
+const show = (v, pad = 0) => String(v ?? 'unknown').padEnd(pad);
+const line = (a) => `${show(a.severity, 8)} ${show(a.module_name)} — ${show(a.title)} (${show(a.github_advisory_id)})`;
 
 for (const a of below) console.log(`  below floor  ${line(a)}`);
 for (const a of accepted) console.log(`  accepted     ${line(a)}`);

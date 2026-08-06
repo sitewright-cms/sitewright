@@ -21,6 +21,10 @@ const GATES = [
     // so `pnpm audit` itself never lies about what is in the tree.
     cmd: ['node', 'scripts/audit-gate.mjs'],
   },
+  // Proves the bytes the lockfile pins are the bytes npm signed for that version — the check that
+  // notices a substituted tarball at the moment a lockfile entry is written, which is when a
+  // dependency change is actually decided. ~8s for the whole tree.
+  { name: 'Registry signatures', cmd: ['node', 'scripts/registry-signatures.mjs'] },
   // A raw NUL byte makes git call a source file BINARY, so its diffs stop rendering and every
   // later change to it is invisible to review. Cheap to check, silent and permanent if missed —
   // it hid the OIDC auth implementation from review for months.

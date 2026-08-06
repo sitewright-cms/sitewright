@@ -23,10 +23,10 @@
   },
   "dependencies": {
     "@sitewright/schema": "workspace:*",
-    "@tailwindcss/node": "^4.3.0",
-    "@tailwindcss/oxide": "^4.3.0",
-    "daisyui": "~5.5",
-    "tailwindcss": "^4.3.0"
+    "@tailwindcss/node": "^4.3.3",
+    "@tailwindcss/oxide": "^4.3.3",
+    "daisyui": "~5.7",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

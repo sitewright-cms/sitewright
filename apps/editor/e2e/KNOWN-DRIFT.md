@@ -19,7 +19,7 @@ scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
 | suite | result |
 |---|---|
 | `@sitewright/api` | **20 passed, 2 skipped** — and re-runnable against the same slot |
-| `@sitewright/editor` | **68 passed, 36 failed** (was 0 passing: every spec died at sign-up) |
+| `@sitewright/editor` | **81 passed, 23 failed** (was 0 passing: every spec died at sign-up) |
 
 Authentication was the single blocker and is fixed — see `helpers.ts`. What remains is genuine UI drift:
 the specs now get far enough to discover that controls have been renamed, moved, or replaced by a
@@ -76,6 +76,19 @@ known to be a product defect, but that is exactly what working through them will
 - **The lightbox builds ONE overlay PER GALLERY.** A bare `.sw-lightbox` locator matches every gallery
   on the page (strict-mode violation). Scope to the visible one.
 
+- **The rich-text toolbar in the preview is SVG icons + `data-tbid`**, not letter glyphs, and it
+  COLLAPSES trailing groups into a "More formatting" overflow when the bar is narrower than its
+  commands — so whether a command is directly present depends on the viewport. Try the bar, then the
+  overflow (overflow rows carry the label but no `data-tbid`). See `tbClick` in inplace-wysiwyg.spec.
+- **The field-name badge is NOT a host `::before` any more.** It lives in a body-level, `position:fixed`
+  HUD (`.sw-ov`) so it can never be clipped by host overflow and — unlike a pseudo-element — is
+  CLICKABLE. It hides on a SCHEDULE (180ms) and `hideHud` hides the ROW rather than removing nodes, so
+  assert VISIBILITY, not node count.
+- **Published `_assets` are FLAT**: `_assets/<id>-<name>.<ext>`, not `_assets/<uuid>/<name>` — the same
+  flat scheme the media library moved to.
+- **The minifier drops the trailing `;`** on the last declaration in a block.
+- **The cart's ripple rides the inner `.sw-cart-tab`**, not the `[data-sw-part="toggle"]` button.
+
 ★ The recurring shape in all three of the above, and in the API suite's CSP assertion: **a spec pinned
 an exact string that some legitimate transform later rewrote** — a widened sandbox, a cache-busting
 query, a minifier's selector order. Assert the property you actually care about, not the byte sequence
@@ -100,28 +113,15 @@ Regenerate with the commands above. As of the last run:
 - `forms-ui.spec.ts:9:1 › author a form in the editor and see a submission in its submissions list`
 - `gallery.spec.ts:13:1 › sw-folder gallery: folder images render in the preview`
 - `global-snippets.spec.ts:46:1 › an instance admin can create + delete a global snippet from the Snippets rail`
-- `inplace-wysiwyg.spec.ts:45:1 › data-sw-html: in-place rich editing (contenteditable + toolbar) persists`
-- `inplace-wysiwyg.spec.ts:70:1 › rich-text toolbar: superscript wraps the selection in <sup>`
-- `inplace-wysiwyg.spec.ts:85:1 › rich-text </>: HTML source editor round-trips and is sanitized on render`
-- `inplace-wysiwyg.spec.ts:118:1 › rich-text </>: discarding dirty HTML source confirms first`
-- `inplace-wysiwyg.spec.ts:185:1 › field-name badge: hovering an editable region reveals a ::before label naming its key`
 - `libraries.spec.ts:8:1 › library panel: open, search, and copy an example; lazyload + ripple publish`
 - `mcp-admin.spec.ts:8:1 › admin: edit agent (MCP) instructions, see the endpoint list + connect guide, and persist`
 - `mfa.spec.ts:9:1 › enrol in TOTP, then sign in through the second-factor step`
 - `nav-placeholder.spec.ts:9:1 › create nav placeholders (external + dropdown) and round-trip their settings`
-- `oauth-consent.spec.ts:12:1 › OAuth consent → code → token, then the access token works`
-- `oauth-dcr.spec.ts:10:1 › dynamically-registered client completes the OAuth flow`
 - `oidc.spec.ts:10:1 › admin configures an OIDC provider; the login screen offers it`
 - `pages-list.spec.ts:10:1 › pages list: auto-home, row actions, list settings, template lock + fork`
 - `passkeys.spec.ts:8:1 › register a passkey and sign in with it`
 - `regions-panel.spec.ts:7:1 › Regions panel: lists editable regions and reaches a hidden control`
 - `settings.spec.ts:14:1 › edit Corporate Identity + Website settings, save, and persist across reload`
 - `settings.spec.ts:275:1 › Corporate Identity: Save/Discard gate on unsaved changes and Discard reverts`
-- `shop.spec.ts:9:1 › published cart: add-to-cart opens the drawer and builds the WhatsApp order link`
-- `shop.spec.ts:110:1 › published cart: the form channel submits the order to the /f submissions inbox`
-- `shop.spec.ts:176:1 › published cart: editable note + backdrop/Esc/close-only dismissal + ripple class`
 - `template-reference.spec.ts:8:1 › library: template reference — open, search, filter by group`
-- `typography.spec.ts:60:1 › google fonts: pick a heading webfont, self-host on select, publish loads it locally`
-- `typography.spec.ts:116:1 › custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var`
-- `typography.spec.ts:146:1 › local font upload: upload a .ttf for the body, self-host on save, publish loads it locally`
 - `user-menu.spec.ts:8:1 › user menu: mint an access key, change password, and re-login`

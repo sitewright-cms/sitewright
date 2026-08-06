@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -10,9 +11,7 @@ const CLIENT_REDIRECT = 'https://hosted.example.test/oauth/callback';
 test('dynamically-registered client completes the OAuth flow', async ({ page, playwright, baseURL }) => {
   const api = page.request;
 
-  await api.post('/auth/register', {
-    data: { email: `dcr-${stamp}@e2e.test`, password: 'Pw-secret-1' },
-  });
+  await signUp(page, `dcr-${stamp}@e2e.test`);
   const proj = await api.post('/projects', { data: { name: 'DCR Site', slug: `dcr-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
 

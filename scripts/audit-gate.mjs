@@ -37,11 +37,12 @@ process.on('uncaughtException', (e) => {
  * Critical and high are NEVER acceptable; they are not consulted against this map.
  */
 const ACCEPTED = {
-  'GHSA-8988-4f7v-96qf':
-    '@opentelemetry/core <2.8.0 — unbounded allocation parsing W3C Baggage headers, via ' +
-    'lighthouse -> @sentry/node. Sentry pins otel 1.x, so clearing it means forcing a MAJOR into a ' +
-    'third-party dep. Lighthouse runs against our OWN locally-served build and never parses ' +
-    'attacker-supplied baggage. Revisit when Sentry ships otel 2.',
+  // Empty, and that is the goal state. The last entry (GHSA-8988-4f7v-96qf, @opentelemetry/core
+  // <2.8.0 via lighthouse -> @sentry/node) was retired the day the stale check first fired on it:
+  // it had been accepted on the grounds that "Sentry pins otel 1.x, so clearing it means forcing a
+  // MAJOR into a third-party dep" — and then Sentry shipped otel 2, lighthouse 13.4.1 picked it up,
+  // and a lockfile refresh cleared the advisory outright. The reasoning that justified the exemption
+  // had quietly stopped being true, which is exactly what an exemption nobody re-reads looks like.
 };
 
 const SEVERITY_RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };

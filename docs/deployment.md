@@ -155,7 +155,7 @@ denies if you use it. None is on by default:
 | `DATABASE_URL` | A **remote** libsql server, if you overrode the default `file:` URL. |
 | `SW_BUILD_WORKER=true` | The Docker daemon at `DOCKER_HOST`, to run site builds in isolated worker containers. A `tcp://` daemon on your network is private egress. |
 | `SW_AI_BASE_URL` | A self-hosted OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM) on your LAN. This env var exists *specifically* to reach one — the admin-facing AI settings reject a private `baseUrl` outright, so the env var is the only way in. |
-| **OIDC SSO** with a self-hosted IdP | Discovery and token exchange against the issuer. Unlike the AI `baseUrl`, the issuer is **not** restricted to public hosts, and an `http://` issuer is explicitly supported — so a Keycloak/Authentik/Zitadel on your LAN works today and will stop working the moment you apply these rules. Login breaks with no hint that a firewall caused it. |
+| **OIDC SSO** with a self-hosted IdP | Discovery and token exchange against the issuer. A private (and plain-`http`) issuer is **deliberately supported** — a Keycloak/Authentik/Zitadel on your LAN is a first-class setup, not a workaround — so these rules *will* break login unless you add an `ACCEPT` for the IdP. It breaks with no hint that a firewall caused it, so add the rule at the same time, not after the first failed login. |
 
 If none of those is configured, the container needs no private egress at all.
 

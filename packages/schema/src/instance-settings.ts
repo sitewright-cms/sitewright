@@ -208,6 +208,30 @@ export type AiStored = z.infer<typeof AiStoredSchema>;
 
 /** A short lowercase slug identifying an OIDC provider (used in `/auth/oidc/<id>/…` routes). */
 const OidcProviderIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'id must be a lowercase slug');
+
+/**
+ * An OIDC issuer URL.
+ *
+ * ★ **Deliberately NOT guarded by `targetsPrivateHost`**, unlike every other user-supplied URL in
+ * this package (form endpoints, the AI `baseUrl`, website URLs). The asymmetry is a decision, not an
+ * oversight, and it is load-bearing: a self-hosted IdP on a private network — Keycloak, Authentik,
+ * Zitadel — is a first-class deployment for the self-hosting audience this platform targets. The
+ * pattern the AI config uses (reject private hosts in the UI, provide an env-var escape hatch) would
+ * mean SSO could not be configured from the admin UI at all, only from the shell.
+ *
+ * Safe because of **who can set it**, not because of what it points at. Providers live in instance
+ * settings, writable only through `PUT /admin/settings` behind `requireInstanceAdmin` — the highest
+ * privilege on the platform, held by someone who can already point `DATABASE_URL` at an arbitrary
+ * server and `SW_AI_BASE_URL` at an arbitrary endpoint. It is NOT reachable by a project member, an
+ * invited client, an API key, or the MCP agent loop, which is the population the pinned-fetch SSRF
+ * boundary exists to contain. An admin choosing an internal address here is configuration, not
+ * confused-deputy.
+ *
+ * `instance-settings.test.ts` asserts a private issuer is ACCEPTED, so a future "hardening" pass
+ * that adds a refine here fails a test instead of silently breaking every LAN SSO deployment. If you
+ * came here to add that refine: read the test's comment first, then don't.
+ */
+const OidcIssuerSchema = z.string().url().max(512);
 const OidcScopesSchema = z.array(z.string().min(1).max(60)).max(20);
 const DEFAULT_OIDC_SCOPES = ['openid', 'profile', 'email'] as const;
 
@@ -215,7 +239,7 @@ const DEFAULT_OIDC_SCOPES = ['openid', 'profile', 'email'] as const;
 export const OidcProviderStoredSchema = z.object({
   id: OidcProviderIdSchema,
   label: z.string().min(1).max(60).refine((v) => !hasControlChars(v), 'label must not contain control characters'),
-  issuer: z.string().url().max(512),
+  issuer: OidcIssuerSchema,
   clientId: z.string().min(1).max(512),
   clientSecret: EncryptedSecretSchema.optional(),
   scopes: OidcScopesSchema.default([...DEFAULT_OIDC_SCOPES]),
@@ -350,7 +374,7 @@ export type AiInput = z.infer<typeof AiInputSchema>;
 export const OidcProviderInputSchema = z.object({
   id: OidcProviderIdSchema,
   label: z.string().min(1).max(60).refine((v) => !hasControlChars(v), 'label must not contain control characters'),
-  issuer: z.string().url().max(512),
+  issuer: OidcIssuerSchema,
   clientId: z.string().min(1).max(512),
   clientSecret: z.string().min(1).max(1024).optional(),
   scopes: OidcScopesSchema.optional(),

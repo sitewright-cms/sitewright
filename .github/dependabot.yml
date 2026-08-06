@@ -18,6 +18,21 @@ version: 2
 # Nothing here automerges. The point is to surface updates for a human, not to apply them
 # unattended — an unattended path from "npm published it" to "it is in our lockfile" is the exact
 # shape of the attack the cooldown exists to stop.
+#
+# ★ SECURITY updates are a separate mechanism and are NOT governed by this file. Dependabot security
+# updates are enabled on the repository (Settings → Code security), they fire on a published
+# advisory rather than on a schedule, and they deliberately IGNORE the cooldowns below.
+#
+# That asymmetry is correct, not an oversight: the cooldown exists to avoid being the first to
+# install a compromise nobody has noticed yet, which is a bet on an UNKNOWN-BAD release. An advisory
+# is the opposite — a KNOWN-bad version already in our tree, where every day of waiting is a day of
+# exposure to something with a CVE number. Waiting 7 days to patch a published vulnerability would
+# invert the whole point.
+#
+# Note the interaction with `pnpm-workspace.yaml`'s `minimumReleaseAge`: a security fix published
+# hours ago can still be rejected by pnpm's lockfile policy check. If that happens, add the single
+# package to `minimumReleaseAgeExclude` with a comment naming the advisory, and remove it once the
+# version has aged out. Do not lower the global floor to unblock one patch.
 
 updates:
   # ── Application dependencies (pnpm workspace; the root lockfile covers every package) ──

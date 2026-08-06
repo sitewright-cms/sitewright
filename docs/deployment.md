@@ -155,15 +155,21 @@ denies if you use it. None is on by default:
 | `DATABASE_URL` | A **remote** libsql server, if you overrode the default `file:` URL. |
 | `SW_BUILD_WORKER=true` | The Docker daemon at `DOCKER_HOST`, to run site builds in isolated worker containers. A `tcp://` daemon on your network is private egress. |
 | `SW_AI_BASE_URL` | A self-hosted OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM) on your LAN. This env var exists *specifically* to reach one — the admin-facing AI settings reject a private `baseUrl` outright, so the env var is the only way in. |
-| **OIDC SSO** with a self-hosted IdP | Discovery and token exchange against the issuer. Unlike the AI `baseUrl`, the issuer is **not** restricted to public hosts, and an `http://` issuer is explicitly supported — so a Keycloak/Authentik/Zitadel on your LAN works today and will stop working the moment you apply these rules. Login breaks with no hint that a firewall caused it. |
+| **OIDC SSO** with a self-hosted IdP | Discovery and token exchange against the issuer. A private (and plain-`http`) issuer is **deliberately supported** — a Keycloak/Authentik/Zitadel on your LAN is a first-class setup, not a workaround — so these rules *will* break login unless you add an `ACCEPT` for the IdP. It breaks with no hint that a firewall caused it, so add the rule at the same time, not after the first failed login. |
 
 If none of those is configured, the container needs no private egress at all.
 
-The application already guards this: any server-side fetch of a user-supplied URL goes through a
-pinned fetcher that resolves the name, refuses private results, connects to the **resolved IP**, and
-re-checks every redirect hop. A host-level rule is defence in depth behind it — it means a future code
-path that forgets the guard, or a DNS entry that changes between the check and the connection, fails
-at the socket instead of succeeding.
+For the fetches driven by *tenant* content — the importer, `import_image` — the application already
+guards this: they go through a pinned fetcher that resolves the name, refuses private results,
+connects to the **resolved IP**, and re-checks every redirect hop. A host-level rule is defence in
+depth behind that: a future code path that forgets the guard, or a DNS entry that changes between the
+check and the connection, fails at the socket instead of succeeding.
+
+**The exceptions in the table above are not behind that guard**, and the OIDC issuer deliberately is
+not — a LAN IdP is a supported configuration, so nothing in the app refuses a private issuer. For
+those, your firewall rule is the *only* control, not a second one. That is the intended split: the
+guard constrains what *tenants* can make the server fetch, while an instance admin naming an internal
+address is trusted configuration.
 
 Implement it in your host firewall's `DOCKER-USER` chain (Docker bypasses `INPUT`/`FORWARD`), matching
 on the container's own subnet. Put the container on a dedicated network so the rules have something

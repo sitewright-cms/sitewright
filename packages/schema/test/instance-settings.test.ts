@@ -121,6 +121,36 @@ describe('OIDC provider schema', () => {
     expect(input.usePkce).toBe(true);
   });
 
+  // ★ A PRIVATE issuer is deliberately ACCEPTED, and this test exists to keep it that way.
+  //
+  // Every other user-supplied URL in this package refuses private hosts, so `issuer` looks like an
+  // oversight to anyone auditing the file — a reviewer flagged it as exactly that. It is not: a
+  // self-hosted IdP on the LAN (Keycloak, Authentik, Zitadel) is a first-class deployment here, and
+  // the alternative pattern (reject in the UI + an env-var escape, as the AI baseUrl does) would mean
+  // SSO could not be configured from the admin UI at all.
+  //
+  // It is safe on WHO, not on WHERE: providers are writable only via `PUT /admin/settings` behind
+  // `requireInstanceAdmin` — someone who can already repoint DATABASE_URL. A project member, invited
+  // client, API key, or the MCP agent loop cannot reach it, and those are the population the
+  // pinned-fetch SSRF boundary exists to contain.
+  //
+  // If you are here because you added `.refine((u) => !targetsPrivateHost(u))` and this went red:
+  // that change breaks every LAN SSO deployment on upgrade, with login failing and no error that
+  // points at the cause. Revert it.
+  it.each([
+    ['a private IPv4 host', 'https://10.0.4.12:8443/realms/acme'],
+    ['a .local hostname', 'https://keycloak.internal.local/realms/acme'],
+    ['plain http, as local IdPs are served', 'http://192.168.1.50:8080/realms/acme'],
+    ['loopback, for a sidecar IdP', 'http://127.0.0.1:8080/realms/acme'],
+  ])('accepts %s as an OIDC issuer', (_label, issuer) => {
+    expect(OidcProviderStoredSchema.parse({ ...base, issuer }).issuer).toBe(issuer);
+    expect(OidcProviderInputSchema.parse({ ...base, issuer }).issuer).toBe(issuer);
+  });
+
+  it('still rejects a non-URL issuer', () => {
+    expect(() => OidcProviderInputSchema.parse({ ...base, issuer: 'not-a-url' })).toThrow();
+  });
+
   it('honors an explicit usePkce value', () => {
     const stored = OidcProviderStoredSchema.parse({ ...base, usePkce: false });
     expect(stored).toMatchObject({ usePkce: false });

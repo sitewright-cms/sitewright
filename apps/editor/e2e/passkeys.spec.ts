@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { dismissProjectSelector, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -23,6 +23,7 @@ test('register a passkey and sign in with it', async ({ page }) => {
   await signUp(page, email);
 
   // Security tab → add a passkey (the name prompt, then the virtual authenticator auto-approves).
+  await dismissProjectSelector(page); // the first-load overlay covers the header
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });

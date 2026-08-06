@@ -155,3 +155,27 @@ export async function seedApiUser(baseUrl: string, email: string, role: 'develop
   expect((await ctx.post('/invites/accept', { data: { token } })).status()).toBe(200);
   return ctx;
 }
+
+/**
+ * Dismiss the first-load PROJECT SELECTOR.
+ *
+ * On first load the app shows the selector as a full-screen `fixed inset-0` overlay, so the header
+ * behind it (Account, Settings…) is unreachable — a plain click times out on actionability and even a
+ * forced click lands on the overlay. Specs that open or create a project close it implicitly; specs
+ * that go straight to a header control must dismiss it. Waits for it to actually be up first, or the
+ * Escape fires before it renders and does nothing.
+ */
+export async function dismissProjectSelector(page: Page): Promise<void> {
+  const account = page.getByRole('button', { name: 'Account' });
+  await expect(account).toBeVisible();
+  for (let i = 0; i < 10; i++) {
+    const covered = await account.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return !(top === el || el.contains(top));
+    });
+    if (!covered) return;
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+  }
+}

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { dismissProjectSelector, signUp } from './helpers.js';
 import { authenticator } from 'otplib';
 
 const stamp = Date.now();
@@ -11,6 +11,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await signUp(page, email);
 
   // Open the account menu → Account Settings → Security → start enrolment.
+  await dismissProjectSelector(page); // the first-load overlay covers the header
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });

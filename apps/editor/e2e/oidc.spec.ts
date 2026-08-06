@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { signInAsAdmin } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -8,7 +8,7 @@ const stamp = Date.now();
 // adds a provider in System Settings, and the login screen then offers it. (The protocol/provisioning
 // is covered by the API unit + mock-IdP tests.)
 test('admin configures an OIDC provider; the login screen offers it', async ({ page }) => {
-  await signUp(page, 'admin@e2e.test');
+  await signInAsAdmin(page);
 
   const exists = await page.getByText('email already registered').waitFor({ state: 'visible', timeout: 2500 }).then(() => true).catch(() => false);
   if (exists) {

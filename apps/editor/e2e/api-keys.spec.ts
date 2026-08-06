@@ -14,7 +14,9 @@ test('create, view, and revoke a project API key from the editor', async ({ page
   await page.getByLabel('Project slug').fill(`keyed-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
   // Access keys now live in the user/account menu (person icon, right of the gear) → Access keys tab.
+  // The person icon opens a MENU; "Account Settings" is what opens the Account modal.
   await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await account.getByRole('button', { name: 'Access keys' }).click();
 

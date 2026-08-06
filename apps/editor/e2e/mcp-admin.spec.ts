@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { signInAsAdmin } from './helpers.js';
 
 const stamp = Date.now();
 
 // The instance-admin MCP panel: editable agent instructions, the endpoint list, and the connect guide.
 // Runs as admin@e2e.test, which SW_ADMIN_EMAILS allowlists as an instance admin on the test container.
 test('admin: edit agent (MCP) instructions, see the endpoint list + connect guide, and persist', async ({ page }) => {
-  await signUp(page, 'admin@e2e.test');
+  await signInAsAdmin(page);
 
   // Idempotent: if this admin already exists (a rerun / seeded), sign in instead of registering.
   const alreadyExists = await page
@@ -42,9 +42,14 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   // Settings are grouped into tabs: agent instructions live under "AI Assistant"; the MCP endpoint
   // catalog + connect guide are the info-only "Agents" tab.
   await modal.getByRole('tab', { name: 'AI Assistant' }).click();
-  // Agent-instructions textarea is pre-filled with the built-in default.
+  // Agent instructions are INSTANCE-GLOBAL. This test SAVES an override, so a re-run against the same
+  // slot used to see its own leftover here and fail on the first assertion — establish the default
+  // rather than assuming it, the way the stock spec establishes "no key configured".
   const instr = modal.getByLabel('Agent instructions');
   await expect(instr).toBeVisible();
+  await modal.getByRole('button', { name: 'Reset to default', exact: true }).click();
+  await modal.getByRole('button', { name: 'Save settings' }).click();
+  await expect(modal.getByText('Saved.')).toBeVisible();
   await expect(instr).toHaveValue(/CODE-FIRST/);
 
   // The endpoint list shows registered MCP tools; the connect guide shows the CLI bridge command.
@@ -65,7 +70,8 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   await expect(instr).toHaveValue('House style: terse, on-brand, accessible.');
 
   // Reset to default → save → the round-trip reverts to the built-in default (override cleared).
-  await modal.getByRole('button', { name: 'Reset to default' }).click();
+  // `exact`: the section's help tooltip quotes the phrase too, so a substring match hits both.
+  await modal.getByRole('button', { name: 'Reset to default', exact: true }).click();
   await expect(instr).toHaveValue(/CODE-FIRST/);
   await modal.getByRole('button', { name: 'Save settings' }).click();
   await expect(modal.getByText('Saved.')).toBeVisible();

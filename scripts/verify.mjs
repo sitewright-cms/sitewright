@@ -14,26 +14,12 @@ import { spawnSync } from 'node:child_process';
 const GATES = [
   {
     name: 'Audit dependencies',
-    cmd: ['pnpm', 'audit', '--audit-level', 'high'],
-    // `pnpm audit` (pnpm 9) calls npm's quick-audit endpoint, which npm RETIRED (HTTP 410 ->
-    // ERR_PNPM_AUDIT_BAD_RESPONSE). That is an npm-side infra change, not a vulnerability, and there is
-    // nothing to act on until pnpm ships support for the bulk advisory endpoint. Tolerate ONLY that
-    // specific transport error; a real high/critical advisory still fails the gate.
-    tolerate: (out) => out.includes('ERR_PNPM_AUDIT_BAD_RESPONSE'),
-    tolerateNote: 'pnpm audit skipped — npm retired the audit endpoint (410)',
-    // `pnpm.auditConfig.ignoreGhsas` is EMPTY and should stay that way: an exemption silently outlives
-    // the advisory that justified it (all three former entries did — one had already stopped matching
-    // the tree). Fix by pinning in pnpm.overrides instead, so the audit keeps telling the truth.
-    //
-    // Two advisories remain, both BELOW this gate, neither reachable here:
-    // - GHSA-g7r4-m6w7-qqqr (esbuild <0.28.1, low): arbitrary file read via the esbuild DEV SERVER, on
-    //   Windows. Reached only through vitest -> vite, so it is test tooling that never runs in prod, and
-    //   we run Linux. A blanket esbuild override is not viable (vite pins 0.25; 0.28 drops transpile
-    //   support for our editor browser targets) — re-check on the next vite bump.
-    // - GHSA-8988-4f7v-96qf (@opentelemetry/core <2.8.0, moderate): unbounded allocation parsing W3C
-    //   Baggage headers, via lighthouse -> @sentry/node. Sentry pins otel 1.x, so clearing it means
-    //   forcing a MAJOR into a third-party dep; Lighthouse runs against our OWN locally-served build and
-    //   never parses attacker-supplied baggage. Revisit when Sentry ships otel 2.
+    // Was `pnpm audit --audit-level high`, which failed OPEN on a transport error and used a floor
+    // too high to catch the class of advisory we actually ship (a moderate, remotely-triggerable
+    // ReDoS in a network-facing dep passed it cleanly). Both fixed in the script — see its header.
+    // `pnpm.auditConfig.ignoreGhsas` stays EMPTY: acceptances live in the gate, not in the audit,
+    // so `pnpm audit` itself never lies about what is in the tree.
+    cmd: ['node', 'scripts/audit-gate.mjs'],
   },
   // Guard against hand-edits / upstream drift of the generated icon + vendored-runtime sets.
   { name: 'Check generated brand icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:brand-icons:check'] },

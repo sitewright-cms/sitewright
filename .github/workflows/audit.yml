@@ -1,0 +1,61 @@
+name: Audit
+
+# The `Verify` gate audits dependencies on every PR and push, which answers "was the tree clean when
+# we merged it?". It cannot answer "is the tree clean NOW" — advisories are published against versions
+# that were already installed and already green. A quiet week means nobody re-checks, and the window
+# between an advisory landing and someone opening an unrelated PR is exactly the window an attacker
+# gets. This job closes it by re-auditing the merged tree on a schedule.
+#
+# Deliberately NOT part of scripts/verify.mjs: that script is the merge gate, and its gates must be a
+# function of the diff. This one is a function of time.
+on:
+  schedule:
+    # 06:20 UTC daily. Off the hour on purpose — GitHub queues cron runs sharply at :00, so an
+    # odd-minute schedule is dispatched more promptly.
+    - cron: '20 6 * * *'
+  # So a human can re-check immediately after an advisory lands, without waiting for the cron.
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  audit:
+    name: Audit dependencies · scheduled
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Same SHA pins as ci.yml — bump all workflows together.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # `--ignore-scripts` is redundant given pnpm.onlyBuiltDependencies, but this job exists to run
+      # unattended against a tree nobody is watching — belt and braces.
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Same threshold as the merge gate, so this can never be stricter than what CI enforces and
+      # fail on something a PR would have been allowed to merge.
+      - name: Audit
+        run: pnpm audit --audit-level high
+
+      # The gate above only fails on high/critical. Everything below that is still worth SEEING, but
+      # must not fail the run — `|| true` is the point, not an oversight.
+      - name: Full advisory list (informational)
+        if: always()
+        run: pnpm audit --audit-level low || true

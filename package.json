@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Sitewright \u2014 OSS website development platform for web-development agencies.",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@11.20.0+sha512-mm8zCpW2ZEbqCI+vFSFAWooB8H/ecSTMmVjf7VLUu0NnN+ZbCPhfN7Rvy6N1CSVYrFEmK4FoRLIvY0Bu0Wa/7g==",
   "engines": {
     "node": ">=22"
   },
@@ -26,30 +26,5 @@
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "@tailwindcss/oxide",
-      "sharp"
-    ],
-    "overrides": {
-      "@esbuild-kit/core-utils>esbuild": "^0.25.0",
-      "@hono/node-server@<2.0.5": "^2.0.5",
-      "body-parser@<2.3.0": "^2.3.0",
-      "brace-expansion@<5.0.9": "^5.0.9",
-      "fast-uri@<3.1.5": "^3.1.5",
-      "find-my-way@<9.7.0": "^9.7.0",
-      "form-data@<4.0.6": "^4.0.6",
-      "hono@<4.12.34": ">=4.12.34",
-      "ip-address@<10.3.1": "^10.3.1",
-      "js-yaml@>=4.0.0 <4.3.0": "^4.3.0",
-      "nodemailer@<9.0.1": ">=9.0.1",
-      "postcss@<8.5.18": "^8.5.18",
-      "shell-quote@<1.9.0": "^1.9.0"
-    },
-    "auditConfig": {
-      "ignoreGhsas": []
-    }
   }
 }

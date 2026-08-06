@@ -44,7 +44,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # `--ignore-scripts` is redundant given pnpm.onlyBuiltDependencies, but this job exists to run
+      # `--ignore-scripts` is redundant given `allowBuilds` in pnpm-workspace.yaml, but this job runs
       # unattended against a tree nobody is watching — belt and braces.
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts

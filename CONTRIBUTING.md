@@ -69,12 +69,28 @@ Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, 
 ## Local setup
 
 ```bash
-corepack enable           # provides pnpm
+corepack enable           # provides pnpm — use this, not a globally-installed pnpm
 pnpm install
 pnpm verify               # the full merge gate — run this before you push
 ```
 
-Requires Node >= 22 (see `.nvmrc`).
+Requires Node >= 22 (see `.nvmrc`) and **pnpm 11**, pinned with an integrity hash in
+`packageManager`. `corepack enable` gets you the right one automatically.
+
+If you have pnpm 9 installed globally it will refuse to run here, with
+`Invalid package manager specification ... expected a semver version` — it cannot parse the
+integrity hash. That refusal is load-bearing, not a papercut: pnpm 9 reads settings from the
+`pnpm` field in `package.json`, which pnpm 11 no longer honours and this repo therefore no longer
+has. A pnpm 9 that *did* run would install with **no dependency overrides and no install-script
+allowlist**, quietly undoing the supply-chain controls. Use corepack.
+
+### Supply-chain settings live in `pnpm-workspace.yaml`
+
+Not in `package.json` — pnpm 11 ignores the `pnpm` field there and only prints a `[WARN]`, so a
+setting left behind is silently inert. That file holds the dependency cooldown
+(`minimumReleaseAge`), the install-script allowlist (`allowBuilds`), and the advisory `overrides`;
+each is commented with why it is set the way it is. Advisory *acceptances* are separate and live in
+`scripts/audit-gate.mjs`.
 
 `pnpm verify` runs `scripts/verify.mjs`: dependency audit → generated-file drift checks → typecheck →
 lint → build → test, in that order, stopping at the first failure. **CI runs the same script**, so a

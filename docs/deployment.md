@@ -114,6 +114,112 @@ a wildcard cert + `*.sites.example.com` route to the same container; each publis
 | `GET /ready` | Readiness — the DB is reachable + migrated (`503` until it is). Point your load balancer here. |
 | `GET /version` | The running release, e.g. `{"current":"0.1.0", ...}`. |
 
+## Outbound network access
+
+Short version: **you cannot lock this container down to an allowlist of destinations, and you should
+not try.** You *can* stop it reaching your private network, and that is worth doing.
+
+### Why a destination allowlist does not work here
+
+Fetching arbitrary URLs is a product feature, not an accident. The website importer exists to crawl
+a site you name; `import_image` fetches an image URL you give it; deploy targets and per-project SMTP
+point at hosts your clients choose. Any allowlist wide enough to keep those working is wide enough to
+carry data out of, and a compromised dependency could simply use the importer rather than opening its
+own socket. Egress filtering is a real control against a *fixed* set of destinations — this workload
+does not have one.
+
+That is separate from serving client sites. Those are served **inbound**, on `/sites/<slug>/` and the
+`<slug>.<sitesDomain>` subdomains; rendering them needs no outbound connection at all, because the
+visitor's browser fetches whatever the page embeds. Restricting egress does not affect hosting.
+
+### What you should restrict: the private network
+
+On a default install the container has **no legitimate reason to reach a private address**. It stores
+everything in SQLite on its own volume — there is no database server, cache, queue, or internal
+service it dials. So a connection from this container to `10/8`, `172.16/12`, `192.168/16`, `127/8`,
+`169.254/16` (including the cloud metadata endpoint `169.254.169.254`) or their IPv6 equivalents is
+either a bug or an attack, and blocking it costs nothing.
+
+The one thing that changes this: if you have overridden `DATABASE_URL` to point at a **remote** libsql
+server on your own network, that is real private egress and needs an `ACCEPT` rule for that host. The
+default (`file:` under the data volume) does not.
+
+The application already guards this: any server-side fetch of a user-supplied URL goes through a
+pinned fetcher that resolves the name, refuses private results, connects to the **resolved IP**, and
+re-checks every redirect hop. A host-level rule is defence in depth behind it — it means a future code
+path that forgets the guard, or a DNS entry that changes between the check and the connection, fails
+at the socket instead of succeeding.
+
+Implement it in your host firewall's `DOCKER-USER` chain (Docker bypasses `INPUT`/`FORWARD`), matching
+on the container's own subnet. Put the container on a dedicated network so the rules have something
+stable to match:
+
+```bash
+docker network create --subnet 172.28.0.0/24 sw-net
+docker run -d --name sitewright --network sw-net ...   # otherwise as in Quick start
+```
+
+Then deny that subnet the private destinations, before Docker's own accept rules:
+
+```bash
+for dst in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 169.254.0.0/16; do
+  sudo iptables -I DOCKER-USER -s 172.28.0.0/24 -d "$dst" \
+    -j REJECT --reject-with icmp-admin-prohibited
+done
+sudo ip6tables -I DOCKER-USER -s <container-v6-subnet> -d fc00::/7 \
+  -j REJECT --reject-with icmp6-adm-prohibited          # if IPv6 is enabled
+```
+
+`icmp-admin-prohibited` rather than a bare `REJECT` on purpose: it surfaces as `EHOSTUNREACH`, which is
+distinguishable from the `ECONNREFUSED` you get when the packet arrived and nothing was listening. A
+plain `REJECT` produces `ECONNREFUSED` too, so you cannot tell it from no rule at all.
+
+**Exclude your own subnet from the loop** if it overlaps `172.28.0.0/24` — otherwise the first rule cuts
+the container off from its own network.
+
+### Verifying it, without fooling yourself
+
+A rule that matches nothing is worse than no rule, because you will believe you are protected. **Probe
+before and after; the answer has to change.** Pick a private address that is genuinely routable — the
+container's own gateway — not the cloud metadata IP, which times out on any machine that simply is not
+in that cloud, so "timeout" would look like success everywhere:
+
+```bash
+# Run this BEFORE adding the rules, and again after. It must differ.
+docker exec sitewright node -e "
+const s=require('net').connect({port:80,host:'172.28.0.1'});
+s.setTimeout(3000);
+s.on('connect',()=>{console.log('REACHED — no rule in effect');s.destroy()});
+s.on('timeout',()=>{console.log('timed out (DROP-style block)');s.destroy()});
+s.on('error',e=>console.log(e.code));"
+```
+
+`ECONNREFUSED` before, `EHOSTUNREACH` after. If it says `ECONNREFUSED` both times, your rule is not
+matching this container's traffic. Then confirm the internet still works, or you have broken the
+importer, deploys and mail:
+
+```bash
+docker exec sitewright node -e "fetch('https://example.com').then(r=>console.log('public',r.status))"
+```
+
+**Opt out if you need it.** Some setups legitimately reach the LAN: an internal SMTP relay, or an SFTP
+deploy target on your own network. Those need a matching `ACCEPT` rule ahead of the `REJECT`s for that
+one host — and note the application's pinned fetcher blocks private addresses regardless, so an
+internal *import* source will not work either way.
+
+### Narrowing the two user-configurable egress paths
+
+Independent of any firewall, the app can restrict the destinations your users are allowed to
+configure, which is the more precise tool for a shared instance:
+
+| Variable | Effect |
+|---|---|
+| `SW_DEPLOY_ALLOWED_HOSTS` | Saved deploy targets may only point at these exact hostnames. |
+| `SW_SMTP_ALLOWED_HOSTS` | Per-project SMTP may only point at these exact hostnames. |
+
+Both are comma-separated and unset by default (anything allowed). On a multi-tenant instance, set
+them. See [environment.md](environment.md).
+
 ## Upgrades
 
 Pull a newer tag and recreate the container against the **same volume**:

@@ -8,19 +8,6 @@ const stamp = Date.now();
 test('admin: edit agent (MCP) instructions, see the endpoint list + connect guide, and persist', async ({ page }) => {
   await signInAsAdmin(page);
 
-  // Idempotent: if this admin already exists (a rerun / seeded), sign in instead of registering.
-  const alreadyExists = await page
-    .getByText('email already registered')
-    .waitFor({ state: 'visible', timeout: 2500 })
-    .then(() => true)
-    .catch(() => false);
-  if (alreadyExists) {
-    await page.getByRole('button', { name: 'Have an account? Sign in' }).click();
-    await page.getByLabel('Email').fill('admin@e2e.test');
-    await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  }
-
   // A no-projects account auto-opens (and re-opens) the project selector, whose backdrop intercepts
   // the header gear. Create a project to land in a stable, modal-free state (same flow the other
   // specs use), then open the instance-admin panel from the gear menu.

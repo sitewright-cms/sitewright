@@ -42,6 +42,8 @@ test('sw-folder gallery: folder images render in the preview', async ({ page }) 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const shot = preview.locator('img.shot');
   await expect(shot).toHaveCount(1); // the folder's one image looped
-  await expect(shot).toHaveAttribute('src', /\/media\/[\w-]+\/[\w-]+\//); // an API-served media URL
+  // An API-served media URL. The scheme is FLAT — `/media/<project-slug>/<id>-<name>` — so there is
+  // no third path segment to anchor on.
+  await expect(shot).toHaveAttribute('src', /^\/media\/[\w-]+\/[\w-]+-shot\.png$/);
   await expect(preview.locator('p.empty')).toHaveCount(0); // not the {{else}} branch
 });

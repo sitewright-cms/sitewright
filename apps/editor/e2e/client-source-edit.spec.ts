@@ -36,14 +36,14 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await expect(page.getByText('Sign in to your account')).toBeVisible();
   await page.goto(link!);
-  await expect(page.getByText(/invited/)).toBeVisible();
-  await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Email', { exact: true }).fill(clientEmail);
+  // The invite landing opens the login form ALREADY in set-password mode with the email locked to the
+  // invited address — there is no register toggle to click and no email to type.
+  await expect(page.getByText(/You’ve been invited as/)).toBeVisible();
   await page.getByLabel('Password', { exact: true }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  // --- Client accepts → the page opens in the editor MODAL, defaulting to CONTENT mode ---
-  await page.getByRole('button', { name: 'Accept invitation' }).click();
+  // --- Accepting is AUTOMATIC once authenticated (no confirm button): the invite materializes the
+  // membership and drops the client into the app, where the project is now theirs to open. ---
   await page.getByRole('button', { name: /Code Site/ }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -61,9 +61,10 @@ test('client edits a code page’s bound region (content), template stays immuta
   await expect(region).toHaveText('A client-written tagline');
 
   // Save keeps the modal open (the loop continues); close, reopen → the edit persisted.
-  await page.getByRole('button', { name: 'Save' }).click();
+  // `exact`: the editor header also carries "Save as template"/"Save settings".
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
   await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]')).toHaveText('A client-written tagline');
 });

@@ -12,7 +12,7 @@ record**, reported at `GET /version`.
 
 1. **Pick the version** (`X.Y.Z`) and make sure `main` is green — `pnpm verify` AND both E2E suites
    (they are not in CI; see [CONTRIBUTING.md](CONTRIBUTING.md) and
-   [`apps/editor/e2e/KNOWN-DRIFT.md`](apps/editor/e2e/KNOWN-DRIFT.md)):
+   [`apps/editor/e2e/README.md`](apps/editor/e2e/README.md)):
    ```bash
    eval "$(scripts/e2e-deploy.sh up)"
    pnpm -F @sitewright/api exec playwright test && pnpm -F @sitewright/editor exec playwright test

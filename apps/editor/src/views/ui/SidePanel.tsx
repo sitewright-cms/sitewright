@@ -1,6 +1,6 @@
 /* eslint-disable security/detect-object-injection -- every dynamic index in this file keys a local
    const lookup table by a typed `SidePanelSide`/`SidePanelAlign` literal; never user-controlled. */
-import { createContext, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { OVERLAY_STACK } from './overlay';
 
@@ -18,6 +18,14 @@ export const InSidePanel = createContext(false);
  * whenever ANY modal is open — see `requestClose`.)
  */
 export const SidePanelHold = createContext<{ hold: () => void; release: () => void } | null>(null);
+
+/**
+ * Dismisses the enclosing {@link SidePanel} from inside its own content. Panels whose job is to send
+ * you somewhere ELSE (the Regions rail jumps to a region in the preview) need this: the drawer's
+ * backdrop covers the page, so leaving it open would put the thing you just navigated to out of
+ * reach. Null outside any panel.
+ */
+export const SidePanelClose = createContext<(() => void) | null>(null);
 
 export type SidePanelSide = 'left' | 'right' | 'bottom';
 /** Where the collapsed tab sits along its edge (lets several tabs share one edge). `center-left`/
@@ -142,6 +150,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
     () => ({ hold: () => setHeld((h) => h + 1), release: () => setHeld((h) => Math.max(0, h - 1)) }),
     [],
   );
+  const closeApi = useCallback(() => setOpen(false), []);
   // A held dialog forces the panel open (it opened FROM the panel, so the panel must back it).
   useEffect(() => {
     if (held > 0) setOpen(true);
@@ -289,7 +298,9 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
         </header>
         <div className={`min-h-0 flex-1 overflow-auto ${edgeInset}`}>
           <InSidePanel.Provider value={true}>
-            <SidePanelHold.Provider value={holdApi}>{children}</SidePanelHold.Provider>
+            <SidePanelHold.Provider value={holdApi}>
+              <SidePanelClose.Provider value={closeApi}>{children}</SidePanelClose.Provider>
+            </SidePanelHold.Provider>
           </InSidePanel.Provider>
         </div>
       </section>

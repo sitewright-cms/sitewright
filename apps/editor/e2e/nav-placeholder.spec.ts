@@ -14,8 +14,8 @@ test('create nav placeholders (external + dropdown) and round-trip their setting
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // --- An EXTERNAL placeholder that opens in a new tab. ---
-  await page.getByRole('button', { name: '+ Add nav placeholder' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Add nav placeholder' });
+  await page.getByRole('button', { name: '+ New Placeholder' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New Placeholder' });
   await dialog.getByLabel('Placeholder name').fill('Docs');
   await dialog.getByLabel('Link target').fill('https://docs.example.com');
   await dialog.getByLabel('Open in new tab').check();
@@ -40,8 +40,8 @@ test('create nav placeholders (external + dropdown) and round-trip their setting
   await expect(settings).toBeHidden();
 
   // --- A DROPDOWN-only placeholder (no target). ---
-  await page.getByRole('button', { name: '+ Add nav placeholder' }).click();
-  const d2 = page.getByRole('dialog', { name: 'Add nav placeholder' });
+  await page.getByRole('button', { name: '+ New Placeholder' }).click();
+  const d2 = page.getByRole('dialog', { name: 'New Placeholder' });
   await d2.getByLabel('Placeholder name').fill('Services');
   await d2.getByLabel('Dropdown of child pages').check();
   await d2.getByRole('button', { name: 'Add placeholder' }).click();

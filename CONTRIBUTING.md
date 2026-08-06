@@ -25,7 +25,8 @@ enforced, not aspirational.
   sign-up flow every spec used had been removed. So **run both suites before cutting a
   release**, and seed users with the shared helpers rather than hand-copying a flow:
   `apps/api/e2e/helpers.ts` / `apps/editor/e2e/helpers.ts` (`signUp`, `signInAsAdmin`).
-  Current status and the outstanding drift: [`apps/editor/e2e/KNOWN-DRIFT.md`](apps/editor/e2e/KNOWN-DRIFT.md).
+  How to run the browser suite, how to read its failures, and every non-obvious thing about the UI it
+  drives: [`apps/editor/e2e/README.md`](apps/editor/e2e/README.md).
 
 ## Parallel / multi-agent work
 

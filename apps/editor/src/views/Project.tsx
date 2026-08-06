@@ -490,6 +490,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       // Slug-only suffix (the home copy gets a real slug — it can't be the empty root).
       path: p.path === '' ? `home-${rand}` : `${p.path}-${rand}`,
       title: `${p.title} (Copy)`,
+      // The MENU label wins over the title in the pages list and in the auto-nav, so a copy that
+      // inherited it verbatim shows up as a second identical row (and a second identical menu item),
+      // distinguishable only by path. Suffix it the same way the title is.
+      nav: p.nav?.title ? { ...p.nav, title: `${p.nav.title} (Copy)` } : p.nav,
       // A copy is its own page, not a translation sibling.
       translationGroup: undefined,
       // The copy is never the home page, so it must have a parent — keep the original's,

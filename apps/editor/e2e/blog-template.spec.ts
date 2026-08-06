@@ -21,8 +21,13 @@ test('global:blog-article: enabling the template seeds page.data defaults and re
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); // the Page-settings gear is source-mode-only
 
   // Page settings → enable the blog-article template (its declared defaults seed page.data).
+  // The template picker sits under the collapsed "Advanced" disclosure when editing a page that
+  // doesn't already use one — expand it first.
   await page.getByRole('button', { name: 'Page settings' }).click();
-  await page.getByLabel('Page template').selectOption({ label: 'Blog article (global)' });
+  await page.getByRole('button', { name: /Advanced/ }).click();
+  // The picker is a searchable combobox (long template lists), not a native <select>.
+  await page.getByRole('combobox', { name: 'Page template' }).click();
+  await page.getByRole('option', { name: 'Blog article (global)' }).click();
   await page.getByRole('button', { name: 'Save settings' }).click();
 
   // The template renders, bound to the seeded page.data.

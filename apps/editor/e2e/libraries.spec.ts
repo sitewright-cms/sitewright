@@ -67,8 +67,10 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   // Icons tab (default): the whole Phosphor pack, searchable by name.
   await iconsGallery.getByLabel('Search icons').fill('rocket');
   await expect(iconsGallery.getByRole('button', { name: 'Copy rocket icon snippet' })).toBeVisible();
-  // Brand tab: brand: prefix snippets.
+  // Brand tab: brand: prefix snippets. Each tab owns its own search, and the large sets page in on
+  // scroll — so a specific logo has to be searched for, not scrolled to.
   await iconsGallery.getByRole('tab', { name: 'Brand' }).click();
+  await iconsGallery.getByLabel('Search Brand icons').fill('github');
   await expect(iconsGallery.getByRole('button', { name: 'Copy GitHub icon snippet' })).toBeVisible();
   await page.keyboard.press('Escape');
 

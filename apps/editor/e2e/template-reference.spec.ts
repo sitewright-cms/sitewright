@@ -23,7 +23,8 @@ test('library: template reference — open, search, filter by group', async ({ p
   await expect(ref).toBeVisible();
 
   // Search finds the dataset-aware {{#each}} loop (eachEntry was merged into it).
-  const search = ref.getByLabel('Search the template reference');
+  // The search field's label is derived from the modal title (`Search ${title}`).
+  const search = ref.getByLabel('Search Template reference');
   await search.fill('dataset');
   await expect(ref.getByText(/#each items/)).toBeVisible(); // the unified loop helper's syntax
   await expect(ref.getByRole('button', { name: 'Copy' }).first()).toBeVisible();

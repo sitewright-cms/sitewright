@@ -227,6 +227,12 @@ const OidcProviderIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'id m
  * boundary exists to contain. An admin choosing an internal address here is configuration, not
  * confused-deputy.
  *
+ * A second, independent reason the residual risk is small: `oauth4webapi` (under `openid-client`)
+ * issues every outbound call — discovery, JWKS, token, userinfo — with `redirect: 'manual'`, and
+ * `processDiscoveryResponse` throws on anything but a 200. So a public-looking issuer cannot bounce
+ * the server's fetch onward to an internal address via a 3xx; the destination stays whatever the
+ * admin literally typed. That is the hop-level bypass a host-based check would otherwise miss.
+ *
  * `instance-settings.test.ts` asserts a private issuer is ACCEPTED, so a future "hardening" pass
  * that adds a refine here fails a test instead of silently breaking every LAN SSO deployment. If you
  * came here to add that refine: read the test's comment first, then don't.

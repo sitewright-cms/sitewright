@@ -159,11 +159,17 @@ denies if you use it. None is on by default:
 
 If none of those is configured, the container needs no private egress at all.
 
-The application already guards this: any server-side fetch of a user-supplied URL goes through a
-pinned fetcher that resolves the name, refuses private results, connects to the **resolved IP**, and
-re-checks every redirect hop. A host-level rule is defence in depth behind it — it means a future code
-path that forgets the guard, or a DNS entry that changes between the check and the connection, fails
-at the socket instead of succeeding.
+For the fetches driven by *tenant* content — the importer, `import_image` — the application already
+guards this: they go through a pinned fetcher that resolves the name, refuses private results,
+connects to the **resolved IP**, and re-checks every redirect hop. A host-level rule is defence in
+depth behind that: a future code path that forgets the guard, or a DNS entry that changes between the
+check and the connection, fails at the socket instead of succeeding.
+
+**The exceptions in the table above are not behind that guard**, and the OIDC issuer deliberately is
+not — a LAN IdP is a supported configuration, so nothing in the app refuses a private issuer. For
+those, your firewall rule is the *only* control, not a second one. That is the intended split: the
+guard constrains what *tenants* can make the server fetch, while an instance admin naming an internal
+address is trusted configuration.
 
 Implement it in your host firewall's `DOCKER-USER` chain (Docker bypasses `INPUT`/`FORWARD`), matching
 on the container's own subnet. Put the container on a dedicated network so the rules have something

@@ -69,12 +69,34 @@ Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, 
 ## Local setup
 
 ```bash
-corepack enable           # provides pnpm
+corepack enable           # provides pnpm — use this, not a globally-installed pnpm
 pnpm install
 pnpm verify               # the full merge gate — run this before you push
 ```
 
-Requires Node >= 22 (see `.nvmrc`).
+Requires Node >= 22.13 (see `.nvmrc`) and **pnpm 11**, pinned in `packageManager` with a corepack
+integrity hash — corepack verifies the downloaded pnpm against it, so `corepack enable` both gets
+you the right version and checks it is the real one.
+
+Use corepack rather than a globally-installed pnpm, and not only for version skew: **pnpm 9 reads
+settings from the `pnpm` field in `package.json`, which pnpm 11 no longer honours and this repo
+therefore no longer has.** A pnpm 9 run here would install with *no dependency overrides and no
+install-script allowlist* — quietly undoing the supply-chain controls, with nothing louder than a
+warning to tell you.
+
+If you edit `packageManager` by hand, note that the hash is corepack's `+sha512.<hex>` form, not
+npm's `+sha512-<base64>` SRI string. Corepack rejects the latter outright with
+`Invalid package manager specification ... expected a semver version`, and CI will not catch it:
+`pnpm/action-setup` discards everything after the `+` without validating it. Generate it with
+`corepack use pnpm@<version>`.
+
+### Supply-chain settings live in `pnpm-workspace.yaml`
+
+Not in `package.json` — pnpm 11 ignores the `pnpm` field there and only prints a `[WARN]`, so a
+setting left behind is silently inert. That file holds the dependency cooldown
+(`minimumReleaseAge`), the install-script allowlist (`allowBuilds`), and the advisory `overrides`;
+each is commented with why it is set the way it is. Advisory *acceptances* are separate and live in
+`scripts/audit-gate.mjs`.
 
 `pnpm verify` runs `scripts/verify.mjs`: dependency audit → generated-file drift checks → typecheck →
 lint → build → test, in that order, stopping at the first failure. **CI runs the same script**, so a

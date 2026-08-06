@@ -1,3 +1,110 @@
 packages:
   - "packages/*"
   - "apps/*"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Everything below used to live in the root package.json "pnpm" field. pnpm 11
+# NO LONGER READS THAT FIELD — it prints a WARN and carries on, which means an
+# upgrade that forgets this file silently drops every CVE override and the
+# install-script allowlist while still exiting 0. Keep these here.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Dependency cooldown: refuse to resolve a version published less than this many
+# minutes ago. This is the control that actually defeats registry-compromise
+# worms — a malicious release is typically yanked within hours (Shai-Hulud ~12h,
+# the chalk/debug compromise ~2.5h), so anything that waits is never exposed.
+# pnpm 11 defaults to 1440 (1 day). 3 days still clears every recent incident by
+# a wide margin, and the extra headroom is deliberately NOT larger than that
+# because of a real tension: the `overrides` block below exists to adopt security
+# patches PROMPTLY, and a long cooldown fights that. A 7-day window was tried
+# first and rejected three packages our own CVE overrides had pulled in
+# (brace-expansion, fast-uri, ip-address — all patch releases days old).
+#
+# When an urgent advisory lands and the fix is younger than the cooldown, do NOT
+# lower this globally: add just that package to minimumReleaseAgeExclude below,
+# with a comment, and remove it once the version has aged out.
+#
+# ★ This is enforced on `--frozen-lockfile` installs too, which is what makes it a
+# real gate rather than an authoring-time nicety. pnpm runs a separate "Verifying
+# lockfile against supply-chain policies" pass that checks EVERY existing lockfile
+# entry, even when it skips resolution. Measured: temporarily raising this value
+# fails `pnpm install --frozen-lockfile` with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION
+# naming each entry. So a lockfile someone commits with a too-fresh (or freshly
+# compromised) version is rejected by CI, not merely discouraged locally.
+minimumReleaseAge: 4320
+
+# Workspace packages resolve through the `workspace:` protocol, not the registry,
+# so the cooldown never applies to them — but be explicit, so a future move to
+# publishing these to a registry cannot deadlock our own releases.
+minimumReleaseAgeExclude:
+  - "@sitewright/*"
+
+# Refuse transitive deps that resolve from git URLs, gists, or arbitrary tarballs
+# rather than the registry. Default-on in pnpm 11; stated so a downgrade or a
+# config move cannot quietly lose it.
+blockExoticSubdeps: true
+
+# `pnpm deploy --prod` builds the runtime image's node_modules (release.yml, and the CI snapshot
+# job). From pnpm 10 it refuses to run unless the workspace injects workspace packages, failing with
+# ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE — after having already created a PARTIAL output directory
+# with sources but no node_modules, which is the exact shape that builds a broken image if anything
+# ignores the exit code.
+#
+# `forceLegacyDeploy: true` is the documented escape hatch and it is WRONG HERE. Measured: it emits
+#   node_modules/@sitewright/blocks -> ../../../../workspace/sitewright/packages/blocks
+# i.e. symlinks pointing OUT of the deploy directory, back into the source checkout. pnpm 9 emitted
+#   node_modules/@sitewright/blocks -> ../.pnpm/@sitewright+blocks@file+packages+blocks/...
+# which stays inside it. Only the second survives being COPYed into an image; the first is a set of
+# dangling links the moment it leaves this machine.
+#
+# So: inject, which materialises real copies inside the deploy output. This is what makes the result
+# self-contained, and it is verified by diffing the deploy tree against the pnpm 9 one.
+injectWorkspacePackages: true
+
+# Advisory remediation. Prefer pinning here over an audit exemption: an override
+# keeps `pnpm audit` telling the truth, whereas an ignored GHSA silently outlives
+# the advisory that justified it.
+overrides:
+  "@esbuild-kit/core-utils>esbuild": ^0.25.0
+  "@hono/node-server@<2.0.5": ^2.0.5
+  "body-parser@<2.3.0": ^2.3.0
+  "brace-expansion@<5.0.9": ^5.0.9
+  "fast-uri@<3.1.5": ^3.1.5
+  "find-my-way@<9.7.0": ^9.7.0
+  "form-data@<4.0.6": ^4.0.6
+  "hono@<4.12.34": ">=4.12.34"
+  "ip-address@<10.3.1": ^10.3.1
+  "js-yaml@>=4.0.0 <4.3.0": ^4.3.0
+  "nodemailer@<9.0.1": ">=9.0.1"
+  "postcss@<8.5.18": ^8.5.18
+  "shell-quote@<1.9.0": ^1.9.0
+
+# Deliberately EMPTY and it should stay that way — advisory acceptances live in scripts/audit-gate.mjs,
+# where they carry a reason and a stale one is a hard failure. An `ignore` here would instead make
+# `pnpm audit` itself stop reporting the advisory, which is how the previous three exemptions managed
+# to outlive the advisories that justified them.
+# (pnpm deprecates `auditConfig` in favour of `audit.ignore`; kept as-is because it is empty and only
+# documents the intent. Migrate whenever pnpm actually drops it.)
+auditConfig:
+  ignoreGhsas: []
+
+# Install scripts run arbitrary code at install time — the single most-used vector
+# in every recent registry-compromise worm. They are DENIED by default; this map
+# is the allowlist, and `true` here is a real grant. Justify additions in review.
+#
+# This REPLACES the v9/v10 `onlyBuiltDependencies` list, which pnpm 11 no longer
+# reads. The three `true` entries are exactly what that list allowed, so this
+# migration changes no behaviour. The `false` entries were already blocked (they
+# were simply absent from the old list) — stated explicitly so the next person
+# sees a decision rather than an omission, and so `pnpm install` stops asking.
+allowBuilds:
+  # Bundles the vendored component runtimes (scripts/gen-vendor.mjs) and backs vite.
+  esbuild: true
+  # Native binary: the Tailwind v4 engine.
+  "@tailwindcss/oxide": true
+  # Native binary: the image pipeline (thumbnails, WebP variants).
+  sharp: true
+  # Optional native crypto acceleration for ssh2, itself only used by the SFTP
+  # deploy target. Pure-JS fallbacks cover both; neither has ever been built here.
+  ssh2: false
+  cpu-features: false

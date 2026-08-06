@@ -17,7 +17,7 @@ const GATES = [
     // Was `pnpm audit --audit-level high`, which failed OPEN on a transport error and used a floor
     // too high to catch the class of advisory we actually ship (a moderate, remotely-triggerable
     // ReDoS in a network-facing dep passed it cleanly). Both fixed in the script — see its header.
-    // `pnpm.auditConfig.ignoreGhsas` stays EMPTY: acceptances live in the gate, not in the audit,
+    // `auditConfig.ignoreGhsas` (pnpm-workspace.yaml) stays EMPTY: acceptances live in the gate,
     // so `pnpm audit` itself never lies about what is in the tree.
     cmd: ['node', 'scripts/audit-gate.mjs'],
   },

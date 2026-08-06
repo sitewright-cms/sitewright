@@ -74,15 +74,21 @@ pnpm install
 pnpm verify               # the full merge gate — run this before you push
 ```
 
-Requires Node >= 22 (see `.nvmrc`) and **pnpm 11**, pinned with an integrity hash in
-`packageManager`. `corepack enable` gets you the right one automatically.
+Requires Node >= 22.13 (see `.nvmrc`) and **pnpm 11**, pinned in `packageManager` with a corepack
+integrity hash — corepack verifies the downloaded pnpm against it, so `corepack enable` both gets
+you the right version and checks it is the real one.
 
-If you have pnpm 9 installed globally it will refuse to run here, with
-`Invalid package manager specification ... expected a semver version` — it cannot parse the
-integrity hash. That refusal is load-bearing, not a papercut: pnpm 9 reads settings from the
-`pnpm` field in `package.json`, which pnpm 11 no longer honours and this repo therefore no longer
-has. A pnpm 9 that *did* run would install with **no dependency overrides and no install-script
-allowlist**, quietly undoing the supply-chain controls. Use corepack.
+Use corepack rather than a globally-installed pnpm, and not only for version skew: **pnpm 9 reads
+settings from the `pnpm` field in `package.json`, which pnpm 11 no longer honours and this repo
+therefore no longer has.** A pnpm 9 run here would install with *no dependency overrides and no
+install-script allowlist* — quietly undoing the supply-chain controls, with nothing louder than a
+warning to tell you.
+
+If you edit `packageManager` by hand, note that the hash is corepack's `+sha512.<hex>` form, not
+npm's `+sha512-<base64>` SRI string. Corepack rejects the latter outright with
+`Invalid package manager specification ... expected a semver version`, and CI will not catch it:
+`pnpm/action-setup` discards everything after the `+` without validating it. Generate it with
+`corepack use pnpm@<version>`.
 
 ### Supply-chain settings live in `pnpm-workspace.yaml`
 

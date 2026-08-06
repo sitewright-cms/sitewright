@@ -23,6 +23,14 @@ packages:
 # When an urgent advisory lands and the fix is younger than the cooldown, do NOT
 # lower this globally: add just that package to minimumReleaseAgeExclude below,
 # with a comment, and remove it once the version has aged out.
+#
+# ★ This is enforced on `--frozen-lockfile` installs too, which is what makes it a
+# real gate rather than an authoring-time nicety. pnpm runs a separate "Verifying
+# lockfile against supply-chain policies" pass that checks EVERY existing lockfile
+# entry, even when it skips resolution. Measured: temporarily raising this value
+# fails `pnpm install --frozen-lockfile` with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION
+# naming each entry. So a lockfile someone commits with a too-fresh (or freshly
+# compromised) version is rejected by CI, not merely discouraged locally.
 minimumReleaseAge: 4320
 
 # Workspace packages resolve through the `workspace:` protocol, not the registry,
@@ -71,7 +79,12 @@ overrides:
   "postcss@<8.5.18": ^8.5.18
   "shell-quote@<1.9.0": ^1.9.0
 
-# Deliberately EMPTY and it should stay that way — see scripts/verify.mjs.
+# Deliberately EMPTY and it should stay that way — advisory acceptances live in scripts/audit-gate.mjs,
+# where they carry a reason and a stale one is a hard failure. An `ignore` here would instead make
+# `pnpm audit` itself stop reporting the advisory, which is how the previous three exemptions managed
+# to outlive the advisories that justified them.
+# (pnpm deprecates `auditConfig` in favour of `audit.ignore`; kept as-is because it is empty and only
+# documents the intent. Migrate whenever pnpm actually drops it.)
 auditConfig:
   ignoreGhsas: []
 

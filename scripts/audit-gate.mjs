@@ -13,7 +13,8 @@
 //
 // So the floor is MODERATE — but a floor alone would just wedge on the advisories we have already
 // judged unreachable and cannot clear. Hence: moderate+ fails unless the advisory is in ACCEPTED
-// below, with a written reason. That is deliberately NOT `pnpm.auditConfig.ignoreGhsas`, which makes
+// below, with a written reason. That is deliberately NOT `auditConfig.ignoreGhsas` (which now lives
+// in pnpm-workspace.yaml, and is itself deprecated in favour of `audit.ignore`) — an ignore makes
 // `pnpm audit` itself lie. Here the audit keeps telling the truth and the GATE reasons about the
 // delta, so a NEW moderate advisory blocks a merge on the day it is published.
 //

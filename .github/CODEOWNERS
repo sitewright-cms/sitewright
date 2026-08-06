@@ -1,0 +1,26 @@
+# Code owners for the supply-chain surface: the files where a bad change is invisible in a
+# normal diff review because it does not change any product behaviour.
+#
+# WHAT THIS DOES TODAY: GitHub auto-requests a review from the owner on any PR touching these
+# paths. That is most useful for BOT pull requests (Dependabot, see .github/dependabot.yml) —
+# GitHub never requests review from a PR's own author, so a human-authored PR is unaffected.
+#
+# WHAT IT DOES NOT DO: it is not a merge gate. CODEOWNERS only blocks merges when branch
+# protection (or a ruleset) enables "Require review from Code Owners", and `main` is currently
+# unprotected. That is deliberate, not an oversight: this repo has one maintainer, and a required
+# review nobody else can give would deadlock every PR. Turn it on when a second maintainer exists.
+
+# The dependency graph itself. A single edited line here can swap a package, and it will not show
+# up as a behaviour change anywhere else in the diff.
+/pnpm-lock.yaml           @sbuchweitz
+/pnpm-workspace.yaml      @sbuchweitz
+**/package.json           @sbuchweitz
+
+
+# The gates. Weakening a check looks like a small refactor and silences the thing that would have
+# caught the next problem — see the fail-open audit tolerance that shipped for months.
+/scripts/verify.mjs       @sbuchweitz
+/scripts/audit-gate.mjs   @sbuchweitz
+
+# CI runs with credentials and can reach the registry, so a workflow edit is a privileged change.
+/.github/                 @sbuchweitz

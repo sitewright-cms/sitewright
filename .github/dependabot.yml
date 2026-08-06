@@ -1,0 +1,81 @@
+version: 2
+
+# Dependabot rather than Renovate: it is built into GitHub, so it needs no third-party App
+# installed on the org, and its `cooldown` option now covers the one thing that matters here.
+#
+# ★ THE COOLDOWNS MUST NOT COLLIDE. `pnpm-workspace.yaml` sets `minimumReleaseAge: 4320` (3 days),
+# and pnpm enforces that during Dependabot's own lockfile step — Dependabot runs
+# `corepack pnpm update <pkg> --lockfile-only`, which resolves through the same policy. If
+# Dependabot proposes a version pnpm considers too fresh, that step dies with
+# ERR_PNPM_NO_MATCHING_VERSION and the PR is broken rather than merely early
+# (dependabot/dependabot-core#13165 — a reporter hit exactly this with both windows set to 7 days,
+# so equal values collide at the boundary).
+#
+# So Dependabot's window is deliberately WIDER than pnpm's, never equal: 7 days vs 3, with 14 for
+# majors. Anything Dependabot opens is already well past pnpm's floor. **If you change
+# `minimumReleaseAge`, change these too, and keep the margin.**
+#
+# Nothing here automerges. The point is to surface updates for a human, not to apply them
+# unattended — an unattended path from "npm published it" to "it is in our lockfile" is the exact
+# shape of the attack the cooldown exists to stop.
+
+updates:
+  # ── Application dependencies (pnpm workspace; the root lockfile covers every package) ──
+  #
+  # ⚠ pnpm 11 support in Dependabot is BETA and newer than this config. dependabot-core#14794
+  # ("Support PNPM v11") is still open; PR #15710 ("Beta support of PNPM 11") merged 2026-07-29 and
+  # bundles pnpm 11.17.0, older than the 11.20.0 this repo pins. So expect the occasional failed
+  # update run against `lockfileVersion: 9.0` until that support is GA — the failure mode is a
+  # Dependabot PR that cannot update the lockfile, which is noisy rather than dangerous. If it turns
+  # out to be persistently broken, drop this block rather than loosening the cooldowns to work
+  # around it.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      # Grouped so routine churn is a few reviewable PRs rather than thirty. Majors are
+      # deliberately NOT grouped — each one needs its own read.
+      #
+      # The tension, stated plainly: CODEOWNERS protects the lockfile precisely because a bad change
+      # hides in a diff nobody reads closely, and a 20-package grouped bump is exactly such a diff.
+      # The trade is accepted because the things that would make it dangerous are already blocked
+      # elsewhere — install scripts are deny-by-default (`allowBuilds`), the cooldown means nothing
+      # here is fresh, and CI holds no secrets to steal (`permissions: {}`). Ungroup if that stops
+      # being true.
+      production-minor-patch:
+        patterns: ["*"]
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      development-minor-patch:
+        patterns: ["*"]
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # ── GitHub Actions ──
+  # Workflows pin actions to commit SHAs with a trailing version comment; Dependabot understands
+  # that form and updates both together. Without this, SHA pins rot silently — the security
+  # practice quietly becomes "we are running a year-old action".
+  #
+  # `default-days` only: this ecosystem does not support the `semver-*-days` keys. Note Dependabot
+  # applies an implicit 3-day cooldown even with no `cooldown` block, so the effect of stating it
+  # here is to WIDEN that to 7, matching the npm block — not to introduce a cooldown that was
+  # otherwise absent.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"

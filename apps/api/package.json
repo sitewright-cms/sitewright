@@ -47,15 +47,15 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49",
+    "@playwright/test": "^1.62",
     "@types/html-minifier-terser": "^7",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^8.0.0",
     "@types/ssh2-sftp-client": "^9.0.6",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.10",
     "drizzle-kit": "^0.31",
-    "jose": "^6.2.3",
+    "jose": "^6.2.5",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   }
 }

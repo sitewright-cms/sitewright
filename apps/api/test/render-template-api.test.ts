@@ -103,6 +103,33 @@ describe('render-template API (isolated worker)', () => {
     expect(served.body).toBe(html); // the token serves the exact same document
   });
 
+  it('compiles the rich-text toolbar vocabulary into the preview sheet BEFORE any of it is used', async () => {
+    const { t, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      // A body that uses NONE of the toolbar's classes — the on-page WYSIWYG toolbar applies them to
+      // the live DOM of this document long after the sheet is compiled, so a scan of the rendered
+      // markup can never see them. Without the safelist feed the author picks a colour, the class
+      // lands, and the page does not change until a save re-renders it.
+      payload: { template: '<div data-sw-html="intro"><p>plain</p></div>', document: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    // The class names also appear in the bridge's embedded swatch JSON, so assert on the compiled
+    // RULE — `.cls{prop:` — never on the bare token. One rule from every palette group, present and
+    // ready before the toolbar is ever opened.
+    expect(html).toContain('.text-red-600{color:'); // text colour
+    expect(html).toContain('.bg-yellow-200{background-color:'); // highlight
+    expect(html).toContain('.text-6xl{font-size:'); // size — the top of the scale
+    expect(html).toContain('.text-justify{text-align:justify}'); // alignment
+    expect(html).toContain('.pl-16{padding-left:'); // deepest indent step
+    // The project's CI brand classes compile too (they resolve against the project's own theme).
+    expect(html).toContain('.text-primary{color:');
+    expect(html).toContain('.font-heading{font-family:');
+  });
+
   it('does NOT mint a token for a bare (document:false) render', async () => {
     const { t, projectId } = await setup();
     const res = await app.inject({

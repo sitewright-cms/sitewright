@@ -20,6 +20,34 @@ export function runExec(editable: HTMLElement, cmd: string, arg?: string): void 
   }
 }
 
+/**
+ * The inline style properties each toolbar group OWNS. Applying the group's CLASS clears them, so the
+ * class is what decides what the text looks like.
+ *
+ * They are not hypothetical: contentEditable writes them by itself. Select formatted text, delete it,
+ * and type again — Chromium carries the deleted run's "typing style" into the new text as inline CSS
+ * (`<span style="font-size:12px">`). An inline declaration beats any utility class, so from then on the
+ * size/colour buttons set a class that changes nothing on screen — the reported symptom, reached from a
+ * perfectly ordinary edit. Worse for colour: `color`/`background-color` are in the render sanitizer's
+ * allowed-style set (unlike `font-size`), so a stale inline colour would also win on the PUBLISHED page,
+ * not just in the field.
+ */
+export const RICH_GROUP_STYLE_PROPS: Readonly<Record<string, readonly string[]>> = {
+  color: ['color'],
+  highlight: ['background-color'],
+  size: ['font-size'],
+  font: ['font-family'],
+  align: ['text-align'],
+  indent: ['padding-left'],
+};
+
+/** Remove `props` from an element's inline style, dropping the attribute once nothing is left. */
+function clearStyleProps(el: HTMLElement, props: readonly string[]): void {
+  if (!props.length || !el.hasAttribute('style')) return;
+  for (const p of props) el.style.removeProperty(p);
+  if (!el.getAttribute('style')) el.removeAttribute('style');
+}
+
 /** The current selection Range, but only when it is non-empty AND lives inside `editable`. */
 function selectionInside(editable: HTMLElement): Range | null {
   const sel = window.getSelection();
@@ -36,7 +64,12 @@ function selectionInside(editable: HTMLElement): Range | null {
  * spans within the selection (so members never stack). An empty `cls` just strips the group (clear). The
  * caller supplies the mutually-exclusive `group` (e.g. RICH_COLOR_CLASSES ∪ the project's CI colour classes).
  */
-export function applyInlineClass(editable: HTMLElement, group: ReadonlySet<string>, cls: string): void {
+export function applyInlineClass(
+  editable: HTMLElement,
+  group: ReadonlySet<string>,
+  cls: string,
+  styleProps: readonly string[] = [],
+): void {
   const range = selectionInside(editable);
   if (!range) return;
   editable.focus();
@@ -47,6 +80,8 @@ export function applyInlineClass(editable: HTMLElement, group: ReadonlySet<strin
     const retag = setGroupClass(host.getAttribute('class'), group, cls || undefined);
     if (retag) host.setAttribute('class', retag);
     else host.removeAttribute('class');
+    clearStyleProps(host, styleProps); // the class decides — drop any inline property it would fight
+    host.querySelectorAll<HTMLElement>('[style]').forEach((el) => clearStyleProps(el, styleProps));
     return;
   }
   const holder = document.createElement('div');
@@ -57,6 +92,8 @@ export function applyInlineClass(editable: HTMLElement, group: ReadonlySet<strin
     if (cleaned) el.setAttribute('class', cleaned);
     else el.removeAttribute('class');
   });
+  // …and any inline property this group owns, wherever contentEditable put one inside the selection.
+  holder.querySelectorAll<HTMLElement>('[style]').forEach((el) => clearStyleProps(el, styleProps));
   let inserted: Node;
   if (cls) {
     const span = document.createElement('span');
@@ -119,11 +156,19 @@ function selectedBlocks(editable: HTMLElement): HTMLElement[] {
 }
 
 /** Set a BLOCK utility class (alignment) on every block the selection touches, replacing any same-group member. */
-export function applyBlockClass(editable: HTMLElement, group: ReadonlySet<string>, cls: string): void {
+export function applyBlockClass(
+  editable: HTMLElement,
+  group: ReadonlySet<string>,
+  cls: string,
+  styleProps: readonly string[] = [],
+): void {
   for (const block of selectedBlocks(editable)) {
     const cleaned = setGroupClass(block.getAttribute('class'), group, cls || undefined);
     if (cleaned) block.setAttribute('class', cleaned);
     else block.removeAttribute('class');
+    // `text-align` is BOTH a class the toolbar emits and an inline style the sanitizer allows through —
+    // execCommand('justifyCenter') and pasted markup both produce one. Clear it so the class decides.
+    clearStyleProps(block, styleProps);
   }
 }
 
@@ -133,6 +178,7 @@ export function stepBlockIndent(editable: HTMLElement, dir: 1 | -1): void {
     const cleaned = stepIndentClass(block.getAttribute('class'), dir);
     if (cleaned) block.setAttribute('class', cleaned);
     else block.removeAttribute('class');
+    clearStyleProps(block, RICH_GROUP_STYLE_PROPS.indent!);
   }
 }
 

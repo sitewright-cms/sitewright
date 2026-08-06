@@ -146,6 +146,34 @@ export function typographyCss(
   ].join('');
 }
 
+/**
+ * Every typography SLOT a project exposes as a `font-<slot>` utility → the CSS `font-family` stack that
+ * utility resolves to on the rendered site (`heading`, `body`, plus each custom named slot), and the font
+ * ASSET backing it when the slot is self-hosted.
+ *
+ * Exists because a surface OUTSIDE the render pipeline has to show the same faces the site will: the
+ * editor's rich-text field offers the project's font slots in its toolbar, and drawing that text in the
+ * wrong face (or in the fallback, because the utility resolved to nothing) makes the control look broken.
+ * Sharing `familyStack` is the point — a second copy of the resolution rules is how the two drift.
+ */
+export function fontSlotStacks(
+  typography: Typography | undefined,
+  fonts: readonly FontAsset[] = [],
+): Record<string, { stack: string; font?: FontAsset }> {
+  const fontsById = new Map(fonts.map((f) => [f.id, f] as const));
+  const slots: Record<string, FontSlot> = {
+    heading: typography?.heading ?? DEFAULT_HEADING,
+    body: typography?.body ?? DEFAULT_BODY,
+    ...(typography?.named ?? {}),
+  };
+  const out: Record<string, { stack: string; font?: FontAsset }> = {};
+  for (const [name, slot] of Object.entries(slots)) {
+    const font = slot.source === 'asset' && slot.assetId ? fontsById.get(slot.assetId) : undefined;
+    out[name] = { stack: familyStack(slot, font), ...(font ? { font } : {}) };
+  }
+  return out;
+}
+
 /** A self-hosted font face to preload — its resolved URL + MIME type. */
 export interface FontPreload {
   href: string;

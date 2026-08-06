@@ -92,4 +92,36 @@ describe('brandToCss', () => {
       expect(css.indexOf('--sw-space-lg: 3rem;')).toBeGreaterThan(css.indexOf('--sw-space-lg: 2rem;'));
     });
   });
+
+  // A value that OPENS a CSS comment used to pass `SAFE` (which denies `;{}<>()'"\\` but not `/` or
+  // `*`). The comment then ran past this block's closing brace and into the rest of the stylesheet.
+  // Measured before the fix: every later `--sw-*` token resolved EMPTY in a browser and the next rule
+  // in the sheet stopped applying — on the published document, from one brand token.
+  describe('CSS comment injection', () => {
+    it('drops a value that opens a comment, keeping the tokens that follow it', () => {
+      const css = brandToCss(
+        brand({
+          typography: { fontFamilies: { evil: 'Arial/*', good: 'Georgia' } },
+          spacing: { md: '1rem' },
+        }),
+      );
+      expect(css).not.toContain('/*');
+      expect(css).not.toContain('--sw-font-evil');
+      // The declarations an open comment would have swallowed survive.
+      expect(css).toContain('--sw-font-good: Georgia;');
+      expect(css).toContain('--sw-space-md: 1rem;');
+      expect(css.trimEnd().endsWith('}')).toBe(true); // the block still closes
+    });
+
+    it('drops a value that closes a comment', () => {
+      const css = brandToCss(brand({ typography: { fontFamilies: { evil: '*/ Arial' } } }));
+      expect(css).not.toContain('*/');
+      expect(css).not.toContain('--sw-font-evil');
+    });
+
+    it('keeps an ordinary font stack that merely contains a slash', () => {
+      const css = brandToCss(brand({ typography: { fontFamilies: { ok: 'Foo Bar' } } }));
+      expect(css).toContain('--sw-font-ok: Foo Bar;');
+    });
+  });
 });

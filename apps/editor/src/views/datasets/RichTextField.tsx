@@ -47,6 +47,7 @@ import {
   applyInlineClass,
   applyBlockClass,
   stepBlockIndent,
+  RICH_GROUP_STYLE_PROPS,
   applyLink,
   currentAnchor,
   insertImage,
@@ -84,7 +85,20 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
 };
 
 const btnClass =
-  'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 dark:text-slate-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400';
+  'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 dark:text-slate-400 transition';
+
+/** Hover feedback — applied ONLY while the button is not active. A `hover:` utility carries the extra
+ *  `:hover` specificity, so leaving it on an active button lets a translucent hover wash OUT-RANK the
+ *  active fill: point at a button that is on and it goes back to looking off, which is exactly when an
+ *  author is looking at it. Swapping the two states is simpler than fighting the cascade. */
+const hoverClass = 'hover:bg-indigo-50 dark:hover:bg-indigo-500/20 hover:text-indigo-700 dark:hover:text-indigo-300';
+
+/** The pressed/active look for a toolbar button (a mark that applies to the selection, or an open menu).
+ *  In DARK mode the old `bg-indigo-500/15` composited to rgb(27,33,74) on a rgb(14,22,42) bar — a
+ *  MEASURED 1.17:1, i.e. invisible, so an author could not tell which marks were on. A solid indigo
+ *  measures 3.97:1, clearing the 3:1 an interactive affordance needs (WCAG 1.4.11); the white icon sits
+ *  above 4:1 on it. Light mode keeps its existing (already legible) look. */
+const activeClass = 'bg-indigo-100 dark:bg-indigo-500 text-indigo-700 dark:text-white';
 
 /** Which command's popover is open (color/highlight/font/size/align/link), or null. */
 type OpenMenu = null | { id: string; kind: RichCmd['kind']; at?: DOMRect };
@@ -260,11 +274,14 @@ export function RichTextField({
   const applySwatch = (kind: RichCmd['kind'], cls: string) => {
     const el = ref.current;
     if (!el) return;
-    if (kind === 'color') applyInlineClass(el, colorGroup, cls);
-    else if (kind === 'highlight') applyInlineClass(el, RICH_HIGHLIGHT_CLASSES, cls);
-    else if (kind === 'size') applyInlineClass(el, RICH_SIZE_CLASSES, cls);
-    else if (kind === 'font') applyInlineClass(el, fontGroup, cls);
-    else if (kind === 'align') applyBlockClass(el, RICH_ALIGN_CLASSES, cls);
+    // Each group also clears the inline style property it owns, so the class it applies is what the
+    // author actually sees (contentEditable writes those properties on its own — see RICH_GROUP_STYLE_PROPS).
+    const owned = RICH_GROUP_STYLE_PROPS[kind] ?? [];
+    if (kind === 'color') applyInlineClass(el, colorGroup, cls, owned);
+    else if (kind === 'highlight') applyInlineClass(el, RICH_HIGHLIGHT_CLASSES, cls, owned);
+    else if (kind === 'size') applyInlineClass(el, RICH_SIZE_CLASSES, cls, owned);
+    else if (kind === 'font') applyInlineClass(el, fontGroup, cls, owned);
+    else if (kind === 'align') applyBlockClass(el, RICH_ALIGN_CLASSES, cls, owned);
     setMenu(null);
     emit();
   };
@@ -304,7 +321,7 @@ export function RichTextField({
         aria-label="Edit HTML source"
         aria-pressed={source}
         title="Edit HTML source"
-        className={`${btnClass} ml-auto ${source ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : ''}`}
+        className={`${btnClass} ml-auto ${source ? activeClass : hoverClass}`}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           setMenu(null);
@@ -497,7 +514,7 @@ function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean
       type="button"
       aria-label={cmd.label}
       title={cmd.label}
-      className={`${btnClass} ${active ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : ''}`}
+      className={`${btnClass} ${active ? activeClass : hoverClass}`}
       onMouseDown={(e) => e.preventDefault() /* keep the editable's selection */}
       onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())}
     >

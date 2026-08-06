@@ -98,6 +98,63 @@ test('rich-text toolbar: superscript wraps the selection in <sup>', async ({ pag
   await expect(region.locator('sup')).toHaveCount(1);
 });
 
+// The on-page toolbar emits Tailwind utility CLASSES, and it applies them to the LIVE DOM of a preview
+// document whose stylesheet was compiled from the rendered markup — which cannot contain a class the
+// author has not picked yet. So every colour/highlight/size/align pick used to land a class with no
+// rule behind it: nothing changed on screen until a save re-rendered the page. These assert the
+// RENDERED result inside the iframe, which is the only thing that would have caught it.
+test('rich-text toolbar: a colour pick PAINTS immediately (not just after a save)', async ({ page }) => {
+  await setup(page, 'tbcolor');
+  await setSource(page, '<section data-sw-html="body"><p>Colour me</p></section>');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+
+  const before = await region.locator('p').evaluate((el) => getComputedStyle(el).color);
+  await preview.locator('.sw-tb button[aria-label="Text color"]').click();
+  await preview.locator('.sw-tb-sw[aria-label="Red"]').click();
+
+  const painted = region.locator('.text-red-600');
+  await expect(painted).toHaveCount(1);
+  const after = await painted.evaluate((el) => getComputedStyle(el).color);
+  expect(after, 'the colour class has no rule in the preview sheet').not.toBe(before);
+  // Resolve through a canvas: Tailwind emits palette colours in oklch, which computed style hands back verbatim.
+  const [r, g, b] = await painted.evaluate((el) => {
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.fillStyle = getComputedStyle(el).color;
+    ctx.fillRect(0, 0, 1, 1);
+    const [rr, gg, bb] = ctx.getImageData(0, 0, 1, 1).data;
+    return [rr, gg, bb] as [number, number, number];
+  });
+  expect(r, `expected a red, got rgb(${r},${g},${b})`).toBeGreaterThan(150);
+  expect(r).toBeGreaterThan(g + 60);
+  expect(r).toBeGreaterThan(b + 60);
+});
+
+test('rich-text toolbar: a size pick RESIZES immediately', async ({ page }) => {
+  await setup(page, 'tbsize');
+  await setSource(page, '<section data-sw-html="body"><p>Size me</p></section>');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+
+  const before = parseFloat(await region.locator('p').evaluate((el) => getComputedStyle(el).fontSize));
+  await preview.locator('.sw-tb button[aria-label="Text size"]').click();
+  await preview.locator('.sw-tb-item[aria-label="4XL"]').click();
+
+  const sized = region.locator('.text-4xl');
+  await expect(sized).toHaveCount(1);
+  const after = parseFloat(await sized.evaluate((el) => getComputedStyle(el).fontSize));
+  expect(after, 'the size class has no rule in the preview sheet').toBeGreaterThan(before);
+  expect(after).toBeCloseTo(36, 1);
+});
+
 // The toolbar's </> button opens the HTML SOURCE editor (a CodeMirror modal); edits round-trip and
 // are sanitized on render (a <script> in the source never reaches the rendered region).
 test('rich-text </>: HTML source editor round-trips and is sanitized on render', async ({ page }) => {

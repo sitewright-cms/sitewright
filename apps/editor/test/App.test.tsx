@@ -19,6 +19,8 @@ vi.mock('../src/api', () => ({
     // App wraps its subtree in CiPaletteForProject, which fetches the project's identity for the rich-text
     // CI palette; stub it so the effect resolves to an empty palette (no brand swatches) in these shell tests.
     getSettings: () => Promise.resolve({ item: {} }),
+    // …and the library's fonts, so a brand font slot can be drawn in its real face in the rich-text field.
+    listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
 }));

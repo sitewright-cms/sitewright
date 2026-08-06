@@ -35,3 +35,6 @@ coverage/
 
 # Local reference material (proprietary contentBase screenshots — not for the OSS repo)
 /contentbase-screenshots/
+
+# Task worktrees (see CONTRIBUTING) — a full checkout of another branch, never this one's source.
+.wt/

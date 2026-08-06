@@ -10,7 +10,11 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.turbo/**',
       '**/coverage/**',
-      '**/.astro/**', // Astro-generated types/content
+      // Task worktrees live at `.wt/<name>` INSIDE the repo (see CONTRIBUTING). Each is a full
+      // checkout of another branch, so without this eslint walks into it and reports that branch's
+      // code as this one's — `pnpm verify` in the primary checkout failed with 275 errors that
+      // belonged entirely to a sibling worktree.
+      '.wt/**',
     ],
   },
   js.configs.recommended,

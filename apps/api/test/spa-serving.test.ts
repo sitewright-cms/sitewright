@@ -35,6 +35,21 @@ describe('SPA serving (@fastify/static + SPA fallback)', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it('serves security.txt from its own route, NOT the SPA fallback', async () => {
+    // The regression this pins: with the SPA mounted, every unmatched GET falls back to index.html,
+    // so `/.well-known/security.txt` used to answer 200 with a page of HTML. A scanner asking for the
+    // file got the editor shell. Only meaningful with editorDist set — hence this suite.
+    const res = await app.inject({ method: 'GET', url: '/.well-known/security.txt' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('text/plain; charset=utf-8');
+    expect(res.body).toMatch(/^Contact: /m);
+    expect(res.body).not.toContain('<!doctype html');
+    expect(res.body).not.toContain('SPA');
+    // A NEIGHBOURING .well-known path is still the SPA's business — nothing else was opened up.
+    const other = await app.inject({ method: 'GET', url: '/.well-known/nothing-here' });
+    expect(other.body).toContain('<!doctype html');
+  });
+
   it('serves the SPA index at /', async () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);

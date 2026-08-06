@@ -1,6 +1,7 @@
 import { readFile, rm } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import type { ReleaseManifest } from './build.js';
+import { SECURITY_TXT_PATH } from './seo.js';
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
@@ -19,6 +20,11 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
   // The PWA Web App Manifest (inert JSON; same-origin) — emitted at the site root next to robots.txt.
   ['.webmanifest', 'application/manifest+json'],
 ]);
+
+// The ONLY published assets served from a subdirectory. An exact-path set (never a prefix or a
+// pattern) so the root-only rule in `readAsset` keeps holding for everything else: RFC 9116 fixes
+// security.txt's location under `.well-known/`, so it cannot live at the root like robots.txt.
+const NESTED_ASSET_PATHS: ReadonlySet<string> = new Set([SECURITY_TXT_PATH]);
 
 // A locked-down response CSP for inline-served SVG. SVG can carry <script>; even though our imported
 // SVGs are SANITIZED and referenced via <img> (browser "secure static mode" = no scripts/fetches), this
@@ -243,8 +249,9 @@ export class PublishStore {
     // The builder writes these assets ONLY at the site root (styles.css, the
     // per-type component chunks c-<type>.js, the effect runtimes). Restrict serving
     // to root-level files so no future write path into a subdirectory could become
-    // publicly served as CSS/JS.
-    if (rel.includes('/')) return null;
+    // publicly served as CSS/JS. NESTED_ASSET_PATHS is an EXACT-path exception list, not a
+    // relaxation of that rule: each entry is one platform-generated file at one fixed location.
+    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel)) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     try {

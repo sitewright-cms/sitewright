@@ -9,6 +9,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **RFC 9116 `security.txt`, on both surfaces.** Published sites can opt in to a
+  `/.well-known/security.txt` (Website settings → security.txt): the `Contact` entries are *selected*
+  from things the project already holds — a page (typically the contact form), the Corporate Identity
+  phone, the Corporate Identity email — rather than retyped, so they cannot drift from the site's real
+  details. The contact page leads by default because it keeps working for as long as the site does and
+  its submissions are stored server-side even when the notification email fails; the `mailto:` is off by
+  default because the file is public and machine-read. `Expires` is recomputed from scratch on every
+  publish (window selectable: 1, 2 or 5 years, default 5). A selected contact that resolves to nothing —
+  a deleted contact page, a phone number with no country code — **fails the publish** naming the source,
+  rather than silently shipping a file that promises a channel that isn't there.
+  The instance itself now also answers `/.well-known/security.txt`, generated per request so its
+  `Expires` is always ~90 days out and can never rot; `SW_SECURITY_CONTACT` points it at the operator.
+  Previously that path returned the editor SPA's `index.html` with a 200 — a scanner asking for
+  security.txt got a page of HTML.
+
 ### Security
 
 - **A brand token could open a CSS comment and delete the rest of the stylesheet.** `/*` needs no

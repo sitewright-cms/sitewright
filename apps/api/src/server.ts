@@ -229,6 +229,8 @@ const app = await createApp({
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated in config.ts; trailing slash normalized.
   publicUrl: cfg.publicUrl,
+  // Who fields a vulnerability report about THIS instance (`/.well-known/security.txt`).
+  securityContacts: cfg.securityContacts,
   // Subdomain routing for locally-hosted sites: `<slug>.<SW_SITES_DOMAIN>` serves that site at root
   // (needs wildcard DNS `*.<domain>` → this host). Unset → off; the `/sites/<slug>/` path form always works.
   sitesDomain: cfg.sitesDomain,

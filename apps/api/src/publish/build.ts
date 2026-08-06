@@ -85,7 +85,18 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
 import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
-import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
+import {
+  renderSitemap,
+  renderRobots,
+  renderHtaccess,
+  renderNetlifyRedirects,
+  siteUrlFor,
+  siteBase,
+  renderSecurityTxt,
+  securityTxtContacts,
+  securityTxtExpires,
+  SECURITY_TXT_PATH,
+} from './seo.js';
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
@@ -100,6 +111,7 @@ import {
   authorContentCspOrigins,
   gateAuthorIframes,
   DEFAULT_EMBED_CATEGORY,
+  DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
   RESERVED_TRANSLATION_DEFAULTS,
   type FormPublic,
   type MediaAsset,
@@ -1345,6 +1357,76 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, 'sitemap.xml'), sitemap, 'utf8');
       bytes += Buffer.byteLength(sitemap);
+    }
+
+    // security.txt (RFC 9116) — OPT-IN, at the normative `.well-known/` path only.
+    //
+    // The contact SELECTION is resolved against this publish rather than retyped by the author, so
+    // the published file cannot drift from the site's real contact details. A selected source that
+    // resolves to nothing FAILS the publish: the author explicitly asked for that channel, and
+    // silently dropping it would ship a file promising a way to reach them that isn't there. (The
+    // schema already rejects "enabled with nothing selected", so an empty selection can't get here.)
+    const security = website?.security;
+    if (security?.enabled) {
+      const contactRoute = security.contactPageId ? routes.find((r) => r.page.id === security.contactPageId) : undefined;
+      // `undefined` = not selected · `null` = selected but unusable. That distinction is what lets
+      // the error below name the exact source instead of a generic "no contacts".
+      const { contacts, unresolved } = securityTxtContacts({
+        contactPageUrl: security.contactPageId
+          ? siteUrl && contactRoute
+            ? siteUrlFor(siteUrl, contactRoute.slug)
+            : null
+          : undefined,
+        telephone: security.usePhone ? (identity.telephone ?? null) : undefined,
+        email: security.useEmail ? (identity.email ?? null) : undefined,
+      });
+      // A misconfigured contact fails a PUBLISH but must never take down the always-on draft preview
+      // — that preview is a whole-site working surface, and one unrelated setting should not blank it
+      // (the same reason a broken page renders an error document there instead of aborting the build).
+      // The author still learns about it: the publish they are previewing FOR will fail, loudly and
+      // specifically. In preview, the file is simply skipped.
+      if (unresolved.length > 0 && !previewMode) {
+        const why = unresolved.map((source) => {
+          if (source === 'page') {
+            return siteUrl
+              ? 'the selected contact page is not in this publish (deleted, or still a draft)'
+              : 'the selected contact page needs a Site URL (Website settings) so its link can be absolute';
+          }
+          if (source === 'phone') {
+            return identity.telephone
+              ? `the company phone number ("${identity.telephone}") has no country code — RFC 9116 needs a tel: URI, e.g. +49 30 1234567`
+              : 'the company phone number is not set (Corporate Identity)';
+          }
+          return 'the company email address is not set (Corporate Identity)';
+        });
+        throw new PublishError(`security.txt is enabled but ${why.join('; ')}`);
+      }
+      // Only ever write a file that HAS a contact. On a publish that is guaranteed by the throw
+      // above; in preview it is not (nothing resolved → nothing to say), and a `Contact`-less
+      // security.txt is invalid per RFC 9116 §2.5.3 — better absent than malformed.
+      if (contacts.length > 0) {
+        // Preferred-Languages: the languages the SITE is published in — the languages a report can
+        // realistically be written in. Default locale first (RFC 9116 §2.5.8 gives no preference
+        // order, but listing the primary language first is the useful reading), de-duplicated,
+        // emitted as ONE line as the RFC requires.
+        const locales = [bundle.project.settings?.defaultLocale, ...(bundle.project.settings?.locales ?? [])].filter(
+          (l): l is string => Boolean(l),
+        );
+        const securityTxt = renderSecurityTxt({
+          contacts,
+          // Recomputed from THIS publish's timestamp, so republishing always rolls the window forward.
+          expires: securityTxtExpires(new Date(publishedAt), security.expiryYears ?? DEFAULT_SECURITY_TXT_EXPIRY_YEARS),
+          canonical: siteUrl ? `${siteBase(siteUrl)}/${SECURITY_TXT_PATH}` : undefined,
+          policy: security.policyUrl,
+          acknowledgments: security.acknowledgmentsUrl,
+          preferredLanguages: [...new Set(locales)].join(', ') || undefined,
+        });
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir
+        await mkdir(join(tmp, dirname(SECURITY_TXT_PATH)), { recursive: true });
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir
+        await writeFile(join(tmp, SECURITY_TXT_PATH), securityTxt, 'utf8');
+        bytes += Buffer.byteLength(securityTxt);
+      }
     }
 
     // Redirect rules (Apache + Netlify) when configured. The .htaccess is ALSO emitted with no

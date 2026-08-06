@@ -132,3 +132,42 @@ describe('PublishStore HTML serving', () => {
     await expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();
   });
 });
+
+describe('PublishStore text-asset serving', () => {
+  it('serves .well-known/security.txt — the ONE allowlisted nested asset (RFC 9116 fixes its path)', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '.well-known'), { recursive: true });
+    await writeFile(join(dir, '.well-known', 'security.txt'), 'Contact: https://acme.com/contact/\n');
+    const asset = await store.readAsset('site', '/.well-known/security.txt');
+    expect(asset?.contentType).toBe('text/plain; charset=utf-8'); // exactly what RFC 9116 §3 requires
+    expect(asset?.body).toContain('Contact:');
+  });
+
+  it('keeps the root-only rule for every OTHER nested path (the exception is exact, not a prefix)', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '.well-known', 'nested'), { recursive: true });
+    // A sibling in the same directory is NOT served — the allowlist is one exact path, not a prefix.
+    await writeFile(join(dir, '.well-known', 'secrets.txt'), 'nope');
+    await writeFile(join(dir, '.well-known', 'nested', 'security.txt'), 'nope');
+    expect(await store.readAsset('site', '/.well-known/secrets.txt')).toBeNull();
+    expect(await store.readAsset('site', '/.well-known/nested/security.txt')).toBeNull();
+    // And a subdirectory .js still cannot become publicly served as script.
+    await mkdir(join(dir, 'sub'), { recursive: true });
+    await writeFile(join(dir, 'sub', 'evil.js'), 'alert(1)');
+    expect(await store.readAsset('site', '/sub/evil.js')).toBeNull();
+  });
+
+  it('still confines the allowlisted path (no traversal through the exception)', async () => {
+    expect(await store.readAsset('site', '/../.well-known/security.txt')).toBeNull();
+    expect(await store.readAsset('site', '/.well-known/../../security.txt')).toBeNull();
+  });
+
+  it('serves the root text assets it always did', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'styles.css'), 'body{}');
+    await writeFile(join(dir, 'robots.txt'), 'User-agent: *\n');
+    expect((await store.readAsset('site', '/styles.css'))?.contentType).toBe('text/css; charset=utf-8');
+    expect((await store.readAsset('site', '/robots.txt'))?.contentType).toBe('text/plain; charset=utf-8');
+  });
+});

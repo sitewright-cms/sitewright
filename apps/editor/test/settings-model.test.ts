@@ -520,3 +520,72 @@ describe('settings model — cssTokens', () => {
     expect(toBundle(toForm(base), base).identity.cssTokens).toBeUndefined();
   });
 });
+
+describe('settings model — security.txt', () => {
+  it('leaves a project that never used it absent, not an empty object', () => {
+    const base = empty();
+    const form = toForm(base);
+    expect(form.securityEnabled).toBe(false);
+    expect(form.securityContactPageId).toBe('');
+    expect(form.securityExpiryYears).toBe(5); // the default the picker opens on
+    expect(toBundle(form, base).website?.security).toBeUndefined();
+  });
+
+  it('round-trips a full selection', () => {
+    const base = empty();
+    const saved = toBundle(
+      {
+        ...toForm(base),
+        securityEnabled: true,
+        securityContactPageId: 'page-contact',
+        securityUsePhone: true,
+        securityUseEmail: true,
+        securityExpiryYears: 1,
+        securityPolicyUrl: 'https://acme.com/policy/',
+        securityAcknowledgmentsUrl: 'https://acme.com/thanks/',
+      },
+      base,
+    );
+    expect(saved.website?.security).toEqual({
+      enabled: true,
+      contactPageId: 'page-contact',
+      usePhone: true,
+      useEmail: true,
+      expiryYears: 1,
+      policyUrl: 'https://acme.com/policy/',
+      acknowledgmentsUrl: 'https://acme.com/thanks/',
+    });
+    // …and back into the form unchanged.
+    const back = toForm({ ...base, website: saved.website });
+    expect(back.securityEnabled).toBe(true);
+    expect(back.securityContactPageId).toBe('page-contact');
+    expect(back.securityExpiryYears).toBe(1);
+    expect(back.securityPolicyUrl).toBe('https://acme.com/policy/');
+  });
+
+  it('emits the default expiry implicitly, so an untouched window adds no key', () => {
+    const base = empty();
+    const saved = toBundle({ ...toForm(base), securityEnabled: true, securityUseEmail: true }, base);
+    expect(saved.website?.security).toEqual({ enabled: true, useEmail: true });
+  });
+
+  it('KEEPS the selection when the feature is switched off, so toggling back does not lose the setup', () => {
+    const base = empty();
+    const saved = toBundle(
+      { ...toForm(base), securityEnabled: false, securityContactPageId: 'page-contact', securityUsePhone: true },
+      base,
+    );
+    // No `enabled` key → the publisher emits nothing; the selection survives for the next toggle.
+    expect(saved.website?.security).toEqual({ contactPageId: 'page-contact', usePhone: true });
+    expect(toForm({ ...base, website: saved.website }).securityEnabled).toBe(false);
+  });
+
+  it('drops blank optional links rather than saving empty strings', () => {
+    const base = empty();
+    const saved = toBundle(
+      { ...toForm(base), securityEnabled: true, securityUseEmail: true, securityPolicyUrl: '   ', securityAcknowledgmentsUrl: '' },
+      base,
+    );
+    expect(saved.website?.security).toEqual({ enabled: true, useEmail: true });
+  });
+});

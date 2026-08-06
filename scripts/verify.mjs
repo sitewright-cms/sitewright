@@ -14,34 +14,12 @@ import { spawnSync } from 'node:child_process';
 const GATES = [
   {
     name: 'Audit dependencies',
-    cmd: ['pnpm', 'audit', '--audit-level', 'high'],
-    // This gate used to auto-tolerate ERR_PNPM_AUDIT_BAD_RESPONSE, because npm had retired the
-    // quick-audit endpoint this pnpm calls (HTTP 410). That endpoint answers again, so the tolerance
-    // is gone: a gate that silently passes when it cannot reach the advisory database is a gate that
-    // reports "no known vulnerabilities" without having looked. It now FAILS CLOSED.
-    //
-    // If the endpoint breaks again and it is genuinely blocking, an operator can unblock DELIBERATELY
-    // with SW_ALLOW_AUDIT_OUTAGE=1 (it prints a loud warning and is visible in the log). Do not set it
-    // in ci.yml — the point is that a human decides, per incident, to merge without an audit.
-    tolerate: (out) =>
-      process.env.SW_ALLOW_AUDIT_OUTAGE === '1' && out.includes('ERR_PNPM_AUDIT_BAD_RESPONSE'),
-    tolerateNote: 'AUDIT DID NOT RUN — advisory endpoint unreachable, waived via SW_ALLOW_AUDIT_OUTAGE',
-    // `pnpm.auditConfig.ignoreGhsas` is EMPTY and should stay that way: an exemption silently outlives
-    // the advisory that justified it (all three former entries did — one had already stopped matching
-    // the tree). Fix by pinning in pnpm.overrides instead, so the audit keeps telling the truth.
-    //
-    // Two advisories remain, both BELOW this gate, neither reachable here:
-    // - GHSA-g7r4-m6w7-qqqr (esbuild <0.28.1, low): arbitrary file read via the esbuild DEV SERVER, on
-    //   Windows. Reached only through vitest -> vite, so it is test tooling that never runs in prod, and
-    //   we run Linux. A blanket esbuild override is not viable (vite pins 0.25; 0.28 drops transpile
-    //   support for our editor browser targets) — re-check on the next vite bump.
-    // - GHSA-8988-4f7v-96qf (@opentelemetry/core <2.8.0, moderate): unbounded allocation parsing W3C
-    //   Baggage headers, via lighthouse -> @sentry/node. Sentry pins otel 1.x, so clearing it means
-    //   forcing a MAJOR into a third-party dep; Lighthouse runs against our OWN locally-served build and
-    //   never parses attacker-supplied baggage. Revisit when Sentry ships otel 2.
-    //
-    // A third (hono ReDoS in CORS middleware, GHSA via @modelcontextprotocol/sdk) was cleared by
-    // bumping the pnpm.overrides pin to >=4.12.34 — the previous >=4.12.27 pin had gone stale.
+    // Was `pnpm audit --audit-level high`, which failed OPEN on a transport error and used a floor
+    // too high to catch the class of advisory we actually ship (a moderate, remotely-triggerable
+    // ReDoS in a network-facing dep passed it cleanly). Both fixed in the script — see its header.
+    // `pnpm.auditConfig.ignoreGhsas` stays EMPTY: acceptances live in the gate, not in the audit,
+    // so `pnpm audit` itself never lies about what is in the tree.
+    cmd: ['node', 'scripts/audit-gate.mjs'],
   },
   // Guard against hand-edits / upstream drift of the generated icon + vendored-runtime sets.
   { name: 'Check generated brand icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:brand-icons:check'] },

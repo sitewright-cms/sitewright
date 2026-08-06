@@ -315,8 +315,8 @@ importers:
         specifier: ^4.7.9
         version: 4.7.9
       htmlparser2:
-        specifier: ^9.1.0
-        version: 9.1.0
+        specifier: ^12.0.0
+        version: 12.0.0
       sanitize-html:
         specifier: ^2.17.5
         version: 2.17.6
@@ -507,8 +507,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2
       htmlparser2:
-        specifier: ^9.1.0
-        version: 9.1.0
+        specifier: ^12.0.0
+        version: 12.0.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
@@ -3261,9 +3261,6 @@ packages:
   htmlparser2@12.0.0:
     resolution: {integrity: sha512-Tz7u1i95/g2x2jz81+x0FBVhBhY5aRTvD3tXXdFaljuNdzDLJ8UGNRrTcj2cgQvAg3iW/h77Fz15nLW0L0CrZw==}
     engines: {node: '>=20.19.0'}
-
-  htmlparser2@9.1.0:
-    resolution: {integrity: sha512-5zfg6mHUoaer/97TxnGpxmbR7zJtPwIYFMZ/H5ucTlPZhKvtum05yiPK3Mgai3a0DyVxv7qYqoweaEd2nrYQzQ==}
 
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
@@ -7439,13 +7436,6 @@ snapshots:
       domhandler: 6.0.1
       domutils: 4.0.2
       entities: 8.0.0
-
-  htmlparser2@9.1.0:
-    dependencies:
-      domelementtype: 2.3.0
-      domhandler: 5.0.3
-      domutils: 3.2.2
-      entities: 4.5.0
 
   http-errors@2.0.1:
     dependencies:

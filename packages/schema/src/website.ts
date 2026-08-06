@@ -781,6 +781,79 @@ export function siteUrlIssue(value: string): string | null {
   return null;
 }
 
+/** Expiry windows offered for the security.txt `Expires` field (RFC 9116 §2.5.5). */
+export const SECURITY_TXT_EXPIRY_YEARS = [1, 2, 5] as const;
+export type SecurityTxtExpiryYears = (typeof SECURITY_TXT_EXPIRY_YEARS)[number];
+/**
+ * Default expiry window. RFC 9116 RECOMMENDS under a year, but that recommendation assumes a file
+ * someone maintains; an agency site is finalized and then left alone for years, and the contact we
+ * emit is the site's OWN contact page — it keeps working for exactly as long as the site does. A
+ * one-year default would lapse on a live, perfectly reachable site. Author-selectable (1/2/5).
+ */
+export const DEFAULT_SECURITY_TXT_EXPIRY_YEARS: SecurityTxtExpiryYears = 5;
+
+/**
+ * Validate a security.txt link field (`Policy` / `Acknowledgments`), returning a human-readable
+ * error or `null`. Shared by the schema (server, on save) and the editor's inline field check so
+ * both enforce the SAME rule with the SAME message — mirroring {@link siteUrlIssue}.
+ *
+ * https only: RFC 9116 §2.5.3 requires it for web URIs, and these values are published verbatim in
+ * a machine-read file, so an http link would downgrade whoever follows it.
+ */
+export function securityLinkIssue(value: string): string | null {
+  if (value.length > 2048) return 'URL is too long (max 2048 characters).';
+  if (!/^https:\/\//i.test(value)) return 'Enter an absolute URL that starts with https:// — RFC 9116 requires https here.';
+  if (/\s/.test(value)) return 'Remove the spaces from the URL.';
+  if (/["<>'&]/.test(value)) return `Remove special characters from the URL (" < > ' &).`;
+  try {
+    new URL(value);
+  } catch {
+    return 'That is not a valid URL — for example https://acme.com/security-policy/';
+  }
+  return null;
+}
+
+const SecurityLinkSchema = z.string().superRefine((u, ctx) => {
+  const issue = securityLinkIssue(u);
+  if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
+});
+
+/**
+ * Opt-in RFC 9116 `security.txt`, published at `/.well-known/security.txt`.
+ *
+ * Contacts are SELECTED from identity the project already holds rather than retyped, so they can't
+ * drift from the site's real contact details. At least one selection is required — a security.txt
+ * with no `Contact` is invalid per RFC 9116 §2.5.3, so "enabled with nothing picked" is rejected
+ * here at the boundary rather than producing a broken file at publish time.
+ */
+export const WebsiteSecuritySchema = z
+  .object({
+    /** Emit `.well-known/security.txt` on publish. Off unless the author turns it on. */
+    enabled: z.boolean().optional(),
+    /** Page whose URL is published as the preferred `Contact` (typically the contact-form page). */
+    contactPageId: z.string().max(200).optional(),
+    /** Publish `company.telephone` as a `tel:` contact (requires an E.164 number). */
+    usePhone: z.boolean().optional(),
+    /** Publish `company.email` as a `mailto:` contact. Off by default — a public file gets harvested. */
+    useEmail: z.boolean().optional(),
+    /** Years until `Expires`, recomputed on every publish. Unset → {@link DEFAULT_SECURITY_TXT_EXPIRY_YEARS}. */
+    expiryYears: z.union([z.literal(1), z.literal(2), z.literal(5)]).optional(),
+    /** Optional `Policy` link — the disclosure policy for this site. */
+    policyUrl: SecurityLinkSchema.optional(),
+    /** Optional `Acknowledgments` link — a page thanking past reporters. */
+    acknowledgmentsUrl: SecurityLinkSchema.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.enabled && !v.contactPageId && !v.usePhone && !v.useEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['enabled'],
+        message: 'security.txt needs at least one contact — choose a contact page, or the company phone or email.',
+      });
+    }
+  });
+export type WebsiteSecurity = z.infer<typeof WebsiteSecuritySchema>;
+
 const WebsiteSettingsObject = z.object({
   // --- RAW owner-only slots: injected UNESCAPED, NOT run through the no-JS template validator.
   // They hold the tenant's own trusted head/CSS/script content for their own exported site — same
@@ -992,6 +1065,11 @@ const WebsiteSettingsObject = z.object({
    * thumbnails top out at `xl` (2400px), so this only bounds the on-disk retained-original footprint.
    */
   imageUploadCap: z.number().int().min(200).max(10000).optional(),
+  /**
+   * Opt-in RFC 9116 security.txt, emitted to `.well-known/security.txt` on publish.
+   * See {@link WebsiteSecuritySchema}.
+   */
+  security: WebsiteSecuritySchema.optional(),
 });
 
 /** Resolve {@link WebsiteSettings.containerWidth} to the `--sw-container` value (`none` = full-bleed). */

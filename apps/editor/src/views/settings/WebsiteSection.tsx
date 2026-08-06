@@ -9,16 +9,19 @@ import {
   STICKY_HEADER_MODES,
   STICKY_HEADER_LABELS,
   siteUrlIssue,
+  securityLinkIssue,
+  SECURITY_TXT_EXPIRY_YEARS,
   type JsonValue,
   type NavEffect,
   type PreloaderEffect,
+  type SecurityTxtExpiryYears,
   type StickyHeaderMode,
 } from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, ShieldAlert, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
@@ -88,6 +91,9 @@ export function WebsiteSection({
   // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
   // effect's code editor is open. The forks are static platform data, fetched once.
   const [forks, setForks] = useState<EffectForks | null>(null);
+  // Pages for the security.txt contact picker. Fetched lazily — only once the feature is switched on,
+  // so an untouched project never pays for a request it doesn't use.
+  const [pageOptions, setPageOptions] = useState<Array<{ id: string; title: string }>>([]);
   const [editing, setEditing] = useState<null | 'nav' | 'button' | 'preloader'>(null);
   const [btnModalOpen, setBtnModalOpen] = useState(false);
   const [pruning, setPruning] = useState(false);
@@ -99,6 +105,19 @@ export function WebsiteSection({
       on = false;
     };
   }, []);
+  // The contact-page options. A failure leaves the list empty rather than breaking the panel — the
+  // publish-time check is the real guard that the selected page exists.
+  useEffect(() => {
+    if (!form.securityEnabled) return;
+    let on = true;
+    api
+      .listPages(projectId)
+      .then((r) => on && setPageOptions(r.items.map((p) => ({ id: p.id, title: p.title || p.path || p.id }))))
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [form.securityEnabled, projectId]);
   const slotCfg = {
     nav: {
       title: 'Custom nav effect code',
@@ -129,6 +148,13 @@ export function WebsiteSection({
   // Inline siteUrl validation — same rule/message the server enforces on save. Empty is valid (it
   // just skips the sitemap), so only a non-blank value is checked.
   const siteUrlError = form.siteUrl.trim() ? siteUrlIssue(form.siteUrl.trim()) : null;
+  // security.txt: the same shared validators the schema uses, so the inline error matches the save
+  // error exactly; and the "no contact picked" state the schema rejects, surfaced BEFORE the save.
+  const securityPolicyError = form.securityPolicyUrl.trim() ? securityLinkIssue(form.securityPolicyUrl.trim()) : null;
+  const securityAcknowledgmentsError = form.securityAcknowledgmentsUrl.trim()
+    ? securityLinkIssue(form.securityAcknowledgmentsUrl.trim())
+    : null;
+  const hasSecurityContact = Boolean(form.securityContactPageId) || form.securityUsePhone || form.securityUseEmail;
   return (
     <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon={<Globe className="h-4 w-4" />} wide>
@@ -618,6 +644,132 @@ export function WebsiteSection({
         wide
       >
         <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
+      </GlassCard>
+
+      <GlassCard
+        title="security.txt"
+        icon={<ShieldAlert className="h-4 w-4" />}
+        tooltip="Publishes .well-known/security.txt (RFC 9116) — the standard place a security researcher looks for how to report a vulnerability in this site. Contacts are taken from the page and Corporate Identity you select, so they can't drift from your real details."
+        wide
+      >
+        <label className="flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>Publish security.txt</span>
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+              Adds <code>/.well-known/security.txt</code> on publish, telling researchers how to reach you.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Publish security.txt"
+            checked={form.securityEnabled}
+            onChange={(e) => patch({ securityEnabled: e.target.checked })}
+          />
+        </label>
+
+        {form.securityEnabled && (
+          <div className="mt-4 flex flex-col gap-3">
+            <label className="flex flex-col">
+              <span className={fieldLabel}>Contact page</span>
+              <select
+                aria-label="Contact page"
+                className={glassInput}
+                value={form.securityContactPageId}
+                onChange={(e) => patch({ securityContactPageId: e.target.value })}
+              >
+                <option value="">— none —</option>
+                {pageOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+                Preferred: a page with your contact form. It keeps working for as long as the site is up, and
+                submissions are stored here even if the notification email fails. Needs the Production URL above.
+              </span>
+            </label>
+
+            <label className="flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className={fieldLabel}>Also publish the company phone</span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                  From Corporate Identity. Needs a country code (e.g. +49 30 1234567) to be a valid <code>tel:</code> link.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Publish the company phone number"
+                checked={form.securityUsePhone}
+                onChange={(e) => patch({ securityUsePhone: e.target.checked })}
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className={fieldLabel}>Also publish the company email</span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                  From Corporate Identity. This file is public and machine-read — expect the address to be harvested
+                  for spam.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Publish the company email address"
+                checked={form.securityUseEmail}
+                onChange={(e) => patch({ securityUseEmail: e.target.checked })}
+              />
+            </label>
+
+            {!hasSecurityContact && (
+              <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                Pick at least one contact — a security.txt without one is invalid, and the publish will fail.
+              </p>
+            )}
+
+            <label className="flex flex-col">
+              <span className={fieldLabel}>Valid for</span>
+              <select
+                aria-label="security.txt expiry window"
+                className={glassInput}
+                value={String(form.securityExpiryYears)}
+                onChange={(e) => patch({ securityExpiryYears: Number(e.target.value) as SecurityTxtExpiryYears })}
+              >
+                {SECURITY_TXT_EXPIRY_YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y} year{y === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+                The file states an expiry date. It is recalculated from scratch on every publish, so republishing
+                always renews it.
+              </span>
+            </label>
+
+            <Field
+              label="Security policy URL (optional)"
+              value={form.securityPolicyUrl}
+              onChange={(v) => patch({ securityPolicyUrl: v })}
+              type="url"
+              placeholder="https://acme.com/security-policy/"
+              error={securityPolicyError}
+              hint="A page describing how you handle reports. https only."
+            />
+            <Field
+              label="Acknowledgments URL (optional)"
+              value={form.securityAcknowledgmentsUrl}
+              onChange={(v) => patch({ securityAcknowledgmentsUrl: v })}
+              type="url"
+              placeholder="https://acme.com/hall-of-fame/"
+              error={securityAcknowledgmentsError}
+              hint="A page thanking researchers who reported responsibly. https only."
+            />
+          </div>
+        )}
       </GlassCard>
 
       <GlassCard

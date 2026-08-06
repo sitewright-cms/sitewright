@@ -280,6 +280,7 @@ import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes } from './oauth-routes.js';
+import { renderPlatformSecurityTxt } from './security-txt.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerRevisionRoutes } from './revisions-routes.js';
 import { entryScope } from './content-scope.js';
@@ -1083,6 +1084,11 @@ export interface AppOptions {
    * Unset → derived per-request (same-origin `/f/…`; request-derived issuer).
    */
   publicUrl?: string;
+  /**
+   * `Contact` URIs for this instance's `/.well-known/security.txt`, most-preferred first
+   * (`SW_SECURITY_CONTACT`). Empty/unset → the upstream advisory channel; see `security-txt.ts`.
+   */
+  securityContacts?: readonly string[];
   /**
    * Base domain for SUBDOMAIN routing of locally-hosted sites. When set (e.g. `agency.site`), a
    * request whose Host is `<slug>.<sitesDomain>` is served as that local site at the ROOT path
@@ -7378,6 +7384,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Pull-based update check for the in-app banner. Public + informational. `build` = the running editor
   // SPA's content hash (for stale-tab reload); `current`/`latest` = the self-hosted release-upgrade check.
+  // This INSTANCE's RFC 9116 security.txt (not the per-project one the publisher emits into a client
+  // site). Generated per request so `Expires` is always ~90 days out and can never go stale; served
+  // as text/plain per RFC 9116 §3, and `no-cache` so a changed SW_SECURITY_CONTACT takes effect at
+  // once. Registered as an explicit route because the SPA fallback would otherwise answer this path
+  // with index.html — a 200 and a page of HTML where a scanner expects the file.
+  app.get('/.well-known/security.txt', async (_req, reply) => {
+    return reply
+      .type('text/plain; charset=utf-8')
+      .header('cache-control', 'no-cache')
+      .send(
+        renderPlatformSecurityTxt({
+          now: new Date(),
+          contacts: opts.securityContacts,
+          // Canonical ONLY from the configured public URL — never derived from the request Host,
+          // which is caller-supplied and would reflect an arbitrary origin into a published file.
+          publicUrl: opts.publicUrl,
+        }),
+      );
+  });
+
   app.get('/version', async () => {
     const current = opts.version ?? '0.0.0';
     const latest = opts.latestVersion ? await opts.latestVersion() : null;

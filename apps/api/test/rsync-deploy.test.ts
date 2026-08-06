@@ -18,10 +18,19 @@ describe('buildRsyncArgs', () => {
   });
 
   it('shields operational files from --delete (certbot ACME dir + the SFTP state manifest)', () => {
-    expect(args).toContain('--exclude=.well-known/');
+    expect(args).toContain('--filter=P .well-known/**');
     expect(args.some((a) => a.startsWith('--exclude=/') && a.includes('sw-deploy-manifest'))).toBe(true);
-    // Excludes precede --delete so rsync protects them from pruning.
-    expect(args.indexOf('--exclude=.well-known/')).toBeLessThan(args.indexOf('--delete'));
+    // The rules precede --delete so rsync protects them from pruning.
+    expect(args.indexOf('--filter=P .well-known/**')).toBeLessThan(args.indexOf('--delete'));
+  });
+
+  it('PROTECTS .well-known/ rather than excluding it, so our own security.txt still ships', () => {
+    // Regression guard. An exclude rule is both a hide (sender) and a protect (receiver) rule, so the
+    // old `--exclude=.well-known/` silently prevented `.well-known/security.txt` from ever reaching an
+    // rsync-deployed site. `P` keeps the delete-protection — for the ACME dir and for anything else the
+    // operator keeps under .well-known/ — without hiding the directory from the transfer.
+    expect(args).not.toContain('--exclude=.well-known/');
+    expect(args.filter((a) => a.includes('.well-known'))).toEqual(['--filter=P .well-known/**']);
   });
 
   it('ends with `--` then src/ then user@host:remoteDir/ (option-injection guard + rsync trailing-slash semantics)', () => {

@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -169,6 +169,15 @@ export interface SettingsForm {
   // cap uploaded image originals to this width (website.imageUploadCap); '' = uncapped
   imageUploadCap: string;
   redirects: KeyedRedirect[];
+  // security.txt (website.security): opt-in RFC 9116 file at .well-known/security.txt. The contacts are
+  // SELECTED from what the project already holds (a page + Corporate Identity), never retyped here.
+  securityEnabled: boolean;
+  securityContactPageId: string; // '' = no page contact
+  securityUsePhone: boolean;
+  securityUseEmail: boolean;
+  securityExpiryYears: SecurityTxtExpiryYears;
+  securityPolicyUrl: string;
+  securityAcknowledgmentsUrl: string;
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
   shopEnabled: boolean;
@@ -338,6 +347,13 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     imageDelivery: w?.imageDelivery ?? '',
     imageUploadCap: w?.imageUploadCap != null ? String(w.imageUploadCap) : '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
+    securityEnabled: w?.security?.enabled === true,
+    securityContactPageId: w?.security?.contactPageId ?? '',
+    securityUsePhone: w?.security?.usePhone === true,
+    securityUseEmail: w?.security?.useEmail === true,
+    securityExpiryYears: w?.security?.expiryYears ?? DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
+    securityPolicyUrl: w?.security?.policyUrl ?? '',
+    securityAcknowledgmentsUrl: w?.security?.acknowledgmentsUrl ?? '',
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
     shopCurrencyDecimals: w?.shop?.currency?.decimals != null ? String(w.shop.currency.decimals) : '2',
@@ -546,6 +562,22 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
           ...(shopChannels.length ? { channels: shopChannels } : {}),
         }
       : undefined;
+  // security.txt: `enabled` is emitted only when ON (omitted = off, the schema default), but the
+  // SELECTION is kept either way, so toggling the feature off and on again doesn't lose the setup.
+  // Emitting the object at all is gated on there being something in it, so an untouched project
+  // stays byte-identical. (`expiryYears` is emitted only when it deviates from the 5-year default.)
+  const securitySelection = {
+    ...(form.securityContactPageId ? { contactPageId: form.securityContactPageId } : {}),
+    ...(form.securityUsePhone ? { usePhone: true as const } : {}),
+    ...(form.securityUseEmail ? { useEmail: true as const } : {}),
+    ...(form.securityExpiryYears !== DEFAULT_SECURITY_TXT_EXPIRY_YEARS ? { expiryYears: form.securityExpiryYears } : {}),
+    ...(trimmed(form.securityPolicyUrl) ? { policyUrl: form.securityPolicyUrl.trim() } : {}),
+    ...(trimmed(form.securityAcknowledgmentsUrl) ? { acknowledgmentsUrl: form.securityAcknowledgmentsUrl.trim() } : {}),
+  };
+  const security =
+    form.securityEnabled || Object.keys(securitySelection).length > 0
+      ? { ...(form.securityEnabled ? { enabled: true as const } : {}), ...securitySelection }
+      : undefined;
   // nav/button effect schemes ('none' = off, so omit them).
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
@@ -593,6 +625,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   if (
     w ||
     redirects.length ||
+    security ||
     shop ||
     form.consent ||
     effects ||
@@ -605,6 +638,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
+      ...(security ? { security } : {}),
       ...(shop ? { shop } : {}),
       ...(form.consent ? { consent: cleanConsent(form.consent) } : {}),
       ...(effects ? { effects } : {}),

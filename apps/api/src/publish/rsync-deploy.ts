@@ -45,9 +45,18 @@ export function buildRsyncArgs(
     '-rlptz',
     '--no-owner',
     '--no-group',
-    // Protect operational files from --delete (excluded files are never pruned): certbot's ACME
-    // challenge dir and the SFTP transport's own state manifest (so switching transports is safe).
-    '--exclude=.well-known/',
+    // Protect the remote `.well-known/` from --delete: certbot's ACME challenge dir, plus whatever
+    // else the operator keeps there (apple-app-site-association, assetlinks.json…).
+    // ★ A `protect` FILTER, not an `--exclude`. An exclude rule is both a hide (sender) and a protect
+    // (receiver) rule, so `--exclude=.well-known/` also skipped the TRANSFER — it would silently never
+    // upload our own `.well-known/security.txt` (measured: with that rule the file simply never
+    // arrives). `P` drops the hide and keeps the protection, so the file ships AND nothing the
+    // operator put there is pruned.
+    // ★ The `/**` matters. `P .well-known/` protects only the DIRECTORY ENTRY: rsync still descends
+    // into it and deletes the children (measured — assetlinks.json and the ACME token both vanished).
+    // `/**` matches everything beneath it, which is the actual protection intended here.
+    '--filter=P .well-known/**',
+    // The SFTP transport's own state manifest: hidden AND protected (switching transports stays safe).
     `--exclude=/${MANIFEST_FILENAME}`,
     '--delete', // prune remote files absent from the build (remoteDir is the schema-guarded, non-root site root)
     '--stats', // machine-parseable summary at the end

@@ -6,6 +6,9 @@ import {
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
   NAV_EFFECTS,
+  securityLinkIssue,
+  SECURITY_TXT_EXPIRY_YEARS,
+  DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
   NAV_EFFECT_LABELS,
   JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
@@ -561,6 +564,64 @@ describe('WebsiteSettingsSchema', () => {
       for (const { value } of CONTAINER_WIDTH_PRESETS) {
         expect(WebsiteSettingsSchema.parse({ containerWidth: value }).containerWidth).toBe(value);
       }
+    });
+  });
+
+  describe('security (RFC 9116 security.txt)', () => {
+    it('is absent unless configured, and accepts a full selection', () => {
+      expect(WebsiteSettingsSchema.parse({}).security).toBeUndefined();
+      const parsed = WebsiteSettingsSchema.parse({
+        security: {
+          enabled: true,
+          contactPageId: 'page-contact',
+          usePhone: true,
+          useEmail: true,
+          expiryYears: 2,
+          policyUrl: 'https://acme.com/security-policy/',
+          acknowledgmentsUrl: 'https://acme.com/hall-of-fame/',
+        },
+      });
+      expect(parsed.security).toMatchObject({ enabled: true, contactPageId: 'page-contact', expiryYears: 2 });
+    });
+
+    it('REJECTS enabled with no contact selected — a Contact-less file is invalid per RFC 9116', () => {
+      expect(() => WebsiteSettingsSchema.parse({ security: { enabled: true } })).toThrow(/at least one contact/i);
+      // Any ONE of the three selections satisfies it.
+      expect(() => WebsiteSettingsSchema.parse({ security: { enabled: true, usePhone: true } })).not.toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ security: { enabled: true, useEmail: true } })).not.toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ security: { enabled: true, contactPageId: 'p1' } })).not.toThrow();
+      // Not enabled → an empty draft is fine (the author is still filling the form in).
+      expect(() => WebsiteSettingsSchema.parse({ security: { enabled: false } })).not.toThrow();
+    });
+
+    it('only offers the 1/2/5-year expiry windows, defaulting to 5', () => {
+      expect(SECURITY_TXT_EXPIRY_YEARS).toEqual([1, 2, 5]);
+      expect(SECURITY_TXT_EXPIRY_YEARS).toContain(DEFAULT_SECURITY_TXT_EXPIRY_YEARS);
+      expect(DEFAULT_SECURITY_TXT_EXPIRY_YEARS).toBe(5);
+      for (const years of SECURITY_TXT_EXPIRY_YEARS) {
+        expect(WebsiteSettingsSchema.parse({ security: { expiryYears: years } }).security?.expiryYears).toBe(years);
+      }
+      expect(() => WebsiteSettingsSchema.parse({ security: { expiryYears: 3 } })).toThrow();
+    });
+
+    it('securityLinkIssue requires absolute https and rejects injection-shaped values', () => {
+      expect(securityLinkIssue('https://acme.com/security/')).toBeNull();
+      expect(securityLinkIssue('http://acme.com/security/')).toMatch(/https:\/\//);
+      expect(securityLinkIssue('/security/')).toMatch(/absolute/i);
+      expect(securityLinkIssue('https://acme.com/a b')).toMatch(/spaces/i);
+      // A newline would inject a second field into the published file — rejected at the boundary.
+      expect(securityLinkIssue('https://acme.com/\nContact: mailto:evil@example.com')).toMatch(/spaces/i);
+      expect(securityLinkIssue(`https://acme.com/<script>`)).toMatch(/special characters/i);
+      expect(securityLinkIssue(`https://acme.com/${'x'.repeat(2100)}`)).toMatch(/too long/i);
+    });
+
+    it('rejects a CR/LF-bearing policy or acknowledgments URL through the schema', () => {
+      expect(() =>
+        WebsiteSettingsSchema.parse({ security: { policyUrl: 'https://acme.com/\r\nExpires: 1999-01-01T00:00:00Z' } }),
+      ).toThrow();
+      expect(() =>
+        WebsiteSettingsSchema.parse({ security: { acknowledgmentsUrl: 'https://acme.com/\nContact: tel:+10000000000' } }),
+      ).toThrow();
     });
   });
 });

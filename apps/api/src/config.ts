@@ -2,6 +2,7 @@ import { resolve, join } from 'node:path';
 import { LOG_LEVELS, type LogLevel } from '@sitewright/schema';
 import { parseKey } from './crypto/secret.js';
 import { parseTrustProxy } from './trust-proxy.js';
+import { parseSecurityContacts } from './http/security-txt.js';
 import { DEFAULT_ADMIN_EMAIL } from './seed.js';
 
 /**
@@ -32,6 +33,11 @@ export interface RuntimeConfig {
   readonly webauthnRpId?: string;
   readonly webauthnOrigin?: string;
   readonly trustProxy: boolean | string[];
+  /**
+   * `Contact` URIs for this instance's `/.well-known/security.txt`, in preference order
+   * (`SW_SECURITY_CONTACT`, comma-separated). Empty → the upstream advisory channel.
+   */
+  readonly securityContacts: string[];
 
   readonly mediaRoot: string;
   readonly publishRoot: string;
@@ -121,6 +127,7 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
     webauthnRpId: env.SW_WEBAUTHN_RP_ID?.trim() || parsedPublicUrl?.hostname,
     webauthnOrigin: env.SW_WEBAUTHN_ORIGIN?.trim() || parsedPublicUrl?.origin,
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
+    securityContacts: parseSecurityContacts(env.SW_SECURITY_CONTACT),
 
     // Every artifact lives under the ONE data dir — no per-root env knobs (mount a single volume; use a
     // symlink/bind-mount if a sub-tree must live on another disk).

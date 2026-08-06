@@ -37,7 +37,12 @@ jobs:
       contents: read
     steps:
       # Third-party actions are pinned to commit SHAs (supply-chain hardening).
+      # `persist-credentials: false`: checkout DEFAULTS to leaving the job's token in .git/config,
+      # where anything that executes during the run — a build script, a test-time dependency — can
+      # read it. Nothing here talks to git over the network after checkout, so drop it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         # Reads the pnpm version from package.json "packageManager".
@@ -73,6 +78,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

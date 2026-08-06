@@ -32,7 +32,10 @@ test('Regions panel: lists editable regions and reaches a hidden control', async
   await expect(panel.getByRole('button', { name: 'Motto' })).toBeVisible();
 
   // Click the hidden control's row → its popover opens in the preview (centred); set + apply.
+  // Activating a row also DISMISSES the rail — the drawer's backdrop covers the preview, so the
+  // popover it just opened would otherwise be unclickable.
   await panel.getByRole('button', { name: 'Motto' }).click();
+  await expect(panel).toBeHidden();
   const preview = page.frameLocator('iframe[title="Preview"]');
   await preview.locator('.sw-pop .sw-cval').fill('Built to last');
   await preview.locator('.sw-pop .sw-ok').click();

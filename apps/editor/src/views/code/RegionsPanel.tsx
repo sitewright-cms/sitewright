@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Type, Pilcrow, Link2, Image as ImageIcon, Settings2, Rows3, LayoutList, Languages, MapPin } from 'lucide-react';
 import type { Dataset, Entry } from '@sitewright/schema';
-import { SidePanel } from '../ui/SidePanel';
+import { SidePanel, SidePanelClose } from '../ui/SidePanel';
 import { api } from '../../api';
 import { entryLabel } from '../../lib/entry-form';
 
@@ -29,10 +29,17 @@ const KIND_ICON: Record<RegionItem['kind'], ReactNode> = {
 };
 
 function Row({ item, display, onEdit }: { item: RegionItem; display: string; onEdit: (rid: number) => void }) {
+  // Activating a row hands you over to the PREVIEW (it focuses the region, or opens a control's
+  // popover there), so the rail has to get out of the way: its backdrop covers the preview, and a
+  // popover you can't click is worse than no popover at all.
+  const closePanel = useContext(SidePanelClose);
   return (
     <button
       type="button"
-      onClick={() => onEdit(item.rid)}
+      onClick={() => {
+        onEdit(item.rid);
+        closePanel?.();
+      }}
       title={`Edit ${display}`}
       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400"
     >

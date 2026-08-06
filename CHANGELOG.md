@@ -58,7 +58,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   were on. It now measures **3.97:1**, clearing the 3:1 an interactive affordance needs. Hovering an
   active button also no longer washes it out (a translucent `hover:` utility outranked the active fill,
   so pointing at a button that was on made it look off).
-
+- **A project you just created comes back OWNED.** `GET /projects` carries the caller's `role`;
+  `POST /projects` did not — so a freshly created project reached the editor with `role: undefined`
+  and every owner-gated surface read it as *not owned* until something refetched the list. The Account
+  modal told the creator "open a project you own to manage its access keys" about the project they had
+  just made; a reload made it right, which is why it survived. Both create paths (new + duplicate) now
+  return it. The staff-only boundary on `POST /projects` — invited clients are project `member`s and
+  must never self-provision — had no test either, and now does.
+- **The Regions rail no longer opens a popover you cannot click.** Its whole job is to reach content
+  the page hides — a `{{sw-control}}` inside a `display:none` wrapper has no in-place click target —
+  but side panels became drawers with a backdrop, and that backdrop covers the preview the rail just
+  navigated you into. Activating a row now dismisses the rail (`SidePanelClose`).
+- **A copied page no longer duplicates the original's MENU label.** The pages list and the auto-nav
+  both label a page by its menu label, falling back to the title. `Copy` suffixed the title but left
+  the menu label alone, so the copy appeared as a second identical row *and* a second identical nav
+  item, separable only by URL.
 - **The E2E suites run again.** They sit outside CI on purpose (serial, shared DinD host), and nothing
   noticed when they stopped working: the browser suite was at **zero passing**. Registration became
   invitation-only — unconditionally, there is no self-registration setting any more — which removed the
@@ -68,13 +82,17 @@ The running version of an instance is reported at `GET /version` (baked into the
   endpoint answers 200 and ignores the key, so the breakage was invisible from both ends. Specs now seed
   users through ONE shared helper doing the real operator flow (admin invites → invitee registers →
   accepts) over `page.request`, which shares the browser's cookie jar; the deploy script verifies the
-  seeded admin can actually log in and fails there with that message. **Editor: 0 → 47 passing.** The API
-  suite is green (20) and re-runnable — it previously passed only once per fresh slot, because a spec
-  asserted "no stock key configured" after a sibling had configured one, and claimed clearing was
-  impossible when `stock: null` has always done it. A CSP assertion that pinned an exact sandbox token
-  list (which the API had deliberately widened) now asserts the invariant instead: sandboxed, scripts
-  allowed, never `allow-same-origin`. Remaining UI drift is inventoried in
-  `apps/editor/e2e/KNOWN-DRIFT.md`, and both suites are now a documented pre-release gate.
+  seeded admin can actually log in and fails there with that message. **Editor: 0 → 114 passing, 0
+  failing.** The API suite is green (20 passed, 2 skipped for want of real stock-provider keys) and
+  re-runnable — it previously passed only once per fresh slot, because a spec asserted "no stock key
+  configured" after a sibling had configured one, and claimed clearing was impossible when `stock: null`
+  has always done it. Re-runnability is now a property of the browser suite too: specs that write
+  INSTANCE-global state (OIDC providers, agent instructions) clear it up front and restore it at the
+  end, so one spec's leftovers can no longer decide whether another passes. Along the way the specs
+  stopped pinning byte sequences that legitimate transforms rewrite — a widened CSP sandbox, cache-
+  busting `?v=`, the CSS minifier's sorted selector lists, the flat `_assets/`/`/media/` schemes. The
+  suite's own README (`apps/editor/e2e/README.md`) now documents how to run it, how to read a failure,
+  and every non-obvious thing about the UI it drives; both suites are a documented pre-release gate.
 
 ### Added
 

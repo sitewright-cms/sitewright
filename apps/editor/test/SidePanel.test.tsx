@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { useContext } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SidePanel } from '../src/views/ui/SidePanel';
+import { SidePanel, SidePanelClose } from '../src/views/ui/SidePanel';
 import { Modal } from '../src/views/ui/Modal';
 
 describe('SidePanel', () => {
@@ -169,6 +170,29 @@ describe('SidePanel', () => {
     expect(region).toHaveAttribute('aria-hidden', 'false');
     // Escape closes the DRAWER even though a modal is open below it (the regression this fixes).
     fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('lets its own content dismiss it (SidePanelClose) — for panels that hand you off to the page', () => {
+    function DismissingRow() {
+      const close = useContext(SidePanelClose);
+      return (
+        <button type="button" onClick={() => close?.()}>
+          jump to region
+        </button>
+      );
+    }
+    const { container } = render(
+      <SidePanel side="left" label="Regions">
+        <DismissingRow />
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"][aria-label="Regions"]')!;
+    fireEvent.click(screen.getByRole('button', { name: 'Open Regions' }));
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    // Activating the row closes the drawer — its backdrop would otherwise cover the very thing the
+    // row navigated to (the Regions rail opens a control's popover inside the preview).
+    fireEvent.click(screen.getByRole('button', { name: 'jump to region' }));
     expect(region).toHaveAttribute('aria-hidden', 'true');
   });
 

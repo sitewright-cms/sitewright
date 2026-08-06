@@ -7,10 +7,10 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-// The asset operations: in-app image preview modal, rename (prompt dialog), copy,
+// The asset operations: in-app image preview modal, rename (prompt dialog), copy URL,
 // and delete (confirm dialog) — all modal-based, no native browser dialogs.
 
-test('assets: image preview modal, rename, copy, delete via modal dialogs', async ({ page }) => {
+test('assets: image preview modal, rename, copy URL, delete via modal dialogs', async ({ page }) => {
   await signUp(page, `assetops-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Asset Ops');
@@ -35,14 +35,16 @@ test('assets: image preview modal, rename, copy, delete via modal dialogs', asyn
   await page.getByRole('dialog', { name: 'Rename file' }).getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('button', { name: 'brand-mark.png', exact: true })).toBeVisible();
 
-  // COPY duplicates the asset in the current folder.
-  await page.getByRole('button', { name: 'Copy brand-mark.png' }).click();
-  await expect(page.getByRole('button', { name: 'brand-mark.png', exact: true })).toHaveCount(2);
+  // COPY URL puts the asset's root-relative delivery URL on the clipboard — the thing you paste into
+  // page code. (There is no duplicate-file action in the File Manager: the row actions are Copy URL,
+  // Download, Rename, Delete. `api.copyMedia` still exists for agents/MCP but has no UI caller.)
+  await page.getByRole('button', { name: 'Copy URL of brand-mark.png' }).click();
+  await expect(page.getByText('URL copied — paste it into your page code')).toBeVisible();
 
-  // DELETE one via the confirm dialog → back to a single copy.
-  await page.getByRole('button', { name: 'Delete brand-mark.png' }).first().click();
+  // DELETE via the confirm dialog → the row is gone.
+  await page.getByRole('button', { name: 'Delete brand-mark.png' }).click();
   await page.getByRole('dialog', { name: 'Delete file' }).getByRole('button', { name: 'Delete' }).click();
-  await expect(page.getByRole('button', { name: 'brand-mark.png', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'brand-mark.png', exact: true })).toHaveCount(0);
 });
 
 // The project selector + New Project modal flow, and switching projects from the header.

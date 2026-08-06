@@ -53,8 +53,15 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   // Website Settings top tab: set the production URL + the no-code nav/button effects.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await page.getByLabel(/Production URL/).fill('https://acme.example');
-  await page.getByLabel('Nav effect').selectOption('pill');
-  await page.getByLabel('Button effect').selectOption('lift');
+  // `pill` is not a nav effect any more — the scheme names are `box-solid` / `sliding-pill` /
+  // `glass-pill` / … (see NAV_EFFECTS).
+  await page.getByLabel('Nav effect').selectOption('sliding-pill');
+  // Button effect is no longer a bare select: it is a MODAL picker (effect + hover accent + shape,
+  // with a live preview), applied with "Apply".
+  await page.getByRole('button', { name: /accent ·/ }).click();
+  const btnFx = page.getByRole('dialog', { name: 'Button effects' });
+  await btnFx.getByLabel('Button effect').selectOption('lift');
+  await btnFx.getByRole('button', { name: 'Apply' }).click();
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
@@ -78,18 +85,19 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
   // The no-code effect picks persisted (website.theme).
-  await expect(page.getByLabel('Nav effect')).toHaveValue('pill');
-  await expect(page.getByLabel('Button effect')).toHaveValue('lift');
+  await expect(page.getByLabel('Nav effect')).toHaveValue('sliding-pill');
+  // The button effect surfaces as the trigger's summary line, not a select on this screen.
+  await expect(page.getByRole('button', { name: /accent ·/ })).toContainText('Lift');
 
   // Changing ONLY a nav effect must dirty the Website section's Save (it's a Website field) — then
   // persist on its own.
-  await page.getByLabel('Nav effect').selectOption('underline');
+  await page.getByLabel('Nav effect').selectOption('line-bottom');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: /Acme Site/ }).click();
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await expect(page.getByLabel('Nav effect')).toHaveValue('underline');
+  await expect(page.getByLabel('Nav effect')).toHaveValue('line-bottom');
 });
 
 // The brand color rows have a swatch BUTTON that opens a powerful picker: edit in any of
@@ -281,7 +289,9 @@ test('Corporate Identity: Save/Discard gate on unsaved changes and Discard rever
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
 
   const save = page.getByRole('button', { name: 'Save', exact: true });
-  const discard = page.getByRole('button', { name: 'Discard' });
+  // `exact` matters: this test's own project is named "Discard Site", so its switch-project button
+  // ("Discard Site — switch project") matches the substring too.
+  const discard = page.getByRole('button', { name: 'Discard', exact: true });
   // Freshly loaded → nothing to save.
   await expect(save).toBeDisabled();
   await expect(discard).toBeDisabled();

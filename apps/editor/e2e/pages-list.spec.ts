@@ -40,14 +40,19 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await page.getByRole('button', { name: 'Settings for Services' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByLabel('Meta description').fill('All our services, explained.');
-  await page.getByLabel('Page template').selectOption('global:text');
+  // The template picker lives under the collapsed "Advanced" disclosure (it opens by itself only
+  // when the page already uses a template or raw HTML).
+  await page.getByRole('button', { name: /Advanced/ }).click();
+  // A searchable combobox, not a native <select> — pick the option by its NAME.
+  await page.getByRole('combobox', { name: 'Page template' }).click();
+  await page.getByRole('option', { name: 'Text page (global)' }).click();
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   // The row now shows the template badge; reopening settings shows the saved values.
   await expect(page.getByRole('button', { name: /^Services/ })).toContainText('template');
   await page.getByRole('button', { name: 'Settings for Services' }).click();
   await expect(page.getByLabel('Meta description')).toHaveValue('All our services, explained.');
-  await expect(page.getByLabel('Page template')).toHaveValue('global:text');
+  await expect(page.getByRole('combobox', { name: 'Page template' })).toContainText('Text page (global)');
   await page.keyboard.press('Escape');
 
   // The template LOCKS the page's code surface; content mode edits its regions;

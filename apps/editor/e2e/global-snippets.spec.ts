@@ -75,7 +75,9 @@ test('an instance admin can create + delete a global snippet from the Snippets r
 
   // Persists across a reload (loaded from the server), then clean up so the shared slot stays tidy.
   await page.reload();
-  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Admin Globals/ }).click();
+  // Match on the STAMPED SLUG, not the name: the admin account survives between runs, so every
+  // previous run's "Admin Globals" project is still in this list.
+  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: `Admin Globals /gadmin-${stamp}` }).click();
   await page.getByRole('button', { name: 'Open Snippets' }).click();
   const snippets2 = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(snippets2.getByText(name, { exact: true })).toBeVisible();

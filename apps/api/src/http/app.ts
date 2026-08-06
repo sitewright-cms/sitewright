@@ -2775,7 +2775,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       order: 0,
       nav: { slots: ['header'] },
     });
-    return reply.code(201).send({ project });
+    // Carry the creator's ROLE, exactly as GET /projects does. Without it the editor's freshly-created
+    // project has `role: undefined`, and every owner-gated surface reads as NOT-OWNED until something
+    // refetches the list — the Account modal told the creator "open a project you own to manage its
+    // access keys" about the project they had just made.
+    return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
   });
 
   app.get<{ Params: { id: string } }>(
@@ -3607,7 +3611,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
           await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
           if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
-          return reply.code(201).send({ project });
+          return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
         } catch (err) {
           await projects.remove(project.id).catch((e) => req.log.warn({ err: e }, 'duplicate rollback failed'));
           if (mediaStorage) {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { dismissProjectSelector, signUp } from './helpers.js';
 import { authenticator } from 'otplib';
 
 const stamp = Date.now();
@@ -11,6 +11,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await signUp(page, email);
 
   // Open the account menu → Account Settings → Security → start enrolment.
+  await dismissProjectSelector(page); // the first-load overlay covers the header
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
@@ -27,14 +28,19 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   const recovery = (await account.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem').first().textContent())?.trim() ?? '';
   expect(recovery).toMatch(/^[A-Z0-9]{5}-[A-Z0-9]{5}$/);
   await account.getByRole('button', { name: 'I’ve saved them' }).click();
+  // The Account modal's own header tabs include an "Account" button, so it must be fully GONE before
+  // the header's account button is addressable — the modal animates out, so waiting on the click's
+  // actionability isn't enough (the locator resolves to 2 elements and fails strict mode at once).
   await page.keyboard.press('Escape');
+  await expect(account).toBeHidden();
 
   // Sign out, then sign back in — the password now yields the second-factor step.
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await page.getByLabel('Email').fill(email);
   await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  // `exact`: the login screen also offers "Sign in with a passkey" (and any OIDC provider button).
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   // Code step appears; a fresh TOTP code completes the sign-in.
   const codeField = page.getByLabel('Authentication code');

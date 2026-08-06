@@ -110,6 +110,40 @@ describe('project lifecycle (HTTP layer)', () => {
   });
 
   // ---- 2. Slug rules (instance-unique) ----
+  it('is STAFF-ONLY: a non-staff account cannot create a project', async () => {
+    // Creating a project is an AGENCY action — the creator becomes its owner. An invited CLIENT is a
+    // project `member` and must never self-provision. The route guards this with requirePlatformStaff;
+    // nothing asserted it, so the boundary could have been widened without a test noticing.
+    await bootStaffApp();
+    const email = `client-${randomUUID()}@test.local`;
+    // No platformRole at all — a non-staff account. (`PlatformRole` is only 'admin' | 'developer';
+    // an invited CLIENT is a project `member`, which is a per-project role, not a platform one.)
+    await registerAccount(staffDb!, email, 'Pw-secret-1');
+    const login = await staffApp!.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+    expect(login.statusCode).toBe(200);
+    const token = login.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
+
+    const create = await staffApp!.inject({
+      method: 'POST',
+      url: '/projects',
+      cookies: { [SESSION_COOKIE]: token },
+      payload: { name: 'Not Mine', slug: `not-mine-${randomUUID().slice(0, 8)}` },
+    });
+    expect(create.statusCode).toBe(403);
+  });
+
+  it('hands the creator a project already marked OWNED (no refetch needed)', async () => {
+    // GET /projects carries `role`; POST did not, so a freshly-created project arrived with
+    // `role: undefined` and every owner-gated surface in the editor read it as NOT owned until
+    // something refetched the list. The Account modal told the creator "open a project you own to
+    // manage its access keys" about the project they had just made.
+    await bootStaffApp();
+    const a = await staffClient();
+    const create = await a.post('/projects', { name: 'Owned', slug: `owned-${randomUUID().slice(0, 8)}` });
+    expect(create.statusCode).toBe(201);
+    expect((create.json() as { project: { role?: string } }).project.role).toBe('owner');
+  });
+
   it('rejects invalid slugs (uppercase / spaces / special chars) with 400', async () => {
     await bootStaffApp();
     const a = await staffClient(); // staff — POST /projects is agency-staff-only

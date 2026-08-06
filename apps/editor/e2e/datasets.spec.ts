@@ -127,14 +127,16 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   // The entry editor stays open after Save (baseline reset) — close it before clicking the row behind it.
   await page.keyboard.press('Escape');
 
-  // Open it → the modal has a Draft/Published switch; select Published, save, and the badge updates.
+  // Open it → the modal has a Draft/Published switch. A NEW entry is seeded `published`, so toggle the
+  // other way: select Draft, save, and the row's badge follows. (Clicking the status it already has is
+  // a no-op, which leaves the form un-dirty and the Save button correctly disabled.)
   await page.getByRole('button', { name: 'Alpha', exact: true }).click();
   const editDialog = page.getByRole('dialog', { name: /Edit/ });
   await expect(editDialog).toBeVisible();
-  await editDialog.getByRole('button', { name: 'published' }).click();
+  await editDialog.getByRole('button', { name: 'draft' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const alphaRow = page.locator('li', { has: page.getByRole('button', { name: 'Alpha', exact: true }) });
-  await expect(alphaRow.getByText('published', { exact: true })).toBeVisible();
+  await expect(alphaRow.getByText('draft', { exact: true })).toBeVisible();
   // Close the (still-open) entry editor before clicking the row's Duplicate action behind it.
   await page.keyboard.press('Escape');
 
@@ -167,9 +169,10 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
   // The entry editor stays open after Save (baseline reset) — close it before clicking the side panel.
   await page.keyboard.press('Escape');
 
-  // Duplicate the dataset → "posts-copy" appears and is auto-selected, with the entry cloned.
+  // Duplicate the dataset → "posts_copy" appears and is auto-selected, with the entry cloned.
+  // (UNDERSCORE, not hyphen — dataset slugs are binding keys.)
   await page.getByRole('button', { name: 'Duplicate dataset Posts' }).click();
-  await expect(page.getByText('/posts-copy')).toBeVisible();
+  await expect(page.getByText('/posts_copy')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
 
   // Edit the cloned entry's key → the recreate warning shows; saving keeps the row (new id).
@@ -211,8 +214,10 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await page.getByRole('button', { name: 'Rename dataset' }).click();
   const renameDlg = page.getByRole('dialog', { name: /Rename/ });
   await renameDlg.getByLabel('Dataset slug').fill('articles');
-  await expect(renameDlg.getByText(/re-points all/)).toBeVisible();
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // A slug change is no longer a plain Save: the dialog asks how to handle the page/template
+  // references and commits through the chosen button.
+  await expect(renameDlg.getByText(/choose how to handle/)).toBeVisible();
+  await renameDlg.getByRole('button', { name: /Rename \+ update all references/ }).click();
 
   // The dataset now carries the new slug and still holds its entry.
   await expect(page.getByText('/articles')).toBeVisible();

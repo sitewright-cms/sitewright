@@ -21,6 +21,10 @@ const GATES = [
     // so `pnpm audit` itself never lies about what is in the tree.
     cmd: ['node', 'scripts/audit-gate.mjs'],
   },
+  // A raw NUL byte makes git call a source file BINARY, so its diffs stop rendering and every
+  // later change to it is invisible to review. Cheap to check, silent and permanent if missed —
+  // it hid the OIDC auth implementation from review for months.
+  { name: 'Source files are text', cmd: ['node', 'scripts/text-sources-gate.mjs'] },
   // Guard against hand-edits / upstream drift of the generated icon + vendored-runtime sets.
   { name: 'Check generated brand icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:brand-icons:check'] },
   { name: 'Check generated flag icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:flag-icons:check'] },

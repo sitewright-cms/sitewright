@@ -260,7 +260,7 @@ describe('DeployConfigSchema — edge cases (depth)', () => {
   });
 
   it('rejects remoteDir containing control characters (NUL, tab, CR, DEL)', () => {
-    for (const ch of [' ', '\t', '\r', '', '']) {
+    for (const ch of ['\0', '\t', '\r', '\x7f', '\x1f']) {
       expect(() =>
         DeployConfigSchema.parse({ ...base, protocol: 'sftp', remoteDir: `/var/www${ch}/x` }),
       ).toThrow(/control characters/);

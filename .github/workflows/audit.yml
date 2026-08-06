@@ -49,12 +49,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Same threshold as the merge gate, so this can never be stricter than what CI enforces and
-      # fail on something a PR would have been allowed to merge.
+      # THE SAME GATE the merge path runs, not a second definition of it. This job used to call
+      # `pnpm audit --audit-level high` directly, which quietly made it weaker than the merge gate the
+      # moment that gate moved to a moderate floor with reasoned acceptances — a new moderate advisory
+      # would have passed here forever while blocking every PR. One script, both surfaces.
       - name: Audit
-        run: pnpm audit --audit-level high
+        run: node scripts/audit-gate.mjs
 
-      # The gate above only fails on high/critical. Everything below that is still worth SEEING, but
+      # The gate fails on unaccepted moderate+; anything below that floor is still worth SEEING, but
       # must not fail the run — `|| true` is the point, not an oversight.
       - name: Full advisory list (informational)
         if: always()

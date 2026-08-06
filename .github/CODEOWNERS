@@ -14,8 +14,8 @@
 # up as a behaviour change anywhere else in the diff.
 /pnpm-lock.yaml           @sbuchweitz
 /pnpm-workspace.yaml      @sbuchweitz
-/package.json             @sbuchweitz
 **/package.json           @sbuchweitz
+
 
 # The gates. Weakening a check looks like a small refactor and silences the thing that would have
 # caught the next problem — see the fail-open audit tolerance that shipped for months.

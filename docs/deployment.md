@@ -128,6 +128,13 @@ carry data out of, and a compromised dependency could simply use the importer ra
 own socket. Egress filtering is a real control against a *fixed* set of destinations — this workload
 does not have one.
 
+The mitigation that *would* work for that threat is segmentation rather than filtering: run the
+fetch-heavy code (the crawler and importer, the highest-SSRF-surface component here) as a separate
+low-privilege process or network namespace with no database handle and no secrets, so anything that
+compromises it inherits open egress but nothing worth exfiltrating. Today that code runs in-process, so
+this is a design change, not a deployment setting — but it is the ceiling worth aiming at, and it is
+worth knowing that the private-range block below is not it.
+
 That is separate from serving client sites. Those are served **inbound**, on `/sites/<slug>/` and the
 `<slug>.<sitesDomain>` subdomains; rendering them needs no outbound connection at all, because the
 visitor's browser fetches whatever the page embeds. Restricting egress does not affect hosting.
@@ -140,9 +147,17 @@ service it dials. So a connection from this container to `10/8`, `172.16/12`, `1
 `169.254/16` (including the cloud metadata endpoint `169.254.169.254`) or their IPv6 equivalents is
 either a bug or an attack, and blocking it costs nothing.
 
-The one thing that changes this: if you have overridden `DATABASE_URL` to point at a **remote** libsql
-server on your own network, that is real private egress and needs an `ACCEPT` rule for that host. The
-default (`file:` under the data volume) does not.
+**Three optional features do dial private addresses**, and each needs an `ACCEPT` rule ahead of the
+denies if you use it. None is on by default:
+
+| Setting | What it dials |
+|---|---|
+| `DATABASE_URL` | A **remote** libsql server, if you overrode the default `file:` URL. |
+| `SW_BUILD_WORKER=true` | The Docker daemon at `DOCKER_HOST`, to run site builds in isolated worker containers. A `tcp://` daemon on your network is private egress. |
+| `SW_AI_BASE_URL` | A self-hosted OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM) on your LAN. This env var exists *specifically* to reach one — the admin-facing AI settings reject a private `baseUrl` outright, so the env var is the only way in. |
+| **OIDC SSO** with a self-hosted IdP | Discovery and token exchange against the issuer. Unlike the AI `baseUrl`, the issuer is **not** restricted to public hosts, and an `http://` issuer is explicitly supported — so a Keycloak/Authentik/Zitadel on your LAN works today and will stop working the moment you apply these rules. Login breaks with no hint that a firewall caused it. |
+
+If none of those is configured, the container needs no private egress at all.
 
 The application already guards this: any server-side fetch of a user-supplied URL goes through a
 pinned fetcher that resolves the name, refuses private results, connects to the **resolved IP**, and
@@ -162,41 +177,55 @@ docker run -d --name sitewright --network sw-net ...   # otherwise as in Quick s
 Then deny that subnet the private destinations, before Docker's own accept rules:
 
 ```bash
+SUBNET=172.28.0.0/24
+
 for dst in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 169.254.0.0/16; do
-  sudo iptables -I DOCKER-USER -s 172.28.0.0/24 -d "$dst" \
+  sudo iptables -I DOCKER-USER -s "$SUBNET" -d "$dst" \
     -j REJECT --reject-with icmp-admin-prohibited
 done
+
+# ★ MUST come last, because -I prepends: the container's own subnet sits INSIDE 172.16.0.0/12, so
+# without this the loop above also blocks it from talking to anything else on its own network.
+# Harmless today with one container, a silent outage the day you add a second (a reverse proxy, a
+# mail relay) to sw-net and it can no longer be reached.
+sudo iptables -I DOCKER-USER -s "$SUBNET" -d "$SUBNET" -j RETURN
+
 sudo ip6tables -I DOCKER-USER -s <container-v6-subnet> -d fc00::/7 \
   -j REJECT --reject-with icmp6-adm-prohibited          # if IPv6 is enabled
 ```
 
-`icmp-admin-prohibited` rather than a bare `REJECT` on purpose: it surfaces as `EHOSTUNREACH`, which is
-distinguishable from the `ECONNREFUSED` you get when the packet arrived and nothing was listening. A
-plain `REJECT` produces `ECONNREFUSED` too, so you cannot tell it from no rule at all.
-
-**Exclude your own subnet from the loop** if it overlaps `172.28.0.0/24` — otherwise the first rule cuts
-the container off from its own network.
+`icmp-admin-prohibited` rather than a bare `REJECT` on purpose: it surfaces as `EHOSTUNREACH` instead of
+the `ECONNREFUSED` a plain `REJECT` gives, which is indistinguishable from a closed port. Don't rely on
+that alone to prove the rule works, though — see below.
 
 ### Verifying it, without fooling yourself
 
-A rule that matches nothing is worse than no rule, because you will believe you are protected. **Probe
-before and after; the answer has to change.** Pick a private address that is genuinely routable — the
-container's own gateway — not the cloud metadata IP, which times out on any machine that simply is not
-in that cloud, so "timeout" would look like success everywhere:
+A rule that matches nothing is worse than no rule, because you will believe you are protected. Errno
+alone will not tell you: `EHOSTUNREACH` also comes from the host having no route, and `ECONNREFUSED`
+from a `REJECT` is identical to one from a closed port. **Read the rule counters instead** — they are
+unambiguous and do not depend on what happens to be listening.
+
+Pick any private target *other than the container's own gateway*. `DOCKER-USER` is reached from the
+**`FORWARD`** chain, and traffic to the bridge's own address (`172.28.0.1`) is destined for the host
+itself, so it goes through `INPUT` and these rules never see it — probing the gateway would show no
+change even when the rules are working perfectly.
 
 ```bash
-# Run this BEFORE adding the rules, and again after. It must differ.
+sudo iptables -Z DOCKER-USER                      # zero the counters
 docker exec sitewright node -e "
-const s=require('net').connect({port:80,host:'172.28.0.1'});
+const s=require('net').connect({port:80,host:'10.99.99.99'});   # any private IP that is not the host
 s.setTimeout(3000);
-s.on('connect',()=>{console.log('REACHED — no rule in effect');s.destroy()});
-s.on('timeout',()=>{console.log('timed out (DROP-style block)');s.destroy()});
+s.on('connect',()=>{console.log('REACHED');s.destroy()});
+s.on('timeout',()=>{console.log('timeout');s.destroy()});
 s.on('error',e=>console.log(e.code));"
+sudo iptables -L DOCKER-USER -n -v | head        # the 10.0.0.0/8 rule's pkts column must be > 0
 ```
 
-`ECONNREFUSED` before, `EHOSTUNREACH` after. If it says `ECONNREFUSED` both times, your rule is not
-matching this container's traffic. Then confirm the internet still works, or you have broken the
-importer, deploys and mail:
+A non-zero packet count on the matching rule is the proof. If every counter is still `0`, the rules are
+not seeing this container's traffic — most likely the `-s` subnet does not match the network you
+actually started it on (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sitewright`).
+
+Then confirm the internet still works, or you have broken the importer, deploys and mail:
 
 ```bash
 docker exec sitewright node -e "fetch('https://example.com').then(r=>console.log('public',r.status))"

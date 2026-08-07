@@ -944,8 +944,15 @@ export const api = {
   // isolated worker WITH the project skeleton slots, website head/critical CSS, and the
   // page's {{edit}} content — the same document publish produces. `token` loads the doc
   // via an iframe `src` (opaque-origin sandbox CSP), never `srcDoc`.
-  preview: (projectId: string, page: Page) =>
-    request<{ html: string; token: string; slug: string }>('POST', `/projects/${projectId}/preview`, page),
+  // `slots` overrides the SAVED chrome for this render — how the skeleton-slot editor previews the
+  // markup being typed (without it a slot editor could only ever show what was last written). The
+  // server validates an override with the same gate a settings save uses.
+  preview: (projectId: string, page: Page, slots?: Record<string, string>) =>
+    request<{ html: string; token: string; slug: string }>(
+      'POST',
+      `/projects/${projectId}/preview`,
+      slots ? { ...page, slots } : page,
+    ),
 
   // --- templates (reusable code-first page layouts; globals ship in @sitewright/core) ---
   listTemplates: (projectId: string) =>

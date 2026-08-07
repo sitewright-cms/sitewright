@@ -21,6 +21,7 @@ import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
 import { findEachBlock, findElementRange } from '../lib/source-locate';
+import { SlotEditor, type ChromeSlotKey } from './SlotEditor';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
@@ -169,6 +170,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // A chrome slot opened from the preview's hover affordance — stacked OVER this editor, so
+  // closing it returns to the page you were on. null = not editing a slot.
+  const [slotEdit, setSlotEdit] = useState<{ slot: ChromeSlotKey; value: string } | null>(null);
   // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
   // seed (the stored page.data override if any, else the live authored default), or null when closed.
   const [htmlSource, setHtmlSource] = useState<{ key: string; html: string } | null>(null);
@@ -463,6 +467,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         cls?: unknown;
         nth?: number;
         ds?: string; // the row's dataset slug, when the click was inside an {{#each}}
+        slot?: string; // edit-slot: which chrome slot the preview offered to edit
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -577,6 +582,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           // {{#each}} block that rendered it, which is the code the author actually edits.
           (typeof d.ds === 'string' && d.ds ? findEachBlock(sourceRef.current, d.ds) : null);
         if (range) codeRef.current?.selectRange(range.from, range.to);
+      } else if (d.type === 'edit-slot' && typeof d.slot === 'string') {
+        // Chrome is authored in the SETTINGS entity, not this page — fetch the slot's current
+        // source and open its editor over this one.
+        const key = d.slot as ChromeSlotKey;
+        void api
+          .getSettings(project.id)
+          .then(({ item }) => setSlotEdit({ slot: key, value: (item.website?.[key] as string | undefined) ?? '' }))
+          .catch(() => undefined);
       } else if (d.type === 'link-click' && typeof d.href === 'string') {
         // Clicked an internal site link in the preview → switch the editor to that page (via the ref so
         // this mount-scoped listener sees fresh pages/dirty/onNavigate).
@@ -1191,6 +1204,22 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       )}
 
       {/* Clicking a rendered dataset row opens its entry editor (stacked); saving refreshes the preview. */}
+      {slotEdit && (
+        <SlotEditor
+          project={project}
+          slot={slotEdit.slot}
+          value={slotEdit.value}
+          onSave={async (key, src) => {
+            // The slot lives in the SETTINGS singleton, so re-read and merge rather than writing a
+            // snapshot this editor took earlier — another surface may have changed a different field.
+            const { item } = await api.getSettings(project.id);
+            await api.putSettings(project.id, { ...item, website: { ...(item.website ?? {}), [key]: src } });
+            setSlotEdit((cur) => (cur ? { ...cur, value: src } : cur));
+            setPreviewNonce((n) => n + 1); // the page behind it renders this chrome too
+          }}
+          onClose={() => setSlotEdit(null)}
+        />
+      )}
       {openEntry && (
         <EntryEditorLoader
           projectId={project.id}

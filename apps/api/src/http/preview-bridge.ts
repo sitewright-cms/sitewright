@@ -55,9 +55,11 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
- *                     { source:'sitewright-preview', type:'locate-source', tag, id, cls, nth }        (source mode: click → select the code)
+ *                     { source:'sitewright-preview', type:'locate-source', tag, id, cls, nth, text, ds } (source mode: click → select the code)
+ *                     { source:'sitewright-preview', type:'edit-slot', slot }                        (hovered a chrome slot → open its editor)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
+ *                     { source:'sitewright-editor', type:'setSlotFocus', slot }  ('' restores the page)
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
  *                     { source:'sitewright-editor', type:'insert-media', url, alt, width, height }  (media dialog → <img>)
@@ -164,6 +166,98 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     post({ type: 'link-click', href: href });
   }, true);
 
+  // ---- CHROME SLOTS -------------------------------------------------------------------------
+  // Each slot is rendered inside a fixed skeleton landmark, so a slot is addressable by a stable id.
+  // [settings key, element id, human label]
+  var SLOT_LANDMARKS = [
+    ['mainNav', 'main-nav', 'Main Navigation'],
+    ['sidebarLeft', 'sidebar-left', 'Left Sidebar'],
+    ['sidebarRight', 'sidebar-right', 'Right Sidebar'],
+    ['footer', 'footer', 'Footer'],
+    ['bottom', 'bottom', 'Bottom']
+  ];
+  var slotFocus = '';
+  var slotStyled = false;
+  var slotBtn = null;
+  function slotElementId(key) {
+    for (var i = 0; i < SLOT_LANDMARKS.length; i++) if (SLOT_LANDMARKS[i][0] === key) return SLOT_LANDMARKS[i][1];
+    return '';
+  }
+  function slotKeyForElement(el) {
+    for (var i = 0; i < SLOT_LANDMARKS.length; i++) if (el.id === SLOT_LANDMARKS[i][1]) return SLOT_LANDMARKS[i];
+    return null;
+  }
+  function ensureSlotStyle() {
+    if (slotStyled) return; slotStyled = true;
+    var s = document.createElement('style');
+    // The page around the edited slot stays IN FLOW, only receded: removing it would take the scroll
+    // (so a sticky header could never show its scrolled state), the container it aligns against, the
+    // thing a drawer overlays, and the scrollbar (whose width shifts the breakpoints).
+    s.textContent =
+      '.sw-slot-dim{opacity:.25;filter:grayscale(1);pointer-events:none}' +
+      '.sw-slot-target{outline:2px dashed #14b8a6;outline-offset:-2px}' +
+      '.sw-slot-edit{position:fixed;z-index:2147483646;display:none;align-items:center;gap:6px;' +
+      'padding:4px 10px;border:0;border-radius:9999px;background:#0f172a;color:#fff;cursor:pointer;' +
+      'font:500 12px/1.4 ui-sans-serif,system-ui,sans-serif;box-shadow:0 4px 14px rgba(15,23,42,.28)}' +
+      '.sw-slot-edit:hover{background:#1e293b}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  /** Recede everything except the slot being edited; '' restores the page. */
+  function applySlotFocus(key) {
+    slotFocus = key || '';
+    ensureSlotStyle();
+    var body = document.getElementById('page-content');
+    var i, el;
+    for (i = 0; i < SLOT_LANDMARKS.length; i++) {
+      el = document.getElementById(SLOT_LANDMARKS[i][1]);
+      if (el) { el.className = el.className.replace(/\\s*sw-slot-(dim|target)/g, ''); }
+    }
+    if (body) body.className = body.className.replace(/\\s*sw-slot-dim/g, '');
+    if (!slotFocus) { hideSlotButton(); return; }
+    for (i = 0; i < SLOT_LANDMARKS.length; i++) {
+      el = document.getElementById(SLOT_LANDMARKS[i][1]);
+      if (!el) continue;
+      el.className += SLOT_LANDMARKS[i][0] === slotFocus ? ' sw-slot-target' : ' sw-slot-dim';
+    }
+    if (body) body.className += ' sw-slot-dim';
+    hideSlotButton();
+  }
+  function hideSlotButton() { if (slotBtn) slotBtn.style.display = 'none'; }
+  function ensureSlotButton() {
+    if (slotBtn) return slotBtn;
+    ensureSlotStyle();
+    slotBtn = document.createElement('button');
+    slotBtn.type = 'button';
+    slotBtn.className = 'sw-slot-edit';
+    slotBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var key = slotBtn.getAttribute('data-slot');
+      if (key) post({ type: 'edit-slot', slot: key });
+    });
+    document.body.appendChild(slotBtn);
+    return slotBtn;
+  }
+  // Hovering a slot offers to edit it — chrome is authored elsewhere than the page, so without this
+  // there is no way in from the page you are looking at. Suppressed while a slot is already focused.
+  document.addEventListener('mouseover', function (e) {
+    if (slotFocus) return;
+    var t = e.target;
+    if (!t || t.nodeType !== 1 || !t.closest) return;
+    if (t.closest('.sw-slot-edit')) return;
+    var land = t.closest('#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom');
+    var meta = land ? slotKeyForElement(land) : null;
+    if (!meta) { hideSlotButton(); return; }
+    var b = ensureSlotButton();
+    var r = land.getBoundingClientRect();
+    b.setAttribute('data-slot', meta[0]);
+    b.textContent = 'Edit ' + meta[2];
+    b.style.display = 'inline-flex';
+    // Pinned inside the landmark's top-right, clamped into the viewport so it is reachable even when
+    // the landmark starts off-screen (a footer below the fold, a bottom slot at the document end).
+    b.style.top = Math.max(6, Math.min(r.top + 6, window.innerHeight - 34)) + 'px';
+    b.style.left = Math.max(6, r.right - b.offsetWidth - 10) + 'px';
+  });
+
   // SOURCE (code) mode: a click on the rendered page asks the editor to select the markup that
   // produced it. Only the page's own body can be located — the chrome slots render from the settings
   // entity and the editor-only UI this bridge injects has no source at all, so both are skipped rather
@@ -173,8 +267,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (editing) return; // content mode owns clicks (in-place editing)
     var el = e.target;
     if (!el || el.nodeType !== 1 || !el.closest) return;
-    if (el.closest('.sw-tb, .sw-pop, .sw-badge, [data-sw-badge]')) return; // this bridge's own chrome
-    var root = document.getElementById('page-content');
+    if (el.closest('.sw-tb, .sw-pop, .sw-badge, .sw-slot-edit, [data-sw-badge]')) return; // this bridge's own chrome
+    // The locatable ROOT is whatever the editor is editing: a focused chrome slot's landmark, else the
+    // page body. Everything outside it renders from a DIFFERENT source and has no code here to select.
+    var root = slotFocus ? document.getElementById(slotElementId(slotFocus)) : document.getElementById('page-content');
     if (!root || el === root || !root.contains(el)) return;
     // A dataset row is WRAPPED here in an injected <div data-sw-entry> that exists in the render and
     // not in the source. Reporting it could never match, so step into the authored element it wraps.
@@ -1273,6 +1369,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (!d || d.source !== PARENT) return;
     if (d.type === 'scrollTo' && typeof d.y === 'number') jumpTo(d.y);
     else if (d.type === 'setMode') setEditing(d.mode === 'content');
+    // Focus one chrome slot: recede the rest of the page and scope click-to-code to that landmark.
+    else if (d.type === 'setSlotFocus') applySlotFocus(typeof d.slot === 'string' ? d.slot : '');
     else if (d.type === 'edit-region' && typeof d.rid === 'number') editRegion(d.rid);
     else if (d.type === 'ci-palette') {
       // The project's CI palette (brand colours + font slots) for the rich-text toolbar. Accept only the

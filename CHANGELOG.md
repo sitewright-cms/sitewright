@@ -27,6 +27,14 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Seven Website settings were unsavable on their own, and revertable from the other tab.** The
+  Settings modal splits one form across two independently-saved tabs using a hand-maintained list of
+  field names, and the whole `security.txt` block (plus the new backdrop toggle) was missing from it.
+  A missing field counts as a *Corporate Identity* field, so: the Website tab never went dirty, its
+  Save button stayed disabled — and Identity's Discard silently reverted the edit while Identity's
+  Save dropped it and still marked the form clean. Both failure modes were invisible until a reload.
+  The split is now checked against where a field *actually* writes, so a future field that lands in
+  `website.*` without being listed fails by name rather than silently misfiling itself.
 - A custom preloader was emitted **raw** into the render-template canvas — outside the platform
   wrapper, on a surface that ships no preloader runtime, so nothing could ever clear it and it simply
   covered the canvas. That canvas now matches the page-preview route, which had already stopped

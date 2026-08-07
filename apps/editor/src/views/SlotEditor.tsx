@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Code, Eye, Save, X } from 'lucide-react';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange } from '../lib/source-locate';
 import { PreviewPane } from './editor/PreviewPane';
-import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
-import { ghostButton, primaryButton } from '../theme';
+import { gradientSurface } from '../theme';
 
 /**
  * The five chrome slots, in skeleton order. `key` is the settings field; `label` is what the user is
@@ -49,10 +49,10 @@ interface SlotEditorProps {
 }
 
 /**
- * The chrome-slot editor: the page editor's experience with a SLOT as its subject — code + live
- * preview, the responsive device toolbar, click-to-code selection, and a content mode. No audit tab
- * (that scores a page, and a slot is not one), and it opens in CODE mode because a slot is markup
- * first. It stacks OVER the page editor when reached from there, so closing returns you where you were.
+ * The chrome-slot editor: the page editor's experience with a SLOT as its subject — same shell, same
+ * stacked layout (a source strip that peeks and expands on hover over a live preview), same in-preview
+ * device rail. No audit tab (that scores a page, and a slot is not one), and it opens in CODE mode
+ * because a slot is markup first. Stacks OVER the page editor when reached from there.
  */
 export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditorProps) {
   const [source, setSource] = useState(value);
@@ -62,6 +62,11 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The source strip peeks on open and expands while hovered or focused — the page editor's gesture,
+  // so the preview keeps the room until you actually reach for the code.
+  const [stripHover, setStripHover] = useState(false);
+  const [stripFocus, setStripFocus] = useState(false);
+  const stripExpanded = stripHover || stripFocus;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeRef = useRef<CodeEditorHandle>(null);
   const sourceRef = useRef(source);
@@ -70,9 +75,7 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
   modeRef.current = mode;
   const dirty = source !== value;
 
-  const width = PREVIEW_DEVICES.find((d) => d.key === device)?.width ?? null;
-
-  /** Tell the freshly-loaded preview which slot it is showing, and in which edit mode. */
+  /** Tell the freshly-loaded preview which slot it shows (which also scrolls it into view) and the mode. */
   const syncPreview = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
     win?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
@@ -113,7 +116,7 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
     syncPreview();
   }, [mode, syncPreview]);
 
-  // The preview → editor bridge: click-to-code, and the content-mode edits a slot can make.
+  // The preview → editor bridge: click-to-code, scoped by the preview to this slot's landmark.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
@@ -147,102 +150,93 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
     }
   }, [onSave, saving, slot]);
 
-  // Ctrl/Cmd+S saves; Esc closes (guarding unsaved work) — the page editor's shortcuts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        void save();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        if (!dirty || window.confirm('Discard unsaved changes to this slot?')) onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [dirty, onClose, save]);
+  const editModeSwitch = (
+    <div
+      role="group"
+      aria-label="Edit mode"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+    >
+      {(['source', 'content'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={mode === m}
+          onClick={() => setMode(m)}
+          className={`waves-effect rounded-lg px-2.5 py-1 transition ${
+            mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+          }`}
+        >
+          {m === 'source' ? 'Code Editor' : 'Content Editor'}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-100/95 dark:bg-slate-950/95 p-3 backdrop-blur-xl" role="dialog" aria-label={`Edit the ${slotLabel(slot)} slot`}>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{slotLabel(slot)}</span>
-        <span className="rounded-md bg-slate-200/70 dark:bg-white/10 px-1.5 py-0.5 text-[11px] text-slate-600 dark:text-slate-300">
-          skeleton slot · every page
-        </span>
-        {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400">unsaved</span>}
-
-        <div className="ml-2 flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
-          {([
-            ['source', 'Code', <Code key="c" className="h-3.5 w-3.5" />],
-            ['content', 'Content', <Eye key="e" className="h-3.5 w-3.5" />],
-          ] as const).map(([key, label, icon]) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={mode === key}
-              onClick={() => setMode(key)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
-                mode === key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
-            >
-              {icon}
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs shadow-sm backdrop-blur-xl">
-          {PREVIEW_DEVICES.map((d) => (
-            <Tooltip key={d.key} tip={d.label} side="bottom">
-              <button
-                type="button"
-                aria-label={d.label}
-                aria-pressed={device === d.key}
-                onClick={() => setDevice(d.key)}
-                className={`rounded-lg px-2 py-1 transition ${
-                  device === d.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
-              >
-                {d.label.split(' ')[0]}
-              </button>
-            </Tooltip>
-          ))}
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={() => void save()} disabled={!dirty || saving}>
-            <Save className="mr-1 inline h-3.5 w-3.5" />
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            aria-label="Close the slot editor"
-            className={`${ghostButton} px-2 py-1.5`}
-            onClick={() => {
-              if (!dirty || window.confirm('Discard unsaved changes to this slot?')) onClose();
+    <Modal
+      title={slotLabel(slot)}
+      size="screen"
+      onClose={onClose}
+      onBeforeClose={() => !dirty || window.confirm('Discard unsaved changes to this slot?')}
+      onSave={() => void save()}
+      saving={saving}
+      saveDisabled={!dirty}
+      headerLeft={editModeSwitch}
+      centerTitle
+      titleExtra={<span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">skeleton slot · every page</span>}
+    >
+      <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">
+        {/* Row 1 — the source strip, SOURCE MODE ONLY: peeking on open, expanding while hovered or
+            focused. CONTENT mode hides it entirely so the preview fills the modal, exactly as the page
+            editor does — there, every editable element is marked in the preview itself. */}
+        {mode === 'source' && (
+          <section
+            aria-label="Slot source editor"
+            data-expanded={stripExpanded}
+            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 dark:border-white/10 bg-[#0a0a0f] shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
+              stripExpanded ? 'h-[45vh]' : 'h-36'
+            }`}
+            onMouseEnter={() => setStripHover(true)}
+            onMouseLeave={() => setStripHover(false)}
+            onFocusCapture={() => setStripFocus(true)}
+            onBlurCapture={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
             }}
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+            <CodeEditor ref={codeRef} value={source} onChange={setSource} ariaLabel={`${slotLabel(slot)} source`} />
+          </section>
+        )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className={`min-h-0 overflow-hidden rounded-2xl ${mode === 'source' ? '' : 'hidden lg:block'}`}>
-          <CodeEditor
-            ref={codeRef}
-            value={source}
-            onChange={setSource}
-            language="html"
-            ariaLabel={`${slotLabel(slot)} source`}
-          />
-        </div>
-        <div className="min-h-0">
-          <DevicePreview width={width}>
+        {/* Row 2 — the preview, with the device rail pinned inside it (vertical, like the page editor). */}
+        <div className="relative min-h-0 flex-1">
+          <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Slot preview" iframeRef={iframeRef} />
           </DevicePreview>
+          <div
+            role="group"
+            aria-label="Preview device"
+            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-xl"
+          >
+            {PREVIEW_DEVICES.map((d) => (
+              <Tooltip key={d.key} tip={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`} side="left">
+                <button
+                  type="button"
+                  aria-label={`Preview: ${d.label}`}
+                  aria-pressed={device === d.key}
+                  onClick={() => setDevice(d.key)}
+                  className={`inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition ${
+                    device === d.key
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                >
+                  {DEVICE_ICONS[d.key]}
+                </button>
+              </Tooltip>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

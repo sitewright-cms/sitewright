@@ -19,7 +19,7 @@ import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { registerCodeInsertSink } from '../lib/code-insert-sink';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
-import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
 import { findEachBlock, findElementRange } from '../lib/source-locate';
 import { SlotEditor, type ChromeSlotKey } from './SlotEditor';
@@ -90,32 +90,6 @@ const PREVIEW_DEBOUNCE_MS = 800;
 // merge, proto-guards) + DANGEROUS_KEYS live in ../lib/page-data so they can be unit-tested directly.
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
-const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
-  desktop: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2" />
-      <path d="M8 21h8m-4-4v4" />
-    </svg>
-  ),
-  laptop: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v11H4Z" />
-      <path d="M2 19h20" />
-    </svg>
-  ),
-  tablet: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M12 18h.01" />
-    </svg>
-  ),
-  mobile: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="7" y="2" width="10" height="20" rx="2" />
-      <path d="M12 18h.01" />
-    </svg>
-  ),
-};
 
 /**
  * THE page editor, contentbase-style: a near-fullscreen modal (90vh, blurred

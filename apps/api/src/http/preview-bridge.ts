@@ -221,6 +221,18 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     }
     if (body) body.className += ' sw-slot-dim';
     hideSlotButton();
+    // Open ON the thing being edited: a footer or bottom slot is below the fold of an empty canvas,
+    // so focusing it without scrolling shows a blank page. Every candidate scroller is nudged rather
+    // than assuming one — this preview scrolls the BODY, not the window.
+    var target = document.getElementById(slotElementId(slotFocus));
+    if (target) {
+      var abs = target.getBoundingClientRect().top +
+        (window.pageYOffset || document.body.scrollTop || document.documentElement.scrollTop || 0);
+      var y = Math.max(0, abs - 40);
+      try { window.scrollTo({ top: y, left: 0, behavior: 'smooth' }); } catch (e) { try { window.scrollTo(0, y); } catch (e2) {} }
+      document.body.scrollTop = y;
+      document.documentElement.scrollTop = y;
+    }
   }
   function hideSlotButton() { if (slotBtn) slotBtn.style.display = 'none'; }
   function ensureSlotButton() {

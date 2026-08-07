@@ -38,7 +38,7 @@ describe('SlotEditor', () => {
   it('opens in CODE mode showing the slot source, and offers no audit tab', async () => {
     open();
     expect((screen.getByLabelText('Main Navigation source') as HTMLTextAreaElement).value).toBe(SLOT_SOURCE);
-    expect(screen.getByRole('button', { name: 'Code' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Code Editor' })).toHaveAttribute('aria-pressed', 'true');
     // A slot is not a page: there is nothing for a page audit to score.
     expect(screen.queryByRole('button', { name: /audit/i })).toBeNull();
   });
@@ -101,5 +101,34 @@ describe('SlotEditor', () => {
     fireEvent.change(screen.getByLabelText('Main Navigation source'), { target: { value: '<div class="v2">v2</div>' } });
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('mainNav', '<div class="v2">v2</div>'));
+  });
+});
+
+describe('SlotEditor layout (matches the page editor)', () => {
+  it('stacks a peeking source strip over the preview, expanding it on hover', async () => {
+    open();
+    const strip = screen.getByLabelText('Slot source editor');
+    // Peeks on open so the preview keeps the room, then expands when you reach for the code.
+    expect(strip).toHaveAttribute('data-expanded', 'false');
+    fireEvent.mouseEnter(strip);
+    await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'true'));
+    fireEvent.mouseLeave(strip);
+    await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'false'));
+  });
+
+  it('hides the source strip entirely in content mode, so the preview fills the modal', async () => {
+    open();
+    expect(screen.getByLabelText('Slot source editor')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    await waitFor(() => expect(screen.queryByLabelText('Slot source editor')).toBeNull());
+    expect(screen.getByTitle('Slot preview')).toBeTruthy();
+  });
+
+  it('puts the device rail INSIDE the preview, vertically', () => {
+    open();
+    const rail = screen.getByRole('group', { name: 'Preview device' });
+    expect(rail.className).toContain('flex-col');
+    expect(rail.className).toContain('absolute');
+    expect(screen.getByRole('button', { name: 'Preview: Mobile' })).toBeTruthy();
   });
 });

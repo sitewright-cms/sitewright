@@ -19,6 +19,34 @@ export type PreviewDeviceKey = (typeof PREVIEW_DEVICES)[number]['key'];
 /** How long a device switch glides, in step with the `duration-300` utility applied while it plays. */
 const TRANSITION_MS = 300;
 
+/** The device rail's glyph per target — shared, so the page and slot editors show one icon set. */
+export const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
+  desktop: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8m-4-4v4" />
+    </svg>
+  ),
+  laptop: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v11H4Z" />
+      <path d="M2 19h20" />
+    </svg>
+  ),
+  tablet: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  ),
+  mobile: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  ),
+};
+
 interface DevicePreviewProps {
   /** The simulated viewport width in CSS px; `null` = fluid (fill the available box). */
   width: number | null;

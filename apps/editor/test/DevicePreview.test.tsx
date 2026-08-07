@@ -54,4 +54,38 @@ describe('DevicePreview', () => {
     expect(fluid.getAttribute('style')).toBeFalsy();
     expect(fluid.className).toContain('w-full');
   });
+
+  it('glides between simulated widths on a device change, and waives it for reduced motion', () => {
+    const { getByTestId, rerender } = render(
+      <DevicePreview width={1024}>
+        <span />
+      </DevicePreview>,
+    );
+    rerender(
+      <DevicePreview width={390}>
+        <span />
+      </DevicePreview>,
+    );
+    const vp = getByTestId('device-viewport');
+    expect(vp).toHaveStyle({ width: '390px' });
+    expect(vp.className).toContain('transition-all');
+    // The tween is a CLASS, not an inline style, so `prefers-reduced-motion` can actually waive it —
+    // an inline `transition` would outrank any utility and animate regardless.
+    expect(vp.className).toContain('motion-reduce:transition-none');
+    expect(vp.getAttribute('style')).not.toContain('transition');
+  });
+
+  it('does NOT animate the fluid pane (it has no simulated width to tween)', () => {
+    const { getByTestId, rerender } = render(
+      <DevicePreview width={768}>
+        <span />
+      </DevicePreview>,
+    );
+    rerender(
+      <DevicePreview width={null}>
+        <span />
+      </DevicePreview>,
+    );
+    expect(getByTestId('device-viewport').className).not.toContain('transition-all');
+  });
 });

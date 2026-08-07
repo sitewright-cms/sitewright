@@ -14,6 +14,7 @@
 // below ~14px), and it loads DaisyUI. Inheriting either would make the preview a lie about what the
 // class does on a published page. The shadow root gets Tailwind's own `@theme` variables instead.
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { isSafeCssTokenValue } from '@sitewright/schema';
 import type { ClassValue, PreviewKind } from '@sitewright/tailwind-reference/meta';
 
 /**
@@ -77,21 +78,20 @@ const PREVIEW_KEYFRAMES = `
   }
 `;
 
-/**
- * Whether a raw declaration value is safe to place in a style attribute.
- *
- * The values come from the design system's own output, not from user input, so this is a belt-and-
- * braces check rather than the primary defence — but the preview writes them into a stylesheet, and
- * `}` or a comment opener there could break out of the rule. Anything rejected simply does not
- * preview; the CSS text beside it still shows the author exactly what the class does.
- */
-function isSafeDeclarationValue(value: string): boolean {
-  return !/[{}<>;]/.test(value) && !value.includes('/*') && !value.includes('*/');
-}
+/** The demo element's class and its text content, per preview kind. `none` renders nothing. */
+const DEMO: Record<Exclude<PreviewKind, 'none'>, { cls: string; text?: string; box: boolean }> = {
+  // A swatch showing the colour as painted. `currentColor`-based props (fill/stroke/color) also get
+  // the value on `background-color`, so a one-property swatch is visible whatever the property is.
+  color: { cls: 'swatch', box: true },
+  text: { cls: 'specimen', text: 'The quick brown fox', box: false },
+  box: { cls: 'demo-box', box: true },
+  size: { cls: 'bar', box: true },
+  cursor: { cls: 'cursor-patch', text: 'hover', box: false },
+};
 
-/** The declarations to paint, as `prop: value` pairs — resolved values preferred over `var(…)`. */
-function declarations(props: readonly string[], values: readonly ClassValue[]): string[] {
-  const out: string[] = [];
+/** The declarations to paint, as `[prop, value]` pairs — resolved values preferred over `var(…)`. */
+function declarations(props: readonly string[], values: readonly ClassValue[]): [string, string][] {
+  const out: [string, string][] = [];
   for (let i = 0; i < props.length && i < values.length; i++) {
     const prop = props[i];
     const raw = values[i];
@@ -99,31 +99,39 @@ function declarations(props: readonly string[], values: readonly ClassValue[]): 
     // A `var(--x)` that the generator resolved is painted at its RESOLVED value: the shadow root
     // carries the common theme vars, but not every one, and an unresolved var silently paints nothing.
     const value = raw[1] ?? raw[0];
-    if (!isSafeDeclarationValue(value)) continue;
-    out.push(`${prop}: ${value}`);
+    if (!isSafeCssTokenValue(value)) continue;
+    out.push([prop, value]);
   }
   return out;
 }
 
-/** The demo markup for each preview kind. Kept tiny — a preview illustrates, it does not simulate. */
-function demoFor(kind: PreviewKind, css: string): string {
-  const box = `display:block;box-sizing:border-box;${css}`;
-  switch (kind) {
-    case 'color':
-      // A swatch showing the colour as painted. `currentColor`-based props (fill/stroke/color) need
-      // the value on `color` too, which the caller already put in `css`.
-      return `<span class="swatch" style="${box}"></span>`;
-    case 'text':
-      return `<span class="specimen" style="${css}">The quick brown fox</span>`;
-    case 'box':
-      return `<span class="demo-box" style="${box}"></span>`;
-    case 'size':
-      return `<span class="bar" style="${box}"></span>`;
-    case 'cursor':
-      return `<span class="cursor-patch" style="${css}">hover</span>`;
-    default:
-      return '';
+/**
+ * Build the demo element and paint the declarations onto it.
+ *
+ * Styles go on through the CSSOM (`style.setProperty`), never by assembling a `style="…"` string and
+ * handing it to `innerHTML`. That is a security property, not a preference: a value written into an
+ * attribute inside an HTML string can close the attribute and open a tag, whereas `setProperty` only
+ * ever parses its argument as a CSS value — an unparseable one is dropped, not escalated. It also
+ * makes the earlier bug structurally impossible, where a colour's `background-color` fallback was
+ * concatenated in AFTER the value filter and so skipped it entirely.
+ *
+ * `isSafeCssTokenValue` (the schema's single predicate, shared with the brand-CSS emitter and the
+ * importer) is the belt to that braces: it additionally blocks `url()`/`image()`/`@import`, so a
+ * value can never turn a preview into a network fetch.
+ */
+function buildDemo(kind: PreviewKind, decls: readonly [string, string][], colour: string | null): HTMLElement | null {
+  if (kind === 'none') return null;
+  const spec = DEMO[kind];
+  const el = document.createElement('span');
+  el.className = spec.cls;
+  if (spec.text) el.textContent = spec.text;
+  if (spec.box) {
+    el.style.setProperty('display', 'block');
+    el.style.setProperty('box-sizing', 'border-box');
   }
+  for (const [prop, value] of decls) el.style.setProperty(prop, value);
+  if (colour !== null) el.style.setProperty('background-color', colour);
+  return el;
 }
 
 /** Base styling for the demo elements, inside the shadow root. */
@@ -168,34 +176,31 @@ export function TailwindPreview({ kind, props, values, name }: TailwindPreviewPr
   const hostRef = useRef<HTMLSpanElement>(null);
   const rootRef = useRef<ShadowRoot | null>(null);
 
-  const html = useMemo(() => {
-    if (kind === 'none') return '';
+  const paint = useMemo(() => {
+    if (kind === 'none') return null;
     const decls = declarations(props, values);
-    if (decls.length === 0) return '';
+    if (decls.length === 0) return null;
     // A colour preview paints whichever property the class actually sets (`fill`, `border-color`, …)
-    // onto `background-color` as well, so a one-property swatch is visible whatever the property is.
-    const css =
-      kind === 'color'
-        ? `${decls.join(';')};background-color:${values[0]?.[1] ?? values[0]?.[0] ?? 'transparent'}`
-        : decls.join(';');
-    return demoFor(kind, css);
+    // onto `background-color` too. It reads the value back out of `decls` — NOT out of `values` —
+    // so it cannot pick up an entry the filter above rejected. Reaching past the filter for the raw
+    // value is exactly the bug this shape prevents.
+    const colour = kind === 'color' ? (decls[0]?.[1] ?? null) : null;
+    return { decls, colour };
   }, [kind, props, values]);
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !html) return;
+    if (!host || !paint) return;
     // `attachShadow` throws if called twice on the same host, so reuse the root across re-renders.
     rootRef.current ??= host.shadowRoot ?? host.attachShadow({ mode: 'open' });
     const root = rootRef.current;
     const style = document.createElement('style');
+    // The only interpolations here are in-repo constants; no dataset value reaches this stylesheet.
     style.textContent = `:host{${PREVIEW_THEME}}${PREVIEW_BASE}${kind === 'box' ? PREVIEW_KEYFRAMES : ''}`;
-    const holder = document.createElement('span');
-    // Trusted content: `html` is assembled here from the design system's own declaration values,
-    // every one of which passed `isSafeDeclarationValue`. No dataset field reaches it as markup.
-    holder.innerHTML = html;
-    root.replaceChildren(style, holder);
-  }, [html, kind]);
+    const demo = buildDemo(kind, paint.decls, paint.colour);
+    root.replaceChildren(style, ...(demo ? [demo] : []));
+  }, [paint, kind]);
 
-  if (!html) return null;
+  if (!paint) return null;
   return <span ref={hostRef} aria-label={`${name} preview`} role="img" className="shrink-0" />;
 }

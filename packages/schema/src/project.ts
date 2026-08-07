@@ -46,6 +46,11 @@ export const ProjectSchema = z.object({
   identity: CorporateIdentitySchema,
   /** Project-wide website settings (the `website.*` namespace): critical CSS, custom head/footer. */
   website: WebsiteSettingsSchema.optional(),
-  settings: ProjectSettingsSchema.default({}),
+  // `.prefault({})`, not `.default({})`. zod 4 changed `.default()` to take the OUTPUT type and to
+  // short-circuit — it hands back the literal without parsing it, so `{}` would mean settings comes
+  // out as `{}` and every inner default (defaultLocale, locales) silently stops being applied.
+  // `.prefault()` is zod 4's input-typed default and keeps the zod 3 behaviour: parse `{}` through
+  // the schema so the inner defaults fill in. Measured both, they differ.
+  settings: ProjectSettingsSchema.prefault({}),
 });
 export type Project = z.infer<typeof ProjectSchema>;

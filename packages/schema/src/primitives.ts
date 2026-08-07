@@ -365,7 +365,23 @@ export function safeRecord<V extends z.ZodTypeAny>(
   const key = baseKey.refine((k) => !DANGEROUS_KEYS.has(k), {
     message: 'disallowed object key',
   });
-  return z.record(key, value).superRefine((obj, ctx) => {
+  // ★ The key refine above is NOT sufficient on its own under zod 4. Measured: given a genuine
+  // `__proto__` OWN property (which `JSON.parse('{"__proto__":…}')` creates), zod 4 silently DROPS
+  // the entry instead of running the key schema over it — `{"__proto__":"v"}` parsed to `{}` and
+  // succeeded, where zod 3 rejected it. `constructor` and `prototype` still reject normally; only
+  // `__proto__` gets this treatment, because object iteration special-cases it.
+  //
+  // The dropped output is not itself pollutable, so this is not an exploit — but it turns an
+  // explicit REJECT into a silent discard, which is both a weaker contract and quiet data loss for
+  // a CMS that stores user-supplied keys. This guard runs against the RAW input, before zod's
+  // record iteration can drop anything, restoring the zod 3 behaviour.
+  const rawKeyGuard = z.any().superRefine((raw, ctx) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    for (const k of Object.getOwnPropertyNames(raw)) {
+      if (DANGEROUS_KEYS.has(k)) ctx.addIssue({ code: 'custom', message: 'disallowed object key' });
+    }
+  });
+  return rawKeyGuard.pipe(z.record(key, value)).superRefine((obj, ctx) => {
     if (Object.keys(obj).length > maxEntries) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

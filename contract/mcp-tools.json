@@ -215,6 +215,7 @@
   {
     "name": "put_content",
     "required": [
+      "data",
       "id",
       "kind"
     ]

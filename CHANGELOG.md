@@ -24,6 +24,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   code). Off by default and deliberately so: custom markup owns its own look, and some overlays are
   meant to be see-through — this is for the author who wants the same flash-free field the nine
   built-in effects get without hand-rolling a full-bleed layer.
+- **zod 3 → 4.** Mostly mechanical, but three behaviours changed in ways that were silent rather than
+  loud, so they are worth knowing about. `.default(x)` no longer parses `x` — it hands back the
+  literal, so a `.default({})` on a schema with inner defaults stops applying them; `.prefault({})` is
+  the replacement that keeps the old meaning. `.partial()` no longer strips inner defaults, which
+  turned a merge-only settings patch into one that silently rewrote a field the admin had opted into.
+  And `z.record` now DROPS a `__proto__` own property instead of rejecting it — not exploitable, since
+  the key never reaches the output, but it turned an explicit reject into a quiet discard, so the
+  prototype-safe stores now check the raw input before zod can drop anything.
+- **MCP `put_content` declares `data` as required.** It always was, in practice — zod 3's JSON Schema
+  simply omitted it because `z.unknown()` accepts `undefined`. Any caller this affects was already
+  failing at the API. (`put_page` / `patch_page` are unchanged: zod 4 briefly dropped `page` from
+  their required list, which is fixed rather than published.)
 
 ### Fixed
 

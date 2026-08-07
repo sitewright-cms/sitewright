@@ -99,6 +99,15 @@ export const FormModesSchema = z.object({
 });
 export type FormModes = z.infer<typeof FormModesSchema>;
 
+/**
+ * The MERGE (patch) view of {@link FormModesSchema}: every mode optional, and crucially with no
+ * inner `.default()` to fill in. Derived from the shape rather than re-listed, so a mode added to
+ * FormModesSchema is patchable automatically instead of silently unsettable.
+ */
+export const FormModesPatchSchema = z.object(
+  Object.fromEntries(Object.keys(FormModesSchema.shape).map((k) => [k, z.boolean().optional()])),
+) as z.ZodObject<{ [K in keyof FormModes]: z.ZodOptional<z.ZodBoolean> }>;
+
 /** All modes disabled — the safe default before an admin opts any in (frozen). */
 export const DEFAULT_FORM_MODES: Readonly<FormModes> = Object.freeze({
   globalSmtp: false,
@@ -400,7 +409,17 @@ export const InstanceSettingsInputSchema = z.object({
   // Merge-only (not nullable): an absent formModes leaves modes unchanged; a
   // partial one merges. To disable every mode, send all four explicitly false —
   // there is no "clear the whole section" semantic for formModes.
-  formModes: FormModesSchema.partial().optional(),
+  //
+  // ★ NOT `FormModesSchema.partial()`. zod 4 changed `.partial()` so it no longer strips inner
+  // `.default()`s: `{globalSmtp: true}` parsed back as `{globalSmtp: true, contactPhpSmtp: false}`,
+  // because `contactPhpSmtp` carries `.default(false)` (added so pre-existing four-key rows keep
+  // parsing — see FormModesSchema). Under a MERGE-only field that is a silent write: an admin
+  // toggling globalSmtp would also switch off contactPhpSmtp, the one mode they had to opt into
+  // deliberately because it puts a live password on a host they do not control.
+  //
+  // So the patch shape is derived from FormModesSchema's keys as plain optional booleans — no
+  // defaults to leak, and it picks up any mode added later instead of drifting.
+  formModes: FormModesPatchSchema.optional(),
   // Agent instructions override: a string sets it, `null` clears it (revert to the built-in
   // default), and an absent (undefined) value leaves the stored override unchanged.
   agentInstructions: AgentInstructionsSchema.nullable().optional(),

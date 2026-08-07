@@ -91,7 +91,10 @@ function fieldLevel(child: z.ZodTypeAny | null): z.ZodTypeAny {
 let built: z.ZodTypeAny = fieldLevel(null); // deepest level (no children)
 for (let d = 1; d < MAX_FIELD_DEPTH; d += 1) built = fieldLevel(built);
 /** Field schema, depth-bounded to MAX_FIELD_DEPTH at parse time. */
-export const FieldSchema = built as z.ZodType<Field, z.ZodTypeDef, FieldInput>;
+// zod 4 changed this generic: `ZodType<Output, Def, Input>` became `ZodType<Output, Input, …>` and
+// `ZodTypeDef` no longer exists. The cast goes through `unknown` because the built-up recursive
+// schema is `ZodTypeAny`, which does not structurally overlap the narrowed type.
+export const FieldSchema = built as unknown as z.ZodType<Field, FieldInput>;
 
 /** Total field count across the tree (depth is already structurally bounded). */
 function fieldNodeCount(fields: readonly Field[]): number {

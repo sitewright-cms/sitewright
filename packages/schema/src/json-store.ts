@@ -57,14 +57,36 @@ export function isJsonValue(root: unknown): boolean {
   return true;
 }
 
+const JSON_VALUE_MESSAGE =
+  'must be JSON (objects/arrays/strings/numbers/booleans/null), bounded in depth/size, with safe keys';
+const JSON_OBJECT_MESSAGE = 'must be a JSON object (key → value), bounded in depth/size, with safe keys';
+
+// ★ These were `z.custom<T>(isJsonValue, …)`. zod 4's JSON Schema converter THROWS on `z.custom`
+// ("Custom types cannot be represented in JSON Schema"), and `.meta()` does not rescue it — measured.
+// That breaks the MCP server outright, not just typing: these schemas reach `page.data` /
+// `template.data` / `website.data`, the SDK converts every tool's input schema for `tools/list`, and
+// the whole listing fails with -32603, so EVERY tool disappears.
+//
+// `z.unknown()` / `z.record()` carry the identical `isJsonValue` check in a `superRefine` — same
+// runtime validation, same message — but both convert cleanly. The object form even produces a more
+// honest schema than before (`type: object`, string property names) instead of an opaque blob.
+// The casts restore the narrow output types `z.custom<T>` used to give; the runtime value is the
+// refined schema, which is what keeps it representable.
+
 /** A bounded, prototype-safe editable JSON object/value (see {@link isJsonValue} for the bounds). */
-export const JsonStoreSchema = z.custom<JsonValue>(isJsonValue, {
-  message: 'must be JSON (objects/arrays/strings/numbers/booleans/null), bounded in depth/size, with safe keys',
-});
+export const JsonStoreSchema = z.unknown().superRefine((v, ctx) => {
+  if (!isJsonValue(v)) ctx.addIssue({ code: 'custom', message: JSON_VALUE_MESSAGE });
+}) as unknown as z.ZodType<JsonValue>;
 
 /** A plain JSON OBJECT at the root — `website.data`/`page.data`/`template.data` are key→value stores. */
 export type JsonObject = { [key: string]: JsonValue };
-export const JsonObjectStoreSchema = z.custom<JsonObject>(
-  (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && isJsonValue(v),
-  { message: 'must be a JSON object (key → value), bounded in depth/size, with safe keys' },
-);
+// `z.unknown()`, NOT `z.record(z.string(), …)`, even though the record form yields a nicer JSON
+// Schema. zod 4 DROPS a `__proto__` own property during record iteration, so `isJsonValue` never
+// sees it and the reserved-key rejection this store exists to enforce silently stops firing —
+// measured, three prototype-pollution tests went green-to-vacuous. `z.unknown()` hands the raw
+// value through untouched, which is what the deep walk needs.
+export const JsonObjectStoreSchema = z.unknown().superRefine((v, ctx) => {
+  if (v === null || typeof v !== 'object' || Array.isArray(v) || !isJsonValue(v)) {
+    ctx.addIssue({ code: 'custom', message: JSON_OBJECT_MESSAGE });
+  }
+}) as unknown as z.ZodType<JsonObject>;

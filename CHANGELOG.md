@@ -33,9 +33,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   emitting one: a preloader is whole-site chrome, and the whole-site draft preview is where it means
   anything.
 
-
-### Fixed
-
 - **Nothing you could download from a preview actually downloaded.** The preview response's CSP
   `sandbox` directive and the editor's iframe `sandbox` attribute both omitted `allow-downloads`, and
   the browser INTERSECTS the two lists — so the stricter side won silently, with no console error to

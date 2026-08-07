@@ -618,7 +618,12 @@ CSS. Smooth-scroll on click is already handled — scrollspy only manages the hi
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at
-body-end; a custom preloader becomes the FIRST body child). Target the nav links
+body-end; a custom preloader is WRAPPED in the platform overlay as the FIRST body child, so the
+platform keeps the show/hide lifecycle and your markup is just the spinner). A custom preloader's
+wrapper is TRANSPARENT by default — your markup is the whole visual. Set
+\`website.effects.preloaderBackdrop: true\` to paint the platform's solid brand backdrop behind it,
+which is what the built-in effects use and what stops page changes flashing; leave it off if your
+overlay draws its own field or is meant to be see-through. Target the nav links
 (\`.menu a\` — the built-in schemes only style links inside a \`.menu\`) or buttons (\`.btn\`) directly, and use the brand custom
 properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
 \`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.

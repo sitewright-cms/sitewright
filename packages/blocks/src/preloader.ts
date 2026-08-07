@@ -13,8 +13,9 @@
 // (any same-origin href, resolved against the current URL — bare-relative included) to bridge the
 // navigation → restore on bfcache (pageshow) → an 8s failsafe so a hung resource can never block.
 //
-// The overlay is a half-transparent brand-background pane with a backdrop blur, so page content
-// shows softly behind it. Every effect is themed entirely by the --sw-color-* brand tokens.
+// The overlay is an OPAQUE brand-background pane (see the ★ note on the base rule below: a
+// translucent one made every page change flash). Every effect is themed entirely by the --sw-color-*
+// brand tokens, so a dark site gets a dark overlay.
 
 import type { PreloaderEffect } from '@sitewright/schema';
 import { SW_READY_EVENT } from './timing.js';
@@ -127,7 +128,7 @@ export function usesPreloader(html: string | null | undefined): boolean {
 
 // --- CSS --------------------------------------------------------------------
 export const PRELOADER_CSS = [
-  // Frosted overlay: half-transparent brand background + backdrop blur. Fade is purely a TRANSITION
+  // Full-screen brand-background overlay. Fade is purely a TRANSITION
   // (no keyframe animation), which is the whole point: a fresh page load ships the overlay ALREADY
   // `loading`, and CSS transitions don't animate the first painted state → it shows INSTANTLY. The
   // transition only fires when `loading` is toggled afterwards: removed → fade OUT (page ready);
@@ -150,7 +151,7 @@ export const PRELOADER_CSS = [
   '[data-sw-preloader] .pl-mark path{fill:var(--sw-color-primary,#4f46e5)}',
   '[data-sw-preloader] .pl-logo-img{max-width:280px;max-height:192px;width:auto;height:auto;display:block}',
   '[data-sw-preloader] .pl-stack{display:grid;place-items:center;gap:32px;text-align:center}',
-  // A CUSTOM overlay brings its own look: drop the platform's frosted background and blur so the
+  // A CUSTOM overlay brings its own look: drop the platform's background so the
   // author's markup + CSS decides. The show/hide contract above still governs it, which is the point
   // of wrapping custom code rather than emitting it raw.
   '[data-sw-preloader].sw-preloader-custom{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;display:block}',

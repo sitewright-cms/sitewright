@@ -22,12 +22,20 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
 // scope the dirty check + save + discard so the two sections' Save/Discard buttons are INDEPENDENT:
 // editing one section never arms the other's buttons, and saving/discarding one leaves the other's
 // pending edits intact.
-const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
+// EXPORTED for `settings-sections.test.ts`, which derives the true partition from `toBundle` and
+// fails if a form field lands in `website.*` without being listed here. Adding a website field and
+// forgetting this Set makes the field unsavable (its section never goes dirty) AND arms the OTHER
+// section's Discard over it — silent, and invisible until someone reloads.
+export const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'siteUrl', 'jsonDataUrl', 'data', 'criticalCss', 'head', 'scripts',
   'mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
   'navEffect', 'buttonEffect', 'buttonAccent', 'buttonShape', 'preloaderEffect',
   'backToTop', 'stickyHeader', 'scrollSpy',
-  'navCode', 'buttonCode', 'preloaderCode',
+  'navCode', 'buttonCode', 'preloaderCode', 'preloaderBackdrop',
+  // website.security (the RFC 9116 security.txt block) — these were missing, so the whole block was
+  // unsavable on its own and Identity's Discard silently reverted it.
+  'securityEnabled', 'securityContactPageId', 'securityUsePhone', 'securityUseEmail',
+  'securityExpiryYears', 'securityPolicyUrl', 'securityAcknowledgmentsUrl',
   'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
   'consent',

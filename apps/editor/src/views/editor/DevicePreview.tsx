@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * The page editor's responsive simulation targets, aligned to the DEFAULT
@@ -15,6 +15,9 @@ export const PREVIEW_DEVICES = [
 ] as const;
 
 export type PreviewDeviceKey = (typeof PREVIEW_DEVICES)[number]['key'];
+
+/** How long a device switch glides, in step with the `duration-300` utility applied while it plays. */
+const TRANSITION_MS = 300;
 
 interface DevicePreviewProps {
   /** The simulated viewport width in CSS px; `null` = fluid (fill the available box). */
@@ -52,6 +55,18 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
   // scale(0) or divide by zero.
   const scale = !fluid && avail !== null && avail > 0 && avail < width ? avail / width : 1;
 
+  // Glide between simulated widths instead of snapping — but ONLY for a device CHANGE. `width` and
+  // `scale` also move when the editor pane itself is resized (the ResizeObserver above), and animating
+  // that would make the preview lag a pointer drag by the duration of the transition. So the
+  // transition is armed by a change of the `width` PROP and disarmed once it has played.
+  const [animating, setAnimating] = useState(false);
+  useEffect(() => {
+    if (fluid) return; // fluid carries no simulation styles, so there is nothing to tween
+    setAnimating(true);
+    const t = setTimeout(() => setAnimating(false), TRANSITION_MS + 40);
+    return () => clearTimeout(t);
+  }, [width, fluid]);
+
   // ONE element tree for every device, fluid included — the branches differ only in STYLE.
   //
   // This used to render two shapes: fluid returned a single div wrapping `children`, fixed-width
@@ -65,7 +80,14 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
     <div ref={hostRef} className={fluid ? 'h-full w-full' : 'relative h-full overflow-hidden'}>
       <div
         data-testid="device-viewport"
-        className={fluid ? 'h-full w-full' : 'absolute left-1/2 top-0'}
+        className={
+          fluid
+            ? 'h-full w-full'
+            : // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
+              // comma the class extractor can choke on, and an INLINE transition could not be waived
+              // for prefers-reduced-motion (inline styles outrank any class).
+              `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+        }
         style={
           fluid
             ? undefined

@@ -33,8 +33,18 @@ describe('fixed-background preview emulation', () => {
   });
 
   it('only touches elements that actually declare a fixed background AND have an image', () => {
-    expect(FIXED_BG_PREVIEW_JS).toContain("cs.backgroundAttachment.indexOf('fixed')<0");
+    expect(FIXED_BG_PREVIEW_JS).toContain("cs.backgroundAttachment.indexOf('fixed')>=0");
     expect(FIXED_BG_PREVIEW_JS).toContain("cs.backgroundImage==='none'");
+  });
+
+  it('★ recognises an adopted host by its LAYER, never by its background-image', () => {
+    // The image test cannot come first: adoption sets the host's background-image to `none`, so it
+    // would reject every host it had already adopted, empty the tracked pairs on the next rescan and
+    // freeze the clip. Pinned as an ordering invariant here; proved behaviourally in the jsdom suite.
+    const layerLookup = FIXED_BG_PREVIEW_JS.indexOf("var layer=el.querySelector(':scope>['+LAYER+']')");
+    const imageGuard = FIXED_BG_PREVIEW_JS.indexOf("cs.backgroundImage==='none'");
+    expect(layerLookup).toBeGreaterThan(-1);
+    expect(imageGuard).toBeGreaterThan(layerLookup);
   });
 
   it('clips the layer to the host rect, and hides it when the host is off-screen', () => {

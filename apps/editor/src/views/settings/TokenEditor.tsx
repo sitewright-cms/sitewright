@@ -94,7 +94,7 @@ export function TokenEditor({
               type="button"
               aria-label={`Remove ${r.key || keyPlaceholder} ${i + 1}`}
               onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
-              className="shrink-0 rounded-md px-2 py-1 text-slate-400 dark:text-slate-500 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+              className="shrink-0 rounded-md px-2 py-1 text-slate-500 dark:text-slate-400 transition hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
             >
               <X className="h-4 w-4" />
             </button>

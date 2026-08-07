@@ -193,6 +193,7 @@ import {
   replacePreviewPdfEmbeds,
   replacePreviewStorageEmbeds,
   type PageBuildFailure,
+  type BuildProgress,
   type ReleaseManifest,
 } from '../publish/build.js';
 import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
@@ -1213,6 +1214,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewBuiltVersion = new Map<string, string>();
   const previewBuilds = new Map<string, Promise<void>>();
   const previewBuildFail = new Map<string, { version: string; at: number }>();
+  // What the IN-FLIGHT draft build is doing right now, so the preview shell can say so instead of
+  // showing an unexplained wait. Present only while a build is running (the entry is deleted when it
+  // settles), which is also how the shell knows to stop asking.
+  const previewProgress = new Map<string, BuildProgress>();
   // Pages the LAST draft build could not render (it served each an error document and carried on).
   // Reported with the preview URL so the shell can say so even when the author is looking at a page
   // that is perfectly fine — the whole point being that a broken page is now a local problem.
@@ -2864,6 +2869,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       previewBuilds.delete(project.id);
       previewBuildFail.delete(project.id);
       previewPageFailures.delete(project.id);
+      previewProgress.delete(project.id);
       return reply.code(204).send();
     },
   );
@@ -2937,6 +2943,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // The published site / preview build are keyed by slug — drop the stale build so the new slug rebuilds.
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
+      previewProgress.delete(project.id);
       previewPageFailures.delete(project.id);
     }
     return reply.send({ project: updated });
@@ -2965,6 +2972,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     previewBuilds.delete(project.id);
     previewBuildFail.delete(project.id);
     previewPageFailures.delete(project.id);
+    previewProgress.delete(project.id);
     await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
     await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
   }
@@ -5421,10 +5429,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           .header('access-control-allow-origin', '*')
           .header('cross-origin-resource-policy', 'cross-origin');
 
-      if (asset.kind === 'font') {
+      // A FONT FACE, by kind OR by being one. The kind alone is not enough: the site importer stores a
+      // scraped webfont as `kind:'file'` with a `font/*` contentType, and the legacy nested route used to
+      // serve those correctly because it dispatched on the EXTENSION. Under the flat scheme they fell
+      // through to the download branch — `application/octet-stream`, `content-disposition: attachment`,
+      // no CORS — so every `@font-face` pointing at `/media/…` failed in the SANDBOXED page-editor
+      // preview (opaque origin ⇒ the fetch is cross-origin ⇒ no ACAO, no font) and the text silently
+      // rendered in the fallback family. The published site and the whole-site preview were unaffected,
+      // because the build copies the bytes into `_assets/` and serves them by extension — which is
+      // exactly the "different fonts in the page preview" report.
+      //
+      // @security This is not the extension-dispatch the flat route rejects. That rule exists to stop a
+      // raw `.js`/`.svg`/`.html` upload being served executable/renderable on this origin. A font is an
+      // inert binary: it cannot execute, it is still `nosniff`, and the browser simply fails to parse
+      // anything that is not really a font.
+      // `name.toLowerCase()`: the extension table is already lowercased, and an imported `Font.WOFF2`
+      // is still a font — matching case-sensitively would drop it into the download branch, which is
+      // the very failure this whole branch exists to fix.
+      if (asset.kind === 'font' || (asset.kind === 'file' && FONT_FACE_FILE.test(name.toLowerCase()))) {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        return CORS(reply).type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2').send(bytes);
+        // ★ The EXTENSION only nominates a candidate; the BYTES decide. Serving on the filename alone
+        // would let anyone with upload permission park arbitrary content at a public, CORS-open,
+        // inline-served URL on the platform's own origin just by naming it `.woff2` — the upload path
+        // already refuses to call such a file a font (`detectFontFormat` is a magic-byte check), and
+        // the serve path has no business being more credulous than the store path. A genuine imported
+        // webfont passes; anything else falls through to the download-only branch below.
+        if (asset.kind === 'font' || detectFontFormat(bytes)) {
+          return CORS(reply).type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2').send(bytes);
+        }
       }
       if (asset.kind === 'stylesheet') {
         const bytes = await read();
@@ -6100,6 +6133,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // runtime so the editor shell can track + auto-navigate the iframe. (No minify — stays readable.)
         includeDrafts: true,
         previewRuntime: PREVIEW_SITE_RUNTIME_JS,
+        // Somebody is watching a spinner for this one. (Dropped by the isolated worker runner, which
+        // serializes its job — that path simply reports the generic "building" state below.)
+        onProgress: (p) => void previewProgress.set(project.id, p),
         ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
         ...(inputs.hcaptchaSiteKey ? { hcaptchaSiteKey: inputs.hcaptchaSiteKey } : {}),
         ...(jsonData !== undefined ? { jsonData } : {}),
@@ -6156,7 +6192,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               );
               throw err;
             })
-            .finally(() => previewBuilds.delete(project.id));
+            .finally(() => {
+              previewBuilds.delete(project.id);
+              // No entry ⇒ nothing is building. That absence is the signal the shell polls for, so it
+              // has to be cleared on failure too, not just on success.
+              previewProgress.delete(project.id);
+            });
           previewBuilds.set(project.id, inflight);
         }
         try {
@@ -6184,6 +6225,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const page = byId.get(entity);
         if (!page || isLinkPage(page) || page.collection) return reply.send({ path: null });
         return reply.send({ path: pathToSlug(pagePath(page, byId)) ?? '' });
+      },
+    );
+
+    // What the draft build is doing RIGHT NOW. The preview shell polls this while its iframe has not
+    // painted yet: `GET /preview-url` blocks for the whole build, so without a second, non-blocking
+    // endpoint there is nothing the shell could say beyond "loading". `building:false` means no build
+    // is in flight — either it finished (the blocked call is about to return) or none was needed.
+    // Read-only, derived from an in-memory map, so its budget can be generous enough to poll.
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/preview-progress',
+      { config: rl(600) },
+      async (req, reply) => {
+        const { project } = await resolveProject(req, 'content:read');
+        // `building` comes from the in-flight map, NOT from the presence of a phase: the isolated
+        // worker runner cannot report phases at all, and deriving one from the other would tell the
+        // shell "nothing is happening" through the entire wait it exists to explain.
+        const building = previewBuilds.has(project.id);
+        const p = previewProgress.get(project.id);
+        return reply.send({ building, ...(building && p ? p : {}) });
       },
     );
 

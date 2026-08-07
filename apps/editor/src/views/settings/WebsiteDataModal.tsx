@@ -54,7 +54,7 @@ const isObjectRoot = (v: JsonValue): v is Record<string, JsonValue> =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
 
 const selectCls = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-600 dark:text-slate-300';
-const miniBtn = 'rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 text-slate-400 dark:text-slate-500 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400';
+const miniBtn = 'rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400';
 
 /** A key input that commits a rename only on blur/Enter (so typing doesn't remount the row). */
 function KeyField({ value, onCommit }: { value: string; onCommit: (k: string) => void }) {
@@ -108,7 +108,7 @@ function ValueEditor({ value, onChange }: { value: JsonValue; onChange: (v: Json
         {t === 'boolean' && (
           <input aria-label="Value" type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} className={toggleInput} />
         )}
-        {t === 'null' && <span className="text-xs italic text-slate-400 dark:text-slate-500">null</span>}
+        {t === 'null' && <span className="text-xs italic text-slate-500 dark:text-slate-400">null</span>}
       </div>
       {t === 'object' && <ObjectEditor obj={value as Record<string, JsonValue>} onChange={onChange} />}
       {t === 'array' && <ArrayEditor arr={value as JsonValue[]} onChange={onChange} />}
@@ -154,7 +154,7 @@ function ArrayEditor({ arr, onChange }: { arr: JsonValue[]; onChange: (v: JsonVa
       {arr.map((item, i) => (
         <div key={i} className="flex flex-col gap-1 rounded-lg bg-white/60 dark:bg-slate-900/60 p-2">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-slate-400 dark:text-slate-500">[{i}]</span>
+            <span className="font-mono text-xs text-slate-500 dark:text-slate-400">[{i}]</span>
             <button type="button" aria-label={`Remove item ${i}`} onClick={() => onChange(arr.filter((_, j) => j !== i))} className={miniBtn}><X className="h-4 w-4" /></button>
           </div>
           <ValueEditor value={item} onChange={(nv) => onChange(arr.map((x, j) => (j === i ? nv : x)))} />
@@ -252,7 +252,7 @@ export function WebsiteDataModal({
       }
     >
       <div className="flex flex-col gap-3 p-5">
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           A free-form object available in templates as <code>{`{{${namespace}.<key>}}`}</code> and{' '}
           <code>{`{{#each ${namespace}.<array>}}`}</code> — in the preview and the published site.
         </p>

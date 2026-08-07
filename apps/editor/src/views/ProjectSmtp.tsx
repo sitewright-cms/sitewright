@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Project, type SmtpInput } from '../api';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
+import { secretFieldProps } from '../lib/secret-field';
 
 /**
  * Per-project SMTP config — used by forms whose delivery mode is "Project SMTP"
@@ -137,7 +138,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
     >
       <summary className="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
         Project SMTP{' '}
-        <span className="font-normal text-slate-400 dark:text-slate-500">
+        <span className="font-normal text-slate-500 dark:text-slate-400">
           — for “Project SMTP” and “contact.php (SMTP)” forms
         </span>
       </summary>
@@ -181,6 +182,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
                 className={field}
                 aria-label="SMTP password"
                 type="password"
+                {...secretFieldProps}
                 value={password}
                 placeholder={hasPassword ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPassword(e.target.value)}
@@ -224,7 +226,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
                   onChange={(e) => setSendTo(e.target.value)}
                 />
               )}
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Both act on the SAVED settings, not what is on screen. “Test connection” sends no mail;
                 “Send test message” sends real mail
                 {staff ? ' — blank recipient means your own address.' : ' to your account address.'}

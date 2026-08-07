@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { AiProviderKind } from '@sitewright/schema';
 import { api, type AiConfigInput, type AiTestResult } from '../api';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
+import { secretFieldProps } from '../lib/secret-field';
 
 /** A representative model id for each provider (OpenRouter uses `vendor/model`). */
 export function modelPlaceholder(p: AiProviderKind): string {
@@ -133,26 +134,27 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
               <input className={field} aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={modelPlaceholder(provider)} />
             </label>
             {provider === 'openrouter' && (
-              <p className="col-span-2 -mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                 Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
               </p>
             )}
             {provider === 'openai' && (
               <label className="col-span-2 flex flex-col text-xs text-slate-500 dark:text-slate-400">
-                Base URL <span className="text-slate-400 dark:text-slate-500">(public host only)</span>
+                Base URL <span className="text-slate-500 dark:text-slate-400">(public host only)</span>
                 <input className={field} aria-label="AI base URL" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
               </label>
             )}
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               API key
-              <input className={field} aria-label="AI API key" type="password" value={apiKey} placeholder={hasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setApiKey(e.target.value)} />
+              <input className={field} aria-label="AI API key" type="password"
+                {...secretFieldProps} value={apiKey} placeholder={hasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setApiKey(e.target.value)} />
             </label>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Monthly token cap <span className="text-slate-400 dark:text-slate-500">(0 = unlimited)</span>
+              Monthly token cap <span className="text-slate-500 dark:text-slate-400">(0 = unlimited)</span>
               <input className={field} aria-label="Monthly token cap" type="number" min={0} value={limit} onChange={(e) => setLimit(e.target.value)} />
             </label>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Max output tokens / reply <span className="text-slate-400 dark:text-slate-500">(blank = default 8192)</span>
+              Max output tokens / reply <span className="text-slate-500 dark:text-slate-400">(blank = default 8192)</span>
               <input
                 className={field}
                 aria-label="Max output tokens per reply"
@@ -194,7 +196,7 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
   return (
     <details className={`mb-4 ${glassCard} p-3`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
-        AI Assistant <span className="font-normal text-slate-400 dark:text-slate-500">— this project’s own provider (optional)</span>
+        AI Assistant <span className="font-normal text-slate-500 dark:text-slate-400">— this project’s own provider (optional)</span>
       </summary>
       {body}
     </details>

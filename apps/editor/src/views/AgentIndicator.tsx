@@ -28,14 +28,17 @@ function Spinner() {
  *    modal carries the how-to).
  */
 export function AgentIndicator({ state, count, onClick }: { state: AgentState; count: number; onClick: () => void }) {
+  // A BORDER on every state, not just a tint: the pill floats on the frosted header, whose own
+  // translucent surface sits close to each state's fill, so an unbordered pill reads as loose text
+  // rather than a control you can click.
   const base =
-    'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition';
+    'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition';
   if (state === 'working') {
     return (
       <button
         type="button"
         onClick={onClick}
-        className={`${base} bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/15`}
+        className={`${base} border-emerald-300 dark:border-emerald-400/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/15`}
         title="An agent is editing this project right now — click for details / to disconnect."
       >
         <Spinner />
@@ -48,7 +51,7 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
       <button
         type="button"
         onClick={onClick}
-        className={`${base} bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15`}
+        className={`${base} border-amber-300 dark:border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15`}
         title="An agent is connected (idle) — click for details / to disconnect."
       >
         <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
@@ -60,7 +63,10 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
     <button
       type="button"
       onClick={onClick}
-      className={`${base} text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300`}
+      // The "nothing connected" state is a nudge, not an alert — but it was muted to the point of
+      // measuring 2.58:1 on the light header, which is not readable, only quiet. Secondary-text weight
+      // keeps it calm and legible in both themes.
+      className={`${base} border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white`}
       title="No agent connected — click to learn how to connect an AI agent."
     >
       <RobotIcon />

@@ -118,9 +118,9 @@ export function HistoryView({ project }: { project: Project }) {
       </div>
 
       {items === null ? (
-        <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">Loading history…</p>
+        <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">Loading history…</p>
       ) : items.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">No revisions yet for this filter.</p>
+        <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">No revisions yet for this filter.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((r) => {
@@ -130,10 +130,10 @@ export function HistoryView({ project }: { project: Project }) {
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-slate-700 dark:text-slate-200" title={new Date(r.revisionAt).toLocaleString()}>
-                    <span className="text-slate-400 dark:text-slate-500">{KIND_LABEL[r.kind] ?? r.kind} · </span>
+                    <span className="text-slate-500 dark:text-slate-400">{KIND_LABEL[r.kind] ?? r.kind} · </span>
                     <span className="font-medium">{r.label}</span>
                   </div>
-                  <div className="truncate text-xs text-slate-400 dark:text-slate-500">
+                  <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {authorLabel(r)} · {when(r.revisionAt)}
                     {r.note ? ` · ${r.note}` : ''}
                   </div>

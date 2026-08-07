@@ -104,12 +104,15 @@ export function ProjectSelectorModal({ projects, currentId, openingId = null, br
                   aria-busy={isOpening}
                   onClick={() => onOpen(p)}
                 >
+                  {/* ALWAYS a white tile, in both themes and on the selected row too. A favicon is
+                      artwork drawn for a white page — most are dark marks on transparency — so tinting
+                      the tile (slate-100, slate-700/60, white/20 on the active row) hid exactly the
+                      logos it was meant to frame. The hairline ring keeps a white tile legible against
+                      a white card. */}
                   <ProjectIcon
                     src={p.iconUrl}
-                    boxClassName={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
-                      active ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700/60'
-                    }`}
-                    iconClassName={`h-4 w-4 ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`}
+                    boxClassName="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-slate-200 dark:ring-white/25"
+                    iconClassName="h-4 w-4 text-slate-500"
                   />
                   <span className="flex min-w-0 flex-col">
                     <span className="flex items-center gap-2">
@@ -126,14 +129,14 @@ export function ProjectSelectorModal({ projects, currentId, openingId = null, br
                         </span>
                       )}
                     </span>
-                    <span className={`truncate text-sm ${active ? 'text-white/80' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/80'}`}>
+                    <span className={`truncate text-sm ${active ? 'text-white/80' : 'text-slate-500 dark:text-slate-400 group-hover:text-white/80'}`}>
                       {subtitle}
                     </span>
                   </span>
                   {isOpening && (
                     <Loader2
                       aria-hidden
-                      className={`ml-auto h-4 w-4 shrink-0 animate-spin ${active ? 'text-white/90' : 'text-slate-400 dark:text-slate-500'}`}
+                      className={`ml-auto h-4 w-4 shrink-0 animate-spin ${active ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`}
                     />
                   )}
                 </button>
@@ -141,7 +144,7 @@ export function ProjectSelectorModal({ projects, currentId, openingId = null, br
             );
           })}
           {filtered.length === 0 && (
-            <li className="py-2 text-sm text-slate-400 dark:text-slate-500">
+            <li className="py-2 text-sm text-slate-500 dark:text-slate-400">
               {query ? 'No projects match your search.' : canCreate ? 'No projects yet — create your first one.' : 'No projects yet.'}
             </li>
           )}

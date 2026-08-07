@@ -323,6 +323,22 @@ export interface BuildSiteOptions {
    * artifact stays clean and self-contained.
    */
   previewRuntime?: string;
+  /**
+   * Progress reporter for a build a human is WAITING ON — the always-on draft preview, where a cold
+   * project renders every page, re-encodes every image and compiles the stylesheet before the first
+   * byte reaches the iframe. Without it the wait is a blank shell with nothing to say which of those
+   * steps is the slow one. Optional and best-effort: it is dropped on the way into the isolated
+   * worker (which serializes its job), and the publish path passes nothing at all.
+   */
+  onProgress?: (progress: BuildProgress) => void;
+}
+
+/** A build step worth telling a waiting human about. `done`/`total` are set only where the step is
+ *  a countable loop (pages), so the UI can say "12 of 93" instead of an unmoving label. */
+export interface BuildProgress {
+  phase: 'preparing' | 'media' | 'pages' | 'styles' | 'scripts' | 'finalizing';
+  done?: number;
+  total?: number;
 }
 
 /** The published directory that holds each project's bundled asset binaries. */
@@ -519,6 +535,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+  // Progress is a courtesy to whoever is watching a spinner, never a build dependency: a throwing
+  // reporter must not be able to fail a build that is otherwise fine.
+  const report = (progress: BuildProgress): void => {
+    try {
+      opts.onProgress?.(progress);
+    } catch {
+      /* a broken reporter is not a broken build */
+    }
+  };
+  report({ phase: 'preparing' });
   // The live-preview draft build (set when a previewRuntime is injected). The preview is a faithful
   // WYSIWYG surface, so it now shows the configured loading overlay too (authors asked to SEE it) —
   // its clear runs on the iframe's own `window.load` (same-context, reliable) and has an 8s failsafe
@@ -871,6 +897,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // every NON-image kind — raw files, stylesheet/script, AND `kind:'font'` (a font's faces are
     // bundled flat as `_assets/<alias>-<face>`, so its `@font-face` media url resolves in the export).
     if (media.length > 0 && opts.readMedia) {
+      report({ phase: 'media', total: media.length });
       await copyMedia(tmp, media, opts.readMedia, alias);
     }
 
@@ -1305,7 +1332,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         bytes += Buffer.byteLength(finalHtml);
       };
 
+      let renderedRoutes = 0;
       for (const route of routes) {
+        report({ phase: 'pages', done: renderedRoutes, total: routes.length });
+        renderedRoutes += 1;
         const outSlug = route.slug;
         const path = `/${outSlug ?? ''}`;
         const full = resolve(tmp, relPathForSlug(outSlug));
@@ -1349,6 +1379,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
     // AND MINIMAL (only referenced sizes of referenced assets), independent of any preview traffic.
     if (opts.readMedia && thumbRefs.size > 0) {
+      // Usually the longest single step on a cold project — every referenced size of every referenced
+      // image is encoded here — which is exactly why it gets its own label.
+      report({ phase: 'media', total: thumbRefs.size });
       await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias, opts.storeMedia);
     }
 
@@ -1359,6 +1392,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // One minimal stylesheet for the whole site (shared + cacheable across pages),
     // containing only the utilities actually used, with brand tokens in the theme.
     if (usesUtilities) {
+      report({ phase: 'styles' });
       const css = await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand));
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, UTILITY_STYLESHEET), css, 'utf8');
@@ -1369,6 +1403,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // `minifyJs`; falls back to the source on any edge case). `bytes` tracks the minified size so the
     // manifest reflects what actually ships. Vendored library runtimes inside these bundles are already
     // minified; re-minifying the whole concatenation is idempotent-safe.
+    report({ phase: 'scripts' });
     const writeJs = async (name: string, code: string): Promise<void> => {
       const min = await minifyJs(code);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant/registry filename under the validated tmp dir
@@ -1427,6 +1462,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).
     // The Sitemap line is built from the SAME `siteBase` as the sitemap <loc>s so
     // the two can never drift.
+    report({ phase: 'finalizing' });
     const robots = renderRobots(siteUrl ? `${siteBase(siteUrl)}/sitemap.xml` : undefined);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
     await writeFile(join(tmp, 'robots.txt'), robots, 'utf8');

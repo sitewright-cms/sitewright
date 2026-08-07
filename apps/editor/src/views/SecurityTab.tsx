@@ -162,7 +162,7 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
           {qr ? (
             <img src={qr} alt="TOTP QR code" className="h-44 w-44 rounded-lg border border-white/60 dark:border-white/10 bg-white dark:bg-slate-900 p-1" />
           ) : (
-            <div className="flex h-44 w-44 items-center justify-center rounded-lg border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 text-xs text-slate-400 dark:text-slate-500">Generating…</div>
+            <div className="flex h-44 w-44 items-center justify-center rounded-lg border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 text-xs text-slate-500 dark:text-slate-400">Generating…</div>
           )}
           <div className="min-w-0 flex-1">
             <label className={fieldLabel}>Manual key</label>

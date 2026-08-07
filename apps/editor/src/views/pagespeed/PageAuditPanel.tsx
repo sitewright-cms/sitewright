@@ -45,7 +45,7 @@ function ratingClasses(r: Rating): { text: string; dot: string } {
     case 'poor':
       return { text: 'text-rose-600', dot: 'bg-rose-500' };
     default:
-      return { text: 'text-slate-400 dark:text-slate-500', dot: 'bg-slate-300' };
+      return { text: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-300' };
   }
 }
 
@@ -153,7 +153,7 @@ function MetricCard({ def, value }: { def: MetricDef; value: number | undefined 
         <span className={`inline-block h-1.5 w-1.5 rounded-full ${rc.dot}`} aria-hidden />
         {def.abbr}
         <span className="tooltip tooltip-top before:z-20 before:max-w-[16rem] before:whitespace-normal before:text-left" data-tip={def.tip}>
-          <CircleHelp className="h-3.5 w-3.5 cursor-help text-slate-400 dark:text-slate-500" aria-label={`${def.name}: ${def.tip}`} />
+          <CircleHelp className="h-3.5 w-3.5 cursor-help text-slate-500 dark:text-slate-400" aria-label={`${def.name}: ${def.tip}`} />
         </span>
       </div>
       <div className={`text-lg font-semibold tabular-nums ${rc.text}`}>{def.fmt(value)}</div>
@@ -179,7 +179,7 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${cat.cls}`}>{cat.label}</span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{f.title}</div>
-          {f.displayValue ? <div className="truncate text-xs text-slate-400 dark:text-slate-500">{f.displayValue}</div> : null}
+          {f.displayValue ? <div className="truncate text-xs text-slate-500 dark:text-slate-400">{f.displayValue}</div> : null}
         </div>
         {badge ? (
           <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 dark:bg-white/10 dark:text-slate-300">
@@ -187,7 +187,7 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
           </span>
         ) : null}
         {hasDetail ? (
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90" aria-hidden />
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400 transition group-open:rotate-90" aria-hidden />
         ) : (
           <span className="w-4 shrink-0" aria-hidden />
         )}
@@ -206,7 +206,7 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
                     {it.url ?? it.label ?? '—'}
                   </span>
                   {it.totalBytes !== undefined ? (
-                    <span className="shrink-0 tabular-nums text-slate-400 dark:text-slate-500">{fmtBytes(it.totalBytes)}</span>
+                    <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">{fmtBytes(it.totalBytes)}</span>
                   ) : null}
                   {it.wastedBytes !== undefined ? (
                     <span className="shrink-0 tabular-nums font-medium text-amber-600 dark:text-amber-400">−{fmtBytes(it.wastedBytes)}</span>
@@ -215,7 +215,7 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
                   ) : null}
                 </li>
               ))}
-              {f.moreItems ? <li className="text-xs text-slate-400 dark:text-slate-500">…and {f.moreItems} more</li> : null}
+              {f.moreItems ? <li className="text-xs text-slate-500 dark:text-slate-400">…and {f.moreItems} more</li> : null}
             </ul>
           ) : null}
         </div>
@@ -259,7 +259,7 @@ function HeadingOutlineView({ outline }: { outline: HeadingOutline }) {
           {headings.map((h, i) => (
             <li key={i} className="flex items-center gap-2 py-0.5 text-sm" style={{ paddingLeft: `${(h.level - 1) * 1.1}rem` }}>
               <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${headingBadgeClass(h.level)}`}>H{h.level}</span>
-              <span className={`min-w-0 flex-1 truncate ${h.text ? 'text-slate-700 dark:text-slate-200' : 'italic text-slate-400 dark:text-slate-500'}`}>
+              <span className={`min-w-0 flex-1 truncate ${h.text ? 'text-slate-700 dark:text-slate-200' : 'italic text-slate-500 dark:text-slate-400'}`}>
                 {h.text || 'empty heading'}
               </span>
               {h.issue ? (
@@ -272,7 +272,7 @@ function HeadingOutlineView({ outline }: { outline: HeadingOutline }) {
               ) : null}
             </li>
           ))}
-          {truncated ? <li className="pl-1 pt-1 text-xs text-slate-400 dark:text-slate-500">…and {truncated} more headings</li> : null}
+          {truncated ? <li className="pl-1 pt-1 text-xs text-slate-500 dark:text-slate-400">…and {truncated} more headings</li> : null}
         </ul>
       ) : null}
     </div>
@@ -335,7 +335,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
           <p className="text-sm text-emerald-600">No failing audits — every scored check passed. 🎉</p>
         ) : (
           <>
-            <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Worst first. Expand a row for the how-to-fix and the specific files/elements to change.</p>
+            <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">Worst first. Expand a row for the how-to-fix and the specific files/elements to change.</p>
             <ul className="flex flex-col gap-1.5">
               {findings.map((f) => (
                 <li key={f.id}>
@@ -360,7 +360,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
         </div>
       ) : null}
 
-      <p className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">
+      <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
         Lab audit (Lighthouse {result.lighthouseVersion}) on a deploy-equivalent build. Performance is a throttled
         lab score — directional; SEO, accessibility and best-practices are deterministic. No real-user field data.
       </p>
@@ -446,10 +446,10 @@ export function PageAuditPanel({
         <section className="flex gap-4 rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
           <div className="min-w-0 flex-1">
             <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">SEO preview</h3>
-            <p className="mt-1 truncate text-base font-semibold text-slate-800 dark:text-slate-100">{seo.title || <span className="text-slate-400">Untitled page</span>}</p>
+            <p className="mt-1 truncate text-base font-semibold text-slate-800 dark:text-slate-100">{seo.title || <span className="text-slate-500 dark:text-slate-400">Untitled page</span>}</p>
             <p className="truncate text-xs text-emerald-700 dark:text-emerald-400">{seo.path || '/'}</p>
             <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">
-              {seo.description || <span className="italic text-slate-400 dark:text-slate-500">No meta description — add one in Page settings for better search snippets.</span>}
+              {seo.description || <span className="italic text-slate-500 dark:text-slate-400">No meta description — add one in Page settings for better search snippets.</span>}
             </p>
           </div>
           <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
@@ -465,7 +465,7 @@ export function PageAuditPanel({
         </section>
 
         {!auditable ? (
-          <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-400 dark:border-white/15">
+          <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-500 dark:border-white/15 dark:text-slate-400">
             This page can’t be audited — collection / dataset-template pages have no standalone rendered route to score.
           </p>
         ) : (
@@ -507,7 +507,7 @@ export function PageAuditPanel({
             ) : result ? (
               <AuditReport result={result} />
             ) : !error ? (
-              <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-400 dark:border-white/15">
+              <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-500 dark:border-white/15 dark:text-slate-400">
                 Run a Lighthouse speed + SEO audit of this page against a deploy-equivalent build.
               </p>
             ) : null}

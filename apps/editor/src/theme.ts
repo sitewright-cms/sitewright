@@ -17,7 +17,7 @@ export const glassPanel =
 
 /** A frosted text input/select with a BRAND focus ring (`sw-brand-focus` → border + ring follow --sw-brand-1). */
 export const glassInput =
-  'sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:bg-white dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900';
+  'sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:bg-white dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:bg-slate-900';
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 
@@ -36,7 +36,7 @@ export const ghostButton =
 
 /** A subtle destructive action. */
 export const dangerButton =
-  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10';
+  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10';
 
 /** Gradient pill used for section icons / accents (the configurable brand gradient). */
 export const accentChip =

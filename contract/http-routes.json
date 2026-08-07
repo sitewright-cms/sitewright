@@ -91,6 +91,7 @@
   "GET /projects/:projectId/members",
   "GET /projects/:projectId/pagespeed-audit/:pageId",
   "GET /projects/:projectId/preview-locate",
+  "GET /projects/:projectId/preview-progress",
   "GET /projects/:projectId/preview-shares",
   "GET /projects/:projectId/preview-url",
   "GET /projects/:projectId/publish",

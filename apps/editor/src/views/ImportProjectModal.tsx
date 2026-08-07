@@ -92,9 +92,9 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
         {step === 'source' && (
           <>
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-white/5 px-4 py-8 text-center transition hover:border-slate-400">
-              <FileUp className="h-7 w-7 text-slate-400 dark:text-slate-500" />
+              <FileUp className="h-7 w-7 text-slate-500 dark:text-slate-400" />
               <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{file ? file.name : 'Choose a Sitewright project export (.zip)'}</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Creates a brand-new project — your existing projects are untouched.</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Creates a brand-new project — your existing projects are untouched.</span>
               <input type="file" accept=".zip,application/zip" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </label>
             <p className="flex items-start gap-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-900 dark:text-indigo-200">
@@ -139,7 +139,7 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2">
-      <dt className="text-[11px] text-slate-400 dark:text-slate-500">{label}</dt>
+      <dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="font-medium text-slate-800 dark:text-slate-100">{value}</dd>
     </div>
   );

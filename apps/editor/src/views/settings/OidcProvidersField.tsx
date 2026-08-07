@@ -1,4 +1,5 @@
 import { glassInput, toggleInput } from '../../theme';
+import { secretFieldProps } from '../../lib/secret-field';
 
 /** An editable OIDC provider row. `scopes` is a space/comma string for the textbox; `secret` is a
  *  newly-typed plaintext client secret (write-only — blank keeps the stored one). `_key` is a stable
@@ -50,7 +51,7 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
 
   return (
     <div className="flex flex-col gap-3">
-      {providers.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">No providers yet — add one to offer “Sign in with …”.</p>}
+      {providers.length === 0 && <p className="text-xs text-slate-500 dark:text-slate-400">No providers yet — add one to offer “Sign in with …”.</p>}
       {providers.map((p, i) => (
         <div key={p._key} className="rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/5 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -85,6 +86,7 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
                 className={glassInput}
                 aria-label={`Provider ${i + 1} client secret`}
                 type="password"
+                {...secretFieldProps}
                 value={p.secret}
                 placeholder={p.hasClientSecret ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => update(i, { secret: e.target.value })}

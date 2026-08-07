@@ -291,7 +291,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
             aria-label={`Close ${label}`}
             title="Close"
             onClick={() => setOpen(false)}
-            className="waves-effect rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-200"
+            className="waves-effect rounded-lg px-2 py-0.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-200"
           >
             <X className="h-4 w-4" />
           </button>

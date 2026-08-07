@@ -159,7 +159,7 @@ export function StockPicker({
           </figure>
         ))}
         {searched && !searching && results.length === 0 && !error && (
-          <p className="text-sm text-slate-400 dark:text-slate-500">No results.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">No results.</p>
         )}
       </div>
     </div>

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { glassCard, glassInput, fieldLabel, accentChip } from '../../theme';
 import { cardVariants, cardHover } from './motion';
 import { SectionHelp } from '../ui/SectionHelp';
+import { secretFieldProps } from '../../lib/secret-field';
 
 /** A frosted-glass card with a gradient accent chip + title; lifts on hover. An optional `tooltip`
  *  adds a "?" help affordance next to the title (the section's description, shown on hover/focus). */
@@ -57,6 +58,11 @@ export function Field({
         aria-invalid={error ? true : undefined}
         aria-describedby={errorId}
         type={type}
+        // Every masked field this shared control renders is a THIRD-PARTY secret — a deploy target's
+        // FTP password, an SSH key passphrase, a git access token. None of them signs anyone into this
+        // site, so none should wake the browser's password manager. (Real credentials — sign-in,
+        // change-password, MFA confirm — use their own inputs with the proper autocomplete tokens.)
+        {...(type === 'password' ? secretFieldProps : {})}
         value={value}
         placeholder={placeholder}
         required={required}
@@ -65,7 +71,7 @@ export function Field({
       {error ? (
         <span id={errorId} className="mt-1 block text-[11px] font-medium text-red-500 dark:text-red-400">{error}</span>
       ) : hint ? (
-        <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">{hint}</span>
+        <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">{hint}</span>
       ) : null}
     </label>
   );
@@ -110,7 +116,7 @@ export function FieldButton({ label, value, onClick }: { label: string; value: R
       <span className={fieldLabel}>{label}</span>
       <button type="button" aria-label={label} onClick={onClick} className={`${glassInput} flex items-center justify-between text-left`}>
         <span className="truncate">{value}</span>
-        <svg aria-hidden viewBox="0 0 24 24" className="ml-2 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <svg aria-hidden viewBox="0 0 24 24" className="ml-2 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
@@ -121,7 +127,7 @@ export function FieldButton({ label, value, onClick }: { label: string; value: R
 /** A small section sub-heading inside a card; an optional `tip` adds a "?" help affordance. */
 export function SubLabel({ children, tip }: { children: ReactNode; tip?: string }) {
   return (
-    <p className="mb-2 mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+    <p className="mb-2 mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
       {children}
       {tip && <SectionHelp tip={tip} />}
     </p>

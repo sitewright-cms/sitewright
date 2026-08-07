@@ -30,7 +30,7 @@ function EntryCard({ entry, copied, onCopy }: { entry: ReferenceEntry; copied: b
           {entry.args.map((a) => (
             <div key={a.name} className="flex gap-2 text-[11px]">
               <dt className="shrink-0 font-mono font-bold text-slate-500 dark:text-slate-400">{a.name}</dt>
-              <dd className="text-slate-400 dark:text-slate-500">{a.desc}</dd>
+              <dd className="text-slate-500 dark:text-slate-400">{a.desc}</dd>
             </div>
           ))}
         </dl>
@@ -118,12 +118,12 @@ export function ReferenceModal({
           />
           <div className="min-h-0 flex-1 overflow-auto pr-1">
             {total === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+              <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No matches.</p>
             ) : (
               groups.map((g) => (
                 <section key={g.id} className="mb-6">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">{g.title}</h3>
-                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">{g.blurb}</p>
+                  <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">{g.blurb}</p>
                   <ul className="flex flex-col gap-3">
                     {g.entries.map((e) => (
                       <EntryCard key={e.id} entry={e} copied={copiedId === e.id} onCopy={() => copy(e.example ?? e.syntax, e.id)} />
@@ -133,7 +133,7 @@ export function ReferenceModal({
               ))
             )}
           </div>
-          <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">{total} {entriesNoun} · click Copy to grab a snippet.</p>
+          <p className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{total} {entriesNoun} · click Copy to grab a snippet.</p>
         </div>
       </div>
     </Modal>

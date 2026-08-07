@@ -72,7 +72,7 @@ export function NewProjectModal({ onClose, onCreated }: NewProjectModalProps) {
             }}
             required
           />
-          <span className="mt-1 font-normal text-[11px] text-slate-400 dark:text-slate-500">The site’s URL-safe identifier — auto-filled from the name.</span>
+          <span className="mt-1 font-normal text-[11px] text-slate-500 dark:text-slate-400">The site’s URL-safe identifier — auto-filled from the name.</span>
         </label>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {/* Submit via the header ✓ (Create project) or Enter; a hidden submit input wires Enter. */}

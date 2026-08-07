@@ -159,7 +159,7 @@ export function HeaderSettingsMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="waves-effect rounded-md p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+        className="waves-effect rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
       >
         <GearIcon />
       </button>
@@ -175,7 +175,7 @@ export function HeaderSettingsMenu({
             if (row.kind === 'header') {
               // A non-interactive group label (matches the Deploy menu's section-header style).
               return (
-                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <p key={`hdr-${row.label}`} role="presentation" className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {row.label}
                 </p>
               );

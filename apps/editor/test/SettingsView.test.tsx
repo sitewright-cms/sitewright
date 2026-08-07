@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { SettingsBundle } from '../src/api';
 import { ToastProvider } from '../src/views/ui/Toast';
 
@@ -28,6 +28,26 @@ vi.mock('../src/api', () => ({
     createPreviewShare: () => Promise.resolve({ id: 's1', url: '/preview-site/p/s1~sig/' }),
     deletePreviewShare: () => Promise.resolve({}),
   },
+}));
+
+// The real code editor is CodeMirror, which has no value setter jsdom can drive. Stub it down to its
+// CONTRACT — a Save button that hands the edited value to `onSave` — which is the half this test is
+// about: that saving inside the editor reaches the SERVER, not just the form.
+vi.mock('../src/views/ui/CodeEditorModal', () => ({
+  CodeEditorModal: ({ title, value, onSave, onClose }: { title: string; value: string; onSave: (v: string) => void; onClose: () => void }) => (
+    <div role="dialog" aria-label={title}>
+      <textarea aria-label="code" defaultValue={value} data-testid="code-area" />
+      <button
+        type="button"
+        onClick={() => {
+          onSave((document.querySelector('[data-testid="code-area"]') as HTMLTextAreaElement).value);
+          onClose();
+        }}
+      >
+        Save changes
+      </button>
+    </div>
+  ),
 }));
 
 import { SettingsView } from '../src/views/settings/SettingsView';
@@ -93,6 +113,25 @@ describe('SettingsView', () => {
     expect(await screen.findByText('Settings saved')).toBeInTheDocument();
     // After a successful save the form matches the new baseline → buttons disable again.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
+  });
+
+  it('★ saving a SKELETON SLOT in its code editor persists it, in that one gesture', async () => {
+    // The slots are edited in a modal with its own Save button (and Ctrl+S). That used to only stage
+    // the change into the form, leaving the author to find the tab's Save — which reads as "I saved
+    // and it didn't save". Note the value must reach the SERVER, not just the form: a naive
+    // `patch(p); save()` would close over the pre-patch form and persist the OLD slot.
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Edit mainNav/ }));
+
+    const editor = await screen.findByRole('dialog');
+    const area = within(editor).getByLabelText('code');
+    fireEvent.change(area, { target: { value: '<nav>from the modal</nav>' } });
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    const sent = putSettings.mock.calls[0]![1] as SettingsBundle;
+    expect(sent.website?.mainNav).toBe('<nav>from the modal</nav>');
   });
 
   it('discards unsaved edits, reverting fields and re-disabling the buttons', async () => {

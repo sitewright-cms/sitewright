@@ -366,7 +366,7 @@ function MapList({
               >
                 <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">{t.name}</span>
                 <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{t.summary}</span>
-                <span className="mt-1.5 block text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="mt-1.5 block text-[11px] text-slate-500 dark:text-slate-400">
                   {t.artboards} artboard{t.artboards === 1 ? '' : 's'} · {t.hotspots} hotspots
                 </span>
               </button>
@@ -648,7 +648,7 @@ function MapEditor({
           <div className="border-b border-slate-200 p-2 dark:border-slate-700">
             <div className="mb-1 flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Artboards</span>
-              <button type="button" className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-100" onClick={addArtboard}>
+              <button type="button" className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100" onClick={addArtboard}>
                 + Add
               </button>
             </div>
@@ -669,7 +669,7 @@ function MapEditor({
                   >
                     {a.title || a.id}
                   </button>
-                  <button type="button" aria-label={`Delete ${a.title}`} className="px-1 text-slate-400 hover:text-rose-600" onClick={() => removeArtboard(a.id)}>
+                  <button type="button" aria-label={`Delete ${a.title}`} className="px-1 text-slate-500 dark:text-slate-400 hover:text-rose-600" onClick={() => removeArtboard(a.id)}>
                     ×
                   </button>
                 </li>

@@ -24,7 +24,18 @@ export function PasswordRequirements({ value, className }: PasswordRequirementsP
             key={rule.id}
             data-testid={`pw-rule-${rule.id}`}
             data-met={met ? 'true' : 'false'}
-            className={!touched ? 'text-slate-400 dark:text-slate-500' : met ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}
+            // THREE states, and they have to stay visually distinct: nothing typed yet (no judgment
+            // — the muted tier), typed and satisfied (emerald), typed and still failing (the darker
+            // secondary tier, so an unmet rule reads as something to act on rather than as the same
+            // grey it started out). Raising the muted tier for contrast collapsed the first and third
+            // into one colour once; keep them on deliberately different tokens.
+            className={
+              !touched
+                ? 'text-slate-500 dark:text-slate-400'
+                : met
+                  ? 'text-emerald-700 dark:text-emerald-400'
+                  : 'text-slate-800 dark:text-slate-100'
+            }
           >
             <span aria-hidden="true" className="mr-1.5 inline-flex w-3 justify-center">
               {touched && met ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />}

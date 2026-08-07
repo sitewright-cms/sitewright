@@ -85,9 +85,9 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
         </div>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {loading ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">The Recycle Bin is empty.</p>
+          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">The Recycle Bin is empty.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-slate-100 dark:divide-white/10">
             {items.map((m) => (
@@ -95,7 +95,7 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
                 {m.kind === 'image' ? (
                   <img src={m.url} alt="" className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200 dark:ring-white/10" />
                 ) : (
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400">
                     <FileTypeIcon asset={m} className="h-5 w-5" />
                   </span>
                 )}

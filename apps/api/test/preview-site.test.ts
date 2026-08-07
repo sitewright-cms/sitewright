@@ -89,6 +89,43 @@ describe('buildSite preview options', () => {
     ]);
   }, 30_000);
 
+  it('reports its PHASES to a waiting caller, in order, with a page count', async () => {
+    // The draft preview blocks the shell for the whole build, so this is the only channel the shell
+    // has for saying what the wait is. Order matters — the pill reads the latest phase.
+    const seen: Array<{ phase: string; done?: number; total?: number }> = [];
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      includeDrafts: true,
+      bundle: bundle(pages),
+      onProgress: (p) => seen.push(p),
+    });
+    const phases = seen.map((p) => p.phase);
+    expect(phases[0]).toBe('preparing');
+    expect(phases).toContain('pages');
+    expect(phases).toContain('finalizing');
+    expect(phases.indexOf('pages')).toBeLessThan(phases.indexOf('finalizing'));
+    // Every page announces itself before it renders, counting from 0 against a real total.
+    const pageSteps = seen.filter((p) => p.phase === 'pages');
+    expect(pageSteps.length).toBeGreaterThan(0);
+    expect(pageSteps[0]).toMatchObject({ done: 0, total: pageSteps[0]!.total });
+    expect(pageSteps[0]!.total).toBeGreaterThan(0);
+  });
+
+  it('a throwing progress reporter cannot fail the build', async () => {
+    // Progress is a courtesy to a spinner. A build that is otherwise fine must not die because the
+    // thing narrating it did.
+    const manifest = await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle(pages),
+      onProgress: () => {
+        throw new Error('reporter exploded');
+      },
+    });
+    expect(manifest.routes).toBeGreaterThan(0);
+  });
+
   it('a clean build reports no page failures at all', async () => {
     const manifest = await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
@@ -445,6 +482,37 @@ describe('preview-site API (signed path)', () => {
     expect(home.json()).toEqual({ path: '' });
     const none = await app.inject({ method: 'GET', url: `${base}/preview-locate?entity=does-not-exist`, cookies });
     expect(none.json()).toEqual({ path: null });
+  });
+
+  it('preview-progress answers WITHOUT blocking on the build, and reports nothing in flight once idle', async () => {
+    const { t, projectId } = await setup('pg@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>H</h1>' });
+
+    // Before any build has been asked for, nothing is in flight — and crucially this returns rather
+    // than waiting, which is the entire reason it is a separate endpoint from /preview-url.
+    const idle = await app.inject({ method: 'GET', url: `${base}/preview-progress`, cookies });
+    expect(idle.statusCode).toBe(200);
+    expect(idle.json()).toEqual({ building: false });
+
+    // After the build has been driven to completion, it is idle again — the entry is cleared when the
+    // build settles, so a shell that keeps polling is told to stop narrating.
+    await app.inject({ method: 'GET', url: `${base}/preview-url`, cookies });
+    expect((await app.inject({ method: 'GET', url: `${base}/preview-progress`, cookies })).json()).toEqual({
+      building: false,
+    });
+  });
+
+  it('preview-progress is tenant-scoped like every other project read', async () => {
+    const { projectId } = await setup('own@acme.test');
+    const other = await setup('int@acme.test', 'intruder-site');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/preview-progress`,
+      cookies: { sw_session: other.t },
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it('a broken page SERVES its error, and the pages around it stay current', async () => {

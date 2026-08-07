@@ -80,7 +80,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
             </button>
           </li>
         ))}
-        {clients.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No project members yet.</li>}
+        {clients.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No project members yet.</li>}
       </ul>
 
       <InvitePanel

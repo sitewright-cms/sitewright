@@ -47,7 +47,7 @@ function Toggle({ label, checked, onChange, hint, disabled = false }: { label: s
     <label className="flex items-center gap-2 py-1">
       <input type="checkbox" className={toggleInput} checked={checked} disabled={disabled} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
       <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
-      {hint && <span className="text-xs text-slate-400 dark:text-slate-500">{hint}</span>}
+      {hint && <span className="text-xs text-slate-500 dark:text-slate-400">{hint}</span>}
     </label>
   );
 }
@@ -323,7 +323,7 @@ export function TargetConfigForm({
 
       <Toggle label="Minify HTML" checked={minify} hint="collapse whitespace + drop comments at build" onChange={setMinify} />
 
-      {keepHint && <p className="text-[11px] text-slate-400 dark:text-slate-500">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
+      {keepHint && <p className="text-[11px] text-slate-500 dark:text-slate-400">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="flex items-center gap-2 pt-1">

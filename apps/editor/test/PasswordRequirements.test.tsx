@@ -19,6 +19,22 @@ describe('PasswordRequirements', () => {
     }
   });
 
+  it('★ keeps its THREE states visually distinct', () => {
+    // A blanket contrast pass once turned "nothing typed yet" and "typed and still failing" into the
+    // same colour, and this suite stayed green because it only ever asserted `data-met`. The three
+    // states carry different meanings, so they have to carry different colours.
+    const untouched = render(<PasswordRequirements value="" />).container.querySelector('[data-testid="pw-rule-length"]')!;
+    const untouchedClass = untouched.className;
+
+    const partial = render(<PasswordRequirements value="abc1" />).container; // typed ⇒ touched
+    const unmet = partial.querySelector('[data-testid="pw-rule-length"]')!.className;
+    const satisfied = partial.querySelector('[data-testid="pw-rule-lowercase"]')!.className;
+
+    expect(unmet).not.toBe(untouchedClass); // "not started" vs "not there yet"
+    expect(unmet).not.toBe(satisfied);
+    expect(satisfied).not.toBe(untouchedClass);
+  });
+
   it('marks only the satisfied rules for a partial password', () => {
     // lowercase + number only; missing uppercase/symbol and too short.
     render(<PasswordRequirements value="abc1" />);

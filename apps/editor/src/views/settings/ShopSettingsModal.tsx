@@ -38,7 +38,7 @@ export function ShopSettingsModal({ form, patch, onClose }: { form: SettingsForm
 
         <div>
           <SubLabel>Currency formatting</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
             The symbol &amp; ISO code are translatable (Translations &amp; Labels → <code>cart_currency_symbol</code> /{' '}
             <code>cart_currency_code</code>). Here you set only how the amount is formatted.
           </p>

@@ -114,7 +114,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
           <li key={loc} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 px-3 py-2">
             <span aria-hidden className="text-lg">{localeFlag(loc)}</span>
             <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{localeLabel(loc)}</span>
-            <span className="font-mono text-xs uppercase text-slate-400 dark:text-slate-500">{loc}</span>
+            <span className="font-mono text-xs uppercase text-slate-500 dark:text-slate-400">{loc}</span>
             {loc === defaultLocale ? (
               <span className="ml-auto flex items-center gap-2">
                 <span className="rounded-full bg-indigo-100 dark:bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300">main language</span>

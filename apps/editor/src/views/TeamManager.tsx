@@ -77,7 +77,7 @@ export function TeamManager() {
             )}
           </li>
         ))}
-        {members.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No administrators yet.</li>}
+        {members.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No administrators yet.</li>}
       </ul>
 
       <InvitePanel

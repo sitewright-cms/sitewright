@@ -160,7 +160,11 @@ function MainApp({
     setStage({ name: 'auth' });
   }
 
-  async function refresh(): Promise<Project[]> {
+  /** Reload the signed-in user. `authed` is reported separately from `projects` because an empty
+   *  project list is NOT the same as a missing session — a signed-in developer with no projects
+   *  yet returns exactly the same array as a 401 does. Anything that gates on being signed in has
+   *  to read the flag. */
+  async function refresh(): Promise<{ authed: boolean; projects: Project[] }> {
     try {
       const me = await api.me();
       setProjects(me.projects);
@@ -173,10 +177,10 @@ function MainApp({
       setMustChangePassword(me.mustChangePassword);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
-      return me.projects;
+      return { authed: true, projects: me.projects };
     } catch {
       setStage({ name: 'auth' });
-      return [];
+      return { authed: false, projects: [] };
     }
   }
 
@@ -214,18 +218,25 @@ function MainApp({
   const branding = useBranding();
 
   useEffect(() => {
-    void refresh().then((ps) => {
-      // Signed in with a pending agent-authorization to resume? Hand the browser straight back to the
+    void refresh().then(({ authed }) => {
+      // SIGNED IN with a pending agent-authorization to resume? Hand the browser straight back to the
       // consent page rather than dropping the user on the project selector with no idea what happened.
       // `replace`, not `assign`, so Back does not bounce them through the login again.
-      const next = safeReturnTo(window.location.search);
-      if (next) {
-        window.location.replace(next);
-        return;
+      //
+      // ★ `authed` is the whole point of this guard. /oauth/authorize bounces an unauthenticated agent
+      // here as `/?next=/oauth/authorize?…`; following that link while still signed out just gets
+      // bounced straight back, and the two redirects chase each other as fast as the browser can go —
+      // a login window reloading in a blur until the rate limiter finally stops it. Signed out, the
+      // login screen simply stays up; `next` survives in the URL and the post-login handler resumes it.
+      if (authed) {
+        const next = safeReturnTo(window.location.search);
+        if (next) {
+          window.location.replace(next);
+          return;
+        }
       }
       // Open the selector on first SPA load (unless an invite is mid-flow).
       if (!initialInviteToken) setSelectorOpen(true);
-      void ps;
     });
   }, []);
 
@@ -292,8 +303,10 @@ function MainApp({
     return (
       <Login
         onAuthed={() =>
-          void refresh().then(() => {
-            const next = safeReturnTo(window.location.search);
+          void refresh().then(({ authed }) => {
+            // Same guard as the mount effect: only resume the agent-authorization once there is
+            // actually a session to authorize with, or the two redirects chase each other.
+            const next = authed ? safeReturnTo(window.location.search) : null;
             if (next) window.location.replace(next);
             else setSelectorOpen(true);
           })
@@ -357,7 +370,7 @@ function MainApp({
             onClick={() => setSelectorOpen(true)}
           >
             <span className="truncate">{inProject.name}</span>
-            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
           </button>
         )}
       </div>
@@ -436,7 +449,10 @@ function MainApp({
               <FolderOpen className="h-4 w-4" />
             </span>
             <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pick a project to get started</h1>
-            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+            {/* Secondary weight, not muted: this card is translucent over the animated platform
+                background, so the muted tier measured 2.87:1 here — it clears AA on a white panel and
+                nowhere near it on a mid-tone one. */}
+            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600 dark:text-slate-300">
               Open one of your projects to start editing — or create a new one from the selector.
             </p>
             <button className={`${primaryButton} mt-6`} onClick={() => setSelectorOpen(true)}>

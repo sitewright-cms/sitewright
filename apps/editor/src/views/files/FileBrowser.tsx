@@ -87,7 +87,7 @@ const CHECK_ICON = icon(<path d="M20 6 9 17l-5-5" />);
 const DOWNLOAD_ICON = icon(<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />);
 const TRASH_ICON = icon(<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />);
 
-const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100';
+const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100';
 const ACT_DANGER = `${ACT} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`;
 
 /** Inline monospace snippet for handlebars helpers shown in dialog notes. */
@@ -425,7 +425,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
           </label>
           <input id={uploadId} ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
             Any file type. Images become AVIF/WebP; other files are stored as downloads.
             {folder && <> Filing into <strong>{folder}</strong>.</>}
             {uploading && <span className="ml-1 text-indigo-500 dark:text-indigo-300">uploading…</span>}
@@ -461,7 +461,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             const crumbPath = crumbs.slice(0, i + 1).join('/');
             return (
               <span key={crumbPath} className="flex items-center gap-1">
-                <span className="text-slate-300">/</span>
+                <span className="text-slate-500 dark:text-slate-400">/</span>
                 <button
                   type="button"
                   onClick={() => goTo(crumbPath)}
@@ -523,7 +523,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         // (< ~34rem): the table scrolls a little rather than collapsing the Name column to nothing.
         <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] table-fixed text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-          <thead className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <thead className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr>
               <th className="py-1 font-medium" aria-sort={ariaSort('name')}>
                 <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600 dark:hover:text-slate-300">
@@ -559,7 +559,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
                   </button>
                 </td>
-                <td className="py-2 text-slate-400 dark:text-slate-500">folder</td>
+                <td className="py-2 text-slate-500 dark:text-slate-400">folder</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</td>
                 <td className="py-2">
                   {!pick && !searching && (
@@ -593,11 +593,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     )}
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate">{m.filename}</span>
-                      {searching && <span className="truncate text-xs text-slate-400 dark:text-slate-500">in {m.folder || 'Assets'}</span>}
+                      {searching && <span className="truncate text-xs text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
                     </span>
                   </button>
                 </td>
-                <td className="truncate py-2 text-slate-400 dark:text-slate-500" title={typeLabel(m)}>{typeLabel(m)}</td>
+                <td className="truncate py-2 text-slate-500 dark:text-slate-400" title={typeLabel(m)}>{typeLabel(m)}</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">
@@ -617,7 +617,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             ))}
             {subfolders.length === 0 && here.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-3 text-sm text-slate-400 dark:text-slate-500">{emptyMsg}</td>
+                <td colSpan={4} className="py-3 text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</td>
               </tr>
             )}
           </tbody>
@@ -638,7 +638,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
                 <FolderIcon className="h-10 w-10 text-indigo-400" />
                 <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={seg}>{seg}</span>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(bytes)}</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</span>
               </button>
               {!pick && !searching && (
                 <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 dark:bg-slate-900/90 p-0.5 shadow group-hover:flex">
@@ -665,10 +665,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   </div>
                 )}
                 <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>{m.filename}</figcaption>
-                {searching && <span className="block truncate text-[10px] text-slate-400 dark:text-slate-500">in {m.folder || 'Assets'}</span>}
+                {searching && <span className="block truncate text-[10px] text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
               </button>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(m.bytes)}</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</span>
                 <div className="hidden gap-0.5 group-hover:flex">
                   {pick ? (
                     <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
@@ -684,7 +684,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               </div>
             </figure>
           ))}
-          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-400 dark:text-slate-500">{emptyMsg}</p>}
+          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</p>}
         </div>
       )}
 
@@ -737,7 +737,7 @@ function ImagePreview({
       </div>
 
       <div className="w-full">
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Embed URLs</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Embed URLs</p>
         <ul className="flex flex-col gap-1">
           {urls.map((u) => {
             const id = `${asset.id}:${u.label}`;
@@ -770,7 +770,7 @@ function ImagePreview({
       </div>
 
       {asset.attribution && (
-        <p className={`w-full text-[11px] text-slate-400 dark:text-slate-500 ${glassPanel} p-2`}>
+        <p className={`w-full text-[11px] text-slate-500 dark:text-slate-400 ${glassPanel} p-2`}>
           {asset.attribution.provider} · {asset.attribution.author} · {asset.attribution.license}
         </p>
       )}

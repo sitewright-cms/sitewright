@@ -408,7 +408,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                   // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
                   onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
                 />
-                <span className="mt-1 font-normal text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="mt-1 font-normal text-[11px] text-slate-500 dark:text-slate-400">
                   {isRootHome ? (
                     'The home page is the site root (/).'
                   ) : (
@@ -591,7 +591,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             ))}
           </div>
           {v.navSlots.includes('custom') && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               “Custom” isn’t shown by the default menus — loop it in your page or snippet code with <code>{'{{#each nav.custom}}'}</code>.
             </p>
           )}
@@ -621,9 +621,9 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 }}
               />
               {inMenu ? (
-                <span className="mt-1 text-slate-400 dark:text-slate-500">Defaults to the page title if left blank.</span>
+                <span className="mt-1 text-slate-500 dark:text-slate-400">Defaults to the page title if left blank.</span>
               ) : (
-                <span className="mt-1 text-slate-400 dark:text-slate-500">Only used when the page is in a menu (tick one above).</span>
+                <span className="mt-1 text-slate-500 dark:text-slate-400">Only used when the page is in a menu (tick one above).</span>
               )}
             </label>
             {v.navSlots.length > 0 && (
@@ -640,7 +640,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             )}
           </div>
           {v.navDropdown && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               {childCount > 0
                 ? `${childCount} child page${childCount === 1 ? '' : 's'} will nest under this item.`
                 : 'Pages whose Parent Page is this page will nest under this nav item.'}
@@ -659,7 +659,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             >
               <ChevronRight className={`h-3.5 w-3.5 transition ${advancedOpen ? 'rotate-90' : ''}`} />
               Advanced
-              {!advancedOpen && <span className="font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500">Template · Raw HTML</span>}
+              {!advancedOpen && <span className="font-normal normal-case tracking-normal text-slate-500 dark:text-slate-400">Template · Raw HTML</span>}
             </button>
             {advancedOpen && (
               <div className="mt-3 flex flex-col gap-4">
@@ -680,7 +680,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                         />
                         <span>
                           Inherit from {owner ? `“${owner.title}”` : 'the main language'}
-                          <span className="block text-[11px] text-slate-400 dark:text-slate-500">Follows the main language’s layout — edit there to change every language.</span>
+                          <span className="block text-[11px] text-slate-500 dark:text-slate-400">Follows the main language’s layout — edit there to change every language.</span>
                         </span>
                       </label>
                       <label className="flex items-start gap-2 text-sm">
@@ -694,7 +694,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                         />
                         <span>
                           Fork — this language gets its own code
-                          <span className="block text-[11px] text-slate-400 dark:text-slate-500">Copies the current layout in; edit it freely in the page editor.</span>
+                          <span className="block text-[11px] text-slate-500 dark:text-slate-400">Copies the current layout in; edit it freely in the page editor.</span>
                         </span>
                       </label>
                       <label className="flex items-start gap-2 text-sm">

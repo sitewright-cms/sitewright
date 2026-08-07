@@ -72,6 +72,7 @@ import {
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
   AiConfigSchema,
+  PREVIEW_SANDBOX_CSP,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -84,6 +85,9 @@ import {
   systemI18nData,
   usesDialog,
   usesParallax,
+  usesFixedBackground,
+  FIXED_BG_PREVIEW_CSS,
+  FIXED_BG_PREVIEW_JS,
   parallaxPreviewDoc,
   svgAnimPreviewDoc,
   svgStudioPreviewDoc,
@@ -183,7 +187,14 @@ import { pinnedFetchDetailed, type PinnedResult } from '../import/pinned-fetch.j
 import { UploadError } from '../import/upload.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
-import { PublishError, slotHint, type PageBuildFailure, type ReleaseManifest } from '../publish/build.js';
+import {
+  PublishError,
+  slotHint,
+  replacePreviewPdfEmbeds,
+  replacePreviewStorageEmbeds,
+  type PageBuildFailure,
+  type ReleaseManifest,
+} from '../publish/build.js';
 import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
@@ -754,9 +765,15 @@ function fontMediaShell(media: readonly MediaAsset[], slug: string): Pick<Previe
 async function styledSourceDocument(
   page: Page,
   brand: CorporateIdentity,
-  body: string,
+  rawBody: string,
   shell: PreviewShell = {},
 ): Promise<string> {
+  // Same two sandbox-imposed swaps the whole-site draft preview makes (build.ts), applied here so BOTH
+  // preview surfaces agree: Chromium won't run its PDF viewer in a sandboxed frame, and a YouTube/Vimeo
+  // player can't instantiate on the opaque origin the sandbox forces. Left alone, each paints a blank
+  // box with nothing to say why; swapped, the author sees the real box plus a way to open the content.
+  // Publish is untouched — build.ts gates its copies on previewMode, and this shell is preview-only.
+  const body = replacePreviewStorageEmbeds(replacePreviewPdfEmbeds(rawBody));
   // The slots' Tailwind/DaisyUI classes must be in the inlined preview sheet too, else the shared
   // header/footer renders unstyled in the editor.
   const slotHtml = [shell.mainNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
@@ -796,6 +813,8 @@ async function styledSourceDocument(
   // click handlers would fight the click-to-edit bridge; the live behaviour runs on /sites/<slug>/).
   // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
   const parallaxed = usesParallax(scanHtml); // also gates the preview scroll bridge below
+  // Fixed backgrounds need re-creating in THIS shell only — it is the one the device modes scale.
+  const fixedBg = usesFixedBackground(scanHtml);
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
   // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
@@ -835,6 +854,7 @@ async function styledSourceDocument(
         // Shared registry: every marker-gated body-effect runtime's CSS (animation, parallax, svg-anim,
         // marquee, lazyload, ripple, cart, consent) — same set + order as the publish path.
         ...bodyEffectStyles(scanHtml),
+        ...(fixedBg ? [FIXED_BG_PREVIEW_CSS] : []),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
         ...(compileCandidates.length > 0
           ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
@@ -849,6 +869,11 @@ async function styledSourceDocument(
         // so it no-ops if the viewport ever scrolls natively. Fixes sticky-header (.sw-scrolled),
         // parallax, scrollspy + back-to-top in this shell (the whole-site preview has its own bridge).
         ...(parallaxed || stickyHeaderRuntime || scrollSpyRuntime ? [PREVIEW_SCROLL_BRIDGE_JS] : []),
+        // This canvas is SCALED by the responsive device modes, and a scaled iframe paints
+        // `background-attachment: fixed` as `scroll` (Chromium — measured for transform, zoom and a
+        // transformed iframe alike). Re-create the fixed paint with a viewport-fixed layer, which does
+        // survive scaling. Marker-gated, so a page with no fixed background ships nothing.
+        ...(fixedBg ? [FIXED_BG_PREVIEW_JS] : []),
         ...(componentJs ? [componentJs] : []),
         // Shared registry: the 'run' body-effect runtimes' JS (animation, parallax, svg-anim, lazyload,
         // ripple). cart/consent are 'style-only' (excluded) — styled but inert in the editor canvas.
@@ -1835,6 +1860,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
+  // …and publishes, likewise per project. Declared out here (not inside the publish block) because the
+  // deploy-target DELETE route must be able to SEE an in-flight build: its cleanup removes the very
+  // directory `buildToDir` writes into, so the two must never overlap.
+  const activePublishes = new Set<string>();
   // Whole-instance ceiling on concurrent project-export builds (each writes up to
   // PROJECT_EXPORT_MAX_BYTES of temp data + reads the media tree) — mirrors the image
   // optimize slot guard. Incremented for the BUILD phase only; streaming the finished
@@ -4058,7 +4087,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
       // SAMEORIGIN framing lets the editor embed it; no third party. `allow-forms` lets a form's
       // submit event fire — this surface's forms post to the DRY RUN, so nothing is stored or mailed.
-      reply.header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
+      reply.header('content-security-policy', PREVIEW_SANDBOX_CSP);
       reply.header('x-frame-options', 'SAMEORIGIN');
       return reply.type('text/html').send(html);
     },
@@ -5684,10 +5713,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Publishing (build a static site + serve it) ----
   if (publishStore) {
     const store = publishStore;
-    // Serialize builds/deploys per project: prevents concurrent operations from
-    // racing on the same output directory (and bounds load).
-    const activePublishes = new Set<string>();
-
     // Build/rebuild the project's static site from the current DB content.
     app.post<{ Params: { projectId: string } }>(
       '/projects/:projectId/publish',
@@ -6848,7 +6873,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // correctly and simply could not fire). The escape token matters as much as the popup one: a
           // popup that inherits this sandbox lands on the target site at an OPAQUE origin and breaks
           // there instead. Neither token grants the framed document same-origin access to the editor.
-          .header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox')
+          .header('content-security-policy', PREVIEW_SANDBOX_CSP)
           .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);
@@ -6881,6 +6906,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       // Build the site fresh into a temp dir at deploy time; the route uploads it then removes it.
       buildForDeploy,
+      // Drop the locally-served build when its Local Hosting target is deleted (see that route).
+      // No publish root configured → nothing was ever served locally, so there is nothing to remove.
+      removeLocalSite: async (slug) => {
+        await publishStore?.removeProject(slug);
+      },
+      // Shares the publish route's in-flight set so a delete can't `rm -rf` a directory mid-build.
+      isPublishing: (projectId) => activePublishes.has(projectId),
       rl,
     });
     // Per-project SMTP config (for the userSmtp form mode) — encrypted, like deploy targets.
@@ -7745,7 +7777,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         });
         // `allow-forms` so an embedded form's submit fires here too; this render's forms point at the
         // dry-run endpoint (renderForms above), so a live render never mails anyone.
-        reply.header('content-security-policy', 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
+        reply.header('content-security-policy', PREVIEW_SANDBOX_CSP);
         reply.header('x-frame-options', 'SAMEORIGIN');
         return reply.type('text/html').send(html);
       } catch (err) {

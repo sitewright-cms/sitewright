@@ -12,6 +12,13 @@
 // - Motion sits behind `prefers-reduced-motion: no-preference`; reduced motion =
 //   no ripple. No-JS → a plain (still clickable) element.
 // - First-party, audited, static code only; tenants add only the marker classes.
+// Platform-owned controls that get a ripple WITHOUT carrying the marker class. The lightbox viewer
+// is re-rendered through morphdom, which strips any attribute (class included) absent from its own
+// template — so a class we stamp on its arrows or thumbnail strip does not survive the next paint.
+// Naming them in the selector instead is immune to that, and they are our own `sw-lightbox-*` names
+// (set via the vendor's classNames map), not a third-party's.
+export const RIPPLE_HOSTS = '.waves-effect,.sw-lightbox-arrow-left,.sw-lightbox-arrow-right,.sw-lightbox-nav a';
+
 /**
  * The ripple stylesheet. `.waves-effect` clips its overflow so the expanding circle
  * stays inside; `.waves-ripple` is the injected span that scales + fades. The default tint
@@ -22,6 +29,12 @@
 export const RIPPLE_CSS = [
   '@media (prefers-reduced-motion: no-preference){',
   '.waves-effect{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
+  // The same containing box for the implicit hosts above — a ripple needs a positioned, clipping
+  // parent or the circle escapes and paints over the viewer. The nav thumbnails already clip via
+  // their <li>; the anchor itself needs the position.
+  '.sw-lightbox-arrow-left,.sw-lightbox-arrow-right,.sw-lightbox-nav a{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
+  // The viewer is a near-black overlay in every palette, so its ripple is always the light tint.
+  '.sw-lightbox-arrow-left .waves-ripple,.sw-lightbox-arrow-right .waves-ripple,.sw-lightbox-nav a .waves-ripple{background:rgba(255,255,255,.45)}',
   '.waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);transform:scale(0);opacity:.5;will-change:transform,opacity}',
   '.waves-effect.waves-light .waves-ripple{background:rgba(255,255,255,.45)}',
   '.waves-rippling{animation:sw-waves .6s ease-out forwards}',
@@ -54,7 +67,7 @@ export const RIPPLE_JS = `(function(){
   }
   document.addEventListener('pointerdown',function(e){
     var t=e.target;
-    var el=t&&t.closest?t.closest('.waves-effect'):null;
+    var el=t&&t.closest?t.closest('${RIPPLE_HOSTS}'):null;
     if(el)spawn(el,e);
   },{passive:true});
 })();`;

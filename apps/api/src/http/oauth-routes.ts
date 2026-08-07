@@ -104,22 +104,63 @@ function scopeCheckboxes(selected: readonly ApiKeyCapability[]): string {
   }).join('');
 }
 
+/**
+ * The consent surface's document shell. Server-rendered (no SPA, no Tailwind at this point in the
+ * flow), so the platform's look is reproduced with self-contained CSS: the brand gradient mark, a
+ * frosted card on a tinted field, and the same slate type scale + rounded geometry as the editor.
+ * Light AND dark, keyed off the viewer's system setting like every other platform surface.
+ */
 function htmlPage(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
-    body{font:15px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1.5rem;color:#0f172a}
-    h1{font-size:1.25rem}.card{border:1px solid #e2e8f0;border-radius:.75rem;padding:1.25rem;margin-top:1rem}
-    label{display:block;font-size:.8rem;color:#475569;margin:.75rem 0 .25rem}
-    select{width:100%;padding:.5rem;border:1px solid #cbd5e1;border-radius:.5rem;font:inherit}
-    fieldset.scopes{border:1px solid #e2e8f0;border-radius:.5rem;padding:.5rem .85rem}
-    fieldset.scopes legend{font-size:.8rem;color:#475569;padding:0 .35rem}
-    label.scope-opt{display:flex;align-items:center;gap:.45rem;margin:.2rem 0;font-size:.85rem;color:#334155;font-weight:400}
-    label.scope-opt input{margin:0}
-    .scope-warn{font-size:.66rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:.25rem;padding:.02rem .3rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-    .row{display:flex;gap:.5rem;margin-top:1.25rem}
-    button{font:inherit;padding:.5rem 1rem;border-radius:.5rem;border:1px solid #cbd5e1;cursor:pointer}
-    button.primary{background:#0f172a;color:#fff;border-color:#0f172a;font-weight:600}
-    code{background:#f1f5f9;padding:.1rem .3rem;border-radius:.25rem}
-  </style></head><body>${body}</body></html>`;
+    :root{
+      --sw-brand-1:#6366f1; --sw-brand-2:#a855f7;
+      --bg:#f1f5f9; --panel:rgba(255,255,255,.82); --line:#e2e8f0; --ink:#0f172a; --muted:#64748b;
+      --field:#fff; --field-line:#cbd5e1; --row:rgba(255,255,255,.7); --row-line:#e2e8f0;
+    }
+    @media (prefers-color-scheme:dark){
+      :root{--bg:#0b1120;--panel:rgba(15,23,42,.82);--line:rgba(255,255,255,.1);--ink:#e2e8f0;--muted:#94a3b8;
+            --field:rgba(15,23,42,.6);--field-line:rgba(255,255,255,.14);--row:rgba(30,41,59,.6);--row-line:rgba(255,255,255,.08)}
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem 1.25rem;
+      font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);
+      background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--sw-brand-1) 14%,transparent),transparent),var(--bg)}
+    .shell{width:100%;max-width:34rem}
+    .brand{display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;font-weight:700;letter-spacing:-.01em}
+    .mark{width:1.9rem;height:1.9rem;border-radius:.6rem;background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));
+      box-shadow:0 6px 18px color-mix(in srgb,var(--sw-brand-1) 35%,transparent)}
+    h1{font-size:1.2rem;line-height:1.35;margin:0 0 .35rem;letter-spacing:-.01em}
+    h1 strong{background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+    p{margin:.35rem 0;color:var(--muted);font-size:.9rem}
+    .card{margin-top:1rem;padding:1.35rem;border:1px solid var(--line);border-radius:1rem;background:var(--panel);
+      backdrop-filter:blur(14px);box-shadow:0 18px 45px rgba(15,23,42,.10)}
+    .lbl{display:block;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .5rem}
+    /* Project picker — the card-row list from the editor's project selector, as radios. */
+    .projects{display:flex;flex-direction:column;gap:.5rem;max-height:15rem;overflow:auto;margin:0;padding:0;border:0}
+    .project{display:flex;align-items:center;gap:.7rem;padding:.7rem .85rem;border:1px solid var(--row-line);border-radius:.85rem;
+      background:var(--row);cursor:pointer;transition:border-color .15s,background .15s}
+    .project:hover{border-color:color-mix(in srgb,var(--sw-brand-1) 45%,var(--row-line))}
+    .project:has(input:checked){background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));border-color:transparent;color:#fff}
+    .project input{accent-color:var(--sw-brand-1);margin:0}
+    .project:has(input:checked) input{accent-color:#fff}
+    .project .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    fieldset.scopes{margin:1.1rem 0 0;border:1px solid var(--line);border-radius:.85rem;padding:.65rem .9rem}
+    fieldset.scopes legend{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:0 .35rem}
+    label.scope-opt{display:flex;align-items:center;gap:.5rem;margin:.25rem 0;font-size:.87rem;font-weight:400}
+    label.scope-opt input{margin:0;accent-color:var(--sw-brand-1)}
+    .scope-warn{font-size:.62rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:.3rem;padding:.05rem .35rem;
+      font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    @media (prefers-color-scheme:dark){.scope-warn{color:#fca5a5;background:rgba(127,29,29,.35);border-color:rgba(248,113,113,.35)}}
+    .row{display:flex;gap:.6rem;margin-top:1.35rem}
+    button{font:inherit;font-weight:600;padding:.6rem 1.15rem;border-radius:.7rem;border:1px solid var(--field-line);
+      background:var(--field);color:var(--ink);cursor:pointer;transition:filter .15s,border-color .15s}
+    button:hover{border-color:var(--muted)}
+    button.primary{flex:1;border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));
+      box-shadow:0 8px 22px color-mix(in srgb,var(--sw-brand-1) 32%,transparent)}
+    button.primary:hover{filter:brightness(1.08)}
+    a{color:inherit}
+    code{background:color-mix(in srgb,var(--muted) 16%,transparent);padding:.08rem .32rem;border-radius:.3rem;font-size:.85em}
+  </style></head><body><div class="shell"><div class="brand"><span class="mark"></span>Sitewright</div>${body}</div></body></html>`;
 }
 
 /** Builds a redirect URL appending query params, preserving any existing query. */
@@ -231,7 +272,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const client = await resolveClient(clientId);
       if (!client || !client.allowsRedirect(redirectUri)) {
         return reply.code(400).type('text/html').send(
-          htmlPage('Invalid request', '<h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p>'),
+          htmlPage('Invalid request', '<div class="card"><h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p></div>'),
         );
       }
       // From here, parameter errors can safely redirect back to the (validated) client.
@@ -245,25 +286,36 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
 
       const userId = await currentUserId(req);
       if (!userId) {
-        return reply.code(401).type('text/html').send(
-          htmlPage(
-            'Sign in required',
-            `<h1>Sign in to approve access</h1><p>Open the <a href="/">Sitewright editor</a>, sign in, then return to this page to continue.</p>`,
-          ),
-        );
+        // Round-trip through the editor's login instead of dead-ending. `next` carries THIS request's
+        // path+query, so approval resumes exactly where it left off — the old page just told the user
+        // to go and sign in somewhere else and then find their way back, which for an agent-initiated
+        // flow means digging the URL out of a terminal.
+        //
+        // OPEN-REDIRECT GUARD: `next` is built here from `req.url` — never from user input — and the
+        // editor only honours a value that starts with `/oauth/authorize` (see App.tsx). Both halves
+        // matter: this one cannot be forged by an attacker crafting an /oauth/authorize link, because
+        // the value it produces is always this same endpoint.
+        return reply.redirect(`/?next=${encodeURIComponent(req.url)}`, 302);
       }
 
       const options = await projectOptions(userId);
       if (options.length === 0) {
         return reply.code(200).type('text/html').send(
-          htmlPage('No projects', '<h1>No projects</h1><p>Create a project in the editor first, then retry.</p>'),
+          htmlPage('No projects', '<div class="card"><h1>No projects yet</h1><p>Create a project in the editor first, then retry this authorization.</p></div>'),
         );
       }
 
       const hidden = (name: string, value: string): string =>
         `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+      // Radio CARDS, matching the editor's project selector, rather than a bare <select>: the project
+      // is the single most consequential choice on this page (it scopes every token the agent gets),
+      // so it should read like a choice, not like a dropdown default nobody looked at.
       const optionsHtml = options
-        .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+        .map(
+          (o, i) =>
+            `<label class="project"><input type="radio" name="project" value="${escapeHtml(o.value)}"${i === 0 ? ' checked' : ''} required>` +
+            `<span class="nm">${escapeHtml(o.label)}</span></label>`,
+        )
         .join('');
       return reply.code(200).type('text/html').send(
         htmlPage(
@@ -276,8 +328,8 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
                ${hidden('response_type', 'code')}${hidden('code_challenge', q.code_challenge)}
                ${hidden('code_challenge_method', 'S256')}
                ${q.state ? hidden('state', q.state) : ''}
-               <label for="project">Project</label>
-               <select id="project" name="project" required>${optionsHtml}</select>
+               <span class="lbl">Project</span>
+               <div class="projects" role="radiogroup" aria-label="Project">${optionsHtml}</div>
                <fieldset class="scopes" style="margin-top:.75rem"><legend>Permissions</legend>${scopeCheckboxes(scope)}</fieldset>
                <div class="row">
                  <button class="primary" type="submit" name="decision" value="approve">Approve</button>

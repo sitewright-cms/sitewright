@@ -11,8 +11,15 @@ interface PreviewEntry extends PreviewScope {
   expiresAt: number;
 }
 
+/** Default token lifetime. Long enough to outlive an editing session's open preview pane: the pane
+ *  holds ONE minted URL, so any refetch after expiry (a remount, a browser tab restore, a manual
+ *  reload) lands on the route's opaque "Preview expired" 404 with no way back but re-rendering. The
+ *  old 120s made that a routine occurrence. Still short — the token is unguessable, bound to
+ *  (project, user), and capped by `maxEntries`. */
+const DEFAULT_TTL_MS = 15 * 60_000;
+
 export interface PreviewStoreOptions {
-  /** How long a token is valid (default 120s — a preview is short-lived). */
+  /** How long a token is valid (default {@link DEFAULT_TTL_MS}). */
   ttlMs?: number;
   /** Hard cap on live tokens; oldest are evicted first (default 512). */
   maxEntries?: number;
@@ -37,7 +44,7 @@ export class PreviewStore {
   private readonly now: () => number;
 
   constructor(opts: PreviewStoreOptions = {}) {
-    this.ttlMs = opts.ttlMs ?? 120_000;
+    this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
     this.maxEntries = opts.maxEntries ?? 512;
     this.now = opts.now ?? Date.now;
   }

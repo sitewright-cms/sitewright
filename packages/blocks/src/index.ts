@@ -2,6 +2,7 @@ export * from './timing.js';
 export * from './animations.js';
 export * from './marquee.js';
 export * from './lazyload.js';
+export * from './fixed-bg-preview.js';
 export * from './ripple.js';
 export * from './nav-effects.js';
 export * from './button-effects.js';

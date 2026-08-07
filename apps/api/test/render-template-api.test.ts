@@ -1,3 +1,4 @@
+import { PREVIEW_SANDBOX_CSP } from '@sitewright/schema';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -99,7 +100,7 @@ describe('render-template API (isolated worker)', () => {
     expect(served.statusCode).toBe(200);
     // Exact value (not just "contains sandbox") so a future broadening to allow-same-origin fails here.
     // allow-forms so an embedded form's submit fires; its endpoint is the dry run
-    expect(served.headers['content-security-policy']).toBe('sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
+    expect(served.headers['content-security-policy']).toBe(PREVIEW_SANDBOX_CSP);
     expect(served.body).toBe(html); // the token serves the exact same document
   });
 

@@ -15,8 +15,9 @@ interface ProjectSettingsModalProps {
   onClose: () => void;
 }
 
-// The project slug allow-list (mirrors the server's slug regex): lowercase alphanumeric groups joined by
-// single hyphens — the value that appears in the site URL (`/sites/<slug>/`, `<slug>.<domain>`).
+// The project slug allow-list (mirrors the server's slug regex): lowercase alphanumeric groups joined
+// by single hyphens — the project's URL-safe identifier, used for subdomain hosting (`<slug>.<domain>`)
+// and to key its media and published artifacts.
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
@@ -103,7 +104,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Slug <span className="text-slate-400 dark:text-slate-500">— the site address (<code>/sites/&lt;slug&gt;/</code>)</span>
+            Slug <span className="text-slate-400 dark:text-slate-500">— the site&rsquo;s URL-safe identifier</span>
           </span>
           <input
             aria-label="Project slug"

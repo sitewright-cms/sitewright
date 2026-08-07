@@ -182,3 +182,56 @@ describe('{{sw-image}} via renderTemplate', () => {
     expect(avif).toContain('type="image/avif"');
   });
 });
+
+describe('{{sw-image lightbox=true}} — gallery item markup', () => {
+  const media = [
+    { id: 'aB3xY9', kind: 'image', url: '/media/acme/aB3xY9-lake.jpg', filename: 'lake.jpg', width: 3000, height: 2000 },
+  ] as unknown as Parameters<typeof buildSwImage>[1];
+
+  it('wraps the thumbnail in an anchor pointing at the LARGEST variant', () => {
+    const html = buildSwImage('/media/acme/aB3xY9-lake.jpg', media, {
+      lightbox: true,
+      sizes: '(min-width:640px) 33vw, 100vw',
+    });
+    // The anchor opens full detail…
+    expect(html).toMatch(/^<a href="\/media\/acme\/aB3xY9-lake\.jpg\?size=xl"/);
+    expect(html).toContain('data-full="/media/acme/aB3xY9-lake.jpg?size=xl"');
+    // …while the <img> keeps its own responsive rungs, so the GRID paints small files.
+    expect(html).toContain('?size=sm 500w');
+    expect(html).toContain('sizes="(min-width:640px) 33vw, 100vw"');
+    expect(html).toContain('</a>');
+  });
+
+  it('records the xl reference at RENDER time, which is what makes the file exist', () => {
+    // Publish materializes only the `?size=` variants something references. A runtime "swap the href
+    // up to xl" would link a file the build never generated — a 404 on the deployed site. Emitting
+    // the href here puts xl in the referenced set.
+    const html = buildSwImage('/media/acme/aB3xY9-lake.jpg', media, { lightbox: true });
+    expect(html).toContain('size=xl');
+  });
+
+  it('never upscales: the href tops out at the SOURCE width for a small image', () => {
+    const small = [
+      { id: 'sm1', kind: 'image', url: '/media/acme/sm1-icon.png', filename: 'icon.png', width: 420, height: 420 },
+    ] as unknown as Parameters<typeof buildSwImage>[1];
+    const html = buildSwImage('/media/acme/sm1-icon.png', small, { lightbox: true });
+    expect(html).toContain('?size=sm"'); // sm (500) already covers a 420px source
+    expect(html).not.toContain('size=xl');
+  });
+
+  it('carries a caption through to the viewer', () => {
+    const html = buildSwImage('/media/acme/aB3xY9-lake.jpg', media, { lightbox: true, caption: 'Lake at dawn' });
+    expect(html).toContain('data-caption="Lake at dawn"');
+  });
+
+  it('escapes a caption rather than trusting it', () => {
+    const html = buildSwImage('/media/acme/aB3xY9-lake.jpg', media, { lightbox: true, caption: '"><img onerror=x>' });
+    expect(html).not.toContain('"><img onerror');
+    expect(html).toContain('&quot;');
+  });
+
+  it('emits no anchor at all without the flag (default stays a bare <img>)', () => {
+    const html = buildSwImage('/media/acme/aB3xY9-lake.jpg', media, {});
+    expect(html).not.toContain('<a href');
+  });
+});

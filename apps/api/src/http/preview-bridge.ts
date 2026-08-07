@@ -76,9 +76,14 @@ const RICH_TB_DATA = {
 export const PREVIEW_BRIDGE_JS = `(function () {
   var SELF = 'sitewright-preview', PARENT = 'sitewright-editor';
   function post(msg) { var out = {}; for (var k in msg) out[k] = msg[k]; out.source = SELF; try { parent.postMessage(out, '*'); } catch (e) {} }
+  // Position RESTORE (after a reload) and editor-driven scroll are state syncs, not navigation —
+  // they must land immediately. \`behavior:'instant'\` says so explicitly, because both preview
+  // scrollers now resolve an un-annotated scroll against a smooth CSS scroll-behavior (publish
+  // parity), which would otherwise animate a restore across the whole page.
+  function jumpTo(y) { try { window.scrollTo({ top: y || 0, left: 0, behavior: 'instant' }); } catch (e) { try { window.scrollTo(0, y || 0); } catch (e2) {} } }
   function restore() {
     var m = /[#&]sw-y=(\\d+)/.exec(location.hash || '');
-    if (m) { try { window.scrollTo(0, parseInt(m[1], 10) || 0); } catch (e) {} }
+    if (m) jumpTo(parseInt(m[1], 10) || 0);
   }
   // Report scroll back to the editor (rAF-coalesced) so it can restore on the next reload.
   var ticking = false;
@@ -1225,7 +1230,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.source !== PARENT) return;
-    if (d.type === 'scrollTo' && typeof d.y === 'number') { try { window.scrollTo(0, d.y); } catch (err) {} }
+    if (d.type === 'scrollTo' && typeof d.y === 'number') jumpTo(d.y);
     else if (d.type === 'setMode') setEditing(d.mode === 'content');
     else if (d.type === 'edit-region' && typeof d.rid === 'number') editRegion(d.rid);
     else if (d.type === 'ci-palette') {

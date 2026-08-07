@@ -196,7 +196,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-image',
-        syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif]}}',
+        syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif] [lightbox=true] [caption=]}}',
         name: 'sw-image',
         keywords: 'image img picture responsive srcset lazy lqip thumbnail webp avif media photo',
         description:
@@ -208,7 +208,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'class=', desc: 'Classes for the <img>/<picture> <img>.' },
           { name: 'format=', desc: 'avif to emit a <picture> with an AVIF tier (otherwise a single WebP <img>).' },
         ],
-        example: '{{sw-image company.image alt=company.name class="w-full rounded-xl"}}\n{{#sw-folder "gallery"}}{{sw-image url alt=alt}}{{/sw-folder}}',
+        example: '{{sw-image company.image alt=company.name class="w-full rounded-xl"}}\n{{! GALLERY: thumbnails in the grid, full image in the lightbox }}\n{{#sw-folder "gallery"}}{{sw-image url alt=alt lightbox=true sizes="(min-width:640px) 33vw, 100vw"}}{{/sw-folder}}',
       },
       {
         id: 'h-active',

@@ -1,3 +1,4 @@
+import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { useEffect } from 'react'; // used by the AgentDrawer mock's factory (below) at render time
@@ -75,7 +76,7 @@ describe('SitePreview', () => {
     render(<SitePreview target={{ projectId: 'p', path: '' }} />);
     const frame = await screen.findByTitle('Site preview');
     expect(frame).toHaveAttribute('src', '/preview-site/p/sig123/');
-    expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
+    expect(frame).toHaveAttribute('sandbox', PREVIEW_SANDBOX_ATTR);
   });
 
   it('names the pages the draft build could not render, and says the rest is current', async () => {

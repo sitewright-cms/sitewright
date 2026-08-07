@@ -986,7 +986,8 @@ function createInstance(): typeof Handlebars {
     return new Handlebars.SafeString(`<span ${attrs}>⚙ ${escapeHtml(label)}: ${escapeHtml(current || '—')}</span>`);
   });
 
-  // {{sw-image url [alt=] [sizes=] [class=] [loading=eager] [fetchpriority=high] [format=avif]}}
+  // {{sw-image url [alt=] [sizes=] [class=] [loading=eager] [fetchpriority=high] [format=avif]
+  //            [lightbox=true] [caption=]}}
   // Responsive image for a PROJECT image (a delivery `/media/<slug>/<id>/<name>` url, or a
   // {{#sw-folder}}/dataset item's `url`): emits an <img> with a WebP srcset + intrinsic width/height
   // (no CLS) + a blur-up LQIP + loading=lazy. `format=avif` (or the project's AVIF delivery setting)
@@ -994,6 +995,12 @@ function createInstance(): typeof Handlebars {
   // hero — it also gets fetchpriority=high (LCP hint) unless `fetchpriority=` overrides it. An
   // external/unknown url degrades to a plain lazy <img>. The server serves each ?size on demand; publish
   // materializes referenced files.
+  //
+  // `lightbox=true` wraps the result in the `<a href><img>` pair a Lightbox gallery item needs, with
+  // the href on the LARGEST variant while the thumbnail keeps its own srcset — so a grid paints small
+  // files and the viewer still opens full detail. Pair it with `sizes=` (e.g.
+  // `sizes="(min-width:640px) 33vw, 100vw"`), or the `100vw` default makes each thumbnail fetch the
+  // largest rung and the page carries full-size images it never displays.
   hb.registerHelper('sw-image', function swImage(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const hash = (options.hash ?? {}) as Record<string, unknown>;
@@ -1016,6 +1023,8 @@ function createInstance(): typeof Handlebars {
         ? { fetchpriority: hash.fetchpriority }
         : {}),
       format: hash.format === 'avif' || root.imageAvif === true ? 'avif' : 'webp',
+      ...(hash.lightbox === true || hash.lightbox === 'true' ? { lightbox: true } : {}),
+      ...(typeof hash.caption === 'string' ? { caption: hash.caption } : {}),
     });
     return new Handlebars.SafeString(html);
   });

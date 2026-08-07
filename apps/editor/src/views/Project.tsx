@@ -22,6 +22,10 @@ interface ProjectViewProps {
   project: Project;
   /** The active top-level tab (lifted to App so the tablist can live in the header bar). */
   tab: Tab;
+  /** Fired ONCE when this project's opening data (pages, locales, templates) has settled — success
+   *  or failure. The selector modal holds a spinner until then, so picking a project no longer drops
+   *  the author into a visibly empty editor that fills in piece by piece. */
+  onLoaded?: () => void;
 }
 
 // The project's top-level tabs (every project member, incl. invited clients, gets them). Settings is
@@ -137,8 +141,11 @@ const LINK_ICON = rowIcon(
 const ROW_ACTION =
   'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
-export function ProjectView({ project, tab }: ProjectViewProps) {
+export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
+  // Held in a ref so passing a fresh arrow from App can never re-trigger the mount load below.
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
   // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
@@ -248,11 +255,15 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   }
 
   useEffect(() => {
-    void load();
-    void refreshLocales();
     // Templates power the "New page" + Page Settings template selector; load them up front so the
     // create modal always offers project templates (not just the built-in globals) on first open.
-    void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
+    // allSettled, not all: one failing call must still release the opening spinner (the view renders
+    // its own error state) — otherwise a single bad response would strand the selector modal.
+    void Promise.allSettled([
+      load(),
+      refreshLocales(),
+      api.listTemplates(project.id).then((r) => setTemplates(r.items)),
+    ]).then(() => onLoadedRef.current?.());
   }, [project.id]);
 
   // LIVE-REFRESH: an agent (or another tab) that creates/edits/deletes a page — or changes the site

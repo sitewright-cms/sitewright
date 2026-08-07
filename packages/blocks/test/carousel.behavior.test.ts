@@ -123,3 +123,23 @@ describe('Carousel runtime CLS guard (jsdom)', () => {
     expect(root().getAttribute('tabindex')).toBe('0');
   });
 });
+
+describe('slide caption animations replay on every visit', () => {
+  // NOTE ON SCOPE: this is a WIRING assertion, not a behavioural one. Embla derives snaps from
+  // layout, and jsdom reports every box as 0×0, so `select` never fires here — a test that clicked
+  // "next" and asserted classes would pass for the wrong reason (nothing happened) and would keep
+  // passing if the replay were deleted. The real behaviour is verified in a browser, against a
+  // scrolled slider, as part of the preview verification pass. What IS worth pinning mechanically is
+  // that the replay stays wired to `select` and keeps its two-frame restart.
+  it('is wired to the select event and restarts across two frames', () => {
+    // THE DEFECT: the platform entrance system is a TRANSITION toggled by `.sw-animation-active`,
+    // which the scroll runtime adds ONCE when the element scrolls into view. A slider sits at one
+    // scroll position, so every slide past the first was already revealed before anyone saw it and
+    // its declared caption animation never played.
+    expect(CAROUSEL_RUNTIME_JS).toContain('sw-animation-active');
+    expect(CAROUSEL_RUNTIME_JS).toContain('data-sw-animation');
+    // Removing the class must be observable to a style recalc before it is re-added, or the browser
+    // coalesces remove+add into no change at all and nothing moves. Hence rAF inside rAF.
+    expect(CAROUSEL_RUNTIME_JS).toMatch(/requestAnimationFrame\(function\(\)\{requestAnimationFrame/);
+  });
+});

@@ -89,10 +89,20 @@ describe('OAuth discovery + authorize', () => {
     expect(bad.headers.location).toBeUndefined(); // no open redirect
   });
 
-  it('prompts for sign-in when unauthenticated', async () => {
-    const res = await app.inject({ method: 'GET', url: `/oauth/authorize?${authorizeQuery()}` });
-    expect(res.statusCode).toBe(401);
-    expect(res.body).toMatch(/sign in/i);
+  it('round-trips an unauthenticated user through the login and back', async () => {
+    // It used to answer 401 with "open the editor, sign in, then return here" — a dead end, and for an
+    // agent-initiated flow that means digging this URL back out of a terminal. It now redirects to the
+    // SPA carrying its own path+query, which the editor resumes after login.
+    const query = authorizeQuery();
+    const res = await app.inject({ method: 'GET', url: `/oauth/authorize?${query}` });
+    expect(res.statusCode).toBe(302);
+    const location = res.headers.location as string;
+    expect(location.startsWith('/?next=')).toBe(true);
+    // The return value is built from THIS request, never from user input — so the link it produces is
+    // always this same endpoint, and cannot be steered elsewhere by a crafted /oauth/authorize URL.
+    const next = decodeURIComponent(location.slice('/?next='.length));
+    expect(next.startsWith('/oauth/authorize?')).toBe(true);
+    expect(next).toContain(query.split('&')[0]!);
   });
 
   it('renders an HTML-escaped consent page for an authenticated user', async () => {

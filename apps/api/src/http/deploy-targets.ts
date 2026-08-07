@@ -182,6 +182,12 @@ export interface DeployTargetDeps {
   /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it).
    *  `minify` mirrors the target's `minifyHtml` serve option (available for all target types). */
   buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean; protocol?: string }) => Promise<string>;
+  /** Delete the LOCALLY-SERVED build for a slug. Called when a `local` target is removed — see the
+   *  DELETE route. Remote protocols never write here (they build into a throwaway temp dir). */
+  removeLocalSite: (slug: string) => Promise<void>;
+  /** Whether a publish is building into that same directory right now. The DELETE route refuses
+   *  rather than racing its `rm -rf` against a live `buildToDir`. */
+  isPublishing: (projectId: string) => boolean;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -230,7 +236,7 @@ async function streamDeploy(
  * Credentials are encrypted at rest and never returned to clients.
  */
 export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTargetDeps): void {
-  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, rl } = deps;
+  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, removeLocalSite, isPublishing, rl } = deps;
 
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/deploy-targets',
@@ -445,9 +451,46 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
   app.delete<{ Params: { projectId: string; id: string } }>(
     '/projects/:projectId/deploy-targets/:id',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'deploy');
+      const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      // Read the target BEFORE removing it — its protocol decides whether there are served files to
+      // clean up. This lookup is best-effort: `remove` below is what owns the response, and it throws
+      // (→ 404) for a target that isn't there, so an unknown id never reaches the cleanup call.
+      let target: DeployTarget | undefined;
+      try {
+        target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
+      } catch {
+        /* already gone — nothing to remove, and nothing to clean up */
+      }
+      // Refuse while that same directory is being written. The cleanup below is an `rm -rf` of the
+      // publish store's project dir, and `POST /publish` builds straight into it — racing the two
+      // produces a half-written site rather than a clean removal. Checked BEFORE the record is
+      // deleted so a refusal leaves everything as it was.
+      if (target?.protocol === 'local' && (isPublishing(project.id) || activeDeploys.has(project.id))) {
+        return reply.code(409).send({ error: 'a build is in progress for this project — try again once it finishes' });
+      }
       await contentRepo.remove(ctx, 'deploy_target', req.params.id);
+      // A LOCAL target is what makes `<slug>` served at all: drop it and the site is instantly
+      // unreachable. The built artifact under the publish store used to stay on disk anyway — an
+      // orphan nothing served, nothing reaped, and nothing would ever refresh. Worse, re-adding a
+      // local target months later would put that STALE build straight back online, before any
+      // republish. Removing the target therefore removes what it was serving.
+      //
+      // Only `local`: every remote protocol (ftp/ftps/sftp/git) builds into a throwaway temp dir and
+      // uploads from there, so it owns nothing here — and files already delivered to someone else's
+      // server are theirs, not ours to delete.
+      //
+      // ★ AND only when no other target remains. That directory is not solely the local-hosting
+      // artifact: it also holds `release.json` (what `GET /publish` reports as the last release, and
+      // what `dirty` is measured against) and is the source of the "download site .zip" archive. A
+      // project that deploys over FTP *and* previewed locally would otherwise lose its release
+      // history and its archive download the moment local hosting was switched off — while the
+      // remote deployment it still has stayed live. With another target present the build stays as
+      // that record; with none, nothing references it and it goes.
+      if (target?.protocol === 'local') {
+        const remaining = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
+        if (remaining.length === 0) await removeLocalSite(project.slug);
+      }
       return reply.code(204).send();
     },
   );

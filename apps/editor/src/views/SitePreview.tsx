@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
+import { PreviewSkeleton } from './editor/PreviewSkeleton';
 import { api, eventsUrl, previewUrlFrom } from '../api';
 import { AgentDrawer } from './AgentDrawer';
 import type { PreviewTarget } from '../lib/preview-target';
@@ -35,6 +37,8 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [base, setBase] = useState<string | null>(null);
   const baseRef = useRef<string | null>(null);
   const [src, setSrc] = useState('');
+  // False until the embedded draft has painted once — drives the loading skeleton below.
+  const [everLoaded, setEverLoaded] = useState(false);
   // Pages the draft build could not render. Each still serves an error document in place, so the
   // preview is current everywhere else — this is what tells the author about a page they are not on.
   const [pageFailures, setPageFailures] = useState<Array<{ page: string; path: string; message: string }>>([]);
@@ -235,14 +239,28 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-white">
+      {/* Opening a project and going straight to the preview can take a while: the shell first fetches
+          the signed base (which brings the draft build up to date — a whole-site render on a cold
+          project), and only then does the iframe start fetching a page. Both steps used to sit behind
+          a plain white screen with nothing to say the preview was coming. Cover them with the same
+          page-shaped skeleton the editor's preview pane uses, until the iframe's FIRST real load. Later
+          reloads (per-edit refresh) keep the last frame instead — re-skeletoning would strobe. */}
+      {!everLoaded && (
+        <div role="status" className="absolute inset-0 z-30 bg-white">
+          <PreviewSkeleton />
+          <span className="sr-only">Loading the site preview…</span>
+        </div>
+      )}
       {src && (
         <iframe
           ref={iframeRef}
           title="Site preview"
           src={src}
+          onLoad={() => setEverLoaded(true)}
           // Author content runs (true WYSIWYG) but stays opaque-origin — it can't reach this
-          // shell's authenticated session. Matches the API route's own `sandbox` CSP.
-          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+          // shell's authenticated session. SHARED with the API route's own `sandbox` CSP: the two
+          // lists intersect, so a token missing from either side is silently lost.
+          sandbox={PREVIEW_SANDBOX_ATTR}
           className="h-full w-full border-0"
         />
       )}

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
+import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 
 const { preview, putPage, listTemplates, getPage } = vi.hoisted(() => ({
   preview: vi.fn(),
@@ -70,7 +71,7 @@ describe('CodePageEditor', () => {
     );
     const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
-    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-popups-to-escape-sandbox');
+    expect(iframe.getAttribute('sandbox')).toBe(PREVIEW_SANDBOX_ATTR);
     expect(iframe.hasAttribute('srcdoc')).toBe(false);
     await waitFor(() => expect(iframe.getAttribute('src')).toBe('/preview/acme/tok-123'));
   });

@@ -9,7 +9,88 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nothing you could download from a preview actually downloaded.** The preview response's CSP
+  `sandbox` directive and the editor's iframe `sandbox` attribute both omitted `allow-downloads`, and
+  the browser INTERSECTS the two lists — so the stricter side won silently, with no console error to
+  find. Clicking a brochure link in a preview did nothing at all. Measured before/after on a real
+  media-library PDF: blocked → downloads. The two lists were also hand-maintained separately, which is
+  how they drifted; they now derive from one definition, with a guard test that fails on a
+  reintroduced literal. (`target="_blank"` was reported alongside this and measured *working* on both
+  surfaces — what was broken was every download, including the ones authored as `target="_blank"`.)
+- **Back-to-top jumped instead of easing, in the whole-site preview.** That surface bridges window
+  scroll onto `<body>`, and did it by assigning `body.scrollTop` — always instant, discarding the
+  caller's `behavior:'smooth'`. It now forwards to the body's own scroll methods, and the preview body
+  carries `scroll-behavior:smooth` to match the published root, so an un-annotated programmatic scroll
+  resolves the same way on both surfaces. (The bridge's own position *restores* are explicitly
+  instant — a state sync must not animate the page from the top on every reload.)
+- **Fixed backgrounds scrolled in the page editor.** A scaled iframe paints
+  `background-attachment: fixed` as `scroll` — measured for a wrapper transform, an iframe transform
+  and CSS `zoom` alike, so no choice of scaling technique avoids it. The responsive device modes scale;
+  `/preview` never does; that was exactly the asymmetry. `position: fixed` *does* still resolve against
+  the frame viewport when scaled, so the fixed paint is now re-created with a viewport-filling clipped
+  layer. Marker-gated: a page with no fixed background ships nothing.
+- **YouTube and Vimeo embeds never played in any preview, and gave no hint why.** Their players need
+  first-party storage; a preview is sandboxed without `allow-same-origin` (that opaque origin is the
+  boundary keeping author JS away from the editor session), and sandbox flags are inherited by nested
+  frames. Proven with a first-party control: no sandbox → player + video; `allow-scripts` alone →
+  neither, and `localStorage` throws. `youtube-nocookie` is not a workaround. Preview builds now show a
+  placeholder that keeps the embed's box and opens the video in a new tab. **Maps are unaffected** —
+  Google Maps and OpenStreetMap both render sandboxed, so they are deliberately left alone.
+- **Switching responsive views could strand the preview on a 404** until a manual reload. The two
+  device branches rendered different tree shapes, so switching moved the `<iframe>` between depths and
+  React remounted it — refetching a preview token that may since have expired. One tree now; the token
+  also lives 15 minutes instead of 2, so it outlives an editing session.
+- **Removing a Local Hosting target left its built site on disk.** Only the target record was deleted.
+  The artifact stayed — served by nothing (so it looked removed), collected by nothing, and re-added
+  months later a new local target would put that *stale* build straight back online before any
+  republish. Deleting the target now deletes what it was serving. Remote targets are untouched: they
+  build into a throwaway directory, and files already delivered to someone else's server are theirs.
+- **The project selector's search box was never actually focused.** It carried `autoFocus`, and the
+  modal's own mount effect took focus back in the same tick — so typing went nowhere. Fixed for every
+  modal, not just this one. Enter now opens the top result.
+- **Agent authorization dead-ended when signed out**, telling you to go and sign in elsewhere and come
+  back — which for an agent-initiated flow means digging the URL out of a terminal. It round-trips
+  through the login and resumes. The return URL is built server-side from the request itself and the
+  editor honours it only for that one endpoint.
+- The Project settings hint still described the slug as `/sites/<slug>/`, a URL form retired when
+  hosting moved to subdomains. It is now "the site's URL-safe identifier".
+
+### Changed
+
+- **Entrance animations travel further.** The `fade-*` offsets were 2rem, which at typical section
+  sizes reads as a twitch and is easy to miss on a first scroll-through; they are now 4rem, with
+  `zoom-*` widened to match. `slide-*` and `flip-*` are unchanged — a full traverse and a rotation have
+  no travel to grow.
+- **The mini-shop drawer opens on the first item added.** Until now every add produced only a pulse on
+  a floating tab that most first-time shoppers never noticed, so the click looked like it did nothing.
+  Adding a second item does not interrupt browsing; emptying the cart re-arms the reveal.
+- **Slide captions re-animate every time their slide comes round**, including loop-arounds. A slider
+  sits at one scroll position, so the scroll-triggered entrance fired once for the whole track and every
+  slide past the first was already revealed before anyone saw it.
+- **The lightbox arrows and thumbnail strip ripple**, matching every other control on a published site.
+- **A preview that is still loading shows a page-shaped skeleton** instead of blank white — opening a
+  project and going straight to the preview can take seconds on a cold project, and picking a project
+  now holds the selector, spinner and all, until that project's data has actually landed.
+- **The MCP/agent authorization screen is a platform surface**, not an unstyled form: the brand mark, a
+  frosted card, light and dark, and the project rendered as the same selectable cards as the editor's
+  project selector — it scopes every token the agent receives, so it should read like a choice.
+- In the page editor, the code strip no longer stays expanded over the preview once you move the
+  pointer down to the page, and a new button under Mobile opens the current page in a new tab.
+
 ### Added
+
+- **`{{sw-image url lightbox=true sizes=…}}`** emits the `<a href><img>` pair a Lightbox gallery item
+  is made of: the anchor on the largest variant, the `<img>` keeping its own responsive srcset, so a
+  grid paints thumbnails and the viewer still opens full detail. This has to happen at render time —
+  publish materializes only the `?size=` variants something references, so a runtime "swap the href up
+  to xl" would link a file the build never generated. ★ The agent guide had been telling cloners to
+  write `size="md"`, a parameter `{{sw-image}}` has never had: it was silently ignored, `sizes` fell
+  back to its `100vw` default, and every tile therefore fetched the largest rung — which is why cloned
+  galleries shipped full-resolution grids.
+- Two additions to the background-texture library: `bark-dark` and `triangles-dark`.
+
 
 - **RFC 9116 `security.txt`, on both surfaces.** Published sites can opt in to a
   `/.well-known/security.txt` (Website settings → security.txt): the `Contact` entries are *selected*

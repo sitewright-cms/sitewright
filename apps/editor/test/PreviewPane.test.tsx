@@ -1,3 +1,4 @@
+import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 import { describe, it, expect } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { PreviewPane } from '../src/views/editor/PreviewPane';
@@ -13,7 +14,7 @@ describe('PreviewPane', () => {
     // opaque origin — `allow-same-origin` must never be present. The popup tokens are
     // what let an outbound target=_blank link open at all, and open UN-sandboxed at the
     // target's own origin; the list must match the response CSP or the stricter one wins.
-    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-popups-to-escape-sandbox');
+    expect(iframe?.getAttribute('sandbox')).toBe(PREVIEW_SANDBOX_ATTR);
     expect(iframe?.getAttribute('sandbox')).not.toContain('allow-same-origin');
     expect(iframe?.getAttribute('src')).toBe('/projects/p/preview/tok');
   });

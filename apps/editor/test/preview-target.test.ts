@@ -1,25 +1,50 @@
-import { describe, it, expect } from 'vitest';
-import { parsePreviewTarget, buildPreviewUrl } from '../src/lib/preview-target';
+import { describe, expect, it } from 'vitest';
+import { buildPreviewUrl, fullRouteFor, parsePreviewTarget } from '../src/lib/preview-target';
 
-describe('parsePreviewTarget', () => {
-  it('parses a bare project id (home)', () => {
-    expect(parsePreviewTarget('?preview=proj-1')).toEqual({ projectId: 'proj-1', path: '' });
+describe('fullRouteFor', () => {
+  // REGRESSION: the "open this page in a new tab" button passed the page's OWN path segment, but a
+  // served route is `{parent slugs}/{slug}` (publish/build.ts composes it from the parent chain). A
+  // nested page therefore opened the preview on a route that does not exist.
+  const pages = [
+    { id: 'home', path: '', parent: undefined },
+    { id: 'services', path: 'services', parent: 'home' },
+    { id: 'seo', path: 'seo', parent: 'services' },
+  ];
+
+  it('prefixes every ancestor segment', () => {
+    expect(fullRouteFor({ path: 'seo', parent: 'services' }, pages)).toBe('services/seo');
   });
-  it('parses a project id with a route path', () => {
-    expect(parsePreviewTarget('?preview=proj-1/about')).toEqual({ projectId: 'proj-1', path: 'about' });
-    expect(parsePreviewTarget('?preview=proj-1/de/leistungen')).toEqual({ projectId: 'proj-1', path: 'de/leistungen' });
+
+  it('drops the empty home segment so a top-level page keeps its bare slug', () => {
+    expect(fullRouteFor({ path: 'services', parent: 'home' }, pages)).toBe('services');
+    expect(fullRouteFor({ path: '', parent: undefined }, pages)).toBe('');
   });
-  it('returns null when absent or malformed', () => {
-    expect(parsePreviewTarget('?other=1')).toBeNull();
-    expect(parsePreviewTarget('')).toBeNull();
-    expect(parsePreviewTarget('?preview=')).toBeNull();
-    expect(parsePreviewTarget('?preview=/onlyslash')).toBeNull();
+
+  it('honours UNSAVED edits to the current page (own path/parent win over the stored list)', () => {
+    // the page is stored under `services` but the open editor has re-parented it to the root
+    expect(fullRouteFor({ path: 'seo', parent: 'home' }, pages)).toBe('seo');
+    expect(fullRouteFor({ path: 'renamed', parent: 'services' }, pages)).toBe('services/renamed');
+  });
+
+  it('survives a broken chain: a missing or CYCLIC parent never hangs or throws', () => {
+    expect(fullRouteFor({ path: 'orphan', parent: 'gone' }, pages)).toBe('orphan');
+    const cycle = [
+      { id: 'a', path: 'a', parent: 'b' },
+      { id: 'b', path: 'b', parent: 'a' },
+    ];
+    expect(fullRouteFor({ path: 'x', parent: 'a' }, cycle)).toBe('b/a/x');
   });
 });
 
-describe('buildPreviewUrl', () => {
-  it('builds a ?preview= URL preserving origin + path', () => {
-    expect(buildPreviewUrl('https://app.test', '/', 'proj-1')).toBe('https://app.test/?preview=proj-1');
-    expect(buildPreviewUrl('https://app.test', '/editor', 'p 2')).toBe('https://app.test/editor?preview=p%202');
+describe('buildPreviewUrl + parsePreviewTarget round-trip', () => {
+  it('carries a nested route through the ?preview= value', () => {
+    const url = buildPreviewUrl('https://app.test', '/', 'proj123', 'services/seo');
+    expect(url).toBe('https://app.test/?preview=proj123/services/seo');
+    expect(parsePreviewTarget(new URL(url).search)).toEqual({ projectId: 'proj123', path: 'services/seo' });
+  });
+
+  it('opens the home page when there is no route', () => {
+    const url = buildPreviewUrl('https://app.test', '/', 'proj123');
+    expect(parsePreviewTarget(new URL(url).search)).toEqual({ projectId: 'proj123', path: '' });
   });
 });

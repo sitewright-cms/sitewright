@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
@@ -31,7 +32,13 @@ vi.mock('../src/lib/use-session-poll', () => ({
 }));
 // Heavy children stubbed — App is the unit under test (shell + selector + header).
 vi.mock('../src/views/Project', () => ({
-  ProjectView: ({ project, tab }: { project: Project; tab: string }) => <div>PROJECT {project.name} tab={tab}</div>,
+  // The stub must honour `onLoaded`: App keeps the selector up (spinner on the chosen row) until the
+  // mounted project reports its data has settled, so a stub that ignores it would never let the modal
+  // close — and every "after opening a project" assertion below would be testing the wrong tree.
+  ProjectView: ({ project, tab, onLoaded }: { project: Project; tab: string; onLoaded?: () => void }) => {
+    useEffect(() => onLoaded?.(), [onLoaded]);
+    return <div>PROJECT {project.name} tab={tab}</div>;
+  },
   MANAGE_TABS: ['pages', 'forms'] as const,
   TAB_LABELS: { pages: 'Pages', forms: 'Forms' },
 }));
@@ -158,7 +165,9 @@ describe('App shell', () => {
     render(<App />);
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
     await screen.findByText(/PROJECT Acme/);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // The selector now holds a spinner until the opened project reports its data has settled, so it
+    // closes a tick AFTER the view first renders rather than in the same click.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Switch project' }));
     expect(await screen.findByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
   });

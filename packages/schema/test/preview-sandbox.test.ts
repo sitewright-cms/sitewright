@@ -32,16 +32,24 @@ describe('preview sandbox tokens', () => {
     expect(PREVIEW_SANDBOX_CSP).not.toContain('allow-same-origin');
   });
 
-  it('every preview surface uses the shared constants, never a hand-written token list', () => {
-    // A literal token list at a call site is exactly how the two sides drifted before. Fail on any
-    // reintroduced literal in the source of the surfaces that must match.
+  it('every AUTHOR-CONTENT preview surface uses the shared constants, not a hand-written list', () => {
+    // A literal token list at a call site is exactly how the two sides drifted before.
+    //
+    // SCOPE: only the surfaces that render AUTHOR CONTENT and must therefore match the editor's
+    // iframe — identified by `allow-popups` being in the list. The builder previews (parallax, SVG
+    // animation, the Studio canvas, image maps) deliberately keep a minimal bare `sandbox
+    // allow-scripts`: they render platform-generated demos from clamped numeric/enum params, have no
+    // links, forms or downloads, and granting them more would be a widening, not a fix. Matching
+    // every `sandbox allow-scripts` here would drag those in and push the two sets back together.
     for (const rel of [
       'apps/api/src/http/app.ts',
       'apps/editor/src/views/editor/PreviewPane.tsx',
       'apps/editor/src/views/SitePreview.tsx',
     ]) {
       const src = read(rel);
-      const literals = src.match(/['"`]sandbox allow-scripts[^'"`]*['"`]|sandbox="allow-scripts[^"]*"/g) ?? [];
+      const literals = (src.match(/['"`][^'"`\n]*allow-popups[^'"`\n]*['"`]/g) ?? [])
+        // Prose in a comment naming a token is not a call site.
+        .filter((lit) => /allow-scripts/.test(lit) && /sandbox|allow-forms|allow-downloads/.test(lit));
       expect(literals, `${rel} must use PREVIEW_SANDBOX_CSP / PREVIEW_SANDBOX_ATTR`).toEqual([]);
     }
   });

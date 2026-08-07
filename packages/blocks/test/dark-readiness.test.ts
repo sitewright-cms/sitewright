@@ -33,7 +33,11 @@ const FIRST_PARTY_COMPONENTS = ['Banner', 'Modal', 'Tabs', 'Form', 'Carousel'] a
 //    schemes" marker (e.g. a coloured button).
 //  - `sw-btn-ripple`: the button baseline's ripple span — a light tint over the accent-filled (coloured)
 //    button it fires on, the same intentional light-on-coloured-surface case as `waves-light`.
-const ALLOWED_BG_SELECTOR_SUBSTRINGS = ['Unknown', 'waves-light', 'sw-btn-ripple'];
+//  - `sw-lightbox-`: the photo viewer's own controls. The viewer overlay is a near-black scrim in EVERY
+//    palette (`.sw-lightbox` is rgb(0 0 0/.82) + a blur, not a themed surface), so its arrow + thumbnail
+//    ripples are the same deliberate light-on-dark case as `waves-light` — a token here would tint them
+//    with the PAGE's scheme and make them vanish on a light site.
+const ALLOWED_BG_SELECTOR_SUBSTRINGS = ['Unknown', 'waves-light', 'sw-btn-ripple', 'sw-lightbox-'];
 
 // Above this OKLCH lightness a colour reads as a "light" surface.
 const LIGHT_L = 0.72;

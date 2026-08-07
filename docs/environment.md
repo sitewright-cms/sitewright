@@ -73,6 +73,7 @@ Rarely needed — sensible defaults ship for a single-container instance.
 | `SW_RENDER_MAX_RENDERS` | `500` | Recycle a worker after this many renders. |
 | `SW_BUILD_WORKER` | — (in-process) | Set to `true` to run site builds in an isolated worker container (multi-tenant SaaS). Requires the Docker CLI + `DOCKER_HOST` and the API image available as the worker image. |
 | `SW_BUILD_WORKER_IMAGE` / `SW_BUILD_WORKER_MEMORY` / `SW_BUILD_WORKER_CPUS` | image `sitewright-api` | Worker image + resource limits (only when `SW_BUILD_WORKER=true`). |
+| `SW_FETCH_WORKER` | — (in-process) | Set to `true` to run the website-import CRAWL in a separate process with an allowlisted environment — no `SW_ENCRYPTION_KEY`, no `DATABASE_URL`, no decrypted deploy/SMTP secrets, no database handle. The importer fetches arbitrary URLs by design, so it has open egress; this removes what a compromised dependency there would have to steal. Costs one process per import. |
 
 ## Set by the Docker image (don't override)
 

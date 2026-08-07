@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
+import { makeWorkerCrawl } from '../import/worker-crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { ImportJobRegistry, type ImportJobView } from '../import/jobs.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
@@ -273,7 +274,17 @@ export async function streamImport(
 
 export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps): void {
   const { resolveProject, contentRepo, createMediaAsset, rl, log } = deps;
-  const crawl = deps.crawl ?? crawlSite;
+  // `SW_FETCH_WORKER=true` runs the crawl OUT OF PROCESS, in a child with an allowlisted environment
+  // and no database handle (issue #831). The importer's job is fetching arbitrary URLs, so it has
+  // open egress by design and is the worst place to also hold SW_ENCRYPTION_KEY and every decrypted
+  // deploy-target secret. Splitting it removes what is worth stealing rather than the capability.
+  // Opt-in for now: it costs a process per import and changes the failure surface, so an operator
+  // turns it on deliberately — same shape as SW_BUILD_WORKER.
+  const crawl =
+    deps.crawl ??
+    (process.env.SW_FETCH_WORKER === 'true'
+      ? makeWorkerCrawl({ fetchTimeoutMs: IMPORT_FETCH_TIMEOUT_MS, maxResourceBytes: MAX_RESOURCE_BYTES })
+      : crawlSite);
   const buildBundle = deps.buildBundle ?? buildImportBundle;
   const fetchPinned = deps.pinnedFetch ?? pinnedFetch;
   const render = 'render' in deps ? deps.render : renderViaBrowser;

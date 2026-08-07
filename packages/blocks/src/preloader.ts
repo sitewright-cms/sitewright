@@ -13,8 +13,9 @@
 // (any same-origin href, resolved against the current URL — bare-relative included) to bridge the
 // navigation → restore on bfcache (pageshow) → an 8s failsafe so a hung resource can never block.
 //
-// The overlay is a half-transparent brand-background pane with a backdrop blur, so page content
-// shows softly behind it. Every effect is themed entirely by the --sw-color-* brand tokens.
+// The overlay is an OPAQUE brand-background pane (see the ★ note on the base rule below: a
+// translucent one made every page change flash). Every effect is themed entirely by the --sw-color-*
+// brand tokens, so a dark site gets a dark overlay.
 
 import type { PreloaderEffect } from '@sitewright/schema';
 import { SW_READY_EVENT } from './timing.js';
@@ -69,6 +70,16 @@ export interface PreloaderOptions {
   preview?: boolean;
 }
 
+export interface CustomPreloaderOptions extends PreloaderOptions {
+  /**
+   * Paint the platform's solid brand backdrop behind the author's custom markup (`preloaderBackdrop`).
+   * OFF by default: a custom overlay owns its own look, and some are deliberately transparent — so
+   * this is the author asking for the same flash-free field the built-in effects get, rather than
+   * something imposed on markup that may not want it.
+   */
+  backdrop?: boolean;
+}
+
 /**
  * A CUSTOM preloader's markup, wrapped in the platform's own overlay so the lifecycle governs it.
  *
@@ -80,11 +91,14 @@ export interface PreloaderOptions {
  * platform keeps the show/hide contract; their own CSS still wins on the overlay's look, since it
  * loads after the platform's.
  */
-export function customPreloaderHtml(code: string, opts: PreloaderOptions = {}): string {
+export function customPreloaderHtml(code: string, opts: CustomPreloaderOptions = {}): string {
   if (!code.trim()) return '';
   const loading = opts.preview ? '' : 'sw-loading ';
+  // Opt-in only: without it the wrapper stays fully transparent and the author's markup is the whole
+  // visual, which is what a deliberately see-through custom preloader needs.
+  const backdrop = opts.backdrop ? ' sw-preloader-backdrop' : '';
   return (
-    `<div data-sw-preloader class="${loading}sw-preloader-custom" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">` +
+    `<div data-sw-preloader class="${loading}sw-preloader-custom${backdrop}" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">` +
     code +
     '</div>'
   );
@@ -114,14 +128,22 @@ export function usesPreloader(html: string | null | undefined): boolean {
 
 // --- CSS --------------------------------------------------------------------
 export const PRELOADER_CSS = [
-  // Frosted overlay: half-transparent brand background + backdrop blur. Fade is purely a TRANSITION
+  // Full-screen brand-background overlay. Fade is purely a TRANSITION
   // (no keyframe animation), which is the whole point: a fresh page load ships the overlay ALREADY
   // `loading`, and CSS transitions don't animate the first painted state → it shows INSTANTLY. The
   // transition only fires when `loading` is toggled afterwards: removed → fade OUT (page ready);
   // re-added on the leaving page during an internal-link click → fade IN (the runtime delays the
   // navigation until that fade completes). visibility is delayed to the end of the fade-out so the
   // overlay stops catching pointer events.
-  '[data-sw-preloader]{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:color-mix(in srgb,var(--sw-color-base-100,#fff) 62%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility 0s linear .45s}',
+  // ★ OPAQUE, deliberately. The overlay used to be a 62%-transparent frosted pane, which looked good
+  // standing still and flashed on every navigation: the overlay itself never flickers, but what shows
+  // THROUGH it cuts hard from the old page to the new one. The swap has two sides — the outgoing page
+  // fades under the overlay, then a NEW document paints its own overlay from first paint — so a
+  // translucent pane reveals the incoming page the instant it renders. Solid on both sides means there
+  // is nothing to cut: the old page fades out under it, the new page fades in from under it.
+  // The blur goes with it (a backdrop-filter behind an opaque fill paints nothing, and costs a
+  // compositing layer). The opacity TRANSITION is untouched — that is still the whole fade mechanism.
+  '[data-sw-preloader]{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:var(--sw-color-base-100,#fff);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility 0s linear .45s}',
   '[data-sw-preloader].sw-loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease}',
   // All inner rules are scoped under the marker so the .pl-* class names can't collide with author CSS.
   // Sizes are deliberately large (~2×) for visibility on the full-screen overlay.
@@ -129,10 +151,15 @@ export const PRELOADER_CSS = [
   '[data-sw-preloader] .pl-mark path{fill:var(--sw-color-primary,#4f46e5)}',
   '[data-sw-preloader] .pl-logo-img{max-width:280px;max-height:192px;width:auto;height:auto;display:block}',
   '[data-sw-preloader] .pl-stack{display:grid;place-items:center;gap:32px;text-align:center}',
-  // A CUSTOM overlay brings its own look: drop the platform's frosted background and blur so the
+  // A CUSTOM overlay brings its own look: drop the platform's background so the
   // author's markup + CSS decides. The show/hide contract above still governs it, which is the point
   // of wrapping custom code rather than emitting it raw.
   '[data-sw-preloader].sw-preloader-custom{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;display:block}',
+  // …unless the author OPTS IN to the platform backdrop. Custom code owns its own look by default
+  // (some custom preloaders are deliberately transparent), so this is a choice, not an imposition —
+  // it gives a custom spinner the same solid, flash-free field the built-ins get, without the author
+  // hand-rolling a full-bleed brand-coloured layer. Their own CSS still loads after this and wins.
+  '[data-sw-preloader].sw-preloader-custom.sw-preloader-backdrop{background:var(--sw-color-base-100,#fff);display:grid;place-items:center}',
   // Custom code that carries its OWN `data-sw-preloader` (the docs used to show one, and it was inert
   // because no preloader CSS shipped with custom code at all) must not be hidden by the overlay rules
   // now that they do ship: inside our wrapper it is just a div, and the wrapper owns the lifecycle.

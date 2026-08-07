@@ -292,6 +292,26 @@ export function WebsiteSection({
               )}
             </div>
           </label>
+          {/* Only meaningful once there IS custom code — the built-in effects always carry the backdrop. */}
+          {form.preloaderEffect === 'none' && form.preloaderCode.trim() !== '' && (
+            <label className="mt-3 flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className={fieldLabel}>Solid backdrop behind your code</span>
+                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                  Fills the screen with the page background so nothing shows through while loading. Leave
+                  it off if your overlay draws its own (or is meant to be see-through).
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="Solid backdrop behind the custom preloader"
+                className={toggleInput}
+                checked={form.preloaderBackdrop}
+                onChange={(e) => patch({ preloaderBackdrop: e.target.checked })}
+              />
+            </label>
+          )}
         </div>
         <label className="mt-4 flex flex-col">
           <span className={fieldLabel}>Sticky header</span>

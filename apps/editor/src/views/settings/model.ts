@@ -159,6 +159,8 @@ export interface SettingsForm {
   navCode: string;
   buttonCode: string;
   preloaderCode: string;
+  /** Opt-in platform backdrop behind CUSTOM preloader markup (built-ins always have one). */
+  preloaderBackdrop: boolean;
   // opt-in light/dark themes (website.enableThemes / defaultTheme)
   enableThemes: boolean;
   defaultTheme: 'auto' | 'light' | 'dark';
@@ -340,6 +342,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     navCode: w?.effects?.navCode ?? '',
     buttonCode: w?.effects?.buttonCode ?? '',
     preloaderCode: w?.effects?.preloaderCode ?? '',
+    preloaderBackdrop: w?.effects?.preloaderBackdrop ?? false,
     enableThemes: w?.enableThemes === true,
     consent: w?.consent,
     defaultTheme: w?.defaultTheme ?? 'auto',
@@ -597,9 +600,12 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const navC = form.navCode.trim() ? { navCode: form.navCode } : {};
   const btnC = form.buttonCode.trim() ? { buttonCode: form.buttonCode } : {};
   const preC = form.preloaderCode.trim() ? { preloaderCode: form.preloaderCode } : {};
+  // Tied to the code being present, so the flag can't linger on a site that switched to a built-in
+  // effect (or cleared its code) and then read back as an opted-in setting with nothing to apply to.
+  const preBd = form.preloaderCode.trim() && form.preloaderBackdrop ? { preloaderBackdrop: true } : {};
   // Annotated (not inferred): the conditional-spread chain otherwise widens into a union too complex
   // for tsc to represent. All WebsiteEffects fields are optional, so the typed target is exact.
-  const mergedEffects: WebsiteEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...bk, ...sticky, ...spy, ...navC, ...btnC, ...preC };
+  const mergedEffects: WebsiteEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...bk, ...sticky, ...spy, ...navC, ...btnC, ...preC, ...preBd };
   const effects = Object.keys(mergedEffects).length > 0 ? mergedEffects : undefined;
   // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
   // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the

@@ -9,7 +9,37 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The preloader overlay is opaque, so changing pages stops flashing.** It was a 62%-transparent
+  frosted pane: the overlay itself never flickered, but the content *behind* it cut hard from the old
+  page to the new one on every internal navigation. Covering only the outgoing half would not have
+  helped — the swap has two sides, and the arriving document paints its own overlay from first paint,
+  so a translucent pane reveals the new page the instant it renders. Solid on both sides is what
+  removes it. The blur went with it (a backdrop-filter behind an opaque fill paints nothing and costs
+  a compositing layer); the fade itself is unchanged. Measured: with the overlay up over two
+  deliberately different pages it renders to an identical pixel, and across a real navigation no
+  fully-covered frame carried either page's colour.
+- **Custom preloaders can opt in to that backdrop** (`preloaderBackdrop`, a toggle beside the custom
+  code). Off by default and deliberately so: custom markup owns its own look, and some overlays are
+  meant to be see-through — this is for the author who wants the same flash-free field the nine
+  built-in effects get without hand-rolling a full-bleed layer.
+
 ### Fixed
+
+- **Seven Website settings were unsavable on their own, and revertable from the other tab.** The
+  Settings modal splits one form across two independently-saved tabs using a hand-maintained list of
+  field names, and the whole `security.txt` block (plus the new backdrop toggle) was missing from it.
+  A missing field counts as a *Corporate Identity* field, so: the Website tab never went dirty, its
+  Save button stayed disabled — and Identity's Discard silently reverted the edit while Identity's
+  Save dropped it and still marked the form clean. Both failure modes were invisible until a reload.
+  The split is now checked against where a field *actually* writes, so a future field that lands in
+  `website.*` without being listed fails by name rather than silently misfiling itself.
+- A custom preloader was emitted **raw** into the render-template canvas — outside the platform
+  wrapper, on a surface that ships no preloader runtime, so nothing could ever clear it and it simply
+  covered the canvas. That canvas now matches the page-preview route, which had already stopped
+  emitting one: a preloader is whole-site chrome, and the whole-site draft preview is where it means
+  anything.
 
 - **Nothing you could download from a preview actually downloaded.** The preview response's CSP
   `sandbox` directive and the editor's iframe `sandbox` attribute both omitted `allow-downloads`, and

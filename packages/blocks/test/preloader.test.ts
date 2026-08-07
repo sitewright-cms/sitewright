@@ -91,10 +91,17 @@ describe('usesPreloader', () => {
 });
 
 describe('PRELOADER_CSS', () => {
-  it('is a frosted, half-transparent brand overlay whose fade is a pure TRANSITION', () => {
+  it('is an OPAQUE brand overlay whose fade is a pure TRANSITION', () => {
     expect(PRELOADER_CSS).toContain('[data-sw-preloader]{position:fixed');
-    expect(PRELOADER_CSS).toContain('backdrop-filter:blur');
-    expect(PRELOADER_CSS).toContain('color-mix(in srgb,var(--sw-color-base-100');
+    // ★ OPAQUE, not the old 62% frosted pane. The overlay itself never flickered — what showed
+    // THROUGH it cut hard from the old page to the new one, on every navigation. The swap has two
+    // sides (the leaving page's overlay, then the arriving document's own overlay from first paint),
+    // so a translucent pane reveals the incoming page the instant it renders. Solid on both sides
+    // means there is nothing to cut. The blur went with it: a backdrop-filter behind an opaque fill
+    // paints nothing and costs a compositing layer.
+    expect(PRELOADER_CSS).toContain('background:var(--sw-color-base-100,#fff)');
+    expect(PRELOADER_CSS).not.toContain('backdrop-filter:blur');
+    expect(PRELOADER_CSS).not.toContain('color-mix(in srgb,var(--sw-color-base-100,#fff) 62%');
     expect(PRELOADER_CSS).toContain('[data-sw-preloader].sw-loading{opacity:1');
     // The fade is a TRANSITION only — so a fresh load (ships already-loading) shows INSTANTLY (no
     // first-paint animation), and the fade only plays when `loading` is toggled afterwards
@@ -153,5 +160,41 @@ describe('PRELOADER_JS', () => {
     expect(PRELOADER_JS).toContain('metaKey');
     expect(PRELOADER_JS).toContain('download');
     expect(PRELOADER_JS).toContain('external');
+  });
+});
+
+describe('custom preloader backdrop (opt-in)', () => {
+  it('is OFF by default — custom markup owns its own look', () => {
+    const html = customPreloaderHtml('<div class="my-spinner"></div>');
+    expect(html).toContain('sw-preloader-custom');
+    expect(html).not.toContain('sw-preloader-backdrop');
+    // …and the default rule strips the platform surface entirely.
+    expect(PRELOADER_CSS).toContain('[data-sw-preloader].sw-preloader-custom{background:none');
+  });
+
+  it('paints the platform backdrop when the author opts in', () => {
+    const html = customPreloaderHtml('<div class="my-spinner"></div>', { backdrop: true });
+    expect(html).toContain('sw-preloader-custom sw-preloader-backdrop');
+    // The opt-in rule must be MORE specific than the background:none default above, or it loses.
+    expect(PRELOADER_CSS).toContain(
+      '[data-sw-preloader].sw-preloader-custom.sw-preloader-backdrop{background:var(--sw-color-base-100,#fff)',
+    );
+    expect(PRELOADER_CSS.indexOf('.sw-preloader-custom.sw-preloader-backdrop')).toBeGreaterThan(
+      PRELOADER_CSS.indexOf('.sw-preloader-custom{background:none'),
+    );
+  });
+
+  it('keeps the lifecycle contract either way', () => {
+    for (const opts of [{}, { backdrop: true }]) {
+      const html = customPreloaderHtml('<div></div>', opts);
+      expect(html).toContain('data-sw-preloader');
+      expect(html).toContain('sw-loading'); // the runtime's show/hide hook
+      expect(html).toContain('aria-label="Loading"');
+    }
+  });
+
+  it('still emits nothing for empty code, opted in or not', () => {
+    expect(customPreloaderHtml('   ', { backdrop: true })).toBe('');
+    expect(customPreloaderHtml('')).toBe('');
   });
 });

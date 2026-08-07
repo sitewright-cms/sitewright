@@ -71,6 +71,38 @@ describe('render-template API (isolated worker)', () => {
     expect((res.json() as { html: string }).html).toBe('<ul><li>Site</li></ul>');
   });
 
+  it('NEVER emits a preloader into this canvas, even with custom preloader code configured', async () => {
+    // This shell ships no preloader runtime, so anything emitted here has nothing to clear it and
+    // simply covers the canvas. It used to pass the author's custom code RAW — not even inside the
+    // platform wrapper — while the sibling page-preview route had already stopped emitting one.
+    // A preloader is whole-site chrome; the whole-site draft preview is where it means anything.
+    const { t, projectId } = await setup();
+    await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'settings',
+        identity: { name: 'Site', colors: {} },
+        settings: { defaultLocale: 'en', locales: ['en'] },
+        website: {
+          effects: { preloaderEffect: 'none', preloaderCode: '<div class="my-spinner">LOADING</div>', preloaderBackdrop: true },
+        },
+      },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { template: '<p>body</p>', document: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).not.toContain('data-sw-preloader');
+    expect(html).not.toContain('my-spinner');
+    expect(html).toContain('<p>body</p>'); // …and the page itself still renders
+  });
+
   it('wraps the render in a full styled document when document:true (the editor preview)', async () => {
     const { t, projectId } = await setup();
     const res = await app.inject({

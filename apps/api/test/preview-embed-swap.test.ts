@@ -74,3 +74,17 @@ describe('replacePreviewStorageEmbeds', () => {
     expect(replacePreviewStorageEmbeds(html)).toBe(html);
   });
 });
+
+describe('the watch link is escaped on the fallback path too', () => {
+  it('escapes angle brackets in a recognised-host URL whose PATH we do not rebuild', () => {
+    // watchUrlFor rebuilds a clean URL from an id it matched — but FALLS BACK to the author's own src
+    // for a host we recognise on a path we don't. That value lands in href="…", so it is escaped like
+    // every other author-derived value rather than trusted because "the other branch is clean".
+    const out = replacePreviewStorageEmbeds(
+      iframe('src="https://www.youtube.com/playlist?list=a<b" title="List"'),
+    );
+    expect(out).not.toContain('<iframe');
+    expect(out).toContain('href="https://www.youtube.com/playlist?list=a&lt;b"');
+    expect(out).not.toMatch(/href="[^"]*<[^"]*"/);
+  });
+});

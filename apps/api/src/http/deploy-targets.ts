@@ -451,7 +451,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       // Read the target BEFORE removing it — its protocol decides whether there are served files to
-      // clean up. A missing target still 204s (delete is idempotent).
+      // clean up. This lookup is best-effort: `remove` below is what owns the response, and it throws
+      // (→ 404) for a target that isn't there, so an unknown id never reaches the cleanup call.
       let target: DeployTarget | undefined;
       try {
         target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;

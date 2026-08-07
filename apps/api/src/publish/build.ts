@@ -470,8 +470,11 @@ export function replacePreviewStorageEmbeds(html: string): string {
     const title = esc(/\btitle="([^"]*)"/i.exec(tag)?.[1] || `${hit.label} video`);
     const cls = esc(/\bclass="([^"]*)"/i.exec(tag)?.[1] || '');
     const style = esc(/\bstyle="([^"]*)"/i.exec(tag)?.[1] || '');
-    // The watch URL is rebuilt from an ID we matched ourselves, so it cannot carry author markup.
-    const watch = watchUrlFor(src).replace(/"/g, '&quot;');
+    // The watch URL is usually rebuilt from an id we matched ourselves — but watchUrlFor FALLS BACK to
+    // the author's own src for a host we recognise on a path we don't, so it is not inherently clean.
+    // Escape it exactly like the attributes above rather than reasoning about which branch produced it.
+    // (`&` is already encoded in this serialized HTML; re-escaping it would double-encode.)
+    const watch = esc(watchUrlFor(src)).replace(/"/g, '&quot;');
     return (
       `<div${cls ? ` class="${cls}"` : ''} style="${style};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;text-align:center;padding:1.25rem;box-sizing:border-box;background:var(--color-base-200,#f3f4f6);color:var(--color-base-content,#4b5563);border:1px dashed var(--color-base-300,#d1d5db);border-radius:var(--radius-box,1rem)">` +
       `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg>` +

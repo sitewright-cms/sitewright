@@ -87,8 +87,15 @@ export function searchReference(reference: TailwindReference, query: string): Se
   // A single capped buffer does not work here, however generous the cap: with 23k classes, a query
   // like `bg-x` can fill any buffer with substring matches from the early topics before the pass
   // ever reaches an EXACT match sitting in a late one, and the best result is silently dropped.
-  // Bucketing means the exact and prefix hits can never be crowded out by mere substring hits.
-  // Only the (unbounded) substring bucket is capped, and it is the one whose tail nobody reads.
+  //
+  // ★ The cap applies to the SUBSTRING bucket only, and that asymmetry is the whole point. Capping
+  // during the scan is a first-200-encountered cut in topic-iteration order, which happens BEFORE
+  // the sort — so a capped bucket is not "the 200 closest", it is "the 200 the loop reached first".
+  // For substring hits that tail genuinely goes unread. For exact and prefix hits it does not:
+  // capping `prefix` at 200 during the scan drops `bg-white` and `bg-top` in favour of longer
+  // `bg-<color>-<shade>` names from an earlier topic, and then the footer claims they were the
+  // closest matches. Both of those buckets are bounded by the query's own match count, so they are
+  // collected in full and cut only after `compareHits` has actually ordered them.
   const exact: ClassHit[] = [];
   const prefix: ClassHit[] = [];
   const contains: ClassHit[] = [];
@@ -99,8 +106,9 @@ export function searchReference(reference: TailwindReference, query: string): Se
       if (!name || !name.includes(raw)) continue;
       classTotal++;
       const rank = classRank(name, raw);
-      const bucket = rank === 0 ? exact : rank === 1 ? prefix : contains;
-      if (bucket.length < CLASS_HIT_LIMIT) bucket.push({ topic, name, index: i });
+      if (rank === 0) exact.push({ topic, name, index: i });
+      else if (rank === 1) prefix.push({ topic, name, index: i });
+      else if (contains.length < CLASS_HIT_LIMIT) contains.push({ topic, name, index: i });
     }
   }
   exact.sort(compareHits);

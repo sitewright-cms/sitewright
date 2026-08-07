@@ -15,7 +15,7 @@
 // class does on a published page. The shadow root gets Tailwind's own `@theme` variables instead.
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { isSafeCssTokenValue } from '@sitewright/schema';
-import type { ClassValue, PreviewKind } from '@sitewright/tailwind-reference/meta';
+import { declCondition, declValue, type ClassDecl, type PreviewKind } from '@sitewright/tailwind-reference/meta';
 
 /**
  * The subset of Tailwind's theme variables a preview can need, at their STOCK values.
@@ -89,18 +89,25 @@ const DEMO: Record<Exclude<PreviewKind, 'none'>, { cls: string; text?: string; b
   cursor: { cls: 'cursor-patch', text: 'hover', box: false },
 };
 
-/** The declarations to paint, as `[prop, value]` pairs — resolved values preferred over `var(…)`. */
-function declarations(props: readonly string[], values: readonly ClassValue[]): [string, string][] {
+/**
+ * The declarations to paint, as `[prop, value]` pairs.
+ *
+ * Reads the class's OWN declaration list rather than zipping the topic's `props` against a parallel
+ * values array — `props` is the deduped signature, so `container` is a 2-property topic with 6
+ * declarations and the zip silently stopped at the second.
+ *
+ * CONDITIONAL declarations are skipped: `container`'s `max-width: 40rem` only applies above a
+ * breakpoint, and painting it unconditionally would show a swatch that no viewport ever renders.
+ */
+function declarations(decls: readonly ClassDecl[]): [string, string][] {
   const out: [string, string][] = [];
-  for (let i = 0; i < props.length && i < values.length; i++) {
-    const prop = props[i];
-    const raw = values[i];
-    if (!prop || !raw) continue;
+  for (const decl of decls) {
+    if (declCondition(decl) !== null) continue;
     // A `var(--x)` that the generator resolved is painted at its RESOLVED value: the shadow root
     // carries the common theme vars, but not every one, and an unresolved var silently paints nothing.
-    const value = raw[1] ?? raw[0];
+    const value = declValue(decl);
     if (!isSafeCssTokenValue(value)) continue;
-    out.push([prop, value]);
+    out.push([decl[0], value]);
   }
   return out;
 }
@@ -160,8 +167,8 @@ const PREVIEW_BASE = `
 
 interface TailwindPreviewProps {
   kind: PreviewKind;
-  props: readonly string[];
-  values: readonly ClassValue[];
+  /** The class's own generated declarations. */
+  decls: readonly ClassDecl[];
   /** The class name, for the preview's accessible label. */
   name: string;
 }
@@ -172,21 +179,21 @@ interface TailwindPreviewProps {
  * Returns null for `none` — the categories where a demo would need an invented scene (layout,
  * flex/grid, interactivity) show only their generated CSS, which is exact and needs no staging.
  */
-export function TailwindPreview({ kind, props, values, name }: TailwindPreviewProps): ReactNode {
+export function TailwindPreview({ kind, decls, name }: TailwindPreviewProps): ReactNode {
   const hostRef = useRef<HTMLSpanElement>(null);
   const rootRef = useRef<ShadowRoot | null>(null);
 
   const paint = useMemo(() => {
     if (kind === 'none') return null;
-    const decls = declarations(props, values);
-    if (decls.length === 0) return null;
+    const painted = declarations(decls);
+    if (painted.length === 0) return null;
     // A colour preview paints whichever property the class actually sets (`fill`, `border-color`, …)
-    // onto `background-color` too. It reads the value back out of `decls` — NOT out of `values` —
-    // so it cannot pick up an entry the filter above rejected. Reaching past the filter for the raw
-    // value is exactly the bug this shape prevents.
-    const colour = kind === 'color' ? (decls[0]?.[1] ?? null) : null;
-    return { decls, colour };
-  }, [kind, props, values]);
+    // onto `background-color` too. It reads the value back out of the FILTERED list — never out of
+    // the raw input — so it cannot pick up an entry the filter rejected. Reaching past the filter for
+    // the raw value is exactly the bug this shape prevents.
+    const colour = kind === 'color' ? (painted[0]?.[1] ?? null) : null;
+    return { decls: painted, colour };
+  }, [kind, decls]);
 
   useEffect(() => {
     const host = hostRef.current;

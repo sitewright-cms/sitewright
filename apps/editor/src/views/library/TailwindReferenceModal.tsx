@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ClipboardCopy, CornerDownLeft } from 'lucide-react';
 import type { Category, ReferenceTopic, TailwindReference } from '@sitewright/tailwind-reference/meta';
-import { CATEGORY_LABELS } from '@sitewright/tailwind-reference/meta';
+import { CATEGORY_LABELS, formatDecl } from '@sitewright/tailwind-reference/meta';
 import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
 import { useToast } from '../ui/Toast';
@@ -63,7 +63,7 @@ function ClassRow({
     if (highlighted) rowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [highlighted]);
   if (!entry) return null;
-  const [name, values, modifiers] = entry;
+  const [name, decls, modifiers] = entry;
 
   return (
     <li
@@ -75,7 +75,7 @@ function ClassRow({
           : 'hover:bg-white dark:hover:bg-white/5'
       }`}
     >
-      <TailwindPreview kind={topic.preview} props={topic.props} values={values} name={name} />
+      <TailwindPreview kind={topic.preview} decls={decls} name={name} />
       <button
         type="button"
         onClick={onCopy}
@@ -90,8 +90,10 @@ function ClassRow({
             </span>
           )}
         </code>
+        {/* The class's OWN declarations, not the topic's deduped `props` zipped against them — a
+            `container` row has 6 declarations under a 2-property signature, and the zip showed 2. */}
         <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
-          {topic.props.map((prop, i) => `${prop}: ${values[i]?.[1] ?? values[i]?.[0] ?? ''}`).join('; ')}
+          {decls.map(formatDecl).join('; ')}
         </span>
       </button>
       <span className="flex shrink-0 items-center gap-0.5">
@@ -285,7 +287,8 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
   const { reference, loading, error } = useTailwindReference();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category | null>(null);
-  const [focusTopic, setFocusTopic] = useState<{ id: string; className: string | null } | null>(null);
+  /** An explicitly CHOSEN topic — set by clicking a result or a category, never by typing. */
+  const [pinned, setPinned] = useState<{ id: string; className: string | null } | null>(null);
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   const canInsert = useCanInsert();
@@ -293,42 +296,50 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
   const categories = useMemo(() => (reference ? [...byCategory(reference.topics).keys()] : []), [reference]);
 
   // A query that resolves unambiguously — an exact class name, or a single matching topic — jumps
-  // straight to it. Typing `text-sm` should SHOW the font-size utilities with that row picked out,
-  // not hand back a result list to click through.
-  useEffect(() => {
-    if (!reference || !query.trim()) {
-      setFocusTopic(null);
-      return;
-    }
-    const results = searchReference(reference, query);
-    const match = bestMatch(results, query);
-    if (!match) {
-      setFocusTopic(null);
-    } else if ('name' in match) {
-      setFocusTopic({ id: match.topic.id, className: match.name });
-      setCategory(match.topic.category);
-    } else {
-      setFocusTopic({ id: match.id, className: null });
-      setCategory(match.category);
-    }
-  }, [reference, query]);
+  // straight to it: typing `text-sm` SHOWS the font-size utilities with that row picked out, rather
+  // than handing back a result list to click through.
+  //
+  // ★ This is DERIVED, never stored. It used to be a `useEffect` on `query` that wrote state, which
+  // quietly broke every click on a search result: `openTopic` clears the search box, the effect saw
+  // `query` go empty, read that as "the user cleared it", and wiped the focus the click had just
+  // set — one tick later the view fell back to the whole category with the highlight gone. An effect
+  // keyed on a value that other handlers also write cannot tell "the user typed" from "code reset
+  // it". Deriving removes the question: while a query is present the query decides, and the moment
+  // it is empty the explicit pin decides.
+  const focusTopic = useMemo(() => {
+    if (!reference || !query.trim()) return pinned;
+    const match = bestMatch(searchReference(reference, query), query);
+    if (!match) return null;
+    return 'name' in match ? { id: match.topic.id, className: match.name } : { id: match.id, className: null };
+  }, [reference, query, pinned]);
 
   const openTopic = (topic: ReferenceTopic, className?: string) => {
     setCategory(topic.category);
-    setFocusTopic({ id: topic.id, className: className ?? null });
+    setPinned({ id: topic.id, className: className ?? null });
     setQuery('');
   };
 
+  const openCategory = (next: Category) => {
+    setCategory(next);
+    setPinned(null);
+    setQuery('');
+  };
+
+  const focused = useMemo(
+    () => (focusTopic ? (reference?.topics.find((t) => t.id === focusTopic.id) ?? null) : null),
+    [reference, focusTopic],
+  );
+
   const shownTopics = useMemo(() => {
     if (!reference) return [];
-    if (focusTopic) {
-      const one = reference.topics.find((t) => t.id === focusTopic.id);
-      if (one) return [one];
-    }
-    if (!category) return [];
+    if (focused) return [focused];
+    if (query.trim() || !category) return [];
     return reference.topics.filter((t) => t.category === category);
-  }, [reference, category, focusTopic]);
+  }, [reference, category, focused, query]);
 
+  // The nav follows a search that jumped somewhere, so the highlighted shelf always matches what is
+  // on screen — without a state write that would race the derivation above.
+  const activeCategory = focused ? focused.category : category;
   const searching = query.trim().length > 0 && !focusTopic;
 
   return (
@@ -336,15 +347,7 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
       <div className="flex h-full min-h-0 gap-4 p-5">
         <nav className="hidden w-44 shrink-0 flex-col gap-1 overflow-auto sm:flex">
           {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => {
-                setCategory(c);
-                setFocusTopic(null);
-                setQuery('');
-              }}
-              className={navBtn(category === c && !searching)}
-            >
+            <button key={c} onClick={() => openCategory(c)} className={navBtn(activeCategory === c && !searching)}>
               {CATEGORY_LABELS[c]}
             </button>
           ))}
@@ -370,16 +373,7 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
                 Couldn’t load the Tailwind reference. Close and reopen to retry.
               </p>
             ) : searching ? (
-              <SearchResultsView
-                reference={reference}
-                query={query}
-                onOpenTopic={openTopic}
-                onOpenCategory={(c) => {
-                  setCategory(c);
-                  setFocusTopic(null);
-                  setQuery('');
-                }}
-              />
+              <SearchResultsView reference={reference} query={query} onOpenTopic={openTopic} onOpenCategory={openCategory} />
             ) : shownTopics.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                 Pick a category, or search for a class or a CSS property.

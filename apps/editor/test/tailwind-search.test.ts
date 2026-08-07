@@ -145,6 +145,31 @@ describe('searchReference', () => {
     expect(results.classTotal).toBe(CLASS_HIT_LIMIT * 20 + 1);
   });
 
+  it('returns the SHORTEST prefix matches, not the first ones the scan happened to reach', () => {
+    // ★ Regression guard. Capping the prefix bucket during the scan is a first-N-encountered cut in
+    // topic-iteration order, which happens before the sort — so `bg-white` and `bg-top` got dropped
+    // in favour of longer `bg-<colour>-<shade>` names from an earlier topic, while the footer went
+    // on claiming these were "the closest matches". Only the substring bucket may be capped early.
+    const longNames = topic({
+      sig: 'background-color',
+      title: 'Background Color',
+      classes: Array.from({ length: CLASS_HIT_LIMIT * 2 }, (_, i) => [`bg-colour-${i}-500`, [['#fff']], 0] as const),
+    });
+    const shortNames = topic({
+      sig: 'background-image',
+      title: 'Background Image',
+      classes: [
+        ['bg-top', [['top']], 0],
+        ['bg-white', [['#fff']], 0],
+      ],
+    });
+    const names = searchReference({ ...REFERENCE, topics: [longNames, shortNames] }, 'bg-').classes.map((c) => c.name);
+    expect(names).toContain('bg-top');
+    expect(names).toContain('bg-white');
+    // …and they sort to the front, being the shortest.
+    expect(names.slice(0, 2).sort()).toEqual(['bg-top', 'bg-white']);
+  });
+
   it('never lets substring hits crowd out prefix hits', () => {
     // `-mx-4` contains "mx-4"; `mx-4` starts with it. The prefix match must survive the cap even
     // though the substring matches are enumerated first.

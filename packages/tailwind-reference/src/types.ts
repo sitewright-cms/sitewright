@@ -82,11 +82,39 @@ export interface TopicDoc {
   preview: PreviewKind;
 }
 
-/** One declaration's value: `[raw]`, or `[raw, resolved]` when a theme variable backs it. */
-export type ClassValue = readonly [string] | readonly [string, string];
+/**
+ * One generated CSS declaration, self-describing so it can never be misaligned against anything:
+ *   `[prop, raw]`                          — a plain declaration
+ *   `[prop, raw, resolved]`                — `raw` is a `var(…)` the generator resolved
+ *   `[prop, raw, resolved, condition]`     — applies only inside `condition` (an `@media`/`@supports`)
+ *
+ * `resolved` is `''` when no theme variable backs the value. The fourth slot is what stops a
+ * breakpoint-scoped declaration from being presented as though it always applied.
+ */
+export type ClassDecl =
+  | readonly [prop: string, raw: string]
+  | readonly [prop: string, raw: string, resolved: string]
+  | readonly [prop: string, raw: string, resolved: string, condition: string];
 
-/** A documented utility class: name, one value per declaration, and 1 when it accepts modifiers. */
-export type GeneratedClass = readonly [name: string, values: readonly ClassValue[], modifiers: 0 | 1];
+/** A documented utility class: name, its own declarations, and 1 when it accepts modifiers. */
+export type GeneratedClass = readonly [name: string, decls: readonly ClassDecl[], modifiers: 0 | 1];
+
+/** The value a declaration should be shown as — the resolved theme value when there is one. */
+export function declValue(decl: ClassDecl): string {
+  return decl[2] || decl[1];
+}
+
+/** The `@media`/`@supports` a declaration is scoped to, or null when it applies unconditionally. */
+export function declCondition(decl: ClassDecl): string | null {
+  return decl.length === 4 ? decl[3] : null;
+}
+
+/** `font-size: 0.875rem`, with the condition appended when the declaration is scoped to one. */
+export function formatDecl(decl: ClassDecl): string {
+  const condition = declCondition(decl);
+  const base = `${decl[0]}: ${declValue(decl)}`;
+  return condition ? `${base} (${condition})` : base;
+}
 
 /** A group of classes that generate the same set of CSS properties. */
 export interface GeneratedTopic {

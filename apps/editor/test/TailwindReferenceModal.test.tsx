@@ -127,6 +127,46 @@ describe('TailwindReferenceModal', () => {
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Text Color' })).toBeInTheDocument());
   });
 
+  it('a clicked search result STAYS on that topic, with its row highlighted', async () => {
+    // ★ Regression guard. Clicking a result clears the search box, and an effect keyed on `query`
+    // read that as "the user cleared it" and wiped the focus the click had just set — one tick later
+    // the view fell back to the whole category and the highlight was gone. Asserting only that the
+    // heading is present does NOT catch it (it stays present in the fallback), so this pins the two
+    // things that actually change: the sibling topic must be absent, and the ring must be on.
+    const dialog = await open();
+    fireEvent.change(await within(dialog).findByRole('searchbox'), { target: { value: 'text' } });
+    await waitFor(() => expect(within(dialog).getByText(/^Classes \(/)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByRole('button', { name: /text-red-500\s+Text Color/ }));
+
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Text Color' })).toBeInTheDocument());
+    // The sibling topic in the SAME category must not come back.
+    expect(within(dialog).queryByRole('heading', { name: 'Font Size' })).toBeNull();
+    // …and the clicked row keeps its highlight.
+    expect(dialog.querySelector('[data-class-name="text-red-500"]')?.className).toMatch(/ring-indigo-300/);
+  });
+
+  it('a clicked TOPIC result stays put too', async () => {
+    const dialog = await open();
+    fireEvent.change(await within(dialog).findByRole('searchbox'), { target: { value: 'sets' } });
+    await waitFor(() => expect(within(dialog).getByText(/^Topics \(/)).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByRole('button', { name: /Font Size\s+Typography/ }));
+
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Font Size' })).toBeInTheDocument());
+    expect(within(dialog).queryByRole('heading', { name: 'Text Color' })).toBeNull();
+  });
+
+  it('clearing the search returns to the pinned topic, not to nothing', async () => {
+    const dialog = await open();
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Layout' }));
+    expect(within(dialog).getByRole('heading', { name: 'Display' })).toBeInTheDocument();
+    // Type, then clear — the category the user was browsing must come back.
+    const search = within(dialog).getByRole('searchbox');
+    fireEvent.change(search, { target: { value: 'font size' } });
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Font Size' })).toBeInTheDocument());
+    fireEvent.change(search, { target: { value: '' } });
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Display' })).toBeInTheDocument());
+  });
+
   it('copies the class name when the row is clicked', async () => {
     const dialog = await open();
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Layout' }));

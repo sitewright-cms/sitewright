@@ -4,6 +4,9 @@ import {
   CATEGORY_LABELS,
   GENERATED_REFERENCE,
   TOPIC_DOCS,
+  declCondition,
+  declValue,
+  formatDecl,
   joinReference,
   orphanedDocs,
   tailwindReference,
@@ -18,7 +21,7 @@ function fakeGenerated(sigs: string[]): GeneratedReference {
   return {
     tailwindVersion: '4.0.0',
     classCount: sigs.length,
-    topics: sigs.map((sig) => ({ sig, props: sig.split(','), classes: [[`${sig}-1`, [['1px']], 0] as const] })),
+    topics: sigs.map((sig) => ({ sig, props: sig.split(','), classes: [[`${sig}-1`, [[sig.split(',')[0]!, '1px']], 0] as const] })),
     variants: [],
   };
 }
@@ -135,7 +138,8 @@ describe('generated data shape', () => {
     const textSm = fontSize?.classes.find(([name]) => name === 'text-sm');
     expect(textSm).toBeDefined();
     // `text-sm` sets font-size: var(--text-sm) — the row must show 0.875rem, not the variable.
-    expect(textSm?.[1][0]).toEqual(['var(--text-sm)', '0.875rem']);
+    expect(textSm?.[1][0]).toEqual(['font-size', 'var(--text-sm)', '0.875rem']);
+    expect(declValue(textSm![1][0]!)).toBe('0.875rem');
   });
 
   it('splits the polymorphic `text-` root into separate size and colour topics', () => {
@@ -158,10 +162,63 @@ describe('generated data shape', () => {
   });
 
   it('dedupes repeated properties in a signature but keeps every declaration', () => {
-    // `container` sets max-width once per breakpoint: one topic, several values worth showing.
+    // `container` sets max-width once per breakpoint: one topic, several declarations worth showing.
     const container = tailwindReference().topics.find((t) => t.sig === 'width,max-width');
     expect(container?.title).toBe('Container');
-    expect(container?.classes[0]?.[1].length).toBeGreaterThan(2);
+    const decls = container?.classes[0]?.[1] ?? [];
+    expect(decls.length).toBe(6); // width + five breakpoints
+  });
+
+  it('tags a declaration nested in an at-rule with the condition it applies under', () => {
+    // ★ Regression guard. A flat line-scan of the generated CSS reported `container`'s five
+    // breakpoint-scoped `max-width` values as unconditional, and the deduped signature then made the
+    // UI zip 2 props against 6 values and show only the first — a row that read
+    // "width: 100%; max-width: 40rem" and silently dropped four breakpoints.
+    const container = tailwindReference().topics.find((t) => t.sig === 'width,max-width');
+    const decls = container?.classes[0]?.[1] ?? [];
+    expect(declCondition(decls[0]!)).toBeNull(); // width: 100% always applies
+    const conditions = decls.slice(1).map((d) => declCondition(d));
+    expect(conditions).toEqual([
+      '@media (width >= 40rem)',
+      '@media (width >= 48rem)',
+      '@media (width >= 64rem)',
+      '@media (width >= 80rem)',
+      '@media (width >= 96rem)',
+    ]);
+    expect(formatDecl(decls[1]!)).toBe('max-width: 40rem (@media (width >= 40rem))');
+  });
+
+  it('marks the forced-colors fallbacks on outline-hidden as conditional', () => {
+    const topic = tailwindReference().topics.find((t) => t.sig === 'outline-style,outline,outline-offset');
+    const decls = topic?.classes.find(([n]) => n === 'outline-hidden')?.[1] ?? [];
+    expect(declCondition(decls[0]!)).toBeNull();
+    expect(declCondition(decls[1]!)).toBe('@media (forced-colors: active)');
+    expect(declCondition(decls[2]!)).toBe('@media (forced-colors: active)');
+  });
+
+  it('gives every declaration a property and a value — no parse fragments', () => {
+    // A general invariant over all 23k classes, so a Tailwind upgrade that introduces a new nesting
+    // shape fails HERE rather than silently producing garbage rows.
+    for (const topic of tailwindReference().topics) {
+      for (const [name, decls] of topic.classes) {
+        expect(decls.length, `${name} has no declarations`).toBeGreaterThan(0);
+        for (const decl of decls) {
+          expect(decl[0], `${name} property`).toMatch(/^-{0,2}[a-zA-Z][-a-zA-Z0-9]*$/);
+          expect(decl[1], `${name} value`).not.toBe('');
+          const condition = declCondition(decl);
+          if (condition !== null) expect(condition, `${name} condition`).toMatch(/^@/);
+        }
+      }
+    }
+  });
+
+  it('never has a class whose declarations are all conditional but whose topic claims otherwise', () => {
+    // Every property in a topic's signature must appear on at least one class, so the header
+    // ("font-size · line-height") can never name a property no row actually carries.
+    for (const topic of tailwindReference().topics) {
+      const seen = new Set(topic.classes.flatMap(([, decls]) => decls.map((d) => d[0])));
+      for (const prop of topic.props) expect(seen.has(prop), `${topic.title} claims ${prop}`).toBe(true);
+    }
   });
 
   it('lists the variants the design system supports', () => {

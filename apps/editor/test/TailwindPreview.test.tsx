@@ -12,7 +12,7 @@ function demo(container: HTMLElement): HTMLElement | null {
 describe('TailwindPreview', () => {
   it('renders nothing for a topic whose effect needs an invented scene', () => {
     const { container } = render(
-      <TailwindPreview kind="none" props={['display']} values={[['flex']]} name="flex" />,
+      <TailwindPreview kind="none" decls={[['display', 'flex']]} name="flex" />,
     );
     expect(container.querySelector('span[role="img"]')).toBeNull();
   });
@@ -21,8 +21,10 @@ describe('TailwindPreview', () => {
     const { container } = render(
       <TailwindPreview
         kind="text"
-        props={['font-size', 'line-height']}
-        values={[['var(--text-sm)', '0.875rem'], ['var(--text-sm--line-height)', '1.25rem']]}
+        decls={[
+          ['font-size', 'var(--text-sm)', '0.875rem'],
+          ['line-height', 'var(--text-sm--line-height)', '1.25rem'],
+        ]}
         name="text-sm"
       />,
     );
@@ -36,7 +38,7 @@ describe('TailwindPreview', () => {
     // This is the whole reason the component exists. A preview that set class="text-sm" would show
     // nothing at all for the 2/3 of utilities the editor's own chrome never uses.
     const { container } = render(
-      <TailwindPreview kind="text" props={['font-size']} values={[['var(--text-4xl)', '2.25rem']]} name="text-4xl" />,
+      <TailwindPreview kind="text" decls={[['font-size', 'var(--text-4xl)', '2.25rem']]} name="text-4xl" />,
     );
     expect(demo(container)?.className).not.toContain('text-4xl');
   });
@@ -45,7 +47,7 @@ describe('TailwindPreview', () => {
     // The editor lifts --text-xs from 12px to 14px for UI readability. Inheriting that would make
     // the text-xs preview a lie about what the class does on a published page.
     const { container } = render(
-      <TailwindPreview kind="text" props={['font-size']} values={[['var(--text-xs)', '0.75rem']]} name="text-xs" />,
+      <TailwindPreview kind="text" decls={[['font-size', 'var(--text-xs)', '0.75rem']]} name="text-xs" />,
     );
     const host = container.querySelector('span[role="img"]');
     expect(host?.shadowRoot).toBeTruthy();
@@ -54,7 +56,7 @@ describe('TailwindPreview', () => {
 
   it('paints a colour swatch with the colour as its background, whatever property the class sets', () => {
     const { container } = render(
-      <TailwindPreview kind="color" props={['border-color']} values={[['oklch(63.7% 0.237 25.331)']]} name="border-red-500" />,
+      <TailwindPreview kind="color" decls={[['border-color', 'oklch(63.7% 0.237 25.331)']]} name="border-red-500" />,
     );
     const el = demo(container);
     // Assert the property, not the byte sequence: the CSSOM canonicalises `63.7%` to `0.637`, which
@@ -68,7 +70,7 @@ describe('TailwindPreview', () => {
 
   it('ships keyframes with an animation preview, since a shadow root inherits none', () => {
     const { container } = render(
-      <TailwindPreview kind="box" props={['animation']} values={[['var(--animate-spin)', 'spin 1s linear infinite']]} name="animate-spin" />,
+      <TailwindPreview kind="box" decls={[['animation', 'var(--animate-spin)', 'spin 1s linear infinite']]} name="animate-spin" />,
     );
     const host = container.querySelector('span[role="img"]');
     expect(host?.shadowRoot?.querySelector('style')?.textContent).toContain('@keyframes spin');
@@ -78,7 +80,7 @@ describe('TailwindPreview', () => {
     // Defence in depth: values come from Tailwind's own output, but a brace or comment opener must
     // never survive to be painted.
     const { container } = render(
-      <TailwindPreview kind="box" props={['color']} values={[['red} .x{color:blue']]} name="evil" />,
+      <TailwindPreview kind="box" decls={[['color', 'red} .x{color:blue']]} name="evil" />,
     );
     expect(container.querySelector('span[role="img"]')).toBeNull();
   });
@@ -86,7 +88,7 @@ describe('TailwindPreview', () => {
   it('refuses a value that would turn a preview into a network fetch', () => {
     // The canonical guard blocks url()/image()/@import; the previous ad-hoc regex did not.
     const { container } = render(
-      <TailwindPreview kind="box" props={['background-image']} values={[['url(https://evil.example/x.png)']]} name="bg-evil" />,
+      <TailwindPreview kind="box" decls={[['background-image', 'url(https://evil.example/x.png)']]} name="bg-evil" />,
     );
     expect(container.querySelector('span[role="img"]')).toBeNull();
   });
@@ -99,8 +101,10 @@ describe('TailwindPreview', () => {
     const { container } = render(
       <TailwindPreview
         kind="color"
-        props={['--tw-gradient-from', '--tw-gradient-stops']}
-        values={[['"><img src=x onerror=alert(1)>'], ['var(--tw-gradient-stops)', 'red, blue']]}
+        decls={[
+          ['--tw-gradient-from', '"><img src=x onerror=alert(1)>'],
+          ['--tw-gradient-stops', 'var(--tw-gradient-stops)', 'red, blue'],
+        ]}
         name="from-evil"
       />,
     );
@@ -117,7 +121,7 @@ describe('TailwindPreview', () => {
 
   it('builds the demo through the CSSOM, so no value is ever parsed as markup', () => {
     const { container } = render(
-      <TailwindPreview kind="box" props={['border-radius']} values={[['var(--radius-lg)', '0.5rem']]} name="rounded-lg" />,
+      <TailwindPreview kind="box" decls={[['border-radius', 'var(--radius-lg)', '0.5rem']]} name="rounded-lg" />,
     );
     const el = demo(container);
     expect(el?.style.getPropertyValue('border-radius')).toBe('0.5rem');
@@ -125,9 +129,35 @@ describe('TailwindPreview', () => {
     expect(el?.children.length).toBe(0);
   });
 
+  it('does not paint a declaration that only applies inside a media query', () => {
+    // ★ `container`'s max-width steps are breakpoint-scoped. Painting one unconditionally would show
+    // a swatch no viewport actually renders — and, before the parser tracked at-rules, that is
+    // exactly what the data claimed they were.
+    const { container } = render(
+      <TailwindPreview
+        kind="size"
+        decls={[
+          ['width', '100%'],
+          ['max-width', '40rem', '', '@media (width >= 40rem)'],
+        ]}
+        name="container"
+      />,
+    );
+    const el = demo(container);
+    expect(el?.style.getPropertyValue('width')).toBe('100%');
+    expect(el?.style.getPropertyValue('max-width')).toBe('');
+  });
+
+  it('renders nothing when every declaration is conditional', () => {
+    const { container } = render(
+      <TailwindPreview kind="box" decls={[['outline', '2px solid transparent', '', '@media (forced-colors: active)']]} name="outline-hidden" />,
+    );
+    expect(container.querySelector('span[role="img"]')).toBeNull();
+  });
+
   it('labels the preview for assistive technology', () => {
     const { container } = render(
-      <TailwindPreview kind="color" props={['color']} values={[['#ff0000']]} name="text-red-500" />,
+      <TailwindPreview kind="color" decls={[['color', '#ff0000']]} name="text-red-500" />,
     );
     expect(container.querySelector('span[role="img"]')?.getAttribute('aria-label')).toBe('text-red-500 preview');
   });

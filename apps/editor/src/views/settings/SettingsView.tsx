@@ -327,6 +327,7 @@ export function SettingsView({
                 <WebsiteSection
                   form={form}
                   patch={patch}
+                  project={project}
                   // Saving inside a code editor SAVES. Without this the modal's Save button only
                   // staged the change into the form and the author had to find the tab's own Save —
                   // which reads, correctly, as "I saved and it didn't save".

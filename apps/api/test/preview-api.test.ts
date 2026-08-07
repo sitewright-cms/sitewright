@@ -364,6 +364,69 @@ describe('preview API — code-first source page', () => {
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
   });
 
+  // The skeleton-slot editor previews chrome that is being TYPED. Slots otherwise come from the saved
+  // settings, so without this the editor could only ever show what was last written.
+  it('renders an UNSAVED slot override in place of the saved one', async () => {
+    const { t, projectId } = await setup('slotdraft@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
+        website: { mainNav: '<div class="saved-nav">saved</div>', footer: '<div class="saved-foot">saved</div>' },
+        settings: {},
+      },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', source: '<div class="min-h-screen"></div>',
+        slots: { mainNav: '<div class="draft-nav">{{ company.name }}</div>' },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    // The DRAFT wins for the overridden slot, bindings and landmark wrapping intact…
+    expect(html).toContain('<nav id="main-nav"><div class="draft-nav">Acme</div></nav>');
+    expect(html).not.toContain('saved-nav');
+    // …and a slot NOT overridden still comes from the saved settings.
+    expect(html).toContain('<footer id="footer"><div class="saved-foot">saved</div></footer>');
+  });
+
+  it('rejects an unsafe slot override with the same gate a settings SAVE uses', async () => {
+    const { t, projectId } = await setup('slotguard@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      // a skeleton landmark inside a slot — the platform supplies <nav>, so a save refuses this
+      payload: { id: 'home', path: '', title: 'Home', source: '<div></div>', slots: { mainNav: '<nav>dupe</nav>' } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('ignores unknown keys in a slot override (never a passthrough of arbitrary website settings)', async () => {
+    const { t, projectId } = await setup('slotkeys@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', source: '<div class="body"></div>',
+        slots: { mainNav: '<div class="ok-nav">ok</div>', criticalCss: 'body{display:none}', siteUrl: 'https://evil.test' },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('ok-nav');
+    expect(html).not.toContain('body{display:none}');
+    expect(html).not.toContain('evil.test');
+  });
+
   it('keeps a slot\'s data-sw-* directive markers in PREVIEW so chrome is click-to-edit (any directive, not just translate)', async () => {
     const { t, projectId } = await setup('slot-edit@acme.test', poolApp);
     const base = `/projects/${projectId}`;

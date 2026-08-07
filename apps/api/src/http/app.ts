@@ -73,6 +73,7 @@ import {
   DatasetSlugSchema,
   AiConfigSchema,
   PREVIEW_SANDBOX_CSP,
+  SLOT_MAX,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -3716,6 +3717,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const page = PageSchema.parse(stored ? { ...stored, ...rawBody } : req.body);
 
+      // UNSAVED CHROME SLOTS (the skeleton-slot editor). Slots otherwise come from the SAVED settings,
+      // so a slot editor could only ever preview what was last written — typing would show nothing. The
+      // override rides ALONGSIDE the page (PageSchema.parse drops unknown keys, so every existing caller
+      // is unaffected) and goes through the SAME gate a settings save runs, so a preview can never render
+      // chrome the save itself would reject.
+      const rawSlots = rawBody.slots;
+      let slotOverrides: Record<string, string> | undefined;
+      if (rawSlots && typeof rawSlots === 'object') {
+        const picked: Record<string, string> = {};
+        for (const [slot] of CHROME_HTML_SLOTS) {
+          const v = (rawSlots as Record<string, unknown>)[slot];
+          // Only the KNOWN slot names, only strings — never a passthrough of arbitrary website settings.
+          if (typeof v === 'string' && v.length <= SLOT_MAX) picked[slot] = v;
+        }
+        if (Object.keys(picked).length > 0) {
+          validateSourceOnSave('settings', { website: picked }); // TemplateError → 400, same as saving
+          slotOverrides = picked;
+        }
+      }
+
       // Brand tokens come from the saved Corporate Identity singleton; fall back to
       // the project name with default tokens when settings aren't configured yet.
       let brand: CorporateIdentity = { name: project.name, colors: {} };
@@ -3731,6 +3752,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
+      // The draft slot wins over the saved one — and applies even with no settings entity yet, so a
+      // brand-new project can still preview the chrome it is being given.
+      if (slotOverrides) website = { ...(website ?? {}), ...slotOverrides } as Settings['website'];
 
       // Group saved entries by dataset for binding resolution. Drafts are shown
       // in the preview (unlike a published build) so authors see work-in-progress.

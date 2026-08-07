@@ -69,11 +69,15 @@ const CW_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 ];
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
+import { CHROME_SLOTS, SlotEditor, type ChromeSlotKey } from '../SlotEditor';
+import type { Project } from '../../api';
+
 export function WebsiteSection({
   form,
   patch,
   saveNow,
   projectId,
+  project,
   onLocalesChanged,
   onReloadSettings,
 }: {
@@ -82,12 +86,18 @@ export function WebsiteSection({
   /** Apply a change AND persist it in the same gesture — for a code editor's own Save / Ctrl+S. */
   saveNow: (p: Partial<SettingsForm>) => void;
   projectId: string;
+  /** The project — the slot editor previews through its slug. Optional so the section still renders
+   *  in contexts that don't have it (the full-editor entry points are then simply not offered). */
+  project?: Project;
   /** Bubbles a language add/remove up so the pages list refreshes. */
   onLocalesChanged?: () => void;
   /** Re-hydrate the whole settings form after a server-side change (e.g. main-language relabel). */
   onReloadSettings?: () => Promise<void> | void;
 }) {
   const [dataOpen, setDataOpen] = useState(false);
+  // The chrome slot opened in the FULL editor (code + live preview + devices), or null.
+  const [slotEdit, setSlotEdit] = useState<ChromeSlotKey | null>(null);
+  const SLOT_BUTTONS: ReadonlyArray<readonly [ChromeSlotKey, string]> = CHROME_SLOTS.map((s) => [s.key, s.label] as const);
   const [shopOpen, setShopOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
@@ -605,6 +615,21 @@ export function WebsiteSection({
         wide
       >
         <div className="flex flex-col gap-2">
+          {project && (
+            <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">Open in the full editor:</span>
+              {SLOT_BUTTONS.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${ghostButton} px-2 py-1 text-xs`}
+                  onClick={() => setSlotEdit(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <CodeField
             label="mainNav — desktop bar + mobile drawer, on every page"
             title="Main Navigation"
@@ -913,6 +938,18 @@ export function WebsiteSection({
           />
         </GlassCard>
       </div>
+      {/* The full slot editor, stacked over Settings — same subject as the inline field above, but with
+          the live preview, device widths and click-to-code the page editor has. Saving goes through
+          `saveNow` so it persists exactly like an inline edit. */}
+      {project && slotEdit && (
+        <SlotEditor
+          project={project}
+          slot={slotEdit}
+          value={(form[slotEdit] as string | undefined) ?? ''}
+          onSave={(key, src) => saveNow({ [key]: src })}
+          onClose={() => setSlotEdit(null)}
+        />
+      )}
     </motion.div>
   );
 }

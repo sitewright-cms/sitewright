@@ -211,6 +211,22 @@ describe('api client', () => {
     expect(eventsUrl('p')).toBe('/projects/p/events');
   });
 
+  // The slot editor previews chrome that is being TYPED, which rides as an override ALONGSIDE the
+  // page. Both shapes matter: an override must reach the server, and a normal page preview must not
+  // grow a stray `slots` key that the route would then have to reason about.
+  it('POSTs a preview with, and without, a chrome-slot override', async () => {
+    const page = { id: 'home', path: '', title: 'Home', source: '<h1>x</h1>' };
+    fetchMock.mockResolvedValue(jsonResponse(200, { html: '<x>', token: 't', slug: 'acme' }));
+    await api.preview('p1', page);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual(page);
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { html: '<x>', token: 't2', slug: 'acme' }));
+    await api.preview('p1', page, { mainNav: '<div class="draft">n</div>' });
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/projects/p1/preview');
+    expect(JSON.parse(init.body)).toEqual({ ...page, slots: { mainNav: '<div class="draft">n</div>' } });
+  });
+
   it('builds the sandboxed preview-document and snippet-preview URLs', () => {
     expect(previewDocUrl('acme', 'tok123')).toBe('/preview/acme/tok123');
     expect(snippetPreviewUrl('p', 'hero', 'project')).toBe('/projects/p/snippets/hero/preview?scope=project');

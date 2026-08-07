@@ -19,7 +19,7 @@ import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
-import { buildPreviewUrl } from '../lib/preview-target';
+import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
@@ -1050,7 +1050,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 aria-label="Open this page in a new tab"
                 onClick={() =>
                   window.open(
-                    buildPreviewUrl(window.location.origin, window.location.pathname, project.id, settings.path),
+                    buildPreviewUrl(
+                      window.location.origin,
+                      window.location.pathname,
+                      project.id,
+                      // The FULL route, not this page's own segment — a nested page is served under its
+                      // parent chain, so the bare slug opened a route that does not exist.
+                      fullRouteFor(settings, pages),
+                    ),
                     '_blank',
                     'noopener',
                   )

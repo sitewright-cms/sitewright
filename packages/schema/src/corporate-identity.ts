@@ -200,9 +200,26 @@ export const FontFileNameSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]{0,150}\.(woff2|woff|ttf|otf)$/, 'invalid font file name');
 
+/**
+ * A VARIABLE font's weight AXIS (`@font-face{font-weight:300 700}`) — the span of weights the ONE
+ * stored file can actually render, ascending. Absent = a single static face at the file's `weight`.
+ *
+ * Exists because a variable font cannot be described by one number: recording DM Sans 300–700 as
+ * "300" made every 600/700 heading render FAUX-bold (the browser synthesises, having been told the
+ * file is a 300 face) and suppressed its `<link rel=preload>` (which matched on the exact weight),
+ * costing a layout shift on every page. Both fall out of the same missing field.
+ */
+export const FontWeightRangeSchema = z
+  .tuple([FontWeightSchema, FontWeightSchema])
+  .refine(([lo, hi]) => lo < hi, 'font weight range must ascend');
+export type FontWeightRange = z.infer<typeof FontWeightRangeSchema>;
+
 /** One stored face of a self-hosted font (a weight×style at a given format/file). */
 export const FontFileSchema = z.object({
   weight: FontWeightSchema,
+  /** Set only for a VARIABLE face: the axis this one file covers. `weight` stays its DEFAULT weight
+   *  (what the file is named after and deduped by), so every non-variable reader is unaffected. */
+  weightRange: FontWeightRangeSchema.optional(),
   style: z.enum(['normal', 'italic']).default('normal'),
   format: FontFormatSchema,
   file: FontFileNameSchema,

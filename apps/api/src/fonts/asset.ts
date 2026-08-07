@@ -24,8 +24,14 @@ export interface CreateFontAssetInput {
   fallback: FontAsset['fallback'];
   source: FontAsset['source'];
   folder?: string;
-  /** One stored face (woff2/woff/ttf/otf) per weight×style. */
-  faces: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; bytes: Buffer }>;
+  /** One stored face (woff2/woff/ttf/otf) per weight×style. A VARIABLE face additionally carries the
+   *  weight axis it covers, so the renderer declares the real range instead of a single weight. */
+  faces: Array<{ weight: number; weightRange?: [number, number]; style: 'normal' | 'italic'; format: FontFormat; bytes: Buffer }>;
+}
+
+/** The stored `files[]` entry for a face — the axis only when the face actually has one. */
+function fileRecord(f: CreateFontAssetInput['faces'][number], file: string) {
+  return { weight: f.weight, ...(f.weightRange ? { weightRange: f.weightRange } : {}), style: f.style, format: f.format, file };
 }
 
 /**
@@ -44,12 +50,12 @@ export async function createFontAsset(
   const assetId = await mintAssetId(contentRepo, ctx);
   const slug = familySlug(input.family);
   try {
-    const files: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
+    const files: Array<ReturnType<typeof fileRecord>> = [];
     let bytes = 0;
     for (const f of input.faces) {
       const file = faceFileName(slug, f);
       await storage.storeFile(projectSlug, assetId, file, f.bytes);
-      files.push({ weight: f.weight, style: f.style, format: f.format, file });
+      files.push(fileRecord(f, file));
       bytes += f.bytes.length;
     }
     const asset = FontAssetSchema.parse({
@@ -87,7 +93,7 @@ export async function mergeFontFaces(
 ): Promise<FontAsset> {
   const have = new Set(existing.files.map((f) => `${f.weight}-${f.style}`));
   const slug = familySlug(existing.family);
-  const added: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
+  const added: Array<ReturnType<typeof fileRecord>> = [];
   let addedBytes = 0;
   try {
     for (const f of faces) {
@@ -95,7 +101,7 @@ export async function mergeFontFaces(
       if (have.has(key)) continue;
       const file = faceFileName(slug, f);
       await storage.storeFile(projectSlug, existing.id, file, f.bytes);
-      added.push({ weight: f.weight, style: f.style, format: f.format, file });
+      added.push(fileRecord(f, file));
       have.add(key);
       addedBytes += f.bytes.length;
     }

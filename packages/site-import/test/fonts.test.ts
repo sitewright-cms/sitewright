@@ -19,6 +19,26 @@ describe('collectFontFaces', () => {
     expect([...bold.values()][0]!.font!.weight).toBe(700);
   });
 
+  // REGRESSION: a VARIABLE face declares an AXIS (`font-weight:300 700`) and this used to keep only the
+  // first number. The stored file then claimed to be a static 300, so the renderer synthesised faux-bold
+  // headings and skipped the face's preload entirely.
+  it('captures a variable face weight RANGE, defaulting the file weight to 400 inside it', () => {
+    const refs = collectFontFaces('@font-face{font-family:"DM Sans";font-weight:300 700;src:url(https://ex.com/dm.woff2)}');
+    expect([...refs.values()][0]!.font).toEqual({ family: 'DM Sans', weight: 400, weightRange: [300, 700], style: 'normal' });
+  });
+
+  it('snaps a range to real CSS weights and keeps a single weight when it cannot', () => {
+    // the common "full axis" spelling clamps into the 100–900 grid
+    const full = collectFontFaces('@font-face{font-family:X;font-weight:1 1000;src:url(https://ex.com/a.woff2)}');
+    expect([...full.values()][0]!.font).toMatchObject({ weight: 400, weightRange: [100, 900] });
+    // off-grid ends round to the nearest real weight
+    const odd = collectFontFaces('@font-face{font-family:X;font-weight:350 620;src:url(https://ex.com/b.woff2)}');
+    expect([...odd.values()][0]!.font).toMatchObject({ weightRange: [400, 600] });
+    // a degenerate "range" that collapses to one weight stays a plain static face
+    const flat = collectFontFaces('@font-face{font-family:X;font-weight:390 420;src:url(https://ex.com/c.woff2)}');
+    expect([...flat.values()][0]!.font).toEqual({ family: 'X', weight: 400, style: 'normal' });
+  });
+
   it('ignores a @font-face with no absolute font-file url, and dedupes by url', () => {
     expect(collectFontFaces('@font-face{font-family:X;src:local("X")}').size).toBe(0);
     expect(collectFontFaces('@font-face{font-family:X;src:url(/rel.woff2)}').size).toBe(0); // not absolute

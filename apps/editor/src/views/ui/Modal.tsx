@@ -149,8 +149,12 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.focus();
     const panel = panelRef.current;
+    // Move focus INTO the dialog — but never take it back off a control that already claimed it.
+    // React applies a child's `autoFocus` during commit, before this parent effect runs, so an
+    // unconditional `panel.focus()` here silently undid every `autoFocus` in a modal: the project
+    // selector's search box was focused and then blurred within the same tick, and typing went nowhere.
+    if (!panel?.contains(document.activeElement)) panel?.focus();
     const onTrap = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !panel) return;
       const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));

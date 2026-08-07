@@ -20,7 +20,14 @@ export function parsePreviewTarget(search: string): PreviewTarget | null {
   return { projectId, path };
 }
 
-/** Builds the `?preview=…` URL (preserving the current origin + path) to open the preview tab. */
-export function buildPreviewUrl(origin: string, pathname: string, projectId: string): string {
-  return `${origin}${pathname}?preview=${encodeURIComponent(projectId)}`;
+/**
+ * Builds the `?preview=…` URL (preserving the current origin + path) to open the preview tab.
+ * `route` (optional) opens the preview ON that page instead of the home page — the parser splits the
+ * value at its FIRST slash, so the id is encoded whole and each route segment separately, leaving the
+ * separators intact.
+ */
+export function buildPreviewUrl(origin: string, pathname: string, projectId: string, route = ''): string {
+  const clean = route.replace(/^\/+|\/+$/g, '');
+  const suffix = clean ? `/${clean.split('/').map(encodeURIComponent).join('/')}` : '';
+  return `${origin}${pathname}?preview=${encodeURIComponent(projectId)}${suffix}`;
 }

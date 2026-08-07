@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Settings, RotateCcw, History } from 'lucide-react';
+import { Settings, RotateCcw, History, ExternalLink } from 'lucide-react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATES,
@@ -19,6 +19,7 @@ import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { buildPreviewUrl } from '../lib/preview-target';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
@@ -197,7 +198,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // keeps it open when the pointer wanders, and keyboard users get it via Tab).
   const [stripHover, setStripHover] = useState(false);
   const [stripFocus, setStripFocus] = useState(false);
-  const stripExpanded = stripHover || stripFocus;
+  // Hovering the CONTENT pane collapses the strip even while the code editor still holds focus.
+  // Focus alone used to pin it open: click into the source, move the pointer down to look at the
+  // preview, and the strip stayed at 45vh covering the thing you moved down to see. Focus is not
+  // dropped (typing still works the moment the pointer comes back up), it is just out-ranked while
+  // the pointer is over the preview.
+  const [contentHover, setContentHover] = useState(false);
+  const stripExpanded = !contentHover && (stripHover || stripFocus);
 
   // The referenced template (when any): global from the built-in list, else project.
   const activeTemplate: Template | undefined = settings.template
@@ -1004,7 +1011,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         {/* Row 2 — the preview (source/content) and the Page Audit tab. BOTH stay MOUNTED, toggled with
             `hidden`, so returning to the preview never reloads the iframe and a run's audit result +
             device choice survive leaving/returning to the Page Audit tab. */}
-        <div className={`relative min-h-0 flex-1 ${mode === 'audit' ? 'hidden' : ''}`}>
+        <div
+          className={`relative min-h-0 flex-1 ${mode === 'audit' ? 'hidden' : ''}`}
+          onMouseEnter={() => setContentHover(true)}
+          onMouseLeave={() => setContentHover(false)}
+        >
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
           </DevicePreview>
@@ -1028,6 +1039,27 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 </button>
               </Tooltip>
             ))}
+            {/* Same rail, below MOBILE: open THIS page in the whole-site draft preview, in a new tab —
+                a real, navigable, unscaled surface (so a fixed background and the true viewport width
+                are exactly what a visitor would get). Separated by a hairline so it reads as a
+                different kind of action from the device toggles above it. */}
+            <span aria-hidden className="my-0.5 h-px bg-slate-200 dark:bg-white/10" />
+            <Tooltip tip="Open this page in a new tab" side="left">
+              <button
+                type="button"
+                aria-label="Open this page in a new tab"
+                onClick={() =>
+                  window.open(
+                    buildPreviewUrl(window.location.origin, window.location.pathname, project.id, settings.path),
+                    '_blank',
+                    'noopener',
+                  )
+                }
+                className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            </Tooltip>
           </div>
         </div>
         <div className={mode === 'audit' ? 'flex min-h-0 flex-1' : 'hidden'}>

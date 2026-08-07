@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
 import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
@@ -35,6 +35,21 @@ import { parsePreviewTarget } from './lib/preview-target';
 import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
+
+/**
+ * A `?next=` value that is safe to navigate to after signing in.
+ *
+ * OPEN-REDIRECT GUARD, deliberately an ALLOW-LIST of one: the only flow that hands the SPA a return
+ * URL is the OAuth/MCP consent endpoint bouncing an unauthenticated agent authorization through the
+ * login. Accepting "any same-origin path" would be broader than anything needs, and a scheme-relative
+ * value (`//evil.test`) is same-origin to a naive check but off-site to the browser. So: must start
+ * with exactly `/oauth/authorize?`, and nothing else is ever honoured.
+ */
+export function safeReturnTo(search: string): string | null {
+  const next = new URLSearchParams(search).get('next');
+  if (!next) return null;
+  return /^\/oauth\/authorize\?[^\s]*$/.test(next) ? next : null;
+}
 
 /**
  * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
@@ -110,6 +125,8 @@ function MainApp({
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
+  // The project whose view is mounted-but-still-loading; the selector spins on that row until it lands.
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [importZipOpen, setImportZipOpen] = useState(false);
   // The project the Duplicate modal targets, if open.
@@ -194,6 +211,14 @@ function MainApp({
 
   useEffect(() => {
     void refresh().then((ps) => {
+      // Signed in with a pending agent-authorization to resume? Hand the browser straight back to the
+      // consent page rather than dropping the user on the project selector with no idea what happened.
+      // `replace`, not `assign`, so Back does not bounce them through the login again.
+      const next = safeReturnTo(window.location.search);
+      if (next) {
+        window.location.replace(next);
+        return;
+      }
       // Open the selector on first SPA load (unless an invite is mid-flow).
       if (!initialInviteToken) setSelectorOpen(true);
       void ps;
@@ -213,12 +238,23 @@ function MainApp({
     window.history.replaceState({}, '', url.pathname + url.search + url.hash);
   }, []);
 
+  // Opening a project MOUNTS the view (so it starts fetching) but keeps the selector up, spinning on
+  // the chosen row, until that view reports its pages/locales/templates have settled. Before this the
+  // modal vanished instantly and the author watched an empty editor populate itself.
   function openProject(project: Project) {
     setTab('pages');
     setStage({ name: 'project', project });
-    setSelectorOpen(false);
     setSettingsView(null); // close any open settings modal so it can't outlive its project
+    if (!selectorOpen) return; // opened from somewhere else (new/import/rename) — nothing to hold
+    setOpeningId(project.id);
   }
+
+  // Release the selector once the mounted project has loaded. Also cleared on unmount of the opening
+  // project (a second pick while one is in flight), so the modal can never latch open.
+  const finishOpening = useCallback(() => {
+    setOpeningId(null);
+    setSelectorOpen(false);
+  }, []);
 
   if (stage.name === 'loading') {
     return <SkeletonList rows={4} className="mx-auto max-w-md p-8" label="Loading the editor…" />;
@@ -244,7 +280,20 @@ function MainApp({
   if (stage.name === 'auth') {
     // A forced logout (expired session) explains itself; otherwise show any OIDC callback notice.
     const notice = stage.expired ? 'Your session expired — please sign in again.' : oidcNotice;
-    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={notice} branding={branding} />;
+    return (
+      <Login
+        onAuthed={() =>
+          void refresh().then(() => {
+            const next = safeReturnTo(window.location.search);
+            if (next) window.location.replace(next);
+            else setSelectorOpen(true);
+          })
+        }
+        initialMfaTicket={mfaTicket}
+        initialNotice={notice}
+        branding={branding}
+      />
+    );
   }
 
   // A signed-in user on the seeded default password can't reach the editor until they change it. The
@@ -387,7 +436,7 @@ function MainApp({
           </section>
         </main>
       )}
-      {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} />}
+      {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} onLoaded={finishOpening} />}
 
       {selectorOpen && (
         <ProjectSelectorModal
@@ -395,8 +444,12 @@ function MainApp({
           currentId={inProject?.id}
           branding={branding}
           canCreate={canCreateProjects}
-          onClose={() => setSelectorOpen(false)}
+          onClose={() => {
+            setOpeningId(null);
+            setSelectorOpen(false);
+          }}
           onOpen={openProject}
+          openingId={openingId}
           onNew={() => {
             setSelectorOpen(false);
             setNewProjectOpen(true);

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { Project, Branding } from '../api';
 import { Modal } from './ui/Modal';
 import { BrandLogo } from './ui/BrandLogo';
@@ -16,6 +17,9 @@ interface ProjectSelectorModalProps {
   projects: Project[];
   /** The currently-open project (highlighted), if any. */
   currentId?: string;
+  /** The project being opened right now — its row shows a spinner and every row is click-locked,
+   *  so the modal stays put (rather than blinking away) while the editor loads behind it. */
+  openingId?: string | null;
   /** The admin-panel branding (name + logo) for the modal header; defaults to the built-in brand. */
   branding?: Branding;
   onClose: () => void;
@@ -33,7 +37,7 @@ interface ProjectSelectorModalProps {
  * NEW PROJECT button. Shown automatically on first load and reachable anytime by
  * clicking the project name in the header.
  */
-export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onImportZip }: ProjectSelectorModalProps) {
+export function ProjectSelectorModal({ projects, currentId, openingId = null, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onImportZip }: ProjectSelectorModalProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,6 +47,8 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
     // Alphabetical by name (case/locale-insensitive), stable — the list is a flat A→Z picker.
     return [...matched].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [projects, query]);
+
+  const opening = openingId !== null;
 
   return (
     <Modal
@@ -65,23 +71,32 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
       }
     >
       <div className="flex flex-col gap-3 p-5">
+        {/* Enter opens the TOP result, so filtering to one project is a two-key action ("ac" ⏎).
+            Guarded on a non-empty list: Enter with no match must do nothing, not throw. */}
         <SearchField
           ariaLabel="Search projects"
           value={query}
           onChange={setQuery}
           placeholder="Search projects…"
           autoFocus
+          onEnter={() => {
+            const first = filtered[0];
+            if (first) onOpen(first);
+          }}
         />
         <ul className="flex max-h-[55vh] flex-col gap-2 overflow-auto">
           {filtered.map((p) => {
             const active = p.id === currentId;
+            const isOpening = p.id === openingId;
             const subtitle = p.siteUrl ? prettyUrl(p.siteUrl) : `/${p.slug}`;
             return (
               <li key={p.id}>
                 <button
                   className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
                     active ? gradientSurface : `${glassCard} ${gradientHover}`
-                  }`}
+                  } ${opening && !isOpening ? 'pointer-events-none opacity-50' : ''}`}
+                  disabled={opening}
+                  aria-busy={isOpening}
                   onClick={() => onOpen(p)}
                 >
                   <ProjectIcon
@@ -110,6 +125,12 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
                       {subtitle}
                     </span>
                   </span>
+                  {isOpening && (
+                    <Loader2
+                      aria-hidden
+                      className={`ml-auto h-4 w-4 shrink-0 animate-spin ${active ? 'text-white/90' : 'text-slate-400 dark:text-slate-500'}`}
+                    />
+                  )}
                 </button>
               </li>
             );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findElementRange } from '../src/lib/source-locate';
+import { findEachBlock, findElementRange } from '../src/lib/source-locate';
 
 /** The located text, so an assertion reads as what the editor would SELECT. */
 const pick = (src: string, sig: Parameters<typeof findElementRange>[1]) => {
@@ -71,12 +71,90 @@ describe('findElementRange', () => {
     expect(pick(src, { tag: 'li', classes: ['item'], nth: 5 })).toBe('<li class="item"><span>{{title}}</span></li>');
   });
 
+  // REGRESSION (reported as "works for some elements but not all"): v1 FILTERED on classes alone, so
+  // every case where the class signal was absent or contradicted went silent. Each of these is common.
+  describe('cases that used to go silent', () => {
+    it('matches a source tag with NO class whose render carries runtime classes', () => {
+      expect(pick('<div>hi</div>', { tag: 'div', classes: ['sw-enhanced', 'is-ready'] })).toBe('<div>hi</div>');
+    });
+
+    it('matches when the class is entirely a binding', () => {
+      const src = '<div class="{{cls}}">hi</div>';
+      expect(pick(src, { tag: 'div', classes: ['card', 'shadow'] })).toBe(src);
+    });
+
+    it('ignores an id the runtime invented rather than letting it veto every candidate', () => {
+      const src = '<section class="a">x</section>';
+      // no candidate carries id="sw-auto-1", so the id is dropped and the class still decides
+      expect(pick(src, { tag: 'section', id: 'sw-auto-1', classes: ['a'] })).toBe(src);
+    });
+
+    it('uses TEXT to pick the right one of two loops sharing a class', () => {
+      const src = '<ul class="one"><li class="row">Alpha</li></ul>\n<ul class="two"><li class="row">Beta</li></ul>';
+      expect(pick(src, { tag: 'li', classes: ['row'], text: 'Beta', nth: 1 })).toBe('<li class="row">Beta</li>');
+      expect(pick(src, { tag: 'li', classes: ['row'], text: 'Alpha', nth: 0 })).toBe('<li class="row">Alpha</li>');
+    });
+
+    it('text outranks position: the rendered text wins over a misleading nth', () => {
+      const src = '<h2 class="t">First</h2>\n<h2 class="t">Second</h2>\n<h2 class="t">Third</h2>';
+      expect(pick(src, { tag: 'h2', classes: ['t'], text: 'Third', nth: 0 })).toBe('<h2 class="t">Third</h2>');
+    });
+
+    it('does not penalise a loop body, which has no literal text of its own', () => {
+      const src = '<ul>{{#each dataset.items}}<li class="item">{{title}}</li>{{/each}}</ul>';
+      // the clicked row rendered "Whatever the entry said" — the source has only {{title}}
+      expect(pick(src, { tag: 'li', classes: ['item'], text: 'Whatever the entry said', nth: 4 })).toBe(
+        '<li class="item">{{title}}</li>',
+      );
+    });
+
+    it('still declines when every candidate is CONTRADICTED (wrong element, not merely unknown)', () => {
+      expect(findElementRange('<div class="a">x</div>', { tag: 'div', classes: ['b'] })).toBeNull();
+    });
+
+    it('lets a class match outrank differing text — a data-sw-text override changes the text legitimately', () => {
+      // The authored default is "Hello"; page.data replaced it in the render. Same element.
+      const src = '<p class="x" data-sw-text="page.data.k">Hello</p>';
+      expect(pick(src, { tag: 'p', classes: ['x'], text: 'Replaced by the client' })).toBe(src);
+    });
+  });
+
   it('returns null for anything it cannot honestly place', () => {
     const src = '<div class="a">x</div>';
     expect(findElementRange(src, { tag: 'footer' })).toBeNull(); // chrome slot — not in this source
     expect(findElementRange('', { tag: 'div' })).toBeNull();
     expect(findElementRange(src, { tag: '' })).toBeNull();
     expect(findElementRange(src, { tag: 'di v' })).toBeNull(); // never build a regex from the signature
+  });
+
+  // A dataset row is wrapped in an injected <div data-sw-entry> that exists only in the render, and its
+  // contents are bindings — so when no element inside the loop can be pinned down, the block that
+  // rendered the row is the honest selection, and it is the code the author edits.
+  describe('findEachBlock', () => {
+    const src = '<ul class="l">\n  {{#each dataset.services}}<li class="s">{{title}}</li>{{/each}}\n</ul>';
+
+    it('selects the whole {{#each}} block for a dataset', () => {
+      const r = findEachBlock(src, 'services')!;
+      expect(src.slice(r.from, r.to)).toBe('{{#each dataset.services}}<li class="s">{{title}}</li>{{/each}}');
+    });
+
+    it('walks NESTED each blocks to the matching {{/each}}', () => {
+      const nested =
+        '{{#each dataset.rooms}}<div>{{#each images}}<img src="{{url}}">{{/each}}</div>{{/each}}';
+      const r = findEachBlock(nested, 'rooms')!;
+      expect(nested.slice(r.from, r.to)).toBe(nested);
+    });
+
+    it('tolerates loop arguments and whitespace in the opener', () => {
+      const withArgs = '{{#each dataset.team_members as |m|}}<p>{{m.name}}</p>{{/each}}';
+      expect(findEachBlock(withArgs, 'team_members')).toEqual({ from: 0, to: withArgs.length });
+    });
+
+    it('returns null for an absent dataset, and never builds a regex from the slug', () => {
+      expect(findEachBlock(src, 'nope')).toBeNull();
+      expect(findEachBlock(src, 'a.*')).toBeNull();
+      expect(findEachBlock(src, 'services|x')).toBeNull();
+    });
   });
 
   it('selects only the opening tag when the element is never closed', () => {

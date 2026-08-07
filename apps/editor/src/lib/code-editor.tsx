@@ -39,6 +39,12 @@ interface CodeEditorProps {
 export interface CodeEditorHandle {
   undo: () => void;
   redo: () => void;
+  /**
+   * Select `[from, to)` and scroll it into view — how a preview click reveals the code behind the
+   * element. The range is CLAMPED to the live document because it is computed against the source the
+   * caller last saw, which an in-flight edit may already have shortened.
+   */
+  selectRange: (from: number, to: number) => void;
 }
 
 /** The editor accent — gutter border, cursor, selection, active-line gutter. */
@@ -173,6 +179,18 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
           redo(v);
           v.focus();
         }
+      },
+      selectRange: (from: number, to: number) => {
+        const v = viewRef.current;
+        if (!v) return;
+        const len = v.state.doc.length;
+        const a = Math.max(0, Math.min(from, len));
+        const b = Math.max(a, Math.min(to, len));
+        // `head: a` puts the caret at the START of the element, so the opening tag stays on screen
+        // when the selection is taller than the viewport (a long section would otherwise scroll to
+        // its closing tag and hide what was clicked).
+        v.dispatch({ selection: { anchor: b, head: a }, scrollIntoView: true });
+        v.focus();
       },
     }),
     [],

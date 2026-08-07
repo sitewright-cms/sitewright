@@ -20,6 +20,7 @@ import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
+import { findElementRange } from '../lib/source-locate';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
@@ -458,6 +459,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         alt?: string;
         width?: string;
         height?: string;
+        tag?: string; // locate-source: the clicked element's signature
+        cls?: unknown;
+        nth?: number;
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -556,6 +560,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             (r) => r && Number.isInteger(r.rid) && typeof r.kind === 'string' && typeof r.label === 'string',
           ),
         );
+      } else if (d.type === 'locate-source' && typeof d.tag === 'string' && modeRef.current === 'source') {
+        // Source mode: clicked an element in the preview → select the markup that rendered it. Silent
+        // when it can't be placed (a chrome slot, a runtime-injected node, or source edited since the
+        // render) — jumping the caret somewhere confidently wrong is worse than not moving it.
+        const range = findElementRange(sourceRef.current, {
+          tag: d.tag,
+          id: d.id || undefined,
+          classes: Array.isArray(d.cls) ? d.cls.filter((c): c is string => typeof c === 'string') : undefined,
+          nth: typeof d.nth === 'number' ? d.nth : 0,
+        });
+        if (range) codeRef.current?.selectRange(range.from, range.to);
       } else if (d.type === 'link-click' && typeof d.href === 'string') {
         // Clicked an internal site link in the preview → switch the editor to that page (via the ref so
         // this mount-scoped listener sees fresh pages/dirty/onNavigate).

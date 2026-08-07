@@ -55,6 +55,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
+ *                     { source:'sitewright-preview', type:'locate-source', tag, id, cls, nth }        (source mode: click → select the code)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
@@ -162,6 +163,30 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     e.stopPropagation();
     post({ type: 'link-click', href: href });
   }, true);
+
+  // SOURCE (code) mode: a click on the rendered page asks the editor to select the markup that
+  // produced it. Only the page's own body can be located — the chrome slots render from the settings
+  // entity and the editor-only UI this bridge injects has no source at all, so both are skipped rather
+  // than resolved to a confidently wrong line. nth counts the identically-classed elements before
+  // this one so a loop's 3rd row still resolves to the single authored block that rendered it.
+  document.addEventListener('click', function (e) {
+    if (editing) return; // content mode owns clicks (in-place editing)
+    var el = e.target;
+    if (!el || el.nodeType !== 1 || !el.closest) return;
+    if (el.closest('.sw-tb, .sw-pop, .sw-badge, [data-sw-badge]')) return; // this bridge's own chrome
+    var root = document.getElementById('page-content');
+    if (!root || el === root || !root.contains(el)) return;
+    var tag = (el.tagName || '').toLowerCase();
+    if (!tag) return;
+    var cls = el.getAttribute('class') || '';
+    var same = root.getElementsByTagName(tag);
+    var nth = 0;
+    for (var i = 0; i < same.length; i++) {
+      if (same[i] === el) break;
+      if ((same[i].getAttribute('class') || '') === cls) nth++;
+    }
+    post({ type: 'locate-source', tag: tag, id: el.id || '', cls: cls.split(/\s+/).filter(Boolean), nth: nth });
+  });
 
   function ensureStyle() {
     if (styled) return; styled = true;

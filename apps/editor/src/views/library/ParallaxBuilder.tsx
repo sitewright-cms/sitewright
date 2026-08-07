@@ -72,7 +72,7 @@ function Field({ label, desc, children }: { label: string; desc: string; childre
     <div className="flex flex-col gap-1">
       <div className="leading-tight">
         <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
-        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">{desc}</span>
+        <span className="ml-1.5 text-[11px] text-slate-500 dark:text-slate-400">{desc}</span>
       </div>
       {children}
     </div>
@@ -95,7 +95,7 @@ function NumInput({ aria, value, set, lo, hi, step, disabled }: { aria: string; 
     />
   );
 }
-const Arrow = () => <span className="text-slate-400 dark:text-slate-500">→</span>;
+const Arrow = () => <span className="text-slate-500 dark:text-slate-400">→</span>;
 
 // One effect's controls: a toggle + from→to (+ axis on Motion) + a Viewport range, and — when the
 // window leaves room — an OUT phase (locked 'from', its own viewport for a HOLD range, and a 'to').
@@ -123,7 +123,7 @@ function ChannelCard({
         <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={ch.on} onChange={(e) => patch(name, { on: e.target.checked })} aria-label={label} />
         <span className="leading-tight">
           <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
-          <span className="block text-[11px] text-slate-400 dark:text-slate-500">{CHANNEL_DESC[name]}</span>
+          <span className="block text-[11px] text-slate-500 dark:text-slate-400">{CHANNEL_DESC[name]}</span>
         </span>
       </label>
       {ch.on && (
@@ -154,7 +154,7 @@ function ChannelCard({
                 <NumInput aria={`${label} viewport from`} value={ch.vpc[0]} set={(n) => patch(name, { vpc: [n, ch.vpc[1]] })} lo={0} hi={100} step={5} />
                 <Arrow />
                 <NumInput aria={`${label} viewport to`} value={ch.vpc[1]} set={(n) => patch(name, { vpc: [ch.vpc[0], n] })} lo={0} hi={100} step={5} />
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">%</span>
               </div>
             )}
           </Field>
@@ -180,7 +180,7 @@ function ChannelCard({
                   <NumInput aria={`${label} out from-range`} value={os} set={(n) => patch(name, { outWin: [clamp(n, inEnd, 100), ch.outWin[1]] })} lo={inEnd} hi={100} step={5} />
                   <Arrow />
                   <NumInput aria={`${label} out to-range`} value={oe} set={(n) => patch(name, { outWin: [ch.outWin[0], clamp(n, os, 100)] })} lo={os} hi={100} step={5} />
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">%</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">%</span>
                 </div>
               </Field>
             </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 import { PreviewSkeleton } from './editor/PreviewSkeleton';
+import { PreviewProgressPill } from './editor/PreviewProgressPill';
 import { api, eventsUrl, previewUrlFrom } from '../api';
 import { AgentDrawer } from './AgentDrawer';
 import type { PreviewTarget } from '../lib/preview-target';
@@ -39,6 +40,8 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [src, setSrc] = useState('');
   // False until the embedded draft has painted once — drives the loading skeleton below.
   const [everLoaded, setEverLoaded] = useState(false);
+  // What the draft build is doing while we wait for that first paint.
+  const [progress, setProgress] = useState<{ phase?: string; done?: number; total?: number }>({});
   // Pages the draft build could not render. Each still serves an error document in place, so the
   // preview is current everywhere else — this is what tells the author about a page they are not on.
   const [pageFailures, setPageFailures] = useState<Array<{ page: string; path: string; message: string }>>([]);
@@ -88,6 +91,39 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
       active = false;
     };
   }, [projectId, target.path]);
+
+  // Narrate the wait. `previewBase` above blocks for the WHOLE draft build, so it can never report
+  // its own progress — this is a second, non-blocking read of the same build's phase. It runs only
+  // until the iframe's first paint, and stops on the first failure so an older instance without the
+  // endpoint degrades to the plain skeleton instead of polling a 404 forever.
+  useEffect(() => {
+    if (everLoaded) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = (): void => {
+      // Narration must never be able to take the preview down with it — hence the try as well as the
+      // catch: a synchronous throw here would escape into React's commit phase and unmount the shell.
+      try {
+        api
+          .previewProgress(projectId)
+          .then((p) => {
+            if (!active) return;
+            setProgress(p.building ? { phase: p.phase, done: p.done, total: p.total } : {});
+            timer = setTimeout(tick, 700);
+          })
+          .catch(() => {
+            /* endpoint unavailable — keep the skeleton, drop the narration */
+          });
+      } catch {
+        /* same */
+      }
+    };
+    tick();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [projectId, everLoaded]);
 
   // This shell fills the window (the iframe owns all scrolling), but the app-wide
   // `html{scrollbar-gutter:stable}` (styles.css) still reserves an empty gutter strip beside the
@@ -251,6 +287,9 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           <span className="sr-only">Loading the site preview…</span>
         </div>
       )}
+      {/* …and NAME the step, because the skeleton alone cannot distinguish "a second away" from
+          "re-encoding 300 images". Only while the first frame is still missing. */}
+      {!everLoaded && <PreviewProgressPill phase={progress.phase} done={progress.done} total={progress.total} />}
       {src && (
         <iframe
           ref={iframeRef}

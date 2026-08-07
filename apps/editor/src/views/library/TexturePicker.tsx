@@ -105,7 +105,7 @@ export function TexturePicker({ onClose }: { onClose: () => void; projectId?: st
               title="Custom colour"
             >
               <input type="color" value={custom ?? '#cfe0ff'} onChange={(e) => setCustom(e.target.value)} className="sr-only" />
-              {!custom && <span className="text-xs leading-none text-slate-400">+</span>}
+              {!custom && <span className="text-xs leading-none text-slate-500 dark:text-slate-400">+</span>}
             </label>
           </div>
         </div>
@@ -119,7 +119,7 @@ export function TexturePicker({ onClose }: { onClose: () => void; projectId?: st
           {error ? (
             <p className="py-8 text-center text-sm text-rose-500">Could not load the texture library.</p>
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No textures match “{query}”.</p>
+            <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No textures match “{query}”.</p>
           ) : (
             <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(148px,1fr))]">
               {shown.map((name) => (

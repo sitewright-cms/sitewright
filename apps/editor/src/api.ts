@@ -1123,6 +1123,13 @@ export const api = {
       'GET',
       `/projects/${projectId}/preview-url`,
     ),
+  /** What the in-flight draft build is doing, for the preview shell's loading pill. Non-blocking —
+   *  `previewBase` itself waits for the whole build, so this is the only way to narrate that wait. */
+  previewProgress: (projectId: string) =>
+    request<{ building: boolean; phase?: string; done?: number; total?: number }>(
+      'GET',
+      `/projects/${projectId}/preview-progress`,
+    ),
   /** Revocable, stable SHARE links for the draft preview (viewable by UNAUTHENTICATED clients). */
   listPreviewShares: (projectId: string) =>
     request<{ items: Array<{ id: string; label: string; createdAt: number; url: string }> }>('GET', `/projects/${projectId}/preview-shares`),

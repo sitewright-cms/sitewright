@@ -93,7 +93,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Slug <span className="text-slate-400 dark:text-slate-500">— the binding key in <code>{`{{#each dataset.<slug>}}`}</code></span>
+            Slug <span className="text-slate-500 dark:text-slate-400">— the binding key in <code>{`{{#each dataset.<slug>}}`}</code></span>
           </span>
           <input
             aria-label="Dataset slug"
@@ -102,7 +102,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
             onChange={(e) => setSlugInput(e.target.value)}
             placeholder={dataset.slug}
           />
-          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500'}`}>
+          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
             {slugChanged && !slugValid
               ? 'Use only lowercase letters, numbers, and underscores, e.g. faq_passengers (no hyphens — they break the binding).'
               : slugTaken

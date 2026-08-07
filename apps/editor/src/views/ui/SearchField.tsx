@@ -34,7 +34,7 @@ export function SearchField({
 }) {
   return (
     <div className={className ? `relative ${className}` : 'relative'}>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
       <input
         type="search"
         aria-label={ariaLabel ?? placeholder}

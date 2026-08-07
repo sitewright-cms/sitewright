@@ -97,7 +97,7 @@ export function GoogleFontGallery({
             ))}
           </div>
         ) : shown.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No fonts match “{query}”.</p>
+          <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No fonts match “{query}”.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {shown.map((font) => (
@@ -109,7 +109,7 @@ export function GoogleFontGallery({
                   {font.family}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{font.fallback}</span>
+                  <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{font.fallback}</span>
                   {renderAction(font)}
                 </div>
               </li>
@@ -117,7 +117,7 @@ export function GoogleFontGallery({
           </ul>
         )}
       </div>
-      <p className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
+      <p className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">
         {catalog
           ? `Showing ${shown.length} of ${filtered.length}${q ? ' matches' : ' families'}${
               shown.length < filtered.length ? ' — scroll for more' : ''

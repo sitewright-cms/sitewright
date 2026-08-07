@@ -49,7 +49,7 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
       >
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">{label}</span>
-          <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="block text-[11px] text-slate-500 dark:text-slate-400">
             {lineCount === 0 ? (placeholder ? `Empty · e.g. ${placeholder}` : 'Empty') : `${lineCount} line${lineCount === 1 ? '' : 's'}`}
           </span>
         </span>

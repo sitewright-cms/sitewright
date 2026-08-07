@@ -117,7 +117,7 @@ function Knob({ label, value, min, max, step, onChange, fmt }: {
     <label className="flex flex-col gap-1">
       <span className="flex items-center justify-between text-slate-600 dark:text-slate-300">
         <span>{label}</span>
-        <span className="tabular-nums text-xs text-slate-400 dark:text-slate-500">{fmt ? fmt(value) : value}</span>
+        <span className="tabular-nums text-xs text-slate-500 dark:text-slate-400">{fmt ? fmt(value) : value}</span>
       </span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} className="w-full" />
     </label>

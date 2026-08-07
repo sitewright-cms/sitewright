@@ -58,14 +58,14 @@ function IssueCard({
               {issue.projectSlug ?? 'Instance'}
             </span>
             <code className="rounded bg-slate-100 px-1 text-[11px] text-slate-600 dark:bg-white/10 dark:text-slate-300">{issue.code}</code>
-            <span className="text-xs text-slate-400 dark:text-slate-500">{issue.count} affected</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{issue.count} affected</span>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{issue.detail}</p>
 
           {issue.sample.length > 0 && (
             <button
               type="button"
-              className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
             >
@@ -113,7 +113,7 @@ function IssueCard({
                       {action.label}
                     </button>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">{action.detail}</p>
+                  <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{action.detail}</p>
                 </div>
               ))}
             </div>
@@ -223,7 +223,7 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               {progress ? progress.label : 'Starting…'}
-              {progress?.project && <span className="text-slate-400 dark:text-slate-500">· {progress.project}</span>}
+              {progress?.project && <span className="text-slate-500 dark:text-slate-400">· {progress.project}</span>}
             </div>
             <div
               className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-white/10"
@@ -235,7 +235,7 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
             >
               <div className="sw-brand-gradient h-full transition-all duration-300" style={{ width: `${pct}%` }} />
             </div>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {progress ? `Check ${progress.step} of ${progress.total}` : 'Reading the database…'}
             </p>
           </div>
@@ -288,7 +288,7 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
                       <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" aria-hidden />
                     )}
                     <span className="flex-1 text-slate-600 dark:text-slate-300">{c.label}</span>
-                    <span className="text-slate-400 dark:text-slate-500">
+                    <span className="text-slate-500 dark:text-slate-400">
                       {c.scanned.toLocaleString()} scanned
                       {c.issueCount > 0 && ` · ${c.issueCount} issue${c.issueCount === 1 ? '' : 's'}`}
                     </span>

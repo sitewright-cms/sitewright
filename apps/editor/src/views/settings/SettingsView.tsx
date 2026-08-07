@@ -176,12 +176,20 @@ export function SettingsView({
     setForm((f) => (f ? { ...f, ...p } : f));
   }
 
-  async function save() {
+  /**
+   * Persist the active section.
+   *
+   * `overrides` exists for edits that must be saved in the SAME gesture that made them — a code
+   * editor's own Save button / Ctrl+S. `patch()` schedules a state update, so a `save()` called
+   * straight after it would still close over the PREVIOUS form and quietly persist the old value.
+   * Passing the same partial to both is what makes "Save" in that modal mean saved.
+   */
+  async function save(overrides?: Partial<SettingsForm>) {
     if (!form || !base) return;
     setSaving(true);
-    const snapshot = form; // the values being persisted (form may change during the await)
+    const snapshot = overrides ? { ...form, ...overrides } : form; // the values being persisted (form may change during the await)
     try {
-      const assembled = toBundle(form, base);
+      const assembled = toBundle(snapshot, base);
       // Persist ONLY the active section's slice; carry the OTHER section through from `base` so an
       // unsaved edit there stays pending (the two sections save independently).
       const bundle: SettingsBundle =
@@ -316,7 +324,20 @@ export function SettingsView({
               {section === 'identity' ? (
                 <IdentitySection form={form} patch={patch} projectId={project.id} />
               ) : (
-                <WebsiteSection form={form} patch={patch} projectId={project.id} onLocalesChanged={onLocalesChanged} onReloadSettings={reloadSettings} />
+                <WebsiteSection
+                  form={form}
+                  patch={patch}
+                  // Saving inside a code editor SAVES. Without this the modal's Save button only
+                  // staged the change into the form and the author had to find the tab's own Save —
+                  // which reads, correctly, as "I saved and it didn't save".
+                  saveNow={(p) => {
+                    patch(p);
+                    void save(p);
+                  }}
+                  projectId={project.id}
+                  onLocalesChanged={onLocalesChanged}
+                  onReloadSettings={reloadSettings}
+                />
               )}
             </motion.div>
           </AnimatePresence>

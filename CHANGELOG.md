@@ -9,6 +9,71 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fixed backgrounds in the page editor were stuck, not fixed.** The emulation that re-creates
+  `background-attachment: fixed` inside the editor's scaled preview identified an already-adopted
+  element by its `background-image` — which adoption itself sets to `none`. So the first re-scan (and
+  any live page mutates within milliseconds) dropped every adopted element from the tracked list, and
+  the clip-path froze at whatever it was measured at during load: measured on a real project, stuck at
+  `inset(64px 0px 58.8125px)` through a 288px scroll. Recognising an adopted host by its LAYER fixes
+  it. Two more holes closed while in there: the emulation is now REVERSIBLE, so the near-universal
+  "no fixed backgrounds under 768px" media query hands the element its own background back instead of
+  keeping the desktop treatment at mobile width with a blanked host (the device modes walk into this
+  constantly); and a reflow — a late image or webfont settling, a pane drag, a device-mode switch —
+  re-measures the clip, which previously only a scroll could do.
+- **Self-hosted fonts fell back to a system face in the page-editor preview.** An imported webfont is
+  stored as `kind:'file'` (media pulled in by URL is classified by content-type, and a font is neither
+  image nor video), and the flat `/media/<slug>/<id>-<name>` route dispatches on that kind — so it
+  served the font as `application/octet-stream`, as an attachment, with no CORS headers. The preview
+  is a sandboxed opaque origin, where every request is cross-origin, so the font fetch simply failed
+  and the text rendered in the fallback family. The published site and the whole-site `/preview` were
+  unaffected (they serve their own copies under `_assets/`), which is exactly why it read as "the two
+  previews use different fonts". A font is now served as a font whether it is stored as `kind:'font'`
+  or as a file with a font extension.
+- **Signing an MCP agent in while logged out reloaded the login screen until the rate limiter stopped
+  it.** `/oauth/authorize` bounces an unauthenticated agent to `/?next=…`; the editor followed that
+  return URL without checking there was now a session, got bounced straight back, and the two chased
+  each other — measured at 31 navigations in 6 seconds. The login screen now simply stays up, with
+  `next` preserved for after sign-in.
+- **Saving a skeleton slot in its code editor now actually saves it.** The chrome slots (and the
+  Critical CSS / head / scripts fields beside them) are edited in a modal with its own Save button and
+  Ctrl+S, but that only staged the change into the settings form — the author still had to find the
+  tab's Save, which reads as "I saved and it didn't save". The modal's save now persists in the same
+  gesture. (The subtlety is that a naive save-after-patch persists the value from *before* the edit,
+  because the form update is scheduled, not immediate; both now take the same change.)
+- **The browser password manager no longer prompts over third-party secrets.** An SMTP password, an AI
+  provider key, an OIDC client secret and a deploy target's FTP password are all `type="password"` —
+  the only signal a manager gets — so each one offered to save "your password for this site" and to
+  autofill an account password into an SMTP box. Those fields now opt out; real credentials (sign-in,
+  change-password, MFA confirm) keep their proper autocomplete semantics and still work as before.
+
+### Changed
+
+- **Muted text across the admin UI moved up one step, in both themes.** The pair used in 286 places
+  measured 2.58:1 on the light header and 3.53:1 on the dark one — quiet rather than readable. Page
+  paths, section descriptions, keyword labels, inactive tabs, the settings and account icons, drag
+  handles and placeholder text all move with it. Measured after: the agent pill 2.58 → 7.35 (light) /
+  3.53 → 12.11 (dark), a page row's path 4.55 / 6.85, inactive tabs 7.41 / 8.64, the header icons
+  7.37 / 12.01. A pixel-sampling audit of the admin surfaces now reports no text below WCAG AA on any
+  of these tokens in either theme.
+- **The "Connect an agent" pill has a border** in both themes — all three states do. It floats on the
+  frosted header, whose own surface sits close to each state's fill, so an unbordered pill read as
+  loose text rather than a control.
+- **Project icons in the selector sit on white, in both themes.** A favicon is artwork drawn for a
+  white page — most are dark marks on transparency — so tinting the tile hid exactly the logos it was
+  framing.
+- **The five skeleton slots are one section, not five loose cards.** They are a single concept — the
+  chrome rendered around every page — and as separate cards in a two-column grid they interleaved with
+  the unrelated sections after them, so the group had a heading but no edges.
+- **Logos & images comes before Brand colors** in Corporate Identity.
+- **`/preview` says what it is waiting for.** Opening a cold project renders every page, re-encodes
+  every referenced image size and compiles the stylesheet before the iframe can show anything, and
+  that was a blank shell with a skeleton. A pill at the top centre now names the step — "Processing
+  images…", "Rendering pages… 12 of 93" — with a spinner, and disappears at the first paint. The
+  build reports its phases through a new non-blocking `GET /projects/:projectId/preview-progress`
+  (the URL endpoint the shell already calls blocks for the whole build, so it can never narrate it).
+
 ## [0.14.0] — 2026-08-07
 
 ### Changed

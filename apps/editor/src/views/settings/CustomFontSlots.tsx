@@ -53,7 +53,7 @@ export function CustomFontSlots({
               <button
                 type="button"
                 aria-label={`Remove ${row.name || 'custom'} font slot`}
-                className="ml-auto rounded-md px-2 py-1 text-xs text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+                className="ml-auto rounded-md px-2 py-1 text-xs text-slate-500 dark:text-slate-400 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
                 onClick={() => onChange(slots.filter((s) => s.id !== row.id))}
               >
                 Remove

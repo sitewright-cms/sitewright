@@ -421,14 +421,14 @@ export function DatasetManager({ project }: { project: Project }) {
                     className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm ${active ? 'text-white' : 'group-hover:text-white'}`}
                   >
                     <span className="font-medium">{d.name}</span>{' '}
-                    <span className={`text-xs ${active ? 'text-white/70' : 'text-slate-400 dark:text-slate-500 group-hover:text-white/80'}`}>/{d.slug}</span>
+                    <span className={`text-xs ${active ? 'text-white/70' : 'text-slate-500 dark:text-slate-400 group-hover:text-white/80'}`}>/{d.slug}</span>
                   </button>
                   <Tooltip tip="Duplicate dataset" side="top">
                     <button
                       type="button"
                       aria-label={`Duplicate dataset ${d.name}`}
                       className={`mr-1 shrink-0 rounded-md px-1.5 py-0.5 text-xs opacity-0 transition focus:opacity-100 group-hover:opacity-100 ${
-                        active ? 'text-white/80 hover:bg-white/20 hover:text-white' : 'text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 group-hover:text-white/80'
+                        active ? 'text-white/80 hover:bg-white/20 hover:text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 group-hover:text-white/80'
                       }`}
                       onClick={() => void duplicateDataset(d)}
                     >
@@ -439,15 +439,15 @@ export function DatasetManager({ project }: { project: Project }) {
               </li>
             );
           })}
-          {datasets.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No datasets yet.</li>}
-          {datasets.length > 0 && filteredDatasets.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No datasets match “{datasetQuery}”.</li>}
+          {datasets.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No datasets yet.</li>}
+          {datasets.length > 0 && filteredDatasets.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No datasets match “{datasetQuery}”.</li>}
         </ul>
       </aside>
 
       {/* Selected dataset detail */}
       <section className="min-w-0 flex-1">
         {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
-        {!selected && <p className="text-sm text-slate-400 dark:text-slate-500">Select or create a dataset.</p>}
+        {!selected && <p className="text-sm text-slate-500 dark:text-slate-400">Select or create a dataset.</p>}
 
         {selected && (
           <div className="flex flex-col gap-6">
@@ -459,10 +459,10 @@ export function DatasetManager({ project }: { project: Project }) {
                 onClick={() => setSchemaOpen((v) => !v)}
                 className="flex w-full items-center gap-2 text-left"
               >
-                <span aria-hidden className={`text-slate-400 dark:text-slate-500 transition-transform ${schemaOpen ? 'rotate-90' : ''}`}><ChevronRight className="h-4 w-4" /></span>
+                <span aria-hidden className={`text-slate-500 dark:text-slate-400 transition-transform ${schemaOpen ? 'rotate-90' : ''}`}><ChevronRight className="h-4 w-4" /></span>
                 <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">
                   {selected.name}{' '}
-                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     schema · {draftFields.length} {draftFields.length === 1 ? 'field' : 'fields'}
                   </span>
                 </h3>
@@ -520,7 +520,7 @@ export function DatasetManager({ project }: { project: Project }) {
                         releasePanel();
                       }}
                       title="Drag to reorder"
-                      className="shrink-0 cursor-grab text-slate-300 transition hover:text-slate-500 active:cursor-grabbing"
+                      className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
                     >
                       <GripVertical className="h-4 w-4" />
                     </span>
@@ -591,7 +591,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     )}
                   </li>
                 ))}
-                {draftFields.length === 0 && <li className="text-xs text-slate-400 dark:text-slate-500">No fields yet.</li>}
+                {draftFields.length === 0 && <li className="text-xs text-slate-500 dark:text-slate-400">No fields yet.</li>}
               </ul>
 
               <div className="flex flex-wrap items-end gap-2">
@@ -730,7 +730,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     <div
                       className={`group flex items-center gap-2 ${glassPanel} ${gradientHover} waves-effect pr-2 text-sm transition ${dragId === e.id ? 'opacity-40' : ''}`}
                     >
-                      <span aria-hidden className="shrink-0 cursor-grab pl-3 text-slate-300 transition group-hover:text-white/70 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></span>
+                      <span aria-hidden className="shrink-0 cursor-grab pl-3 text-slate-500 dark:text-slate-400 transition group-hover:text-white/70 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></span>
                       <button
                         type="button"
                         onClick={() => {
@@ -769,7 +769,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     </div>
                   </li>
                 ))}
-                {datasetEntries.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No entries yet.</li>}
+                {datasetEntries.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No entries yet.</li>}
               </ul>
 
               {editingEntry && (

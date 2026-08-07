@@ -168,7 +168,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
             className={`flex items-center gap-3 ${glassPanel} px-4 py-3 text-sm`}
           >
             <span className="font-medium text-slate-800 dark:text-slate-100">{k.name}</span>
-            <code className="text-xs text-slate-400 dark:text-slate-500">{k.tokenPrefix}…</code>
+            <code className="text-xs text-slate-500 dark:text-slate-400">{k.tokenPrefix}…</code>
             <span className="text-xs text-slate-500 dark:text-slate-400">{k.capabilities.join(', ')}</span>
             <button
               aria-label={`Revoke ${k.name}`}
@@ -180,7 +180,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
           </li>
         ))}
         {keys.length === 0 && (
-          <li className="text-sm text-slate-400 dark:text-slate-500">
+          <li className="text-sm text-slate-500 dark:text-slate-400">
             No API keys yet. Create one for CI, or run <code>sitewright login</code> for interactive access.
           </li>
         )}

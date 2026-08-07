@@ -110,13 +110,13 @@ export function NestedFieldsEditor({
                 required
               </label>
               <div className="ml-auto flex items-center gap-0.5">
-                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} up`} disabled={i === 0} onClick={() => moveChild(i, -1)}>
+                <button type="button" className="rounded p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} up`} disabled={i === 0} onClick={() => moveChild(i, -1)}>
                   <ChevronUp className="h-4 w-4" />
                 </button>
-                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} down`} disabled={i === value.length - 1} onClick={() => moveChild(i, 1)}>
+                <button type="button" className="rounded p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30" aria-label={`Move ${field.name} down`} disabled={i === value.length - 1} onClick={() => moveChild(i, 1)}>
                   <ChevronDown className="h-4 w-4" />
                 </button>
-                <button type="button" className="rounded p-1 text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400" aria-label={`Remove field ${field.name}`} onClick={() => removeChild(i)}>
+                <button type="button" className="rounded p-1 text-slate-500 dark:text-slate-400 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400" aria-label={`Remove field ${field.name}`} onClick={() => removeChild(i)}>
                   <X className="h-4 w-4" />
                 </button>
               </div>

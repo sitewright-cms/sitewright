@@ -152,7 +152,7 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
   const invalid = draft !== null && parseColor(draft) === null;
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">{fmt}</span>
+      <span className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{fmt}</span>
       <input
         aria-label={fmt.toUpperCase()}
         spellCheck={false}

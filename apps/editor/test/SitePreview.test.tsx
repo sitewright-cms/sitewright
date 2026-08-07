@@ -1,9 +1,9 @@
 import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { useEffect } from 'react'; // used by the AgentDrawer mock's factory (below) at render time
 
-const { agentPresence, previewLocate, previewBase, agentStatus, drawerStatus } = vi.hoisted(() => ({
+const { agentPresence, previewLocate, previewBase, previewProgress, agentStatus, drawerStatus } = vi.hoisted(() => ({
   agentPresence: vi.fn<(id: string) => Promise<{ connected: number }>>(() => Promise.resolve({ connected: 0 })),
   previewLocate: vi.fn<(id: string, entity: string) => Promise<{ path: string | null }>>(() =>
     Promise.resolve({ path: null }),
@@ -11,6 +11,9 @@ const { agentPresence, previewLocate, previewBase, agentStatus, drawerStatus } =
   previewBase: vi.fn<
     (id: string) => Promise<{ base: string; pageFailures?: Array<{ page: string; path: string; message: string }> }>
   >(() => Promise.resolve({ base: '/preview-site/p/sig123/' })),
+  previewProgress: vi.fn<
+    (id: string) => Promise<{ building: boolean; phase?: string; done?: number; total?: number }>
+  >(() => Promise.resolve({ building: false })),
   agentStatus: vi.fn<(id: string) => Promise<{ enabled: boolean }>>(() => Promise.resolve({ enabled: false })),
   // Lets a test drive the live turn status the drawer would report up to the shell.
   drawerStatus: { current: 'idle' as 'idle' | 'thinking' | 'working' },
@@ -20,6 +23,7 @@ vi.mock('../src/api', () => ({
     agentPresence: (id: string) => agentPresence(id),
     previewLocate: (id: string, entity: string) => previewLocate(id, entity),
     previewBase: (id: string) => previewBase(id),
+    previewProgress: (id: string) => previewProgress(id),
     agentStatus: (id: string) => agentStatus(id),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
@@ -61,6 +65,8 @@ beforeEach(() => {
   previewLocate.mockResolvedValue({ path: null });
   previewBase.mockReset();
   previewBase.mockResolvedValue({ base: '/preview-site/p/sig123/' });
+  previewProgress.mockReset();
+  previewProgress.mockResolvedValue({ building: false }); // nothing narrated unless a test asks for it
   agentStatus.mockReset();
   agentStatus.mockResolvedValue({ enabled: false }); // no on-page assistant button by default
   drawerStatus.current = 'idle';
@@ -77,6 +83,19 @@ describe('SitePreview', () => {
     const frame = await screen.findByTitle('Site preview');
     expect(frame).toHaveAttribute('src', '/preview-site/p/sig123/');
     expect(frame).toHaveAttribute('sandbox', PREVIEW_SANDBOX_ATTR);
+  });
+
+  it('narrates the draft build while the first frame is still missing, then stops', async () => {
+    // `previewBase` blocks for the whole build, so the wait is otherwise a blank shell. The pill is
+    // gated on the iframe's FIRST load: once the preview is up, a build running in the background is
+    // the editor's business, not a banner over the author's page.
+    stubEventSource();
+    previewProgress.mockResolvedValue({ building: true, phase: 'media' });
+    render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    expect(await screen.findByText('Processing images…')).toBeInTheDocument();
+
+    fireEvent.load(await screen.findByTitle('Site preview'));
+    await waitFor(() => expect(screen.queryByText('Processing images…')).toBeNull());
   });
 
   it('names the pages the draft build could not render, and says the rest is current', async () => {

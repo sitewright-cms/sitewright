@@ -40,7 +40,12 @@ export function Tabs<T extends string>({
           aria-selected={active === t.id}
           onClick={() => onSelect(t.id)}
           className={`waves-effect inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
-            active === t.id ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+            active === t.id
+              ? `${gradientSurface} font-bold`
+              : // An INACTIVE tab is still a control the user has to read to navigate, so it gets the
+                // secondary-text pair rather than the muted one — on this frosted, translucent panel
+                // the lighter slate sat close to the surface it floats over.
+                'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
           }`}
         >
           {t.icon}

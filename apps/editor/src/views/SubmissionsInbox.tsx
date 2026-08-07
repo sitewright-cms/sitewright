@@ -117,10 +117,10 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                   onClick={() => setOpenId(open ? null : s.id)}
                 >
                   {!formId && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">{forms[s.formId]?.name ?? s.formId}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{forms[s.formId]?.name ?? s.formId}</span>
                   )}{!formId && ' '}
                   <span className="text-slate-700 dark:text-slate-200">{summary.slice(0, 80)}</span>
-                  <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{new Date(s.createdAt).toLocaleString()}</span>
+                  <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">{new Date(s.createdAt).toLocaleString()}</span>
                 </button>
                 {/* ★ Gated on THIS ROW's state, not on the aggregate count. Keying it off the count
                     put a Resend beside every row the moment any one of them failed — one click on a
@@ -172,7 +172,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
             </li>
           );
         })}
-        {items.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No submissions yet.</li>}
+        {items.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No submissions yet.</li>}
       </ul>
     </div>
   );

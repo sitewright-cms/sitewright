@@ -278,7 +278,7 @@ export function PublishBar({
               }}
               className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
-              <Link2 className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              <Link2 className="h-4 w-4 text-slate-500 dark:text-slate-400" />
               Preview share links…
             </button>
           </div>
@@ -307,8 +307,10 @@ export function PublishBar({
               title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
               aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
               className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
+                // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
+                // label. -700 carries the same "there is something to deploy" green at 5.2:1.
                 dirty
-                  ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                  ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
                   : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
               }`}
             >
@@ -323,7 +325,7 @@ export function PublishBar({
               onClick={() => setMenuOpen((o) => !o)}
               className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
                 dirty
-                  ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                  ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
                   : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
               }`}
             >
@@ -334,7 +336,7 @@ export function PublishBar({
 
         {menuOpen && (
           <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
-            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Deploy to…</p>
+            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Deploy to…</p>
             {targets.map((t) => (
               <button
                 key={t.id}
@@ -346,7 +348,7 @@ export function PublishBar({
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.protocol === 'local' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{t.name}</span>
-                  <span className="block truncate text-[11px] text-slate-400 dark:text-slate-500">{targetWhere(t)}</span>
+                  <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{targetWhere(t)}</span>
                 </span>
               </button>
             ))}

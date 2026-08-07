@@ -81,12 +81,12 @@ export function DeployTargetWizard({ project }: { project: Project }) {
     <div className="mt-1 flex flex-col gap-4">
       {targets.length > 0 && (
         <div>
-          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Your deploy targets</h4>
+          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Your deploy targets</h4>
           <ul className="flex flex-col gap-1.5">
             {targets.map((t) => (
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
-                <span className="text-xs text-slate-400 dark:text-slate-500">{whereLabel(t)}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t)}</span>
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}
@@ -127,7 +127,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
       )}
 
       <div>
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Add a deploy target</h4>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Add a deploy target</h4>
         <div className="grid grid-cols-2 gap-2">
           {TYPES.filter((ty) => !(ty.protocol === 'local' && hasLocal)).map((ty) => {
             const Icon = ty.icon;
@@ -143,13 +143,13 @@ export function DeployTargetWizard({ project }: { project: Project }) {
                 </span>
                 <span className="flex flex-col">
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{ty.title}</span>
-                  <span className="text-xs text-slate-400 dark:text-slate-500">{ty.blurb}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{ty.blurb}</span>
                 </span>
               </button>
             );
           })}
         </div>
-        {hasLocal && <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">Local Hosting is already configured — edit it above.</p>}
+        {hasLocal && <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Local Hosting is already configured — edit it above.</p>}
       </div>
 
       {dialog}

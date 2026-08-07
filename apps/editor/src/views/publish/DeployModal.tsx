@@ -146,12 +146,12 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
           {isGit ? (
             <>
               Committing the published site to <span className="font-medium text-slate-700 dark:text-slate-200">{target.branch}</span>
-              <span className="text-slate-400 dark:text-slate-500"> · {target.repoUrl}</span>
+              <span className="text-slate-500 dark:text-slate-400"> · {target.repoUrl}</span>
             </>
           ) : (
             <>
               Uploading the published site to <span className="font-medium text-slate-700 dark:text-slate-200">{target.protocol.toUpperCase()}@{target.host}</span>
-              {target.remoteDir ? <span className="text-slate-400 dark:text-slate-500"> · {target.remoteDir}</span> : null}
+              {target.remoteDir ? <span className="text-slate-500 dark:text-slate-400"> · {target.remoteDir}</span> : null}
             </>
           )}
         </p>
@@ -168,7 +168,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
               {...(pct !== undefined ? { value: status.index, max: status.total } : {})}
               aria-label="Deploy progress"
             />
-            {status.file && <p className="truncate font-mono text-[11px] text-slate-400 dark:text-slate-500" title={status.file}>{status.file}</p>}
+            {status.file && <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={status.file}>{status.file}</p>}
             {showRunningDiag && (
               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false)}</p>
             )}

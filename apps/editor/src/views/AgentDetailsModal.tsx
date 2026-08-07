@@ -22,7 +22,7 @@ const PRE = 'mt-1.5 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-[11px
 function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; settingsPath: string; planNote: string }) {
   return (
     <>
-      <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 dark:text-slate-300 marker:text-slate-400 dark:marker:text-slate-500">
+      <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 dark:text-slate-300 marker:text-slate-500 dark:marker:text-slate-400">
         <li>{settingsPath}</li>
         <li>
           Paste this remote MCP server URL and give the connector a name: <code className={CODE}>{mcpUrl}</code>
@@ -36,7 +36,7 @@ function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; setti
           the changes appear live.
         </li>
       </ol>
-      <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">{planNote}</p>
+      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">{planNote}</p>
     </>
   );
 }
@@ -127,7 +127,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
         )}
         {tab === 'cli' && (
           <div className="space-y-2.5 text-sm text-slate-600 dark:text-slate-300">
-            <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-400 dark:marker:text-slate-500">
+            <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-500 dark:marker:text-slate-400">
               <li>
                 Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
                 <code className={CODE}>npx @sitewright/cli</code>).
@@ -151,7 +151,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
                 for headless/SSH).
               </li>
             </ol>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Where the block goes: Cursor <code className={CODE}>~/.cursor/mcp.json</code> · Windsurf{' '}
               <code className={CODE}>~/.codeium/windsurf/mcp_config.json</code> · Gemini CLI{' '}
               <code className={CODE}>~/.gemini/settings.json</code> · VS Code <code className={CODE}>.vscode/mcp.json</code>.
@@ -221,7 +221,7 @@ export function AgentDetailsModal({
           re-authorize to reconnect.
         </p>
         {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
-        {items === null && !error && <p className="text-sm text-slate-400 dark:text-slate-500">Loading…</p>}
+        {items === null && !error && <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>}
 
         {/* No connections → lead with the connect guide so owners know they CAN add an agent. */}
         {empty && <ConnectGuide emphasized />}
@@ -246,7 +246,7 @@ export function AgentDetailsModal({
                   </span>
                 ))}
               </div>
-              <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+              <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                 {c.role} · last active {when(c.lastUsedAt)} · connected {when(c.connectedAt)}
               </div>
             </div>

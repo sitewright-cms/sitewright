@@ -101,7 +101,7 @@ const CATEGORIES = {
 
 type CategoryName = keyof typeof CATEGORIES;
 
-const GENERIC: Category = { exts: [], color: 'text-slate-400 dark:text-slate-500', glyph: PAGE };
+const GENERIC: Category = { exts: [], color: 'text-slate-500 dark:text-slate-400', glyph: PAGE };
 
 /** Lowercase extension of a file NAME (real stored name), or '' when there is none. */
 function extOf(name: string): string {

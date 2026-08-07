@@ -88,20 +88,20 @@ export function ImageDialog({
           </div>
           <div>
             <label className={label} htmlFor="sw-img-alt">
-              Alt text <span className="font-normal text-slate-400">(described for screen readers / SEO)</span>
+              Alt text <span className="font-normal text-slate-500 dark:text-slate-400">(described for screen readers / SEO)</span>
             </label>
             <input id="sw-img-alt" type="text" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="A short description of the image" className={field} />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
               <label className={label} htmlFor="sw-img-w">
-                Width <span className="font-normal text-slate-400">(px, optional)</span>
+                Width <span className="font-normal text-slate-500 dark:text-slate-400">(px, optional)</span>
               </label>
               <input id="sw-img-w" type="number" min={1} value={width} onChange={(e) => setWidth(e.target.value)} placeholder="auto" className={field} />
             </div>
             <div className="flex-1">
               <label className={label} htmlFor="sw-img-h">
-                Height <span className="font-normal text-slate-400">(px, optional)</span>
+                Height <span className="font-normal text-slate-500 dark:text-slate-400">(px, optional)</span>
               </label>
               <input id="sw-img-h" type="number" min={1} value={height} onChange={(e) => setHeight(e.target.value)} placeholder="auto" className={field} />
             </div>

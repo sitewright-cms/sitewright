@@ -15,6 +15,28 @@ const LAYER = '[data-sw-fixed-bg]';
 const fixedSection = (id: string): string =>
   `<section id="${id}" style="background-image:url('/t.png');background-attachment:fixed">x</section>`;
 
+// jsdom reports every box as 0x0, which makes the whole clipping path untestable — so give it a
+// viewport and let each host declare where it sits. That is enough to exercise the real geometry code
+// (the arithmetic is plain subtraction); the browser-level truth is measured separately.
+function stubViewport(width = 1000, height = 800): void {
+  Object.defineProperty(document.documentElement, 'clientWidth', { value: width, configurable: true });
+  Object.defineProperty(document.documentElement, 'clientHeight', { value: height, configurable: true });
+}
+function placeAt(el: HTMLElement, top: number, height: number, width = 1000): void {
+  el.getBoundingClientRect = () =>
+    ({
+      top,
+      bottom: top + height,
+      left: 0,
+      right: width,
+      width,
+      height,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
 describe('fixed-background emulation (jsdom)', () => {
   // jsdom has no rAF. Shim it on the real timer queue rather than a fake one: the runtime's rescan is
   // driven by a MutationObserver microtask, and a faked clock torn down mid-flight leaves that
@@ -92,6 +114,110 @@ describe('fixed-background emulation (jsdom)', () => {
     document.body.insertAdjacentHTML('beforeend', '<p>unrelated</p>');
     await settle();
     expect(document.querySelectorAll(LAYER)).toHaveLength(2);
+  });
+
+  it('★ keeps re-clipping after a rescan — the frozen clip-path regression', async () => {
+    // Measured in the live editor before the fix: the clip-path froze at its very first value and never
+    // moved again, because collect() identified an adopted host by its background-image — which adoption
+    // itself had set to `none`. One rescan (and any live page mutates within milliseconds) emptied the
+    // tracked pairs, so every later scroll re-clipped nothing at all.
+    stubViewport();
+    document.body.innerHTML = fixedSection('hero');
+    const host = document.getElementById('hero')!;
+    placeAt(host, 100, 400);
+    run();
+    const layer = host.querySelector(LAYER) as HTMLElement;
+    expect(layer.style.clipPath).toBe('inset(100px 0px 300px 0px)');
+
+    // Something else on the page mutates — a runtime enhancing markup, the editor's own overlay.
+    document.body.insertAdjacentHTML('beforeend', '<span>tick</span>');
+    await settle();
+
+    // …and then the author scrolls.
+    placeAt(host, -50, 400);
+    window.dispatchEvent(new Event('scroll'));
+    await settle();
+    expect(layer.style.clipPath, 'the clip froze: the host was dropped from the tracked pairs').toBe(
+      'inset(0px 0px 450px 0px)',
+    );
+  });
+
+  it('★ RELEASES the host when a media query hands the background back to `scroll`', async () => {
+    // "No fixed backgrounds on mobile" is the single most common responsive rule there is, and the
+    // device modes walk straight into it. Without a release the host keeps the desktop treatment at
+    // mobile width AND loses its own background, because adoption had blanked it.
+    stubViewport();
+    document.body.innerHTML = fixedSection('hero');
+    const host = document.getElementById('hero')!;
+    placeAt(host, 0, 400);
+    run();
+    expect(host.querySelector(LAYER)).not.toBeNull();
+
+    // The width changes and the media query wins. No DOM mutation happens, so only a re-clip runs.
+    host.style.backgroundAttachment = 'scroll';
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+
+    expect(host.querySelector(LAYER), 'the emulation layer outlived the fixed attachment').toBeNull();
+    expect(host.style.backgroundImage, 'the host never got its own background back').toContain('/t.png');
+    expect(host.style.isolation).toBe('');
+  });
+
+  it('★ re-adopts when the host asks for a fixed background again', async () => {
+    stubViewport();
+    document.body.innerHTML = fixedSection('hero');
+    const host = document.getElementById('hero')!;
+    placeAt(host, 0, 400);
+    run();
+    host.style.backgroundAttachment = 'scroll';
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+    expect(host.querySelector(LAYER)).toBeNull();
+
+    // Back to a desktop width: the rule that flipped it off no longer applies.
+    host.style.backgroundAttachment = 'fixed';
+    document.body.insertAdjacentHTML('beforeend', '<span>tick</span>'); // any rescan trigger
+    await settle();
+    expect(host.querySelector(LAYER), 'the host was never re-adopted').not.toBeNull();
+    expect(host.style.backgroundImage).toBe('none');
+  });
+
+  it('restores an INLINE background exactly as authored when released', async () => {
+    stubViewport();
+    document.body.innerHTML = `<section id="hero" style="background-image:url('/inline.png');background-attachment:fixed;isolation:auto">x</section>`;
+    const host = document.getElementById('hero')!;
+    placeAt(host, 0, 400);
+    run();
+    host.style.backgroundAttachment = 'scroll';
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+    expect(host.style.backgroundImage).toContain('/inline.png');
+    expect(host.style.isolation).toBe('auto');
+  });
+
+  it('carries the host border-radius into the clip', async () => {
+    stubViewport();
+    // The four LONGHANDS, not the `border-radius` shorthand: jsdom does not expand the shorthand, and
+    // the runtime reads the longhands (which is what a browser resolves them to anyway).
+    document.body.innerHTML =
+      `<section id="hero" style="background-image:url('/t.png');background-attachment:fixed;` +
+      `border-top-left-radius:24px;border-top-right-radius:24px;border-bottom-right-radius:24px;border-bottom-left-radius:24px">x</section>`;
+    const host = document.getElementById('hero')!;
+    placeAt(host, 100, 400);
+    run();
+    const layer = host.querySelector(LAYER) as HTMLElement;
+    // Without this a rounded section paints square background corners.
+    expect(layer.style.clipPath).toBe('inset(100px 0px 300px 0px round 24px 24px 24px 24px)');
+  });
+
+  it('hides the layer while its host is off-screen', async () => {
+    stubViewport();
+    document.body.innerHTML = fixedSection('hero');
+    const host = document.getElementById('hero')!;
+    placeAt(host, 900, 400); // below a 800px-tall viewport
+    run();
+    const layer = host.querySelector(LAYER) as HTMLElement;
+    expect(layer.style.display).toBe('none');
   });
 
   it('does not adopt the same element twice across repeated scans', async () => {

@@ -74,7 +74,7 @@ function LibraryCard({ card, accent }: { card: LibraryCardDef; accent: Accent })
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-bold text-slate-700 dark:text-slate-200">{card.title}</span>
-        <span className="mt-0.5 block text-xs leading-snug text-slate-400 dark:text-slate-500">{card.blurb}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-slate-500 dark:text-slate-400">{card.blurb}</span>
       </span>
     </button>
   );
@@ -306,12 +306,12 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
         <SearchField ariaLabel={`Search ${section.label}`} autoFocus placeholder="Search…" value={query} onChange={setQuery} />
         <div className="min-h-0 flex-1 overflow-auto pr-1">
           {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+            <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No matches.</p>
           ) : (
             <ItemList items={filtered} preview={section.preview ?? false} />
           )}
         </div>
-        <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{filtered.length} items · click to copy the snippet.</p>
+        <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{filtered.length} items · click to copy the snippet.</p>
       </div>
     </Modal>
   );
@@ -379,12 +379,12 @@ function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: strin
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+          <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No matches.</p>
         ) : (
           <IconGrid items={shown} />
         )}
       </div>
-      <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+      <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
         {filtered.length} items{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
       </p>
     </div>
@@ -535,12 +535,12 @@ function IconsTab({ blurb }: { blurb: string }) {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">No matches.</p>
+          <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No matches.</p>
         ) : (
           <IconGrid items={items} />
         )}
       </div>
-      <p className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+      <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
         {filtered.length} icons{overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · {weight} · click to copy the snippet.
       </p>
     </div>
@@ -562,7 +562,7 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
           className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
         >
           {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
-          <span className="w-full truncate text-center text-[10px] text-slate-400 dark:text-slate-500">
+          <span className="w-full truncate text-center text-[10px] text-slate-500 dark:text-slate-400">
             {copiedId === it.id ? 'Copied!' : it.name}
           </span>
         </button>

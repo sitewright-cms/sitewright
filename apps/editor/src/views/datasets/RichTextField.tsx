@@ -544,13 +544,13 @@ function SwatchPopover({
       <p className="mb-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{title}</p>
       {brand.length > 0 && (
         <>
-          <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Brand</p>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Brand</p>
           <div className="mb-2 flex flex-wrap gap-1">
             {brand.map((s) => (
               <Swatch key={s.cls} label={s.label} style={swatchStyle(s.cls, s.value)} char={previewChar} onClick={() => onPick(s.cls)} />
             ))}
           </div>
-          <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Standard</p>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Standard</p>
         </>
       )}
       <div className="flex flex-wrap gap-1">

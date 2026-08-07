@@ -159,7 +159,7 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
         {localeFlag(loc)}
       </span>
       <span className="font-mono uppercase">{loc}</span>
-      {loc === defaultLocale && <span className="ml-1 font-normal text-slate-400 dark:text-slate-500">(main)</span>}
+      {loc === defaultLocale && <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">(main)</span>}
     </th>
   ));
 
@@ -169,10 +169,10 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
       <tr key={`reserved-${k.key}`} className="bg-indigo-50/40 dark:bg-indigo-500/10">
         <td className="align-top">
           <div className="flex items-center gap-1.5 px-1 py-2" title="Built-in key — cannot be renamed">
-            <Lock aria-hidden className="h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
+            <Lock aria-hidden className="h-3 w-3 shrink-0 text-slate-500 dark:text-slate-400" />
             <span className="min-w-0">
               <code className="block truncate font-mono text-xs text-slate-600 dark:text-slate-300">{k.key}</code>
-              <span className="block truncate text-[11px] text-slate-400 dark:text-slate-500">{k.label}</span>
+              <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{k.label}</span>
             </span>
           </div>
         </td>
@@ -215,7 +215,7 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
                 aria-pressed={!locked}
                 title={locked ? 'Edit key (renaming may break references)' : 'Lock key'}
                 onClick={() => toggleEditKey(row.id)}
-                className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'}`}
+                className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'}`}
               >
                 {locked ? <Pencil className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
               </button>
@@ -238,7 +238,7 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
             type="button"
             aria-label="Remove translation"
             onClick={() => remove(row.id)}
-            className="rounded-lg p-2 text-slate-400 dark:text-slate-500 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+            className="rounded-lg p-2 text-slate-500 dark:text-slate-400 transition hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -257,13 +257,13 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
             type="button"
             onClick={() => toggleGroup(id)}
             aria-expanded={open}
-            className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 transition hover:text-slate-600 dark:hover:text-slate-300"
+            className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-300"
           >
             <ChevronRight aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
-            {label} <span className="font-normal normal-case text-slate-400 dark:text-slate-500">({count})</span>
+            {label} <span className="font-normal normal-case text-slate-500 dark:text-slate-400">({count})</span>
           </button>
         ) : (
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</span>
         )}
       </td>
     </tr>

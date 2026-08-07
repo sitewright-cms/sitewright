@@ -139,7 +139,7 @@ const LINK_ICON = rowIcon(
 // isn't hovered (`[&:not(:hover)]`), so a direct hover's white-chip (`hover:bg-white text-slate-900`)
 // always wins regardless of Tailwind's variant ordering.
 const ROW_ACTION =
-  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
+  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
 export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
@@ -673,7 +673,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       aria-selected={loc === currentLocale}
                       title={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}
                       className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
-                        loc === currentLocale ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
+                        loc === currentLocale ? gradientSurface : `text-slate-600 dark:text-slate-300 ${gradientHover}`
                       }`}
                       onClick={() => setCurrentLocale(loc)}
                     >
@@ -812,7 +812,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   >
                     <span
                       aria-hidden
-                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'} group-hover:text-white`}
+                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} group-hover:text-white`}
                       title={isLink ? 'Navigation placeholder' : isHome ? 'Home page' : 'Page'}
                     >
                       {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
@@ -820,7 +820,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     {/* The MENU label (nav title falls back to the page title), rendered clean — icon/flag
                         + text for a rich label (placeholder or a page with a rich menu title), never raw markup. */}
                     <span className="truncate font-medium"><PlaceholderLabel name={p.nav?.title || p.title} /></span>
-                    <span className="truncate text-sm text-slate-400 dark:text-slate-500 group-hover:text-white/90">
+                    <span className="truncate text-sm text-slate-500 dark:text-slate-400 group-hover:text-white/90">
                       {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
                     </span>
                     {isLink && (
@@ -909,7 +909,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   </li>
               );
             })}
-            {pages.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No pages yet.</li>}
+            {pages.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No pages yet.</li>}
           </ul>
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">
@@ -932,7 +932,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     autoFocus
                     required
                   />
-                  <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
                   </span>
                 </div>
@@ -951,7 +951,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       <option key={p.id} value={fullPath(p)}>{p.title}</option>
                     ))}
                   </datalist>
-                  <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Internal <code>/path</code>, external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
                   </span>
                   <label className="mt-2 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -960,7 +960,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   </label>
                 </div>
                 <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Show in</legend>
+                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Show in</legend>
                   <div className="flex flex-wrap gap-4">
                     {NAV_SLOTS.map((slot) => (
                       <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">

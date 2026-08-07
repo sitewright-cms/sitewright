@@ -858,7 +858,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Centered between the switch and the right-side actions: the page path + status badges.
   const titleExtra = (
     <>
-      <span className="hidden truncate text-xs text-slate-400 dark:text-slate-500 sm:inline">{settings.path}</span>
+      <span className="hidden truncate text-xs text-slate-500 dark:text-slate-400 sm:inline">{settings.path}</span>
       {settings.status === 'draft' && (
         <span className="rounded-lg bg-slate-200/80 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">draft</span>
       )}
@@ -971,7 +971,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
                   Fork template into page
                 </button>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Forking copies the template’s code into this page and removes the reference, so you
                   can customize it freely.
                 </p>
@@ -987,7 +987,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
                   Fork the code for this language
                 </button>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Forking copies the current layout into this language so you can customize it
                   independently of the others.
                 </p>

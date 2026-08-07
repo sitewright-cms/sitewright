@@ -35,6 +35,7 @@ import { Tabs } from './ui/Tabs';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
+import { secretFieldProps } from '../lib/secret-field';
 
 /** System-settings sections grouped into tabs (declared before the component so the id union is stable). */
 const SETTINGS_TABS = [
@@ -641,7 +642,7 @@ export function InstanceSettings() {
           {logoPreview ? (
             <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200 dark:ring-white/10" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-400 dark:text-slate-500 ring-1 ring-slate-200 dark:ring-white/10">none</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-white/10">none</span>
           )}
           <label className="cursor-pointer text-xs font-medium text-indigo-700 dark:text-indigo-400 hover:underline">
             {/* "Replace" only when a logo is actually present (a pending remove → logoDraft===null → "Upload"). */}
@@ -659,7 +660,7 @@ export function InstanceSettings() {
               Remove
             </button>
           )}
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">PNG, JPEG, or WebP · ≤ ~512 KB</span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">PNG, JPEG, or WebP · ≤ ~512 KB</span>
         </div>
         {logoError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{logoError}</p>}
       </fieldset>
@@ -707,7 +708,7 @@ export function InstanceSettings() {
           >
             <span aria-hidden className="text-lg">{localeFlag(newProjectLocale)}</span>
             <span className="font-medium text-slate-800 dark:text-slate-100">{localeLabel(newProjectLocale)}</span>
-            <span className="font-mono text-xs uppercase text-slate-400 dark:text-slate-500">{newProjectLocale}</span>
+            <span className="font-mono text-xs uppercase text-slate-500 dark:text-slate-400">{newProjectLocale}</span>
             <span className="ml-auto text-xs text-indigo-600 dark:text-indigo-400">Change</span>
           </button>
         </label>
@@ -722,7 +723,7 @@ export function InstanceSettings() {
             <option value="webp">WebP</option>
             <option value="avif">AVIF + WebP</option>
           </select>
-          <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
             AVIF is smaller on supporting browsers, at ~2× the generated files. Projects can override this in Website settings.
           </span>
         </label>
@@ -785,6 +786,7 @@ export function InstanceSettings() {
                 className={field}
                 aria-label="SMTP password"
                 type="password"
+                {...secretFieldProps}
                 value={password}
                 placeholder={hasPassword ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPassword(e.target.value)}
@@ -845,7 +847,7 @@ export function InstanceSettings() {
                 ) : (
                   <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
                 ))}
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Both act on the SAVED settings, not what is on screen. “Test connection” sends nothing;
                 “Send test message” sends real mail — blank recipient means your own address.
               </span>
@@ -878,6 +880,7 @@ export function InstanceSettings() {
                 className={field}
                 aria-label="hCaptcha secret"
                 type="password"
+                {...secretFieldProps}
                 value={hcSecret}
                 placeholder={hasSecret ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setHcSecret(e.target.value)}
@@ -910,6 +913,7 @@ export function InstanceSettings() {
                 className={field}
                 aria-label="Unsplash access key"
                 type="password"
+                {...secretFieldProps}
                 value={unsplashKey}
                 placeholder={hasUnsplash ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setUnsplashKey(e.target.value)}
@@ -927,6 +931,7 @@ export function InstanceSettings() {
                 className={field}
                 aria-label="Pexels API key"
                 type="password"
+                {...secretFieldProps}
                 value={pexelsKey}
                 placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setPexelsKey(e.target.value)}
@@ -975,26 +980,27 @@ export function InstanceSettings() {
               <input className={field} aria-label="AI model" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={modelPlaceholder(aiProvider)} />
             </label>
             {aiProvider === 'openrouter' && (
-              <p className="col-span-2 -mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+              <p className="col-span-2 -mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                 Uses openrouter.ai — pick a model that supports tool/function calling (and vision if you want the agent to see screenshots).
               </p>
             )}
             {aiProvider === 'openai' && (
               <label className="col-span-2 flex flex-col text-xs text-slate-500 dark:text-slate-400">
-                Base URL <span className="text-slate-400 dark:text-slate-500">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
+                Base URL <span className="text-slate-500 dark:text-slate-400">(public host only; use SW_AI_BASE_URL env for a local endpoint)</span>
                 <input className={field} aria-label="AI base URL" type="url" value={aiBaseUrl} onChange={(e) => setAiBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
               </label>
             )}
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               API key
-              <input className={field} aria-label="AI API key" type="password" value={aiKey} placeholder={aiHasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setAiKey(e.target.value)} />
+              <input className={field} aria-label="AI API key" type="password"
+                {...secretFieldProps} value={aiKey} placeholder={aiHasKey ? '•••••• (leave blank to keep)' : ''} onChange={(e) => setAiKey(e.target.value)} />
             </label>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Default per-project monthly token cap <span className="text-slate-400 dark:text-slate-500">(0 = unlimited)</span>
+              Default per-project monthly token cap <span className="text-slate-500 dark:text-slate-400">(0 = unlimited)</span>
               <input className={field} aria-label="Default per-project monthly token cap" type="number" min={0} value={aiProjectLimit} onChange={(e) => setAiProjectLimit(e.target.value)} />
             </label>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Max output tokens / reply <span className="text-slate-400 dark:text-slate-500">(blank = default 8192)</span>
+              Max output tokens / reply <span className="text-slate-500 dark:text-slate-400">(blank = default 8192)</span>
               <input
                 className={field}
                 aria-label="Max output tokens per reply"
@@ -1314,7 +1320,7 @@ export function InstanceSettings() {
             }}
             onBlur={() => setBackupRetention((v) => Math.max(1, Math.min(100, Math.round(v) || DEFAULT_BACKUP_RETENTION)))}
           />
-          <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">(saved with “Save settings”)</span>
+          <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">(saved with “Save settings”)</span>
         </label>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">

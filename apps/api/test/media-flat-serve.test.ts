@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { sql } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
@@ -80,6 +81,68 @@ describe('flat media delivery route (/media/<slug>/<id>-<name>)', () => {
     expect(served.headers['content-disposition']).toContain('attachment');
     expect(served.headers['x-content-type-options']).toBe('nosniff');
     expect(served.headers['content-type']).not.toContain('javascript');
+  });
+
+  it('★ a WEBFONT stored as kind:file is still served as a FONT, with CORS', async () => {
+    // The site importer stores a scraped webfont as `kind:'file'`. Dispatching on kind alone dropped
+    // those into the download branch — octet-stream, attachment, no `access-control-allow-origin` —
+    // and the SANDBOXED page-editor preview is an opaque origin, where a font fetch without ACAO
+    // simply fails. The text then rendered in the fallback family while the published site and the
+    // whole-site preview (which serve the copies under `_assets/`) looked correct: the exact
+    // "different fonts in the page preview" report.
+    // Reproduce the IMPORT shape: media pulled in by URL is classified by content-type, and a webfont
+    // is neither image nor video, so it lands in the generic file branch — `kind:'file'`, real font
+    // bytes on disk, name still `.woff2`. The upload route can't produce that (it sniffs magic bytes
+    // and promotes a real font), so store it as a font and then reclassify the record the way an
+    // import would have written it in the first place.
+    const { t, projectId } = await setup('font@flat.test');
+    const bytes = Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(64)]); // a woff2 by its magic bytes
+    const { item } = await upload(projectId, t, 'corsiva.woff2', 'font/woff2', bytes);
+    expect(item.kind).toBe('font');
+    const storedName = item.url.split('/').pop()!.slice(item.id.length + 1);
+    await db.run(
+      sql`update content set data = ${JSON.stringify({
+        kind: 'file',
+        id: item.id,
+        filename: 'corsiva.woff2',
+        folder: '',
+        bytes: bytes.length,
+        contentType: 'font/woff2',
+        storedName,
+        url: item.url,
+      })} where kind = 'media' and entity_id = ${item.id}`,
+    );
+
+    const served = await app.inject({ method: 'GET', url: item.url });
+    expect(served.statusCode).toBe(200);
+    expect(served.headers['content-type']).toBe('font/woff2');
+    expect(served.headers['content-disposition']).toBeUndefined(); // never a download
+    expect(served.headers['access-control-allow-origin']).toBe('*');
+    expect(served.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(served.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('SECURITY: the extension only NOMINATES a font — the bytes decide', async () => {
+    // Without a magic-byte check at serve time, anyone with upload permission could park arbitrary
+    // content at a public, CORS-open, inline-served URL on the platform's own origin just by naming
+    // the file `.woff2`. The store path already refuses to call such a file a font; the serve path
+    // must not be more credulous.
+    const { t, projectId } = await setup('notfont@flat.test');
+    const { item } = await upload(projectId, t, 'payload.woff2', 'font/woff2', Buffer.from('not a font at all'));
+    expect(item.kind).toBe('file');
+    const served = await app.inject({ method: 'GET', url: item.url });
+    expect(served.headers['content-type']).toBe('application/octet-stream');
+    expect(served.headers['content-disposition']).toContain('attachment');
+    expect(served.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('SECURITY: the font branch does not widen anything else', async () => {
+    // An .html upload is still download-only, exactly as before.
+    const { t, projectId } = await setup('html@flat.test');
+    const { item } = await upload(projectId, t, 'page.html', 'text/html', Buffer.from('<script>alert(1)</script>'));
+    const served = await app.inject({ method: 'GET', url: item.url });
+    expect(served.headers['content-type']).toBe('application/octet-stream');
+    expect(served.headers['content-disposition']).toContain('attachment');
   });
 
   it('a raw-uploaded PDF (kind:file) is served INLINE application/pdf under a frame-safe CSP', async () => {

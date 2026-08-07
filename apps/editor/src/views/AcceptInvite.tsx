@@ -133,7 +133,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
           {acceptError ? acceptError : `Adding you ${target}.`}
         </p>
         {acceptError && (
-          <p className="mb-3 text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="mb-3 text-[11px] text-slate-500 dark:text-slate-400">
             Accepting requires being signed in as <strong>{peek.email}</strong>. Sign out and use the invite link again with that email.
           </p>
         )}

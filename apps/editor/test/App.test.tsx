@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
@@ -301,6 +301,43 @@ describe('the selector is released only by the project it is actually waiting on
       staleCallbacks.forEach((cb) => cb?.());
     });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'SiteWright' })).toBeNull());
+  });
+
+  describe('agent-authorization return (?next=/oauth/authorize)', () => {
+    const AUTHORIZE = '/oauth/authorize?client_id=cc&response_type=code&code_challenge=x&code_challenge_method=S256';
+    let replace: ReturnType<typeof vi.fn>;
+    let originalSearch: string;
+
+    beforeEach(() => {
+      originalSearch = window.location.search;
+      replace = vi.fn();
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...window.location, search: `?next=${encodeURIComponent(AUTHORIZE)}`, replace },
+      });
+    });
+    afterEach(() => {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...window.location, search: originalSearch, replace: window.location.replace },
+      });
+    });
+
+    it('★ does NOT follow the return URL while signed OUT — that is the redirect loop', async () => {
+      // /oauth/authorize bounces an unauthenticated agent to `/?next=…`. Following that link with no
+      // session gets bounced right back, and the pair chase each other as fast as the browser allows:
+      // the login window reloads in a blur until the rate limiter stops it. Signed out, we stay put.
+      me.mockRejectedValue(new Error('401'));
+      render(<App />);
+      await screen.findByText('LOGIN');
+      await waitFor(() => expect(setUnauthorizedHandler).toHaveBeenCalled());
+      expect(replace).not.toHaveBeenCalled();
+    });
+
+    it('follows the return URL once there IS a session', async () => {
+      render(<App />);
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(AUTHORIZE));
+    });
   });
 
   it('locks the Enter path while a project is opening', async () => {

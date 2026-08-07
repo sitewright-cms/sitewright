@@ -176,10 +176,10 @@ export function SearchableSelect({
         onKeyDown={onKeyDown}
         className={`${glassInput} flex items-center justify-between gap-2 text-left font-normal ${className ?? ''}`}
       >
-        <span className={`truncate ${selected ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>
+        <span className={`truncate ${selected ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>
           {selected ? selected.label : placeholder}
         </span>
-        <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+        <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
       </button>
 
       {open &&
@@ -212,7 +212,7 @@ export function SearchableSelect({
             </div>
             <ul id={listId} role="listbox" aria-label={ariaLabel} className="overflow-y-auto p-1" style={{ maxHeight: pos.maxHeight }}>
               {filtered.length === 0 ? (
-                <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">No matches.</li>
+                <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">No matches.</li>
               ) : (
                 filtered.map((opt, i) => (
                   <li key={opt.value} role="option" aria-selected={opt.value === value}>

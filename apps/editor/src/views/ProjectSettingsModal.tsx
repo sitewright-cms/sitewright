@@ -104,7 +104,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Slug <span className="text-slate-400 dark:text-slate-500">— the site&rsquo;s URL-safe identifier</span>
+            Slug <span className="text-slate-500 dark:text-slate-400">— the site&rsquo;s URL-safe identifier</span>
           </span>
           <input
             aria-label="Project slug"
@@ -113,7 +113,7 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
             onChange={(e) => setSlugInput(e.target.value)}
             placeholder={project.slug}
           />
-          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500'}`}>
+          <span className={`text-[11px] ${slugChanged && (!slugValid || slugTaken) ? 'text-rose-500 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
             {slugChanged && !slugValid
               ? 'Use only lowercase letters, numbers, and single hyphens, e.g. my-agency-site.'
               : slugTaken

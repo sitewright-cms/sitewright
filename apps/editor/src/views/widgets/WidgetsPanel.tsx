@@ -34,7 +34,7 @@ function WidgetGallery() {
   }, []);
 
   if (error) return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Couldn’t load the widget catalog.</p>;
-  if (!widgets) return <p className="p-4 text-sm text-slate-400 dark:text-slate-500">Loading widgets…</p>;
+  if (!widgets) return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Loading widgets…</p>;
   if (widgets.length === 0) return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">No widgets are available.</p>;
 
   return (
@@ -63,7 +63,7 @@ function WidgetGallery() {
               </div>
               <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{w.description}</p>
               {w.datasets.length > 0 && (
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Editable data:{' '}
                   {w.datasets.map((d, i) => (
                     <span key={d.slug}>

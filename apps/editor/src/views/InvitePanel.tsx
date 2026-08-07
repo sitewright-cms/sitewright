@@ -111,7 +111,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
             >
               <span className="text-slate-600 dark:text-slate-300">
                 {inv.email}
-                <span className="ml-2 text-[11px] text-slate-400 dark:text-slate-500">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                <span className="ml-2 text-[11px] text-slate-500 dark:text-slate-400">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
               </span>
               <button
                 aria-label={`Revoke invite for ${inv.email}`}

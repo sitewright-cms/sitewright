@@ -190,7 +190,7 @@ export function FormsManager({ project }: { project: Project }) {
       <div className={`flex flex-col gap-5 ${glassCard} p-5`}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">
-            Edit form <code className="text-xs text-slate-400 dark:text-slate-500">{draft.id}</code>
+            Edit form <code className="text-xs text-slate-500 dark:text-slate-400">{draft.id}</code>
           </h3>
           <button className={ghostButton} onClick={() => setDraft(null)}>
             Cancel
@@ -371,7 +371,7 @@ export function FormsManager({ project }: { project: Project }) {
               </option>
             ))}
           </select>
-          <span className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
             Only modes enabled by an instance admin are listed.
           </span>
         </label>
@@ -400,7 +400,7 @@ export function FormsManager({ project }: { project: Project }) {
             disabled={!isPlatformRoutedMode(draft.mode)}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-400 dark:text-slate-500' : ''}>
+          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-500 dark:text-slate-400' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
             {!isPlatformRoutedMode(draft.mode) &&
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
@@ -467,7 +467,7 @@ export function FormsManager({ project }: { project: Project }) {
                 >
                   {f.name}
                 </button>
-                <code className="text-xs text-slate-400 dark:text-slate-500 group-hover:text-white/80">{f.id}</code>
+                <code className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/80">{f.id}</code>
                 <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">{f.fields.length} fields</span>
                 {f.hcaptcha && (
                   <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
@@ -504,7 +504,7 @@ export function FormsManager({ project }: { project: Project }) {
             </li>
           );
         })}
-        {forms.length === 0 && <li className="text-sm text-slate-400 dark:text-slate-500">No forms yet. Create one, then add a Form block to a page.</li>}
+        {forms.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No forms yet. Create one, then add a Form block to a page.</li>}
       </ul>
 
       <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>

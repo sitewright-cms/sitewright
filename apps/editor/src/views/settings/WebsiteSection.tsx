@@ -19,9 +19,8 @@ import {
 } from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
-import { SectionHelp } from '../ui/SectionHelp';
 import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, ShieldAlert, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, ShieldAlert, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
@@ -33,7 +32,7 @@ import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel, toggleInput } from '../../theme';
-import { cardStagger, cardVariants } from './motion';
+import { cardStagger } from './motion';
 
 /** "logo-pulse" → "Logo pulse" for the preloader picker option labels. */
 const effectLabel = (s: string): string => {
@@ -73,12 +72,15 @@ const CW_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 export function WebsiteSection({
   form,
   patch,
+  saveNow,
   projectId,
   onLocalesChanged,
   onReloadSettings,
 }: {
   form: SettingsForm;
   patch: Patch;
+  /** Apply a change AND persist it in the same gesture — for a code editor's own Save / Ctrl+S. */
+  saveNow: (p: Partial<SettingsForm>) => void;
   projectId: string;
   /** Bubbles a language add/remove up so the pages list refreshes. */
   onLocalesChanged?: () => void;
@@ -177,14 +179,14 @@ export function WebsiteSection({
           />
         </div>
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Site data → {'{{ website.data }}'} (edited here, in preview + publish)
           </label>
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setDataOpen(true)} className={ghostButton}>
               Edit data
             </button>
-            <span className="text-xs text-slate-400 dark:text-slate-500">{dataSummary(form.data)}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{dataSummary(form.data)}</span>
           </div>
         </div>
       </GlassCard>
@@ -297,7 +299,7 @@ export function WebsiteSection({
             <label className="mt-3 flex items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className={fieldLabel}>Solid backdrop behind your code</span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
                   Fills the screen with the page background so nothing shows through while loading. Leave
                   it off if your overlay draws its own (or is meant to be see-through).
                 </span>
@@ -315,7 +317,7 @@ export function WebsiteSection({
         </div>
         <label className="mt-4 flex flex-col">
           <span className={fieldLabel}>Sticky header</span>
-          <span className="mb-1 block text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">
             Fix the top navigation to the viewport so it stays visible as the page scrolls. Add the{' '}
             <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> class to your first section (or an inner
             element, so a full-bleed hero bleeds under the header) to clear the fixed bar.
@@ -341,7 +343,7 @@ export function WebsiteSection({
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Back-to-top button</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               Shows a chevron-up button after the first screen of scrolling that scrolls back to the top.
             </span>
           </span>
@@ -357,7 +359,7 @@ export function WebsiteSection({
         <label className="mt-4 flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>ScrollSpy (highlight section in view)</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               Highlights the main &amp; mobile nav link whose in-page section (a link to{' '}
               <code className="rounded bg-slate-700/60 px-1">#about</code> → a{' '}
               <code className="rounded bg-slate-700/60 px-1">&lt;section id=&quot;about&quot;&gt;</code>) is scrolled
@@ -421,7 +423,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable themes</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               Adds a dark variant of your theme. When off, the site stays single-theme.
             </span>
           </span>
@@ -447,7 +449,7 @@ export function WebsiteSection({
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
-            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
               The starting theme. A <code>{'{{sw-theme-toggle}}'}</code> in your nav lets visitors override it.
             </span>
           </label>
@@ -492,7 +494,7 @@ export function WebsiteSection({
             </label>
           )}
         </div>
-        <span className="mt-2 block text-[11px] text-slate-400 dark:text-slate-500">
+        <span className="mt-2 block text-[11px] text-slate-500 dark:text-slate-400">
           Sets the content container width used by every section, so the whole site aligns to one width.
         </span>
       </GlassCard>
@@ -516,7 +518,7 @@ export function WebsiteSection({
               <option value="webp">WebP only</option>
               <option value="avif">AVIF + WebP</option>
             </select>
-            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
               AVIF is smaller on supporting browsers, at ~2× the generated files. <code>{'{{sw-image}}'}</code> then emits a{' '}
               <code>&lt;picture&gt;</code> with an AVIF source.
             </span>
@@ -533,7 +535,7 @@ export function WebsiteSection({
               value={form.imageUploadCap}
               onChange={(e) => patch({ imageUploadCap: e.target.value })}
             />
-            <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
               Caps the retained ORIGINAL (→ WebP when it bites). Blank keeps full resolution; delivery tops out at 2400px either way.
             </span>
           </label>
@@ -558,7 +560,7 @@ export function WebsiteSection({
           >
             <Trash2 className="mr-1.5 inline h-3.5 w-3.5" /> {pruning ? 'Clearing…' : 'Clear thumbnail cache'}
           </button>
-          {pruneMsg && <span className="text-xs text-slate-400 dark:text-slate-500">{pruneMsg}</span>}
+          {pruneMsg && <span className="text-xs text-slate-500 dark:text-slate-400">{pruneMsg}</span>}
         </div>
       </GlassCard>
 
@@ -568,7 +570,7 @@ export function WebsiteSection({
           title="Critical CSS"
           language="css"
           value={form.criticalCss}
-          onChange={(v) => patch({ criticalCss: v })}
+          onChange={(v) => saveNow({ criticalCss: v })}
           placeholder=".hero { ... }"
         />
       </GlassCard>
@@ -578,7 +580,7 @@ export function WebsiteSection({
           label="Raw HTML injected into <head> (analytics, meta)"
           title="Head HTML"
           value={form.head}
-          onChange={(v) => patch({ head: v })}
+          onChange={(v) => saveNow({ head: v })}
           placeholder="<meta ... />"
         />
       </GlassCard>
@@ -588,73 +590,64 @@ export function WebsiteSection({
           label="Raw HTML injected after the page body (3rd-party scripts/widgets)"
           title="Scripts"
           value={form.scripts}
-          onChange={(v) => patch({ scripts: v })}
+          onChange={(v) => saveNow({ scripts: v })}
           placeholder="<script ... ></script>"
         />
       </GlassCard>
 
-      <motion.div variants={cardVariants} className="sm:col-span-2 mt-2">
-        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          Skeleton slots — shared Handlebars partials rendered around every page
-          <SectionHelp tip="Validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}." />
-        </h3>
-      </motion.div>
-
-      <GlassCard title="Main Navigation" icon={<PanelTop className="h-4 w-4" />}>
-        <CodeField
-          label="mainNav — desktop bar + mobile drawer, on every page"
-          title="Main Navigation"
-          hint={SLOT_HINT}
-          value={form.mainNav}
-          onChange={(v) => patch({ mainNav: v })}
-          starter={{ label: 'Insert the default navigation', code: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '' }}
-          placeholder={'<div class="navbar">{{ company.name }}</div>'}
-        />
-      </GlassCard>
-
-      <GlassCard title="Left sidebar" icon={<PanelLeft className="h-4 w-4" />}>
-        <CodeField
-          label="sidebarLeft — after the page body (position via classes)"
-          title="sidebarLeft partial"
-          hint={SLOT_HINT}
-          value={form.sidebarLeft}
-          onChange={(v) => patch({ sidebarLeft: v })}
-          placeholder={'<div class="menu">…</div>'}
-        />
-      </GlassCard>
-
-      <GlassCard title="Right sidebar" icon={<PanelRight className="h-4 w-4" />}>
-        <CodeField
-          label="sidebarRight — after the page body (position via classes)"
-          title="sidebarRight partial"
-          hint={SLOT_HINT}
-          value={form.sidebarRight}
-          onChange={(v) => patch({ sidebarRight: v })}
-          placeholder={'<div class="menu">…</div>'}
-        />
-      </GlassCard>
-
-      <GlassCard title="Footer" icon={<PanelBottom className="h-4 w-4" />}>
-        <CodeField
-          label="footer — below body + sidebars"
-          title="footer partial"
-          hint={SLOT_HINT}
-          value={form.footer}
-          onChange={(v) => patch({ footer: v })}
-          starter={{ label: 'Insert the default footer', code: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' }}
-          placeholder={'<div class="footer">© {{ company.name }}</div>'}
-        />
-      </GlassCard>
-
-      <GlassCard title="Bottom" icon={<ArrowDownToLine className="h-4 w-4" />}>
-        <CodeField
-          label="bottom — after the footer (global modals, schema.org microdata)"
-          title="bottom partial"
-          hint={SLOT_HINT}
-          value={form.bottom}
-          onChange={(v) => patch({ bottom: v })}
-          placeholder={'<div class="modal">…</div>'}
-        />
+      {/* ONE card, not five loose ones. The five slots are a single concept — the chrome rendered
+          around every page — and as separate cards in a two-column grid they interleaved with the
+          unrelated sections after them, so the group had a heading but no edges. */}
+      <GlassCard
+        title="Skeleton slots"
+        icon={<PanelTop className="h-4 w-4" />}
+        tooltip="Shared Handlebars partials rendered around every page. Validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}."
+        wide
+      >
+        <div className="flex flex-col gap-2">
+          <CodeField
+            label="mainNav — desktop bar + mobile drawer, on every page"
+            title="Main Navigation"
+            hint={SLOT_HINT}
+            value={form.mainNav}
+            onChange={(v) => saveNow({ mainNav: v })}
+            starter={{ label: 'Insert the default navigation', code: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '' }}
+            placeholder={'<div class="navbar">{{ company.name }}</div>'}
+          />
+          <CodeField
+            label="sidebarLeft — after the page body (position via classes)"
+            title="sidebarLeft partial"
+            hint={SLOT_HINT}
+            value={form.sidebarLeft}
+            onChange={(v) => saveNow({ sidebarLeft: v })}
+            placeholder={'<div class="menu">…</div>'}
+          />
+          <CodeField
+            label="sidebarRight — after the page body (position via classes)"
+            title="sidebarRight partial"
+            hint={SLOT_HINT}
+            value={form.sidebarRight}
+            onChange={(v) => saveNow({ sidebarRight: v })}
+            placeholder={'<div class="menu">…</div>'}
+          />
+          <CodeField
+            label="footer — below body + sidebars"
+            title="footer partial"
+            hint={SLOT_HINT}
+            value={form.footer}
+            onChange={(v) => saveNow({ footer: v })}
+            starter={{ label: 'Insert the default footer', code: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' }}
+            placeholder={'<div class="footer">© {{ company.name }}</div>'}
+          />
+          <CodeField
+            label="bottom — after the footer (global modals, schema.org microdata)"
+            title="bottom partial"
+            hint={SLOT_HINT}
+            value={form.bottom}
+            onChange={(v) => saveNow({ bottom: v })}
+            placeholder={'<div class="modal">…</div>'}
+          />
+        </div>
       </GlassCard>
 
       <GlassCard
@@ -675,7 +668,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Publish security.txt</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               Adds <code>/.well-known/security.txt</code> on publish, telling researchers how to reach you.
             </span>
           </span>
@@ -705,7 +698,7 @@ export function WebsiteSection({
                   </option>
                 ))}
               </select>
-              <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
                 Preferred: a page with your contact form. It keeps working for as long as the site is up, and
                 submissions are stored here even if the notification email fails. Needs the Production URL above.
               </span>
@@ -714,7 +707,7 @@ export function WebsiteSection({
             <label className="flex items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className={fieldLabel}>Also publish the company phone</span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
                   From Corporate Identity. Needs a country code (e.g. +49 30 1234567) to be a valid <code>tel:</code> link.
                 </span>
               </span>
@@ -730,7 +723,7 @@ export function WebsiteSection({
             <label className="flex items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className={fieldLabel}>Also publish the company email</span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
                   From Corporate Identity. This file is public and machine-read — expect the address to be harvested
                   for spam.
                 </span>
@@ -764,7 +757,7 @@ export function WebsiteSection({
                   </option>
                 ))}
               </select>
-              <span className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
                 The file states an expiry date. It is recalculated from scratch on every publish, so republishing
                 always renews it.
               </span>
@@ -803,7 +796,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable shop</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               A front-end cart for static sites. When off, <code>{'{{sw-cart}}'}</code> /{' '}
               <code>{'{{sw-add-to-cart}}'}</code> render nothing.
             </span>
@@ -827,7 +820,7 @@ export function WebsiteSection({
             >
               <span className="min-w-0">
                 <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Shop settings</span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">Currency, labels, checkout channels</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Currency, labels, checkout channels</span>
               </span>
               <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                 <Pencil className="h-4 w-4" /> Edit
@@ -847,7 +840,7 @@ export function WebsiteSection({
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable consent manager</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
               A cookie banner that loads analytics / chatbots / embeds only after consent. Off by default — the
               banner appears on every page once you turn it on.
             </span>
@@ -871,13 +864,13 @@ export function WebsiteSection({
             >
               <span className="min-w-0">
                 <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Consent settings</span>
-                <span className="block text-[11px] text-slate-400 dark:text-slate-500">Banner, categories, third-party integrations</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Banner, categories, third-party integrations</span>
               </span>
               <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                 <Pencil className="h-4 w-4" /> Edit
               </span>
             </button>
-            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
               The banner appears automatically on every page. Any third-party <code>&lt;iframe&gt;</code> you paste
               (YouTube, Vimeo, Maps, Calendly…) is held click-to-load until consent. Add a “Cookie settings” re-open
               link anywhere with <code>&lt;a href=&quot;#sw-consent&quot;&gt;</code>.

@@ -351,7 +351,7 @@ export function AgentDrawer({
             <StatusPill status={status} label={statusLabel} />
           </div>
           {sessionTokens > 0 && (
-            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500" title="Total tokens used this session">
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" title="Total tokens used this session">
               {sessionTokens.toLocaleString()} tok
             </span>
           )}
@@ -388,7 +388,7 @@ export function AgentDrawer({
                   />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
-                    <span className="block text-xs text-slate-400 dark:text-slate-500">{hint}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
                   </span>
                 </label>
               ))}
@@ -402,7 +402,7 @@ export function AgentDrawer({
           <>
             <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
               {messages.length === 0 && (
-                <p className="mt-6 text-center text-sm text-slate-400 dark:text-slate-500">
+                <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   Ask me to change this page — e.g. “make the headline shorter” or “add a contact section”.
                 </p>
               )}
@@ -419,7 +419,7 @@ export function AgentDrawer({
                       {a.previewUrl ? (
                         <img src={a.previewUrl} alt={a.name ?? ''} className="h-8 w-8 rounded object-cover" />
                       ) : (
-                        <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500">
+                        <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400">
                           <FileText className="h-4 w-4" />
                         </span>
                       )}
@@ -427,7 +427,7 @@ export function AgentDrawer({
                       <button
                         type="button"
                         aria-label={`Remove ${a.name ?? 'attachment'}`}
-                        className="absolute right-0.5 top-0.5 rounded p-0.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300"
+                        className="absolute right-0.5 top-0.5 rounded p-0.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300"
                         onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
                       >
                         <X className="h-3 w-3" />
@@ -521,7 +521,7 @@ function StatusPill({ status, label }: { status: Status; label: string }) {
         {label}
       </span>
     );
-  return <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{label}</span>;
+  return <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>;
 }
 
 function MessageBubble({ msg }: { msg: ChatMsg }) {
@@ -568,9 +568,9 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
           ))}
         </ul>
       )}
-      {msg.text ? <ChatMarkdown text={msg.text} /> : msg.streaming ? <span className="text-slate-400 dark:text-slate-500">…</span> : null}
+      {msg.text ? <ChatMarkdown text={msg.text} /> : msg.streaming ? <span className="text-slate-500 dark:text-slate-400">…</span> : null}
       {msg.tokens != null && msg.tokens > 0 && !msg.streaming && (
-        <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{msg.tokens.toLocaleString()} tokens</div>
+        <div className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{msg.tokens.toLocaleString()} tokens</div>
       )}
     </div>
   );

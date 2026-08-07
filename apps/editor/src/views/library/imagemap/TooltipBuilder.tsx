@@ -69,13 +69,13 @@ export function TooltipBuilder({ blocks, projectId, onChange }: TooltipBuilderPr
                 </span>
                 <span className="text-slate-700 dark:text-slate-200">{blockLabel(block)}</span>
               </button>
-              <button type="button" aria-label="Move up" className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-100" disabled={index === 0} onClick={() => move(index, -1)}>
+              <button type="button" aria-label="Move up" className="px-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-100" disabled={index === 0} onClick={() => move(index, -1)}>
                 ↑
               </button>
-              <button type="button" aria-label="Move down" className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-100" disabled={index === blocks.length - 1} onClick={() => move(index, 1)}>
+              <button type="button" aria-label="Move down" className="px-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-100" disabled={index === blocks.length - 1} onClick={() => move(index, 1)}>
                 ↓
               </button>
-              <button type="button" aria-label="Remove block" className="px-1 text-slate-400 hover:text-rose-600" onClick={() => remove(index)}>
+              <button type="button" aria-label="Remove block" className="px-1 text-slate-500 dark:text-slate-400 hover:text-rose-600" onClick={() => remove(index)}>
                 ×
               </button>
             </div>

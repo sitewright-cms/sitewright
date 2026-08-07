@@ -25,9 +25,9 @@ export function SnippetShelf({ title, items, blurb }: { title: string; items: Li
         className="waves-effect flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left"
       >
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {title} <span className="font-normal text-slate-400 dark:text-slate-500">({items.length})</span>
+          {title} <span className="font-normal text-slate-500 dark:text-slate-400">({items.length})</span>
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="flex flex-col gap-2 border-t border-slate-200/70 p-3 dark:border-slate-700">

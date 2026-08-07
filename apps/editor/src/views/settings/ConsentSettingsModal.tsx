@@ -68,7 +68,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
           <label className="mt-3 flex items-center justify-between gap-3">
             <span className="min-w-0">
               <span className={fieldLabel}>Show “Reject all” button</span>
-              <span className="block text-[11px] text-slate-400 dark:text-slate-500">Recommended for GDPR — a one-click reject on the first layer.</span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">Recommended for GDPR — a one-click reject on the first layer.</span>
             </span>
             <input type="checkbox" role="switch" aria-label='Show "Reject all" button' className={toggleInput} checked={c.denyButton !== false} onChange={(e) => setConsent({ denyButton: e.target.checked ? undefined : false })} />
           </label>
@@ -76,7 +76,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Categories offered</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">“Strictly necessary” is always on. Uncheck a category to hide it from the preferences panel.</p>
+          <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">“Strictly necessary” is always on. Uncheck a category to hide it from the preferences panel.</p>
           <div className="flex flex-wrap gap-4">
             {CATS.map((cat) => (
               <label key={cat.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
@@ -89,7 +89,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Embedded content (videos, maps, …)</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
             Any third-party <code>&lt;iframe&gt;</code> you paste into a page is held behind an “Allow once / Always allow”
             placeholder until the visitor consents — nothing loads from the provider before then. Choose the category it
             falls into (override a single embed with <code>data-sw-consent=&quot;marketing&quot;</code>, or skip gating with{' '}
@@ -114,7 +114,7 @@ export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsF
 
         <div>
           <SubLabel>Third-party integrations</SubLabel>
-          <p className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Each loads ONLY after its category is consented; the site’s Content-Security-Policy is widened automatically to allow just these.</p>
+          <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">Each loads ONLY after its category is consented; the site’s Content-Security-Policy is widened automatically to allow just these.</p>
           <ConsentIntegrationsEditor rows={c.integrations ?? []} onChange={(integrations) => setConsent({ integrations: integrations.length ? integrations : undefined })} />
         </div>
 

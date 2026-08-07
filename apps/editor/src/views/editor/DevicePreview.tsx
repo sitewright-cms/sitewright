@@ -48,35 +48,39 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
     return () => ro.disconnect();
   }, [fluid]);
 
-  // Fluid (large desktop): no simulation — the preview simply fills the box.
-  // Hooks above run unconditionally; only the render branches.
-  if (width === null) {
-    return (
-      <div data-testid="device-viewport" className="h-full w-full">
-        {children}
-      </div>
-    );
-  }
-
   // `avail` of null (pre-measure) or 0 (hidden / jsdom) → no scaling: never
   // scale(0) or divide by zero.
-  const scale = avail !== null && avail > 0 && avail < width ? avail / width : 1;
+  const scale = !fluid && avail !== null && avail > 0 && avail < width ? avail / width : 1;
+
+  // ONE element tree for every device, fluid included — the branches differ only in STYLE.
+  //
+  // This used to render two shapes: fluid returned a single div wrapping `children`, fixed-width
+  // returned a host div with the scaled box NESTED inside it. React reconciles by position, so
+  // switching between them moved the preview <iframe> between tree depths → unmount + REMOUNT →
+  // the iframe re-fetched `/preview/<slug>/<token>`. Preview tokens expire, so a switch made after
+  // the token lapsed refetched a dead one and the pane stuck on the route's "Preview expired" 404
+  // until a manual reload. Keeping the depth constant keeps the same iframe element (and its loaded
+  // document) alive across every device switch, so nothing is refetched at all.
   return (
-    <div ref={hostRef} className="relative h-full overflow-hidden">
+    <div ref={hostRef} className={fluid ? 'h-full w-full' : 'relative h-full overflow-hidden'}>
       <div
         data-testid="device-viewport"
-        className="absolute left-1/2 top-0"
-        style={{
-          width: `${width}px`,
-          // The scaled-down box must still FILL the row visually: pre-scale height
-          // by 1/scale so height × scale = 100%.
-          height: `${100 / scale}%`,
-          // Subtle but correct: with `left: 50%`, translateX(-50%) centers the
-          // unscaled box, and scaling about `top center` shrinks it symmetrically —
-          // so it STAYS centered at every scale. Don't reorder the functions.
-          transform: `translateX(-50%) scale(${scale})`,
-          transformOrigin: 'top center',
-        }}
+        className={fluid ? 'h-full w-full' : 'absolute left-1/2 top-0'}
+        style={
+          fluid
+            ? undefined
+            : {
+                width: `${width}px`,
+                // The scaled-down box must still FILL the row visually: pre-scale height
+                // by 1/scale so height × scale = 100%.
+                height: `${100 / scale}%`,
+                // Subtle but correct: with `left: 50%`, translateX(-50%) centers the
+                // unscaled box, and scaling about `top center` shrinks it symmetrically —
+                // so it STAYS centered at every scale. Don't reorder the functions.
+                transform: `translateX(-50%) scale(${scale})`,
+                transformOrigin: 'top center',
+              }
+        }
       >
         {children}
       </div>

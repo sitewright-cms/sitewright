@@ -1,4 +1,5 @@
 import { useState, type RefObject } from 'react';
+import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 import { PreviewSkeleton } from './PreviewSkeleton';
 
 interface PreviewPaneProps {
@@ -23,11 +24,10 @@ interface PreviewPaneProps {
  * components' inlined JS. Loading via `src` lets the document use its OWN response
  * CSP — the endpoint serves it under `Content-Security-Policy: sandbox
  * allow-scripts`, an OPAQUE origin, so component scripts run (true WYSIWYG) yet
- * cannot reach the editor's `window`, cookies, or session. The iframe's own `sandbox`
- * is belt-and-suspenders and must MATCH the response CSP's token list, or the stricter
- * of the two silently wins: `allow-popups allow-popups-to-escape-sandbox` are what let an
- * outbound `target="_blank"` link open at all (and land un-sandboxed, at the target's real
- * origin, rather than opaque and broken). `allow-same-origin` must NEVER be added.
+ * cannot reach the editor's `window`, cookies, or session. The iframe's own `sandbox` is
+ * belt-and-suspenders and must MATCH the response CSP's token list, or the stricter of the two
+ * silently wins — so both come from the SHARED {@link PREVIEW_SANDBOX_ATTR}/`PREVIEW_SANDBOX_CSP`
+ * pair rather than two hand-kept literals. `allow-same-origin` must NEVER be added.
  */
 export function PreviewPane({ src, loading, error, title = 'Live preview', iframeRef }: PreviewPaneProps) {
   // The iframe paints blank-white while it fetches/renders its document. Cover it with an
@@ -50,7 +50,7 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
         ref={iframeRef}
         title={title}
         aria-label={title}
-        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        sandbox={PREVIEW_SANDBOX_ATTR}
         src={src || 'about:blank'}
         onLoad={() => {
           if (src) setEverLoaded(true);

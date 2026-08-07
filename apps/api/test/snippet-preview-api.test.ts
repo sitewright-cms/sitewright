@@ -1,3 +1,4 @@
+import { PREVIEW_SANDBOX_CSP } from '@sitewright/schema';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +50,7 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
     expect(res.headers['content-type']).toMatch(/text\/html/);
     // Exact value (not just "contains sandbox") so a future broadening to allow-same-origin fails here.
     // allow-forms so an embedded form's submit fires; its endpoint is the dry run
-    expect(res.headers['content-security-policy']).toBe('sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox');
+    expect(res.headers['content-security-policy']).toBe(PREVIEW_SANDBOX_CSP);
     expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
     expect(res.body.startsWith('<!doctype html>')).toBe(true);
     expect(res.body).toContain('<h1>Site</h1>'); // {{ company.name }} → the project name

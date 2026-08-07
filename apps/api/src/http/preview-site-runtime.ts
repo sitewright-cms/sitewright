@@ -33,14 +33,26 @@ export const PREVIEW_SITE_RUNTIME_JS = `(function () {
       Object.defineProperty(window, 'scrollX', { configurable: true, get: function () { return b.scrollLeft; } });
       Object.defineProperty(window, 'pageXOffset', { configurable: true, get: function () { return b.scrollLeft; } });
     } catch (e) { /* non-configurable in this engine: leave the native accessors */ }
-    window.scrollTo = function (a, y) {
-      if (a && typeof a === 'object') { b.scrollTop = a.top || 0; b.scrollLeft = a.left || 0; }
-      else { b.scrollLeft = +a || 0; b.scrollTop = +y || 0; }
+    // Forward to the BODY's own scroll methods rather than assigning .scrollTop, so the caller's
+    // \`behavior\` survives. Assigning scrollTop is always an instant jump — which is why the platform
+    // back-to-top button (window.scrollTo({top:0,behavior:'smooth'})) snapped to the top in preview
+    // while easing on the published site. Omitted \`behavior\` stays 'auto', i.e. whatever the body's
+    // CSS scroll-behavior says (previewScrollCss mirrors the published html{scroll-behavior:smooth}),
+    // so BOTH surfaces resolve an un-annotated programmatic scroll the same way.
+    var call = function (method, a, y) {
+      var opts = a && typeof a === 'object'
+        ? { top: a.top, left: a.left, behavior: a.behavior || 'auto' }
+        : { left: +a || 0, top: +y || 0, behavior: 'auto' };
+      // Engines without the options form of Element.scrollTo/scrollBy fall back to the instant
+      // assignment this bridge has always done — degraded easing, never a dead button.
+      try { b[method](opts); } catch (e) {
+        var dx = opts.left || 0, dy = opts.top || 0;
+        if (method === 'scrollBy') { b.scrollLeft += dx; b.scrollTop += dy; }
+        else { b.scrollLeft = dx; b.scrollTop = dy; }
+      }
     };
-    window.scrollBy = function (a, y) {
-      if (a && typeof a === 'object') { b.scrollTop += a.top || 0; b.scrollLeft += a.left || 0; }
-      else { b.scrollLeft += +a || 0; b.scrollTop += +y || 0; }
-    };
+    window.scrollTo = function (a, y) { call('scrollTo', a, y); };
+    window.scrollBy = function (a, y) { call('scrollBy', a, y); };
     b.addEventListener('scroll', function () { window.dispatchEvent(new Event('scroll')); }, { passive: true });
   }
   function report() {
@@ -79,8 +91,14 @@ export const PREVIEW_SCROLL_BRIDGE_JS = `(function(){
       Object.defineProperty(window,'scrollX',{configurable:true,get:function(){return b.scrollLeft;}});
       Object.defineProperty(window,'pageXOffset',{configurable:true,get:function(){return b.scrollLeft;}});
     }catch(e){}
-    window.scrollTo=function(a,y){ if(a&&typeof a==='object'){b.scrollTop=a.top||0;b.scrollLeft=a.left||0;} else {b.scrollLeft=+a||0;b.scrollTop=+y||0;} };
-    window.scrollBy=function(a,y){ if(a&&typeof a==='object'){b.scrollTop+=a.top||0;b.scrollLeft+=a.left||0;} else {b.scrollLeft+=+a||0;b.scrollTop+=+y||0;} };
+    // Forward to the body's own scroll methods so a caller's \`behavior\` survives — see the same
+    // note in PREVIEW_SITE_RUNTIME_JS. Assigning .scrollTop can only ever jump.
+    var call=function(m,a,y){
+      var o=a&&typeof a==='object'?{top:a.top,left:a.left,behavior:a.behavior||'auto'}:{left:+a||0,top:+y||0,behavior:'auto'};
+      try{b[m](o);}catch(e){var dx=o.left||0,dy=o.top||0;if(m==='scrollBy'){b.scrollLeft+=dx;b.scrollTop+=dy;}else{b.scrollLeft=dx;b.scrollTop=dy;}}
+    };
+    window.scrollTo=function(a,y){call('scrollTo',a,y);};
+    window.scrollBy=function(a,y){call('scrollBy',a,y);};
     b.addEventListener('scroll',function(){window.dispatchEvent(new Event('scroll'));},{passive:true});
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',bridge);}else{bridge();}

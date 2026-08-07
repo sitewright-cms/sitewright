@@ -412,6 +412,78 @@ async function copyMedia(
  */
 
 /**
+ * Embed hosts whose player REQUIRES first-party storage, so it cannot run in a preview at all.
+ *
+ * A preview document is sandboxed WITHOUT `allow-same-origin` (that is the whole security boundary —
+ * see `PREVIEW_SANDBOX_TOKENS`), and sandbox flags are inherited by nested frames. The embed therefore
+ * lands on an OPAQUE origin where `localStorage` throws, and these players bail before instantiating.
+ *
+ * MEASURED, first-party control page vs the same page sandboxed (Chromium 1223):
+ *   - no sandbox                         → player ✓ video ✓ storage OK
+ *   - `sandbox="allow-scripts"`          → player ✗ video ✗ storage SecurityError
+ *   - `+ allow-same-origin`              → player ✓ video ✓ storage OK
+ *   - CSP `sandbox allow-scripts`        → player ✗ video ✗ storage SecurityError
+ * `youtube-nocookie.com` behaves identically — it is NOT a workaround.
+ *
+ * Deliberately narrow: Google Maps and OpenStreetMap embeds DO render sandboxed (measured), so a map
+ * keeps working and is not swapped. Only add a host here after measuring it fail.
+ */
+const STORAGE_BOUND_EMBED_HOSTS: ReadonlyArray<{ match: RegExp; label: string }> = [
+  { match: /^(?:www\.)?youtube(?:-nocookie)?\.com$/i, label: 'YouTube' },
+  { match: /^(?:www\.)?youtu\.be$/i, label: 'YouTube' },
+  { match: /^player\.vimeo\.com$/i, label: 'Vimeo' },
+];
+
+/** The watch URL a visitor should be sent to for an embed URL (`/embed/<id>` → a real watch page). */
+function watchUrlFor(src: string): string {
+  const m = /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{5,20})/i.exec(src);
+  if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
+  const v = /^https?:\/\/player\.vimeo\.com\/video\/(\d+)/i.exec(src);
+  if (v) return `https://vimeo.com/${v[1]}`;
+  return src;
+}
+
+/**
+ * PREVIEW-ONLY: replace an embed that cannot run sandboxed with a placeholder that OPENS IT.
+ *
+ * The author still sees the embed's real box (same `class`/`style`, so layout is unchanged) plus a
+ * button that opens the video in a new tab — `allow-popups allow-popups-to-escape-sandbox` are in the
+ * preview sandbox, so that lands un-sandboxed at the real origin and plays. Previously the frame just
+ * painted blank, with nothing to explain why. The PUBLISHED site is untouched and embeds normally.
+ */
+export function replacePreviewStorageEmbeds(html: string): string {
+  return html.replace(/<iframe\b[^>]*>\s*<\/iframe>/gi, (tag) => {
+    // `data-src` too: the platform lazy-loads third-party embeds, so the URL is usually NOT in `src`.
+    const src = (/\bsrc="([^"]*)"/i.exec(tag)?.[1] || /\bdata-src="([^"]*)"/i.exec(tag)?.[1] || '').replace(/&amp;/g, '&');
+    let host: string;
+    try {
+      host = new URL(src).host;
+    } catch {
+      return tag; // relative / malformed / about:blank — not a third-party embed
+    }
+    const hit = STORAGE_BOUND_EMBED_HOSTS.find((h) => h.match.test(host));
+    if (!hit) return tag;
+    // These come from the ALREADY-serialized page HTML (so `&` and `"` are entity-escaped). Escape the
+    // raw `<`/`>` a serializer may leave in an attribute value before re-emitting into text/attributes;
+    // NOT `&`, which is already encoded — re-escaping would double-encode it.
+    const esc = (v: string): string => v.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const title = esc(/\btitle="([^"]*)"/i.exec(tag)?.[1] || `${hit.label} video`);
+    const cls = esc(/\bclass="([^"]*)"/i.exec(tag)?.[1] || '');
+    const style = esc(/\bstyle="([^"]*)"/i.exec(tag)?.[1] || '');
+    // The watch URL is rebuilt from an ID we matched ourselves, so it cannot carry author markup.
+    const watch = watchUrlFor(src).replace(/"/g, '&quot;');
+    return (
+      `<div${cls ? ` class="${cls}"` : ''} style="${style};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;text-align:center;padding:1.25rem;box-sizing:border-box;background:var(--color-base-200,#f3f4f6);color:var(--color-base-content,#4b5563);border:1px dashed var(--color-base-300,#d1d5db);border-radius:var(--radius-box,1rem)">` +
+      `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg>` +
+      `<strong style="font-weight:600">${title}</strong>` +
+      `<span style="font-size:.8125rem;opacity:.8;max-width:38ch">${hit.label} can't play inside the sandboxed preview — its player needs first-party storage. It plays normally on the published site.</span>` +
+      `<a href="${watch}" target="_blank" rel="noopener noreferrer" style="font-size:.8125rem;font-weight:600;color:inherit;text-decoration:underline">Watch on ${hit.label} \u2197</a>` +
+      `</div>`
+    );
+  });
+}
+
+/**
  * PREVIEW-ONLY: replace a self-hosted PDF `<iframe>` with a static placeholder card. Chromium refuses to
  * instantiate its built-in PDF viewer inside the sandboxed (`sandbox allow-scripts`) preview frame
  * (`ERR_BLOCKED_BY_CLIENT`), so the real iframe would show the browser's "blocked" page in the editor
@@ -1211,7 +1283,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const relativized = relativizeInternalLinks(texRebased, siteRoot);
         // PREVIEW only: a self-hosted PDF <iframe> can't render in the sandboxed preview frame (Chromium
         // blocks its PDF viewer there) — swap it for a static placeholder. Publish keeps the real viewer.
-        const portableHtml = previewMode ? replacePreviewPdfEmbeds(relativized) : relativized;
+        // …and likewise an embed whose player needs first-party storage (YouTube/Vimeo): the opaque
+        // sandbox origin stops it instantiating at all, so it would paint an unexplained blank box.
+        const portableHtml = previewMode
+          ? replacePreviewStorageEmbeds(replacePreviewPdfEmbeds(relativized))
+          : relativized;
         // When the consent manager is enabled, HOLD every cross-origin author `<iframe>` (move its `src`
         // to `data-sw-consent-src`) so nothing third-party loads until consent — the consent runtime then
         // hydrates it (placeholder Allow once / Always allow). Consent off → iframes load normally (their

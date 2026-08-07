@@ -292,7 +292,13 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       // on :root for the published site, where html scrolls). `--sw-header-h` is 0 unless a sticky
       // header set it, so this is inert for a static-header preview.
       'scroll-padding-top:var(--sw-header-h,0px);' +
-      'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}'
+      'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}' +
+      // The published site eases every un-annotated programmatic scroll and anchor jump via
+      // `html{scroll-behavior:smooth}` (base-css). That rule is INERT here — html is not the scroller —
+      // so the preview snapped where the real site glides. Mirror it onto the actual scroll container,
+      // under the same reduced-motion opt-out, so both surfaces resolve `behavior:'auto'` identically.
+      // (The bridge's own state RESTORES pass `behavior:'instant'` explicitly, so they stay immediate.)
+      '\n@media (prefers-reduced-motion:no-preference){body{scroll-behavior:smooth}}'
     : '';
   // Sticky/fixed top-header CSS. Emitted here so the offset is correct at FIRST PAINT (no layout
   // shift). A STATIC header still gets the `--sw-header-h` token (it is the published "how tall is the

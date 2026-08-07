@@ -65,6 +65,19 @@ injectWorkspacePackages: true
 # keeps `pnpm audit` telling the truth, whereas an ignored GHSA silently outlives
 # the advisory that justified it.
 overrides:
+  # ── CORRECTNESS, not advisories ──
+  # CodeMirror requires exactly ONE copy of @codemirror/state and @codemirror/view in the tree; two
+  # copies produce mismatched nominal types (an EditorState from 6.7.1 is not assignable to one from
+  # 6.6.0) and, worse, a silently broken editor at runtime, because plugin/facet identity is
+  # per-instance. The Dependabot batch raised the DIRECT ranges while transitive deps kept resolving
+  # the older versions, so the tree carried both — main had one version of each, this batch made it
+  # two, and the editor typecheck failed exactly as CodeMirror's own docs warn it will.
+  # Pin the whole family together; bump these as a set, never individually.
+  "@codemirror/state": 6.7.1
+  "@codemirror/view": 6.43.7
+  "@codemirror/language": 6.12.4
+
+  # ── Advisory remediation (see the note above the block) ──
   "@esbuild-kit/core-utils>esbuild": ^0.25.0
   "@hono/node-server@<2.0.5": ^2.0.5
   "body-parser@<2.3.0": ^2.3.0

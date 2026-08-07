@@ -1446,10 +1446,19 @@ sample the original's real values with \`inspect_source\`, don't approximate to 
   (or \`loading-spinner\`/\`loading-bars\`) \`loading-lg\` spinner — so there's no empty flash and it matches the
   original's loading affordance. (Animated "dots" in an empty band are almost always THIS — a lazy embed's
   loading state — NOT a carousel.)
-- GALLERY = THUMBNAILS in the grid, FULL image in the lightbox. A lightbox photo grid renders each tile from
-  the THUMBNAIL variant (\`{{sw-image url size="md"}}\`, or a \`?size=md\` delivery URL) and links the FULL-SIZE
-  original for the lightbox view — never load full-res images into the grid. Match the original's grid STYLE
-  (a uniform fixed grid vs a masonry/justified layout — reproduce whichever it uses).
+- GALLERY = THUMBNAILS in the grid, FULL image in the lightbox — and there is ONE way to say it:
+  \`{{sw-image url lightbox=true sizes="(min-width:1024px) 25vw, (min-width:640px) 33vw, 100vw"}}\`.
+  That emits the \`<a href><img>\` pair a Lightbox item is made of: the anchor points at the LARGEST variant
+  (what the viewer opens) while the \`<img>\` keeps its own responsive srcset (what the grid paints).
+  ★ \`sizes\` IS THE THUMBNAIL CONTROL, and it is NOT optional here. Left off, it defaults to \`100vw\` —
+  the browser then believes each tile is full-width and downloads the LARGEST rung for every tile, so a
+  12-photo grid pulls ~12 full-size images. Describe the tile's real width per breakpoint instead.
+  ★ There is NO \`size=\` parameter on {{sw-image}} — a \`size="md"\` you may have seen is silently ignored
+  (it is not in the helper's hash), which is precisely how galleries ended up shipping full-res grids.
+  Hand-authoring the pair instead of using \`lightbox=true\` is a mistake worth avoiding: a hand-written
+  \`?size=xl\` href is only materialised by publish if something REFERENCES it, and the helper is what
+  records that reference. Match the original's grid STYLE (uniform fixed grid vs masonry/justified —
+  reproduce whichever it uses).
 - SHRINK/COLLAPSE HEADER — reproduce the original's ACTUAL scroll behaviour (OBSERVE it FIRST; don't assume).
   SCROLL THE LIVE ORIGINAL to learn what it does — a headless page: goto → window.scrollTo(0,700) →
   measure/screenshot the header. Then match it via \`website.effects.stickyHeader:"pinned"\` + criticalCss keyed

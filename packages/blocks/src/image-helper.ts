@@ -31,6 +31,21 @@ export interface SwImageOptions {
   fetchpriority?: 'high' | 'low' | 'auto';
   /** 'webp' (default: single <img>) or 'avif' (a <picture> with an AVIF source above the WebP one). */
   format?: 'webp' | 'avif';
+  /**
+   * Wrap the image in the `<a href><img>` pair a Lightbox gallery item is made of, with the href
+   * pointing at the LARGEST usable variant while the thumbnail keeps its own responsive srcset.
+   *
+   * Why this belongs at RENDER time rather than in the lightbox runtime: publish materializes only the
+   * `?size=` variants something actually references, so a runtime "swap the href up to xl" would link a
+   * file the build never generated (a 404 on the deployed site). Emitting the href here puts `xl` in
+   * the referenced set, so the build writes it.
+   *
+   * `sizes` should be set alongside this (e.g. `(min-width:640px) 33vw, 100vw`) so a grid thumbnail
+   * picks the `sm`/`md` rung instead of the `100vw` default's largest.
+   */
+  lightbox?: boolean;
+  /** Caption for the lightbox viewer (`data-caption` on the anchor). Only used with `lightbox`. */
+  caption?: string;
 }
 
 /**
@@ -126,18 +141,28 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
     ? ` style="background-image:url('${safePlaceholder}');background-size:cover;background-repeat:no-repeat"`
     : '';
 
+  // Gallery item: the anchor carries the FULL-detail variant (what the viewer opens), the <img> keeps
+  // its responsive srcset (what the grid paints). `data-full` is what the lightbox reads first, so an
+  // authored href is never second-guessed at runtime.
+  const galleryWrap = (markup: string): string => {
+    if (!opts.lightbox) return markup;
+    const full = `${base}?size=${largest}`;
+    const cap = opts.caption ? ` data-caption="${escapeAttr(opts.caption)}"` : '';
+    return `<a href="${full}" data-full="${full}"${cap}>${markup}</a>`;
+  };
+
   if (opts.format === 'avif') {
     const avifSrcset = usable.map((s) => `${base}?size=${s}&format=avif ${descriptor(s)}w`).join(', ');
-    return (
+    return galleryWrap(
       '<picture>' +
-      `<source type="image/avif" srcset="${avifSrcset}" sizes="${sizesAttr}">` +
-      `<source type="image/webp" srcset="${webpSrcset}" sizes="${sizesAttr}">` +
-      `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${cls}${lqip}>` +
-      '</picture>'
+        `<source type="image/avif" srcset="${avifSrcset}" sizes="${sizesAttr}">` +
+        `<source type="image/webp" srcset="${webpSrcset}" sizes="${sizesAttr}">` +
+        `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${cls}${lqip}>` +
+        '</picture>',
     );
   }
-  return (
+  return galleryWrap(
     `<img src="${imgSrc}" srcset="${webpSrcset}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
-    `loading="${loading}" decoding="async"${fp}${cls}${lqip}>`
+      `loading="${loading}" decoding="async"${fp}${cls}${lqip}>`,
   );
 }

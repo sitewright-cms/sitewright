@@ -45,13 +45,19 @@ export const ANIMATION_EFFECTS: readonly string[] = [
 
 // Initial (pre-reveal) transform per effect. An unknown/empty effect simply
 // falls back to the base opacity fade — graceful, never broken.
+// TRAVEL: the fade-* offsets were 2rem, which reads as a twitch rather than motion at typical section
+// sizes — the entrance was easily missed on a first scroll-through. 4rem is far enough to register as
+// an arrival while still landing inside the reveal window (the trigger fires once any part of the
+// element crosses the line, so a larger offset cannot leave content parked off-screen). slide-* stay at
+// 100% (already a full self-width traverse) and flip-* at 100deg (a rotation has no travel to grow).
 const EFFECT_TRANSFORMS: ReadonlyArray<readonly [string, string]> = [
-  ['fade-up', 'translate3d(0,2rem,0)'],
-  ['fade-down', 'translate3d(0,-2rem,0)'],
-  ['fade-right', 'translate3d(-2rem,0,0)'],
-  ['fade-left', 'translate3d(2rem,0,0)'],
-  ['zoom-in', 'scale3d(.6,.6,.6)'],
-  ['zoom-out', 'scale3d(1.2,1.2,1.2)'],
+  ['fade-up', 'translate3d(0,4rem,0)'],
+  ['fade-down', 'translate3d(0,-4rem,0)'],
+  ['fade-right', 'translate3d(-4rem,0,0)'],
+  ['fade-left', 'translate3d(4rem,0,0)'],
+  // Zoom is travel in the depth axis: .6→.45 and 1.2→1.35 widen the same way the fades do.
+  ['zoom-in', 'scale3d(.45,.45,.45)'],
+  ['zoom-out', 'scale3d(1.35,1.35,1.35)'],
   ['slide-up', 'translate3d(0,100%,0)'],
   ['slide-down', 'translate3d(0,-100%,0)'],
   ['slide-right', 'translate3d(-100%,0,0)'],

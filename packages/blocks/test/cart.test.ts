@@ -327,3 +327,31 @@ describe('resolveShopChannels', () => {
     expect(resolveShopChannels({ currency: { decimals: 2 } }, ep)).toEqual({ currency: { decimals: 2 } });
   });
 });
+
+describe('the drawer reveals itself on the FIRST item only', () => {
+  it('opens when the cart was empty, via a hoisted openDrawer()', () => {
+    // Adding the first item used to give only a pulse on a tab most first-time shoppers never
+    // noticed — the click looked like it did nothing. Opening once teaches where the cart is.
+    expect(CART_JS).toContain('var wasEmpty=items.length===0');
+    expect(CART_JS).toContain('if(wasEmpty){openDrawer();}');
+    // A function DECLARATION, so it is hoisted above add()'s call site.
+    expect(CART_JS).toContain('function openDrawer()');
+  });
+
+  it('does NOT interrupt subsequent adds — the pulse still carries them', () => {
+    // The trigger is the cart having BEEN empty, not a once-per-session flag, so browsing stays
+    // uninterrupted from the second item on and emptying the cart re-arms the reveal.
+    expect(CART_JS).not.toMatch(/openDrawer\(\);\s*\}\s*persist/);
+    expect(CART_JS).toContain("setAttribute('data-sw-pulse'");
+  });
+
+  it('is safe to call when the drawer is already open (rapid repeat adds)', () => {
+    // showModal() THROWS on an already-open <dialog>; that would take the whole add handler down.
+    expect(CART_JS).toContain('if(dialog.open){return;}');
+    expect(CART_JS).toMatch(/try\{if\(typeof dialog\.showModal==='function'\)/);
+  });
+
+  it('still opens where showModal is unavailable (the sandboxed preview frame)', () => {
+    expect(CART_JS).toContain("dialog.setAttribute('open','')");
+  });
+});

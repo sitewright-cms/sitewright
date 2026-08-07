@@ -373,6 +373,40 @@ function enhance(root) {
     }
   }
 
+  // Replay the platform entrance animation on whatever just became the active slide.
+  //
+  // `data-active` restarts CSS @keyframes for free (an attribute flip does), but the platform's own
+  // entrance system is a TRANSITION toggled by a class the scroll runtime adds once the element comes
+  // into view — `.sw-animation-active`. A slider sits at one scroll position, so that fires exactly
+  // once for the whole track: slide 1's caption animated in, and every slide after it was already
+  // revealed before the shopper ever saw it. Dropping the class returns the element to its hidden
+  // (offset + transparent) state and re-adding it on the next frame runs the same transition again —
+  // so a declared caption animation plays on EVERY visit to its slide, including loop-arounds.
+  //
+  // Two frames, not one: the class must be observably absent for a style recalc, or the browser
+  // coalesces remove+add into no change at all and nothing moves. Under `prefers-reduced-motion` the
+  // whole entrance stylesheet is inert, so this is a no-op there by construction — not a special case.
+  function replayAnimations() {
+    var active = snapRegistry();
+    for (var s = 0; s < active.length; s++) {
+      var slide = slides[active[s]];
+      if (!slide) continue;
+      var targets = slide.querySelectorAll('[data-sw-animation]');
+      for (var t = 0; t < targets.length; t++) targets[t].classList.remove('sw-animation-active');
+    }
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var now = snapRegistry();
+        for (var s2 = 0; s2 < now.length; s2++) {
+          var sl = slides[now[s2]];
+          if (!sl) continue;
+          var els = sl.querySelectorAll('[data-sw-animation]');
+          for (var t2 = 0; t2 < els.length; t2++) els[t2].classList.add('sw-animation-active');
+        }
+      });
+    });
+  }
+
   buildDots();
   applyItemAlign();
   loadNear();
@@ -380,6 +414,9 @@ function enhance(root) {
     .on('select', function () {
       sync();
       loadNear();
+      // On `select` only — never on the initial sync below, where the scroll runtime still owns the
+      // first reveal and racing it would double-animate the slide already on screen.
+      replayAnimations();
     })
     .on('settle', pruneActive)
     .on('reInit', function () {

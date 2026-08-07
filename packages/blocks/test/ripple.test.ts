@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RIPPLE_CSS, RIPPLE_JS, usesRipple } from '../src/ripple.js';
+import { RIPPLE_CSS, RIPPLE_JS, usesRipple, RIPPLE_HOSTS } from '../src/ripple.js';
 
 describe('ripple stylesheet', () => {
   it('gates all motion behind prefers-reduced-motion: no-preference', () => {
@@ -35,7 +35,7 @@ describe('ripple runtime', () => {
 
   it('listens DELEGATED on the document (late-injected elements — e.g. the modal auto close — ripple too)', () => {
     expect(RIPPLE_JS).toContain("document.addEventListener('pointerdown'");
-    expect(RIPPLE_JS).toContain(".closest?t.closest('.waves-effect')");
+    expect(RIPPLE_JS).toContain(`.closest?t.closest('${RIPPLE_HOSTS}')`);
     expect(RIPPLE_JS).toContain('removeChild(span)');
     expect(RIPPLE_JS).toContain("addEventListener('animationend',remove,{once:true})");
     // no per-element bind — a querySelectorAll init scan would miss runtime-injected elements
@@ -54,4 +54,26 @@ describe('ripple detection', () => {
     expect(usesRipple(undefined)).toBe(false);
   });
 
+});
+
+describe('lightbox controls ripple without carrying the marker class', () => {
+  it('matches the viewer arrows and the thumbnail strip implicitly', () => {
+    // The viewer re-renders through morphdom, which strips any attribute absent from its template —
+    // so a class stamped onto its arrows does not survive the next paint. Naming our own
+    // `sw-lightbox-*` classes in the selector is immune to that.
+    expect(RIPPLE_HOSTS).toContain('.waves-effect');
+    expect(RIPPLE_HOSTS).toContain('.sw-lightbox-arrow-left');
+    expect(RIPPLE_HOSTS).toContain('.sw-lightbox-arrow-right');
+    expect(RIPPLE_HOSTS).toContain('.sw-lightbox-nav a');
+    expect(RIPPLE_JS).toContain(RIPPLE_HOSTS); // the delegated listener uses the same list
+  });
+
+  it('gives those hosts the containing box a ripple needs', () => {
+    // Without position+overflow the circle escapes its host and paints across the viewer.
+    expect(RIPPLE_CSS).toMatch(/\.sw-lightbox-arrow-left,\.sw-lightbox-arrow-right,\.sw-lightbox-nav a\{position:relative;overflow:hidden/);
+  });
+
+  it('tints them light — the viewer is a near-black overlay in every palette', () => {
+    expect(RIPPLE_CSS).toContain('.sw-lightbox-nav a .waves-ripple{background:rgba(255,255,255,.45)}');
+  });
 });

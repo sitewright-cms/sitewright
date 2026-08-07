@@ -551,6 +551,7 @@ export const CART_JS = `(function(){
     function removeSku(sku){for(var i=0;i<items.length;i++){if(items[i].sku===sku){items.splice(i,1);return;}}}
     function add(btn){
       sent=false; // a new item returns the drawer from the sent-confirmation back to the cart
+      var wasEmpty=items.length===0; // drives the one-time reveal below
       var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
       var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
       var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}
@@ -565,6 +566,12 @@ export const CART_JS = `(function(){
       // PULSE halo: remove + force reflow + re-set so the ::after animation RESTARTS on every add (even
       // rapid repeat adds within the .6s window); the end state is opacity:0 so leaving it set is invisible.
       toggle.removeAttribute('data-sw-pulse');void toggle.offsetWidth;toggle.setAttribute('data-sw-pulse','1');
+      // …EXCEPT on the very first item: open the drawer once, so a first-time shopper actually SEES
+      // where the cart lives and that the click worked. From the second item on, the pulse + badge
+      // above carry it, so adding several things in a row is still uninterrupted. The trigger is
+      // wasEmpty, not a once-per-session flag, so emptying the cart re-arms the reveal — a shopper who
+      // cleared it is starting over too. (No backticks in this string: it is a template literal.)
+      if(wasEmpty){openDrawer();}
     }
 
     // Lock PAGE scroll while the drawer is open (the modal <dialog> traps focus but does not stop the
@@ -574,7 +581,14 @@ export const CART_JS = `(function(){
     function unlockScroll(){if(!scrollLocked){return;}scrollLocked=false;document.documentElement.style.overflow=prevOverflow;}
     function closeDrawer(){if(dialog.close){dialog.close();}else{dialog.removeAttribute('open');unlockScroll();}}
     // Open first, THEN lock scroll — so a throwing showModal() (e.g. sandboxed iframe) can't strand overflow:hidden.
-    toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}lockScroll();});
+    // A function DECLARATION so it is hoisted above add()'s first-item call site.
+    function openDrawer(){
+      if(dialog.open){return;} // already showing (rapid repeat add) — showModal() would throw
+      try{if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}}
+      catch(e){dialog.setAttribute('open','');}
+      lockScroll();
+    }
+    toggle.addEventListener('click',openDrawer);
     close.addEventListener('click',closeDrawer);
     // 'close' fires for Esc + dialog.close() (button/backdrop) → always restore scroll there.
     dialog.addEventListener('close',unlockScroll);

@@ -81,10 +81,20 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   { key: 'svg-morph', uses: usesSvgAnimMorph, js: SVG_ANIM_MORPH_JS, script: 'svg-anim-morph.js' },
   { key: 'marquee', uses: usesMarquee, css: MARQUEE_CSS }, // CSS-only (pure CSS animation)
   { key: 'lazyload', uses: usesLazyload, css: LAZYLOAD_CSS, js: LAZYLOAD_JS, script: 'lazyload.js' },
-  // Ripple ALSO ships wherever a MODAL is authored: the modal runtime injects its auto close button
-  // (a `waves-effect` element) at enhance time, which no source scan can see — without this OR the
-  // close button would render but never ripple. The delegated ripple listener then binds it for free.
-  { key: 'ripple', uses: (html) => usesRipple(html) || componentTypesInSource(html).includes('Modal'), css: RIPPLE_CSS, js: RIPPLE_JS, script: 'ripple.js' },
+  // Ripple ALSO ships wherever a MODAL or a LIGHTBOX is authored: both build controls at enhance time
+  // that no source scan can see — the modal's injected auto close button (a `waves-effect` element),
+  // and the lightbox viewer's arrows + thumbnail strip (matched implicitly, see RIPPLE_HOSTS). Without
+  // this OR they would render but never ripple. The delegated listener then binds them for free.
+  {
+    key: 'ripple',
+    uses: (html) => {
+      const components = componentTypesInSource(html);
+      return usesRipple(html) || components.includes('Modal') || components.includes('Lightbox');
+    },
+    css: RIPPLE_CSS,
+    js: RIPPLE_JS,
+    script: 'ripple.js',
+  },
   // cart RUNS in the single-page preview: its ENTIRE visible UI (the fixed toggle tab + the drawer) is
   // built by cart.js and gated `display:none` until `data-sw-enhanced`, so 'style-only' rendered NOTHING
   // (the author saw no cart at all). cart.js is preview-safe by construction (localStorage in try/catch,

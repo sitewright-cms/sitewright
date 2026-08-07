@@ -16,13 +16,32 @@ const SRC_URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)(?:\s*format\(\s*['"]?([^'")]
 const FONT_EXT = /\.(woff2|woff|ttf|otf)(?:[?#]|$)/i;
 const FORMAT_RANK: Record<string, number> = { woff2: 4, woff: 3, ttf: 2, otf: 1 };
 
-function parseWeight(raw: string | undefined): number {
-  if (!raw) return 400;
+/** Round a declared weight onto the real CSS weight grid (100–900 by 100). */
+function snapWeight(n: number): number {
+  return Math.min(900, Math.max(100, Math.round(n / 100) * 100));
+}
+
+/**
+ * The `font-weight` descriptor of one `@font-face`: a single weight, or a VARIABLE axis (`300 700`).
+ *
+ * A variable face is ONE file spanning a range; collapsing it to a number (as this used to do) makes
+ * the stored file claim to be a static face, so the renderer synthesises faux-bold for every other
+ * weight and cannot preload it. `weight` remains the file's DEFAULT (400 when the axis covers it, else
+ * the low end) — that is what names + dedupes the file.
+ */
+function parseWeightSpec(raw: string | undefined): { weight: number; weightRange?: [number, number] } {
+  if (!raw) return { weight: 400 };
   const t = raw.trim().toLowerCase();
-  if (t === 'bold') return 700;
-  if (t === 'normal') return 400;
-  const n = parseInt(t, 10); // "100 900" range → take the first number
-  return Number.isFinite(n) && n >= 1 && n <= 1000 ? n : 400;
+  if (t === 'bold') return { weight: 700 };
+  if (t === 'normal') return { weight: 400 };
+  const nums = t.match(/\d+/g)?.map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= 1000) ?? [];
+  if (nums.length === 0) return { weight: 400 };
+  const single = nums[0]!;
+  if (nums.length === 1) return { weight: snapWeight(single) };
+  const [lo, hi] = [snapWeight(Math.min(nums[0]!, nums[1]!)), snapWeight(Math.max(nums[0]!, nums[1]!))];
+  // A range that snaps flat is just a static face — never emit a non-ascending axis (schema rejects it).
+  if (lo >= hi) return { weight: lo };
+  return { weight: lo <= 400 && hi >= 400 ? 400 : lo, weightRange: [lo, hi] };
 }
 
 /** Rank a font src candidate (a url + optional format hint) — prefer woff2 > woff > ttf > otf. */
@@ -41,7 +60,7 @@ export function collectFontFaces(cssText: string): Map<string, CapturedAsset> {
     const block = face[1] ?? '';
     const family = FAMILY_RE.exec(block)?.[2]?.trim();
     if (!family) continue;
-    const weight = parseWeight(WEIGHT_RE.exec(block)?.[1]);
+    const { weight, weightRange } = parseWeightSpec(WEIGHT_RE.exec(block)?.[1]);
     const style = /italic|oblique/i.test(STYLE_RE.exec(block)?.[1] ?? '') ? 'italic' : 'normal';
     // Pick the single best-format url() in this rule's src.
     let best: { url: string; score: number } | undefined;
@@ -54,7 +73,7 @@ export function collectFontFaces(cssText: string): Map<string, CapturedAsset> {
     if (!best) continue;
     const key = assetKey(best.url, best.url);
     if (!key || refs.has(key)) continue;
-    refs.set(key, { sourceRef: key, kind: 'font', remoteUrl: best.url, font: { family, weight, style } });
+    refs.set(key, { sourceRef: key, kind: 'font', remoteUrl: best.url, font: { family, weight, ...(weightRange ? { weightRange } : {}), style } });
   }
   return refs;
 }

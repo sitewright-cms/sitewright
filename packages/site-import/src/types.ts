@@ -24,7 +24,7 @@ export interface CapturedAsset {
   remoteUrl?: string;
   /** `@font-face` metadata for `kind:'font'` (parsed from the source CSS); the actual file format is
    *  detected from the bytes when hosted. */
-  font?: { family: string; weight: number; style: 'normal' | 'italic' };
+  font?: { family: string; weight: number; weightRange?: [number, number]; style: 'normal' | 'italic' };
 }
 
 /** One captured page: its canonical source URL (the link-rewrite key) and its raw outer HTML. */

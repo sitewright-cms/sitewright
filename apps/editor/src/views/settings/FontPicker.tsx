@@ -37,8 +37,18 @@ export function FontPicker({
     onPick(asset, weight);
     onClose();
   }
-  /** First available weight of a font asset (so picking from the library sets a sane weight). */
-  const firstWeight = (a: MediaAsset) => (a.kind === 'font' ? (a.files.find((f) => f.weight === defaultWeight) ?? a.files[0])!.weight : defaultWeight);
+  /**
+   * The weight to give the slot when this asset is picked: keep the slot's own weight when the font
+   * can render it — a face stored AT that weight, or any point on a VARIABLE face's axis — otherwise
+   * fall back to the first stored face. Without the axis check a variable font (one file recorded at
+   * its default weight) dragged a 700 heading slot down to 300.
+   */
+  const firstWeight = (a: MediaAsset) => {
+    if (a.kind !== 'font') return defaultWeight;
+    const renders = (f: (typeof a.files)[number]) =>
+      f.weightRange ? defaultWeight >= f.weightRange[0] && defaultWeight <= f.weightRange[1] : f.weight === defaultWeight;
+    return a.files.some(renders) ? defaultWeight : a.files[0]!.weight;
+  };
 
   async function pickGoogle(font: GoogleFontMeta, weight: number) {
     setBusy(`${font.family}:${weight}`);

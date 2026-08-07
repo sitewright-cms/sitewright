@@ -157,7 +157,12 @@ export interface ImportRouteDeps {
   ) => Promise<{ url: string } | null>;
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
-  hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
+  hostFontAsset?: (
+    ctx: ProjectContext,
+    slug: string,
+    buffer: Buffer,
+    font: { family: string; weight: number; weightRange?: [number, number]; style: 'normal' | 'italic' },
+  ) => Promise<{ url: string } | null>;
   /** Self-host a linked document (PDF/doc/…) as-is, served download-only → its /media URL (or null). */
   hostFileAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string; folder?: string }) => Promise<{ url: string } | null>;
   /** Host the imported CSS as one inline-served stylesheet → its /media URL (or null). Omit to inline. */

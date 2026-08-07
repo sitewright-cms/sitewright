@@ -67,6 +67,20 @@ export interface TypographyCssOptions {
   fontUrl?: (assetId: string, file: string) => string;
 }
 
+/**
+ * The `font-weight` DESCRIPTOR for one stored face: a VARIABLE file declares the axis it actually
+ * covers (`300 700`), a static one its single weight. Declaring a variable file as its default weight
+ * makes the browser treat it as static and SYNTHESISE every other weight (faux bold).
+ */
+function faceWeight(f: FontFile): string {
+  return f.weightRange ? `${f.weightRange[0]} ${f.weightRange[1]}` : String(f.weight);
+}
+
+/** Can this stored face render `weight` — its own, or any point on a variable file's axis? */
+function faceCovers(f: FontFile, weight: number): boolean {
+  return f.weightRange ? weight >= f.weightRange[0] && weight <= f.weightRange[1] : f.weight === weight;
+}
+
 /** The CSS `font-family` STACK for a slot (system keyword → curated stack; asset → quoted family). */
 function familyStack(slot: FontSlot, font: FontAsset | undefined): string {
   if (slot.source === 'asset') {
@@ -122,7 +136,7 @@ export function typographyCss(
     emitted.add(slot.assetId);
     for (const f of font.files) {
       faces.push(
-        `@font-face{font-family:"${font.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
+        `@font-face{font-family:"${font.family}";font-style:${f.style};font-weight:${faceWeight(f)};font-display:swap;` +
           `src:url(${opts.fontUrl(font.id, f.file)}) format("${FORMAT_HINT[f.format]}")}`,
       );
     }
@@ -205,9 +219,11 @@ export function fontPreloads(
     if (slot.source !== 'asset' || !slot.assetId) continue;
     const font = fontsById.get(slot.assetId);
     if (!font) continue;
-    // The single file that renders this slot: exact weight + upright, best container first (woff2).
+    // The single file that renders this slot: it must be able to PRODUCE the slot weight (its own, or
+    // a point on a variable file's axis) and be upright; best container first (woff2). Matching on the
+    // exact number alone silently preloaded nothing for every variable font.
     const file = font.files
-      .filter((f) => f.weight === slot.weight && f.style === 'normal')
+      .filter((f) => faceCovers(f, slot.weight) && f.style === 'normal')
       .sort((a, b) => FORMAT_RANK[a.format] - FORMAT_RANK[b.format])[0];
     if (!file) continue;
     const href = fontUrl(font.id, file.file);

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { typographyCss, fontPreloads, type FontAsset } from '../src/typography-css.js';
 
-type Face = { weight: number; style?: 'normal' | 'italic'; format: 'woff2' | 'woff' | 'ttf' | 'otf'; file: string };
+type Face = {
+  weight: number;
+  weightRange?: [number, number];
+  style?: 'normal' | 'italic';
+  format: 'woff2' | 'woff' | 'ttf' | 'otf';
+  file: string;
+};
 /** Build a `kind:'font'` library asset for fixtures. */
 function font(id: string, family: string, fallback: string, source: 'google' | 'local', faces: Face[]): FontAsset {
   return {
@@ -146,6 +152,25 @@ describe('typographyCss', () => {
     expect(css).toContain('--sw-font-body:"Boombox", sans-serif');
   });
 
+  // REGRESSION: a VARIABLE font is ONE file covering a weight axis, but a file records a single
+  // `weight`. Emitting that number told the browser the file was a static face, so every weight above
+  // it rendered FAUX-bold (synthesised) instead of using the real axis.
+  it('emits a variable face @font-face with its real weight RANGE', () => {
+    const css = typographyCss(
+      {
+        fontFamilies: {},
+        heading: { source: 'asset', family: 'DM Sans', weight: 700, assetId: 'dm' },
+        body: { source: 'asset', family: 'DM Sans', weight: 400, assetId: 'dm' },
+      },
+      [font('dm', 'DM Sans', 'sans-serif', 'local', [{ weight: 300, weightRange: [300, 700], format: 'woff2', file: 'dm.woff2' }])],
+      { fontUrl: url },
+    );
+    expect(css).toContain('@font-face{font-family:"DM Sans";font-style:normal;font-weight:300 700;font-display:swap;src:url(/media/p1/dm/dm.woff2) format("woff2")}');
+    // the SLOT weights are unaffected — they still request a point on the axis
+    expect(css).toContain('--sw-font-heading-weight:700');
+    expect(css).toContain('--sw-font-body-weight:400');
+  });
+
   it('emits --sw-font-<name> (+weight) for custom named slots and their @font-face', () => {
     const css = typographyCss(
       {
@@ -213,6 +238,38 @@ describe('fontPreloads', () => {
     const out = fontPreloads(
       { fontFamilies: {}, body: { source: 'asset', family: 'Inter', weight: 500, assetId: 'inter' } },
       [inter],
+      { fontUrl: url },
+    );
+    expect(out).toEqual([]);
+  });
+
+  // REGRESSION: the match was `f.weight === slot.weight`, so a VARIABLE file recorded as its default
+  // weight (DM Sans 300–700 → "300") preloaded NOTHING for a 400 body / 700 heading slot. The font
+  // then swapped in after first paint and every page shifted (measured CLS 0.0196 → 0 once preloaded).
+  it('preloads a VARIABLE face for any slot weight inside its range', () => {
+    const dm = font('dm', 'DM Sans', 'sans-serif', 'local', [
+      { weight: 300, weightRange: [300, 700], format: 'woff2', file: 'dm.woff2' },
+    ]);
+    const out = fontPreloads(
+      {
+        fontFamilies: {},
+        heading: { source: 'asset', family: 'DM Sans', weight: 700, assetId: 'dm' },
+        body: { source: 'asset', family: 'DM Sans', weight: 400, assetId: 'dm' },
+      },
+      [dm],
+      { fontUrl: url },
+    );
+    // ONE file serves both slots, so it is preloaded once (deduped by href)
+    expect(out).toEqual([{ href: '/media/p1/dm/dm.woff2', type: 'font/woff2' }]);
+  });
+
+  it('does NOT preload a variable face for a slot weight OUTSIDE its range', () => {
+    const dm = font('dm', 'DM Sans', 'sans-serif', 'local', [
+      { weight: 300, weightRange: [300, 700], format: 'woff2', file: 'dm.woff2' },
+    ]);
+    const out = fontPreloads(
+      { fontFamilies: {}, body: { source: 'asset', family: 'DM Sans', weight: 900, assetId: 'dm' } },
+      [dm],
       { fontUrl: url },
     );
     expect(out).toEqual([]);

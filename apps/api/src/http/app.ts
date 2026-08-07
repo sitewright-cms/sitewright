@@ -4771,7 +4771,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             family: font.family,
             fallback: 'sans-serif',
             source: 'local',
-            faces: [{ weight: font.weight, style: font.style, format, bytes: buffer }],
+            faces: [{ weight: font.weight, ...(font.weightRange ? { weightRange: font.weightRange } : {}), style: font.style, format, bytes: buffer }],
           });
           return { url: saved.url };
         } catch {

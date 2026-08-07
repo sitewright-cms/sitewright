@@ -149,8 +149,7 @@ to npm).
 | [`@sitewright/mcp`](./packages/mcp) | MCP stdio bridge — exposes a project's authoring tools to local coding agents over a scoped key. |
 | [`@sitewright/cli`](./packages/cli) | The `sitewright` CLI — OAuth login + `sitewright mcp` to run the bridge from stored credentials. |
 
-Deeper design docs: **[architecture](./docs/architecture.md)** · **[authoring model](./docs/authoring-model.md)**
-· **[project format](./docs/project-format.md)**.
+Deeper design docs: **[architecture](./docs/architecture.md)** · **[authoring model](./docs/authoring-model.md)**.
 
 ## Development
 

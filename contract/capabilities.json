@@ -1,0 +1,7 @@
+[
+  "content:delete",
+  "content:read",
+  "content:write",
+  "deploy",
+  "publish"
+]

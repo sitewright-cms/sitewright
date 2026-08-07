@@ -1,0 +1,17 @@
+{
+  "id": "nav-audit",
+  "path": "",
+  "title": "<span class=\"inline-flex items-center gap-1.5 font-semibold text-accent\">{{sw-icon \"sparkles\" \"h-4 w-4\"}} Free site audit</span>",
+  "parent": "home",
+  "translationGroup": "nav-audit",
+  "nav": {
+    "slots": [
+      "header"
+    ],
+    "order": 9
+  },
+  "kind": "link",
+  "link": {
+    "target": "/contact"
+  }
+}

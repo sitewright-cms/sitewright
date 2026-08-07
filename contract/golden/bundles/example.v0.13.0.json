@@ -1,0 +1,1743 @@
+{
+  "formatVersion": 2,
+  "project": {
+    "id": "p5l1y8tSiT7R",
+    "name": "Example Project",
+    "slug": "example",
+    "identity": {
+      "name": "Northwind Web Studio",
+      "legalName": "Northwind Web Studio Ltd.",
+      "shortName": "Northwind",
+      "slogan": "Websites that mean business.",
+      "description": "A boutique web studio that designs and builds fast, beautiful, conversion-focused websites for ambitious brands.",
+      "businessType": "ProfessionalService",
+      "logo": "/media/example/BzufXH-brand-logo.png",
+      "icon": "/media/example/l5o6Jm-brand-icon.png",
+      "image": "/media/example/9mNKIK-brand-og.png",
+      "email": "hello@northwindstudio.com",
+      "telephone": "+1 (415) 555-0142",
+      "address": {
+        "street": "548 Market Street, Suite 200",
+        "locality": "San Francisco",
+        "region": "CA",
+        "country": "USA",
+        "postalCode": "94104"
+      },
+      "social": [
+        {
+          "link": "https://twitter.com/northwindstudio",
+          "name": "X",
+          "icon": "brand:x"
+        },
+        {
+          "link": "https://www.linkedin.com/company/northwindstudio",
+          "name": "LinkedIn",
+          "icon": "linkedin"
+        },
+        {
+          "link": "https://dribbble.com/northwindstudio",
+          "name": "Dribbble",
+          "icon": "brand:dribbble"
+        }
+      ],
+      "colors": {
+        "primary": "#4f46e5",
+        "secondary": "#0ea5e9",
+        "accent": "#f59e0b",
+        "neutral": "#171627",
+        "base-100": "#ffffff",
+        "base-content": "#1a1a23"
+      },
+      "typography": {
+        "fontFamilies": {},
+        "heading": {
+          "source": "asset",
+          "family": "Space Grotesk",
+          "weight": 700,
+          "assetId": "Yv4gSg"
+        }
+      }
+    },
+    "website": {
+      "criticalCss": ":root{scroll-behavior:smooth}\n@keyframes nw-rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}\n@keyframes nw-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}\n@media (prefers-reduced-motion:no-preference){\n  .nw-rise{animation:nw-rise .7s cubic-bezier(.22,1,.36,1) both}\n  .nw-rise-1{animation:nw-rise .7s cubic-bezier(.22,1,.36,1) .12s both}\n  .nw-rise-2{animation:nw-rise .7s cubic-bezier(.22,1,.36,1) .24s both}\n  .nw-float{animation:nw-float 6s ease-in-out infinite}\n}\n.nw-aurora{background:radial-gradient(at 18% 12%,rgba(99,102,241,.55) 0,transparent 52%),radial-gradient(at 85% 8%,rgba(14,165,233,.4) 0,transparent 50%),radial-gradient(at 62% 95%,rgba(168,85,247,.35) 0,transparent 55%),#0b0a18}\n.nw-grid-bg{background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:56px 56px}\n.nw-card{transition:transform .35s cubic-bezier(.22,1,.36,1),box-shadow .35s,border-color .35s}\n.nw-card:hover{transform:translateY(-6px)}\n.nw-zoom img{transition:transform .6s cubic-bezier(.22,1,.36,1)}\n.nw-zoom:hover img{transform:scale(1.06)}\n.nw-underline{background-image:linear-gradient(currentColor,currentColor);background-size:0% 2px;background-position:0 100%;background-repeat:no-repeat;transition:background-size .3s}\n.nw-underline:hover{background-size:100% 2px}\n.nw-ring{border:2px solid transparent;background:linear-gradient(var(--sw-color-base-100,#ffffff),var(--sw-color-base-100,#ffffff)) padding-box,linear-gradient(135deg,#6366f1,#0ea5e9) border-box}\n\n/* --- Sticky header: condense on scroll ------------------------------------------------------\n   The platform pins #main-nav and toggles html.sw-scrolled as you scroll; how the bar RESPONDS is\n   authored HERE. There is deliberately no built-in 'shrink' mode: a condense has to know which part\n   of YOUR header collapses, so the platform can't ship one that works for every layout. This block\n   is the reference recipe — copy it and retarget the selectors at your own markup. --sw-header-h\n   stays at the FULL bar height on purpose, so page content never reflows as the bar condenses. */\n@media (prefers-reduced-motion:no-preference){\n  #main-nav,#main-nav .navbar{transition:min-height .3s ease,padding .3s ease,box-shadow .3s ease}\n}\nhtml.sw-scrolled #main-nav{box-shadow:0 2px 10px rgba(15,23,42,.08)}\nhtml.sw-scrolled #main-nav .navbar{min-height:3.25rem;padding-top:.125rem;padding-bottom:.125rem}",
+      "mainNav": "<div>\n  {{!-- DESKTOP bar (>=lg) --}}\n  <div class=\"navbar hidden border-b border-base-200 bg-base-100 px-4 sm:px-8 lg:flex\">\n    <div class=\"navbar-start\">\n      <a class=\"btn btn-ghost gap-2.5 px-2 text-lg font-bold tracking-tight\" href=\"{{sw-url '/'}}\">\n        {{#if company.icon}}<img class=\"h-8 w-8 rounded-xl object-cover shadow\" src=\"{{sw-url company.icon}}\" alt=\"\" aria-hidden=\"true\" />{{else}}<span class=\"inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content shadow\">{{sw-icon \"compass\" \"h-4.5 w-4.5\"}}</span>{{/if}}\n        {{ company.name }}\n      </a>\n    </div>\n    <div class=\"navbar-center\">\n      <ul class=\"menu menu-horizontal gap-1 px-1 font-medium\">\n        {{#each nav.header}}\n        {{#if children}}\n        <li class=\"dropdown dropdown-hover\">\n          <a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\"{{#if (sw-active path exact=true)}} aria-current=\"page\"{{/if}}>{{sw-label}} {{sw-icon \"chevron-down\" \"h-4 w-4 opacity-60\"}}</a>\n          <ul class=\"dropdown-content menu z-30 w-52 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl\">{{#each children}}<li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\"{{#if (sw-active path exact=true)}} aria-current=\"page\"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>\n        </li>\n        {{else}}\n        <li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\"{{#if (sw-active path exact=true)}} aria-current=\"page\"{{/if}}>{{sw-label}}</a></li>\n        {{/if}}\n        {{/each}}\n      </ul>\n    </div>\n    <div class=\"navbar-end gap-2\">\n      {{#if page.translations}}\n      <div class=\"dropdown dropdown-end\">\n        <div tabindex=\"0\" role=\"button\" class=\"btn btn-ghost btn-sm gap-1.5\">{{sw-flag (lookup @root.website.data.locale_flags page.locale) \"h-3.5 w-5 rounded-sm\"}}<span class=\"uppercase\">{{page.locale}}</span>{{sw-icon \"chevron-down\" \"h-3 w-3 opacity-60\"}}</div>\n        <ul tabindex=\"0\" class=\"dropdown-content menu z-30 mt-2 w-40 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl\">{{#each page.translations}}<li><a href=\"{{sw-url path}}\" hreflang=\"{{locale}}\">{{sw-flag (lookup @root.website.data.locale_flags locale) \"h-3.5 w-5 rounded-sm\"}}<span class=\"uppercase\">{{locale}}</span></a></li>{{/each}}</ul>\n      </div>\n      {{/if}}\n      {{sw-theme-toggle}}\n      <a class=\"btn btn-primary\" href=\"{{sw-url '/contact'}}\">{{sw-translate \"nav_cta\" default=\"Contact\"}}</a>\n    </div>\n  </div>\n\n  {{!-- MOBILE bar + slide-in DRAWER (<lg). The peer-checkbox MUST be the first sibling. --}}\n  <div class=\"navbar relative border-b border-base-200 bg-base-100 px-3 lg:hidden\">\n    <input type=\"checkbox\" id=\"sw-nav-drawer\" class=\"peer sr-only\" aria-label=\"{{sw-translate \"mobile_menu\" default='Menu'}}\" />\n    <div class=\"navbar-start\">\n      <label for=\"sw-nav-drawer\" class=\"btn btn-ghost btn-square\" aria-hidden=\"true\">{{sw-icon \"menu\" \"h-6 w-6\"}}</label>\n      <a class=\"btn btn-ghost gap-2 px-1 text-base font-bold tracking-tight\" href=\"{{sw-url '/'}}\">\n        {{#if company.icon}}<img class=\"h-7 w-7 rounded-lg object-cover\" src=\"{{sw-url company.icon}}\" alt=\"\" aria-hidden=\"true\" />{{else}}<span class=\"inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content\">{{sw-icon \"compass\" \"h-4 w-4\"}}</span>{{/if}}\n        {{ company.name }}\n      </a>\n    </div>\n    <div class=\"navbar-end\">{{sw-theme-toggle}}</div>\n    {{!-- backdrop (closes on click). h-dvh pins it to the viewport even when a sticky-header ENTRANCE\n         animation puts a transform on #main-nav (a transformed ancestor becomes the containing block\n         for these position:fixed children, otherwise clamping them to the header's height). --}}\n    <label for=\"sw-nav-drawer\" class=\"pointer-events-none fixed inset-0 h-dvh z-40 bg-black/40 opacity-0 transition-opacity duration-300 peer-checked:pointer-events-auto peer-checked:opacity-100\" aria-hidden=\"true\"></label>\n    {{!-- slide-in panel (h-dvh: full viewport height regardless of a transformed #main-nav ancestor) --}}\n    <div class=\"fixed inset-y-0 left-0 h-dvh z-50 flex w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0\">\n      <div class=\"flex items-center justify-between border-b border-base-200 p-4\">\n        <a class=\"flex items-center gap-2 text-base font-bold tracking-tight\" href=\"{{sw-url '/'}}\">{{#if company.icon}}<img class=\"h-7 w-7 rounded-lg object-cover\" src=\"{{sw-url company.icon}}\" alt=\"\" aria-hidden=\"true\" />{{else}}<span class=\"inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content\">{{sw-icon \"compass\" \"h-4 w-4\"}}</span>{{/if}}{{ company.name }}</a>\n        <label for=\"sw-nav-drawer\" class=\"btn btn-ghost btn-square btn-sm\" aria-label=\"Close\">{{sw-icon \"x\" \"h-5 w-5\"}}</label>\n      </div>\n      <ul class=\"menu w-full flex-1 overflow-y-auto overflow-x-hidden p-3\">\n        {{#each nav.mobile}}{{#if children}}<li><details><summary>{{sw-label}}</summary><ul><li><a href=\"{{sw-url path}}\" class=\"{{#if (sw-active path exact=true)}}active{{/if}}\">{{sw-label}}</a></li>{{#each children}}<li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\">{{sw-label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\">{{sw-label}}</a></li>{{/if}}{{else}}{{!-- no \"Mobile menu\" pages yet → mirror the main navigation --}}{{#each nav.header}}{{#if children}}<li><details><summary>{{sw-label}}</summary><ul><li><a href=\"{{sw-url path}}\" class=\"{{#if (sw-active path exact=true)}}active{{/if}}\">{{sw-label}}</a></li>{{#each children}}<li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\">{{sw-label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}} class=\"{{#if (sw-active path)}}active{{/if}}\">{{sw-label}}</a></li>{{/if}}{{/each}}{{/each}}\n      </ul>\n      {{#if page.translations}}\n      <div class=\"border-t border-base-200 p-3\">\n        <div class=\"flex flex-wrap gap-1\" aria-label=\"{{sw-translate \"aria_language\" default='Language'}}\">{{#each page.translations}}<a class=\"btn btn-ghost btn-sm gap-1.5\" href=\"{{sw-url path}}\" hreflang=\"{{locale}}\">{{sw-flag (lookup @root.website.data.locale_flags locale) \"h-3.5 w-5 rounded-sm\"}}<span class=\"uppercase\">{{locale}}</span></a>{{/each}}</div>\n      </div>\n      {{/if}}\n    </div>\n  </div>\n</div>",
+      "footer": "<div class=\"relative bg-neutral text-neutral-content\">\n  <div class=\"absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent\"></div>\n  <div class=\"mx-auto grid max-w-6xl gap-x-8 gap-y-12 px-6 py-20 sm:grid-cols-2 lg:grid-cols-6\">\n    <div class=\"sm:col-span-2\">\n      <p class=\"flex items-center gap-2.5 text-lg font-bold tracking-tight\">{{#if company.icon}}<img class=\"h-8 w-8 shrink-0 rounded-xl object-cover shadow-md shadow-primary/30\" src=\"{{sw-url company.icon}}\" alt=\"\" aria-hidden=\"true\" />{{else}}<span class=\"relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30\"><svg class=\"h-4.5 w-4.5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z\" /><circle cx=\"12\" cy=\"12\" r=\"10\" /></svg></span>{{/if}}{{ company.name }}</p>\n      <p class=\"mt-4 max-w-xs text-sm leading-relaxed text-neutral-content/60\">{{ company.slogan }}</p>\n      <ul class=\"mt-6 flex list-none flex-wrap gap-2.5 p-0\">{{#each company.social}}<li><a class=\"inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/15 text-neutral-content/60 transition hover:border-primary hover:bg-primary hover:text-primary-content\" href=\"{{sw-url link}}\" aria-label=\"{{name}}\" target=\"_blank\" rel=\"noopener\">{{sw-icon icon \"h-4 w-4\"}}</a></li>{{/each}}</ul>\n    </div>\n    <div>\n      <h6 class=\"text-sm font-semibold uppercase tracking-wider text-neutral-content/40\"><span data-sw-translate=\"footer_studio\">Studio</span></h6>\n      <ul class=\"mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65\">{{#each nav.header}}<li><a class=\"no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}\" href=\"{{sw-url path}}\"{{#if newTab}} target=\"_blank\" rel=\"noopener\"{{/if}}{{#if (sw-active path exact=true)}} aria-current=\"page\"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>\n    </div>\n    <div>\n      <h6 class=\"text-sm font-semibold uppercase tracking-wider text-neutral-content/40\"><span data-sw-translate=\"footer_legal\">Legal</span></h6>\n      <ul class=\"mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65\">{{#each nav.footer}}<li><a class=\"no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}\" href=\"{{sw-url path}}\"{{#if (sw-active path exact=true)}} aria-current=\"page\"{{/if}}>{{sw-label}}</a></li>{{/each}}{{#if website.consent.enabled}}<li>{{sw-consent-settings class=\"appearance-none cursor-pointer border-0 bg-transparent p-0 text-neutral-content/65 transition hover:text-neutral-content\"}}</li>{{/if}}</ul>\n    </div>\n    <div>\n      <h6 class=\"text-sm font-semibold uppercase tracking-wider text-neutral-content/40\"><span data-sw-translate=\"footer_contact\">Contact</span></h6>\n      <ul class=\"mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65\">\n        <!-- The mailto target is a LITERAL: the template validator only allows an interpolated\n             URL attribute behind a slash/hash/https prefix (a mailto: prefix is not on that\n             list) — keep this address in sync with EXAMPLE_IDENTITY.email. -->\n        <li class=\"flex items-start gap-2.5\"><svg class=\"mt-0.5 h-4 w-4 shrink-0 opacity-50\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\" /><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" /></svg><a class=\"break-all no-underline transition hover:text-neutral-content\" href=\"mailto:hello@northwindstudio.com\">{{ company.email }}</a></li>\n        <li class=\"flex items-start gap-2.5\"><svg class=\"mt-0.5 h-4 w-4 shrink-0 opacity-50\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384\" /></svg>{{ company.telephone }}</li>\n        <li class=\"flex items-start gap-2.5\"><svg class=\"mt-0.5 h-4 w-4 shrink-0 opacity-50\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0\" /><circle cx=\"12\" cy=\"10\" r=\"3\" /></svg>{{ company.address.locality }}, {{ company.address.region }}</li>\n      </ul>\n    </div>\n    <div>\n      <h6 class=\"text-sm font-semibold uppercase tracking-wider text-neutral-content/40\"><span data-sw-translate=\"footer_news_title\">Newsletter</span></h6>\n      <p class=\"mt-4 text-sm leading-relaxed text-neutral-content/60\"><span data-sw-translate=\"footer_news\">Occasional notes on web craft. No spam.</span></p>\n      <a class=\"btn btn-outline mt-5\" href=\"{{sw-url (sw-translate \"href_contact\")}}\"><span data-sw-translate=\"footer_btn\">Get in touch</span></a>\n    </div>\n  </div>\n  <div class=\"border-t border-neutral-content/10\">\n    <p class=\"mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40\">© {{ company.legalName }} · <span data-sw-translate=\"footer_built\">Built with Sitewright — code-first, instantly fast.</span></p>\n  </div>\n</div>",
+      "data": {
+        "locale_flags": {
+          "en": "gb",
+          "de": "de",
+          "es": "es"
+        }
+      },
+      "translations": {
+        "about.ab_img_alt": {
+          "en": "The Northwind studio",
+          "de": "Das Northwind-Studio",
+          "es": "El estudio Northwind"
+        },
+        "about.ab_p2": {
+          "de": "Wir glauben: Eine großartige Website ist das fleißigste Mitglied Ihres Teams — schnell, klar und leise überzeugend. Diese Überzeugung prägt jede unserer Entscheidungen.",
+          "es": "Creemos que una gran web es el miembro más trabajador de su equipo: rápida, clara y discretamente persuasiva. Esa convicción guía cada decisión que tomamos."
+        },
+        "about.aria_gallery": {
+          "en": "Studio photos",
+          "de": "Studiofotos",
+          "es": "Fotos del estudio"
+        },
+        "about.eyebrow": {
+          "de": "Über uns",
+          "es": "Sobre nosotros"
+        },
+        "about.gal_empty": {
+          "de": "Noch keine Fotos — legen Sie welche in den Studio-Ordner.",
+          "es": "Aún no hay fotos — suba algunas a la carpeta Studio."
+        },
+        "about.gal_title": {
+          "de": "Einblicke ins Studio",
+          "es": "Dentro del estudio"
+        },
+        "about.headline": {
+          "de": "Ein kleines, erfahrenes Team — mit Absicht",
+          "es": "Un equipo pequeño y sénior — a propósito"
+        },
+        "about.intro": {
+          "de": "Northwind ist ein Boutique-Studio aus Designern und Entwicklern, die lieber wenige Projekte brillant machen als viele mittelmäßig. Keine Junioren, die auf Ihre Kosten lernen, keine Schichten von Account-Managern — nur die Menschen, die die Arbeit machen.",
+          "es": "Northwind es un estudio boutique de diseñadores e ingenieros que prefieren hacer pocos proyectos de forma brillante antes que muchos de forma correcta. Sin juniors aprendiendo a su costa, sin capas de gestores de cuenta — solo las personas que hacen el trabajo."
+        },
+        "about.team_title": {
+          "de": "Die Menschen, mit denen Sie arbeiten",
+          "es": "Las personas con las que trabajará"
+        },
+        "about.v1_b": {
+          "de": "Wir feilen an den Details, die andere überspringen — denn Details sind das, was Menschen spüren.",
+          "es": "Cuidamos los detalles que otros se saltan — porque los detalles son lo que la gente siente."
+        },
+        "about.v1_t": {
+          "de": "Handwerk statt Fließband",
+          "es": "Oficio antes que volumen"
+        },
+        "about.v2_b": {
+          "de": "Jede Website, die wir ausliefern, ist statisch, optimiert und lädt sofort.",
+          "es": "Cada web que entregamos es estática, optimizada y carga al instante."
+        },
+        "about.v2_t": {
+          "de": "Tempo ist ein Feature",
+          "es": "La velocidad es una funcionalidad"
+        },
+        "about.v3_b": {
+          "de": "Feste Umfänge, klare Zeitpläne und ehrlicher Rat — auch wenn er uns das Upselling kostet.",
+          "es": "Alcances cerrados, plazos claros y consejo honesto — aunque nos cueste la venta adicional."
+        },
+        "about.v3_t": {
+          "de": "Klare Worte",
+          "es": "Hablar claro"
+        },
+        "about.val_title": {
+          "de": "Was uns wichtig ist",
+          "es": "Lo que valoramos"
+        },
+        "aria_language": {
+          "en": "Language",
+          "de": "Sprache",
+          "es": "Idioma"
+        },
+        "careers.badge_remote": {
+          "en": "Remote OK",
+          "de": "Remote möglich",
+          "es": "Remoto posible"
+        },
+        "careers.ca_cta": {
+          "de": "Kontakt aufnehmen",
+          "es": "Escríbanos"
+        },
+        "careers.ca_cta_b": {
+          "de": "Überzeugen Sie uns. Die besten Leute passen selten in eine Vorlage.",
+          "es": "Convénzanos. La mejor gente rara vez encaja en una plantilla."
+        },
+        "careers.ca_cta_t": {
+          "de": "Ihre Rolle ist nicht dabei?",
+          "es": "¿No ve su puesto?"
+        },
+        "careers.ca_empty": {
+          "de": "Gerade keine offenen Stellen — aber ein starkes Portfolio lesen wir immer.",
+          "es": "Ahora mismo no hay vacantes — pero un buen portfolio lo leemos siempre."
+        },
+        "careers.ca_h1": {
+          "de": "Machen Sie die beste Arbeit Ihrer Laufbahn",
+          "es": "Venga a hacer el mejor trabajo de su carrera"
+        },
+        "careers.ca_intro": {
+          "de": "Ein kleines Team heißt: Ihre Arbeit geht live, Ihr Name steht darauf, und niemand managt den Manager. Diese Stellen sind gerade offen.",
+          "es": "Un equipo pequeño significa que su trabajo se publica, lleva su nombre y nadie gestiona al gestor. Estas vacantes están abiertas ahora mismo."
+        },
+        "careers.posted_l": {
+          "en": "Posted",
+          "de": "Ausgeschrieben",
+          "es": "Publicado"
+        },
+        "carousel_label": {
+          "en": "carousel",
+          "de": "Karussell",
+          "es": "carrusel"
+        },
+        "cart_add": {
+          "en": "Add to cart",
+          "de": "In den Warenkorb",
+          "es": "Añadir al carrito"
+        },
+        "cart_added": {
+          "en": "Added",
+          "de": "Hinzugefügt",
+          "es": "Añadido"
+        },
+        "cart_clear": {
+          "en": "Clear cart",
+          "de": "Warenkorb leeren",
+          "es": "Vaciar carrito"
+        },
+        "cart_currency_code": {
+          "en": "USD",
+          "de": "USD",
+          "es": "USD"
+        },
+        "cart_currency_symbol": {
+          "en": "$",
+          "de": "$",
+          "es": "$"
+        },
+        "cart_empty": {
+          "en": "Your cart is empty.",
+          "de": "Ihr Warenkorb ist leer.",
+          "es": "Su carrito está vacío."
+        },
+        "cart_note": {
+          "en": "Prices are indicative. This sends an order request — the seller confirms availability and final price.",
+          "de": "Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.",
+          "es": "Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final."
+        },
+        "cart_order_lead": {
+          "en": "I’d like to order:",
+          "de": "Ich möchte gerne bestellen:",
+          "es": "Me gustaría hacer un pedido:"
+        },
+        "cart_sent": {
+          "en": "Order sent — we will be in touch.",
+          "de": "Bestellung gesendet — wir melden uns.",
+          "es": "Pedido enviado — le contactaremos."
+        },
+        "cart_title": {
+          "en": "Your cart",
+          "de": "Warenkorb",
+          "es": "Su carrito"
+        },
+        "cart_toggle": {
+          "en": "Shopping Cart",
+          "de": "Warenkorb",
+          "es": "Carrito"
+        },
+        "cart_total": {
+          "en": "Total",
+          "de": "Gesamt",
+          "es": "Total"
+        },
+        "close": {
+          "en": "Close",
+          "de": "Schließen",
+          "es": "Cerrar"
+        },
+        "comp_banner.bn_intro": {
+          "de": "Ein frei gestaltbares Banner, das du überall platzierst — die Runtime blendet es ein und merkt sich die Schließung in localStorage, damit es nicht nervt. Du schreibst den Inhalt und die Aktions-Schaltflächen; Position, Häufigkeit, Schlummern, Verzögerung und Eingangsanimation sind alles Attribut-Schalter. Es ist NICHT das Cookie-Banner — das ist der automatisch eingefügte Consent Manager.",
+          "es": "Un banner de contenido libre que colocas donde quieras — el runtime lo muestra y recuerda el cierre en localStorage para que no moleste. Tú escribes el cuerpo y los botones de acción; la posición, la frecuencia, el aplazamiento, el retardo y la animación de entrada son todos interruptores de atributo. NO es el banner de cookies — ese es el Consent Manager autoinyectado."
+        },
+        "comp_banner.sec_bg_d": {
+          "de": "Lege ein absolut positioniertes Medien-Element + einen Schleier unter den Inhalt für ein randloses Foto, einen CSS-Verlauf oder einen Live-WebGL-Shader (eine verschachtelte data-sw-component=\"shader-bg\"). Die drei unten sind live — schließe eines und lade neu.",
+          "es": "Coloca un elemento multimedia absoluto + un velo bajo el contenido para una foto a sangre, un degradado CSS o un shader WebGL en vivo (un data-sw-component=\"shader-bg\" anidado). Los tres de abajo están en vivo — cierra uno y recarga."
+        },
+        "comp_banner.sec_bg_t": {
+          "de": "Reichhaltige Hintergründe",
+          "es": "Fondos enriquecidos"
+        },
+        "comp_banner.sec_entrance_d": {
+          "de": "Standardmäßig blendet ein Banner mit Einblenden + Aufsteigen ein (und blendet beim Schließen aus). Füge einen data-aos-Effekt hinzu — fade-up, zoom-in, flip-left, … mit data-aos-delay/-duration/-easing — und es nutzt diesen für den Eingang; das Schließen kehrt den jeweils genutzten um. data-delay blendet es nach N ms oder beim ersten Scrollen ein.",
+          "es": "Por defecto un banner aparece con fundido + ascenso (y se desvanece al cerrarse). Añade un efecto data-aos — fade-up, zoom-in, flip-left, … con data-aos-delay/-duration/-easing — y lo usa para la entrada; el cierre invierte el que se haya usado. data-delay lo muestra tras N ms o el primer desplazamiento."
+        },
+        "comp_banner.sec_entrance_t": {
+          "de": "Eingang & Bewegung",
+          "es": "Entrada y movimiento"
+        },
+        "comp_banner.sec_freq_d": {
+          "de": "Ein einfaches dismiss respektiert data-frequency; dismiss-forever blendet dauerhaft aus; remind schlummert für data-remind-days. Gib jedem Banner eine EINDEUTIGE data-sw-banner-id, damit Schließungen getrennt verfolgt werden.",
+          "es": "Un dismiss normal respeta data-frequency; dismiss-forever lo oculta para siempre; remind lo pospone durante data-remind-days. Da a cada banner un data-sw-banner-id ÚNICO para que los cierres se registren por separado."
+        },
+        "comp_banner.sec_freq_t": {
+          "de": "Wie oft es zurückkommt",
+          "es": "Con qué frecuencia vuelve"
+        },
+        "comp_banner.sec_layouts_d": {
+          "de": "Dieselbe Komponente, jede Form. Eine Leiste über die volle Breite, eine Eck-Karte oder eine zentrierte Karte — Inhalt + data-position bestimmen das Aussehen. Die drei Aktions-Parts sind dismiss (folgt der Häufigkeit), dismiss-forever („nicht mehr anzeigen“) und remind (schlummern).",
+          "es": "El mismo componente, cualquier forma. Una barra a todo el ancho, una tarjeta de esquina o una tarjeta centrada — el contenido + data-position deciden el aspecto. Las tres partes de acción son dismiss (sigue la frecuencia), dismiss-forever («no volver a mostrar») y remind (posponer)."
+        },
+        "comp_banner.sec_layouts_t": {
+          "de": "Layouts",
+          "es": "Diseños"
+        },
+        "comp_banner.sec_nojs_d": {
+          "de": "Es erscheint gar kein Banner — es wird mit dem hidden-Attribut ausgeliefert und erst die Runtime blendet es ein, ohne Skripte wird die Seite also einfach unverändert ausgeliefert.",
+          "es": "No aparece ningún banner — se entrega con el atributo hidden y es el runtime el que lo muestra, así que sin scripts la página se sirve tal cual."
+        },
+        "comp_banner.sec_nojs_t": {
+          "de": "Ohne JavaScript",
+          "es": "Sin JavaScript"
+        },
+        "comp_banner.sec_place_d": {
+          "de": "data-position heftet es an jede Kante, Ecke oder die Mitte — oder inline, in den Seitenfluss. (Standard: bottom-right.)",
+          "es": "data-position lo fija a cualquier borde, esquina o el centro — o inline, en el flujo de la página. (Por defecto: bottom-right.)"
+        },
+        "comp_banner.sec_place_t": {
+          "de": "Platzierungen",
+          "es": "Ubicaciones"
+        },
+        "comp_consent.cn_intro": {
+          "de": "Der Consent Manager hilft dir, die DSGVO und die ePrivacy-„Cookie-Richtlinie“ einzuhalten: Drittanbieter-Einbettungen und -Skripte, die Cookies setzen oder Besucher tracken (YouTube, Maps, Analytics, Chat-Widgets, …), werden BLOCKIERT, bis der Besucher eine VORHERIGE, informierte, freiwillige und granulare Einwilligung gibt — pro Kategorie. Aktiviere ihn einmal (Website → Einwilligung) und das Banner wird auf jeder Seite automatisch eingefügt; er leitet außerdem die Content-Security-Policy jeder Seite aus den erlaubten Einbettungen ab.",
+          "es": "El Consent Manager te ayuda a cumplir el RGPD y la «Ley de Cookies» de ePrivacy: las incrustaciones y scripts de terceros que ponen cookies o rastrean a los visitantes (YouTube, Maps, analítica, widgets de chat, …) se BLOQUEAN hasta que el visitante da un consentimiento PREVIO, informado, libre y granular — por categoría. Actívalo una vez (Sitio web → Consentimiento) y el banner se inyecta en cada página; además deriva la Content-Security-Policy de cada página a partir de las incrustaciones permitidas."
+        },
+        "comp_consent.cn_reopen_btn": {
+          "de": "Cookie-Einstellungen",
+          "es": "Configuración de cookies"
+        },
+        "comp_consent.cn_reopen_d": {
+          "de": "Die DSGVO verlangt, dass der Widerruf der Einwilligung so einfach ist wie ihre Erteilung. Diese Schaltfläche öffnet den Manager erneut, damit ein Besucher jede Kategorie jederzeit prüfen oder widerrufen kann.",
+          "es": "El RGPD exige que retirar el consentimiento sea tan fácil como darlo. Este botón vuelve a abrir el gestor para que un visitante pueda revisar o revocar cada categoría cuando quiera."
+        },
+        "comp_consent.cn_reopen_t": {
+          "de": "Jederzeit widerrufbar",
+          "es": "Cámbialo cuando quieras"
+        },
+        "comp_consent.cn_test_1": {
+          "de": "Erster Besuch (noch keine Einwilligung): Das Video wird zurückgehalten — ein Platzhalter, kein Player. Öffne das Netzwerk-Panel des Browsers und lade neu: Es gibt NULL Anfragen an youtube.com und es werden keine Cookies gesetzt. Das ist die DSGVO/ePrivacy-Garantie — nichts von Dritten lädt vor der Einwilligung.",
+          "es": "Primera visita (sin consentimiento aún): el vídeo se retiene — un marcador, no el reproductor. Abre el panel de Red del navegador y recarga: hay CERO peticiones a youtube.com y no se ponen cookies. Esa es la garantía del RGPD/ePrivacy: nada de terceros carga antes del consentimiento."
+        },
+        "comp_consent.cn_test_2": {
+          "de": "Erlauben: Klicke „Einmal erlauben“ auf dem Platzhalter, um das Video für diesen Besuch zu laden, oder „Immer erlauben“, um es zu merken — oder „Alle akzeptieren“ im Cookie-Banner. Da die Einbettung in der Kategorie Marketing liegt, bleibt sie zurückgehalten, wenn nur Funktional akzeptiert wird — das ist granulare Einwilligung.",
+          "es": "Permitir: pulsa «Permitir una vez» en el marcador para cargar el vídeo en esta visita, o «Permitir siempre» para recordarlo — o «Aceptar todo» en el banner de cookies. Como la incrustación está en la categoría Marketing, si solo aceptas Funcional sigue retenida — eso es consentimiento granular."
+        },
+        "comp_consent.cn_test_3": {
+          "de": "Widerrufen: Klicke oben auf „Cookie-Einstellungen“, wähle „Alle ablehnen“ und lade neu — das Video wird wieder zurückgehalten, und die Cookies des Players werden nicht mehr geladen.",
+          "es": "Retirar: pulsa «Configuración de cookies» arriba, elige «Rechazar todo» y recarga — el vídeo vuelve a retenerse y las cookies del reproductor ya no se cargan."
+        },
+        "comp_consent.sec_embed_d": {
+          "de": "Das Video unten ist ein normales <iframe>, aber weil die Einwilligung aktiv ist, wird es ZURÜCKGEHALTEN: Bis du es erlaubst, wird keine Anfrage an YouTube gesendet und kein Cookie gesetzt — diese Regel der vorherigen Einwilligung ist der Kern der ePrivacy-Richtlinie. Du siehst einen Platzhalter mit der URL und „Einmal erlauben“ / „Immer erlauben“. Es trägt data-sw-consent=\"marketing\" und gehört damit zur Kategorie Marketing.",
+          "es": "El vídeo de abajo es un <iframe> normal, pero como el consentimiento está activo se RETIENE: hasta que lo permitas, no se hace ninguna petición a YouTube ni se ponen cookies — esa regla de consentimiento previo es el núcleo de la Directiva ePrivacy. Verás un marcador de posición con la URL y «Permitir una vez» / «Permitir siempre». Lleva data-sw-consent=\"marketing\", así que pertenece a la categoría Marketing."
+        },
+        "comp_consent.sec_embed_t": {
+          "de": "Eine gesperrte YouTube-Einbettung",
+          "es": "Una incrustación de YouTube bloqueada"
+        },
+        "comp_consent.sec_test_t": {
+          "de": "So testest du es",
+          "es": "Cómo probarlo"
+        },
+        "comp_datetimepicker.dtp_intro": {
+          "de": "Ein Attribut auf ein Textfeld und es wird zu einem gebrandeten Kalender mit Schieberegler-Zeitauswahl. Datum, Zeitraum, Datum+Zeit und Uhrzeit — jeweils ein einziger data-mode-Wert, und Farben und Schrift stammen automatisch aus der CI deiner Website. Ein Zeitraum öffnet sich als zwei Monate nebeneinander, sodass monatsübergreifende Spannen leichtfallen.",
+          "es": "Pon un atributo en un campo de texto y se convierte en un calendario con la marca del sitio y un selector de hora con deslizador. Fecha, rango, fecha y hora, y solo hora — cada uno es un único valor data-mode, y los colores y la tipografía provienen automáticamente de la identidad visual de tu sitio. Un rango se abre como dos meses uno al lado del otro, así que los tramos que cruzan de mes son fáciles."
+        },
+        "comp_datetimepicker.lbl_date": {
+          "de": "Termindatum",
+          "es": "Fecha de la cita"
+        },
+        "comp_datetimepicker.lbl_datetime": {
+          "de": "Datum & Zeit",
+          "es": "Fecha y hora"
+        },
+        "comp_datetimepicker.lbl_inline": {
+          "de": "Dauerhaft geöffneter Doppelpanel-Kalender",
+          "es": "Calendario de panel doble siempre abierto"
+        },
+        "comp_datetimepicker.lbl_range": {
+          "de": "Zeitraum (zwei Monate)",
+          "es": "Rango de fechas (dos meses)"
+        },
+        "comp_datetimepicker.lbl_time": {
+          "de": "Nur Uhrzeit",
+          "es": "Solo hora"
+        },
+        "comp_datetimepicker.ph_date": {
+          "en": "Select a date…",
+          "de": "Datum wählen…",
+          "es": "Selecciona una fecha…"
+        },
+        "comp_datetimepicker.ph_datetime": {
+          "en": "Pick a day and time…",
+          "de": "Tag und Uhrzeit wählen…",
+          "es": "Elige un día y una hora…"
+        },
+        "comp_datetimepicker.ph_range": {
+          "en": "Check-in – Check-out",
+          "de": "Anreise – Abreise",
+          "es": "Entrada – Salida"
+        },
+        "comp_datetimepicker.ph_time": {
+          "en": "Pick a time…",
+          "de": "Uhrzeit wählen…",
+          "es": "Elige una hora…"
+        },
+        "comp_datetimepicker.sec_basic_d": {
+          "de": "Eine Datumsauswahl ist nur data-sw-component=\"datetimepicker\" auf einem Textfeld — ohne Konfiguration. Ins Feld klicken, der Kalender öffnet sich; der gewählte Tag nutzt deine Primärfarbe.",
+          "es": "Un selector de fecha es solo data-sw-component=\"datetimepicker\" en un campo de texto — sin configuración. Haz clic en el campo para abrir el calendario; el día seleccionado usa tu color primario."
+        },
+        "comp_datetimepicker.sec_basic_t": {
+          "de": "Eine Zeile für den Normalfall",
+          "es": "Una línea para el caso común"
+        },
+        "comp_datetimepicker.sec_full_d": {
+          "de": "Für die übrigen Fälle gibt es data-*-Attribute: Grenzen (data-min / data-max), Wochenstart, mehrere Daten, Minutenschritt, 12-/24-Stunden-Format, Sprache und data-months zum Verbreitern des Panels. Setze die Markierung statt auf ein Eingabefeld auf ein Block-Element für einen dauerhaft geöffneten Kalender — hier ein Doppelpanel-Zeitraum:",
+          "es": "Para los demás casos hay atributos data-*: límites (data-min / data-max), inicio de semana, varias fechas, paso de minutos, formato de 12/24 horas, idioma y data-months para ampliar el panel. Pon la marca en un elemento de bloque en lugar de un campo para un calendario siempre abierto — aquí un rango con panel doble:"
+        },
+        "comp_datetimepicker.sec_full_t": {
+          "de": "Volle Kontrolle, wenn nötig",
+          "es": "Control total cuando lo necesitas"
+        },
+        "comp_datetimepicker.sec_modes_d": {
+          "de": "data-mode wechselt die Auswahl: ein einzelnes Datum, ein über zwei Monate gezeigter Start–Ende-Zeitraum, ein Datum mit Zeit-Schieberegler oder nur die Uhrzeit. Alles andere bleibt automatisch.",
+          "es": "data-mode cambia el selector: una sola fecha, un rango inicio–fin mostrado en dos meses, una fecha con deslizador de hora, o solo la hora. Todo lo demás permanece automático."
+        },
+        "comp_datetimepicker.sec_modes_t": {
+          "de": "Vier Modi, ein Attribut",
+          "es": "Cuatro modos, un atributo"
+        },
+        "comp_datetimepicker.sec_nojs_d": {
+          "de": "Laufen keine Skripte, bleibt jedes Feld ein gewöhnliches Textfeld — der Besucher kann weiterhin einen Wert eingeben und er wird im Formular gesendet. Nur das Kalender-Popup steht nicht zur Verfügung.",
+          "es": "Si los scripts no se ejecutan, cada campo sigue siendo un campo de texto normal — el visitante aún puede escribir un valor y se envía dentro de un formulario. Solo el calendario emergente no está disponible."
+        },
+        "comp_datetimepicker.sec_nojs_t": {
+          "de": "Ohne JavaScript",
+          "es": "Sin JavaScript"
+        },
+        "comp_forms.frm_intro": {
+          "de": "Baue ein Formular einmal im Formulare-Tab und bette es dann überall ein — {{sw-form \"id\"}} oder data-sw-form=\"id\" expandiert das Ganze beim Rendern: Felder, Labels, Validierung, einen Honeypot und eine Inline-Erfolgsmeldung. Es gibt kein Markup von Hand und nichts zu verdrahten.",
+          "es": "Crea un formulario una vez en la pestaña Formularios y luego incrústalo donde quieras — {{sw-form \"id\"}} o data-sw-form=\"id\" lo expande al renderizar: campos, etiquetas, validación, un honeypot y un mensaje de éxito en línea. No hay marcado que escribir a mano ni nada que cablear."
+        },
+        "comp_forms.sec_about_d": {
+          "de": "Jede Einbettung erhält einen versteckten Honeypot, eine Zeitfalle beim Absenden und optional hCaptcha; sie sendet JSON an den eingefügten Endpunkt und zeigt Erfolg oder Fehler inline. Auf einer übersetzten Seite löst „contact“ automatisch das passende lokalisierte Formular auf. Ohne JavaScript hat das Formular kein action-Attribut und sendet nicht — Spam-Schutz by design.",
+          "es": "Cada incrustación recibe un honeypot oculto, una trampa de tiempo al enviar y hCaptcha opcional; envía JSON al endpoint inyectado y muestra el éxito o el error en línea. En una página traducida, «contact» resuelve automáticamente al formulario localizado correspondiente. Sin JavaScript el formulario no tiene atributo action y no se envía — antispam por diseño."
+        },
+        "comp_forms.sec_about_t": {
+          "de": "Spam-Schutz, sprachbewusst, ohne JS",
+          "es": "Antispam, según el idioma, sin JS"
+        },
+        "comp_forms.sec_attr_d": {
+          "de": "Lieber von Hand platzieren? Ein leeres Element mit data-sw-form=\"contact\" wird mit demselben Markup gefüllt — setze es in jeden Container, den du gestaltet hast, etwa diese Karte.",
+          "es": "¿Prefieres colocarlo a mano? Un elemento vacío con data-sw-form=\"contact\" se rellena con el mismo marcado — ponlo en cualquier contenedor con estilo, como esta tarjeta."
+        },
+        "comp_forms.sec_attr_t": {
+          "de": "Per Attribut einbetten, in deinem eigenen Layout",
+          "es": "Incrustar por atributo, en tu propio diseño"
+        },
+        "comp_forms.sec_helper_d": {
+          "de": "Das einfachste Formular: ein Helper-Aufruf expandiert die gespeicherte „contact“-Definition. Mit class= gestaltest du den Wrapper.",
+          "es": "El formulario más simple: una llamada al helper expande la definición «contact» guardada. Añade class= para dar estilo al contenedor."
+        },
+        "comp_forms.sec_helper_t": {
+          "de": "Mit dem Helper einbetten",
+          "es": "Incrustar con el helper"
+        },
+        "comp_lightbox.aria_gallery": {
+          "en": "Studio gallery",
+          "de": "Studio-Galerie",
+          "es": "Galería del estudio"
+        },
+        "comp_lightbox.aria_gallery2": {
+          "en": "Project gallery",
+          "de": "Projektgalerie",
+          "es": "Galería de proyectos"
+        },
+        "comp_lightbox.aria_gallery3": {
+          "en": "Studio gallery, fill mode",
+          "de": "Studio-Galerie, bildschirmfüllend",
+          "es": "Galería del estudio, modo llenar"
+        },
+        "comp_lightbox.aria_masonry": {
+          "en": "Masonry gallery",
+          "de": "Masonry-Galerie",
+          "es": "Galería masonry"
+        },
+        "comp_lightbox.lb_intro": {
+          "de": "Ein Fotoraster, das sich beim Klick bildschirmfüllend öffnet — das Bild vergrößert sich aus seiner Kachel, eine Thumbnail-Leiste und ein Bildzähler kommen mit, und Wischen / Pinch-Zoom / Tastatur funktionieren alle. Der Fokus kehrt beim Schließen zur Kachel zurück.",
+          "es": "Una cuadrícula de fotos que se abre a pantalla completa al hacer clic — la imagen se amplía desde su mosaico, una tira de miniaturas y un contador la acompañan, y el deslizamiento / pinch-zoom / teclado funcionan. El foco vuelve al mosaico al cerrar."
+        },
+        "comp_lightbox.sec_group_d": {
+          "de": "Diese Bilder sind eigenständige Elemente in eigenen Karten, aber ein gemeinsamer data-gallery-Name fasst sie zu einer Lightbox zusammen — klicke auf eines und blättere durch beide. Das funktioniert auch über verschiedene Abschnitte der Seite hinweg.",
+          "es": "Estas imágenes son elementos independientes en sus propias tarjetas, pero un mismo nombre data-gallery las une en una sola lightbox — haz clic en cualquiera y pasa por ambas. Lo mismo funciona entre distintas secciones de la página."
+        },
+        "comp_lightbox.sec_group_t": {
+          "de": "Lightbox — eine Galerie aus getrennten Bildern",
+          "es": "Lightbox — una galería desde imágenes separadas"
+        },
+        "comp_lightbox.sec_lb_d": {
+          "de": "Klicke auf ein Foto: Es vergrößert sich aus seiner Kachel in einen bildschirmfüllenden Viewer mit Thumbnail-Leiste, Bildzähler und Bildunterschrift. Wischen oder Pinch auf Touch, Pfeiltasten am Rechner, Escape zum Schließen.",
+          "es": "Haz clic en cualquier foto: se amplía desde su mosaico a un visor a pantalla completa con tira de miniaturas, contador de imágenes y leyenda. Desliza o pellizca en táctil, flechas en el teclado, Escape para cerrar."
+        },
+        "comp_lightbox.sec_lb_t": {
+          "de": "Lightbox — die Standardeinstellungen",
+          "es": "Lightbox — los valores por defecto"
+        },
+        "comp_lightbox.sec_lb3_d": {
+          "de": "Die Anpassung kann den Viewport füllen statt das ganze Bild zu zeigen, die Öffnen-Animation lässt sich abschalten, und das geöffnete Bild kann in der URL gespiegelt werden. Auf dem Smartphone kann das gezoomte Bild per Geräteneigung schwenken.",
+          "es": "El ajuste puede llenar el viewport en vez de mostrar la imagen completa, la animación de apertura puede desactivarse y la imagen abierta puede reflejarse en la URL. En el móvil, la imagen ampliada puede desplazarse con la inclinación del dispositivo."
+        },
+        "comp_lightbox.sec_lb3_t": {
+          "de": "Lightbox — bildschirmfüllend",
+          "es": "Lightbox — llenar la pantalla"
+        },
+        "comp_lightbox.sec_lbfx_d": {
+          "de": "Dieselbe Galerie mit ausgeschalteter Thumbnail-Leiste und Pfeilen — ein klarerer Viewer, allein per Wischen, Tastatur und Zähler gesteuert.",
+          "es": "La misma galería con la tira de miniaturas y las flechas desactivadas — un visor más limpio, gobernado solo por el deslizamiento, el teclado y el contador."
+        },
+        "comp_lightbox.sec_lbfx_t": {
+          "de": "Lightbox — reduziert",
+          "es": "Lightbox — versión reducida"
+        },
+        "comp_lightbox.sec_masonry_d": {
+          "de": "Bilder unterschiedlicher Seitenverhältnisse — Hochformate, Querformate und breite Cover — versetzt in ausgewogene CSS-Spalten, ohne Beschnitt. Das Attribut steht direkt auf dem Spalten-Container; die Bilder werden zu einer Galerie.",
+          "es": "Imágenes de proporciones variadas — verticales, horizontales y portadas anchas — escalonadas en columnas CSS equilibradas, sin recorte. El atributo va directamente en el contenedor de columnas; las imágenes forman una galería."
+        },
+        "comp_lightbox.sec_masonry_t": {
+          "de": "Lightbox — Masonry-Raster",
+          "es": "Lightbox — cuadrícula masonry"
+        },
+        "comp_lightbox.sec_single_d": {
+          "de": "Kein Raster-Gerüst nötig: Setze data-sw-component=\"lightbox\" direkt auf ein <img>, und dieses eine Bild öffnet sich beim Klick bildschirmfüllend — die ganze Lightbox in einer einzigen Zeile.",
+          "es": "Sin estructura de cuadrícula: pon data-sw-component=\"lightbox\" directamente en un <img> y esa única imagen se abre a pantalla completa al hacer clic — toda la lightbox en una sola línea."
+        },
+        "comp_lightbox.sec_single_t": {
+          "de": "Lightbox — ein einzelnes Bild (eine Zeile)",
+          "es": "Lightbox — una sola imagen (una línea)"
+        },
+        "comp_modal.mod_close": {
+          "en": "Close",
+          "de": "Schließen",
+          "es": "Cerrar"
+        },
+        "comp_modal.mod_intro": {
+          "de": "Eine Schaltfläche und ein nativer Dialog. Der Browser liefert die Fokusfalle, Escape zum Schließen, das abgedunkelte ::backdrop und das Inaktivschalten der Seite dahinter — die Komponente verdrahtet nur die Öffnen- und Schließen-Schaltflächen. Die Größe bestimmst du mit einer max-w-*-Klasse.",
+          "es": "Un botón y un diálogo nativo. El navegador aporta la trampa de foco, Escape para cerrar, el ::backdrop atenuado y la inactivación de la página detrás — el componente solo cablea los botones de abrir y cerrar. El tamaño lo decides con una clase max-w-*."
+        },
+        "comp_modal.mod1_body": {
+          "de": "Nach deiner Anfrage vereinbaren wir ein kurzes Gespräch, stecken den Umfang gemeinsam ab und senden innerhalb von zwei Werktagen ein Festpreisangebot — unverbindlich.",
+          "es": "Tras tu consulta concertamos una llamada breve, definimos juntos el alcance y enviamos un presupuesto cerrado en dos días hábiles — sin compromiso."
+        },
+        "comp_modal.mod1_open": {
+          "de": "Wie geht es weiter?",
+          "es": "¿Qué pasa después?"
+        },
+        "comp_modal.mod1_title": {
+          "de": "Wie geht es weiter?",
+          "es": "¿Qué pasa después?"
+        },
+        "comp_modal.mod2_open": {
+          "de": "Den ganzen Ablauf ansehen",
+          "es": "Ver todo el proceso"
+        },
+        "comp_modal.mod2_step1": {
+          "de": "Entdecken — wir lernen Ziele, Zielgruppe und Rahmenbedingungen kennen.",
+          "es": "Descubrimiento — conocemos tus objetivos, tu público y tus restricciones."
+        },
+        "comp_modal.mod2_step2": {
+          "de": "Design & Umsetzung — wöchentliche Vorschauen, dein Feedback fließt ein.",
+          "es": "Diseño y desarrollo — vistas previas semanales, con tu feedback integrado."
+        },
+        "comp_modal.mod2_step3": {
+          "de": "Launch & Pflege — wir gehen live, messen und verbessern weiter.",
+          "es": "Lanzamiento y cuidado — publicamos, medimos y seguimos mejorando."
+        },
+        "comp_modal.mod2_title": {
+          "de": "So arbeiten wir",
+          "es": "Cómo trabajamos"
+        },
+        "comp_modal.mod3_body": {
+          "de": "Wir antworten meist innerhalb eines Tages.",
+          "es": "Solemos responder en un día."
+        },
+        "comp_modal.mod3_open": {
+          "de": "Kontakt aufnehmen",
+          "es": "Ponte en contacto"
+        },
+        "comp_modal.mod3_title": {
+          "de": "Schreib uns eine Nachricht",
+          "es": "Envíanos un mensaje"
+        },
+        "comp_modal.sec_basic_d": {
+          "de": "Ein Auslöser und ein Dialog — die gestaltete Schließen-Schaltfläche (oben rechts) wird automatisch hinzugefügt. Ein Dialog ohne Klassen nutzt die Hintergrund- und Textfarben deiner Website, abgerundete Ecken und angenehmen Innenabstand. Escape, die Schließen-Schaltfläche oder ein Klick auf den Hintergrund schließen ihn.",
+          "es": "Un disparador y un diálogo: el botón de cerrar con estilo (arriba a la derecha) se añade automáticamente. Un diálogo sin clases usa los colores de fondo y de texto de tu sitio, esquinas redondeadas y un relleno cómodo. Escape, el botón de cerrar o un clic en el fondo lo descartan."
+        },
+        "comp_modal.sec_basic_t": {
+          "de": "Modal — die Standardeinstellungen",
+          "es": "Modal — los valores por defecto"
+        },
+        "comp_modal.sec_form_d": {
+          "de": "Setze das eingebettete Kontaktformular direkt in den Dialog — es sendet, validiert und zeigt seine Erfolgsmeldung, ohne dass die Seite verlassen wird.",
+          "es": "Coloca el formulario de contacto incrustado directamente en el diálogo — envía, valida y muestra su mensaje de éxito sin salir nunca de la página."
+        },
+        "comp_modal.sec_form_t": {
+          "de": "Ein Modal mit einem Formular",
+          "es": "Un modal con un formulario"
+        },
+        "comp_modal.sec_nojs_d": {
+          "de": "Ohne JS tut der Auslöser einfach nichts und die Seite bleibt voll nutzbar — leg also nie wesentliche Inhalte allein in ein Modal. Ein Navigations-Platzhalter, der auf eine #dialog-id zeigt, kann ein Modal auch aus dem Menü öffnen.",
+          "es": "Sin JS el disparador simplemente no hace nada y la página sigue siendo plenamente usable — así que nunca pongas contenido esencial solo dentro de un modal. Un marcador de navegación que apunte a un #dialog-id también puede abrir uno desde el menú."
+        },
+        "comp_modal.sec_nojs_t": {
+          "de": "Ohne JavaScript & globale Modals",
+          "es": "Sin JavaScript y modales globales"
+        },
+        "comp_modal.sec_wide_d": {
+          "de": "Dieselbe Komponente, mit max-w-2xl vergrößert. Utility-Klassen am Dialog überschreiben jede Vorgabe — Hintergrund, Text, Innenabstand, Radius. Du kannst außerdem die automatische Schließen-Schaltfläche mit data-closebutton=\"false\" ausblenden und den Dialog bei einem Klick auf den Hintergrund mit data-backdrop-close=\"false\" geöffnet lassen; hier ist beides gesetzt, daher ist die Schaltfläche unten der einzige Ausweg.",
+          "es": "El mismo componente, ampliado con max-w-2xl. Las clases de utilidad en el diálogo anulan cualquier valor por defecto — fondo, texto, relleno, radio. También puedes ocultar el botón de cerrar automático con data-closebutton=\"false\" y mantener el modal abierto al hacer clic en el fondo con data-backdrop-close=\"false\"; aquí están ambos, así que el botón de abajo es la única salida."
+        },
+        "comp_modal.sec_wide_t": {
+          "de": "Ein breiterer Dialog mit reichem Inhalt",
+          "es": "Un diálogo más ancho con contenido rico"
+        },
+        "comp_slider.a_next": {
+          "en": "Next slide",
+          "de": "Nächste Folie",
+          "es": "Diapositiva siguiente"
+        },
+        "comp_slider.a_prev": {
+          "en": "Previous slide",
+          "de": "Vorherige Folie",
+          "es": "Diapositiva anterior"
+        },
+        "comp_slider.aria_align": {
+          "en": "Featured tools (centered)",
+          "de": "Ausgewählte Werkzeuge (zentriert)",
+          "es": "Herramientas destacadas (centradas)"
+        },
+        "comp_slider.aria_click": {
+          "en": "Project highlights (click to advance)",
+          "de": "Projekt-Highlights (Klick blättert weiter)",
+          "es": "Proyectos destacados (clic para avanzar)"
+        },
+        "comp_slider.aria_fade": {
+          "en": "Project slideshow (fade)",
+          "de": "Projekt-Slideshow (Fade)",
+          "es": "Presentación de proyectos (fundido)"
+        },
+        "comp_slider.aria_items": {
+          "en": "Project cards",
+          "de": "Projektkarten",
+          "es": "Tarjetas de proyectos"
+        },
+        "comp_slider.aria_scroll": {
+          "en": "Project ticker",
+          "de": "Projekt-Ticker",
+          "es": "Ticker de proyectos"
+        },
+        "comp_slider.aria_slide": {
+          "en": "Project slideshow (slide)",
+          "de": "Projekt-Slideshow (Slide)",
+          "es": "Presentación de proyectos (deslizante)"
+        },
+        "comp_slider.aria_wheel": {
+          "en": "Client quotes",
+          "de": "Kundenstimmen",
+          "es": "Opiniones de clientes"
+        },
+        "comp_slider.sec_align_d": {
+          "de": "Werden weniger Elemente gezeigt, als die Reihe füllen, verteilt data-item-align sie horizontal — Anfang (Standard), Mitte oder Ende — statt sie links kleben zu lassen.",
+          "es": "Cuando se muestran menos elementos de los que llenan la fila, data-item-align los distribuye horizontalmente — inicio (por defecto), centro o final — en lugar de dejarlos pegados a la izquierda."
+        },
+        "comp_slider.sec_align_t": {
+          "de": "Eine nicht volle Reihe ausrichten",
+          "es": "Alinear una fila incompleta"
+        },
+        "comp_slider.sec_click_d": {
+          "de": "Ganz ohne Pfeile: Ein Klick oder Tipp irgendwo auf die Folie blättert weiter — jeder Druck antwortet mit einem Ripple. Links in der Folie bleiben Links, Ziehen wischt weiterhin, und die Pfeiltasten funktionieren, sobald der Slider den Fokus hat.",
+          "es": "Sin flechas: un clic o un toque en cualquier punto de la diapositiva avanza — cada pulsación responde con una onda. Los enlaces dentro de la diapositiva siguen siendo enlaces, arrastrar sigue deslizando y las flechas del teclado funcionan en cuanto el slider tiene el foco."
+        },
+        "comp_slider.sec_click_t": {
+          "de": "Klicken zum Weiterblättern",
+          "es": "Clic para avanzar"
+        },
+        "comp_slider.sec_fade_d": {
+          "de": "Ganz ohne Optionen: Die Folien überblenden und laufen endlos, die Pfeile liegen als hohe Verlaufsflächen bündig an beiden Rändern, die Indikatoren zentriert am unteren Rand.",
+          "es": "Sin opciones: las diapositivas se funden y avanzan en bucle, las flechas ocupan toda la altura pegadas a cada borde y los indicadores quedan centrados abajo."
+        },
+        "comp_slider.sec_fade_t": {
+          "de": "Slider — die Standardeinstellungen",
+          "es": "Slider — los valores por defecto"
+        },
+        "comp_slider.sec_hero_d": {
+          "de": "Der klassische Startseiten-Auftakt: Folien mit fester Höhe, Hintergrundbildern, abwechselndem Ken-Burns-Effekt und hereingleitenden Captions. Dieser ganze Block ist das hero-slider-Widget — einsetzen, dann seine Folien (Bilder + Captions) als Daten bearbeiten. Kein eigenes CSS.",
+          "es": "La apertura clásica de portada: diapositivas de altura fija con imágenes de fondo, un efecto Ken Burns alternante y captions que entran. Todo este bloque es el Widget hero-slider — insértalo y luego edita sus diapositivas (imágenes + captions) como datos. Sin CSS propio."
+        },
+        "comp_slider.sec_hero_t": {
+          "de": "Hero-Slider — ein einziges Include",
+          "es": "Slider hero — un solo include"
+        },
+        "comp_slider.sec_items_d": {
+          "de": "Die Variable --sw-items bestimmt die Karten pro Ansicht; ein Bruchwert lässt eine Karte hereinschauen. data-item-align=\"center\" zentriert die aktive Karte mit einem Ausblick auf beiden Seiten, und weil die Reihe endlos läuft, gehen ihr in keiner Richtung die Karten aus. Ziehen, wischen oder die Pfeile nutzen.",
+          "es": "La variable --sw-items fija las tarjetas por vista; un valor fraccionario deja asomar una tarjeta. data-item-align=\"center\" centra la tarjeta activa con un asomo a ambos lados y, como la fila va en bucle, nunca se queda sin tarjetas en ninguna dirección. Arrastra, desliza o usa las flechas."
+        },
+        "comp_slider.sec_items_t": {
+          "de": "Mehrere Karten mit Peek",
+          "es": "Varias tarjetas con asomo"
+        },
+        "comp_slider.sec_scroll_d": {
+          "de": "Ein gleichmäßiger Ticker statt einzelner Schritte — gemacht für Logoleisten und Bildbänder. Pausiert bei Hover oder Fokus.",
+          "es": "Un ticker constante en lugar de pasos — pensado para muros de logos y tiras de imágenes. Se pausa con el cursor o el foco."
+        },
+        "comp_slider.sec_scroll_t": {
+          "de": "Kontinuierlicher Auto-Scroll",
+          "es": "Desplazamiento automático continuo"
+        },
+        "comp_slider.sec_slide_d": {
+          "de": "Die schiebende Leiste statt Überblendung, die von selbst weiterwechselt — Hover oder Fokus pausiert. Der endlose Umlauf kommt ungefragt: Endlosschleife ist die Voreinstellung.",
+          "es": "La banda deslizante en lugar del fundido, avanzando sola — se pausa al pasar el cursor o recibir el foco. El bucle infinito no hay que pedirlo: es el valor por defecto."
+        },
+        "comp_slider.sec_slide_t": {
+          "de": "Slide-Effekt und Autoplay",
+          "es": "Efecto slide y autoplay"
+        },
+        "comp_slider.sec_wheel_d": {
+          "de": "Mit Mausrad oder Trackpad über dem Slider scrollen bewegt ihn; die Spur animiert ihre Höhe passend zum jeweiligen Zitat. Dieser verzichtet zudem auf die voreingestellte Endlosschleife — beim ersten und letzten Zitat sind die Pfeile abgeblendet.",
+          "es": "Desplaza la rueda del ratón o el trackpad sobre el slider para moverlo; la pista anima su altura para ajustarse a cada cita. Este además renuncia al bucle por defecto, así que las flechas se atenúan en la primera y la última cita."
+        },
+        "comp_slider.sec_wheel_t": {
+          "de": "Mausrad-Gesten & automatische Höhe",
+          "es": "Gestos de rueda y altura automática"
+        },
+        "comp_slider.sld_intro": {
+          "de": "Eine Komponente, alle Konfigurationen. Jeder Slider unten ist reines deklaratives Markup — ein data-sw-component-Root, data-sw-part-Slots und data-*-Optionen.",
+          "es": "Un componente, todas las configuraciones. Cada slider de abajo es marcado declarativo puro — un root data-sw-component, slots data-sw-part y opciones data-*."
+        },
+        "comp_tabs.body1": {
+          "de": "Tabs bündeln zusammengehörige Inhalte auf engem Raum — der Besucher sieht jeweils ein Panel und wechselt dazwischen, ohne die Seite zu verlassen.",
+          "es": "Las pestañas agrupan contenido relacionado en un área compacta — el visitante ve un panel a la vez y cambia entre ellos sin salir de la página."
+        },
+        "comp_tabs.body2": {
+          "de": "Gib jedem Panel einen Titel und seinen Inhalt. Die Runtime erzeugt die barrierefreie Tableiste, verknüpft jede Schaltfläche mit ihrem Panel und bewegt den Fokus mit den Pfeiltasten (Pos1 und Ende springen zum ersten und letzten).",
+          "es": "Da a cada panel un título y su contenido. El runtime genera la lista de pestañas accesible, enlaza cada botón con su panel y mueve el foco con las flechas (Inicio y Fin saltan al primero y al último)."
+        },
+        "comp_tabs.body3": {
+          "de": "Das Markup folgt dem WAI-ARIA-Tabs-Muster: eine Tableiste aus Schaltflächen, die je ein beschriftetes Tabpanel steuern. Roving tabindex bedeutet, dass Tab in das aktive Panel führt, statt durch jede Schaltfläche zu wandern.",
+          "es": "El marcado sigue el patrón de pestañas de WAI-ARIA: una lista de botones que controlan cada uno un panel etiquetado. El roving tabindex hace que Tab entre en el panel activo en vez de recorrer cada botón."
+        },
+        "comp_tabs.rli1": {
+          "de": "Beliebig viele Panels, jedes mit eigenem Titel und Inhalt",
+          "es": "Paneles ilimitados, cada uno con su propio título y contenido"
+        },
+        "comp_tabs.rli2": {
+          "de": "Tastatur-, Touch- und Screenreader-Unterstützung von Haus aus",
+          "es": "Compatibilidad con teclado, táctil y lector de pantalla de serie"
+        },
+        "comp_tabs.rli3": {
+          "de": "Kein eigenes JavaScript — nur deklaratives Markup",
+          "es": "Sin JavaScript propio — solo marcado declarativo"
+        },
+        "comp_tabs.rstat1_l": {
+          "de": "Zeilen JavaScript, die du schreibst",
+          "es": "líneas de JavaScript que escribes"
+        },
+        "comp_tabs.rstat2_l": {
+          "de": "allein mit der Tastatur bedienbar",
+          "es": "utilizable solo con el teclado"
+        },
+        "comp_tabs.rtab1": {
+          "en": "What’s included",
+          "de": "Inklusive",
+          "es": "Qué incluye"
+        },
+        "comp_tabs.rtab2": {
+          "en": "By the numbers",
+          "de": "In Zahlen",
+          "es": "En cifras"
+        },
+        "comp_tabs.sec_basic_d": {
+          "de": "Jedes Panel bekommt eine Beschriftung: ein einfaches data-sw-title oder ein optionales data-sw-part=\"tabtitle\"-Kind für ein Icon oder anderes HTML. Das gilt pro Tab, du kannst also mischen — hier sind die ersten beiden Tabs mit Markup und der dritte schlicht. Auf einen Tab klicken oder einen fokussieren und die Pfeiltasten nutzen.",
+          "es": "Cada panel recibe una etiqueta: un data-sw-title simple, o un elemento opcional data-sw-part=\"tabtitle\" para un icono u otro HTML. Es por pestaña, así que puedes mezclarlas — aquí las dos primeras pestañas son enriquecidas y la tercera es simple. Haz clic en una pestaña, o enfócala y usa las flechas."
+        },
+        "comp_tabs.sec_basic_t": {
+          "de": "Tab-Beschriftungen — schlicht oder mit Markup",
+          "es": "Etiquetas de pestaña — simples o con HTML"
+        },
+        "comp_tabs.sec_nojs_d": {
+          "de": "Laufen keine Skripte, bleibt die Tableiste verborgen und jedes Panel wird untereinander gestapelt gerendert — der gesamte Inhalt bleibt vorhanden und lesbar. Verstecke nie wesentliche Inhalte hinter einem Tab, der nur mit JS erscheint.",
+          "es": "Si los scripts no se ejecutan, la lista de pestañas queda oculta y cada panel se muestra apilado, uno tras otro — todo el contenido sigue ahí y es legible. Nunca ocultes contenido esencial tras una pestaña que solo aparece con JS."
+        },
+        "comp_tabs.sec_nojs_t": {
+          "de": "Ohne JavaScript",
+          "es": "Sin JavaScript"
+        },
+        "comp_tabs.sec_rich_d": {
+          "de": "Ein Panel ist nur ein Container — setze eine Liste, ein Kennzahlenraster, ein Bild oder einen Call-to-Action hinein. Hier ist ein Panel eine Checkliste und das nächste eine Reihe von Zahlen.",
+          "es": "Un panel es solo un contenedor — pon dentro una lista, una cuadrícula de cifras, una imagen o una llamada a la acción. Aquí un panel es una lista de verificación y el siguiente, un conjunto de cifras."
+        },
+        "comp_tabs.sec_rich_t": {
+          "de": "Panels nehmen beliebiges Markup auf",
+          "es": "Los paneles admiten cualquier marcado"
+        },
+        "comp_tabs.tab_intro": {
+          "de": "Eine Komponente, beliebiger Inhalt. Ein Tabs-Root mit einem Tablist-Slot und einem Panel pro Tab — die Runtime liest den Titel jedes Panels, erzeugt die Schaltflächen, verdrahtet die Pfeiltasten und stapelt ohne JavaScript alles lesbar untereinander.",
+          "es": "Un componente, cualquier contenido. Una raíz de pestañas con un slot de lista y un panel por pestaña — el runtime lee el título de cada panel, construye los botones, cablea las flechas y, sin JavaScript, apila todo de forma legible."
+        },
+        "comp_tabs.tab1": {
+          "en": "Overview",
+          "de": "Überblick",
+          "es": "Resumen"
+        },
+        "comp_tabs.tab2": {
+          "en": "How it works",
+          "de": "So funktioniert’s",
+          "es": "Cómo funciona"
+        },
+        "comp_tabs.tab3": {
+          "en": "Accessibility",
+          "de": "Barrierefreiheit",
+          "es": "Accesibilidad"
+        },
+        "components.a_view": {
+          "en": "Explore",
+          "de": "Ansehen",
+          "es": "Explorar"
+        },
+        "components.comp_eyebrow": {
+          "de": "Showcase",
+          "es": "Showcase"
+        },
+        "components.comp_h1": {
+          "de": "Interaktive Komponenten",
+          "es": "Componentes interactivos"
+        },
+        "components.comp_intro": {
+          "de": "Die First-Party-Komponenten, mit denen diese Website gebaut ist — jede in allen Konfigurationen, erst die Standardeinstellungen, dann jede Option. Alles funktioniert mit Tastatur, Touch und ohne JavaScript.",
+          "es": "Los componentes propios con los que está construido este sitio, cada uno en todas sus configuraciones — primero los valores por defecto, después cada opción. Todo funciona con teclado, táctil y sin JavaScript."
+        },
+        "consent_accept_all": {
+          "en": "Accept all",
+          "de": "Alle akzeptieren",
+          "es": "Aceptar todo"
+        },
+        "consent_allow_once": {
+          "en": "Allow once",
+          "de": "Einmal erlauben",
+          "es": "Permitir una vez"
+        },
+        "consent_always_allow": {
+          "en": "Always allow",
+          "de": "Immer erlauben",
+          "es": "Permitir siempre"
+        },
+        "consent_analytics": {
+          "en": "Analytics",
+          "de": "Statistik",
+          "es": "Analíticas"
+        },
+        "consent_analytics_desc": {
+          "en": "Helps us understand how visitors use the site.",
+          "de": "Hilft uns zu verstehen, wie Besucher die Website nutzen.",
+          "es": "Nos ayuda a entender cómo usan el sitio los visitantes."
+        },
+        "consent_customize": {
+          "en": "Customize",
+          "de": "Anpassen",
+          "es": "Personalizar"
+        },
+        "consent_embed_note": {
+          "en": "This content is loaded from a third party. Allow it to load?",
+          "de": "Dieser Inhalt wird von einem Drittanbieter geladen. Laden zulassen?",
+          "es": "Este contenido se carga desde un tercero. ¿Permitir que se cargue?"
+        },
+        "consent_functional": {
+          "en": "Functional",
+          "de": "Funktional",
+          "es": "Funcionales"
+        },
+        "consent_functional_desc": {
+          "en": "Remembers your preferences and enables enhanced features.",
+          "de": "Speichert Ihre Einstellungen und ermöglicht erweiterte Funktionen.",
+          "es": "Recuerda sus preferencias y habilita funciones mejoradas."
+        },
+        "consent_intro": {
+          "en": "We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.",
+          "de": "Wir verwenden Cookies, um Ihr Erlebnis zu verbessern und unseren Verkehr zu analysieren. Wählen Sie, welche Kategorien Sie zulassen.",
+          "es": "Usamos cookies para mejorar su experiencia y analizar nuestro tráfico. Elija qué categorías permite."
+        },
+        "consent_marketing": {
+          "en": "Marketing",
+          "de": "Marketing",
+          "es": "Marketing"
+        },
+        "consent_marketing_desc": {
+          "en": "Used to deliver relevant ads and measure campaigns.",
+          "de": "Dient dazu, relevante Werbung auszuspielen und Kampagnen zu messen.",
+          "es": "Se usa para mostrar anuncios relevantes y medir campañas."
+        },
+        "consent_necessary": {
+          "en": "Strictly necessary",
+          "de": "Unbedingt erforderlich",
+          "es": "Estrictamente necesarias"
+        },
+        "consent_necessary_desc": {
+          "en": "Required for the site to function. Always on.",
+          "de": "Für den Betrieb der Website erforderlich. Immer aktiv.",
+          "es": "Necesarias para que el sitio funcione. Siempre activas."
+        },
+        "consent_prefs_title": {
+          "en": "Privacy preferences",
+          "de": "Datenschutzeinstellungen",
+          "es": "Preferencias de privacidad"
+        },
+        "consent_privacy": {
+          "en": "Privacy policy",
+          "de": "Datenschutzerklärung",
+          "es": "Política de privacidad"
+        },
+        "consent_reject_all": {
+          "en": "Reject all",
+          "de": "Alle ablehnen",
+          "es": "Rechazar todo"
+        },
+        "consent_save": {
+          "en": "Save preferences",
+          "de": "Einstellungen speichern",
+          "es": "Guardar preferencias"
+        },
+        "consent_settings": {
+          "en": "Cookie settings",
+          "de": "Cookie-Einstellungen",
+          "es": "Configuración de cookies"
+        },
+        "consent_title": {
+          "en": "We value your privacy",
+          "de": "Wir schätzen Ihre Privatsphäre",
+          "es": "Valoramos su privacidad"
+        },
+        "contact.c_close": {
+          "en": "Close",
+          "de": "Schließen",
+          "es": "Cerrar"
+        },
+        "contact.c_form_t": {
+          "de": "Projektanfrage",
+          "es": "Consulta de proyecto"
+        },
+        "contact.c_hours": {
+          "de": "Mo–Fr, 9–18 Uhr (PT)",
+          "es": "Lun–Vie, 9–18 h (PT)"
+        },
+        "contact.c_modal_btn": {
+          "de": "Was passiert im Kennenlern-Gespräch?",
+          "es": "¿Qué pasa en la llamada inicial?"
+        },
+        "contact.c_modal_t": {
+          "de": "Ein 20-Minuten-Gespräch, kein Pitch",
+          "es": "Una conversación de 20 minutos, sin discurso de ventas"
+        },
+        "contact.headline": {
+          "de": "Lassen Sie uns etwas Großes bauen",
+          "es": "Construyamos algo grande"
+        },
+        "contact.subhead": {
+          "de": "Erzählen Sie uns von Ihrem Projekt — wir melden uns innerhalb eines Werktags. Lieber per E-Mail? Schreiben Sie uns direkt, wir lesen jede Nachricht.",
+          "es": "Cuéntenos su proyecto y le responderemos en un día laborable. ¿Prefiere el correo? Escríbanos directamente — leemos cada mensaje."
+        },
+        "cookie_accept": {
+          "en": "OK, got it",
+          "de": "Alles klar",
+          "es": "Entendido"
+        },
+        "cookie_more": {
+          "en": "Learn more",
+          "de": "Mehr erfahren",
+          "es": "Más información"
+        },
+        "cookie_text": {
+          "en": "We use a few essential cookies to make this site work and anonymous analytics to improve it.",
+          "de": "Wir verwenden wenige notwendige Cookies für den Betrieb dieser Website und anonyme Statistiken zu ihrer Verbesserung.",
+          "es": "Usamos unas pocas cookies esenciales para que esta web funcione y estadística anónima para mejorarla."
+        },
+        "faq.eyebrow": {
+          "de": "Gut zu wissen",
+          "es": "Conviene saberlo"
+        },
+        "faq.faq_cta": {
+          "de": "Fragen Sie uns alles",
+          "es": "Pregúntenos lo que sea"
+        },
+        "faq.faq_cta_t": {
+          "de": "Noch Fragen?",
+          "es": "¿Sigue con dudas?"
+        },
+        "faq.headline": {
+          "de": "Häufige Fragen",
+          "es": "Preguntas frecuentes"
+        },
+        "faq.intro": {
+          "de": "Die Fragen, mit denen jedes Projekt beginnt — klar beantwortet. Fehlt etwas? Fragen Sie einfach.",
+          "es": "Las preguntas con las que empieza todo proyecto — respondidas con claridad. ¿Falta algo? Pregunte sin más."
+        },
+        "footer_btn": {
+          "en": "Get in touch",
+          "de": "Kontakt aufnehmen",
+          "es": "Escríbanos"
+        },
+        "footer_built": {
+          "en": "Built with Sitewright — code-first, instantly fast.",
+          "de": "Gebaut mit Sitewright — code-first und sofort schnell.",
+          "es": "Hecho con Sitewright — code-first y rápido desde el primer momento."
+        },
+        "footer_contact": {
+          "en": "Contact",
+          "de": "Kontakt",
+          "es": "Contacto"
+        },
+        "footer_legal": {
+          "en": "Legal",
+          "de": "Rechtliches",
+          "es": "Legal"
+        },
+        "footer_news": {
+          "en": "Occasional notes on web craft. No spam.",
+          "de": "Gelegentliche Notizen zum Webhandwerk. Kein Spam.",
+          "es": "Notas ocasionales sobre el oficio web. Nada de spam."
+        },
+        "footer_news_title": {
+          "en": "Newsletter",
+          "de": "Newsletter",
+          "es": "Boletín"
+        },
+        "footer_studio": {
+          "en": "Studio",
+          "de": "Studio",
+          "es": "Estudio"
+        },
+        "go_to_slide": {
+          "en": "Go to slide {n}",
+          "de": "Zu Folie {n}",
+          "es": "Ir a la diapositiva {n}"
+        },
+        "home.aria_next": {
+          "en": "Next testimonial",
+          "de": "Nächste Stimme",
+          "es": "Testimonio siguiente"
+        },
+        "home.aria_prev": {
+          "en": "Previous testimonial",
+          "de": "Vorherige Stimme",
+          "es": "Testimonio anterior"
+        },
+        "home.cta_btn": {
+          "de": "Kennenlern-Termin buchen",
+          "es": "Reservar una llamada"
+        },
+        "home.cta_sub": {
+          "de": "Sagen Sie uns, wo Sie in zwölf Monaten stehen wollen — wir zeigen Ihnen, wie die richtige Website Sie dorthin bringt.",
+          "es": "Cuéntenos dónde quiere estar dentro de doce meses — le mostraremos cómo la web adecuada le lleva hasta allí."
+        },
+        "home.cta_title": {
+          "de": "Sie haben ein Projekt im Kopf?",
+          "es": "¿Tiene un proyecto en mente?"
+        },
+        "home.cta_work": {
+          "de": "Arbeiten ansehen",
+          "es": "Ver nuestro trabajo"
+        },
+        "home.eyebrow": {
+          "de": "Boutique-Webstudio · San Francisco",
+          "es": "Estudio web boutique · San Francisco"
+        },
+        "home.headline": {
+          "de": "Websites, die Ihnen mehr Geschäft bringen.",
+          "es": "Webs que le traen más negocio."
+        },
+        "home.hero_alt": {
+          "en": "A recent Northwind website",
+          "de": "Eine aktuelle Northwind-Website",
+          "es": "Una web reciente de Northwind"
+        },
+        "home.spot_eyebrow": {
+          "de": "Fallstudie",
+          "es": "Caso de estudio"
+        },
+        "home.spot_link": {
+          "de": "Zum ganzen Portfolio",
+          "es": "Ver todo el portfolio"
+        },
+        "home.stat1_l": {
+          "de": "Websites ausgeliefert",
+          "es": "Webs entregadas"
+        },
+        "home.stat2_l": {
+          "de": "Jahre am Markt",
+          "es": "Años en el mercado"
+        },
+        "home.stat3_l": {
+          "de": "Ø Lighthouse-Score",
+          "es": "Lighthouse medio"
+        },
+        "home.stat4_l": {
+          "de": "Ø mehr Anfragen",
+          "es": "Más consultas de media"
+        },
+        "home.subhead": {
+          "de": "Wir gestalten und bauen schnelle, schöne Websites für ambitionierte Marken — Strategie, Design und Entwicklung aus einer Hand.",
+          "es": "Diseñamos y construimos webs rápidas y hermosas para marcas ambiciosas — estrategia, diseño y desarrollo bajo un mismo techo."
+        },
+        "home.svc_sub": {
+          "de": "Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten.",
+          "es": "Estrategia, diseño y desarrollo — sin traspasos ni cadenas de agencias."
+        },
+        "home.svc_title": {
+          "de": "Alles aus einer Hand",
+          "es": "Todo bajo un mismo techo"
+        },
+        "home.tst_title": {
+          "de": "Geschätzt von den Marken, für die wir bauen",
+          "es": "Las marcas para las que construimos nos quieren"
+        },
+        "home.why_eyebrow": {
+          "de": "Warum Northwind",
+          "es": "Por qué Northwind"
+        },
+        "home.why_sub": {
+          "de": "Sie arbeiten direkt mit den Designern und Entwicklern, die Ihre Website bauen — von Anfang bis Ende.",
+          "es": "Trabaja directamente con los diseñadores e ingenieros que construyen su web — de principio a fin."
+        },
+        "home.why_title": {
+          "de": "Erfahrene Leute, keine Übergaben, keine Überraschungen",
+          "es": "Gente sénior, sin traspasos, sin sorpresas"
+        },
+        "home.why1": {
+          "de": "Fester Umfang & Zeitplan",
+          "es": "Alcance y plazos cerrados"
+        },
+        "home.why2": {
+          "de": "Perfekte Lighthouse-Werte",
+          "es": "Lighthouse perfecto"
+        },
+        "home.why3": {
+          "de": "Inhalte selbst bearbeiten",
+          "es": "Edite el contenido usted mismo"
+        },
+        "home.why4": {
+          "de": "Barrierearm & SEO-bereit",
+          "es": "Accesible y listo para SEO"
+        },
+        "home.why5": {
+          "de": "Portabler statischer Export",
+          "es": "Exportación estática portable"
+        },
+        "home.why6": {
+          "de": "Laufende Wartungspakete",
+          "es": "Mantenimiento continuo"
+        },
+        "home.work_link": {
+          "de": "Alle Projekte ansehen",
+          "es": "Ver todos los proyectos"
+        },
+        "home.work_title": {
+          "de": "Ausgewählte Arbeiten",
+          "es": "Trabajos seleccionados"
+        },
+        "href_contact": {
+          "en": "/contact",
+          "de": "/de/kontakt",
+          "es": "/es/contacto"
+        },
+        "href_home": {
+          "en": "/",
+          "de": "/de",
+          "es": "/es"
+        },
+        "href_privacy": {
+          "en": "/privacy",
+          "de": "/de/datenschutz",
+          "es": "/es/privacidad"
+        },
+        "mobile_menu": {
+          "en": "Menu",
+          "de": "Menü",
+          "es": "Menú"
+        },
+        "nav_cta": {
+          "en": "Start a project",
+          "de": "Projekt starten",
+          "es": "Empezar un proyecto"
+        },
+        "service_pricing.pr_badge": {
+          "en": "Most popular",
+          "de": "Am beliebtesten",
+          "es": "El más elegido"
+        },
+        "service_pricing.pr_cta": {
+          "de": "Projekt starten",
+          "es": "Empezar un proyecto"
+        },
+        "service_pricing.pr_faq": {
+          "de": "FAQ lesen",
+          "es": "Leer las preguntas frecuentes"
+        },
+        "service_pricing.pr_h1": {
+          "de": "Ehrliche Festpreise",
+          "es": "Precios honestos, a alcance cerrado"
+        },
+        "service_pricing.pr_intro": {
+          "de": "Keine Schätzungen, die sich mitten im Projekt verdoppeln. Paket wählen, Zahl kennen, Website bekommen.",
+          "es": "Nada de estimaciones que se duplican a mitad de proyecto. Elija un paquete, conozca la cifra, reciba la web."
+        },
+        "service_pricing.pr_note": {
+          "de": "Alle Preise in USD, zzgl. Steuern. Größere Vorhaben kalkulieren wir individuell — sprechen Sie uns an.",
+          "es": "Precios en USD, impuestos no incluidos. Los proyectos mayores se presupuestan a medida — consúltenos."
+        },
+        "service_pricing.tab_care": {
+          "en": "Care plans",
+          "de": "Wartungspakete",
+          "es": "Mantenimiento"
+        },
+        "service_pricing.tab_projects": {
+          "en": "Project work",
+          "de": "Projektarbeit",
+          "es": "Proyectos"
+        },
+        "service_seo.seo_1b": {
+          "de": "Wir tunen LCP, CLS und INP, bis alle Werte grün sind.",
+          "es": "Afinamos LCP, CLS e INP hasta que todo esté en verde."
+        },
+        "service_seo.seo_1t": {
+          "de": "Core Web Vitals",
+          "es": "Core Web Vitals"
+        },
+        "service_seo.seo_2b": {
+          "de": "Strukturierte Daten, Sitemaps und sauberes, crawlbares Markup.",
+          "es": "Datos estructurados, sitemaps y marcado limpio y rastreable."
+        },
+        "service_seo.seo_2t": {
+          "de": "Technisches SEO",
+          "es": "SEO técnico"
+        },
+        "service_seo.seo_cta": {
+          "de": "Projekt starten",
+          "es": "Empezar un proyecto"
+        },
+        "service_seo.seo_eyebrow": {
+          "de": "Leistung",
+          "es": "Servicio"
+        },
+        "service_seo.seo_h1": {
+          "de": "SEO & Performance",
+          "es": "SEO y rendimiento"
+        },
+        "service_seo.seo_intro": {
+          "de": "Technisches SEO, Core Web Vitals und Analytics von Tag eins — damit die schnelle, schöne Website, die Sie launchen, auch die ist, die Google belohnt.",
+          "es": "SEO técnico, Core Web Vitals y analítica desde el primer día — para que la web rápida y hermosa que lanza sea la que Google premia."
+        },
+        "service_seo.seo_price_l": {
+          "de": "Typischer Rahmen:",
+          "es": "Rango habitual:"
+        },
+        "service_web_design.wd_1b": {
+          "de": "Wiederverwendbare Komponenten und Tokens, die mit Ihrer Marke skalieren.",
+          "es": "Componentes y tokens reutilizables que escalan con su marca."
+        },
+        "service_web_design.wd_1t": {
+          "de": "Designsysteme",
+          "es": "Sistemas de diseño"
+        },
+        "service_web_design.wd_2b": {
+          "de": "Jedes Layout ist für Mobil, Tablet und Desktop gestaltet.",
+          "es": "Cada layout se trabaja para móvil, tablet y escritorio."
+        },
+        "service_web_design.wd_2t": {
+          "de": "Responsiv von Haus aus",
+          "es": "Responsivo por defecto"
+        },
+        "service_web_design.wd_cta": {
+          "de": "Projekt starten",
+          "es": "Empezar un proyecto"
+        },
+        "service_web_design.wd_eyebrow": {
+          "de": "Leistung",
+          "es": "Servicio"
+        },
+        "service_web_design.wd_h1": {
+          "de": "Webdesign",
+          "es": "Diseño web"
+        },
+        "service_web_design.wd_intro": {
+          "de": "Unverwechselbare, markengerechte Oberflächen, pixelgenau für jedes Display — vom ersten Wireframe bis zur polierten, barrierearmen UI.",
+          "es": "Interfaces distintivas y fieles a la marca, al píxel en cualquier pantalla — del primer wireframe a una UI pulida y accesible."
+        },
+        "service_web_design.wd_price_l": {
+          "de": "Typischer Rahmen:",
+          "es": "Rango habitual:"
+        },
+        "services.eyebrow": {
+          "de": "Was wir tun",
+          "es": "Qué hacemos"
+        },
+        "services.headline": {
+          "de": "Leistungen, die Ihr Geschäft wachsen lassen",
+          "es": "Servicios que hacen crecer su negocio"
+        },
+        "services.intro": {
+          "de": "Buchen Sie uns durchgängig oder für eine einzelne Phase. So oder so arbeiten Sie direkt mit den Menschen, die die Arbeit machen.",
+          "es": "Contrátenos de principio a fin o para una sola fase. En cualquier caso trabaja directamente con quienes hacen el trabajo."
+        },
+        "services.p1_b": {
+          "de": "Ziele, Zielgruppe und die Kennzahlen, die zählen.",
+          "es": "Objetivos, audiencia y las métricas que importan."
+        },
+        "services.p1_t": {
+          "de": "Entdecken",
+          "es": "Descubrir"
+        },
+        "services.p2_b": {
+          "de": "Oberflächen und ein Markensystem, gemeinsam abgestimmt.",
+          "es": "Interfaces y un sistema de marca, revisados juntos."
+        },
+        "services.p2_t": {
+          "de": "Gestalten",
+          "es": "Diseñar"
+        },
+        "services.p3_b": {
+          "de": "Schnell, barrierearm, pflegbar, SEO-bereit.",
+          "es": "Rápido, accesible, gestionable, listo para SEO."
+        },
+        "services.p3_t": {
+          "de": "Bauen",
+          "es": "Construir"
+        },
+        "services.p4_b": {
+          "de": "Wir veröffentlichen, messen und verbessern weiter.",
+          "es": "Publicamos, medimos y seguimos mejorando."
+        },
+        "services.p4_t": {
+          "de": "Launch & Pflege",
+          "es": "Lanzar y cuidar"
+        },
+        "services.proc_title": {
+          "de": "Ein einfacher, bewährter Ablauf",
+          "es": "Un proceso simple y probado"
+        },
+        "services.srv_cta": {
+          "de": "Projekt starten",
+          "es": "Empezar un proyecto"
+        },
+        "shop.address": {
+          "en": "Delivery address",
+          "de": "Lieferadresse",
+          "es": "Dirección de entrega"
+        },
+        "shop.email": {
+          "en": "Order by email",
+          "de": "Per E-Mail bestellen",
+          "es": "Pedir por correo"
+        },
+        "shop.name": {
+          "en": "Your name",
+          "de": "Ihr Name",
+          "es": "Su nombre"
+        },
+        "shop.pay": {
+          "en": "Pay with PayPal",
+          "de": "Mit PayPal zahlen",
+          "es": "Pagar con PayPal"
+        },
+        "shop.phone": {
+          "en": "Phone",
+          "de": "Telefon",
+          "es": "Teléfono"
+        },
+        "shop.whatsapp": {
+          "en": "Order on WhatsApp",
+          "de": "Per WhatsApp bestellen",
+          "es": "Pedir por WhatsApp"
+        },
+        "slide_next": {
+          "en": "Next slide",
+          "de": "Nächste Folie",
+          "es": "Diapositiva siguiente"
+        },
+        "slide_prev": {
+          "en": "Previous slide",
+          "de": "Vorherige Folie",
+          "es": "Diapositiva anterior"
+        },
+        "slide_x_of_y": {
+          "en": "Slide {n} of {total}",
+          "de": "Folie {n} von {total}",
+          "es": "Diapositiva {n} de {total}"
+        },
+        "theme_toggle": {
+          "en": "Toggle dark mode",
+          "de": "Dunkelmodus umschalten",
+          "es": "Cambiar modo oscuro"
+        },
+        "work.aria_caption": {
+          "en": "Project gallery",
+          "de": "Projektgalerie",
+          "es": "Galería de proyectos"
+        },
+        "work.eyebrow": {
+          "de": "Portfolio",
+          "es": "Portfolio"
+        },
+        "work.headline": {
+          "de": "Arbeiten, auf die wir stolz sind",
+          "es": "Trabajo del que estamos orgullosos"
+        },
+        "work.intro": {
+          "de": "Eine Auswahl aktueller Websites aus Handel, Gesundheit, Finanzen und Kultur — jede handgebaut und schnell. Klicken Sie ein Bild für die Großansicht.",
+          "es": "Una selección de webs recientes de comercio, salud, finanzas y cultura — todas artesanales y rápidas. Haga clic en cualquier imagen para verla a pantalla completa."
+        }
+      },
+      "siteUrl": "https://example.com",
+      "shop": {
+        "enabled": true,
+        "channels": [
+          {
+            "kind": "whatsapp",
+            "key": "whatsapp",
+            "number": "+14155550123",
+            "intro": "Hi Northwind — I’d like to order:",
+            "fields": [
+              {
+                "key": "name",
+                "type": "text",
+                "required": true
+              },
+              {
+                "key": "address",
+                "type": "textarea",
+                "required": true
+              },
+              {
+                "key": "phone",
+                "type": "tel"
+              }
+            ]
+          },
+          {
+            "kind": "mailto",
+            "key": "email",
+            "email": "hello@northwindstudio.com",
+            "subject": "Northwind merch order",
+            "fields": [
+              {
+                "key": "name",
+                "type": "text",
+                "required": true
+              },
+              {
+                "key": "address",
+                "type": "textarea",
+                "required": true
+              }
+            ]
+          },
+          {
+            "kind": "payment",
+            "key": "pay",
+            "provider": "paypal",
+            "urlTemplate": "https://paypal.me/northwind/{total}"
+          }
+        ]
+      },
+      "consent": {
+        "enabled": true
+      },
+      "effects": {
+        "navEffect": "box-solid",
+        "buttonEffect": "lift",
+        "preloaderEffect": "logo-pulse",
+        "stickyHeader": "pinned"
+      },
+      "enableThemes": true,
+      "defaultTheme": "light"
+    },
+    "settings": {
+      "defaultLocale": "en",
+      "locales": [
+        "en",
+        "de",
+        "es"
+      ]
+    }
+  },
+  "pages": [
+    {
+      "id": "home",
+      "path": "",
+      "title": "Northwind Web Studio — Websites that mean business",
+      "status": "published",
+      "description": "A boutique web studio in San Francisco: strategy, design, and hand-built static sites that win you more business.",
+      "translationGroup": "home",
+      "nav": {
+        "title": "Home",
+        "slots": [
+          "header"
+        ],
+        "order": 1
+      },
+      "source": "<div class=\"hidden\">{{sw-control target=\"page.title\" as=\"text\" label=\"Page title\"}} {{sw-control target=\"page.description\" as=\"textarea\" label=\"Meta description\"}} {{sw-control target=\"page.data.spotlight\" as=\"dataset\" label=\"Spotlight project\"}} {{sw-control target=\"page.data.demo_team\" as=\"number\" label=\"Team size\"}} {{sw-control target=\"page.data.demo_accent\" as=\"color\" label=\"Brand accent\"}} {{sw-control target=\"page.data.demo_launch\" as=\"date\" label=\"Next opening\"}} {{sw-control target=\"page.data.demo_status\" as=\"select\" options=\"Open for projects, Booked, Waitlist\" label=\"Availability\"}}</div>\n<!-- The hero is a live shader-bg: the WebGL runtime paints a CI-themed animated field BEHIND the\ncontent (a legibility scrim keeps the white text crisp); the nw-aurora class is the JS-off /\nreduced-motion fallback, the same brand gradient the component would draw. -->\n<section class=\"nw-aurora relative overflow-hidden text-white\" data-sw-component=\"shader-bg\" data-preset=\"mesh-gradient\" data-speed=\"0.5\" data-intensity=\"0.45\">\n  <div data-sw-part=\"overlay\" class=\"bg-neutral/35\" aria-hidden=\"true\"></div>\n  <div class=\"nw-grid-bg pointer-events-none absolute inset-0\" aria-hidden=\"true\"></div>\n  <div class=\"relative mx-auto grid max-w-6xl items-center gap-14 px-6 pb-36 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:pb-44 lg:pt-28\">\n    <div class=\"nw-rise\">\n      <span class=\"inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white/90 backdrop-blur\"><span class=\"inline-block h-2 w-2 rounded-full bg-secondary\"></span><span data-sw-translate=\"home.eyebrow\">Boutique web studio · San Francisco</span></span>\n      <h1 class=\"mt-7 text-5xl font-bold leading-[1.04] tracking-tight sm:text-6xl xl:text-7xl\" data-sw-translate=\"home.headline\">Websites that win you more business.</h1>\n      <p class=\"mt-6 max-w-md text-lg leading-relaxed text-white/65\" data-sw-translate=\"home.subhead\">We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof.</p>\n      <div class=\"mt-9 flex flex-wrap gap-3\">\n        <a class=\"btn\" href=\"/contact\" data-sw-href=\"href_contact\"><span data-sw-translate=\"nav_cta\">Start a project</span> <svg class=\"h-5 w-5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\" /><path d=\"m12 5 7 7-7 7\" /></svg></a>\n        <a class=\"btn btn-ghost\" href=\"/work\" data-sw-href=\"href_work\"><span data-sw-translate=\"home.cta_work\">See our work</span> <svg class=\"h-5 w-5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 7h10v10\" /><path d=\"M7 17 17 7\" /></svg></a>\n      </div>\n    </div>\n    <!-- Decorative only: a gentle scroll-linked drift gives the hero art depth against the shader\n    field. The inner card keeps its CSS nw-float; parallax rides the wrapper so they don't clash. -->\n    <div class=\"relative hidden lg:block\" data-sw-parallax-translate=\"0,-44\">\n      <div class=\"absolute -inset-8 rounded-full bg-primary/30 blur-3xl\" aria-hidden=\"true\"></div>\n      <div class=\"nw-float relative overflow-hidden rounded-3xl shadow-2xl shadow-black/40 ring-1 ring-white/20 nw-zoom\">\n        <!-- Lazy-loaded: the URL lives in data-src → the runtime swaps it to src on scroll-in. -->\n        <img class=\"h-full w-full object-cover\" data-src=\"/media/example/PDHKkU-hero.png\" alt=\"{{sw-translate \"home.hero_alt\"}}\" />\n      </div>\n      <!-- Floating chip REUSES the stats-band keys (stat3_n / stat3_l) on purpose: one\n      translated value renders in both spots, so locale variants stay in sync for free. -->\n      <div class=\"absolute -bottom-6 -left-8 flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-5 py-4 shadow-xl backdrop-blur-xl\">\n        <span class=\"inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white\"><svg class=\"h-5 w-5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 14 4-4\" /><path d=\"M3.34 19a10 10 0 1 1 17.32 0\" /></svg></span>\n        <span><span class=\"block text-xl font-bold leading-none\" data-sw-text=\"stat3_n\">100</span><span class=\"mt-1 block text-xs text-white/60\" data-sw-translate=\"home.stat3_l\">Avg. Lighthouse score</span></span>\n      </div>\n    </div>\n  </div>\n</section>\n\n<section class=\"relative z-10 mx-auto -mt-20 max-w-5xl px-6 lg:-mt-24\">\n  <dl class=\"grid grid-cols-2 gap-y-10 rounded-3xl border border-base-200/80 bg-base-100/95 px-6 py-10 shadow-2xl shadow-neutral/10 backdrop-blur-xl md:grid-cols-4\">\n    <div class=\"text-center\" data-sw-animation=\"fade-up\"><dt class=\"bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent\" data-sw-text=\"stat1_n\">120+</dt><dd class=\"mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50\" data-sw-translate=\"home.stat1_l\">Sites shipped</dd></div>\n    <div class=\"text-center\" data-sw-animation=\"fade-up\" data-sw-delay=\"100\"><dt class=\"bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent\" data-sw-text=\"stat2_n\">9</dt><dd class=\"mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50\" data-sw-translate=\"home.stat2_l\">Years in business</dd></div>\n    <div class=\"text-center\" data-sw-animation=\"fade-up\" data-sw-delay=\"200\"><dt class=\"bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent\" data-sw-text=\"stat3_n\">100</dt><dd class=\"mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50\" data-sw-translate=\"home.stat3_l\">Avg. Lighthouse score</dd></div>\n    <div class=\"text-center\" data-sw-animation=\"fade-up\" data-sw-delay=\"300\"><dt class=\"bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent\" data-sw-text=\"stat4_n\">38%</dt><dd class=\"mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50\" data-sw-translate=\"home.stat4_l\">Avg. lift in enquiries</dd></div>\n  </dl>\n</section>\n\n\n\n<section class=\"mx-auto max-w-6xl px-6 pt-24\">\n  <div class=\"grid gap-12 lg:grid-cols-2 lg:items-center\">\n    <div data-sw-animation=\"fade-right\">\n      <span class=\"text-sm font-semibold uppercase tracking-[0.18em] text-primary\" data-sw-translate=\"home.why_eyebrow\">Why Northwind</span>\n      <h2 class=\"mt-4 text-3xl font-bold tracking-tight sm:text-4xl\" data-sw-translate=\"home.why_title\">Senior people, no hand-offs, no surprises</h2>\n      <p class=\"mt-4 text-lg leading-relaxed text-base-content/60\" data-sw-translate=\"home.why_sub\">You work directly with the designers and engineers building your site — start to finish.</p>\n    </div>\n    <ul class=\"grid list-none gap-4 p-0 sm:grid-cols-2\" data-sw-animation=\"fade-left\">\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why1\">Fixed scope &amp; timeline</span></li>\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why2\">Perfect Lighthouse scores</span></li>\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why3\">You can edit the content yourself</span></li>\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why4\">Accessible &amp; SEO-ready</span></li>\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why5\">Hosting-friendly static export</span></li>\n      <li class=\"flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm\"><span class=\"mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\" /></svg></span><span class=\"font-medium text-base-content/80\" data-sw-translate=\"home.why6\">Ongoing care plans</span></li>\n    </ul>\n  </div>\n</section>\n\n<section class=\"mx-auto max-w-6xl px-6 py-24\">\n  <div class=\"max-w-2xl\" data-sw-animation=\"fade-up\">\n    <h2 class=\"text-3xl font-bold tracking-tight sm:text-4xl\" data-sw-translate=\"home.svc_title\">Everything you need under one roof</h2>\n    <p class=\"mt-4 text-lg leading-relaxed text-base-content/60\" data-sw-translate=\"home.svc_sub\">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>\n  </div>\n  <div class=\"mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3\" data-sw-animation=\"fade-up\" data-sw-delay=\"100\">\n    {{#each dataset.services}}\n    <div class=\"card nw-card border border-base-200 bg-base-100 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5\">\n      <div class=\"card-body p-7\">\n        <span class=\"inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary\">{{sw-icon icon \"h-6 w-6\"}}</span>\n        <h3 class=\"mt-4 text-lg font-bold tracking-tight\">{{title}}</h3>\n        <p class=\"text-[0.95rem] leading-relaxed text-base-content/60\">{{summary}}</p>\n        <p class=\"mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary\"><svg class=\"h-3.5 w-3.5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z\" /><circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" /></svg> {{price}}</p>\n      </div>\n    </div>\n    {{/each}}\n  </div>\n</section>\n\n<section class=\"overflow-hidden bg-base-200/60\">\n  <div class=\"mx-auto grid max-w-6xl items-center gap-14 px-6 py-24 lg:grid-cols-2\">\n    <!-- Case-study spotlight: a KEYED dataset lookup (item.projects.<id>), with the id in\n    page.data so each locale variant points at its own entry (proj-harbor / proj-harbor-de). -->\n    {{#with (lookup @root.item.projects @root.page.data.spotlight)}}\n    <div class=\"relative\" data-sw-animation=\"zoom-in\">\n      <div class=\"absolute -inset-6 -rotate-2 rounded-[2rem] bg-gradient-to-br from-primary/20 to-secondary/20\" aria-hidden=\"true\"></div>\n      <div class=\"nw-zoom relative overflow-hidden rounded-3xl shadow-2xl shadow-neutral/20\">\n        <img src=\"{{sw-url image}}\" alt=\"{{title}}\" class=\"h-full w-full object-cover\" loading=\"lazy\" />\n        <span class=\"absolute left-4 top-4 rounded-full bg-black/45 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-white backdrop-blur\">{{category}}</span>\n      </div>\n    </div>\n    <div data-sw-animation=\"fade-left\">\n      <span class=\"text-sm font-semibold uppercase tracking-[0.18em] text-primary\" data-sw-translate=\"home.spot_eyebrow\">Case study</span>\n      <h2 class=\"mt-4 text-3xl font-bold tracking-tight sm:text-4xl\">{{title}}</h2>\n      <p class=\"mt-3 text-sm font-medium text-base-content/45\">{{client}} · {{category}} · {{year}}</p>\n      <p class=\"mt-5 text-lg leading-relaxed text-base-content/70\">{{summary}}</p>\n      <a class=\"nw-underline mt-7 inline-flex items-center gap-1.5 font-semibold text-primary no-underline\" href=\"/work\" data-sw-href=\"href_work\"><span data-sw-translate=\"home.spot_link\">See the full portfolio</span> <svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\" /><path d=\"m12 5 7 7-7 7\" /></svg></a>\n    </div>\n    {{/with}}\n  </div>\n</section>\n\n<section class=\"mx-auto max-w-6xl px-6 py-24\">\n  <div class=\"flex flex-wrap items-end justify-between gap-4\" data-sw-animation=\"fade-up\">\n    <h2 class=\"text-3xl font-bold tracking-tight sm:text-4xl\" data-sw-translate=\"home.work_title\">Selected work</h2>\n    <a class=\"nw-underline inline-flex items-center gap-1.5 font-semibold text-primary no-underline\" href=\"/work\" data-sw-href=\"href_work\"><span data-sw-translate=\"home.work_link\">View all projects</span> <svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\" /><path d=\"m12 5 7 7-7 7\" /></svg></a>\n  </div>\n  <div class=\"mt-12 grid gap-7 md:grid-cols-3\" data-sw-animation=\"fade-up\" data-sw-delay=\"100\">\n    {{#each dataset.projects}}\n    <a class=\"group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 nw-zoom\" href=\"/work\" data-sw-href=\"href_work\">\n      <figure class=\"relative aspect-[4/3] overflow-hidden\">\n        <img src=\"{{sw-url image}}\" alt=\"{{title}}\" class=\"h-full w-full object-cover\" loading=\"lazy\" />\n        <span class=\"absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100\" aria-hidden=\"true\"></span>\n        <span class=\"absolute right-4 top-4 inline-flex h-9 w-9 translate-y-1 items-center justify-center rounded-full bg-white/90 text-neutral opacity-0 shadow transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 7h10v10\" /><path d=\"M7 17 17 7\" /></svg></span>\n      </figure>\n      <div class=\"card-body p-6\">\n        <span class=\"text-xs font-semibold uppercase tracking-wider text-primary\">{{category}}</span>\n        <h3 class=\"text-lg font-bold tracking-tight\">{{title}}</h3>\n        <p class=\"text-sm leading-relaxed text-base-content/55\">{{summary}}</p>\n      </div>\n    </a>\n    {{/each}}\n  </div>\n</section>\n\n<section class=\"relative overflow-hidden bg-neutral text-neutral-content\">\n  <div class=\"pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/25 blur-3xl\" aria-hidden=\"true\" data-sw-parallax-translate=\"-60,60\"></div>\n  <div class=\"pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-secondary/20 blur-3xl\" aria-hidden=\"true\" data-sw-parallax-translate=\"60,-60\"></div>\n  <div class=\"relative mx-auto max-w-4xl px-6 py-24\">\n    <h2 class=\"text-center text-3xl font-bold tracking-tight sm:text-4xl\" data-sw-animation=\"fade-up\" data-sw-translate=\"home.tst_title\">Loved by the brands we build for</h2>\n    <!-- First-party CAROUSEL: scroll-snap track (swipeable without JS); the runtime adds arrows,\n    dots, keyboard nav, and gentle autoplay (pausing on hover/focus/reduced-motion). -->\n    <div class=\"relative mt-12\" data-sw-component=\"carousel\" data-sw-block=\"Carousel\" data-autoplay=\"true\" data-interval=\"6000\" data-arrows=\"circle\" data-sw-animation=\"fade-up\" data-sw-delay=\"100\">\n      <div data-sw-part=\"track\">\n        {{#each dataset.testimonials}}\n        <figure data-sw-part=\"slide\" class=\"px-1 sm:px-10\">\n          <div class=\"rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur\">\n            <div class=\"flex flex-col items-center text-center\">\n              <div class=\"flex gap-1 text-accent\"><svg class=\"h-4 w-4 fill-current\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" /></svg><svg class=\"h-4 w-4 fill-current\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" /></svg><svg class=\"h-4 w-4 fill-current\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" /></svg><svg class=\"h-4 w-4 fill-current\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" /></svg><svg class=\"h-4 w-4 fill-current\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" /></svg></div>\n              <blockquote class=\"mt-5 max-w-xl text-xl font-medium leading-relaxed text-neutral-content/90 sm:text-2xl\">{{quote}}</blockquote>\n              <figcaption class=\"mt-6 text-sm\"><span class=\"font-semibold\">{{author}}</span><span class=\"text-neutral-content/50\"> — {{role}}</span></figcaption>\n            </div>\n          </div>\n        </figure>\n        {{/each}}\n      </div>\n      <button type=\"button\" data-sw-part=\"prev\" aria-label=\"{{sw-translate \"home.aria_prev\"}}\">{{sw-icon \"caret-double-left:bold\" \"\"}}</button>\n      <button type=\"button\" data-sw-part=\"next\" aria-label=\"{{sw-translate \"home.aria_next\"}}\">{{sw-icon \"caret-double-right:bold\" \"\"}}</button>\n      <div data-sw-part=\"dots\" aria-hidden=\"true\"></div>\n    </div>\n  </div>\n</section>\n\n<section class=\"bg-base-100 px-6 py-24\">\n  <!-- Closing CTA: the same live shader-bg treatment as the hero (rounded + clipped), with nw-aurora\n  as the JS-off fallback and a scrim for text contrast. -->\n  <div class=\"nw-aurora relative mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] text-white shadow-2xl shadow-primary/15\" data-sw-component=\"shader-bg\" data-preset=\"silk-flow\" data-speed=\"0.4\" data-intensity=\"0.5\">\n    <div data-sw-part=\"overlay\" class=\"bg-neutral/35\" aria-hidden=\"true\"></div>\n    <div class=\"nw-grid-bg pointer-events-none absolute inset-0\" aria-hidden=\"true\"></div>\n    <div class=\"relative mx-auto flex max-w-3xl flex-col items-center gap-6 px-6 py-20 text-center\">\n      <h2 class=\"text-3xl font-bold tracking-tight sm:text-5xl\" data-sw-translate=\"home.cta_title\">Have a project in mind?</h2>\n      <p class=\"max-w-xl text-lg leading-relaxed text-white/65\" data-sw-translate=\"home.cta_sub\">Tell us where you want to be in twelve months. We’ll show you how the right website gets you there.</p>\n      <a class=\"btn mt-2\" href=\"/contact\" data-sw-href=\"href_contact\"><svg class=\"h-5 w-5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 2v4\" /><path d=\"M16 2v4\" /><rect width=\"18\" height=\"18\" x=\"3\" y=\"4\" rx=\"2\" /><path d=\"M3 10h18\" /></svg> <span data-sw-translate=\"home.cta_btn\">Book an intro call</span></a>\n    </div>\n  </div>\n</section>",
+      "data": {
+        "spotlight": "proj-harbor",
+        "demo_team": "12",
+        "demo_accent": "#6366f1",
+        "demo_launch": "2026-09-01",
+        "demo_status": "Open for projects"
+      }
+    },
+    {
+      "id": "work",
+      "path": "work",
+      "title": "Our Work",
+      "description": "Recent sites across retail, health, finance, and the arts — each one hand-built and fast.",
+      "parent": "home",
+      "translationGroup": "work",
+      "nav": {
+        "title": "Work",
+        "slots": [
+          "header"
+        ],
+        "order": 2
+      },
+      "source": "<section class=\"mx-auto max-w-6xl px-6 pb-8 pt-24\">\n  <div class=\"nw-rise max-w-2xl\">\n    <span class=\"text-sm font-semibold uppercase tracking-[0.18em] text-primary\" data-sw-translate=\"work.eyebrow\">Portfolio</span>\n    <h1 class=\"mt-4 text-4xl font-bold tracking-tight sm:text-6xl\" data-sw-translate=\"work.headline\">Work we’re proud of</h1>\n    <p class=\"mt-5 text-lg leading-relaxed text-base-content/60\" data-sw-translate=\"work.intro\">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast. Click any shot to view it full-screen.</p>\n  </div>\n</section>\n<section class=\"mx-auto max-w-6xl px-6 pb-28\">\n  <div data-sw-component=\"lightbox\" data-sw-block=\"Lightbox\" aria-label=\"{{sw-translate \"work.aria_caption\"}}\">\n    <div data-sw-part=\"grid\" class=\"!grid-cols-1 gap-10 md:!grid-cols-2\">\n      {{#each dataset.projects}}\n      <a data-sw-part=\"item\" href=\"{{sw-url image}}\" data-caption=\"{{title}} — {{summary}}\" class=\"group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom\" data-sw-animation=\"fade-up\">\n        <figure class=\"relative aspect-[16/10] overflow-hidden\">\n          <img src=\"{{sw-url image}}\" alt=\"{{title}}\" class=\"!aspect-[16/10] h-full w-full object-cover\" loading=\"lazy\" />\n          <span class=\"absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100\" aria-hidden=\"true\"></span>\n          <span class=\"absolute right-5 top-5 inline-flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white/90 text-neutral opacity-0 shadow-lg transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 3h6v6\" /><path d=\"m21 3-7 7\" /><path d=\"m3 21 7-7\" /><path d=\"M9 21H3v-6\" /></svg></span>\n        </figure>\n        <div class=\"card-body p-7\">\n          <div class=\"flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider\"><span class=\"rounded-full bg-primary/10 px-3 py-1 text-primary\">{{category}}</span><span class=\"font-mono font-medium normal-case tracking-normal text-base-content/40\">{{year}}</span></div>\n          <h2 class=\"mt-2 text-2xl font-bold tracking-tight\">{{title}}</h2>\n          <p class=\"text-sm font-medium text-base-content/40\">{{client}}</p>\n          <p class=\"mt-1 leading-relaxed text-base-content/65\">{{summary}}</p>\n        </div>\n      </a>\n      {{/each}}\n    </div>\n  </div>\n</section>",
+      "data": {}
+    },
+    {
+      "id": "services",
+      "path": "services",
+      "title": "Services",
+      "description": "Strategy, design, development, brand, SEO, and care plans — end-to-end or per phase.",
+      "parent": "home",
+      "translationGroup": "services",
+      "nav": {
+        "slots": [
+          "header"
+        ],
+        "order": 3,
+        "dropdown": true
+      },
+      "source": "<section class=\"mx-auto max-w-6xl px-6 pb-10 pt-24\">\n  <div class=\"nw-rise max-w-2xl\">\n    <span class=\"text-sm font-semibold uppercase tracking-[0.18em] text-primary\" data-sw-translate=\"services.eyebrow\">What we do</span>\n    <h1 class=\"mt-4 text-4xl font-bold tracking-tight sm:text-6xl\" data-sw-translate=\"services.headline\">Services built to grow your business</h1>\n    <p class=\"mt-5 text-lg leading-relaxed text-base-content/60\" data-sw-translate=\"services.intro\">Engage us end-to-end or for a single phase. Either way you work directly with the people doing the work.</p>\n  </div>\n</section>\n<section class=\"mx-auto max-w-6xl px-6 pb-14\">\n  <div class=\"grid gap-6 sm:grid-cols-2\" data-sw-animation=\"fade-up\">\n    {{#each dataset.services}}\n    <div class=\"nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5\">\n      <div class=\"flex items-start justify-between gap-4\">\n        <span class=\"inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary\">{{sw-icon icon \"h-6 w-6\"}}</span>\n        <span class=\"rounded-full bg-primary/10 px-3.5 py-1.5 text-sm font-semibold text-primary\">{{price}}</span>\n      </div>\n      <h2 class=\"mt-5 text-xl font-bold tracking-tight\">{{title}}</h2>\n      <p class=\"mt-2 leading-relaxed text-base-content/60\">{{summary}}</p>\n    </div>\n    {{/each}}\n  </div>\n</section>\n<section class=\"bg-base-200/60\">\n  <div class=\"mx-auto max-w-6xl px-6 py-24\">\n    <h2 class=\"text-3xl font-bold tracking-tight sm:text-4xl\" data-sw-animation=\"fade-up\" data-sw-translate=\"services.proc_title\">A simple, proven process</h2>\n    <ol class=\"mt-12 grid list-none gap-6 p-0 md:grid-cols-4\">\n      <li class=\"nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm\" data-sw-animation=\"fade-up\"><span class=\"inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white\">01</span><h3 class=\"mt-4 text-lg font-bold tracking-tight\" data-sw-translate=\"services.p1_t\">Discover</h3><p class=\"mt-1.5 text-sm leading-relaxed text-base-content/60\" data-sw-translate=\"services.p1_b\">Goals, audience, and the metrics that matter.</p></li>\n      <li class=\"nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm\" data-sw-animation=\"fade-up\" data-sw-delay=\"100\"><span class=\"inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white\">02</span><h3 class=\"mt-4 text-lg font-bold tracking-tight\" data-sw-translate=\"services.p2_t\">Design</h3><p class=\"mt-1.5 text-sm leading-relaxed text-base-content/60\" data-sw-translate=\"services.p2_b\">Interfaces and a brand system, reviewed together.</p></li>\n      <li class=\"nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm\" data-sw-animation=\"fade-up\" data-sw-delay=\"200\"><span class=\"inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white\">03</span><h3 class=\"mt-4 text-lg font-bold tracking-tight\" data-sw-translate=\"services.p3_t\">Build</h3><p class=\"mt-1.5 text-sm leading-relaxed text-base-content/60\" data-sw-translate=\"services.p3_b\">Fast, accessible, content-managed, SEO-ready.</p></li>\n      <li class=\"nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm\" data-sw-animation=\"fade-up\" data-sw-delay=\"300\"><span class=\"inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white\">04</span><h3 class=\"mt-4 text-lg font-bold tracking-tight\" data-sw-translate=\"services.p4_t\">Launch &amp; care</h3><p class=\"mt-1.5 text-sm leading-relaxed text-base-content/60\" data-sw-translate=\"services.p4_b\">We ship, measure, and keep improving.</p></li>\n    </ol>\n    <div class=\"mt-12\"><a class=\"btn btn-primary\" href=\"/contact\" data-sw-href=\"href_contact\"><span data-sw-translate=\"services.srv_cta\">Start a project</span> <svg class=\"h-5 w-5\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\" /><path d=\"m12 5 7 7-7 7\" /></svg></a></div>\n  </div>\n</section>"
+    }
+  ],
+  "templates": [],
+  "snippets": [],
+  "datasets": [
+    {
+      "id": "services",
+      "name": "Services",
+      "slug": "services",
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "localized": false
+        },
+        {
+          "name": "icon",
+          "type": "text",
+          "required": false,
+          "localized": false
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": false,
+          "localized": false
+        },
+        {
+          "name": "price",
+          "type": "text",
+          "required": false,
+          "localized": false
+        }
+      ]
+    },
+    {
+      "id": "services_de",
+      "name": "Services - DE",
+      "slug": "services_de",
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "localized": false
+        },
+        {
+          "name": "icon",
+          "type": "text",
+          "required": false,
+          "localized": false
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": false,
+          "localized": false
+        },
+        {
+          "name": "price",
+          "type": "text",
+          "required": false,
+          "localized": false
+        }
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "id": "svc_strategy",
+      "dataset": "services",
+      "status": "published",
+      "values": {
+        "icon": "compass",
+        "title": "Strategy & UX",
+        "summary": "Research, positioning, and user journeys that turn visitors into customers.",
+        "price": "from $4k"
+      }
+    },
+    {
+      "id": "svc_design",
+      "dataset": "services",
+      "status": "published",
+      "values": {
+        "icon": "palette",
+        "title": "Web Design",
+        "summary": "Distinctive, on-brand interfaces designed pixel-perfect for every screen.",
+        "price": "from $8k"
+      }
+    },
+    {
+      "id": "svc_build",
+      "dataset": "services",
+      "status": "published",
+      "values": {
+        "icon": "code",
+        "title": "Development",
+        "summary": "Hand-built, lightning-fast static sites with top Lighthouse scores.",
+        "price": "from $10k"
+      }
+    }
+  ],
+  "translations": [],
+  "forms": [
+    {
+      "id": "contact",
+      "name": "Project enquiry",
+      "fields": [
+        {
+          "name": "name",
+          "label": "Your name",
+          "type": "text",
+          "required": true,
+          "placeholder": "Jane Doe"
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "type": "email",
+          "required": true,
+          "placeholder": "jane@company.com"
+        },
+        {
+          "name": "company",
+          "label": "Company",
+          "type": "text",
+          "required": false,
+          "placeholder": "Acme Inc."
+        },
+        {
+          "name": "budget",
+          "label": "Budget",
+          "type": "select",
+          "required": false,
+          "options": [
+            "Under $10k",
+            "$10k – $25k",
+            "$25k – $50k",
+            "$50k+"
+          ]
+        },
+        {
+          "name": "message",
+          "label": "Tell us about your project",
+          "type": "textarea",
+          "required": true,
+          "placeholder": "What are you trying to achieve?"
+        }
+      ],
+      "submitLabel": "Send enquiry",
+      "successMessage": "Thanks — we’ve got your enquiry and will reply within one business day.",
+      "errorMessage": "Sorry, that didn’t go through. Please email us at hello@northwindstudio.com.",
+      "recipient": "hello@northwindstudio.com",
+      "mode": "globalSmtp",
+      "hcaptcha": false
+    }
+  ],
+  "imageMaps": [],
+  "media": [
+    {
+      "kind": "image",
+      "id": "BzufXH",
+      "filename": "brand-logo.png",
+      "folder": "Brand",
+      "bytes": 120537,
+      "alt": "Northwind Web Studio logo",
+      "format": "png",
+      "width": 512,
+      "height": 512,
+      "placeholder": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAAAQAwCdASoUABQAPu1wsVKppiSiqAgBMB2JZwDNhBanFAAA/u/9vyWlEIOHwtKQgAA=",
+      "hasAlpha": true,
+      "animated": false,
+      "original": "brand-logo.png",
+      "url": "/media/example/BzufXH-brand-logo.png"
+    },
+    {
+      "kind": "image",
+      "id": "l5o6Jm",
+      "filename": "brand-icon.png",
+      "folder": "Brand",
+      "bytes": 81254,
+      "alt": "Northwind Web Studio icon",
+      "format": "png",
+      "width": 512,
+      "height": 512,
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAABQAwCdASoUABQAPu1wsFIppiSiqAgBMB2JYwDFBoAATmTwAACb/o+uEWRl+CepjeykJhXxQNYWM4AA",
+      "hasAlpha": true,
+      "animated": false,
+      "original": "brand-icon.png",
+      "url": "/media/example/l5o6Jm-brand-icon.png"
+    },
+    {
+      "kind": "image",
+      "id": "9mNKIK",
+      "filename": "brand-og.png",
+      "folder": "Brand",
+      "bytes": 366829,
+      "alt": "Northwind Web Studio — websites that mean business",
+      "format": "png",
+      "width": 1200,
+      "height": 630,
+      "placeholder": "data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAADwAgCdASoUAAsAPu1iqU2ppaQiMAgBMB2JYwCdAC0kAAD+75qpaiSnw7PoS8AA",
+      "hasAlpha": true,
+      "animated": false,
+      "original": "brand-og.png",
+      "url": "/media/example/9mNKIK-brand-og.png"
+    }
+  ],
+  "mediaFolders": [
+    {
+      "id": "exfolder-brand",
+      "path": "Brand"
+    },
+    {
+      "id": "exfolder-projects",
+      "path": "Projects"
+    }
+  ]
+}

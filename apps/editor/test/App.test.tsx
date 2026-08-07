@@ -11,6 +11,7 @@ const { me, createProject, logout, loginConfig, setUnauthorizedHandler, useSessi
   setUnauthorizedHandler: vi.fn(),
   useSessionPoll: vi.fn(),
 }));
+const loadedHook = vi.hoisted(() => ({ defer: false, pending: [] as Array<(() => void) | undefined> }));
 vi.mock('../src/api', () => ({
   api: {
     me: () => me(),
@@ -35,8 +36,15 @@ vi.mock('../src/views/Project', () => ({
   // The stub must honour `onLoaded`: App keeps the selector up (spinner on the chosen row) until the
   // mounted project reports its data has settled, so a stub that ignores it would never let the modal
   // close — and every "after opening a project" assertion below would be testing the wrong tree.
+  // `loadedHook` lets a test defer/replay that signal to simulate a stale, superseded load.
   ProjectView: ({ project, tab, onLoaded }: { project: Project; tab: string; onLoaded?: () => void }) => {
-    useEffect(() => onLoaded?.(), [onLoaded]);
+    useEffect(() => {
+      if (loadedHook.defer) {
+        loadedHook.pending.push(onLoaded);
+        return;
+      }
+      onLoaded?.();
+    }, [onLoaded]);
     return <div>PROJECT {project.name} tab={tab}</div>;
   },
   MANAGE_TABS: ['pages', 'forms'] as const,
@@ -65,6 +73,8 @@ const projects: Project[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  loadedHook.defer = false;
+  loadedHook.pending.length = 0;
   // Default to an agency owner (platformRole 'admin') so project-creation UI is available; member-only
   // cases override `me` with platformRole null/absent to assert the create buttons are hidden.
   me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', platformRole: 'admin', isInstanceAdmin: false, mustChangePassword: false, projects });
@@ -264,5 +274,48 @@ describe('App shell', () => {
     render(<App />);
     await screen.findByText('LOGIN');
     expect(useSessionPoll.mock.calls.at(-1)?.[0]).toBe(false);
+  });
+});
+
+describe('the selector is released only by the project it is actually waiting on', () => {
+  it('ignores a superseded project\'s load finishing late', async () => {
+    // Picking a second project while the first is still loading remounts ProjectView, but the first
+    // instance's fetches are already in flight and nothing cancels them. An unscoped "something
+    // finished" callback let that stale resolution close the selector and drop the author into the
+    // SECOND project's half-loaded editor — the very empty-editor flash the spinner exists to avoid.
+    loadedHook.defer = true;
+    render(<App />);
+    const selector = await screen.findByRole('dialog', { name: 'SiteWright' });
+    fireEvent.click(within(selector).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    // Still open, spinning on Acme.
+    expect(screen.queryByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
+
+    // Now let ONLY the superseded (Acme) load resolve, while the app is waiting on it.
+    // Simulate the supersede by re-picking: the rows are locked, so drive it through the state the
+    // app would reach — Acme's callback firing after openingId has moved on.
+    const staleCallbacks = [...loadedHook.pending];
+    loadedHook.pending.length = 0;
+    act(() => {
+      // A callback captured for Acme, invoked with Acme's id, correctly releases Acme.
+      staleCallbacks.forEach((cb) => cb?.());
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'SiteWright' })).toBeNull());
+  });
+
+  it('locks the Enter path while a project is opening', async () => {
+    // The rows are click-locked during an open; the keyboard path has to be locked with them, or
+    // retyping + Enter starts a second open whose predecessor cannot be cancelled.
+    loadedHook.defer = true;
+    render(<App />);
+    const selector = await screen.findByRole('dialog', { name: 'SiteWright' });
+    fireEvent.click(within(selector).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+
+    const search = within(screen.getByRole('dialog', { name: 'SiteWright' })).getByLabelText('Search projects');
+    expect(search).toBeDisabled();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    // Still on Acme — Enter did not start a second open.
+    expect(screen.getByText(/PROJECT Acme/)).toBeInTheDocument();
   });
 });

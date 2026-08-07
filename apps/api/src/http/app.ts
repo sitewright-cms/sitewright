@@ -1860,6 +1860,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
+  // …and publishes, likewise per project. Declared out here (not inside the publish block) because the
+  // deploy-target DELETE route must be able to SEE an in-flight build: its cleanup removes the very
+  // directory `buildToDir` writes into, so the two must never overlap.
+  const activePublishes = new Set<string>();
   // Whole-instance ceiling on concurrent project-export builds (each writes up to
   // PROJECT_EXPORT_MAX_BYTES of temp data + reads the media tree) — mirrors the image
   // optimize slot guard. Incremented for the BUILD phase only; streaming the finished
@@ -5709,10 +5713,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Publishing (build a static site + serve it) ----
   if (publishStore) {
     const store = publishStore;
-    // Serialize builds/deploys per project: prevents concurrent operations from
-    // racing on the same output directory (and bounds load).
-    const activePublishes = new Set<string>();
-
     // Build/rebuild the project's static site from the current DB content.
     app.post<{ Params: { projectId: string } }>(
       '/projects/:projectId/publish',
@@ -6911,6 +6911,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       removeLocalSite: async (slug) => {
         await publishStore?.removeProject(slug);
       },
+      // Shares the publish route's in-flight set so a delete can't `rm -rf` a directory mid-build.
+      isPublishing: (projectId) => activePublishes.has(projectId),
       rl,
     });
     // Per-project SMTP config (for the userSmtp form mode) — encrypted, like deploy targets.

@@ -72,14 +72,19 @@ export function ProjectSelectorModal({ projects, currentId, openingId = null, br
     >
       <div className="flex flex-col gap-3 p-5">
         {/* Enter opens the TOP result, so filtering to one project is a two-key action ("ac" ⏎).
-            Guarded on a non-empty list: Enter with no match must do nothing, not throw. */}
+            Guarded on a non-empty list (Enter with no match must do nothing, not throw) AND on
+            `opening` — the rows are click-locked while a project loads, and the keyboard path has to
+            be locked with them, or retyping + Enter starts a SECOND open whose predecessor is still
+            in flight and cannot be cancelled. */}
         <SearchField
           ariaLabel="Search projects"
           value={query}
           onChange={setQuery}
           placeholder="Search projects…"
           autoFocus
+          disabled={opening}
           onEnter={() => {
+            if (opening) return;
             const first = filtered[0];
             if (first) onOpen(first);
           }}

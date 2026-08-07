@@ -54,7 +54,11 @@ describe('fixed-background preview emulation', () => {
     expect(FIXED_BG_PREVIEW_JS).toContain(':scope>[');
   });
 
-  it('does nothing at all when no element qualifies', () => {
-    expect(FIXED_BG_PREVIEW_JS).toContain('if(pairs.length===0)return;');
+  it('is marker-gated at the SHIP level, not by bailing at runtime', () => {
+    // The runtime deliberately keeps its listeners + observer armed even with nothing to adopt yet,
+    // because a fixed background can arrive later (see the behaviour suite). "Ships nothing" is
+    // enforced upstream by usesFixedBackground, which is what gates the whole script.
+    expect(usesFixedBackground('<div class="bg-cover">')).toBe(false);
   });
 });
+

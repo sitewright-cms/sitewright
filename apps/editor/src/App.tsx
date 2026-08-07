@@ -126,7 +126,11 @@ function MainApp({
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   // The project whose view is mounted-but-still-loading; the selector spins on that row until it lands.
+  // Mirrored in a ref so finishOpening can read the CURRENT value without being re-created (it is
+  // passed to ProjectView, and a changing identity there would re-trigger its mount load).
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const openingRef = useRef<string | null>(null);
+  openingRef.current = openingId;
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [importZipOpen, setImportZipOpen] = useState(false);
   // The project the Duplicate modal targets, if open.
@@ -249,11 +253,16 @@ function MainApp({
     setOpeningId(project.id);
   }
 
-  // Release the selector once the mounted project has loaded. Also cleared on unmount of the opening
-  // project (a second pick while one is in flight), so the modal can never latch open.
-  const finishOpening = useCallback(() => {
-    setOpeningId(null);
-    setSelectorOpen(false);
+  // Release the selector once the project we are ACTUALLY waiting on has loaded.
+  //
+  // Scoped by id, not a bare "something finished": picking a second project while the first is still
+  // in flight remounts ProjectView, but the first instance's fetches are already running and nothing
+  // cancels them. An unscoped callback let that stale resolution close the selector and drop the
+  // author into the SECOND project's half-loaded editor — reintroducing the exact empty-editor flash
+  // this holds the modal to avoid. Comparing against the live openingId makes a superseded load inert.
+  const finishOpening = useCallback((projectId: string) => {
+    setOpeningId((current) => (current === projectId ? null : current));
+    setSelectorOpen((open) => (openingRef.current === projectId ? false : open));
   }, []);
 
   if (stage.name === 'loading') {
@@ -436,7 +445,14 @@ function MainApp({
           </section>
         </main>
       )}
-      {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} onLoaded={finishOpening} />}
+      {stage.name === 'project' && (
+        <ProjectView
+          key={stage.project.id}
+          project={stage.project}
+          tab={tab}
+          onLoaded={() => finishOpening(stage.project.id)}
+        />
+      )}
 
       {selectorOpen && (
         <ProjectSelectorModal

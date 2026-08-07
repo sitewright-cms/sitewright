@@ -49,12 +49,13 @@ export const FIXED_BG_PREVIEW_JS = `(function(){
       if(cs.backgroundAttachment.indexOf('fixed')<0)continue;
       if(!cs.backgroundImage||cs.backgroundImage==='none')continue;
       var layer=el.querySelector(':scope>['+LAYER+']');
-      if(!layer){
-        layer=document.createElement('div');
-        layer.setAttribute(LAYER,'');
-        layer.setAttribute('aria-hidden','true');
-        el.insertBefore(layer,el.firstChild);
-      }
+      // Already adopted (its image now lives on the layer): keep the existing pair, don't re-read a
+      // backgroundImage we ourselves set to 'none'.
+      if(layer){pairs.push([el,layer]);continue;}
+      layer=document.createElement('div');
+      layer.setAttribute(LAYER,'');
+      layer.setAttribute('aria-hidden','true');
+      el.insertBefore(layer,el.firstChild);
       for(var p=0;p<PROPS.length;p++)layer.style[PROPS[p]]=cs[PROPS[p]];
       // Hand the paint over: the host keeps its background COLOR, the layer takes the image.
       el.style.backgroundImage='none';
@@ -78,14 +79,33 @@ export const FIXED_BG_PREVIEW_JS = `(function(){
   }
   var ticking=false;
   function onScroll(){if(ticking)return;ticking=true;requestAnimationFrame(function(){ticking=false;clip();});}
+  // Re-collect when the DOM changes. A single pass at init would miss every element that appears
+  // LATER — a carousel's cloned slides, content a modal injects on open, anything a runtime enhances
+  // into place. Those would silently fall back to the broken paint with nothing to explain it.
+  // Coalesced into one rAF so a burst of mutations costs one pass, and collect() is idempotent (it
+  // reuses the layer it already made and skips elements whose background it has already taken over).
+  // TERMINATION: collect() inserts layers, which is itself a childList mutation — but the pass that
+  // follows finds those layers already present and inserts nothing, so the loop settles after one
+  // extra scan. Only childList is observed, so the style-attribute writes collect() makes cannot
+  // re-trigger it. (No backticks in this string: it is a template literal.)
+  var scanQueued=false;
+  function rescan(){
+    if(scanQueued)return;
+    scanQueued=true;
+    requestAnimationFrame(function(){scanQueued=false;collect();clip();});
+  }
   function init(){
     collect();
-    if(pairs.length===0)return; // nothing on this page asks for a fixed background
     clip();
     // capture:true — the whole-site preview scrolls the BODY, and a non-root scroller's scroll event
     // does not bubble to a plain window listener (see the body-scroller contract).
     window.addEventListener('scroll',onScroll,{passive:true,capture:true});
     window.addEventListener('resize',onScroll,{passive:true});
+    // Observe from the document root: an element with a fixed background can be inserted anywhere,
+    // and this is a preview-only surface where being correct beats shaving a MutationObserver.
+    if(typeof MutationObserver==='function'){
+      new MutationObserver(rescan).observe(document.documentElement,{childList:true,subtree:true});
+    }
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();`;

@@ -2,8 +2,9 @@
 
 > **STATUS: DRAFT — not yet in force.** This defines what Sitewright will promise at **1.0.0**. Until
 > then the pre-1.0 rule in [CHANGELOG.md](../CHANGELOG.md) applies: *minor versions may include
-> breaking changes.* Every **[DECIDE]** marker is a call the maintainers make before this goes into
-> force — see [Open decisions](#open-decisions).
+> breaking changes.* The tier split, the deprecation lifetime and the support window are **settled**;
+> one substantive question — whether the authoring model freezes at 1.0 — and the readiness checklist
+> at the end are what still stand between this and force. See [Open decisions](#open-decisions).
 
 Sitewright follows [Semantic Versioning](https://semver.org/). From 1.0.0 the version number is a
 promise about the surfaces below, and nothing else:
@@ -103,20 +104,36 @@ Nothing Stable is removed without:
 3. **Warn** where use is detectable — a server log line, or a Page Audit finding for authored content.
 4. **Remove** in the next major, under `### Removed`, with the migration step.
 
-**[DECIDE]** the minimum deprecation lifetime. Recommendation: **two minor releases and 90 days.**
+A deprecation runs for a **minimum of two minor releases and 90 days**, whichever is longer. The
+two-release floor is what makes the warning reachable — an instance that upgrades once a quarter
+would otherwise meet the announcement and the removal in the same step.
+
+## Support window
+
+A major is supported for **12 months** after its successor ships: security fixes and migration
+correctness, not new capability. After that, upgrading is the supported path.
 
 ## Open decisions
 
-1. **[DECIDE] Is the whole HTTP API Stable, or only the public + content + auth subsets?**
-   Recommendation: those Stable, admin/AI Provisional — stabilising `/admin/*` now would freeze
-   surfaces still being shaped.
-2. **[DECIDE] Runtime `data-sw-*` attributes: Stable or Provisional?** Recommendation: Provisional.
-3. **[DECIDE] Deprecation minimum lifetime.** Recommendation: two minors and 90 days.
-4. **[DECIDE] Support window for a major** once its successor ships. Recommendation: 12 months.
-5. **[DECIDE] Does the authoring model freeze at 1.0?** The substantive one. Three changes shipped in
-   a single recent week would each be a major under this contract — headings no longer injected
-   (rich content rewritten to `p.sw-hN`), nav consolidated to named menu slots, media flattened to
-   `/media/<slug>/<id>-<name>`. If more of that is planned, it belongs *before* 1.0.
+**Settled** (2026-08-07, as recommended):
+
+- **The HTTP API splits rather than stabilising whole.** The public, content and auth surfaces are
+  Stable; `/admin/*` and `/ai/*` are Provisional. Freezing `/admin/*` now would pin surfaces still
+  being shaped, and nothing published depends on them.
+- **Runtime `data-sw-*` attributes are Provisional**, beyond the binding directives, which are
+  Stable. This is where the iteration is; promising the rest would make routine effect work a major.
+- **Deprecation minimum: two minor releases and 90 days.**
+- **Support window: 12 months** after a successor major ships.
+
+**Still open:**
+
+1. **[DECIDE] Does the authoring model freeze at 1.0?** The substantive one, and deliberately left
+   open. Three changes shipped in a single recent week would each be a major under this contract —
+   headings no longer injected (rich content rewritten to `p.sw-hN`), nav consolidated to named menu
+   slots, media flattened to `/media/<slug>/<id>-<name>`. If more of that is planned, it belongs
+   *before* 1.0. For contrast, the RFC 9116 work that landed right after this contract was drafted
+   would **not** have been a major: one added route, one optional settings block, nothing removed or
+   narrowed — which is the shape the tiers above are drawn to permit.
 
 ## Before this goes into force
 

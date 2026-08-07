@@ -70,7 +70,19 @@ function unwrapZod(s: z.ZodTypeAny): z.ZodTypeAny {
   if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) return unwrapZod(inner(s.unwrap()));
   if (s instanceof z.ZodDefault || s instanceof z.ZodPrefault) return unwrapZod(inner(s.unwrap()));
   if (s instanceof z.ZodReadonly) return unwrapZod(inner(s.unwrap()));
-  if (s instanceof z.ZodPipe) return unwrapZod(inner(s.def.in));
+  if (s instanceof z.ZodPipe) {
+    // A pipe is two different shapes depending on how it was built, and these hints describe what a
+    // CALLER has to send:
+    //   `.transform()` / `z.preprocess()` → the IN side is the real input shape.
+    //   `guard.pipe(schema)`              → the IN side is a bare validator (`z.any()`), and the
+    //                                       real shape is the OUT side. `safeRecord` is built this
+    //                                       way, so following IN blindly labelled every record field
+    //                                       `any` instead of `object`.
+    // Follow IN unless it carries no information, then fall back to OUT.
+    const from = inner(s.def.in);
+    const uninformative = from instanceof z.ZodAny || from instanceof z.ZodUnknown;
+    return unwrapZod(uninformative ? inner(s.def.out) : from);
+  }
   return s;
 }
 

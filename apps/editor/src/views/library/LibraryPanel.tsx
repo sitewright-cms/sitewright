@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, FileCode2, Grid2x2, Layers, MapPin, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type } from 'lucide-react';
+import { Boxes, FileCode2, Grid2x2, Layers, MapPin, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type, Wind } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { Tabs, type TabDef } from '../ui/Tabs';
@@ -18,6 +18,20 @@ import { ImageMapStudio } from './imagemap/ImageMapStudio';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
+import { TailwindReferenceModal } from './TailwindReferenceModal';
+import { shortcutLabel, useGlobalShortcut, type Shortcut } from '../../lib/use-global-shortcut';
+
+/**
+ * Openers for the TailwindCSS Reference.
+ *
+ * Ctrl/⌘+Alt+T is the requested binding. GNOME binds Ctrl+Alt+T to "open a terminal" at the desktop
+ * level, where it never reaches the browser at all — so a second, unclaimed chord is registered
+ * alongside it rather than leaving Linux users with a shortcut that silently does nothing.
+ */
+const TAILWIND_SHORTCUTS: Shortcut[] = [
+  { key: 't', mod: true, alt: true },
+  { key: 'k', mod: true, shift: true },
+];
 
 /** Library glyph (stacked books) for the side-panel tab. */
 function LibraryIcon() {
@@ -98,6 +112,9 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
   const [pxOpen, setPxOpen] = useState(false);
   const [svgOpen, setSvgOpen] = useState(false);
   const [imapOpen, setImapOpen] = useState(false);
+  const [twOpen, setTwOpen] = useState(false);
+
+  useGlobalShortcut(TAILWIND_SHORTCUTS, () => setTwOpen(true), !twOpen);
 
   const groups: { label: string; accent: Accent; cards: LibraryCardDef[] }[] = [
     {
@@ -117,6 +134,13 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           title: 'SiteWright Components',
           blurb: 'First-party components + scroll/parallax/ripple effects (data-sw-*) — usage & examples.',
           onOpen: () => setSwOpen(true),
+        },
+        {
+          key: 'tailwind',
+          icon: <Wind className="h-5 w-5" />,
+          title: 'TailwindCSS Reference',
+          blurb: `Every Tailwind utility, the CSS it generates and what it's for — searchable by class or property (${shortcutLabel(TAILWIND_SHORTCUTS[0]!)}).`,
+          onOpen: () => setTwOpen(true),
         },
         {
           key: 'daisyui',
@@ -219,6 +243,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           onClose={() => setSwOpen(false)}
         />
       )}
+      {twOpen && <TailwindReferenceModal onClose={() => setTwOpen(false)} />}
       {daisyOpen && <SectionModal section={DAISY_SECTION} onClose={() => setDaisyOpen(false)} />}
       {iconsOpen && <IconsFlagsGallery onClose={() => setIconsOpen(false)} />}
       {fontsOpen && <FontsLibraryModal onClose={() => setFontsOpen(false)} />}

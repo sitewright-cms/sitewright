@@ -46,6 +46,7 @@
   "GET /authoring/parallax-preview",
   "GET /authoring/svg-preview",
   "GET /authoring/svg-studio-preview",
+  "GET /authoring/tailwind/reference",
   "GET /authoring/textures",
   "GET /authoring/textures/:file",
   "GET /authoring/widgets",

@@ -15,10 +15,11 @@ describe('LibraryPanel', () => {
   it('lists the consolidated, grouped library cards', () => {
     render(<LibraryPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
-    // 10 cards across 3 groups (each card's accessible name = title + blurb).
+    // 11 cards across 3 groups (each card's accessible name = title + blurb).
     for (const name of [
       /Template reference/,
       /SiteWright Components/,
+      /TailwindCSS Reference/,
       /DaisyUI components/,
       /Icons & flags/,
       /Google Fonts/,

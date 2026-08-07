@@ -223,6 +223,7 @@ import { registerLocaleRoutes } from './locales.js';
 import { registerWebsiteDataRoutes } from './website-data.js';
 import { buildEffectForks } from './effect-forks.js';
 import { buttonPreviewCss } from './button-preview.js';
+import { tailwindReferencePayload } from './tailwind-reference.js';
 import { registerFormRoutes } from './form-routes.js';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -7398,6 +7399,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // baseline + every effect/shape/accent utility. STATIC platform CSS (brand-agnostic; the editor
   // injects the project's --sw-color-* into the preview iframe); computed once + cached.
   app.get('/authoring/button-preview-css', { config: rl(60) }, async () => ({ css: await buttonPreviewCss() }));
+
+  // The Tailwind CSS reference for the Library's "TailwindCSS Reference" modal: every utility class
+  // the bundled Tailwind can generate, the CSS each produces, and the authored per-topic prose.
+  // STATIC platform data (no tenant input), serialized + hashed once — see tailwind-reference.ts.
+  // Served revalidating with a content ETag: the payload is ~1.8 MB but only changes when Tailwind is
+  // upgraded or the prose is edited, so a returning editor gets a 304 with no body.
+  app.get('/authoring/tailwind/reference', { config: rl(60) }, async (req, reply) => {
+    const { body, etag } = tailwindReferencePayload();
+    // If-None-Match may carry a comma list (RFC 9110 §13.1.2) — match against any listed validator.
+    const inmRaw = req.headers['if-none-match'];
+    const inm = Array.isArray(inmRaw) ? inmRaw.join(',') : inmRaw;
+    if (typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag)) {
+      return reply.header('etag', etag).header('cache-control', 'no-cache').code(304).send();
+    }
+    return reply
+      .header('etag', etag)
+      .header('cache-control', 'no-cache')
+      .header('x-content-type-options', 'nosniff')
+      .type('application/json; charset=utf-8')
+      .send(body);
+  });
   // The Library "Parallax" builder's live preview DOCUMENT (the chosen element beside a static twin,
   // driven by the REAL runtime). Served as text/html under `Content-Security-Policy: sandbox
   // allow-scripts` so the inline runtime RUNS in an opaque, isolated origin — the editor's own CSP

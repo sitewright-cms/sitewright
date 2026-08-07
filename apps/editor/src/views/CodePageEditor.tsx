@@ -16,6 +16,7 @@ import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/co
 import { api, previewDocUrl, type Project } from '../api';
 import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
+import { registerCodeInsertSink } from '../lib/code-insert-sink';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
@@ -225,6 +226,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const defaultLocale = locales[0] ?? 'en';
   const codeOwner = codeOwnerOf(page, pages, defaultLocale);
   const inheritsCode = !source.trim() && !settings.template && !!codeOwner && codeOwner.id !== page.id;
+  // Offer this editor's caret as the insertion target for the System Library (the Tailwind reference
+  // inserts a utility class there). Registered only while the CodeMirror strip is actually on screen,
+  // so the Library's Insert button is disabled — rather than silently doing nothing — in content mode,
+  // on a template-backed page, and on one that inherits its code. See lib/code-insert-sink.ts.
+  const codeEditorMounted = mode === 'source' && !settings.template && !inheritsCode;
+  useEffect(() => {
+    if (!codeEditorMounted) return;
+    return registerCodeInsertSink((text) => codeRef.current?.insertAtCursor(text));
+  }, [codeEditorMounted]);
   const inheritedSource = useMemo(() => {
     if (!inheritsCode || !codeOwner) return '';
     const ref = resolveCodeRef(codeOwner, pages, defaultLocale);

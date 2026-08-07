@@ -28,6 +28,7 @@
     "@sitewright/schema": "workspace:*",
     "@sitewright/site-import": "workspace:*",
     "@sitewright/tailwind": "workspace:*",
+    "@sitewright/tailwind-reference": "workspace:*",
     "basic-ftp": "^5",
     "chrome-launcher": "^1.2.1",
     "clean-css": "^5.3.3",

@@ -176,6 +176,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (el.closest('.sw-tb, .sw-pop, .sw-badge, [data-sw-badge]')) return; // this bridge's own chrome
     var root = document.getElementById('page-content');
     if (!root || el === root || !root.contains(el)) return;
+    // A dataset row is WRAPPED here in an injected <div data-sw-entry> that exists in the render and
+    // not in the source. Reporting it could never match, so step into the authored element it wraps.
+    if (el.hasAttribute('data-sw-entry') && el.firstElementChild) el = el.firstElementChild;
     var tag = (el.tagName || '').toLowerCase();
     if (!tag) return;
     var cls = el.getAttribute('class') || '';
@@ -185,7 +188,20 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (same[i] === el) break;
       if ((same[i].getAttribute('class') || '') === cls) nth++;
     }
-    post({ type: 'locate-source', tag: tag, id: el.id || '', cls: cls.split(/\s+/).filter(Boolean), nth: nth });
+    // The row's dataset, if this click is inside a loop: lets the editor fall back to selecting the
+    // {{#each}} block when the row's own markup is all bindings and cannot be pinned down.
+    var host = el.closest('[data-sw-dataset]');
+    // TEXT is the signal that survives a class that is dynamic, absent, or added by a runtime.
+    var text = (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+    post({
+      type: 'locate-source',
+      tag: tag,
+      id: el.id || '',
+      cls: cls.split(/\\s+/).filter(Boolean),
+      nth: nth,
+      text: text,
+      ds: host ? host.getAttribute('data-sw-dataset') || '' : ''
+    });
   });
 
   function ensureStyle() {

@@ -4,23 +4,30 @@
  *
  * There is no position map from the rendered DOM back to the page source — the source is Handlebars
  * (loops, partials, bindings), so one authored element can render N times and some rendered elements
- * (chrome slots, component runtimes) have no source here at all. This resolves the element STRUCTURALLY
- * instead: the preview sends what it can see about the clicked node (tag, id, classes, and which
- * same-looking sibling it is), and we find the corresponding opening tag in the text.
+ * (chrome slots, component runtimes) have no source here at all. This resolves the element
+ * STRUCTURALLY instead, from what the preview can see about the node that was clicked.
  *
- * Deliberately a small scanner rather than a DOM parse: the source is a TEMPLATE, not HTML, so
- * `DOMParser` would drop/reorder `{{#each}}` blocks and lose the offsets we need. We only ever need to
- * find a tag and its matching close, which a quote/comment-aware scan does honestly.
+ * It SCORES candidates rather than filtering them. The first version filtered on classes alone and
+ * went silent whenever the class signal was absent or contradicted — a source tag with no static
+ * class whose runtime added one, `class="{{binding}}"`, an id the runtime invented, or two loops
+ * sharing a class. Each of those is common, and each produced "nothing happens", which reads as
+ * unreliable. Scoring lets a weak signal still win when it is the only one, and lets the strongest
+ * available signal — the element's own TEXT, which survives every one of those cases — decide.
+ *
+ * Deliberately a small scanner rather than a DOM parse: the source is a TEMPLATE, so `DOMParser`
+ * would drop/reorder `{{#each}}` blocks and lose the offsets we need.
  */
 
 /** What the preview can tell us about the element that was clicked. */
 export interface ElementSignature {
   /** Lowercase tag name. */
   tag: string;
-  /** The element's `id`, when it has one — the strongest possible hint. */
+  /** The element's `id`, when it has one. Ignored if no candidate carries it (runtimes invent ids). */
   id?: string | undefined;
   /** The element's rendered class tokens (a superset of the authored ones: runtimes add their own). */
   classes?: string[] | undefined;
+  /** The element's own visible text, normalised — the signal that survives a missing/dynamic class. */
+  text?: string | undefined;
   /** Index among identically-shaped siblings in the render, so a loop's 3rd card finds the loop body. */
   nth?: number | undefined;
 }
@@ -39,9 +46,18 @@ const VOID_ELEMENTS = new Set([
 /** A tag name we will look for: letters/digits/dash only (so a signature can't inject regex). */
 const TAG_OK = /^[a-z][a-z0-9-]*$/;
 
+/** How much of an element's text is compared — enough to be distinctive, cheap to normalise. */
+const TEXT_SAMPLE = 120;
+
+/** Collapse whitespace + lowercase, so source formatting never decides a match. */
+function normText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, TEXT_SAMPLE);
+}
+
 /**
- * Index of the first `<!-- … -->` / `{{! … }}` end after `i`, or -1. Comments are skipped wholesale so
- * a commented-out `<section>` never becomes a candidate or unbalances the depth count.
+ * Index just past a `<!-- … -->` / `{{! … }}` comment starting at `i`, or -1 when none starts there.
+ * Comments are skipped wholesale so commented-out markup is never a candidate and never unbalances
+ * the depth count.
  */
 function skipComment(src: string, i: number): number {
   if (src.startsWith('<!--', i)) {
@@ -147,30 +163,91 @@ function elementEnd(src: string, open: { at: number; text: string }, tag: string
   return afterOpen; // never closed — select the opening tag rather than the rest of the file
 }
 
+/** The candidate's own LITERAL text: markup and Handlebars expressions removed. */
+function candidateText(src: string, from: number, to: number): string {
+  return normText(
+    src
+      .slice(from, to)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\{\{[^}]*\}\}/g, ' '),
+  );
+}
+
 /**
- * The source range of the element the preview describes, or null when it cannot be placed (an element
- * from a chrome slot, a component's runtime-injected node, or source that has since been edited).
+ * The range of the `{{#each dataset.<slug>}} … {{/each}}` block that renders a collection, nesting-aware.
  *
- * Matching is deliberately forgiving in one direction only: the authored classes must be a SUBSET of
- * the rendered ones, because runtimes add classes (`sw-…`, enhancement markers) that were never typed.
- * `nth` then picks between equally-good candidates, which is what makes a loop's Nth row resolve to the
- * single authored block that produced it.
+ * The fallback for a dataset row: the preview WRAPS every row in an injected `<div data-sw-entry>` that
+ * exists in the DOM and not in the source, and a row's contents are bindings rather than literals — so
+ * when no element inside the loop body can be pinned down, selecting the block that produced the row is
+ * the honest answer, and it is the code the author actually edits.
+ */
+export function findEachBlock(source: string, slug: string): SourceRange | null {
+  if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(slug ?? '')) return null; // a dataset slug, never a regex
+  const open = new RegExp(`\\{\\{\\s*#each\\s+dataset\\.${slug}\\b[^}]*\\}\\}`, 'g');
+  const start = open.exec(source);
+  if (!start) return null;
+  // Walk forward counting nested {{#each}} so an inner loop's {{/each}} cannot close this one.
+  const token = /\{\{\s*(#each|\/each)\b[^}]*\}\}/g;
+  token.lastIndex = start.index + start[0].length;
+  let depth = 1;
+  for (let m = token.exec(source); m; m = token.exec(source)) {
+    depth += m[1] === '#each' ? 1 : -1;
+    if (depth === 0) return { from: start.index, to: m.index + m[0].length };
+  }
+  return { from: start.index, to: source.length };
+}
+
+/**
+ * The source range of the element the preview describes, or null when nothing in this source could
+ * plausibly be it — an element from a chrome slot, from a referenced template, from a `{{> partial}}`,
+ * or source edited since the render. Selecting nothing is the right answer there: moving the caret
+ * somewhere confidently wrong is worse than not moving it.
  */
 export function findElementRange(source: string, sig: ElementSignature): SourceRange | null {
   const tag = sig.tag?.toLowerCase();
   if (!tag || !TAG_OK.test(tag) || !source) return null;
 
-  const rendered = new Set(sig.classes ?? []);
-  const candidates = openingTags(source, tag).filter(({ text }) => {
-    if (sig.id) return attr(text, 'id') === sig.id;
-    const authored = staticClasses(text);
-    // No classes either side → the tag alone is the signature (nth still disambiguates).
-    if (authored.length === 0) return rendered.size === 0;
-    return authored.every((c) => rendered.has(c));
-  });
+  const candidates = openingTags(source, tag);
   if (candidates.length === 0) return null;
 
-  const index = Math.min(Math.max(sig.nth ?? 0, 0), candidates.length - 1);
-  const open = candidates[index]!;
-  return { from: open.at, to: elementEnd(source, open, tag) };
+  const rendered = new Set(sig.classes ?? []);
+  const wantText = normText(sig.text ?? '');
+  // An id the runtime invented is not in the source at all. Honour the id only when some candidate
+  // actually carries it, instead of letting it veto every match.
+  const idMatches = sig.id ? candidates.filter((c) => attr(c.text, 'id') === sig.id) : [];
+  const pool = idMatches.length > 0 ? idMatches : candidates;
+
+  const scored = pool.map((open) => {
+    const end = elementEnd(source, open, tag);
+    let score = 0;
+    if (idMatches.length > 0) score += 100;
+
+    const authored = staticClasses(open.text);
+    if (authored.length > 0) {
+      const hit = authored.filter((c) => rendered.has(c)).length;
+      // Every authored class present in the render is a strong match; a class the render does NOT
+      // have contradicts this candidate (it is a different element, not a superset).
+      score += hit === authored.length ? 40 + Math.min(hit, 4) * 3 : -50;
+    }
+
+    // TEXT is the signal that survives a missing, dynamic or runtime-added class. Only a candidate
+    // with literal text can use it — a loop body (`{{title}}`) has none, and must not be penalised.
+    const own = candidateText(source, open.at + open.text.length, Math.max(end - 1, open.at + open.text.length));
+    if (wantText && own) {
+      if (own === wantText) score += 70;
+      else if (own.includes(wantText) || wantText.includes(own)) score += 45;
+      else score -= 25;
+    }
+    return { open, end, score };
+  });
+
+  const best = Math.max(...scored.map((s) => s.score));
+  // A NEGATIVE best means every candidate is contradicted (a class or text the render disagrees with)
+  // — that is evidence of the wrong element, so decline. A zero best is merely "no signal beyond the
+  // tag", which is still worth acting on: it is the classless element that used to go silent.
+  if (best < 0) return null;
+  const top = scored.filter((s) => s.score === best);
+  // `nth` disambiguates equally-good candidates (a loop's Nth row → its single authored block).
+  const chosen = top[Math.min(Math.max(sig.nth ?? 0, 0), top.length - 1)]!;
+  return { from: chosen.open.at, to: chosen.end };
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -443,5 +444,90 @@ describe('editing deploy targets (PUT)', () => {
     expect((on.json() as { target: { minifyHtml?: boolean } }).target.minifyHtml).toBe(true);
     const off = await put(projectId, created.id, cookies, { minifyHtml: false });
     expect((off.json() as { target: Record<string, unknown> }).target).not.toHaveProperty('minifyHtml');
+  });
+});
+
+describe('deleting a Local Hosting target removes what it was serving', () => {
+  it('drops the published artifact from disk, and 204s', async () => {
+    const { t, projectId } = await setup('local-del@example.com', 'localdel');
+    const create = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies: { sw_session: t },
+      payload: { name: 'Local', protocol: 'local' },
+    });
+    expect(create.statusCode).toBe(201);
+    const targetId = (create.json() as { target: { id: string } }).target.id;
+
+    // Publish, so there is a real build under the publish root to clean up.
+    const pub = await app.inject({ method: 'POST', url: `/projects/${projectId}/publish`, cookies: { sw_session: t } });
+    expect(pub.statusCode).toBe(200);
+    const siteDir = join(publishRoot, 'localdel');
+    expect(existsSync(siteDir)).toBe(true);
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/deploy-targets/${targetId}`,
+      cookies: { sw_session: t },
+    });
+    expect(del.statusCode).toBe(204);
+    // The local target is what made the site served at all; leaving the build behind meant an orphan
+    // that nothing served, nothing reaped, and that a later re-added target would silently put back
+    // online — STALE, before any republish.
+    expect(existsSync(siteDir)).toBe(false);
+  });
+
+  it('leaves the artifact alone when a REMOTE target is deleted', async () => {
+    const { t, projectId } = await setup('remote-del@example.com', 'remotedel');
+    await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies: { sw_session: t },
+      payload: { name: 'Local', protocol: 'local' },
+    });
+    const remote = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies: { sw_session: t },
+      payload: { name: 'FTP', protocol: 'ftp', host: 'allowed.example.com', user: 'u', password: 'p' },
+    });
+    expect(remote.statusCode).toBe(201);
+    const remoteId = (remote.json() as { target: { id: string } }).target.id;
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/publish`, cookies: { sw_session: t } });
+    const siteDir = join(publishRoot, 'remotedel');
+    expect(existsSync(siteDir)).toBe(true);
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/deploy-targets/${remoteId}`,
+      cookies: { sw_session: t },
+    });
+    expect(del.statusCode).toBe(204);
+    // A remote target builds into a throwaway temp dir and owns nothing here — and the local target
+    // is still serving this build.
+    expect(existsSync(siteDir)).toBe(true);
+  });
+
+  it('404s for an unknown target id, and removes nothing', async () => {
+    const { t, projectId } = await setup('missing-del@example.com', 'missingdel');
+    await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies: { sw_session: t },
+      payload: { name: 'Local', protocol: 'local' },
+    });
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/publish`, cookies: { sw_session: t } });
+    const siteDir = join(publishRoot, 'missingdel');
+    expect(existsSync(siteDir)).toBe(true);
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/deploy-targets/does-not-exist`,
+      cookies: { sw_session: t },
+    });
+    // Pre-existing contract (the repo's remove throws for a missing entity). What matters for the
+    // new cleanup is that a failed delete cannot take the served site down with it.
+    expect(del.statusCode).toBe(404);
+    expect(existsSync(siteDir)).toBe(true);
   });
 });

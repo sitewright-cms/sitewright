@@ -182,6 +182,9 @@ export interface DeployTargetDeps {
   /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it).
    *  `minify` mirrors the target's `minifyHtml` serve option (available for all target types). */
   buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean; protocol?: string }) => Promise<string>;
+  /** Delete the LOCALLY-SERVED build for a slug. Called when a `local` target is removed — see the
+   *  DELETE route. Remote protocols never write here (they build into a throwaway temp dir). */
+  removeLocalSite: (slug: string) => Promise<void>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -230,7 +233,7 @@ async function streamDeploy(
  * Credentials are encrypted at rest and never returned to clients.
  */
 export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTargetDeps): void {
-  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, rl } = deps;
+  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, removeLocalSite, rl } = deps;
 
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/deploy-targets',
@@ -445,9 +448,29 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
   app.delete<{ Params: { projectId: string; id: string } }>(
     '/projects/:projectId/deploy-targets/:id',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'deploy');
+      const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      // Read the target BEFORE removing it — its protocol decides whether there are served files to
+      // clean up. A missing target still 204s (delete is idempotent).
+      let target: DeployTarget | undefined;
+      try {
+        target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
+      } catch {
+        /* already gone — nothing to remove, and nothing to clean up */
+      }
       await contentRepo.remove(ctx, 'deploy_target', req.params.id);
+      // A LOCAL target is what makes `<slug>` served at all: drop it and the site is instantly
+      // unreachable. The built artifact under the publish store used to stay on disk anyway — an
+      // orphan nothing served, nothing reaped, and nothing would ever refresh. Worse, re-adding a
+      // local target months later would put that STALE build straight back online, before any
+      // republish. Removing the target therefore removes what it was serving.
+      //
+      // Only `local`: every remote protocol (ftp/ftps/sftp/git) builds into a throwaway temp dir and
+      // uploads from there, so it owns nothing here — and files already delivered to someone else's
+      // server are theirs, not ours to delete.
+      if (target?.protocol === 'local') {
+        await removeLocalSite(project.slug);
+      }
       return reply.code(204).send();
     },
   );

@@ -252,8 +252,18 @@ describe('typography.named (custom font slots)', () => {
     // invalid slug (uppercase / leading digit / trailing hyphen)
     expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { Boombox: { family: 'serif', weight: 400 } } } })).toThrow();
     expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { 'boom-': { family: 'serif', weight: 400 } } } })).toThrow();
-    // prototype-pollution key
-    expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { __proto__: { family: 'serif', weight: 400 } } } })).toThrow();
+    // Prototype-pollution key — built with JSON.parse, NOT an object literal. `{ __proto__: x }` in
+    // source sets the prototype and creates NO own key, so it does not describe what an attacker
+    // sends; a JSON body does, and that is an own `__proto__` property. (This used to throw under
+    // zod 3 for an unrelated reason: zod 3 enumerated INHERITED properties, so the literal leaked
+    // `family`/`weight` in as slot names and failed on those. zod 4 reads own properties only and
+    // parses the literal to `{}` — safer, and it made this assertion vacuous.)
+    expect(() =>
+      CorporateIdentitySchema.parse({
+        name: 'A',
+        typography: { named: JSON.parse('{"__proto__":{"family":"serif","weight":400}}') },
+      }),
+    ).toThrow();
   });
 
   // cssTokens: the free-form escape hatch for values colors/spacing/radii cannot express.

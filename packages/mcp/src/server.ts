@@ -53,15 +53,36 @@ const GENERIC_KIND = z.enum([
 // gets no schema hint and guesses the payload shape wrong. When a write fails validation we append a
 // COMPACT, derived top-level shape for that kind, so the model can self-correct instead of flailing.
 
-/** Unwrap optional / nullable / default / effects / branded / readonly wrappers to the underlying type
- *  (public zod v3 API). Any wrapper we don't recognise falls through and is labelled `any` — a degraded
- *  but safe hint, never a crash. */
+/** Unwrap optional / nullable / default / prefault / readonly / transform wrappers to the underlying
+ *  type (public zod v4 API). Any wrapper we don't recognise falls through and is labelled `any` — a
+ *  degraded but safe hint, never a crash.
+ *
+ *  Two zod 3 branches are GONE rather than renamed, which is easy to mistake for something lost:
+ *  `.refine()` and `.brand()` no longer wrap at all in zod 4 — a refined/branded string reports
+ *  `def.type === 'string'` directly, so there is nothing left to unwrap. `ZodEffects` and
+ *  `ZodBranded` do not exist. `.transform()` now produces a `ZodPipe`, whose INPUT side is the shape
+ *  a caller has to supply — which is what these hints describe — so that is the side we follow.
+ *  `removeDefault()` became `unwrap()`. */
 function unwrapZod(s: z.ZodTypeAny): z.ZodTypeAny {
-  if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) return unwrapZod(s.unwrap());
-  if (s instanceof z.ZodDefault) return unwrapZod(s.removeDefault());
-  if (s instanceof z.ZodEffects) return unwrapZod(s.innerType());
-  if (s instanceof z.ZodReadonly) return unwrapZod(s.unwrap());
-  if (s instanceof z.ZodBranded) return unwrapZod(s.unwrap());
+  // zod 4's `unwrap()` is typed as returning the CORE `$ZodType`, not the classic `ZodType` this
+  // module works in, so each hop needs the narrowing cast. Same value at runtime.
+  const inner = (v: unknown): z.ZodTypeAny => v as z.ZodTypeAny;
+  if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) return unwrapZod(inner(s.unwrap()));
+  if (s instanceof z.ZodDefault || s instanceof z.ZodPrefault) return unwrapZod(inner(s.unwrap()));
+  if (s instanceof z.ZodReadonly) return unwrapZod(inner(s.unwrap()));
+  if (s instanceof z.ZodPipe) {
+    // A pipe is two different shapes depending on how it was built, and these hints describe what a
+    // CALLER has to send:
+    //   `.transform()` / `z.preprocess()` → the IN side is the real input shape.
+    //   `guard.pipe(schema)`              → the IN side is a bare validator (`z.any()`), and the
+    //                                       real shape is the OUT side. `safeRecord` is built this
+    //                                       way, so following IN blindly labelled every record field
+    //                                       `any` instead of `object`.
+    // Follow IN unless it carries no information, then fall back to OUT.
+    const from = inner(s.def.in);
+    const uninformative = from instanceof z.ZodAny || from instanceof z.ZodUnknown;
+    return unwrapZod(uninformative ? inner(s.def.out) : from);
+  }
   return s;
 }
 
@@ -75,7 +96,8 @@ function zodTypeLabel(s: z.ZodTypeAny, depth = 1): string {
   if (b instanceof z.ZodBoolean) return 'boolean';
   if (b instanceof z.ZodEnum) return `enum(${(b.options as string[]).join('|')})`;
   if (b instanceof z.ZodLiteral) return JSON.stringify(b.value);
-  if (b instanceof z.ZodArray) return `array<${zodTypeLabel(b.element, depth)}>`;
+  // `element` is typed as the core `$ZodType` in zod 4, same narrowing as in `unwrapZod`.
+  if (b instanceof z.ZodArray) return `array<${zodTypeLabel(b.element as z.ZodTypeAny, depth)}>`;
   if (b instanceof z.ZodRecord) return 'object';
   if (b instanceof z.ZodUnion) return 'union';
   if (b instanceof z.ZodObject) return depth > 0 ? describeObject(b, depth - 1) : 'object';
@@ -1054,17 +1076,24 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
    * nothing to gain by refusing it. Parse it and hand the result to the SAME schema, so validation is
    * unchanged and a genuinely malformed payload still fails exactly as before.
    */
+  // `.nonoptional()` is load-bearing, not decoration. Under zod 4 a `z.preprocess` becomes a pipe
+  // whose INPUT side is `unknown`, and `unknown` accepts undefined — so the JSON Schema the MCP SDK
+  // publishes drops the argument from `required`. Measured: `put_page` and `patch_page` both went
+  // from `required: ["page"]` to `required: []`, telling every agent that the one argument the tool
+  // cannot work without is optional. `.nonoptional()` puts it back.
   const objectArg = <T extends z.ZodTypeAny>(schema: T) =>
-    z.preprocess((v) => {
-      if (typeof v !== 'string') return v;
-      const s = v.trim();
-      if (!s.startsWith('{') || !s.endsWith('}')) return v;
-      try {
-        return JSON.parse(s);
-      } catch {
-        return v; // not JSON after all — let the schema report the real problem
-      }
-    }, schema);
+    z
+      .preprocess((v) => {
+        if (typeof v !== 'string') return v;
+        const s = v.trim();
+        if (!s.startsWith('{') || !s.endsWith('}')) return v;
+        try {
+          return JSON.parse(s);
+        } catch {
+          return v; // not JSON after all — let the schema report the real problem
+        }
+      }, schema)
+      .nonoptional();
 
   // ---------------------------------------------------------------- writes (content:write)
   // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to

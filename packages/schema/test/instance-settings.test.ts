@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   FormModesSchema,
   DEFAULT_FORM_MODES,
@@ -71,6 +72,17 @@ describe('InstanceSettingsInputSchema', () => {
   it('allows null to clear a section and undefined to leave it unchanged', () => {
     expect(InstanceSettingsInputSchema.parse({ smtp: null })).toEqual({ smtp: null });
     expect(InstanceSettingsInputSchema.parse({})).toEqual({});
+  });
+
+  // FormModesPatchSchema derives itself from FormModesSchema's KEYS and hardcodes the value type as
+  // `z.boolean().optional()` — which is right today and silently wrong the moment a mode is added
+  // that is not a boolean: the patch would accept the key and mistype its value. The derivation
+  // cannot notice that on its own, so assert the assumption it rests on.
+  it('every form mode is a boolean — the patch schema derivation depends on it', () => {
+    for (const [name, field] of Object.entries(FormModesSchema.shape)) {
+      const base = field instanceof z.ZodDefault ? field.unwrap() : field;
+      expect(base, `formModes.${name} is not a boolean — update FormModesPatchSchema`).toBeInstanceOf(z.ZodBoolean);
+    }
   });
 
   it('accepts a partial formModes update', () => {

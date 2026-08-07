@@ -9,6 +9,31 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The preloader overlay is opaque, so changing pages stops flashing.** It was a 62%-transparent
+  frosted pane: the overlay itself never flickered, but the content *behind* it cut hard from the old
+  page to the new one on every internal navigation. Covering only the outgoing half would not have
+  helped — the swap has two sides, and the arriving document paints its own overlay from first paint,
+  so a translucent pane reveals the new page the instant it renders. Solid on both sides is what
+  removes it. The blur went with it (a backdrop-filter behind an opaque fill paints nothing and costs
+  a compositing layer); the fade itself is unchanged. Measured: with the overlay up over two
+  deliberately different pages it renders to an identical pixel, and across a real navigation no
+  fully-covered frame carried either page's colour.
+- **Custom preloaders can opt in to that backdrop** (`preloaderBackdrop`, a toggle beside the custom
+  code). Off by default and deliberately so: custom markup owns its own look, and some overlays are
+  meant to be see-through — this is for the author who wants the same flash-free field the nine
+  built-in effects get without hand-rolling a full-bleed layer.
+
+### Fixed
+
+- A custom preloader was emitted **raw** into the render-template canvas — outside the platform
+  wrapper, on a surface that ships no preloader runtime, so nothing could ever clear it and it simply
+  covered the canvas. That canvas now matches the page-preview route, which had already stopped
+  emitting one: a preloader is whole-site chrome, and the whole-site draft preview is where it means
+  anything.
+
+
 ### Fixed
 
 - **Nothing you could download from a preview actually downloaded.** The preview response's CSP

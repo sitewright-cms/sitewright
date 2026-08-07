@@ -1101,7 +1101,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Custom code becomes the overlay's CONTENTS, inside the platform's own `[data-sw-preloader]`
         // wrapper — the author writes the spinner, the platform keeps the show/hide contract.
         const preloaderMarkup = fxCode.preloader
-          ? customPreloaderHtml(fxCode.preloader)
+          ? customPreloaderHtml(fxCode.preloader, { backdrop: fxCode.preloaderBackdrop })
           : usesPreloaderRuntime
             ? preloaderHtml(website?.effects?.preloaderEffect, { logo: relImage(identity.logo, 'lg') })
             : undefined;

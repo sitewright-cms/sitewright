@@ -707,6 +707,13 @@ export const WebsiteEffectsSchema = z.object({
   buttonCode: z.string().max(HTML_MAX).optional(),
   /** Custom preloader — raw HTML overlay injected as the first body child when preloaderEffect is 'none'. */
   preloaderCode: z.string().max(HTML_MAX).optional(),
+  /**
+   * Paint the platform's solid brand backdrop behind CUSTOM preloader markup. Only meaningful with
+   * `preloaderCode` (the built-in effects always carry it). Off by default: custom code owns its own
+   * look, and some overlays are deliberately transparent — opting in gives a custom spinner the same
+   * flash-free field the built-ins have without hand-rolling a full-bleed layer.
+   */
+  preloaderBackdrop: z.boolean().optional(),
 });
 export type WebsiteEffects = z.infer<typeof WebsiteEffectsSchema>;
 
@@ -747,12 +754,19 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
 export function websiteEffectsCustomCode(effects: WebsiteEffects | undefined): {
   bodyEnd: string;
   preloader: string | undefined;
+  /** Whether that custom preloader asked for the platform backdrop. False when there is no custom code. */
+  preloaderBackdrop: boolean;
 } {
-  if (!effects) return { bodyEnd: '', preloader: undefined };
+  if (!effects) return { bodyEnd: '', preloader: undefined, preloaderBackdrop: false };
   const navOn = (effects.navEffect ?? 'none') === 'none' && effects.navCode ? effects.navCode : '';
   const btnOn = (effects.buttonEffect ?? 'none') === 'none' && effects.buttonCode ? effects.buttonCode : '';
   const preOn = (effects.preloaderEffect ?? 'none') === 'none' && effects.preloaderCode ? effects.preloaderCode : undefined;
-  return { bodyEnd: [navOn, btnOn].filter(Boolean).join('\n'), preloader: preOn };
+  return {
+    bodyEnd: [navOn, btnOn].filter(Boolean).join('\n'),
+    preloader: preOn,
+    // Tied to the code actually being emitted, so the flag can't leak onto a built-in effect.
+    preloaderBackdrop: preOn !== undefined && effects.preloaderBackdrop === true,
+  };
 }
 
 /**

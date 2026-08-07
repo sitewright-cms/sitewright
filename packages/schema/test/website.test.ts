@@ -479,15 +479,16 @@ describe('WebsiteSettingsSchema', () => {
       // nav/button code → body-end (joined); preloader code → first-body-child overlay.
       expect(
         websiteEffectsCustomCode({ navCode: '<style>nav</style>', buttonCode: '<style>btn</style>', preloaderCode: '<div>pre</div>' }),
-      ).toEqual({ bodyEnd: '<style>nav</style>\n<style>btn</style>', preloader: '<div>pre</div>' });
+      ).toEqual({ bodyEnd: '<style>nav</style>\n<style>btn</style>', preloader: '<div>pre</div>', preloaderBackdrop: false });
 
       // A chosen built-in effect makes that slot's custom code INERT (preserved in storage, not applied).
       expect(websiteEffectsCustomCode({ navEffect: 'box-solid', navCode: '<style>nav</style>' })).toEqual({
         bodyEnd: '',
         preloader: undefined,
+        preloaderBackdrop: false,
       });
-      expect(websiteEffectsCustomCode(undefined)).toEqual({ bodyEnd: '', preloader: undefined });
-      expect(websiteEffectsCustomCode({})).toEqual({ bodyEnd: '', preloader: undefined });
+      expect(websiteEffectsCustomCode(undefined)).toEqual({ bodyEnd: '', preloader: undefined, preloaderBackdrop: false });
+      expect(websiteEffectsCustomCode({})).toEqual({ bodyEnd: '', preloader: undefined, preloaderBackdrop: false });
     });
 
     it('accepts the themes opt-in (enableThemes + defaultTheme)', () => {
@@ -622,6 +623,34 @@ describe('WebsiteSettingsSchema', () => {
       expect(() =>
         WebsiteSettingsSchema.parse({ security: { acknowledgmentsUrl: 'https://acme.com/\nContact: tel:+10000000000' } }),
       ).toThrow();
+    });
+  });
+});
+
+describe('preloaderBackdrop (opt-in custom backdrop)', () => {
+  it('is reported only alongside custom code that is actually emitted', () => {
+    // Tied to the code being emitted, so the flag can never leak onto a built-in effect: with an
+    // effect chosen, `preloaderCode` is inert and so is its backdrop.
+    expect(
+      websiteEffectsCustomCode({ preloaderEffect: 'none', preloaderCode: '<div></div>', preloaderBackdrop: true }),
+    ).toMatchObject({ preloader: '<div></div>', preloaderBackdrop: true });
+
+    expect(
+      websiteEffectsCustomCode({ preloaderEffect: 'spinner', preloaderCode: '<div></div>', preloaderBackdrop: true }),
+    ).toMatchObject({ preloader: undefined, preloaderBackdrop: false });
+  });
+
+  it('defaults to false — a custom overlay keeps its own look unless asked', () => {
+    expect(websiteEffectsCustomCode({ preloaderEffect: 'none', preloaderCode: '<div></div>' })).toMatchObject({
+      preloaderBackdrop: false,
+    });
+    expect(websiteEffectsCustomCode(undefined)).toMatchObject({ preloaderBackdrop: false });
+  });
+
+  it('is false when the flag is set but there is no code to apply it to', () => {
+    expect(websiteEffectsCustomCode({ preloaderEffect: 'none', preloaderBackdrop: true })).toMatchObject({
+      preloader: undefined,
+      preloaderBackdrop: false,
     });
   });
 });

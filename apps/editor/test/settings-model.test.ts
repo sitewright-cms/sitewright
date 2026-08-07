@@ -589,3 +589,39 @@ describe('settings model — security.txt', () => {
     expect(saved.website?.security).toEqual({ enabled: true, useEmail: true });
   });
 });
+
+describe('preloaderBackdrop round-trip', () => {
+  // `full` already carries a complete identity; only the effects under test vary.
+  type Effects = NonNullable<NonNullable<SettingsBundle['website']>['effects']>;
+  const withEffects = (effects: Effects): SettingsBundle => ({
+    ...full,
+    website: { ...full.website, effects },
+  });
+
+  it('is omitted unless there is custom code AND the author opted in', () => {
+    const base = toForm(full);
+    // Default: no code, no flag → the key never reaches storage, so a default site stays byte-identical.
+    expect(toBundle({ ...base, preloaderCode: '', preloaderBackdrop: false }, full).website?.effects?.preloaderBackdrop).toBeUndefined();
+    // Flag on but no code → still omitted; it would have nothing to apply to.
+    expect(toBundle({ ...base, preloaderCode: '', preloaderBackdrop: true }, full).website?.effects?.preloaderBackdrop).toBeUndefined();
+    // Code without the flag → omitted (off is the default).
+    expect(
+      toBundle({ ...base, preloaderCode: '<div class="spin"></div>', preloaderBackdrop: false }, full).website?.effects?.preloaderBackdrop,
+    ).toBeUndefined();
+    // Code + flag → emitted.
+    expect(
+      toBundle({ ...base, preloaderCode: '<div class="spin"></div>', preloaderBackdrop: true }, full).website?.effects?.preloaderBackdrop,
+    ).toBe(true);
+  });
+
+  it('reads a stored flag back into the form', () => {
+    const stored = withEffects({ preloaderCode: '<div></div>', preloaderBackdrop: true });
+    const form = toForm(stored);
+    expect(form.preloaderBackdrop).toBe(true);
+    expect(form.preloaderCode).toBe('<div></div>');
+  });
+
+  it('defaults to false when absent from storage', () => {
+    expect(toForm(full).preloaderBackdrop).toBe(false);
+  });
+});

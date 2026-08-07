@@ -7592,7 +7592,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         themeCriticalCss = settings.website?.criticalCss;
         const fx = websiteEffectsCustomCode(settings.website?.effects);
         themeCustomScripts = fx.bodyEnd || undefined;
-        themePreloader = fx.preloader;
+        // NO preloader on this canvas either — same reasoning as the page-preview route above, which
+        // this one had been left out of step with. It passed the author's custom code RAW (not even
+        // inside the platform wrapper), and no preloader runtime ships in this shell, so a custom
+        // overlay rendered here had nothing to clear it and simply covered the canvas. A preloader is
+        // whole-site chrome; the whole-site draft preview is where it means anything.
+        themePreloader = undefined;
         themeEmitContentTokens = !!(fx.bodyEnd || fx.preloader);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;

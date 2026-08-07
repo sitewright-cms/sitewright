@@ -100,6 +100,7 @@
     "sw-nav-hidden",
     "sw-nav-indicator",
     "sw-nav-line-bottom",
+    "sw-preloader-backdrop",
     "sw-preloader-custom",
     "sw-ripple",
     "sw-scrolled",

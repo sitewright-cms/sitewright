@@ -26,9 +26,9 @@ const FONT_SIZE = topic({
   description: 'Sets the type size.',
   preview: 'text',
   classes: [
-    ['text-xs', [['var(--text-xs)', '0.75rem']], 1],
-    ['text-sm', [['var(--text-sm)', '0.875rem']], 1],
-    ['text-base', [['var(--text-base)', '1rem']], 1],
+    ['text-xs', [['font-size', 'var(--text-xs)', '0.75rem']], 1],
+    ['text-sm', [['font-size', 'var(--text-sm)', '0.875rem']], 1],
+    ['text-base', [['font-size', 'var(--text-base)', '1rem']], 1],
   ],
 });
 
@@ -38,8 +38,8 @@ const TEXT_COLOR = topic({
   description: 'Sets the text colour.',
   preview: 'color',
   classes: [
-    ['text-red-500', [['oklch(63.7% 0.237 25.331)']], 0],
-    ['text-blue-500', [['oklch(62.3% 0.214 259.815)']], 0],
+    ['text-red-500', [['color', 'oklch(63.7% 0.237 25.331)']], 0],
+    ['text-blue-500', [['color', 'oklch(62.3% 0.214 259.815)']], 0],
   ],
 });
 
@@ -49,9 +49,9 @@ const DISPLAY = topic({
   description: 'Sets the box type an element generates.',
   category: 'layout',
   classes: [
-    ['flex', [['flex']], 0],
-    ['grid', [['grid']], 0],
-    ['inline-flex', [['inline-flex']], 0],
+    ['flex', [['display', 'flex']], 0],
+    ['grid', [['display', 'grid']], 0],
+    ['inline-flex', [['display', 'inline-flex']], 0],
   ],
 });
 
@@ -123,7 +123,7 @@ describe('searchReference', () => {
     const many = topic({
       sig: 'background-color',
       title: 'Background Color',
-      classes: Array.from({ length: CLASS_HIT_LIMIT * 2 }, (_, i) => [`bg-c${i}`, [['#fff']], 0] as const),
+      classes: Array.from({ length: CLASS_HIT_LIMIT * 2 }, (_, i) => [`bg-c${i}`, [['background-color', '#fff']], 0] as const),
     });
     const results = searchReference({ ...REFERENCE, topics: [many] }, 'bg-c');
     expect(results.classes).toHaveLength(CLASS_HIT_LIMIT);
@@ -137,9 +137,9 @@ describe('searchReference', () => {
     const filler = topic({
       sig: 'background-color',
       title: 'Background Color',
-      classes: Array.from({ length: CLASS_HIT_LIMIT * 20 }, (_, i) => [`bg-x${i}`, [['#fff']], 0] as const),
+      classes: Array.from({ length: CLASS_HIT_LIMIT * 20 }, (_, i) => [`bg-x${i}`, [['background-color', '#fff']], 0] as const),
     });
-    const late = topic({ sig: 'fill', title: 'Fill Color', classes: [['bg-x', [['#000']], 0]] });
+    const late = topic({ sig: 'fill', title: 'Fill Color', classes: [['bg-x', [['fill', '#000']], 0]] });
     const results = searchReference({ ...REFERENCE, topics: [filler, late] }, 'bg-x');
     expect(results.classes[0]?.name).toBe('bg-x');
     expect(results.classTotal).toBe(CLASS_HIT_LIMIT * 20 + 1);
@@ -153,14 +153,14 @@ describe('searchReference', () => {
     const longNames = topic({
       sig: 'background-color',
       title: 'Background Color',
-      classes: Array.from({ length: CLASS_HIT_LIMIT * 2 }, (_, i) => [`bg-colour-${i}-500`, [['#fff']], 0] as const),
+      classes: Array.from({ length: CLASS_HIT_LIMIT * 2 }, (_, i) => [`bg-colour-${i}-500`, [['background-color', '#fff']], 0] as const),
     });
     const shortNames = topic({
       sig: 'background-image',
       title: 'Background Image',
       classes: [
-        ['bg-top', [['top']], 0],
-        ['bg-white', [['#fff']], 0],
+        ['bg-top', [['background-position', 'top']], 0],
+        ['bg-white', [['background-image', 'none']], 0],
       ],
     });
     const names = searchReference({ ...REFERENCE, topics: [longNames, shortNames] }, 'bg-').classes.map((c) => c.name);
@@ -176,12 +176,12 @@ describe('searchReference', () => {
     const negatives = topic({
       sig: 'margin',
       title: 'Margin',
-      classes: Array.from({ length: CLASS_HIT_LIMIT * 3 }, (_, i) => [`-mx-4x${i}`, [['1px']], 0] as const),
+      classes: Array.from({ length: CLASS_HIT_LIMIT * 3 }, (_, i) => [`-mx-4x${i}`, [['margin', '1px']], 0] as const),
     });
     const positives = topic({
       sig: 'padding',
       title: 'Padding',
-      classes: [['mx-4b', [['1rem']], 0]],
+      classes: [['mx-4b', [['padding', '1rem']], 0]],
     });
     const results = searchReference({ ...REFERENCE, topics: [negatives, positives] }, 'mx-4');
     expect(results.classes[0]?.name).toBe('mx-4b');

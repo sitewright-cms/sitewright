@@ -18,8 +18,8 @@ const REFERENCE: TailwindReference = {
       description: 'Sets the box type an element generates.',
       preview: 'none',
       classes: [
-        ['flex', [['flex']], 0],
-        ['grid', [['grid']], 0],
+        ['flex', [['display', 'flex']], 0],
+        ['grid', [['display', 'grid']], 0],
       ],
     },
     {
@@ -31,9 +31,9 @@ const REFERENCE: TailwindReference = {
       description: 'Sets the type size.',
       preview: 'text',
       classes: [
-        ['text-xs', [['var(--text-xs)', '0.75rem'], ['var(--text-xs--line-height)', '1rem']], 1],
-        ['text-sm', [['var(--text-sm)', '0.875rem'], ['var(--text-sm--line-height)', '1.25rem']], 1],
-        ['text-base', [['var(--text-base)', '1rem'], ['var(--text-base--line-height)', '1.5rem']], 1],
+        ['text-xs', [['font-size', 'var(--text-xs)', '0.75rem'], ['line-height', 'var(--text-xs--line-height)', '1rem']], 1],
+        ['text-sm', [['font-size', 'var(--text-sm)', '0.875rem'], ['line-height', 'var(--text-sm--line-height)', '1.25rem']], 1],
+        ['text-base', [['font-size', 'var(--text-base)', '1rem'], ['line-height', 'var(--text-base--line-height)', '1.5rem']], 1],
       ],
     },
     {
@@ -44,7 +44,7 @@ const REFERENCE: TailwindReference = {
       title: 'Text Color',
       description: 'Sets the text colour.',
       preview: 'color',
-      classes: [['text-red-500', [['oklch(63.7% 0.237 25.331)']], 0]],
+      classes: [['text-red-500', [['color', 'oklch(63.7% 0.237 25.331)']], 0]],
     },
   ],
   variants: [],

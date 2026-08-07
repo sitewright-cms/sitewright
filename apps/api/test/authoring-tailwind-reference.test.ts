@@ -33,9 +33,16 @@ describe('GET /authoring/tailwind/reference', () => {
     expect(fontSize?.title).toBe('Font Size');
     expect(fontSize?.category).toBe('typography');
     expect(fontSize?.preview).toBe('text');
-    // The row an author reads: the class, and the value it actually resolves to.
+    // The row an author reads: the property, and the value it actually resolves to.
     const textSm = fontSize?.classes.find(([name]) => name === 'text-sm');
-    expect(textSm?.[1][0]).toEqual(['var(--text-sm)', '0.875rem']);
+    expect(textSm?.[1][0]).toEqual(['font-size', 'var(--text-sm)', '0.875rem']);
+
+    // A breakpoint-scoped declaration keeps the condition it applies under, so the UI can neither
+    // truncate it against the topic's deduped props nor present it as unconditional.
+    const container = body.topics.find((t) => t.sig === 'width,max-width');
+    const decls = container?.classes.find(([name]) => name === 'container')?.[1] ?? [];
+    expect(decls).toHaveLength(6);
+    expect(decls[1]).toEqual(['max-width', '40rem', '', '@media (width >= 40rem)']);
     await app.close();
   });
 

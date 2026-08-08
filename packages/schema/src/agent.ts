@@ -563,7 +563,9 @@ un-padded for you.) For a full-bleed hero/slider that should bleed UNDER the hea
 flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
 the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
-\`:root{--sw-header-h:5rem}\` in website.criticalCss — and use \`patch_critical_css\` to change ONE rule
+\`:root{--sw-header-h:5rem}\` in website.criticalCss, plus a media query for EVERY breakpoint the bar
+changes height at — a single unconditional value beats the platform's own pair and is wrong at the other
+widths — and use \`patch_critical_css\` to change ONE rule
 rather than resending the whole sheet; it writes a named block in place). The header sits at z-index 30 (below the mobile drawer
 + back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
 is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
@@ -1225,12 +1227,21 @@ styles + rects for whatever you select (add \`html:true\` for its settled markup
 measure your own clone the same way and diff). Use the extracted brand fonts on chrome text (var(--sw-font-heading)/--sw-font-body + any
 named slot like --sw-font-secondary), not a hard-coded family.
 STICKY HEADER: if the source header is FIXED/pinned, set website.effects.stickyHeader ("pinned" |
-"hide-on-scroll") and add class .sw-top-padding to each page's FIRST section so the body isn't hidden
-under the bar. If it also SHRINKS on scroll, that part is hand-authored against html.sw-scrolled — there
-is no shrink mode; see get_guide("effects"). ⚠ --sw-header-h is a HARDCODED constant sized for the stock
-recipe (4.5rem mobile / 4.75rem desktop), NOT a measurement of your header: a taller custom header MUST
-override it (:root{--sw-header-h:<real height>} in website.criticalCss) or .sw-top-padding under-pads and
-your headings sit behind the bar. Measure the real bar and set it. A static
+"hide-on-scroll"). THE OFFSET IS AUTOMATIC — the platform already pads main#page-content by the bar
+height, so do NOT add .sw-top-padding to every page's first section. That class is only for a full-bleed
+hero/slider that should bleed UNDER the bar, and it goes on an INNER element (the background bleeds, the
+text clears). If the source header OVERLAYS its hero (the hero brings its own top padding), the automatic
+offset is WRONG — set :root{--sw-header-offset:0} on that page. To change the AMOUNT of clearance always
+use --sw-header-offset, NEVER --sw-header-h: anchors (scroll-padding-top) and ScrollSpy both read the
+height token, so re-purposing it as padding silently breaks where jump-links land.
+⚠ --sw-header-h is a HARDCODED constant sized for the stock recipe (4.5rem mobile / 4.75rem desktop), NOT
+a measurement of YOUR header — so declare your real bar height in website.criticalCss (patch_critical_css
+changes ONE rule in place rather than resending the sheet), and MEASURE IT AT EVERY BREAKPOINT. A single
+unconditional :root value is the standard mistake: it beats the platform's own media-query pair on source
+order, so it then applies at ALL widths. Measured on a real import, a 3-tier header was 66.8 / 81.6 /
+102.8px behind one declared 76px, clipping headings on every desktop inner page. Round each value UP by
+~1px — over-padding is invisible, under-padding cuts text off. If the bar also SHRINKS on scroll that part
+is hand-authored against html.sw-scrolled; there is no shrink mode, see get_guide("effects"). A static
 clone of a fixed header fails the fidelity meta check (header-position). See get_guide("nav").
 FOUNDATION IMPORT (theme-only): when the project was imported in FOUNDATION mode, the mainNav/footer slots
 hold a GENERIC data-driven nav/footer (the extractor's native default), NOT the foreign header — so you must

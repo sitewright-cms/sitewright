@@ -207,7 +207,13 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
           }`}
           onMouseEnter={() => setStripHover(true)}
           onMouseLeave={() => setStripHover(false)}
-          onFocusCapture={() => setStripFocus(true)}
+          // Pinned open by REACHING FOR THE CODE — a click or a keystroke inside the strip — not by
+          // focus. Click-to-code focuses the editor programmatically to place the selection, and
+          // keying that to the expansion meant every click in the preview threw the strip open over
+          // the very preview being clicked. Pointer and keyboard entry still pin it, so the strip does
+          // not collapse out from under someone editing who moves the mouse away.
+          onMouseDownCapture={() => setStripFocus(true)}
+          onKeyDownCapture={() => setStripFocus(true)}
           onBlurCapture={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
           }}

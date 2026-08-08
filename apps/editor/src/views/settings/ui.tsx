@@ -1,18 +1,22 @@
 import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { glassCard, glassInput, fieldLabel, accentChip } from '../../theme';
-import { cardVariants, cardHover } from './motion';
+import { cardVariants } from './motion';
 import { SectionHelp } from '../ui/SectionHelp';
 import { secretFieldProps } from '../../lib/secret-field';
 
-/** A frosted-glass card with a gradient accent chip + title; lifts on hover. An optional `tooltip`
- *  adds a "?" help affordance next to the title (the section's description, shown on hover/focus). */
+/** A frosted-glass card with a gradient accent chip + title. Hovering BRIGHTENS the header band; the
+ *  card itself does not move. An optional `tooltip` adds a "?" help affordance next to the title (the
+ *  section's description, shown on hover/focus). */
 export function GlassCard({ title, icon, tooltip, children, wide = false }: { title: string; icon: ReactNode; tooltip?: string; children: ReactNode; wide?: boolean }) {
   return (
-    <motion.section variants={cardVariants} whileHover={cardHover} className={`${glassCard} p-5 ${wide ? 'sm:col-span-2' : ''}`}>
+    // `group` so the header can react to a hover anywhere on the card. The card used to lift 4px on
+    // hover (a spring `whileHover`), which shifted the content under the pointer on every pass across
+    // a settings page; the highlight reads as the same affordance without moving anything.
+    <motion.section variants={cardVariants} className={`group ${glassCard} p-5 ${wide ? 'sm:col-span-2' : ''}`}>
       {/* Full-bleed grey header bar (negative margins cancel the card's p-5) so every section title
           reads as a distinct, emphasized band: light-grey background + uppercase tracked title. */}
-      <header className="-mx-5 -mt-5 mb-4 flex items-center gap-3 rounded-t-2xl border-b border-slate-200/70 dark:border-slate-700/70 bg-slate-100/70 dark:bg-white/10 px-5 py-3">
+      <header className="-mx-5 -mt-5 mb-4 flex items-center gap-3 rounded-t-2xl border-b border-slate-200/70 dark:border-slate-700/70 bg-slate-100/70 dark:bg-white/10 px-5 py-3 transition-colors group-hover:bg-white/85 dark:group-hover:bg-white/20">
         <span className={accentChip} aria-hidden>
           {icon}
         </span>

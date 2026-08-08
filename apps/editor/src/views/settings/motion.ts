@@ -24,6 +24,3 @@ export const cardStagger: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.06 } },
 };
-
-/** Springy hover-lift for the glass cards. */
-export const cardHover = { y: -4, transition: { type: 'spring', stiffness: 400, damping: 18 } } as const;

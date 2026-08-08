@@ -99,7 +99,7 @@ const DEMO: Record<Exclude<PreviewKind, 'none'>, { cls: string; text?: string; b
  * CONDITIONAL declarations are skipped: `container`'s `max-width: 40rem` only applies above a
  * breakpoint, and painting it unconditionally would show a swatch that no viewport ever renders.
  */
-function declarations(decls: readonly ClassDecl[]): [string, string][] {
+export function paintableDeclarations(decls: readonly ClassDecl[]): [string, string][] {
   const out: [string, string][] = [];
   for (const decl of decls) {
     if (declCondition(decl) !== null) continue;
@@ -185,7 +185,7 @@ export function TailwindPreview({ kind, decls, name }: TailwindPreviewProps): Re
 
   const paint = useMemo(() => {
     if (kind === 'none') return null;
-    const painted = declarations(decls);
+    const painted = paintableDeclarations(decls);
     if (painted.length === 0) return null;
     // A colour preview paints whichever property the class actually sets (`fill`, `border-color`, …)
     // onto `background-color` too. It reads the value back out of the FILTERED list — never out of

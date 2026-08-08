@@ -54,6 +54,14 @@ interface ModalProps {
   /** Accessible label for the save button (default "Save"). */
   saveLabel?: string;
   size?: keyof typeof SIZES;
+  /**
+   * Whether a modal rendered INSIDE a SidePanel pins that panel open behind it (default true).
+   *
+   * Set false for a modal that can also be opened from outside the panel — e.g. by a global keyboard
+   * shortcut — so opening it does not drag the drawer open as a side effect. Elevation above the
+   * panel layer is unaffected; only the hold is skipped.
+   */
+  pinPanel?: boolean;
   children: ReactNode;
   /** Optional content pinned to the START of the header, BEFORE the title (e.g. a mode toggle). */
   headerLeft?: ReactNode;
@@ -80,7 +88,7 @@ interface ModalProps {
  * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
  * ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
@@ -128,12 +136,16 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   // modal sits below the panel tabs so they stay visible over it.
   const elevated = useContext(InSidePanel);
   // While this (panel-owned) modal lives, pin the panel open so it can't collapse behind us.
+  //
+  // `pinPanel={false}` opts out while KEEPING the elevation above: the two are separate concerns, and
+  // a modal that can be opened by a keyboard shortcut from anywhere needs the z-index without the
+  // pin — otherwise the shortcut drags the whole side panel open as a side effect.
   const panelHold = useContext(SidePanelHold);
   useEffect(() => {
-    if (!elevated || !panelHold) return;
+    if (!elevated || !panelHold || !pinPanel) return;
     panelHold.hold();
     return () => panelHold.release();
-  }, [elevated, panelHold]);
+  }, [elevated, panelHold, pinPanel]);
 
   // Mount-only: register on the modal stack (top = shortcut owner).
   useEffect(() => {

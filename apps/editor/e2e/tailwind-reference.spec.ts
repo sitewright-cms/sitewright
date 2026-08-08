@@ -78,6 +78,10 @@ test('library: tailwind reference — shortcut opens it, insert lands at the car
   await page.keyboard.press('Control+Alt+T');
   const ref = page.getByRole('dialog', { name: 'TailwindCSS Reference' });
   await expect(ref).toBeVisible();
+  // …and ONLY the modal. A Library modal rendered inside the SidePanel pins the drawer open behind
+  // it; the reference is rendered outside precisely so the shortcut does not drag the whole System
+  // Library open with it.
+  await expect(page.locator('[role="region"][aria-label="System Library"]')).toHaveAttribute('aria-hidden', 'true');
 
   // With no code editor open, Insert is offered but disabled rather than silently doing nothing.
   await ref.getByLabel('Search the Tailwind reference').fill('text-sm');

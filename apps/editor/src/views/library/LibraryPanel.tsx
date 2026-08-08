@@ -243,7 +243,6 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           onClose={() => setSwOpen(false)}
         />
       )}
-      {twOpen && <TailwindReferenceModal onClose={() => setTwOpen(false)} />}
       {daisyOpen && <SectionModal section={DAISY_SECTION} onClose={() => setDaisyOpen(false)} />}
       {iconsOpen && <IconsFlagsGallery onClose={() => setIconsOpen(false)} />}
       {fontsOpen && <FontsLibraryModal onClose={() => setFontsOpen(false)} />}
@@ -253,6 +252,11 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
       {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
       {imapOpen && <ImageMapStudio onClose={() => setImapOpen(false)} projectId={projectId} />}
+      {/* Unlike its neighbours this one does NOT pin the drawer open — it has a keyboard shortcut, and
+          opening the whole System Library as a side effect of Ctrl+Alt+T is not what was asked for.
+          It stays INSIDE the panel so it still elevates above the drawer's backdrop (z-70 over z-60);
+          it just closes the drawer on open instead of holding it. See TailwindReferenceModal. */}
+      {twOpen && <TailwindReferenceModal onClose={() => setTwOpen(false)} />}
     </SidePanel>
   );
 }

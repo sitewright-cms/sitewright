@@ -51,20 +51,27 @@ test('library: tailwind reference — search by property, by class, and copy', a
   });
   expect(specimenSize).toBe('14px'); // 0.875rem
 
-  // ── Browsing by category works independently of search.
+  // ── Browsing by category works independently of search. `exact` matters: accessible-name
+  //    matching is substring by default, and this category also has "Border Radius Bottom",
+  //    "Border Radius Top Left" and a dozen more that would make the locator ambiguous.
   await search.fill('');
-  await ref.getByRole('button', { name: 'Borders' }).click();
-  await expect(ref.getByRole('heading', { name: 'Border Radius' })).toBeVisible();
+  await ref.getByRole('button', { name: 'Borders', exact: true }).click();
+  await expect(ref.getByRole('heading', { name: 'Border Radius', exact: true })).toBeVisible();
 
-  // ── Clicking a class copies it.
-  await ref.getByTitle('Copy rounded-full').click();
-  await expect(ref.getByText('Copied to clipboard')).toBeVisible();
+  // ── Clicking a class copies it. The toast is portalled at app level, not inside the dialog.
+  await ref.getByTitle('Copy rounded-full', { exact: true }).click();
+  await expect(page.getByText('Copied to clipboard')).toBeVisible();
 });
 
 // The reference opens from anywhere via its keyboard shortcut, and inserting a class lands it at the
 // caret in the open page editor.
 test('library: tailwind reference — shortcut opens it, insert lands at the caret', async ({ page }) => {
   await signUpWithProject(page, `twk-${stamp}@e2e.test`, 'TW Keys', `twk-${stamp}`);
+  // Let the create-project modal finish unwinding first. The shortcut deliberately does nothing
+  // while an overlay is on the stack, so pressing it mid-close is suppressed — correctly, but it
+  // makes for a flaky assertion.
+  await expect(page.getByRole('button', { name: 'New page' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // Ctrl+Alt+T opens it without touching the Library rail. (The editor also binds Ctrl+Shift+K,
   // because GNOME takes Ctrl+Alt+T at the desktop level and it never reaches the browser there.)
@@ -76,6 +83,10 @@ test('library: tailwind reference — shortcut opens it, insert lands at the car
   await ref.getByLabel('Search the Tailwind reference').fill('text-sm');
   await expect(ref.locator('[data-class-name="text-sm"]')).toBeVisible();
   await expect(ref.getByRole('button', { name: 'Insert text-sm at cursor' })).toBeDisabled();
+  // Two Escapes: the field is `<input type="search">`, and Chromium consumes the first one to clear
+  // it without letting it propagate, so only the second reaches the modal. Platform behaviour shared
+  // by every SearchField dialog in the editor, not specific to this one.
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(ref).toBeHidden();
 
@@ -98,7 +109,7 @@ test('library: tailwind reference — shortcut opens it, insert lands at the car
   const insert = ref.getByRole('button', { name: 'Insert text-sm at cursor' });
   await expect(insert).toBeEnabled();
   await insert.click();
-  await expect(ref.getByText('Inserted text-sm')).toBeVisible();
+  await expect(page.getByText('Inserted text-sm')).toBeVisible();
 
   await page.keyboard.press('Escape');
   await expect(content).toContainText('text-sm');

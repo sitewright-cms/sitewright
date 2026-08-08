@@ -262,7 +262,7 @@ export async function captureBehaviour(
       // may INJECT the clipper — the carousel's [data-sw-part="container"] is not in the authored source).
       // Empty on probe failure, so an unstable render cannot invent a clipping defect.
       clipped = ((await dp.page.evaluate(CLIP_PROBE as () => unknown).catch(() => [])) as BehaviourFacts['clipped']) ?? [];
-      headerDesktop = ((await dp.page.evaluate(HEADER_PROBE as () => unknown).catch(() => null)) as HeaderFacts | null) ?? null;
+      headerDesktop = ((await dp.page.evaluate(HEADER_PROBE as () => Promise<unknown>).catch(() => null)) as HeaderFacts | null) ?? null;
     } finally {
       await dp.context.close().catch(() => {});
     }
@@ -273,7 +273,7 @@ export async function captureBehaviour(
       await settlePage(mp.page, { freeze: false });
       // BEFORE the nav toggle below: opening the menu can grow the bar, and what we want is the bar the
       // page lays out against at rest.
-      headerMobile = ((await mp.page.evaluate(HEADER_PROBE as () => unknown).catch(() => null)) as HeaderFacts | null) ?? null;
+      headerMobile = ((await mp.page.evaluate(HEADER_PROBE as () => Promise<unknown>).catch(() => null)) as HeaderFacts | null) ?? null;
       navReachableMobile = ((await mp.page.evaluate(NAV_COUNT as () => unknown).catch(() => 0)) as number) || 0;
       if (navReachableMobile < opts.navExpected) {
         const opened = ((await mp.page.evaluate(NAV_TOGGLE as () => unknown).catch(() => false)) as boolean);

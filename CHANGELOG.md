@@ -15,12 +15,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
   imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
   breakpoint, because a single unconditional `:root{--sw-header-h:…}` beats the platform's own
-  media-query pair on source order and then applies at every width. Two checks, both **advisory**: `header-height-token`
-  reports the token *under*-declaring the measured bar (content behind the header) and, separately,
-  over-declaring — whose strip below the bar is only visible when the backgrounds differ. It does not
-  gate, because this leg's render is not yet reconciled with the surfaces a visitor sees: on the page it
-  was built from, the build render measured a 91.1px bar at 390px where both the published output and
-  the draft preview measure 66.8px. `header-spacer-applies` reports the fact an author cannot
+  media-query pair on source order and then applies at every width. Two checks: `header-height-token`
+  gates on the token *under*-declaring the measured bar (content behind the header, one honest fix) and
+  reports over-declaring without failing, since the strip it paints below the bar is only visible when
+  the backgrounds differ; `header-spacer-applies` is advisory and reports the fact an author cannot
   otherwise see — that a `.sw-top-padding` did nothing because a `p-*`/`pt-*`, a custom rule or an
   inline style on the same element beat it on source order (measured on a real page:
   `class="wash sw-top-padding p-4"` computed 16px against a 102.8px token). Screen-reader-only headings

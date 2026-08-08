@@ -81,7 +81,7 @@ describe('hero-slider Widget render', () => {
     expect(render(fullConfig)).toContain('data-click-next="true"');
   });
 
-  it('PREVIEW (markEntries) wraps the hero in a data-sw-entry marker → click opens the config entry', () => {
+  it('PREVIEW (markEntries) marks the hero with data-sw-entry → click opens the config entry', () => {
     const html = renderTemplate('{{> hero-slider}}', {
       dataset: { hero: [{ id: 'config', dataset: 'hero', values: fullConfig }] },
       markEntries: true,

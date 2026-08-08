@@ -45,14 +45,55 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
     expect(out).toBe('A:e1:posts*;B:e2:posts;');
   });
 
-  it('wraps each row in a data-sw-entry marker ONLY when markEntries is set', () => {
+  // ★ The markers go ON THE ROW'S OWN ELEMENT, never in an injected wrapper: a `<div>` between the
+  // `<ul>` and its `<li>`s would change the preview's LAYOUT relative to the published page (and here
+  // would not even be valid list markup). The preview DOM must be the published DOM + two attributes.
+  it('marks each row IN PLACE when markEntries is set — no injected wrapper', () => {
     expect(renderTemplate(src, { dataset: { posts: items }, markEntries: true })).toBe(
-      '<ul><div data-sw-entry="e1" data-sw-dataset="posts"><li>A</li></div><div data-sw-entry="e2" data-sw-dataset="posts"><li>B</li></div></ul>',
+      '<ul><li data-sw-entry="e1" data-sw-dataset="posts">A</li><li data-sw-entry="e2" data-sw-dataset="posts">B</li></ul>',
     );
   });
 
-  it('emits NO wrapper without markEntries — publish is byte-identical to a plain loop', () => {
+  it('emits NO marker without markEntries — publish is byte-identical to a plain loop', () => {
     expect(renderTemplate(src, { dataset: { posts: items } })).toBe('<ul><li>A</li><li>B</li></ul>');
+  });
+
+  // The whole point, stated as an invariant: stripping the two marker attributes from the PREVIEW
+  // render must reproduce the PUBLISH render exactly. Any injected element would break this.
+  it('preview minus the markers === publish, byte for byte', () => {
+    const preview = renderTemplate(src, { dataset: { posts: items }, markEntries: true });
+    const publish = renderTemplate(src, { dataset: { posts: items } });
+    expect(preview.replace(/ data-sw-(?:entry|dataset)="[^"]*"/g, '')).toBe(publish);
+  });
+
+  it('marks EVERY top-level element of a multi-root row, so a click lands from either half', () => {
+    const out = renderTemplate('<dl>{{#each dataset.posts}}<dt>{{t}}</dt><dd>{{t}}!</dd>{{/each}}</dl>', {
+      dataset: { posts: [items[0]] },
+      markEntries: true,
+    });
+    expect(out).toBe('<dl><dt data-sw-entry="e1" data-sw-dataset="posts">A</dt><dd data-sw-entry="e1" data-sw-dataset="posts">A!</dd></dl>');
+  });
+
+  // A `<div>` wrapper here would be HOISTED OUT of the table by the HTML parser — the row markup would
+  // not merely be mis-styled, it would be relocated. In place, the `<tr>` stays a `<tr>`.
+  it('marks a table row without introducing an element a <table> cannot contain', () => {
+    const out = renderTemplate('<table><tbody>{{#each dataset.posts}}<tr><td>{{t}}</td></tr>{{/each}}</tbody></table>', {
+      dataset: { posts: [items[0]] },
+      markEntries: true,
+    });
+    expect(out).toBe('<table><tbody><tr data-sw-entry="e1" data-sw-dataset="posts"><td>A</td></tr></tbody></table>');
+  });
+
+  // FALLBACK: a row with no element of its own has nothing to carry the attributes, so it keeps the
+  // wrapper — losing the click affordance entirely would be worse than an extra inline-level element.
+  it('falls back to the wrapper for a row that is bare text', () => {
+    const out = renderTemplate('{{#each dataset.posts}}{{t}}{{/each}}', { dataset: { posts: [items[0]] }, markEntries: true });
+    expect(out).toBe('<div data-sw-entry="e1" data-sw-dataset="posts">A</div>');
+  });
+
+  it('falls back to the wrapper when the row mixes top-level text with elements', () => {
+    const out = renderTemplate('{{#each dataset.posts}}Hi <b>{{t}}</b>{{/each}}', { dataset: { posts: [items[0]] }, markEntries: true });
+    expect(out).toBe('<div data-sw-entry="e1" data-sw-dataset="posts">Hi <b>A</b></div>');
   });
 
   it('renders the {{else}} inverse for an empty list', () => {
@@ -964,8 +1005,8 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
     expect(pick('', [{ label: 'Plain' }])).toBe('[Plain]');
   });
 
-  // BLOCK form: renders the block with the chosen entry's values; in PREVIEW wraps in a data-sw-entry
-  // marker so a click opens that entry; @entry exposes the envelope id.
+  // BLOCK form: renders the block with the chosen entry's values; in PREVIEW it marks the block's own
+  // root element with data-sw-entry so a click opens that entry; @entry exposes the envelope id.
   const block = (markEntries: boolean) =>
     renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}<i>{{label}} {{@entry.id}}</i>{{else}}EMPTY{{/sw-pick-entry}}', {
       dataset: { hero: envelopes },
@@ -974,13 +1015,10 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
     } as TemplateContext);
 
   it('block form renders the chosen entry + exposes @entry.id', () => {
-    expect(block(false)).toBe('<i>Beta b</i>'); // publish: no wrapper
+    expect(block(false)).toBe('<i>Beta b</i>'); // publish: no marker
   });
-  it('block form wraps in a data-sw-entry marker in PREVIEW (markEntries)', () => {
-    const out = block(true);
-    expect(out).toContain('data-sw-entry="b"');
-    expect(out).toContain('data-sw-dataset="hero"');
-    expect(out).toContain('<i>Beta b</i>');
+  it('block form marks its own root element in PREVIEW (markEntries) — no injected wrapper', () => {
+    expect(block(true)).toBe('<i data-sw-entry="b" data-sw-dataset="hero">Beta b</i>');
   });
   it('block form routes an empty dataset to {{else}}', () => {
     expect(renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { dataset: { hero: [] } } as TemplateContext)).toBe('EMPTY');

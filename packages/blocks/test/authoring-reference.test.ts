@@ -58,13 +58,15 @@ describe('SW_DIRECTIVES ↔ the resolveDirectives pass', () => {
   });
 
   it('the automatic directive (data-sw-entry) is really emitted by the dataset loop in preview', () => {
-    // markEntries (preview-only) makes the dataset `{{#each}}` wrap each row in data-sw-entry.
+    // markEntries (preview-only) makes the dataset `{{#each}}` stamp data-sw-entry onto the row itself.
     const html = renderTemplate('{{#each dataset.posts}}<h3>{{title}}</h3>{{/each}}', {
       dataset: { posts: [entry('p1', 'Hello')] },
       markEntries: true,
       preview: true,
     });
     expect(html).toContain('data-sw-entry');
+    // …and onto NOTHING else: the documented promise is that it costs the author no extra element.
+    expect(html).toBe('<h3 data-sw-entry="p1" data-sw-dataset="d">Hello</h3>');
     const auto = SW_DIRECTIVES.filter((d) => d.automatic).map((d) => d.attr);
     expect(auto, 'data-sw-entry must be documented as an automatic directive').toContain('data-sw-entry');
   });

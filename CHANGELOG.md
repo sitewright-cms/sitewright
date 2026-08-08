@@ -11,6 +11,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Dataset rows were laid out differently in the editor preview than on the published page.** To make
+  a row click-to-edit, the dataset-aware `{{#each}}` (and `{{#sw-pick-entry}}`) wrapped every iteration
+  in an injected `<div data-sw-entry>`. That wrapper exists only in the preview, so the editor showed a
+  layout the live site would never have: `gap` and `grid-template-columns` spaced the wrappers instead
+  of the cards, Tailwind's `space-x-*`/`divide-*` (`> * + *`) and every `:nth-child` rule stopped
+  matching, and a carousel picked the wrappers as its slides. A loop rendering `<tr>` was worse than
+  mis-styled — a `<div>` is not allowed inside a `<table>`, so the parser hoisted it out and the table
+  came apart. The markers now go onto the row's own root element(s), located with htmlparser2 and
+  spliced in by position (no parse/serialize round-trip, which would have renormalized quoting,
+  boolean attributes and entities and reintroduced the same class of divergence). Stripping the two
+  attributes from a preview render now reproduces the publish render byte for byte, and a row that has
+  no element of its own to carry them — bare text, or text mixed with elements — still gets the
+  wrapper, since losing the click affordance entirely would be worse. Click-to-code also got more
+  accurate: it no longer has to step past a wrapper that has no counterpart in the source.
+
 - **Fixed backgrounds in the page editor were stuck, not fixed.** The emulation that re-creates
   `background-attachment: fixed` inside the editor's scaled preview identified an already-adopted
   element by its `background-image` — which adoption itself sets to `none`. So the first re-scan (and

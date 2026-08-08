@@ -176,10 +176,11 @@ function candidateText(src: string, from: number, to: number): string {
 /**
  * The range of the `{{#each dataset.<slug>}} … {{/each}}` block that renders a collection, nesting-aware.
  *
- * The fallback for a dataset row: the preview WRAPS every row in an injected `<div data-sw-entry>` that
- * exists in the DOM and not in the source, and a row's contents are bindings rather than literals — so
- * when no element inside the loop body can be pinned down, selecting the block that produced the row is
- * the honest answer, and it is the code the author actually edits.
+ * The fallback for a dataset row: a row's contents are bindings rather than literals, so when no element
+ * inside the loop body can be pinned down, selecting the block that produced the row is the honest
+ * answer, and it is the code the author actually edits. (The row's OWN element is locatable — the
+ * preview marks it in place with `data-sw-entry` rather than injecting a wrapper with no counterpart in
+ * the source — so this fallback now covers only the rows that genuinely cannot be matched.)
  */
 export function findEachBlock(source: string, slug: string): SourceRange | null {
   if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(slug ?? '')) return null; // a dataset slug, never a regex

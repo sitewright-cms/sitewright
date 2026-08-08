@@ -8,11 +8,12 @@
 // Every class row carries its GENERATED CSS — the exact declarations Tailwind emits — plus a copy
 // button and an insert-at-cursor button. Clicking the row itself copies, matching every other
 // Library gallery.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ClipboardCopy, CornerDownLeft } from 'lucide-react';
 import type { Category, ReferenceTopic, TailwindReference } from '@sitewright/tailwind-reference/meta';
 import { CATEGORY_LABELS, formatDecl } from '@sitewright/tailwind-reference/meta';
 import { Modal } from '../ui/Modal';
+import { SidePanelClose } from '../ui/SidePanel';
 import { SearchField } from '../ui/SearchField';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
@@ -342,8 +343,17 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
   const activeCategory = focused ? focused.category : category;
   const searching = query.trim().length > 0 && !focusTopic;
 
+  // Opened from a Library tile, the drawer is already open behind us and every other Library modal
+  // PINS it there. This one has a keyboard shortcut, so pinning would mean Ctrl+Alt+T drags the whole
+  // System Library open as a side effect. Instead it closes the drawer on open — same end state
+  // whichever way it was opened, and `pinPanel={false}` keeps the hold from re-opening it.
+  const closePanel = useContext(SidePanelClose);
+  useEffect(() => {
+    closePanel?.();
+  }, [closePanel]);
+
   return (
-    <Modal title="TailwindCSS Reference" size="full" onClose={onClose}>
+    <Modal title="TailwindCSS Reference" size="full" pinPanel={false} onClose={onClose}>
       <div className="flex h-full min-h-0 gap-4 p-5">
         <nav className="hidden w-44 shrink-0 flex-col gap-1 overflow-auto sm:flex">
           {categories.map((c) => (

@@ -90,6 +90,8 @@ export interface HeaderFacts {
   /** Viewport-relative top of the topmost PAINTED text in #page-content (sr-only excluded). */
   firstTextTop: number | null;
   firstText: string;
+  /** Scroll position when the measurement was taken; non-zero means the at-rest unscroll did not take. */
+  scrollYAtMeasure?: number;
 }
 
 /** A token shorter than the bar by more than this puts content under the header. */
@@ -321,20 +323,21 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
       leg: 'behaviour',
       id: 'header-height-token',
       label: '--sw-header-h matches the real height of the fixed header',
-      // Reports UNDER-declaring (content behind the bar) and, separately, over-declaring — but ADVISORY,
-      // for the same reason `not-clipped` is when it has no original to compare against: this leg's own
-      // render is not yet reconciled with the two surfaces a visitor actually sees. On the page this
-      // check was built from, the build render measured a 91.1px bar at 390px where BOTH the published
-      // output and the whole-site draft preview measure 66.8px, in a plain and a touch-emulated context
-      // alike. One of those is wrong; until that is known, failing a clone on this number would be
-      // failing it on a measurement the author cannot reproduce — and the lesson recorded on
-      // `not-clipped` below is precisely what agents do to a page to turn a check like that green.
-      // The token is still a hardcoded constant sized for the stock recipe, wrong for essentially every
-      // imported header and normally wrong at ONE breakpoint (a single unconditional
-      // `:root{--sw-header-h:…}` beats the platform's own media-query pair on source order), which is
-      // why this measures desktop AND phone — the reporting is worth having now, the gate is not.
+      // GATES on UNDER-declaring only, because that has exactly one honest fix (set the real height) and
+      // one certain consequence (content behind the bar). The token is a hardcoded constant sized for the
+      // stock recipe, so it is wrong for essentially every imported header — and it is normally wrong at
+      // ONE breakpoint, which is why this measures desktop AND phone: a single unconditional
+      // `:root{--sw-header-h:…}` beats the platform's own media-query pair on source order and then
+      // applies at every width. Over-declaring is reported in the detail but never fails; see
+      // TOKEN_OVER_TOLERANCE.
+      //
+      // This gated, then briefly did not: the first probe measured a bar the author could not reproduce
+      // (91.1px where both the published page and the draft preview read 66.8px). That was three bugs in
+      // the PROBE, not a disagreement between surfaces — it measured while the page was still scrolled,
+      // reset only the window when the preview shell scrolls the BODY, and read the height one frame
+      // after the state class flipped rather than after the collapse transition finished. With those
+      // fixed the three renders agree exactly, so the gate is back. See HEADER_PROBE.
       pass: hdr.short.length === 0,
-      advisory: true,
       na: !headerMeasured,
       detail: !headerMeasured
         ? 'no fixed header landmark to measure — n/a'

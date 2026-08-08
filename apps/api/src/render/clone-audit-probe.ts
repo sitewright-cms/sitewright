@@ -170,12 +170,46 @@ export function NAV_TOGGLE() {
  * utilities load after it: any `p-*`/`pt-*`/`py-*`, custom class or inline padding on the same element
  * wins on source order and the class contributes NOTHING, with nothing on screen to say so.
  */
-export function HEADER_PROBE() {
+export async function HEADER_PROBE() {
   const nav = document.getElementById('main-nav');
   const pc = document.getElementById('page-content');
   if (!nav || !pc) return null;
   if (getComputedStyle(nav).position !== 'fixed') return null;
-  const bar = nav.getBoundingClientRect().height;
+  // ★ MEASURE AT REST. settlePage runs before this and does NOT leave the page at the top: its embed step
+  // brings each visible iframe into view and dwells there, so on any page with a map or a video the probe
+  // would otherwise run scrolled. That matters because a sticky header's SCROLLED state is a different
+  // element: measured on a real page, the same bar was 91.1px scrolled at BOTH viewports while its at-rest
+  // height is 66.8px at 390px and 102.8px at 1920px — the scrolled figure agreed with neither, and being
+  // identical across two widths is exactly the tell that it was not the bar the page lays out against.
+  // The at-rest height is the right one: `.sw-top-padding` and the #page-content offset are static CSS
+  // resolved at the top of the document, and a bar that has changed height has already scrolled past the
+  // content it would cover. Scrolling back also makes the viewport-relative text measurement below mean
+  // something — while scrolled it reported firstTextTop of -773.
+  // ★ RESET EVERY SCROLLER, not just the window. The whole-site preview shell scrolls the BODY
+  // (html{overflow:hidden} there), so `scrollTo(0,0)` and `window.scrollY` are both INERT on that
+  // surface — the first version of this reported scrollY 0 while the page was still 773px down, which
+  // is the same body-scroller trap the sticky runtime already works around with a capture-phase
+  // listener. Reset all three and read back whichever one actually moves.
+  scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  // The sticky runtime clears `sw-scrolled` from a scroll event on a rAF, and its hysteresis releases at
+  // y <= max(4, headerH/2), which 0 satisfies. Bounded so a page without the runtime cannot hang.
+  for (let i = 0; i < 20 && document.documentElement.classList.contains('sw-scrolled'); i += 1) {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  }
+  // ★ …then wait for the HEIGHT to settle, which is NOT the same as the class being gone. A collapse is
+  // author CSS with a transition, so the class flips one frame and the bar keeps moving for ~300ms after.
+  // Measuring on the class alone caught the bar mid-flight and produced ~90px at BOTH viewports — from
+  // opposite directions (at rest it is 66.8px at 390px and 102.8px at 1920px), which is the signature of
+  // a value still travelling rather than a real measurement. Settle on the value, never on the trigger.
+  let bar = nav.getBoundingClientRect().height;
+  for (let stable = 0, i = 0; stable < 3 && i < 60; i += 1) {
+    await new Promise((r) => requestAnimationFrame(r));
+    const h = nav.getBoundingClientRect().height;
+    stable = Math.abs(h - bar) < 0.05 ? stable + 1 : 0;
+    bar = h;
+  }
   if (!(bar > 1)) return null;
   const r1 = (n) => Math.round(n * 10) / 10;
   // MEASURE the token rather than parse it: it is authored in rem, px or calc(), and only layout knows
@@ -211,6 +245,9 @@ export function HEADER_PROBE() {
     spacerClass: spacer ? String(spacer.className || '').slice(0, 120) : null,
     firstTextTop: firstTextTop === null ? null : r1(firstTextTop),
     firstText,
+    // Diagnostic: the EFFECTIVE scroll offset across all three scrollers. Non-zero means the unscroll
+    // did not take, so `bar` may be the scrolled height and the numbers should not be trusted.
+    scrollYAtMeasure: r1(Math.max(window.scrollY || 0, document.documentElement.scrollTop || 0, document.body.scrollTop || 0)),
   };
 }
 /* v8 ignore stop */

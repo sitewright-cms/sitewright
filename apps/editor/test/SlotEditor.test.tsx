@@ -96,6 +96,30 @@ describe('SlotEditor', () => {
     expect(SLOT_SOURCE.slice(from as number, to as number)).toBe('<a class="nav-item" href="{{sw-url path}}">{{sw-label}}</a>');
   });
 
+  it('selects ONLY THE TEXT when the click landed on words rather than the element', async () => {
+    open();
+    const iframe = (await screen.findByTitle('Slot preview')) as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          source: 'sitewright-preview',
+          type: 'locate-source',
+          tag: 'a',
+          cls: ['nav-item'],
+          nth: 0,
+          text: 'Home',
+          textHit: '{{sw-label}}', // the preview reports the run under the pointer
+        },
+        source: iframe.contentWindow,
+      }),
+    );
+    await waitFor(() => expect(selectRange).toHaveBeenCalled());
+    const [from, to] = selectRange.mock.calls[0]!;
+    // the label binding alone — not the whole <a>, which is what a click on the element's box gives
+    expect(SLOT_SOURCE.slice(from as number, to as number)).toBe('{{sw-label}}');
+  });
+
   it('COLLAPSES the code strip on a mode switch instead of unmounting it', () => {
     open();
     const strip = screen.getByRole('region', { name: 'Slot source editor' });

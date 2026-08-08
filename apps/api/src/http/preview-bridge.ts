@@ -55,7 +55,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
- *                     { source:'sitewright-preview', type:'locate-source', tag, id, cls, nth, text, ds } (source mode: click → select the code)
+ *                     { source:'sitewright-preview', type:'locate-source', tag, id, cls, nth, text, textHit, ds } (source mode: click → select the code; textHit = the text run the pointer actually landed on, '' when the click hit the element rather than its words)
  *                     { source:'sitewright-preview', type:'edit-slot', slot }                        (hovered a chrome slot → open its editor)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
@@ -301,6 +301,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var host = el.closest('[data-sw-dataset]');
     // TEXT is the signal that survives a class that is dynamic, absent, or added by a runtime.
     var text = (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+    // Did the pointer land on the element's own TEXT, or on the element (its padding, its border, a
+    // gap between children)? Clicking words asks to edit those words, so the editor selects just the
+    // text run; clicking the box asks for the element, so it selects the whole tag. Reported as a
+    // separate field: the editor decides, this only observes.
+    var hit = textNodeAt(el, e.clientX, e.clientY);
     post({
       type: 'locate-source',
       tag: tag,
@@ -308,9 +313,42 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       cls: cls.split(/\\s+/).filter(Boolean),
       nth: nth,
       text: text,
+      textHit: hit ? (hit.nodeValue || '').replace(/\\s+/g, ' ').trim().slice(0, 120) : '',
       ds: host ? host.getAttribute('data-sw-dataset') || '' : ''
     });
   });
+
+  /**
+   * The text node under (x, y), but ONLY when the point is inside the text's own painted boxes and
+   * the node is a DIRECT child of el.
+   *
+   * caretRangeFromPoint alone is not enough: it answers with the NEAREST caret position, so clicking
+   * a padded box's empty margin still returns the text and every click would look like a text click.
+   * Checking the point against the text run's client rects is what separates "clicked the words" from
+   * "clicked the element". Requiring a direct child keeps a click on a wrapper from selecting the text
+   * of some descendant the author would have to hunt for.
+   */
+  function textNodeAt(el, x, y) {
+    var doc = el.ownerDocument, pos = null;
+    try {
+      if (doc.caretRangeFromPoint) pos = doc.caretRangeFromPoint(x, y);
+      else if (doc.caretPositionFromPoint) {
+        var p = doc.caretPositionFromPoint(x, y);
+        if (p) { pos = doc.createRange(); pos.setStart(p.offsetNode, p.offset); }
+      }
+    } catch (err) { return null; }
+    if (!pos) return null;
+    var node = pos.startContainer;
+    if (!node || node.nodeType !== 3 || node.parentNode !== el) return null;
+    var r = doc.createRange();
+    r.selectNodeContents(node);
+    var rects = r.getClientRects();
+    for (var i = 0; i < rects.length; i++) {
+      var b = rects[i];
+      if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) return node;
+    }
+    return null;
+  }
 
   function ensureStyle() {
     if (styled) return; styled = true;

@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FOCUSABLE, OVERLAY_STACK } from './overlay';
 import { InSidePanel, SidePanelHold } from './SidePanel';
 import { Tooltip } from './Tooltip';
+import { saveSurface } from '../../theme';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
 
@@ -264,7 +265,9 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                     aria-label={saveLabel}
                     disabled={saving || saveDisabled}
                     onClick={onSave}
-                    className="sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover waves-effect waves-light inline-flex cursor-pointer items-center justify-center rounded-xl p-2 text-white transition disabled:opacity-60"
+                    // Gradient only when there IS something to save; neutral when clean. The layout
+                    // classes are shared by both states so the button never changes size.
+                    className={`${saveSurface(!saveDisabled)} waves-effect inline-flex cursor-pointer items-center justify-center rounded-xl p-2 transition ${saveDisabled ? '' : 'disabled:opacity-60'}`}
                   >
                     <SaveIcon />
                   </button>

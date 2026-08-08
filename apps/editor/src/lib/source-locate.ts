@@ -251,3 +251,62 @@ export function findElementRange(source: string, sig: ElementSignature): SourceR
   const chosen = top[Math.min(Math.max(sig.nth ?? 0, 0), top.length - 1)]!;
   return { from: chosen.open.at, to: chosen.end };
 }
+
+/** Index just past the element's opening tag, honouring quoted attribute values (`title="a>b"`). */
+function openTagEnd(source: string, from: number): number {
+  let quote = '';
+  for (let i = from; i < source.length; i++) {
+    const ch = source[i]!;
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Narrow an element's range to the TEXT inside it.
+ *
+ * Clicking words in the preview asks to edit those words, so selecting the whole `<section …>…</section>`
+ * buries them. This walks in one step at a time and stops at the first honest answer:
+ *
+ *  1. no inner content (a void element, or `<div></div>`) → the element range, unchanged;
+ *  2. the clicked run appears literally in the source → exactly that run;
+ *  3. it does not → the element's whole inner content, trimmed.
+ *
+ * (3) is the case that matters for templates: a loop body's markup is `{{title}}`, which shares no
+ * characters with the rendered "Autumn Collection" the author clicked. Selecting the inner content
+ * still selects *the text region* — the binding that produces it — which is the code they came for.
+ */
+export function narrowToText(source: string, range: SourceRange, text: string): SourceRange {
+  const innerFrom = openTagEnd(source, range.from);
+  if (innerFrom < 0 || innerFrom >= range.to) return range;
+  // `range.to` sits just past `</tag>`; the inner content ends where that closing tag begins. A void
+  // element has no closing tag, so there is nothing to narrow to.
+  const innerTo = source.lastIndexOf('</', range.to);
+  if (innerTo < innerFrom) return range;
+
+  const inner = source.slice(innerFrom, innerTo);
+  if (!inner.trim()) return range;
+
+  const wanted = text.trim();
+  if (wanted) {
+    // The source is indented and line-wrapped; the render is not. Match the words with flexible
+    // whitespace between them rather than demanding the rendered spacing back.
+    const pattern = wanted
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('\\s+');
+    const m = new RegExp(pattern).exec(inner);
+    if (m) return { from: innerFrom + m.index, to: innerFrom + m.index + m[0].length };
+  }
+
+  // Fall back to the inner content, minus the whitespace the source indents it with.
+  const lead = inner.length - inner.trimStart().length;
+  const trail = inner.length - inner.trimEnd().length;
+  return { from: innerFrom + lead, to: innerTo - trail };
+}

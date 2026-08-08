@@ -40,9 +40,9 @@ export interface CodeEditorHandle {
   undo: () => void;
   redo: () => void;
   /**
-   * Select `[from, to)` and scroll it into view — how a preview click reveals the code behind the
-   * element. The range is CLAMPED to the live document because it is computed against the source the
-   * caller last saw, which an in-flight edit may already have shortened.
+   * Select `[from, to)` and GLIDE it to the middle of the viewport — how a preview click reveals the
+   * code behind the element. The range is CLAMPED to the live document because it is computed against
+   * the source the caller last saw, which an in-flight edit may already have shortened.
    */
   selectRange: (from: number, to: number) => void;
   /**
@@ -71,13 +71,38 @@ const ACCENT = '#818cf8'; // indigo-400
 const blackTheme = EditorView.theme(
   {
     '&': { height: '100%', fontSize: '13px', backgroundColor: '#0a0a0f', color: '#e4e4e7' },
-    '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', lineHeight: '1.6' },
+    // `scrollBehavior: smooth` makes every PROGRAMMATIC scroll of this element glide — including the
+    // one CodeMirror performs for its own `scrollIntoView` effect. That is why `selectRange` can hand
+    // the destination to CodeMirror (which knows the real line heights) and still get an animation,
+    // instead of computing a target by hand from the height map and landing near it.
+    '.cm-scroller': {
+      overflow: 'auto',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      lineHeight: '1.6',
+      scrollBehavior: 'smooth',
+    },
+    '@media (prefers-reduced-motion: reduce)': { '.cm-scroller': { scrollBehavior: 'auto' } },
     '.cm-content': { caretColor: ACCENT },
     '&.cm-focused': { outline: 'none' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: ACCENT, borderLeftWidth: '2px' },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: 'rgba(129,140,248,0.28)',
-    },
+    // A PROMINENT selection: click-to-code is the main way into this editor, and at 0.28 the band it
+    // lands on was easy to lose against the near-black canvas. 0.45 is the strongest tint that still
+    // clears WCAG AA for every colour that carries meaning — measured over the canvas, as painted:
+    //   alpha   plain  tags  attrs  values  handlebars
+    //   0.28    10.30  7.84   9.07    9.31        7.43
+    //   0.45     7.17  5.45   6.31    6.48        5.17   ← chosen
+    //   0.55     5.77  4.39   5.08    5.22        4.16   ← tags/handlebars fall under 4.5
+    //
+    // ★ The long selector is REQUIRED, not decoration. CodeMirror's own dark base theme ships
+    //   `&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: #233 }`
+    // — five class selectors — so the flat `.cm-selectionBackground` this used to carry lost on
+    // specificity the moment the editor had focus. Click-to-code focuses the editor, so the indigo
+    // never applied on the one path that matters: what was actually on screen was CodeMirror's default
+    // dark teal (measured: rgb(34,51,51)). Match the base theme's shape and it applies.
+    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
+      {
+        backgroundColor: 'rgba(129,140,248,0.45)',
+      },
     '.cm-gutters': {
       backgroundColor: '#0a0a0f',
       color: '#71717a', // lighter line numbers (was #3f3f46 — too dark)
@@ -105,11 +130,14 @@ const blackTheme = EditorView.theme(
  */
 const richHighlight = HighlightStyle.define([
   { tag: [t.tagName, t.standard(t.tagName)], color: '#7dd3fc' }, // sky-300 — HTML tags
-  { tag: [t.angleBracket, t.bracket, t.punctuation, t.separator], color: '#6b7280' }, // gray-500
+  // gray-400, not gray-500: the stronger selection tint above sits UNDER these, and at gray-500 the
+  // brackets fell to 1.88:1 once selected (they were already only 4.09:1 on the bare canvas). gray-400
+  // measures 3.58:1 selected and ~7.9:1 unselected, and still reads as quieter than the syntax hues.
+  { tag: [t.angleBracket, t.bracket, t.punctuation, t.separator], color: '#9ca3af' }, // gray-400
   { tag: [t.attributeName, t.propertyName], color: '#fcd34d' }, // amber-300 — attributes
   { tag: [t.attributeValue, t.string, t.special(t.string), t.regexp], color: '#86efac' }, // green-300 — values (incl. class="…")
   { tag: [t.keyword, t.operatorKeyword, t.moduleKeyword, t.controlKeyword], color: '#c4b5fd' }, // violet-300
-  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: '#6b7280', fontStyle: 'italic' },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: '#9ca3af', fontStyle: 'italic' }, // gray-400 — see the note on brackets; italic keeps comments quiet without making them unreadable when selected
   { tag: [t.number, t.bool, t.atom, t.null, t.unit], color: '#fdba74' }, // orange-300
   { tag: [t.heading, t.strong], color: '#f4f4f5', fontWeight: 'bold' },
   { tag: t.link, color: ACCENT, textDecoration: 'underline' },
@@ -201,7 +229,17 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         // `head: a` puts the caret at the START of the element, so the opening tag stays on screen
         // when the selection is taller than the viewport (a long section would otherwise scroll to
         // its closing tag and hide what was clicked).
-        v.dispatch({ selection: { anchor: b, head: a }, scrollIntoView: true });
+        //
+        // The scroll GLIDES rather than jumping — a jump gives no sense of where the code moved from,
+        // so clicking around a page read as the editor teleporting. CodeMirror computes the
+        // destination (it owns the height map) and `scroll-behavior: smooth`
+        // on the scroller turns its scroll into a glide. `y: 'center'` beats CodeMirror's default
+        // "nearest edge": landing in the middle keeps the surrounding markup visible, which is how an
+        // author confirms they arrived at the right place.
+        v.dispatch({
+          selection: { anchor: b, head: a },
+          effects: EditorView.scrollIntoView(a, { y: 'center' }),
+        });
         v.focus();
       },
       insertAtCursor: (text: string) => {

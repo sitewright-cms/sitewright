@@ -146,4 +146,23 @@ describe('Modal', () => {
     // preventDefault still fired — the browser's own "save page" dialog must never appear.
     expect(event).toBe(false); // fireEvent returns false when defaultPrevented
   });
+
+  it('wears the brand gradient ONLY when there is something to save', () => {
+    const { rerender } = render(
+      <Modal title="X" onClose={() => {}} onSave={() => {}} saveDisabled>
+        <p>hi</p>
+      </Modal>,
+    );
+    // Clean: neutral. The gradient is the loudest thing in the chrome and must not advertise an
+    // action that would do nothing.
+    const clean = screen.getByRole('button', { name: 'Save' });
+    expect(clean.className).not.toContain('sw-brand-gradient');
+
+    rerender(
+      <Modal title="X" onClose={() => {}} onSave={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('button', { name: 'Save' }).className).toContain('sw-brand-gradient');
+  });
 });

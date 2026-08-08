@@ -21,7 +21,7 @@ import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
-import { findEachBlock, findElementRange } from '../lib/source-locate';
+import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
 import { SlotEditor, type ChromeSlotKey } from './SlotEditor';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
@@ -450,6 +450,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         tag?: string; // locate-source: the clicked element's signature (`text` above is reused)
         cls?: unknown;
         nth?: number;
+        textHit?: string; // locate-source: the text run the pointer landed on ('' = clicked the element, not its words)
         ds?: string; // the row's dataset slug, when the click was inside an {{#each}}
         slot?: string; // edit-slot: which chrome slot the preview offered to edit
       } | null;
@@ -565,7 +566,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           // A dataset row whose markup is all bindings can't be pinned down element-wise — select the
           // {{#each}} block that rendered it, which is the code the author actually edits.
           (typeof d.ds === 'string' && d.ds ? findEachBlock(sourceRef.current, d.ds) : null);
-        if (range) codeRef.current?.selectRange(range.from, range.to);
+        if (range) {
+          // Clicking WORDS selects just those words; clicking the element's box selects the whole tag.
+          // `textHit` is empty unless the pointer was over the element's own text run.
+          const picked =
+            typeof d.textHit === 'string' && d.textHit
+              ? narrowToText(sourceRef.current, range, d.textHit)
+              : range;
+          codeRef.current?.selectRange(picked.from, picked.to);
+        }
       } else if (d.type === 'edit-slot' && typeof d.slot === 'string') {
         // Chrome is authored in the SETTINGS entity, not this page — fetch the slot's current
         // source and open its editor over this one.

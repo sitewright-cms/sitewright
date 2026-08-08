@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findEachBlock, findElementRange } from '../src/lib/source-locate';
+import { findEachBlock, findElementRange, narrowToText } from '../src/lib/source-locate';
 
 /** The located text, so an assertion reads as what the editor would SELECT. */
 const pick = (src: string, sig: Parameters<typeof findElementRange>[1]) => {
@@ -160,5 +160,60 @@ describe('findElementRange', () => {
   it('selects only the opening tag when the element is never closed', () => {
     const src = '<div class="a">\n<p class="oops">unterminated';
     expect(pick(src, { tag: 'p', classes: ['oops'] })).toBe('<p class="oops">');
+  });
+});
+
+describe('narrowToText — clicking WORDS selects the words, not the tag', () => {
+  /** What the editor would select after narrowing the located element to the clicked text run. */
+  const pickText = (src: string, sig: Parameters<typeof findElementRange>[1], hit: string) => {
+    const r = findElementRange(src, sig);
+    if (!r) return null;
+    const n = narrowToText(src, r, hit);
+    return src.slice(n.from, n.to);
+  };
+
+  it('selects only the text, not the surrounding element', () => {
+    const src = '<section class="hero"><h1 class="title">Autumn Collection</h1></section>';
+    expect(pickText(src, { tag: 'h1', classes: ['title'] }, 'Autumn Collection')).toBe('Autumn Collection');
+  });
+
+  it('matches across the indentation and line breaks the source is written with', () => {
+    const src = ['<p class="lead">', '  Trusted by', '  four hundred teams', '</p>'].join('\n');
+    // The render collapses the whitespace; the source keeps it. The words still have to be found.
+    expect(pickText(src, { tag: 'p', classes: ['lead'] }, 'Trusted by four hundred teams')).toBe(
+      'Trusted by\n  four hundred teams',
+    );
+  });
+
+  it('selects the BINDING when the text is produced by one (no literal text to match)', () => {
+    const src = '<h3 class="card-title">{{title}}</h3>';
+    // "Autumn Collection" shares no characters with `{{title}}` — but the binding IS the text region,
+    // and it is the code the author came to edit.
+    expect(pickText(src, { tag: 'h3', classes: ['card-title'] }, 'Autumn Collection')).toBe('{{title}}');
+  });
+
+  it('picks the clicked run out of an element that holds several', () => {
+    const src = '<p class="bio">Ada Lovelace <span class="role">Engineer</span> since 1843</p>';
+    expect(pickText(src, { tag: 'p', classes: ['bio'] }, 'since 1843')).toBe('since 1843');
+  });
+
+  it('leaves the range alone when there is no inner content to narrow to', () => {
+    const src = '<img class="logo" src="/a.png">';
+    expect(pickText(src, { tag: 'img', classes: ['logo'] }, 'anything')).toBe('<img class="logo" src="/a.png">');
+    const empty = '<div class="spacer"></div>';
+    expect(pickText(empty, { tag: 'div', classes: ['spacer'] }, 'x')).toBe('<div class="spacer"></div>');
+  });
+
+  it('treats the clicked text as literal, never as a pattern', () => {
+    const src = '<p class="math">Cost: $9.99 (a.*b) [x]</p>';
+    expect(pickText(src, { tag: 'p', classes: ['math'] }, '$9.99 (a.*b) [x]')).toBe('$9.99 (a.*b) [x]');
+    // A regex-ish string that does NOT occur literally must fall back to the inner content, not throw
+    // and not match something it happens to describe.
+    expect(pickText(src, { tag: 'p', classes: ['math'] }, 'a.*b nope')).toBe('Cost: $9.99 (a.*b) [x]');
+  });
+
+  it("is not fooled by a '>' inside an attribute when finding where the content starts", () => {
+    const src = '<p class="t" title="a > b">Real text</p>';
+    expect(pickText(src, { tag: 'p', classes: ['t'] }, 'Real text')).toBe('Real text');
   });
 });

@@ -159,7 +159,7 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     name: 'data-sw-entry',
     keywords: 'dataset row click open entry automatic',
     description:
-      'Added AUTOMATICALLY by the dataset {{#each}} around each row — clicking a row in the preview opens that entry’s editor. You don’t write it by hand.',
+      'Added AUTOMATICALLY by the dataset {{#each}} onto each row’s own element — clicking a row in the preview opens that entry’s editor. You don’t write it by hand, and it adds no element of its own, so your layout renders exactly as it will when published.',
   },
 ];
 

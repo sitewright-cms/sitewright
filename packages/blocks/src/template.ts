@@ -20,6 +20,7 @@ import { escapeAttr, escapeHtml } from './escape.js';
 import { renderIconSvg } from './icon-render.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
+import { markEntry } from './entry-marker.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import {
   renderImageMapMarkup,
@@ -109,9 +110,9 @@ export interface TemplateContext {
    */
   preview?: boolean;
   /**
-   * PREVIEW-ONLY: when true, the dataset-aware `{{#each}}` helper wraps each entry iteration in a
-   * `<div data-sw-entry data-sw-dataset>` so the editor can open that entry's editor on click. Never
-   * set on publish — the loop is then byte-identical to a plain `{{#each}}` (no wrapper).
+   * PREVIEW-ONLY: when true, the dataset-aware `{{#each}}` helper stamps `data-sw-entry` /
+   * `data-sw-dataset` onto each iteration's own root element(s) so the editor can open that entry's
+   * editor on click. Never set on publish — the loop is then byte-identical to a plain `{{#each}}`.
    */
   markEntries?: boolean;
   /**
@@ -487,9 +488,9 @@ function createInstance(): typeof Handlebars {
   // config out of several. DUAL-MODE:
   //   • BLOCK — {{#sw-pick-entry dataset.<slug> @root.page.data.<key>}}…{{/sw-pick-entry}} — renders the
   //     block with the entry's VALUES as context (+ @entry={id,dataset,status}); empty dataset → the
-  //     {{else}}/nothing. In PREVIEW (`root.markEntries`) it WRAPS the block in a data-sw-entry /
-  //     data-sw-dataset marker (using the envelope's id+dataset) so a click in the editor opens THAT
-  //     entry — the same affordance the dataset-aware {{#each}} gives each row.
+  //     {{else}}/nothing. In PREVIEW (`root.markEntries`) it MARKS the block's own root element(s) with
+  //     data-sw-entry / data-sw-dataset (using the envelope's id+dataset) so a click in the editor opens
+  //     THAT entry — the same affordance the dataset-aware {{#each}} gives each row.
   //   • SUBEXPRESSION — {{#with (sw-pick-entry …)}} — returns the entry's VALUES (no marker).
   // Accepts entry envelopes ({id,values}) OR a plain values array (uses the element as-is) so it's
   // robust across render + test contexts.
@@ -523,9 +524,9 @@ function createInstance(): typeof Handlebars {
     if (chosen && typeof chosen === 'object') frame.entry = { id: chosen.id, dataset: chosen.dataset, status: chosen.status };
     const body = block.fn(values, { data: frame });
     const root = (block.data?.root ?? {}) as { markEntries?: boolean };
-    // PREVIEW: wrap so a click opens this entry's editor (publish has markEntries=false → no wrapper).
+    // PREVIEW: mark so a click opens this entry's editor (publish has markEntries=false → untouched).
     if (root.markEntries && typeof chosen?.id === 'string' && typeof chosen?.dataset === 'string') {
-      return new Handlebars.SafeString(`<div data-sw-entry="${escapeAttr(chosen.id)}" data-sw-dataset="${escapeAttr(chosen.dataset)}">${body}</div>`);
+      return new Handlebars.SafeString(markEntry(body, chosen.id, chosen.dataset));
     }
     return new Handlebars.SafeString(body);
   });
@@ -879,9 +880,12 @@ function createInstance(): typeof Handlebars {
   // {{#each dataset.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
   // array of DATASET ENTRIES, each iteration's context is the entry's FIELDS (`entry.values`) — so a
   // template reads `{{title}}`, not `{{values.title}}` — and the entry envelope is exposed on the
-  // data frame as `@entry` (id/dataset/status). In PREVIEW (`root.markEntries`) each row is wrapped
-  // in `<div data-sw-entry data-sw-dataset>` so the editor can open THAT entry's editor on click;
-  // OUTSIDE preview there is NO wrapper, so publish output is byte-identical to a plain loop. ANY
+  // data frame as `@entry` (id/dataset/status). In PREVIEW (`root.markEntries`) each row's own root
+  // element carries `data-sw-entry` / `data-sw-dataset` so the editor can open THAT entry's editor on
+  // click — NOT an injected wrapper, which would change the row's position in its parent's layout and
+  // make the preview disagree with the published page (see entry-marker.ts); a row that cannot carry
+  // the markers itself still falls back to the wrapper.
+  // OUTSIDE preview nothing is added at all, so publish output is byte-identical to a plain loop. ANY
   // non-entry value (objects, nav menus, plain arrays) falls through to Handlebars' stock `#each`
   // unchanged — `{{else}}`, `@index/@first/@last/@key`, block params, and `../` all keep working.
   const builtinEach = hb.helpers.each as Handlebars.HelperDelegate;
@@ -905,9 +909,7 @@ function createInstance(): typeof Handlebars {
         // named `id`/`dataset`/`status` can't be shadowed by it.
         frame.entry = { id: entry.id, dataset: entry.dataset, status: entry.status };
         const body = options.fn(entry.values, { data: frame, blockParams: [entry.values, i] });
-        out += root.markEntries
-          ? `<div data-sw-entry="${escapeAttr(entry.id)}" data-sw-dataset="${escapeAttr(entry.dataset)}">${body}</div>`
-          : body;
+        out += root.markEntries ? markEntry(body, entry.id, entry.dataset) : body;
       }
       return new Handlebars.SafeString(out);
     }

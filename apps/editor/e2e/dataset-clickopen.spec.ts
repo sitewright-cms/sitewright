@@ -42,6 +42,11 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   const preview = page.frameLocator('iframe[title="Preview"]');
   const row = preview.locator('[data-sw-entry]');
   await expect(row).toContainText('Hello');
+  // ★ The marker lands ON THE AUTHORED <li>, not on an injected wrapper: the preview's DOM has to be
+  // the published DOM plus two attributes, or the row is laid out differently than it will ship (here
+  // a <div> between the <ul> and its <li> would not even be valid list markup).
+  await expect(row).toHaveClass(/\bpost\b/);
+  await expect(preview.locator('ul > :not(li)')).toHaveCount(0);
 
   // Content mode → click the row → the entry editor opens for "Hello".
   await page.getByRole('button', { name: 'Content Editor', exact: true }).click();

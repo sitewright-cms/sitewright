@@ -1096,8 +1096,9 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    NOT show in a static/JS-blocked preview; verify them on a rendered page, and when you restyle the controls
    with <style> make sure you keep them VISIBLE (don't set opacity:0 / off-screen / transparent-on-transparent).
 6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content. A dataset
-   {{#each}} loop auto-gets a click-to-edit handle in the editor preview (each row is wrapped in data-sw-entry
-   → a teal "entry" badge + outline that opens that item's editor on click) — but ONLY in the editor's live
+   {{#each}} loop auto-gets a click-to-edit handle in the editor preview (each row's own element is stamped
+   with data-sw-entry → a teal "entry" badge + outline that opens that item's editor on click; no element is
+   injected, so the preview lays out exactly like the published page) — but ONLY in the editor's live
    preview, not the static whole-site preview; and put data-sw-text/html on the fields so the inner text is
    editable too. If a row is FULLY covered by editable leaves, click the row's teal entry badge (or any
    non-text chrome / use the Regions panel) to open the full item editor.

@@ -127,9 +127,10 @@ describe('findElementRange', () => {
     expect(findElementRange(src, { tag: 'di v' })).toBeNull(); // never build a regex from the signature
   });
 
-  // A dataset row is wrapped in an injected <div data-sw-entry> that exists only in the render, and its
-  // contents are bindings — so when no element inside the loop can be pinned down, the block that
-  // rendered the row is the honest selection, and it is the code the author edits.
+  // A dataset row's contents are BINDINGS rather than literals — so when no element inside the loop can
+  // be pinned down, the block that rendered the row is the honest selection, and it is the code the
+  // author edits. (The row's own element is now locatable directly, since the preview marks it in place
+  // instead of injecting a wrapper — this fallback covers the rows that still cannot be matched.)
   describe('findEachBlock', () => {
     const src = '<ul class="l">\n  {{#each dataset.services}}<li class="s">{{title}}</li>{{/each}}\n</ul>';
 

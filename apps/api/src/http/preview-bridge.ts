@@ -288,9 +288,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // page body. Everything outside it renders from a DIFFERENT source and has no code here to select.
     var root = slotFocus ? document.getElementById(slotElementId(slotFocus)) : document.getElementById('page-content');
     if (!root || el === root || !root.contains(el)) return;
-    // A dataset row is WRAPPED here in an injected <div data-sw-entry> that exists in the render and
-    // not in the source. Reporting it could never match, so step into the authored element it wraps.
-    if (el.hasAttribute('data-sw-entry') && el.firstElementChild) el = el.firstElementChild;
+    // (A dataset row used to be WRAPPED in an injected <div data-sw-entry> with no counterpart in the
+    // source, so this had to step into firstElementChild to report anything matchable. The marker now
+    // lands on the AUTHORED element itself, so the click resolves it directly — and more accurately,
+    // since the element's own tag and classes are what the locator matches on.)
     var tag = (el.tagName || '').toLowerCase();
     if (!tag) return;
     var cls = el.getAttribute('class') || '';
@@ -1068,11 +1069,20 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     return { kind: 'text', label: el.getAttribute('data-sw-text') || 'text' };
   }
   function postRegions() {
-    var items = [], rid = 0;
+    var items = [], rid = 0, lastDs = null, lastId = null;
     eachEl(REGION_SEL, function (el) {
       // A field INSIDE a dataset row isn't a standalone region — the whole row is one "entry" region that
       // opens the item editor (its fields are edited there), so list the row, not its inner leaves.
       if (!el.hasAttribute('data-sw-entry') && el.closest && el.closest('[data-sw-entry]')) return;
+      // A row whose markup has SEVERAL top-level elements carries the marker on each of them (there is no
+      // wrapper to carry it once), so the same entry would be listed once per root. They are adjacent in
+      // document order, so collapsing a repeat of the PREVIOUS entry key lists each row exactly once and
+      // can never merge two genuinely different entries.
+      if (el.hasAttribute('data-sw-entry')) {
+        var ds = el.getAttribute('data-sw-dataset') || '', eid = el.getAttribute('data-sw-entry') || '';
+        if (ds === lastDs && eid === lastId) return;
+        lastDs = ds; lastId = eid;
+      } else { lastDs = null; lastId = null; }
       el.setAttribute('data-sw-rid', String(rid));
       var info = regionInfo(el); info.rid = rid;
       items.push(info); rid++;

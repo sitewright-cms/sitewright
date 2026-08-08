@@ -31,8 +31,16 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
   // A BORDER on every state, not just a tint: the pill floats on the frosted header, whose own
   // translucent surface sits close to each state's fill, so an unbordered pill reads as loose text
   // rather than a control you can click.
+  //
+  // `whitespace-nowrap shrink-0` is what keeps the label CENTRED. The pill sits in the header's
+  // shrinking flex row, and nothing else stopped its two-/three-word label from wrapping: once the
+  // header got cramped, "Connect an agent" broke onto two lines, the `rounded-full` pill grew into a
+  // tall rounded rect, and `items-center` centred the ICON against the two-line block while the text
+  // sat off-centre beside it. That is the "not centred in the pill" everyone was seeing — a wrap, not
+  // a vertical-alignment bug (single-line, the label measures within half a pixel of the box centre,
+  // and the icon at dead centre). A pill of this size should never wrap in the first place.
   const base =
-    'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition';
+    'inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium transition';
   if (state === 'working') {
     return (
       <button

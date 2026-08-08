@@ -19,7 +19,7 @@ import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { registerCodeInsertSink } from '../lib/code-insert-sink';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
-import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
 import { findEachBlock, findElementRange } from '../lib/source-locate';
 import { SlotEditor, type ChromeSlotKey } from './SlotEditor';
@@ -90,32 +90,6 @@ const PREVIEW_DEBOUNCE_MS = 800;
 // merge, proto-guards) + DANGEROUS_KEYS live in ../lib/page-data so they can be unit-tested directly.
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
-const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
-  desktop: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2" />
-      <path d="M8 21h8m-4-4v4" />
-    </svg>
-  ),
-  laptop: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v11H4Z" />
-      <path d="M2 19h20" />
-    </svg>
-  ),
-  tablet: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M12 18h.01" />
-    </svg>
-  ),
-  mobile: (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="7" y="2" width="10" height="20" rx="2" />
-      <path d="M12 18h.01" />
-    </svg>
-  ),
-};
 
 /**
  * THE page editor, contentbase-style: a near-fullscreen modal (90vh, blurred
@@ -985,72 +959,87 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       headerExtra={headerExtra}
     >
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">
-        {/* Row 1 — the authoring strip (SOURCE MODE ONLY): the CodeMirror source editor, or the
+        {/* Row 1 — the authoring strip (SOURCE MODE): the CodeMirror source editor, or the
             template / inherited-code LOCK panel. Collapsed on open (a contentbase-style peek),
-            expanding while hovered or focused. CONTENT mode hides this strip entirely so the live
-            preview fills the modal — every editable element is marked in the preview itself. */}
-        {mode === 'source' && (
-          <section
-            aria-label="Template source editor"
-            data-expanded={stripExpanded}
-            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 dark:border-white/10 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
-              !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl'
-            } ${stripExpanded ? 'h-[45vh]' : 'h-36'}`}
-            onMouseEnter={() => setStripHover(true)}
-            onMouseLeave={() => setStripHover(false)}
-            onFocusCapture={() => setStripFocus(true)}
-            onBlurCapture={(e) => {
-              // Collapse only when focus truly leaves the strip (not editor-internal moves).
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
-            }}
-          >
-            {settings.template ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  This page renders the template{' '}
-                  <strong>{activeTemplate?.name ?? settings.template}</strong> — its code lives in the
-                  template, and this page contributes only its editable content (see the{' '}
-                  <em>Content Editor</em>).
-                </p>
-                <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
-                  Fork template into page
-                </button>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Forking copies the template’s code into this page and removes the reference, so you
-                  can customize it freely.
-                </p>
-              </div>
-            ) : inheritsCode ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  This page inherits its layout from the main language
-                  {codeOwner ? <> (<strong>{codeOwner.title}</strong>)</> : null}. Change the structure
-                  for every language by editing the main page — here you translate the text (see the{' '}
-                  <em>Content Editor</em>).
-                </p>
-                <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
-                  Fork the code for this language
-                </button>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Forking copies the current layout into this language so you can customize it
-                  independently of the others.
-                </p>
-              </div>
-            ) : (
-              <CodeEditor
-                ref={codeRef}
-                value={source}
-                onChange={setSource}
-                ariaLabel="Template source"
-                error={editorError}
-                onHistory={(u, r) => {
-                  setSrcCanUndo(u);
-                  setSrcCanRedo(r);
-                }}
-              />
-            )}
-          </section>
-        )}
+            expanding while hovered or focused. CONTENT (and audit) mode gives the strip away to the
+            live preview — every editable element is marked in the preview itself.
+            It stays MOUNTED and collapses to `h-0` rather than unmounting, so the mode switch GLIDES
+            instead of the strip vanishing between frames (and CodeMirror keeps its scroll position and
+            undo history across a round trip through content mode).
+            `invisible` rides the same transition: `visibility` is a discrete property, so it flips to
+            hidden only once the collapse has played, yet back to visible the instant the strip opens —
+            which is exactly the timing wanted, and it takes the collapsed editor out of the tab order
+            (a 0-height CodeMirror would otherwise still be focusable).
+            The border is applied only in the OPEN state rather than being cancelled with `border-0`
+            when collapsed: `border` and `border-0` are the same Tailwind utility group, so which one
+            wins is decided by their order in the generated stylesheet, not by the class list — and a
+            border that survived would leave a 2px ghost of the strip behind (box-border keeps borders
+            outside a `h-0` content box). */}
+        <section
+          aria-label="Template source editor"
+          data-expanded={stripExpanded}
+          data-collapsed={mode !== 'source'}
+          className={`shrink-0 overflow-hidden rounded-2xl shadow-xl shadow-slate-900/10 transition-all duration-300 ease-out ${
+            !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl'
+          } ${
+            mode !== 'source'
+              ? 'invisible h-0 opacity-0'
+              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45vh]' : 'h-36'}`
+          }`}
+          onMouseEnter={() => setStripHover(true)}
+          onMouseLeave={() => setStripHover(false)}
+          onFocusCapture={() => setStripFocus(true)}
+          onBlurCapture={(e) => {
+            // Collapse only when focus truly leaves the strip (not editor-internal moves).
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
+          }}
+        >
+          {settings.template ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                This page renders the template{' '}
+                <strong>{activeTemplate?.name ?? settings.template}</strong> — its code lives in the
+                template, and this page contributes only its editable content (see the{' '}
+                <em>Content Editor</em>).
+              </p>
+              <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
+                Fork template into page
+              </button>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Forking copies the template’s code into this page and removes the reference, so you
+                can customize it freely.
+              </p>
+            </div>
+          ) : inheritsCode ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                This page inherits its layout from the main language
+                {codeOwner ? <> (<strong>{codeOwner.title}</strong>)</> : null}. Change the structure
+                for every language by editing the main page — here you translate the text (see the{' '}
+                <em>Content Editor</em>).
+              </p>
+              <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
+                Fork the code for this language
+              </button>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Forking copies the current layout into this language so you can customize it
+                independently of the others.
+              </p>
+            </div>
+          ) : (
+            <CodeEditor
+              ref={codeRef}
+              value={source}
+              onChange={setSource}
+              ariaLabel="Template source"
+              error={editorError}
+              onHistory={(u, r) => {
+                setSrcCanUndo(u);
+                setSrcCanRedo(r);
+              }}
+            />
+          )}
+        </section>
 
         {/* Row 2 — the preview (source/content) and the Page Audit tab. BOTH stay MOUNTED, toggled with
             `hidden`, so returning to the preview never reloads the iframe and a run's audit result +

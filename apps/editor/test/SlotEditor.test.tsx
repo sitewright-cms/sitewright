@@ -38,7 +38,7 @@ describe('SlotEditor', () => {
   it('opens in CODE mode showing the slot source, and offers no audit tab', async () => {
     open();
     expect((screen.getByLabelText('Main Navigation source') as HTMLTextAreaElement).value).toBe(SLOT_SOURCE);
-    expect(screen.getByRole('button', { name: 'Code' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Code Editor' })).toHaveAttribute('aria-pressed', 'true');
     // A slot is not a page: there is nothing for a page audit to score.
     expect(screen.queryByRole('button', { name: /audit/i })).toBeNull();
   });
@@ -96,10 +96,56 @@ describe('SlotEditor', () => {
     expect(SLOT_SOURCE.slice(from as number, to as number)).toBe('<a class="nav-item" href="{{sw-url path}}">{{sw-label}}</a>');
   });
 
+  it('COLLAPSES the code strip on a mode switch instead of unmounting it', () => {
+    open();
+    const strip = screen.getByRole('region', { name: 'Slot source editor' });
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    // Same element, collapsed — matching the page editor, so the switch glides rather than the strip
+    // blinking out of existence (and the draft in the editor survives the round trip).
+    expect(screen.getByRole('region', { name: 'Slot source editor' })).toBe(strip);
+    expect(strip.getAttribute('data-collapsed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code Editor' }));
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+  });
+
   it('saves the edited slot through the caller', async () => {
     const { onSave } = open();
     fireEvent.change(screen.getByLabelText('Main Navigation source'), { target: { value: '<div class="v2">v2</div>' } });
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('mainNav', '<div class="v2">v2</div>'));
+  });
+});
+
+describe('SlotEditor layout (matches the page editor)', () => {
+  it('stacks a peeking source strip over the preview, expanding it on hover', async () => {
+    open();
+    const strip = screen.getByLabelText('Slot source editor');
+    // Peeks on open so the preview keeps the room, then expands when you reach for the code.
+    expect(strip).toHaveAttribute('data-expanded', 'false');
+    fireEvent.mouseEnter(strip);
+    await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'true'));
+    fireEvent.mouseLeave(strip);
+    await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'false'));
+  });
+
+  it('gives the source strip away to the preview in content mode (collapsed, not unmounted)', async () => {
+    open();
+    const strip = screen.getByLabelText('Slot source editor');
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    // Collapsed to zero height rather than removed, so the switch can animate — see the sibling test.
+    await waitFor(() => expect(strip.getAttribute('data-collapsed')).toBe('true'));
+    expect(screen.getByTitle('Slot preview')).toBeTruthy();
+  });
+
+  it('puts the device rail INSIDE the preview, vertically', () => {
+    open();
+    const rail = screen.getByRole('group', { name: 'Preview device' });
+    expect(rail.className).toContain('flex-col');
+    expect(rail.className).toContain('absolute');
+    expect(screen.getByRole('button', { name: 'Preview: Mobile' })).toBeTruthy();
   });
 });

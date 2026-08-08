@@ -75,7 +75,7 @@ describe('DevicePreview', () => {
     expect(vp.getAttribute('style')).not.toContain('transition');
   });
 
-  it('does NOT animate the fluid pane (it has no simulated width to tween)', () => {
+  it('animates the way BACK to fluid too — every device change glides, in both directions', () => {
     const { getByTestId, rerender } = render(
       <DevicePreview width={768}>
         <span />
@@ -86,6 +86,10 @@ describe('DevicePreview', () => {
         <span />
       </DevicePreview>,
     );
-    expect(getByTestId('device-viewport').className).not.toContain('transition-all');
+    // Leaving the fluid branch unarmed made "back to Large desktop" the one switch that still
+    // snapped. Measured in a real browser: 1024px → 1400px passes through 1207px at 120ms, so the
+    // width tweens even though the box also drops from absolute to static positioning.
+    expect(getByTestId('device-viewport').className).toContain('transition-all');
+    expect(getByTestId('device-viewport').className).toContain('motion-reduce:transition-none');
   });
 });

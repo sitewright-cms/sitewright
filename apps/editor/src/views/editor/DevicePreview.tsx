@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * The page editor's responsive simulation targets, aligned to the DEFAULT
@@ -18,6 +18,34 @@ export type PreviewDeviceKey = (typeof PREVIEW_DEVICES)[number]['key'];
 
 /** How long a device switch glides, in step with the `duration-300` utility applied while it plays. */
 const TRANSITION_MS = 300;
+
+/** The device rail's glyph per target — shared, so the page and slot editors show one icon set. */
+export const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
+  desktop: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8m-4-4v4" />
+    </svg>
+  ),
+  laptop: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v11H4Z" />
+      <path d="M2 19h20" />
+    </svg>
+  ),
+  tablet: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  ),
+  mobile: (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  ),
+};
 
 interface DevicePreviewProps {
   /** The simulated viewport width in CSS px; `null` = fluid (fill the available box). */
@@ -59,13 +87,23 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
   // `scale` also move when the editor pane itself is resized (the ResizeObserver above), and animating
   // that would make the preview lag a pointer drag by the duration of the transition. So the
   // transition is armed by a change of the `width` PROP and disarmed once it has played.
+  //
+  // ★ This MUST be a LAYOUT effect. A passive `useEffect` is flushed AFTER the browser has painted,
+  // so the new width reached the screen while the element still carried no `transition-property` —
+  // the browser had nothing to interpolate and the switch snapped, every single time. A layout effect
+  // runs before paint, so the width change and the transition arrive in the SAME style-change event,
+  // which is what actually starts a transition. Measured in a real browser, 1024px → 768px sampled at
+  // 120ms: passive → 768.0px (already at the destination, no tween); layout → 899.1px (mid-flight).
+  //
+  // A jsdom test CANNOT tell these apart — Testing Library's `act()` flushes passive effects
+  // synchronously, so the class is observable either way. The proof lives in the E2E device-rail spec,
+  // which samples the width mid-flight in a real browser.
   const [animating, setAnimating] = useState(false);
-  useEffect(() => {
-    if (fluid) return; // fluid carries no simulation styles, so there is nothing to tween
+  useLayoutEffect(() => {
     setAnimating(true);
     const t = setTimeout(() => setAnimating(false), TRANSITION_MS + 40);
     return () => clearTimeout(t);
-  }, [width, fluid]);
+  }, [width]);
 
   // ONE element tree for every device, fluid included — the branches differ only in STYLE.
   //
@@ -81,12 +119,18 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
       <div
         data-testid="device-viewport"
         className={
+          // Both branches carry the transition while a switch plays, so the glide is symmetric: the
+          // way OUT to fluid is a device change like any other, and leaving it unarmed made "back to
+          // Large desktop" the one switch that still snapped. Measured: 1024px → 1400px reaches
+          // 1207px at 120ms, i.e. it tweens even though the box also drops from absolute to static
+          // positioning (`position` is not interpolable, but `width` still is).
+          //
+          // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
+          // comma the class extractor can choke on, and an INLINE transition could not be waived for
+          // prefers-reduced-motion (inline styles outrank any class).
           fluid
-            ? 'h-full w-full'
-            : // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
-              // comma the class extractor can choke on, and an INLINE transition could not be waived
-              // for prefers-reduced-motion (inline styles outrank any class).
-              `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+            ? `h-full w-full${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+            : `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
         }
         style={
           fluid

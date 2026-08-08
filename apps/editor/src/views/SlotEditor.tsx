@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
-import { findEachBlock, findElementRange } from '../lib/source-locate';
+import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -120,7 +120,7 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
-      const d = e.data as { source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number; text?: string; ds?: string } | null;
+      const d = e.data as { source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number; text?: string; textHit?: string; ds?: string } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'ready') {
         syncPreview();
@@ -133,7 +133,12 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
             text: typeof d.text === 'string' ? d.text : undefined,
             nth: typeof d.nth === 'number' ? d.nth : 0,
           }) ?? (typeof d.ds === 'string' && d.ds ? findEachBlock(sourceRef.current, d.ds) : null);
-        if (range) codeRef.current?.selectRange(range.from, range.to);
+        if (range) {
+          // Clicking WORDS selects just those words; clicking the element's box selects the whole tag.
+          const picked =
+            typeof d.textHit === 'string' && d.textHit ? narrowToText(sourceRef.current, range, d.textHit) : range;
+          codeRef.current?.selectRange(picked.from, picked.to);
+        }
       }
     };
     window.addEventListener('message', onMessage);

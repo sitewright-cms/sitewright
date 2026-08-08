@@ -193,10 +193,13 @@ describe('behaviouralChecks', () => {
       expect(c.detail).toContain('desktop bar 102.8px / token 102.8px');
     });
 
-    it('FAILS a token that under-declares, and says which viewport and by how much', () => {
+    it('reports a token that under-declares, and says which viewport and by how much', () => {
       // The real new-nouveau defect: one unconditional 76px behind a 3-tier header.
       const c = tokenCheck(behaviour({ header: { desktop: hdr({ token: 76 }), mobile: hdr({ bar: 66.8, token: 76 }) } }));
       expect(c.pass).toBe(false);
+      // ADVISORY until this leg's render is reconciled with the published + preview surfaces: on the very
+      // page this was built from they disagreed (91.1px here vs 66.8px in both of those).
+      expect(c.advisory).toBe(true);
       expect(c.detail).toContain('desktop');
       expect(c.detail).toContain('26.8px under the header');
       expect(c.detail).not.toContain('mobile:'); // mobile over-declares here, which never gates
@@ -301,17 +304,15 @@ describe('behaviouralChecks', () => {
     expect(bare.find((x) => x.id === 'fonts')!.na).toBeFalsy();
 
     const audit = assembleAudit([bare]);
-    // 4, not 3: the header-height check is n/a too when there is no fixed header to measure — which is
-    // the same discipline, so it must not pad the score either. (The advisory spacer check is n/a as
-    // well but advisories are outside this count entirely.)
-    expect(audit.na).toBe(4);
+    // Still 3: both header checks are advisory, and advisories sit outside this count entirely.
+    expect(audit.na).toBe(3);
     expect(audit.total).toBe(1);      // only the fonts check actually tested anything
     expect(audit.passed).toBe(1);
     expect(audit.pass).toBe(true);
 
     // …and when the page DOES have these things, they count normally again.
     const real = assembleAudit([behaviouralChecks(behaviour({ carousels: 2, carouselsEnhanced: 2 }))]);
-    expect(real.na).toBe(1);          // this fixture has no header facts, so that one check stays n/a
+    expect(real.na).toBe(0);
     expect(real.total).toBe(4);
   });
 

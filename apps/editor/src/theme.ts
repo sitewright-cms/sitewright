@@ -30,6 +30,24 @@ export const toggleInput = 'toggle toggle-sm sw-toggle';
 export const primaryButton =
   'sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover waves-effect waves-light inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold text-white transition disabled:opacity-60';
 
+/**
+ * A SAVE action's SURFACE, chosen by whether there is anything to save.
+ *
+ * The brand gradient is the loudest thing in the editor chrome, and Save wore it permanently — glowing
+ * just as brightly on a page with nothing to save, where it advertises an action that does nothing.
+ * Reserving the gradient for the DIRTY state gives it a meaning ("there are unsaved changes") and
+ * makes it readable at a glance from across the screen; the clean state gets a neutral surface.
+ *
+ * Returns COLOURS only. Callers supply their own layout (the header's Save is a square icon button,
+ * the settings bar's is a wide labelled one), so both states keep the same size and the button does
+ * not resize as you type.
+ */
+export function saveSurface(dirty: boolean): string {
+  return dirty
+    ? 'sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover waves-light text-white'
+    : 'border border-slate-200 bg-white/70 text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-slate-500';
+}
+
 /** A quiet secondary action: frosted, lifts to solid white on hover. */
 export const ghostButton =
   'waves-effect inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10';

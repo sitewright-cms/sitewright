@@ -4,7 +4,7 @@ import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/Toast';
 import { useCopy } from '../../ui/useCopy';
 import { api } from '../../../api';
-import { fieldLabel, ghostButton, glassInput, primaryButton, toggleInput } from '../../../theme';
+import { fieldLabel, ghostButton, glassInput, primaryButton, saveSurface, toggleInput } from '../../../theme';
 import { Canvas, type DrawSpec } from './Canvas';
 import { useDialogs } from '../../ui/Dialogs';
 import { ACCEPT_IMAGE, ObjectDetails, AssetField } from './ObjectDetails';
@@ -622,7 +622,13 @@ function MapEditor({
               Map settings
             </button>
           )}
-          <button type="button" className={primaryButton} disabled={!dirty || saving} onClick={save}>
+          <button
+            type="button"
+            // Gradient only when there is something to save (see `saveSurface`).
+            className={`${saveSurface(dirty)} waves-effect inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition disabled:opacity-60`}
+            disabled={!dirty || saving}
+            onClick={save}
+          >
             {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
           </button>
         </div>

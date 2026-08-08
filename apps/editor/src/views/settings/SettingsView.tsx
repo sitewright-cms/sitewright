@@ -9,7 +9,7 @@ import { WebsiteSection } from './WebsiteSection';
 import { sectionVariants } from './motion';
 import { SkeletonList } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
-import { primaryButton } from '../../theme';
+import { saveSurface } from '../../theme';
 
 type Section = 'identity' | 'website';
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -300,7 +300,9 @@ export function SettingsView({
                 whileTap={{ scale: 0.96 }}
                 onClick={() => void save()}
                 disabled={!dirty || saving}
-                className={`${primaryButton} shadow-lg disabled:pointer-events-none disabled:opacity-40`}
+                // Gradient only while there are unsaved changes; neutral when clean (same geometry, so
+                // the bar does not shift as the section becomes dirty).
+                className={`${saveSurface(dirty)} waves-effect inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold shadow-lg transition disabled:pointer-events-none`}
               >
                 <SaveIcon />
                 {saving ? 'Saving…' : 'Save'}

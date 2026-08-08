@@ -155,6 +155,28 @@ describe('SlotEditor layout (matches the page editor)', () => {
     await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'false'));
   });
 
+  it('does NOT throw the strip open when click-to-code places a selection', async () => {
+    open();
+    const strip = screen.getByLabelText('Slot source editor');
+    const iframe = (await screen.findByTitle('Slot preview')) as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { source: 'sitewright-preview', type: 'locate-source', tag: 'a', cls: ['nav-item'], nth: 0, text: 'Home' },
+        source: iframe.contentWindow,
+      }),
+    );
+    await waitFor(() => expect(selectRange).toHaveBeenCalled());
+    // selectRange focuses the editor to place the caret. That must not expand the strip over the very
+    // preview being clicked — the expansion belongs to reaching for the code, not to being given focus.
+    fireEvent.focus(screen.getByLabelText('Main Navigation source'));
+    expect(strip).toHaveAttribute('data-expanded', 'false');
+
+    // …but a real reach for the code still pins it open.
+    fireEvent.mouseDown(screen.getByLabelText('Main Navigation source'));
+    await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'true'));
+  });
+
   it('gives the source strip away to the preview in content mode (collapsed, not unmounted)', async () => {
     open();
     const strip = screen.getByLabelText('Slot source editor');

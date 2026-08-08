@@ -264,10 +264,14 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     b.setAttribute('data-slot', meta[0]);
     b.textContent = 'Edit ' + meta[2];
     b.style.display = 'inline-flex';
-    // Pinned inside the landmark's top-right, clamped into the viewport so it is reachable even when
-    // the landmark starts off-screen (a footer below the fold, a bottom slot at the document end).
+    // Pinned to the TOP-CENTRE of the landmark, clamped into the viewport on every side so it stays
+    // reachable when the landmark starts off-screen (a footer below the fold, a bottom slot at the
+    // document end) or runs wider than the window. Centred rather than right-aligned: the button names
+    // the slot it belongs to, and over the centre it reads as a label for that band instead of
+    // colliding with whatever the chrome itself puts in its top-right corner.
     b.style.top = Math.max(6, Math.min(r.top + 6, window.innerHeight - 34)) + 'px';
-    b.style.left = Math.max(6, r.right - b.offsetWidth - 10) + 'px';
+    b.style.left =
+      Math.max(6, Math.min(r.left + r.width / 2 - b.offsetWidth / 2, window.innerWidth - b.offsetWidth - 6)) + 'px';
   });
 
   // SOURCE (code) mode: a click on the rendered page asks the editor to select the markup that

@@ -561,11 +561,18 @@ default offset is WRONG and makes every page a header taller — set \`--sw-head
 (A bar that does not REST at the top — parked mid-viewport and sliding up on scroll — is detected and
 un-padded for you.) For a full-bleed hero/slider that should bleed UNDER the header, leave the section
 flush and instead put \`sw-top-padding\` on an INNER element (so the background bleeds while the text clears
-the header). \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
+the header). ★ \`sw-top-padding\` IS SILENTLY DEFEATED by any competing padding on the SAME element: it is
+one class in the platform base sheet and Tailwind's utilities load after it, so \`p-*\`/\`pt-*\`/\`py-*\`, a
+custom class setting padding, or an inline \`style="padding…"\` wins on source order and the spacer does
+NOTHING (measured: \`class="wash sw-top-padding p-4"\` computed 16px against a 102.8px token). Use
+side-specific utilities there (\`p-4\` → \`px-4 pb-4\`), or drop the class and set \`--sw-header-offset\`.
+\`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
 \`:root{--sw-header-h:5rem}\` in website.criticalCss, plus a media query for EVERY breakpoint the bar
 changes height at — a single unconditional value beats the platform's own pair and is wrong at the other
-widths — and use \`patch_critical_css\` to change ONE rule
+widths. Set the EXACT measured height, fractions included: too small hides text behind the bar, too large
+paints a strip of background just below it (a coloured edge under the nav), so there is no safe rounding
+direction. Use \`patch_critical_css\` to change ONE rule
 rather than resending the whole sheet; it writes a named block in place). The header sits at z-index 30 (below the mobile drawer
 + back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
 is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
@@ -1239,10 +1246,20 @@ a measurement of YOUR header — so declare your real bar height in website.crit
 changes ONE rule in place rather than resending the sheet), and MEASURE IT AT EVERY BREAKPOINT. A single
 unconditional :root value is the standard mistake: it beats the platform's own media-query pair on source
 order, so it then applies at ALL widths. Measured on a real import, a 3-tier header was 66.8 / 81.6 /
-102.8px behind one declared 76px, clipping headings on every desktop inner page. Round each value UP by
-~1px — over-padding is invisible, under-padding cuts text off. If the bar also SHRINKS on scroll that part
-is hand-authored against html.sw-scrolled; there is no shrink mode, see get_guide("effects"). A static
-clone of a fixed header fails the fidelity meta check (header-position). See get_guide("nav").
+102.8px behind one declared 76px, clipping headings on every desktop inner page. Set the EXACT measured
+height, fractions included (66.8px, not 68px): under-declaring hides text behind the bar, and
+over-declaring paints a strip of the background behind your content just below the bar, which reads as a
+coloured edge under the nav. There is no safe rounding direction — measure precisely instead.
+⚠ .sw-top-padding IS EASILY DEFEATED, SILENTLY. It is a single-class rule in the platform base sheet and
+Tailwind's utilities load AFTER that sheet, so on the SAME element any p-* / pt-* / py-* class, any custom
+class that sets padding, and any inline style="padding…" wins on source order and the spacer contributes
+NOTHING — measured on a real page, <div class="wash sw-top-padding p-4"> computed padding-top:16px against
+a 102.8px token. If you need padding on that element too, use the side-specific utilities (p-4 → px-4
+pb-4) so the top stays free, or drop the class and set --sw-header-offset instead. clone_audit checks both
+of these (header-height-token, header-spacer-applies) — run it rather than eyeballing the bar.
+If the bar also SHRINKS on scroll that part is hand-authored against html.sw-scrolled; there is no shrink
+mode, see get_guide("effects"). A static clone of a fixed header fails the fidelity meta check
+(header-position). See get_guide("nav").
 FOUNDATION IMPORT (theme-only): when the project was imported in FOUNDATION mode, the mainNav/footer slots
 hold a GENERIC data-driven nav/footer (the extractor's native default), NOT the foreign header — so you must
 AUTHOR the faithful design yourself. Use the ORIGINAL as the reference: compare_regions (crisp 2× header/
@@ -1406,10 +1423,13 @@ against this list BEFORE you publish it:
   is a maps/embed host, and reproduce that band site-wide (add it to the footer slot).
 - STICKY / SHRINK HEADER without overlap: when the original's header is fixed/shrinking, set
   website.effects.stickyHeader to the POSITIONAL mode ("pinned"/"hide-on-scroll"; there is no shrink mode —
-  author the condense against html.sw-scrolled) AND give each page's FIRST section \`.sw-top-padding\` (plus a
-  \`--sw-header-h\` matching the real header height — the token is a hardcoded default, NOT measured) so
-  content isn't hidden under the fixed bar. Don't just leave it off
-  because it overlapped.
+  author the condense against html.sw-scrolled). The content offset is AUTOMATIC — you do not add
+  \`.sw-top-padding\` to every first section; use it only to make a full-bleed hero bleed UNDER the bar (on an
+  INNER element), and \`--sw-header-offset\` when you want a different AMOUNT. What you DO have to set is
+  \`--sw-header-h\` = the real bar height at EVERY breakpoint, exactly (the token is a hardcoded default for
+  the stock navbar, NOT a measurement). And note \`.sw-top-padding\` loses to any \`p-*\`/\`pt-*\`/custom/inline
+  padding on the same element, silently — clone_audit's header-height-token + header-spacer-applies checks
+  catch both mistakes. Don't just leave the sticky mode off because it overlapped.
 - NAV / BUTTON EFFECTS: if the original's nav links have a hover underline/animation, or its buttons animate
   on hover, SNAP the closest website.effects nav/button scheme (get_guide("effects")) — don't ship flat
   links/buttons when the original moves. There are 19 nav schemes; the family names tell you which to pick —

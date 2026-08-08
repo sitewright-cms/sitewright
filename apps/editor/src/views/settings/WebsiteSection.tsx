@@ -328,9 +328,14 @@ export function WebsiteSection({
         <label className="mt-4 flex flex-col">
           <span className={fieldLabel}>Sticky header</span>
           <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">
-            Fix the top navigation to the viewport so it stays visible as the page scrolls. Add the{' '}
-            <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> class to your first section (or an inner
-            element, so a full-bleed hero bleeds under the header) to clear the fixed bar.
+            Fix the top navigation to the viewport so it stays visible as the page scrolls. Content clears the bar
+            automatically — add{' '}
+            <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> only to move that offset onto an inner
+            element, so a full-bleed hero bleeds under the header. It is defeated by any padding class or inline padding
+            on the same element, so give that element{' '}
+            <code className="rounded bg-slate-700/60 px-1">px-4 pb-4</code> rather than{' '}
+            <code className="rounded bg-slate-700/60 px-1">p-4</code>. A custom header must set its real height —{' '}
+            <code className="rounded bg-slate-700/60 px-1">--sw-header-h</code> — in Custom CSS at every breakpoint.
           </span>
           <select
             aria-label="Sticky header mode"

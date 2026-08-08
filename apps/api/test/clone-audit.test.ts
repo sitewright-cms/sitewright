@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, deadRefs, platformClassOverrides, authorCss, type BehaviourFacts } from '../src/render/clone-audit.js';
+import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, countEditDirectives, deadRefs, platformClassOverrides, authorCss, type BehaviourFacts, type HeaderFacts } from '../src/render/clone-audit.js';
 import { CLIP_PROBE } from '../src/render/clone-audit-probe.js';
 
 const behaviour = (over: Partial<BehaviourFacts> = {}): BehaviourFacts => ({
@@ -168,6 +168,71 @@ describe('behaviouralChecks', () => {
     expect(behaviouralChecks(behaviour({ carousels: 0, carouselsEnhanced: 0 })).find((c) => c.id === 'sliders')!.pass).toBe(true);
   });
 
+  // The token is a hardcoded constant sized for the STOCK navbar, so it is wrong for essentially every
+  // imported header — and a census of 45 published sites found it is normally wrong at exactly ONE
+  // breakpoint, because a single unconditional `:root{--sw-header-h:…}` beats the platform's own
+  // media-query pair on source order. Hence: measure both viewports, and report which one is wrong.
+  describe('header clearance', () => {
+    const hdr = (o: Partial<HeaderFacts> = {}): HeaderFacts => ({
+      bar: 102.8, token: 102.8, spacerPad: null, spacerClass: null, firstTextTop: 184, firstText: 'GET IN TOUCH', ...o,
+    });
+    const tokenCheck = (b: BehaviourFacts) => behaviouralChecks(b).find((c) => c.id === 'header-height-token')!;
+    const spacerCheck = (b: BehaviourFacts) => behaviouralChecks(b).find((c) => c.id === 'header-spacer-applies')!;
+
+    it('is n/a with no fixed header to measure — a static header cannot cover anything', () => {
+      const c = tokenCheck(behaviour({ header: { desktop: null, mobile: null } }));
+      expect(c.na).toBe(true);
+      expect(c.pass).toBe(true);
+      // Absent entirely (an older probe) must not invent a defect either.
+      expect(tokenCheck(behaviour({})).na).toBe(true);
+    });
+
+    it('passes when the token matches the bar at both viewports', () => {
+      const c = tokenCheck(behaviour({ header: { desktop: hdr(), mobile: hdr({ bar: 66.8, token: 66.8 }) } }));
+      expect(c.pass).toBe(true);
+      expect(c.detail).toContain('desktop bar 102.8px / token 102.8px');
+    });
+
+    it('FAILS a token that under-declares, and says which viewport and by how much', () => {
+      // The real new-nouveau defect: one unconditional 76px behind a 3-tier header.
+      const c = tokenCheck(behaviour({ header: { desktop: hdr({ token: 76 }), mobile: hdr({ bar: 66.8, token: 76 }) } }));
+      expect(c.pass).toBe(false);
+      expect(c.detail).toContain('desktop');
+      expect(c.detail).toContain('26.8px under the header');
+      expect(c.detail).not.toContain('mobile:'); // mobile over-declares here, which never gates
+      expect(c.detail).toContain('--sw-header-offset'); // names the RIGHT lever, so the fix isn't to inflate the token
+    });
+
+    it('reports over-declaring without failing — the strip it paints is only visible sometimes', () => {
+      const c = tokenCheck(behaviour({ header: { desktop: hdr({ token: 112 }), mobile: null } }));
+      expect(c.pass).toBe(true);
+      expect(c.detail).toContain('over-declares');
+      expect(c.detail).toContain('9.2px');
+      // The platform's own stock default rounds up ~1.4px; that must stay quiet or every site reports it.
+      expect(tokenCheck(behaviour({ header: { desktop: hdr({ bar: 74.59, token: 76 }), mobile: null } })).detail).not.toContain('over-declares');
+    });
+
+    it('flags a .sw-top-padding that another padding rule beat — advisory, and it names the element', () => {
+      // Measured on a real page: <div class="nn-contactwash sw-top-padding p-4"> computed 16px, because
+      // Tailwind's utilities load after the platform sheet and both selectors are one class.
+      const c = spacerCheck(behaviour({ header: { desktop: hdr({ spacerPad: 16, spacerClass: 'nn-contactwash sw-top-padding p-4' }), mobile: null } }));
+      expect(c.pass).toBe(false);
+      expect(c.advisory).toBe(true); // never gates: overriding the spacer can be deliberate
+      expect(c.detail).toContain('computed 16px, not the 102.8px token');
+      expect(c.detail).toContain('nn-contactwash sw-top-padding p-4');
+    });
+
+    it('treats a spacer of 0 as a deliberate opt-out, not an override', () => {
+      // `pt-0` on the spacer is how a page says "I clear the bar myself" (a real page does exactly this).
+      const c = spacerCheck(behaviour({ header: { desktop: hdr({ spacerPad: 0, spacerClass: 'sw-top-padding pt-0' }), mobile: null } }));
+      expect(c.pass).toBe(true);
+    });
+
+    it('says nothing when the page has no spacer at all — the automatic offset covers it', () => {
+      expect(spacerCheck(behaviour({ header: { desktop: hdr(), mobile: null } })).pass).toBe(true);
+    });
+  });
+
   it('fails when an element is visually CUT OFF by an ancestor overflow, and names the clipper', () => {
     // The check a rect measurement cannot make: getBoundingClientRect returns the LAYOUT box whether or
     // not an ancestor clips it, so the element reads full-size while the visitor sees part of it. When
@@ -236,14 +301,17 @@ describe('behaviouralChecks', () => {
     expect(bare.find((x) => x.id === 'fonts')!.na).toBeFalsy();
 
     const audit = assembleAudit([bare]);
-    expect(audit.na).toBe(3);
+    // 4, not 3: the header-height check is n/a too when there is no fixed header to measure — which is
+    // the same discipline, so it must not pad the score either. (The advisory spacer check is n/a as
+    // well but advisories are outside this count entirely.)
+    expect(audit.na).toBe(4);
     expect(audit.total).toBe(1);      // only the fonts check actually tested anything
     expect(audit.passed).toBe(1);
     expect(audit.pass).toBe(true);
 
     // …and when the page DOES have these things, they count normally again.
     const real = assembleAudit([behaviouralChecks(behaviour({ carousels: 2, carouselsEnhanced: 2 }))]);
-    expect(real.na).toBe(0);
+    expect(real.na).toBe(1);          // this fixture has no header facts, so that one check stays n/a
     expect(real.total).toBe(4);
   });
 

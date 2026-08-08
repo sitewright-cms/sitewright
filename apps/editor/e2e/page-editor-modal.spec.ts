@@ -45,8 +45,43 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await expect(viewport).toHaveCSS('width', '768px'); // md
   await page.getByRole('button', { name: 'Preview: Laptop' }).click();
   await expect(viewport).toHaveCSS('width', '1024px'); // lg
+
+  // The switch GLIDES rather than snapping. Arm the sampler BEFORE the click, then watch for a width
+  // strictly BETWEEN the two devices — the only proof that a transition actually ran. This can only be
+  // asserted here: jsdom has no layout, and Testing Library's act() flushes effects synchronously, so
+  // a unit test sees the transition class whether or not it arrives in time to do anything. It
+  // regressed in exactly that gap once — the class was armed from a passive effect, one paint after
+  // the width had already been committed, so the browser had nothing left to interpolate.
+  const glided = viewport.evaluate(
+    (el) =>
+      new Promise<boolean>((resolve) => {
+        const t0 = performance.now();
+        const tick = () => {
+          const w = el.getBoundingClientRect().width;
+          if (w > 768.5 && w < 1023.5) return resolve(true); // caught it mid-flight
+          if (performance.now() - t0 > 800) return resolve(false);
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  await page.getByRole('button', { name: 'Preview: Tablet' }).click();
+  expect(await glided).toBe(true);
+  await expect(viewport).toHaveCSS('width', '768px');
+
   await page.getByRole('button', { name: 'Preview: Large desktop' }).click();
   expect(await viewport.getAttribute('style')).toBeNull(); // back to fluid
+
+  // The code strip COLLAPSES on a mode switch instead of vanishing: still in the DOM, zero-height,
+  // and out of the tab order (visibility, not display, so the collapse can animate).
+  await expect(strip).toHaveAttribute('data-collapsed', 'false');
+  await page.getByRole('button', { name: 'Content Editor' }).click();
+  await expect(strip).toHaveAttribute('data-collapsed', 'true');
+  await expect(strip).toHaveCSS('visibility', 'hidden');
+  expect(await strip.evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
+  await page.getByRole('button', { name: 'Code Editor' }).click();
+  await expect(strip).toHaveAttribute('data-collapsed', 'false');
+  await expect(strip).toHaveCSS('visibility', 'visible');
 
   // Edit, then Ctrl+S: saves WITHOUT closing the modal.
   await page.locator('.cm-content').click();

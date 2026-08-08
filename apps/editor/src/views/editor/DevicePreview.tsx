@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * The page editor's responsive simulation targets, aligned to the DEFAULT
@@ -87,13 +87,23 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
   // `scale` also move when the editor pane itself is resized (the ResizeObserver above), and animating
   // that would make the preview lag a pointer drag by the duration of the transition. So the
   // transition is armed by a change of the `width` PROP and disarmed once it has played.
+  //
+  // ★ This MUST be a LAYOUT effect. A passive `useEffect` is flushed AFTER the browser has painted,
+  // so the new width reached the screen while the element still carried no `transition-property` —
+  // the browser had nothing to interpolate and the switch snapped, every single time. A layout effect
+  // runs before paint, so the width change and the transition arrive in the SAME style-change event,
+  // which is what actually starts a transition. Measured in a real browser, 1024px → 768px sampled at
+  // 120ms: passive → 768.0px (already at the destination, no tween); layout → 899.1px (mid-flight).
+  //
+  // A jsdom test CANNOT tell these apart — Testing Library's `act()` flushes passive effects
+  // synchronously, so the class is observable either way. The proof lives in the E2E device-rail spec,
+  // which samples the width mid-flight in a real browser.
   const [animating, setAnimating] = useState(false);
-  useEffect(() => {
-    if (fluid) return; // fluid carries no simulation styles, so there is nothing to tween
+  useLayoutEffect(() => {
     setAnimating(true);
     const t = setTimeout(() => setAnimating(false), TRANSITION_MS + 40);
     return () => clearTimeout(t);
-  }, [width, fluid]);
+  }, [width]);
 
   // ONE element tree for every device, fluid included — the branches differ only in STYLE.
   //
@@ -109,12 +119,18 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
       <div
         data-testid="device-viewport"
         className={
+          // Both branches carry the transition while a switch plays, so the glide is symmetric: the
+          // way OUT to fluid is a device change like any other, and leaving it unarmed made "back to
+          // Large desktop" the one switch that still snapped. Measured: 1024px → 1400px reaches
+          // 1207px at 120ms, i.e. it tweens even though the box also drops from absolute to static
+          // positioning (`position` is not interpolable, but `width` still is).
+          //
+          // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
+          // comma the class extractor can choke on, and an INLINE transition could not be waived for
+          // prefers-reduced-motion (inline styles outrank any class).
           fluid
-            ? 'h-full w-full'
-            : // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
-              // comma the class extractor can choke on, and an INLINE transition could not be waived
-              // for prefers-reduced-motion (inline styles outrank any class).
-              `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+            ? `h-full w-full${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+            : `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
         }
         style={
           fluid

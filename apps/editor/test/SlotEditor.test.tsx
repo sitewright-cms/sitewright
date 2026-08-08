@@ -96,6 +96,21 @@ describe('SlotEditor', () => {
     expect(SLOT_SOURCE.slice(from as number, to as number)).toBe('<a class="nav-item" href="{{sw-url path}}">{{sw-label}}</a>');
   });
 
+  it('COLLAPSES the code strip on a mode switch instead of unmounting it', () => {
+    open();
+    const strip = screen.getByRole('region', { name: 'Slot source editor' });
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    // Same element, collapsed — matching the page editor, so the switch glides rather than the strip
+    // blinking out of existence (and the draft in the editor survives the round trip).
+    expect(screen.getByRole('region', { name: 'Slot source editor' })).toBe(strip);
+    expect(strip.getAttribute('data-collapsed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code Editor' }));
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+  });
+
   it('saves the edited slot through the caller', async () => {
     const { onSave } = open();
     fireEvent.change(screen.getByLabelText('Main Navigation source'), { target: { value: '<div class="v2">v2</div>' } });
@@ -116,11 +131,13 @@ describe('SlotEditor layout (matches the page editor)', () => {
     await waitFor(() => expect(strip).toHaveAttribute('data-expanded', 'false'));
   });
 
-  it('hides the source strip entirely in content mode, so the preview fills the modal', async () => {
+  it('gives the source strip away to the preview in content mode (collapsed, not unmounted)', async () => {
     open();
-    expect(screen.getByLabelText('Slot source editor')).toBeTruthy();
+    const strip = screen.getByLabelText('Slot source editor');
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
-    await waitFor(() => expect(screen.queryByLabelText('Slot source editor')).toBeNull());
+    // Collapsed to zero height rather than removed, so the switch can animate — see the sibling test.
+    await waitFor(() => expect(strip.getAttribute('data-collapsed')).toBe('true'));
     expect(screen.getByTitle('Slot preview')).toBeTruthy();
   });
 

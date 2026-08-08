@@ -185,6 +185,22 @@ describe('CodePageEditor', () => {
     expect(strip.getAttribute('data-expanded')).toBe('true');
   });
 
+  it('COLLAPSES the code strip on a mode switch instead of unmounting it', () => {
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
+    const strip = screen.getByRole('region', { name: 'Template source editor' });
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    // Still the SAME element: an unmounted strip cannot animate its way out, and remounting would
+    // throw away CodeMirror's scroll position and undo history on every round trip through content
+    // mode. It collapses to zero height instead — the glide itself is CSS, asserted in the E2E spec.
+    expect(screen.getByRole('region', { name: 'Template source editor' })).toBe(strip);
+    expect(strip.getAttribute('data-collapsed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code Editor' }));
+    expect(strip.getAttribute('data-collapsed')).toBe('false');
+  });
+
   it('simulates device widths: large desktop is FLUID (modal full width), the rest are fixed', () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     const viewport = () => screen.getByTestId('device-viewport') as HTMLDivElement;
@@ -273,10 +289,12 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
     // The Content Editor tab is active…
     expect(screen.getByRole('button', { name: 'Content Editor' })).toHaveAttribute('aria-pressed', 'true');
-    // …the live preview fills the modal (no authoring strip)…
+    // …the live preview fills the modal (the authoring strip is collapsed to nothing)…
     expect(screen.getByTitle('Preview')).toBeInTheDocument();
-    // …the raw template editor is hidden…
-    expect(screen.queryByLabelText('Template source')).toBeNull();
+    // …the raw template editor is given away: the strip stays MOUNTED but collapsed, so the switch
+    // can animate and the editor keeps its state. `visibility: hidden` (a class, so jsdom can't see
+    // it compute) is what takes it out of the tab order — the structural contract is data-collapsed.
+    expect(screen.getByRole('region', { name: 'Template source editor' }).getAttribute('data-collapsed')).toBe('true');
     // …but BOTH modes share the same toolbar (Undo/Redo/Page data/Page settings/Reload + Save/Close).
     for (const name of ['Undo', 'Redo', 'Edit page data', 'Page settings', 'Reload page', 'Save', 'Close']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
@@ -295,8 +313,8 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     fireEvent.change(screen.getByLabelText('Template source'), {
       target: { value: '<p data-sw-text="headline">Big news</p>' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' })); // → content: the code strip is hidden
-    expect(screen.queryByLabelText('Template source')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' })); // → content: the code strip collapses
+    expect(screen.getByRole('region', { name: 'Template source editor' }).getAttribute('data-collapsed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Code Editor' })); // → back to source: the draft survived
     expect(screen.getByLabelText('Template source')).toHaveValue('<p data-sw-text="headline">Big news</p>');
   });

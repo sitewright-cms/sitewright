@@ -233,8 +233,10 @@ export function PublishBar({
   // "View live" opens the served site; shown only when local hosting is configured + published + clean.
   const showView = published && !dirty && localHosting && !!url;
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
+  // `whitespace-nowrap`: same reason as the agent pill above it — these live in a shrinking header
+  // row, and a two-word label ("View live") that wraps turns a button into a two-line box.
   const btnBase =
-    'inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400';
+    'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400';
 
   return (
     <div className="flex items-center gap-2">

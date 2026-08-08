@@ -186,26 +186,29 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
       titleExtra={<span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">skeleton slot · every page</span>}
     >
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">
-        {/* Row 1 — the source strip, SOURCE MODE ONLY: peeking on open, expanding while hovered or
-            focused. CONTENT mode hides it entirely so the preview fills the modal, exactly as the page
-            editor does — there, every editable element is marked in the preview itself. */}
-        {mode === 'source' && (
-          <section
-            aria-label="Slot source editor"
-            data-expanded={stripExpanded}
-            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 dark:border-white/10 bg-[#0a0a0f] shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
-              stripExpanded ? 'h-[45vh]' : 'h-36'
-            }`}
-            onMouseEnter={() => setStripHover(true)}
-            onMouseLeave={() => setStripHover(false)}
-            onFocusCapture={() => setStripFocus(true)}
-            onBlurCapture={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
-            }}
-          >
-            <CodeEditor ref={codeRef} value={source} onChange={setSource} ariaLabel={`${slotLabel(slot)} source`} />
-          </section>
-        )}
+        {/* Row 1 — the source strip, SOURCE MODE: peeking on open, expanding while hovered or focused.
+            CONTENT mode gives it away to the preview, exactly as the page editor does — there, every
+            editable element is marked in the preview itself. As in the page editor it COLLAPSES rather
+            than unmounting, so the mode switch glides and `visibility` (discrete, so it steps at the
+            end of the collapse) takes the hidden editor out of the tab order. */}
+        <section
+          aria-label="Slot source editor"
+          data-expanded={stripExpanded}
+          data-collapsed={mode !== 'source'}
+          className={`shrink-0 overflow-hidden rounded-2xl bg-[#0a0a0f] shadow-xl shadow-slate-900/10 transition-all duration-300 ease-out ${
+            mode !== 'source'
+              ? 'invisible h-0 opacity-0'
+              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45vh]' : 'h-36'}`
+          }`}
+          onMouseEnter={() => setStripHover(true)}
+          onMouseLeave={() => setStripHover(false)}
+          onFocusCapture={() => setStripFocus(true)}
+          onBlurCapture={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
+          }}
+        >
+          <CodeEditor ref={codeRef} value={source} onChange={setSource} ariaLabel={`${slotLabel(slot)} source`} />
+        </section>
 
         {/* Row 2 — the preview, with the device rail pinned inside it (vertical, like the page editor). */}
         <div className="relative min-h-0 flex-1">

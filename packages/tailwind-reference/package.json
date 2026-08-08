@@ -1,0 +1,37 @@
+{
+  "name": "@sitewright/tailwind-reference",
+  "version": "0.14.0",
+  "description": "The searchable Tailwind CSS reference dataset: every utility class, the CSS it generates, and its theme value — derived from the installed Tailwind, with authored per-topic prose.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./meta": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "gen": "node scripts/gen-tailwind-reference.mjs",
+    "gen:check": "node scripts/gen-tailwind-reference.mjs && git diff --exit-code src/generated.ts",
+    "gen:report": "node scripts/gen-tailwind-reference.mjs --report"
+  },
+  "devDependencies": {
+    "@tailwindcss/node": "^4.3.3",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

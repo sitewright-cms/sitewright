@@ -45,7 +45,19 @@ export interface CodeEditorHandle {
    * caller last saw, which an in-flight edit may already have shortened.
    */
   selectRange: (from: number, to: number) => void;
+  /**
+   * Replace the selection (or insert at the caret) with `text`, then place the caret after it and
+   * focus the editor — how the Library's "insert at cursor" lands a utility class in the source.
+   *
+   * A single space is added on either side when the insertion would otherwise weld onto an adjacent
+   * word: pasting `text-sm` into `class="font-bold|"` must not produce `font-boldtext-sm`. Quotes and
+   * whitespace count as clean boundaries, so `class="|"` inserts bare.
+   */
+  insertAtCursor: (text: string) => void;
 }
+
+/** Characters an inserted token may sit flush against without needing a separating space. */
+const CLEAN_BOUNDARY = /[\s"'`>{}([]/;
 
 /** The editor accent — gutter border, cursor, selection, active-line gutter. */
 const ACCENT = '#818cf8'; // indigo-400
@@ -190,6 +202,25 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         // when the selection is taller than the viewport (a long section would otherwise scroll to
         // its closing tag and hide what was clicked).
         v.dispatch({ selection: { anchor: b, head: a }, scrollIntoView: true });
+        v.focus();
+      },
+      insertAtCursor: (text: string) => {
+        const v = viewRef.current;
+        if (!v) return;
+        const { from, to } = v.state.selection.main;
+        const doc = v.state.doc;
+        const before = from > 0 ? doc.sliceString(from - 1, from) : '';
+        const after = to < doc.length ? doc.sliceString(to, to + 1) : '';
+        const lead = before !== '' && !CLEAN_BOUNDARY.test(before) ? ' ' : '';
+        const trail = after !== '' && !CLEAN_BOUNDARY.test(after) ? ' ' : '';
+        const insert = `${lead}${text}${trail}`;
+        v.dispatch({
+          changes: { from, to, insert },
+          // Caret lands after the token itself, BEFORE any trailing pad, so typing continues where
+          // the author expects rather than on the far side of a space they did not ask for.
+          selection: { anchor: from + lead.length + text.length },
+          scrollIntoView: true,
+        });
         v.focus();
       },
     }),

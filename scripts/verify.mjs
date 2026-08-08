@@ -37,6 +37,10 @@ const GATES = [
   { name: 'Check generated brand icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:brand-icons:check'] },
   { name: 'Check generated flag icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:flag-icons:check'] },
   { name: 'Check generated vendor runtimes', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:vendor:check'] },
+  // The Tailwind reference dataset is derived from the installed `tailwindcss`. Upgrading Tailwind
+  // without regenerating would leave the editor documenting utilities that no longer exist (or
+  // missing ones that now do) — and the authored prose in topics.ts would silently go out of sync.
+  { name: 'Check generated Tailwind reference', cmd: ['pnpm', '--filter', '@sitewright/tailwind-reference', 'gen:check'] },
   { name: 'Typecheck', cmd: ['pnpm', 'typecheck'] },
   { name: 'Lint', cmd: ['pnpm', 'lint'] },
   // Build before test: some integration tests assert on built output.

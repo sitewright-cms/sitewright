@@ -156,4 +156,61 @@ export function NAV_TOGGLE() {
   if (t) { t.click(); return true; }
   return false;
 }
+
+/**
+ * FIXED-HEADER CLEARANCE at the current viewport. Returns null when there is nothing to judge: no
+ * landmark, a header that is not fixed (it is in flow, so it cannot cover anything), or a landmark
+ * measuring ~0 — which happens when the author's own bar INSIDE #main-nav is itself position:fixed, so
+ * the landmark collapses and its height says nothing about the visible bar.
+ *
+ * Two numbers matter and they are different questions:
+ *   • bar vs token   — is `--sw-header-h` telling the truth about how tall the bar is?
+ *   • token vs spacer— did `.sw-top-padding` actually apply, or did another padding rule beat it?
+ * The second exists because the spacer is a single-class rule in the platform base sheet and Tailwind's
+ * utilities load after it: any `p-*`/`pt-*`/`py-*`, custom class or inline padding on the same element
+ * wins on source order and the class contributes NOTHING, with nothing on screen to say so.
+ */
+export function HEADER_PROBE() {
+  const nav = document.getElementById('main-nav');
+  const pc = document.getElementById('page-content');
+  if (!nav || !pc) return null;
+  if (getComputedStyle(nav).position !== 'fixed') return null;
+  const bar = nav.getBoundingClientRect().height;
+  if (!(bar > 1)) return null;
+  const r1 = (n) => Math.round(n * 10) / 10;
+  // MEASURE the token rather than parse it: it is authored in rem, px or calc(), and only layout knows
+  // what those resolve to at this viewport.
+  const ruler = document.createElement('div');
+  ruler.style.cssText = 'position:absolute;visibility:hidden;height:var(--sw-header-h)';
+  pc.appendChild(ruler);
+  const token = ruler.getBoundingClientRect().height;
+  ruler.remove();
+  const spacer = pc.querySelector('.sw-top-padding');
+  const spacerPad = spacer ? parseFloat(getComputedStyle(spacer).paddingTop) || 0 : null;
+  // The topmost PAINTED text. Screen-reader-only headings (clip-path:inset(50%), a 1x1 box) sit at the
+  // top of nearly every imported page, so a naive "is any text under the bar" test reports a defect on
+  // essentially every site — measured, 5 of 6 candidate findings in a 45-site census were exactly this.
+  let firstTextTop = null;
+  let firstText = '';
+  const walk = document.createTreeWalker(pc, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!n.nodeValue || !n.nodeValue.trim()) continue;
+    const el = n.parentElement;
+    if (!el) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) continue;
+    if (cs.clipPath && cs.clipPath !== 'none') continue;
+    const r = el.getBoundingClientRect();
+    if (r.height < 8 || r.width < 8) continue;
+    if (firstTextTop === null || r.top < firstTextTop) { firstTextTop = r.top; firstText = n.nodeValue.trim().slice(0, 60); }
+  }
+  return {
+    bar: r1(bar),
+    token: r1(token),
+    spacerPad: spacerPad === null ? null : r1(spacerPad),
+    spacerClass: spacer ? String(spacer.className || '').slice(0, 120) : null,
+    firstTextTop: firstTextTop === null ? null : r1(firstTextTop),
+    firstText,
+  };
+}
 /* v8 ignore stop */

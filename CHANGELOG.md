@@ -9,6 +9,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`
+  token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
+  imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
+  breakpoint, because a single unconditional `:root{--sw-header-h:…}` beats the platform's own
+  media-query pair on source order and then applies at every width. Two checks: `header-height-token`
+  gates on the token *under*-declaring the measured bar (content behind the header, one honest fix) and
+  reports over-declaring without failing, since the strip it paints below the bar is only visible when
+  the backgrounds differ; `header-spacer-applies` is advisory and reports the fact an author cannot
+  otherwise see — that a `.sw-top-padding` did nothing because a `p-*`/`pt-*`, a custom rule or an
+  inline style on the same element beat it on source order (measured on a real page:
+  `class="wash sw-top-padding p-4"` computed 16px against a 102.8px token). Screen-reader-only headings
+  are excluded from the text-position probe; they sit at the top of nearly every imported page and
+  accounted for 5 of 6 candidate findings in the census.
+
 ### Fixed
 
 - **Dataset rows were laid out differently in the editor preview than on the published page.** To make

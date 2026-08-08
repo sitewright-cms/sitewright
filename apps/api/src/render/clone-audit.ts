@@ -69,6 +69,66 @@ export interface BehaviourFacts {
    * it cannot justify.
    */
   originalClipped?: readonly ClipFinding[] | null;
+  /**
+   * Fixed-header clearance at each measured viewport (from HEADER_PROBE), or null where there was
+   * nothing to judge — no landmark, a header in flow, or a landmark that measures ~0 because the
+   * author's own bar inside it is itself position:fixed.
+   */
+  header?: { readonly desktop: HeaderFacts | null; readonly mobile: HeaderFacts | null };
+}
+
+/** One viewport's fixed-header measurements. All lengths in CSS px at that viewport. */
+export interface HeaderFacts {
+  /** The landmark's real rendered height. */
+  bar: number;
+  /** What `--sw-header-h` resolves to here — measured, not parsed (it may be rem or calc()). */
+  token: number;
+  /** Computed padding-top of the first `.sw-top-padding` element, or null when the page has none. */
+  spacerPad: number | null;
+  /** That element's class list, so a report can name the utility that beat the spacer. */
+  spacerClass: string | null;
+  /** Viewport-relative top of the topmost PAINTED text in #page-content (sr-only excluded). */
+  firstTextTop: number | null;
+  firstText: string;
+}
+
+/** A token shorter than the bar by more than this puts content under the header. */
+const TOKEN_SHORT_TOLERANCE = 0.5;
+/**
+ * Over-declaring is reported but never gates. The excess paints a strip of whatever is behind the
+ * content just below the bar — invisible when those backgrounds match (which is why the platform's own
+ * stock default rounds up ~1.4px and is fine), a visible coloured edge when they don't. The check cannot
+ * tell those apart, so it describes the risk instead of failing on it.
+ */
+const TOKEN_OVER_TOLERANCE = 2;
+
+/** The viewports HEADER_PROBE runs at, for a report that says WHERE a header defect appears. */
+const HEADER_VIEWPORTS = ['desktop', 'mobile'] as const;
+
+/** Per-viewport header findings, as sentences a report can print directly. */
+function headerFindings(
+  header: BehaviourFacts['header'],
+): { short: string[]; over: string[]; overridden: string[]; measured: string[] } {
+  const short: string[] = [];
+  const over: string[] = [];
+  const overridden: string[] = [];
+  const measured: string[] = [];
+  for (const vp of HEADER_VIEWPORTS) {
+    const f = header?.[vp];
+    if (!f) continue;
+    measured.push(`${vp} bar ${f.bar}px / token ${f.token}px`);
+    if (f.token < f.bar - TOKEN_SHORT_TOLERANCE) {
+      short.push(`${vp}: the bar is ${f.bar}px but --sw-header-h resolves to ${f.token}px, so anything padded from the token sits ${Math.round((f.bar - f.token) * 10) / 10}px under the header`);
+    } else if (f.token > f.bar + TOKEN_OVER_TOLERANCE) {
+      over.push(`${vp}: --sw-header-h (${f.token}px) over-declares the ${f.bar}px bar by ${Math.round((f.token - f.bar) * 10) / 10}px, which paints a strip of the background behind your content just below the bar`);
+    }
+    // The spacer is only meaningful against the token it is supposed to read. A deliberate 0 is an
+    // opt-out ("this page clears the bar itself") and is not reported.
+    if (f.spacerPad !== null && f.spacerPad > 0 && Math.abs(f.spacerPad - f.token) > TOKEN_SHORT_TOLERANCE) {
+      overridden.push(`${vp}: .sw-top-padding computed ${f.spacerPad}px, not the ${f.token}px token — another padding rule wins on that element${f.spacerClass ? ` (class="${f.spacerClass}")` : ''}`);
+    }
+  }
+  return { short, over, overridden, measured };
 }
 
 const GENERIC_DS = /^(list( ?\d+)?|items?\d*)$/i;
@@ -241,6 +301,8 @@ function fontState(family: string, ok: boolean, kind?: 'system' | 'loaded' | 'mi
 export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
   // Only clips the ORIGINAL does not also make are candidate defects; see clip-diff.ts.
   const clip = diffClips(b.clipped, b.originalClipped);
+  const hdr = headerFindings(b.header);
+  const headerMeasured = hdr.measured.length > 0;
   return [
     { leg: 'behaviour', id: 'sliders', label: 'sliders actually enhance (working, not a dead snapshot)', pass: b.carousels === 0 || b.carouselsEnhanced === b.carousels, na: b.carousels === 0, detail: b.carousels === 0 ? 'no carousels on the page — n/a' : `${b.carouselsEnhanced}/${b.carousels} carousels enhanced` },
     { leg: 'behaviour', id: 'modals', label: 'modals present (original has modal triggers)', pass: !b.hasModalTrigger || b.dialogs > 0, na: !b.hasModalTrigger, detail: b.hasModalTrigger ? `${b.dialogs} dialog(s) for the original's modal trigger(s)` : 'original has no modals — n/a' },
@@ -255,6 +317,41 @@ export function behaviouralChecks(b: BehaviourFacts): AuditCheck[] {
       detail: `heading "${b.headingFont}"=${fontState(b.headingFont, b.headingFontLoaded, b.headingFontKind)}, body "${b.bodyFont}"=${fontState(b.bodyFont, b.bodyFontLoaded, b.bodyFontKind)}`,
     },
     { leg: 'behaviour', id: 'mobile-menu', label: 'mobile menu reachable at phone width', pass: b.navExpected === 0 || b.navReachableMobile >= b.navExpected, na: b.navExpected === 0, detail: b.navExpected === 0 ? 'the original has no nav to reach — n/a' : `${b.navReachableMobile}/${b.navExpected} nav items reachable at 390px` },
+    {
+      leg: 'behaviour',
+      id: 'header-height-token',
+      label: '--sw-header-h matches the real height of the fixed header',
+      // GATES on UNDER-declaring only, because that has exactly one honest fix (set the real height) and
+      // one certain consequence (content behind the bar). The token is a hardcoded constant sized for the
+      // stock recipe, so it is wrong for essentially every imported header — and it is normally wrong at
+      // ONE breakpoint, which is why this measures desktop AND phone: a single unconditional
+      // `:root{--sw-header-h:…}` beats the platform's own media-query pair on source order and then
+      // applies at every width. Over-declaring is reported in the detail but never fails; see
+      // TOKEN_OVER_TOLERANCE.
+      pass: hdr.short.length === 0,
+      na: !headerMeasured,
+      detail: !headerMeasured
+        ? 'no fixed header landmark to measure — n/a'
+        : hdr.short.length > 0
+          ? `${hdr.short.join('; ')}. Set the real bar height per breakpoint in website.criticalCss; use --sw-header-offset (NOT this token) if what you actually want is a different amount of clearance.`
+          : `${hdr.measured.join(', ')}${hdr.over.length > 0 ? ` — but ${hdr.over.join('; ')}` : ''}`,
+    },
+    {
+      leg: 'behaviour',
+      id: 'header-spacer-applies',
+      label: '.sw-top-padding actually applies (not overridden by another padding rule)',
+      // ADVISORY, deliberately. The measurement is certain but the INTENT is not: an author may mean to
+      // override the spacer, and gating on the clone alone is what drove agents to damage pages to turn
+      // `not-clipped` green. So this reports the one fact an agent cannot otherwise see — that the class
+      // they added did nothing — and names the element, leaving the judgement with them.
+      pass: hdr.overridden.length === 0,
+      advisory: true,
+      na: !headerMeasured || hdr.overridden.length === 0,
+      detail:
+        hdr.overridden.length === 0
+          ? 'no .sw-top-padding element is being overridden'
+          : `${hdr.overridden.join('; ')}. The spacer is a single-class rule in the platform sheet and Tailwind's utilities load after it, so a p-*/pt-*/py-* class, a custom rule with padding, or an inline style on the SAME element silently wins. Move the competing padding (e.g. p-4 → px-4 pb-4) or set --sw-header-offset instead.`,
+    },
     {
       leg: 'behaviour',
       id: 'not-clipped',

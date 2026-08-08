@@ -17,11 +17,11 @@ import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, typ
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
-import { BEHAVIOUR_PROBE, CLIP_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { BEHAVIOUR_PROBE, CLIP_PROBE, HEADER_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
 import { clampShotForModel } from './mcp-image.js';
 import { clampImageForModel } from '@sitewright/image-pipeline';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
-import type { BehaviourFacts } from './clone-audit.js';
+import type { BehaviourFacts, HeaderFacts } from './clone-audit.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
 type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
@@ -248,6 +248,10 @@ export async function captureBehaviour(
     const dp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.fullhd, opts.signal);
     let desktop = desktopFallback;
     let clipped: BehaviourFacts['clipped'] = [];
+    // Header clearance is measured at BOTH viewports: the token is normally right at one breakpoint and
+    // wrong at the other, which a desktop-only pass would call clean.
+    let headerDesktop: HeaderFacts | null = null;
+    let headerMobile: HeaderFacts | null = null;
     try {
       // freeze:false — the probe needs live runtimes (a slider must actually enhance, fonts must load) to
       // detect them; the shared settle still scrolls/loads + waits fonts + waits embeds.
@@ -258,6 +262,7 @@ export async function captureBehaviour(
       // may INJECT the clipper — the carousel's [data-sw-part="container"] is not in the authored source).
       // Empty on probe failure, so an unstable render cannot invent a clipping defect.
       clipped = ((await dp.page.evaluate(CLIP_PROBE as () => unknown).catch(() => [])) as BehaviourFacts['clipped']) ?? [];
+      headerDesktop = ((await dp.page.evaluate(HEADER_PROBE as () => unknown).catch(() => null)) as HeaderFacts | null) ?? null;
     } finally {
       await dp.context.close().catch(() => {});
     }
@@ -266,6 +271,9 @@ export async function captureBehaviour(
     let navReachableMobile = 0;
     try {
       await settlePage(mp.page, { freeze: false });
+      // BEFORE the nav toggle below: opening the menu can grow the bar, and what we want is the bar the
+      // page lays out against at rest.
+      headerMobile = ((await mp.page.evaluate(HEADER_PROBE as () => unknown).catch(() => null)) as HeaderFacts | null) ?? null;
       navReachableMobile = ((await mp.page.evaluate(NAV_COUNT as () => unknown).catch(() => 0)) as number) || 0;
       if (navReachableMobile < opts.navExpected) {
         const opened = ((await mp.page.evaluate(NAV_TOGGLE as () => unknown).catch(() => false)) as boolean);
@@ -295,7 +303,7 @@ export async function captureBehaviour(
         }
       }
     }
-    return { ...desktop, ...nav, navReachableMobile, clipped, originalClipped };
+    return { ...desktop, ...nav, navReachableMobile, clipped, originalClipped, header: { desktop: headerDesktop, mobile: headerMobile } };
   }).catch(() => ({ ...desktopFallback, ...nav, navReachableMobile: 0 }));
 }
 

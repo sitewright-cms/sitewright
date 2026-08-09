@@ -1468,6 +1468,12 @@ export const api = {
       `/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
     ),
   /** How many submissions are still owed an email, and why the last one failed. */
+  /** What the bot traps filtered, per form + reason. The inbox can only ever show what got THROUGH. */
+  filteredSubmissions: (projectId: string, formId?: string) =>
+    request<{ total: number; items: Array<{ formId: string; reason: string; count: number; lastAt: number }> }>(
+      'GET',
+      `/projects/${projectId}/submissions/filtered${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
+    ),
   undeliveredSubmissions: (projectId: string, formId?: string) =>
     request<{ count: number; lastError: string | null }>(
       'GET',

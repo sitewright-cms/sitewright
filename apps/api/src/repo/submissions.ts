@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, notInArray, lt, lte, or, isNull, sql } fro
 import { FormSubmissionSchema, type FormSubmission } from '@sitewright/schema';
 // (FormSubmissionSchema is also used to validate rows on read — see toSubmission.)
 import type { Database } from '../db/client.js';
-import { formSubmissions } from '../db/schema.js';
+import { formFiltered, formSubmissions } from '../db/schema.js';
 import { DELIVERY_LEASE_MS } from '../mail/delivery-policy.js';
 
 export interface SubmissionListResult {
@@ -294,6 +294,41 @@ export class SubmissionRepository {
       .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.id, id)));
     return true;
   }
+
+  /**
+   * Count one FILTERED submission. The traps answer `{ok:true}` and keep nothing — a bot must learn
+   * nothing from the response — so this is the only trace they leave. Counted per (form, reason) and
+   * upserted, never one row per drop: a spam run would otherwise write unbounded rows, which is the
+   * very problem the traps exist to prevent.
+   *
+   * Best-effort by contract: a counter failure must never change what the VISITOR sees, so the caller
+   * swallows its errors. Losing a count is a reporting gap; failing the request would be a lost lead.
+   */
+  async recordFiltered(projectId: string, formId: string, reason: string, now: Date = new Date()): Promise<void> {
+    await this.db
+      .insert(formFiltered)
+      .values({ projectId, formId, reason, count: 1, lastAt: now })
+      .onConflictDoUpdate({
+        target: [formFiltered.projectId, formFiltered.formId, formFiltered.reason],
+        set: { count: sql`${formFiltered.count} + 1`, lastAt: now },
+      });
+  }
+
+  /** What each trap has filtered for a project (optionally one form), most recent activity first. */
+  async filteredSummary(
+    projectId: string,
+    formId?: string,
+  ): Promise<Array<{ formId: string; reason: string; count: number; lastAt: number }>> {
+    const scoped = eq(formFiltered.projectId, projectId);
+    const where = formId ? and(scoped, eq(formFiltered.formId, formId)) : scoped;
+    const rows = await this.db
+      .select({ formId: formFiltered.formId, reason: formFiltered.reason, count: formFiltered.count, lastAt: formFiltered.lastAt })
+      .from(formFiltered)
+      .where(where)
+      .orderBy(desc(formFiltered.lastAt));
+    return rows.map((r) => ({ formId: r.formId, reason: r.reason, count: r.count, lastAt: r.lastAt.getTime() }));
+  }
+
 }
 
 /** A submission the platform still owes an email for, as handed to the delivery runner. */

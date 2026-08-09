@@ -68,3 +68,45 @@ describe('SubmissionRepository', () => {
     expect(await repo.remove(projectA, a.id)).toBe(false);
   });
 });
+
+describe('filtered counters — what the bot traps leave behind', () => {
+  it('counts per (form, reason) and UPSERTS rather than writing a row per drop', async () => {
+    // A row per drop would let a spam run write unbounded rows — the very thing the traps exist to
+    // prevent. One row per (form, reason), incremented.
+    await repo.recordFiltered(projectA, 'contact', 'honeypot');
+    await repo.recordFiltered(projectA, 'contact', 'honeypot');
+    await repo.recordFiltered(projectA, 'contact', 'too-fast');
+    await repo.recordFiltered(projectA, 'quote', 'honeypot');
+
+    const all = await repo.filteredSummary(projectA);
+    expect(all).toHaveLength(3);
+    expect(all.find((r) => r.formId === 'contact' && r.reason === 'honeypot')?.count).toBe(2);
+    expect(all.find((r) => r.formId === 'contact' && r.reason === 'too-fast')?.count).toBe(1);
+    expect(all.find((r) => r.formId === 'quote' && r.reason === 'honeypot')?.count).toBe(1);
+  });
+
+  it('scopes to one form — the Forms tab renders per form, not per project', async () => {
+    await repo.recordFiltered(projectA, 'contact', 'honeypot');
+    await repo.recordFiltered(projectA, 'quote', 'honeypot');
+    const contact = await repo.filteredSummary(projectA, 'contact');
+    expect(contact).toHaveLength(1);
+    expect(contact[0]!.formId).toBe('contact');
+  });
+
+  it('never leaks another tenant’s counts', async () => {
+    await repo.recordFiltered(projectA, 'contact', 'honeypot');
+    expect(await repo.filteredSummary(projectB)).toEqual([]);
+  });
+
+  it('records WHEN the trap last fired, so a jump is attributable to a change', async () => {
+    // "Is this number small and steady, or did it jump the day we edited the form?" is the question
+    // the counter exists to answer, and it needs a timestamp to answer it.
+    const earlier = new Date('2026-01-01T00:00:00Z');
+    const later = new Date('2026-02-01T00:00:00Z');
+    await repo.recordFiltered(projectA, 'contact', 'honeypot', earlier);
+    await repo.recordFiltered(projectA, 'contact', 'honeypot', later);
+    const [row] = await repo.filteredSummary(projectA, 'contact');
+    expect(row!.count).toBe(2);
+    expect(row!.lastAt).toBe(later.getTime());
+  });
+});

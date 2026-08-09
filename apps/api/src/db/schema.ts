@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -605,6 +605,36 @@ export const PROJECT_SMTP_ENTITY_ID = 'smtp';
  * scoped; `formId` is the `form` content entity. Captured even when email delivery
  * is unconfigured, so the inbox is the source of truth.
  */
+/**
+ * FILTERED submissions, counted rather than stored.
+ *
+ * The bot traps answer `{ok:true}` and keep nothing — deliberately, so a bot learns nothing from the
+ * response. The cost was that they also told the OPERATOR nothing: every other branch of the submit
+ * route logs (captcha failures, storage caps, SMTP gaps), while a honeypot or time-trap drop returned
+ * 200 and vanished. So "we blocked 40 spam attempts" and "we lost 40 real enquiries" looked identical
+ * from the outside, and a client reporting "I filled in your form and never heard back" could not be
+ * checked at all.
+ *
+ * A COUNT, not the payload: storing what was filtered would move the spam into the database (and past
+ * the per-form storage cap that exists to stop exactly that). The count is enough to answer the only
+ * question that matters day to day — is this number small and steady, or did it jump the day we changed
+ * a form? — and to tune the traps against evidence instead of taste.
+ */
+export const formFiltered = sqliteTable(
+  'form_filtered',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    formId: text('form_id').notNull(),
+    /** Which trap fired. Open-ended by design: interaction gating and proof-of-work add their own. */
+    reason: text('reason').notNull(),
+    count: integer('count').notNull().default(0),
+    lastAt: integer('last_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.formId, t.reason] })],
+);
+
 export const formSubmissions = sqliteTable(
   'form_submissions',
   {

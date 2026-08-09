@@ -2948,7 +2948,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     if (slugChanged) {
       await mediaStorage?.removeProject(project.slug).catch((err: unknown) => app.log.warn({ err, project: project.id }, 'old media dir cleanup after slug rename failed (orphaned, harmless)'));
-      // The published site / preview build are keyed by slug — drop the stale build so the new slug rebuilds.
+      // The BUILT OUTPUT is keyed by slug too, and used to be left behind: the old directory kept a full
+      // copy of the site under a slug nothing points at any more. It is unreachable (serving resolves the
+      // project's CURRENT slug) but it is not harmless — it is a stale, unserved copy of a customer's
+      // content sitting on disk indefinitely, and it accumulates one rename at a time. Measured on a real
+      // instance: 46 published directories, 4 of them actually served, and 2 outliving their projects
+      // entirely. Both artefacts are DERIVED and rebuild on the next publish, so dropping them costs
+      // nothing; failures only warn, because a cleanup must never fail a rename that already committed.
+      const staleSlug = project.slug;
+      await publishStore
+        ?.removeProject(staleSlug)
+        .catch((err: unknown) => app.log.warn({ err, project: project.id, slug: staleSlug }, 'stale published site cleanup after slug rename failed (orphaned)'));
+      await previewSiteStore
+        ?.removeProject(staleSlug)
+        .catch((err: unknown) => app.log.warn({ err, project: project.id, slug: staleSlug }, 'stale preview build cleanup after slug rename failed (orphaned)'));
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
       previewProgress.delete(project.id);

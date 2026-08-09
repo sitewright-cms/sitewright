@@ -5,6 +5,7 @@ import {
   DEFAULT_FORM_MODES,
   SmtpInputSchema,
   HcaptchaInputSchema,
+  HcaptchaStoredSchema,
   InstanceSettingsInputSchema,
   InstanceSettingsStoredSchema,
   OidcProviderStoredSchema,
@@ -63,8 +64,30 @@ describe('SmtpInputSchema', () => {
 
 describe('HcaptchaInputSchema', () => {
   it('requires a site key; secret is optional', () => {
-    expect(HcaptchaInputSchema.parse({ siteKey: 'abc' })).toEqual({ siteKey: 'abc' });
+    const real = '10000000-ffff-ffff-ffff-000000000001';
+    expect(HcaptchaInputSchema.parse({ siteKey: real })).toEqual({ siteKey: real });
     expect(() => HcaptchaInputSchema.parse({})).toThrow();
+  });
+
+  it('★ rejects a placeholder site key, which a bare min(1) let through to every visitor', () => {
+    // A real instance was configured with the literal string `123`. It passed validation, was baked into
+    // every published form as data-sitekey="123", and produced hCaptcha's own "The sitekey for this
+    // hCaptcha is incorrect" for every visitor. The platform knew it was unusable the moment it was
+    // typed and said nothing until a stranger hit the form.
+    for (const bad of ['123', 'abc', 'not-a-uuid', '10000000-ffff-ffff-ffff']) {
+      expect(() => HcaptchaInputSchema.parse({ siteKey: bad }), bad).toThrow(/UUID/);
+    }
+    // ★ …but the STORED schema stays permissive, and this is not an oversight. Stored settings are
+    // parsed with a throwing `.parse()` on every read — including the one that fetches the cookie secret
+    // at boot — so tightening it would not fix a bad key already in a database, it would make the whole
+    // instance unreadable because of one. The bad value stays readable; the next SAVE is what must be
+    // valid.
+    expect(HcaptchaStoredSchema.parse({ siteKey: '123' })).toEqual({ siteKey: '123' });
+
+    // Case and surrounding whitespace are the author's, not an error: trim and accept.
+    expect(HcaptchaInputSchema.parse({ siteKey: '  10000000-FFFF-FFFF-FFFF-000000000001 ' }).siteKey).toBe(
+      '10000000-FFFF-FFFF-FFFF-000000000001',
+    );
   });
 });
 

@@ -183,8 +183,27 @@ export const SmtpStoredSchema = z.object({
 });
 export type SmtpStored = z.infer<typeof SmtpStoredSchema>;
 
+/**
+ * An hCaptcha SITE KEY is a UUID. Validating the shape is what stops a placeholder reaching a published
+ * page: an instance was found configured with the literal string `123`, which sailed through a bare
+ * `min(1)`, was baked into every published form as `data-sitekey="123"`, and produced hCaptcha's own
+ * "The sitekey for this hCaptcha is incorrect" for every visitor — the platform knew the value was
+ * unusable at the moment it was typed, and said nothing until a stranger hit the form.
+ */
+const HCAPTCHA_SITEKEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const siteKeySchema = z
+  .string()
+  .trim()
+  .regex(HCAPTCHA_SITEKEY_RE, 'an hCaptcha site key is a UUID, e.g. 10000000-ffff-ffff-ffff-000000000001 (find it in your hCaptcha dashboard under Sites)');
+
 /** hCaptcha as stored: the site key is public, the secret is encrypted (or absent). */
 export const HcaptchaStoredSchema = z.object({
+  // ★ PERMISSIVE ON READ, deliberately — the strict shape is enforced on INPUT (below), not here.
+  // Stored settings are parsed with a throwing `.parse()` on every read, including the one that fetches
+  // the cookie secret at boot. Tightening THIS schema would not fix a bad key already in the database;
+  // it would make the whole instance unreadable because of it. An instance was found holding the literal
+  // `123`, so that is not hypothetical. Existing rows stay readable and the next save is what must be
+  // valid: validation belongs at the boundary where a human can still act on the message.
   siteKey: z.string().min(1).max(255),
   secret: EncryptedSecretSchema.optional(),
 });
@@ -354,7 +373,7 @@ export const SmtpInputSchema = z.object({
 export type SmtpInput = z.infer<typeof SmtpInputSchema>;
 
 export const HcaptchaInputSchema = z.object({
-  siteKey: z.string().min(1).max(255),
+  siteKey: siteKeySchema,
   secret: z.string().min(1).max(255).optional(),
 });
 export type HcaptchaInput = z.infer<typeof HcaptchaInputSchema>;

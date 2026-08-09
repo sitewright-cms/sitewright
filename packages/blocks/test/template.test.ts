@@ -744,7 +744,10 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     const withEp = shopCtx({ channels: [{ kind: 'form', key: 'order_form', formId: 'order', endpoint: '/f/p1/order' }] });
     const out = renderTemplate('{{sw-cart}}', withEp);
     expect(out).toContain('data-channels=');
-    expect(out).toContain('/f/p1/order');
+    // The channel carries the form ID, NEVER the resolved URL — the cart assembles it at submit time,
+    // so `data-channels` stops being a place to read a ready-to-POST address out of the markup.
+    expect(out).not.toContain('/f/p1/order');
+    expect(out).toContain('&quot;formId&quot;:&quot;order&quot;');
     expect(out).toContain('&quot;kind&quot;:&quot;form&quot;');
     expect(renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'form', key: 'order_form', formId: 'order' }] }))).not.toContain('data-channels');
   });

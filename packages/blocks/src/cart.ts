@@ -423,7 +423,7 @@ export const CART_JS = `(function(){
         }
       })(chx);
     }
-    if(formCh&&formCh.endpoint){foot.appendChild(buildOrderForm(formCh));}
+    if(formCh&&formCh.formId&&window.__swf){foot.appendChild(buildOrderForm(formCh));}
     var clear=part('button','clear',cfg.clearLabel);clear.type='button';ripple(clear);
     clear.addEventListener('click',function(){items.length=0;persist();});
     foot.appendChild(clear);
@@ -500,7 +500,8 @@ export const CART_JS = `(function(){
         // Native validation already enforced the required name + email (+ email format) before submit.
         var payload={_hpt:'',_elapsed:String(Date.now()-started),name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
         submit.disabled=true;status.textContent='Sending\\u2026';
-        fetch(ch.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
+        // Assembled at submit time from the encoded blob — the URL is never in the markup.
+        fetch(window.__swf(ch.formId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
           if(!res.ok){throw new Error('bad status');}
           // Flip to the sent state BEFORE render() so the confirmation panel (not the now-empty cart)
           // is what shows; submit stays disabled (the form is hidden until a new item is added).

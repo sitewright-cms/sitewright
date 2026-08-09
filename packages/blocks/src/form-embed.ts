@@ -257,13 +257,22 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
     const form = formAt(forms, resolvedId)!;
     // The pass OWNS the endpoint/redirect attributes — the stored definition is the single source
     // of truth, so an authored endpoint is overwritten and a stale authored redirect is dropped.
-    el.attribs['data-sw-endpoint'] = isContactPhpMode(form.mode) ? `${ctx.siteRoot ?? ''}contact.php` : form.endpoint;
-    // Mark a PLATFORM-ROUTED form as such, independently of how its endpoint is carried. The published
-    // CSP has to allow the cross-origin `/f/` submit, and keying that on the endpoint ATTRIBUTE would tie
-    // the policy to today's markup — the endpoint is due to stop being a plain attribute (it must not sit
-    // in the HTML for harvesters to read). A contactPhp form posts same-origin and needs no widening, so
-    // it deliberately carries no marker.
-    if (!isContactPhpMode(form.mode)) el.attribs['data-sw-routed'] = '';
+    // A PLATFORM-ROUTED form carries only its ID; the runtime assembles the URL from the encoded blob
+    // renderDocument emits (window.__swf). The endpoint must not sit in the markup as a ready-to-POST
+    // address for a scraper to lift — see formApiScript.
+    if (!isSwRouted(form)) {
+      // contactPhp → a SAME-ORIGIN relative path with nothing to harvest, and an exported site has to
+      // work with no blob at all. thirdParty → the AUTHOR'S OWN external endpoint, which is not ours to
+      // hide and cannot be assembled from a project id. Both keep the plain attribute.
+      el.attribs['data-sw-endpoint'] = isContactPhpMode(form.mode) ? `${ctx.siteRoot ?? ''}contact.php` : form.endpoint;
+    } else {
+      delete el.attribs['data-sw-endpoint']; // the pass OWNS this: drop any authored/stale value
+      // ONE attribute doing both jobs: it marks the form as platform-routed (the published CSP keys on
+      // it to allow the cross-origin submit, without caring where the URL lives) and carries the RESOLVED
+      // id the runtime feeds to window.__swf. It cannot be `data-sw-form`: that is the AUTHORING marker
+      // and is stripped on publish, which would leave the published form with nothing to submit to.
+      el.attribs['data-sw-routed'] = resolvedId;
+    }
     if (form.redirectUrl) el.attribs['data-sw-redirect'] = form.redirectUrl;
     else delete el.attribs['data-sw-redirect'];
     // Without the component marker FORM_JS never wires the submit — a silently dead form.

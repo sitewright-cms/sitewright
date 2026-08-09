@@ -340,3 +340,59 @@ describe('renderDocument — the CSP travels as an INERT meta, never an enforcin
     expect(doc).not.toContain('<script>alert(1)</script>');
   });
 });
+
+describe('the submission-endpoint resolver — the URL never appears in the markup', () => {
+  const decode = (doc: string): { b: string; p: string; v: number } => {
+    const b64 = /JSON\.parse\(atob\("([^"]+)"\)\)/.exec(doc)?.[1];
+    expect(b64, 'the document must carry an encoded payload').toBeTruthy();
+    return JSON.parse(Buffer.from(b64!, 'base64').toString('utf8'));
+  };
+
+  it('★ ships NO ready-to-POST address — not the URL, not even the /f/ path', () => {
+    // THE POINT. The endpoint used to sit on the form as `data-sw-endpoint="https://…/f/…"` (and again
+    // in the cart's data-channels JSON): an address a scraper can grep for and then hit forever, without
+    // ever loading the page again. It is now assembled at runtime from parts.
+    const doc = renderDocument(page, {
+      brand,
+      bodyHtml: '<form data-sw-routed="contact"></form>',
+      formApi: { base: 'https://platform.test', project: 'p1' },
+    });
+    expect(doc).not.toContain('https://platform.test/f/');
+    expect(doc).not.toContain('/f/p1/');
+    // The payload carries the PARTS, so decoding it still doesn't hand over a URL to post to.
+    const parts = decode(doc);
+    expect(parts).toEqual({ b: 'https://platform.test', p: 'p1', v: 0 });
+    expect(Buffer.from(JSON.stringify(parts)).toString()).not.toContain('/f/');
+  });
+
+  it('defines the resolver BEFORE the runtimes that call it', () => {
+    // Both the form runtime and the cart call window.__swf; if the blob came after them the first submit
+    // on a freshly-loaded page would have nothing to resolve against.
+    const doc = renderDocument(page, {
+      brand,
+      bodyHtml: '<form data-sw-routed="contact"></form>',
+      formApi: { base: 'https://platform.test', project: 'p1' },
+      inlineScripts: ['/*RUNTIME*/'],
+    });
+    expect(doc.indexOf('window.__swf')).toBeLessThan(doc.indexOf('/*RUNTIME*/'));
+  });
+
+  it('uses atob + JSON.parse only — never eval, which the published CSP forbids', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<form data-sw-routed="c"></form>', formApi: { base: 'https://p.test', project: 'p1' } });
+    expect(doc).toContain('JSON.parse(atob(');
+    expect(doc).not.toContain('eval(');
+    expect(doc).not.toContain('new Function');
+  });
+
+  it('still emits for a SAME-ORIGIN surface, whose base is empty', () => {
+    // The draft preview posts to a root-relative `/f/…/preview`. It needs the resolver just as much —
+    // a routed form carries only its id, so without the blob there is nothing to submit to at all.
+    const doc = renderDocument(page, { brand, bodyHtml: '<form data-sw-routed="c"></form>', formApi: { base: '', project: 'p1', preview: true } });
+    expect(decode(doc)).toEqual({ b: '', p: 'p1', v: 1 });
+  });
+
+  it('emits nothing when there is no project to build a URL from', () => {
+    expect(renderDocument(page, { brand, bodyHtml: '<p>x</p>' })).not.toContain('window.__swf');
+    expect(renderDocument(page, { brand, bodyHtml: '<p>x</p>', formApi: { base: 'https://p.test', project: '' } })).not.toContain('window.__swf');
+  });
+});

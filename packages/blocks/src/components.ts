@@ -901,7 +901,10 @@ const FORM_JS = `(function(){
     document.head.appendChild(s);
   }
   function enhance(form){
+    // contactPhp keeps a same-origin relative endpoint; a platform-routed form carries only its id and
+    // the URL is assembled by the blob renderDocument emits, so it never sits in the markup.
     var endpoint=form.getAttribute('data-sw-endpoint');
+    if(!endpoint){var fid=form.getAttribute('data-sw-routed');if(fid&&window.__swf)endpoint=window.__swf(fid);}
     if(!endpoint)return;
     var started=Date.now();
     var success=form.querySelector('[data-sw-part="success"]');

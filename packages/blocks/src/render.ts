@@ -127,6 +127,12 @@ export interface RenderDocumentOptions extends RenderContext {
   head?: string;
   customScripts?: string;
   /**
+   * Coordinates for the platform's own submission endpoint. Emitted as a single ENCODED blob at body end
+   * which defines `window.__swf(formId)`; the URL itself never appears in the markup — see formApiScript.
+   * `base` is empty for a same-origin surface (the draft preview), which still gets the blob.
+   */
+  formApi?: { base: string; project: string; preview?: boolean };
+  /**
    * The site's content policy, emitted as an INERT `<meta name="sw-csp">` — browsers ignore it; a
    * platform-HOSTED origin promotes it to a real response header. Omit = none.
    */
@@ -226,6 +232,38 @@ function slotLandmark(tag: 'nav' | 'aside' | 'footer' | 'div', id: string, html:
   return html ? `<${tag} id="${id}">${html}</${tag}>` : '';
 }
 
+/**
+ * The submission-endpoint resolver, as ONE encoded blob at body end.
+ *
+ * The endpoint used to be written straight onto each element — `data-sw-endpoint="https://…/f/…"` on the
+ * form, and the same URL again inside the cart's `data-channels` JSON. That is a ready-to-POST address
+ * sitting in the markup for any scraper that greps for it, which is exactly what a spam run wants: it can
+ * skip the page entirely and hit the endpoint directly, forever, even after the form is taken down.
+ *
+ * So the markup now carries only the form's ID, and the address is assembled here, at runtime, from a
+ * base64 payload that contains no `/f/` path and no complete URL. `atob` + `JSON.parse` only — never
+ * `eval`/`new Function`, which the published CSP does not permit (no 'unsafe-eval') and which would make
+ * this an XSS sink besides.
+ *
+ * Being honest about what this is: OBFUSCATION, not a security control. Anyone who reads the JS can still
+ * reconstruct the URL. It raises the cost for the naive harvester that greps HTML for a POST target; the
+ * real defences are unchanged and all server-side — honeypot, time-trap, rate limit, captcha, and
+ * definition-aware validation.
+ */
+function formApiScript(api: { base: string; project: string; preview?: boolean } | undefined): string {
+  // An EMPTY base is normal and must still emit: the draft preview (and a same-origin deployment) use a
+  // root-relative `/f/…`, which needs hiding from the markup exactly as much as an absolute one. Only the
+  // project id is required — without it there is no URL to build.
+  if (!api || !api.project) return '';
+  // Base64 of the PARTS. Deliberately not the finished URL: decoding the blob still does not hand a
+  // harvester something it can POST to without reading the assembler below.
+  const payload = Buffer.from(JSON.stringify({ b: api.base.replace(/\/+$/, ''), p: api.project, v: api.preview ? 1 : 0 }), 'utf8').toString('base64');
+  return (
+    `<script data-sw-f>(function(){try{var o=JSON.parse(atob(${JSON.stringify(payload)}));` +
+    `window.__swf=function(i){return o.b+"/"+"f"+"/"+o.p+"/"+i+(o.v?"/preview":"")}}catch(e){}})()</script>`
+  );
+}
+
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
   const {
     brand,
@@ -249,6 +287,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     organization,
     head,
     customScripts,
+    formApi,
     metaCsp,
     criticalCss,
     stylesheets,
@@ -436,6 +475,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (rawFidelity ? [] : (scripts ?? []))
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +
+    // BEFORE the runtimes: both the form runtime and the cart call `window.__swf` to build their
+    // submission URL, so the resolver has to be defined by the time they run.
+    formApiScript(formApi) +
     (inlineScripts ?? [])
       // Neutralize any `</script` so trusted bundled JS can't close the tag early.
       .map((js) => `<script>${neutralizeInlineScript(js)}</script>`)

@@ -15,6 +15,7 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 
 
+
 - **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`
   token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
   imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
@@ -30,6 +31,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   accounted for 5 of 6 candidate findings in the census.
 
 ### Changed
+
+
+- **The form submission endpoint is no longer readable in the published HTML.** It was written straight
+  onto the form as `data-sw-endpoint="…/f/<project>/<form>"`, and again inside the cart's
+  `data-channels` JSON — a ready-to-POST address a scraper can grep for once and then hit forever,
+  without ever loading the page again. The markup now carries only the form's id and the runtime
+  assembles the URL from an encoded payload at body end, which holds the parts (base, project, preview
+  flag) and no `/f/` path, so decoding it still hands over nothing to post to. `atob` + `JSON.parse`
+  only, never `eval` — the published CSP allows no `'unsafe-eval'`, and eval would make it an XSS sink
+  besides. This is OBFUSCATION, not a security control: anyone reading the JS can reconstruct the URL.
+  It raises the cost for the naive harvester; the real defences are unchanged and server-side (honeypot,
+  time-trap, rate limit, captcha, definition-aware validation). Deliberately untouched: `contactPhp`
+  posts to a same-origin relative `contact.php` with nothing to harvest and must work in an export with
+  no payload at all, and `thirdParty` posts to the author's own external endpoint, which is not ours to
+  hide.
+
 
 
 
@@ -58,6 +75,7 @@ The running version of an instance is reported at `GET /version` (baked into the
   (the URL endpoint the shell already calls blocks for the whole build, so it can never narrate it).
 
 ### Fixed
+
 
 
 - **Published forms could never submit, on any site served from a subdomain.** The publisher bakes an

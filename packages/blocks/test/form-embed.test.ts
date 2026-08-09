@@ -149,7 +149,10 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
 
   it('injects the platform endpoint + component marker + honeypot, and strips the marker on publish', () => {
     const out = resolveFormEmbeds(authored, { forms: formsOf(pub()) });
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
     expect(out).toContain('data-sw-component="form"');
     expect(out).toContain('name="_hpt"');
     expect(out).not.toContain('data-sw-form');
@@ -159,12 +162,16 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
   });
   it('keeps the data-sw-form marker in preview', () => {
     const out = resolveFormEmbeds(authored, { forms: formsOf(pub()), preview: true });
-    expect(out).toContain('data-sw-form="contact"');
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
+    expect(out).toContain('data-sw-routed="contact"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
   });
   it('resolves the locale-suffixed form on a locale page', () => {
     const out = resolveFormEmbeds(authored, { forms: formsOf(pub(), pub({ id: 'contact-de' })), locale: 'de' });
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact-de"');
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact-de"');
   });
   it('thirdParty posts to its own URL', () => {
     const out = resolveFormEmbeds(authored, {
@@ -193,7 +200,10 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
   it('owns endpoint + redirect: overwrites an authored endpoint, sets/deletes redirect from the definition', () => {
     const src = '<form data-sw-form="contact" data-sw-endpoint="https://evil.example/steal" data-sw-redirect="/stale"></form>';
     const out = resolveFormEmbeds(src, { forms: formsOf(pub()) });
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
     expect(out).not.toContain('data-sw-redirect');
     const withRedirect = resolveFormEmbeds(authored, { forms: formsOf(pub({ redirectUrl: '/thanks' })) });
     expect(withRedirect).toContain('data-sw-redirect="/thanks"');
@@ -282,8 +292,11 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
   it('resolves two distinct forms on the same page independently', () => {
     const html = '<form data-sw-form="contact"></form><form data-sw-form="newsletter"></form>';
     const out = resolveFormEmbeds(html, { forms: formsOf(pub(), pub({ id: 'newsletter' })) });
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
-    expect(out).toContain('data-sw-endpoint="/f/proj1/newsletter"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
+    expect(out).toContain('data-sw-routed="newsletter"');
     // each form gets its own honeypot, not a shared one
     expect(out.match(/name="_hpt"/g)).toHaveLength(2);
   });
@@ -311,15 +324,19 @@ describe('{{sw-form}} through renderTemplate (helper + pass composed)', () => {
   const forms = formsOf(pub(), pub({ id: 'contact-de', submitLabel: 'Absenden' }));
   it('renders the full form with the endpoint injected', () => {
     const out = renderTemplate('<section>{{sw-form "contact"}}</section>', { forms });
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
     expect(out).toContain('<button type="submit" data-sw-part="submit" class="btn btn-primary">Send enquiry</button>');
     expect(out).toContain('name="_hpt"');
     expect(out).not.toContain('data-sw-form');
   });
   it('resolves the locale variant from page.locale and keeps the marker in preview', () => {
     const out = renderTemplate('{{sw-form "contact"}}', { forms, page: { locale: 'de' }, preview: true });
-    expect(out).toContain('data-sw-form="contact-de"');
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact-de"');
+    expect(out).toContain('data-sw-routed="contact-de"');
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact-de"');
     expect(out).toContain('>Absenden</button>');
   });
   it('passes the class= hash onto the wrapper', () => {
@@ -347,6 +364,9 @@ describe('{{sw-form}} through renderTemplate (helper + pass composed)', () => {
     const src = '<form data-sw-form="contact"><span data-sw-text="cta">Default</span><input name="name" /></form>';
     const out = renderTemplate(src, { forms, page: { data: { cta: 'Localized label' } } });
     expect(out).toContain('Localized label');
-    expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
+    // ROUTED forms carry no endpoint: only their id + the routed marker. The URL is assembled at
+    // runtime from the encoded blob, so it is never a ready-to-POST address in the markup.
+    expect(out).not.toContain('data-sw-endpoint');
+    expect(out).toContain('data-sw-routed="contact"');
   });
 });

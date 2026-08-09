@@ -199,17 +199,31 @@ describe('generated data shape', () => {
   it('gives every declaration a property and a value — no parse fragments', () => {
     // A general invariant over all 23k classes, so a Tailwind upgrade that introduces a new nesting
     // shape fails HERE rather than silently producing garbage rows.
+    //
+    // SCANNED IN PLAIN JS, asserted ONCE. Calling expect() per declaration meant ~100k matcher
+    // invocations, whose bookkeeping — not the checking — took 510ms on a 20-core box and blew
+    // vitest's 5s default on CI's 2-core runner with every package's suite running beside it. An
+    // exhaustive invariant that is too slow to finish stops being an invariant: it just turns the
+    // build red at random. Collecting offenders also reports EVERY one instead of stopping at the
+    // first, which is what you want from a sweep whose job is to catch an upstream shape change.
+    const PROPERTY = /^-{0,2}[a-zA-Z][-a-zA-Z0-9]*$/;
+    const bad: string[] = [];
     for (const topic of tailwindReference().topics) {
       for (const [name, decls] of topic.classes) {
-        expect(decls.length, `${name} has no declarations`).toBeGreaterThan(0);
+        if (decls.length === 0) {
+          bad.push(`${name}: no declarations`);
+          continue;
+        }
         for (const decl of decls) {
-          expect(decl[0], `${name} property`).toMatch(/^-{0,2}[a-zA-Z][-a-zA-Z0-9]*$/);
-          expect(decl[1], `${name} value`).not.toBe('');
+          if (!PROPERTY.test(decl[0])) bad.push(`${name}: property ${JSON.stringify(decl[0])}`);
+          if (decl[1] === '') bad.push(`${name}: empty value`);
           const condition = declCondition(decl);
-          if (condition !== null) expect(condition, `${name} condition`).toMatch(/^@/);
+          if (condition !== null && !condition.startsWith('@')) bad.push(`${name}: condition ${JSON.stringify(condition)}`);
         }
       }
     }
+    // Show the first few rather than a diff of every offender, with the true count in the message.
+    expect(bad.slice(0, 10), `${bad.length} declaration(s) failed the shape invariant`).toEqual([]);
   });
 
   it('never has a class whose declarations are all conditional but whose topic claims otherwise', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { DevicePreview, PREVIEW_DEVICES } from '../src/views/editor/DevicePreview';
 
@@ -49,10 +49,49 @@ describe('DevicePreview', () => {
         <span />
       </DevicePreview>,
     );
-    // Fluid carries no simulation styles at all — no width, no transform.
+    // UNMEASURED fluid (jsdom has no layout, so clientWidth is 0) falls back to filling the box.
     const fluid = getByTestId('device-viewport');
     expect(fluid.getAttribute('style')).toBeFalsy();
     expect(fluid.className).toContain('w-full');
+  });
+
+  it('★ resolves fluid to a MEASURED pixel width, so every device renders the same shape', () => {
+    // THE DEFECT: fluid rendered as `w-full` with no positioning while every other device was an
+    // absolutely-positioned, `translateX(-50%)`-centred box. Neither `position` nor `transform` is
+    // interpolable, so the transition had nothing to work with across that boundary: measured in a
+    // real browser on the pre-fix component, desktop→mobile did not tween AT ALL, and mobile→desktop
+    // tweened its width while the box slid 795px to the left — the centring transform vanishing in a
+    // single frame. One shape for every device is what makes both directions a plain px→px tween.
+    //
+    // jsdom cannot see the motion (no layout, and act() flushes effects synchronously), but it CAN
+    // hold the structural property the motion depends on. The glide itself is asserted in the E2E,
+    // which samples width AND centre mid-flight.
+    const spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600);
+    try {
+      const { getByTestId, rerender } = render(
+        <DevicePreview width={null}>
+          <span />
+        </DevicePreview>,
+      );
+      const fluid = getByTestId('device-viewport');
+      expect(fluid).toHaveStyle({ width: '1600px' }); // the host's measured width, not `w-full`
+      expect(fluid.className).toContain('absolute');
+      expect(fluid.style.transform).toContain('translateX(-50%)');
+
+      rerender(
+        <DevicePreview width={390}>
+          <span />
+        </DevicePreview>,
+      );
+      const fixed = getByTestId('device-viewport');
+      // Same positioning and the same centring transform — ONLY the width and scale differ, which is
+      // precisely the pair a `transition-all` can interpolate.
+      expect(fixed).toHaveStyle({ width: '390px' });
+      expect(fixed.className).toContain('absolute');
+      expect(fixed.style.transform).toContain('translateX(-50%)');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('glides between simulated widths on a device change, and waives it for reduced motion', () => {

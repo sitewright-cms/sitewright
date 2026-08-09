@@ -128,7 +128,17 @@ export function wrapEntry(html: string, id: string, dataset: string): string {
  * Mark one rendered dataset row for the preview: attributes on its own root element(s) when that is
  * possible, else the injected wrapper. The ONE entry point both the dataset `{{#each}}` and
  * `{{#sw-pick-entry}}` use, so the two can never drift apart.
+ *
+ * ★ A row that renders NOTHING is returned untouched. The wrapper exists to preserve a click
+ * affordance that cannot live on the row's own element — but an empty row has nothing to click, so
+ * wrapping it buys no affordance and costs a preview-only element the published page will not have,
+ * which is precisely the divergence this module exists to remove. It is not a corner case: a
+ * FILTERED loop (`{{#each dataset.products}}{{#if listed}}<div class="card">…</div>{{/if}}{{/each}}`)
+ * renders '' for every row the filter rejects, so a 92-product catalogue emitted 80 empty
+ * `<div data-sw-entry>`s — 80 empty GRID CELLS that scattered the real cards across the page, in
+ * preview only. Whitespace is preserved exactly, like every other path here.
  */
 export function markEntry(html: string, id: string, dataset: string): string {
+  if (html.trim() === '') return html;
   return markEntryInPlace(html, id, dataset) ?? wrapEntry(html, id, dataset);
 }

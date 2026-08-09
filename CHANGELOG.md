@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A filtered `{{#each}}` scattered its cards across the editor preview.** The dataset loop marks each
+  row for click-to-edit, and a row with no element of its own falls back to an injected
+  `<div data-sw-entry>` wrapper. A row that renders *nothing* — every iteration a filter rejects, as in
+  `{{#each dataset.products}}{{#if listed}}…{{/if}}{{/each}}` — took that same fallback, so a
+  92-product catalogue emitted 80 empty wrappers. In a grid each one is an empty CELL, and the real
+  cards ended up strewn across the page at the index of their position in the *unfiltered* dataset.
+  The wrapper bought nothing there in any case: an empty row has nothing to click. `markEntry` now
+  returns an empty row untouched, restoring the invariant this module exists for — the preview DOM is
+  the published DOM plus two attributes, never an extra element. Publish was always correct, which is
+  what made it read as a styling bug in the author's own page.
 - **The route contract was blind to every secret-storing route.** `contract/http-routes.json` is
   generated from a "production-shaped" app that was built without an encryption key — but per-project
   SMTP, the BYO-agent AI config, deploy targets and now captcha are all registered inside

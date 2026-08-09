@@ -115,7 +115,7 @@ describe('code-first preview', () => {
       id: 'contact', name: 'Contact',
       fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
       submitLabel: 'Send', successMessage: 'Thanks!', errorMessage: 'Oops.',
-      recipient: 'leads@site.test', mode: 'globalSmtp', hcaptcha: false,
+      recipient: 'leads@site.test', mode: 'globalSmtp', hcaptcha: false, pow: false,
     })).statusCode).toBe(200);
     const html = await previewHtml({
       id: 'contact-page', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section' },

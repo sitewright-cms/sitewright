@@ -5,6 +5,7 @@ import {
   IdSchema,
   HONEYPOT_FIELD,
   INTERACTION_FIELD,
+  POW_FIELD,
   TIMETRAP_FIELD,
   HCAPTCHA_RESPONSE_FIELD,
   MIN_SUBMIT_ELAPSED_MS,
@@ -19,6 +20,7 @@ import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
 import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { nextAttemptAt } from '../mail/delivery-policy.js';
+import { createPowChallenge, verifyPowSolution } from './form-pow.js';
 import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -45,6 +47,8 @@ export interface FormRoutesDeps {
   hcaptcha: HcaptchaVerifier;
   /** Returns the decrypted instance hCaptcha secret, or null when unconfigured. */
   getHcaptchaSecret: () => Promise<string | null>;
+  /** Signing key for proof-of-work challenges — the instance cookie secret, as for preview tokens. */
+  getPowSecret: () => string;
   /** Returns the instance-admin-enabled form mail modes (so authors pick among them). */
   getFormModes: () => Promise<FormModes>;
   resolveProject: (
@@ -88,10 +92,12 @@ async function loadForms(db: Database, projectId: string): Promise<Form[]> {
 interface ParsedSubmission {
   fields: Record<string, string>;
   honeypotFilled: boolean;
-  /** Trusted-input evidence from the form runtime, or undefined when none arrived. */
-  interaction?: { pointer: number; key: number; fields: number };
   elapsed: number | undefined;
   captchaToken: string | undefined;
+  /** Trusted-input evidence from the form runtime, or undefined when none arrived. */
+  interaction?: { pointer: number; key: number; fields: number };
+  /** The encoded proof-of-work solution, when the runtime solved one. */
+  powSolution?: string;
 }
 
 /** Why a body was rejected — plain text an author can act on. Never carries a submitted VALUE. */
@@ -122,12 +128,13 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
   let elapsed: number | undefined;
   let captchaToken: string | undefined;
   let interaction: { pointer: number; key: number; fields: number } | undefined;
+  let powSolution: string | undefined;
   let total = 0;
   for (const [key, rawValue] of entries) {
     if (key.length > MAX_KEY_LEN) return { reason: `a field name is longer than ${MAX_KEY_LEN} characters` };
     // The control fields (honeypot / time-trap / captcha) are ALWAYS single scalars — an array for any of
     // them is malformed (and must not be silently normalized into a value that could weaken the check).
-    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === INTERACTION_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
+    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === INTERACTION_FIELD || key === POW_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
       return { reason: `"${key}" must be a single value` };
     }
     // A checkbox GROUP submits several checked values under one name → a string ARRAY; join them into a
@@ -144,6 +151,12 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
     // The captcha token is large; pull it out before the per-field length cap
     // (verified server-side, never stored). Real hCaptcha tokens are < 2 KB —
     // ignore an implausibly large value (it would fail verification anyway).
+    if (key === POW_FIELD) {
+      // Pulled out before the per-field length cap (a solution is longer than any form value), and
+      // bounded so an oversized value cannot be used to burn parse time. Verified below, never stored.
+      powSolution = value.length <= 4096 ? value : undefined;
+      continue;
+    }
     if (key === HCAPTCHA_RESPONSE_FIELD) {
       captchaToken = value.length <= 8192 ? value : undefined;
       continue;
@@ -175,7 +188,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
     // eslint-disable-next-line security/detect-object-injection -- value is a string (checked) and prototype keys are excluded above
     fields[key] = value;
   }
-  return { fields, honeypotFilled, elapsed, captchaToken, interaction };
+  return { fields, honeypotFilled, elapsed, captchaToken, interaction, powSolution };
 }
 
 /** Picks a safe Reply-To from a submitted `email` field, if present and valid. */
@@ -199,10 +212,33 @@ function setSubmissionCors(reply: FastifyReply): void {
  * via Mode A (global SMTP); spam is filtered by honeypot + time-trap + rate limit.
  */
 export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): void {
-  const { db, submissions, mailer, projectMailer, hcaptcha, getHcaptchaSecret, resolveProject, isWriter, rl } = deps;
+  const { db, submissions, mailer, projectMailer, hcaptcha, getHcaptchaSecret, getPowSecret, resolveProject, isWriter, rl } = deps;
 
   // CORS preflight for cross-origin submissions from exported sites (rate-limited
   // like the POST so it can't be used to burn a shared global budget).
+  app.options('/f/:projectId/:formId/challenge', { config: rl(20) }, async (_req, reply) => {
+    setSubmissionCors(reply);
+    return reply.code(204).send();
+  });
+
+  // A proof-of-work challenge for a form that requires one. PUBLIC and unauthenticated by necessity —
+  // the visitor has no session — and cheap: minting is one hash and one HMAC, with no state to keep.
+  // Rate-limited like the submit, so it cannot be used to burn CPU or a shared budget.
+  //
+  // Deliberately does NOT reveal whether the form requires proof-of-work, or even exists: it mints for
+  // any well-formed id. Answering "no challenge needed" would hand a spammer a free oracle for finding
+  // the unprotected forms on an instance.
+  app.get<{ Params: { projectId: string; formId: string } }>(
+    '/f/:projectId/:formId/challenge',
+    { config: rl(30) },
+    async (_req, reply) => {
+      setSubmissionCors(reply);
+      // Never cached: every visitor must get their own challenge, or one solve serves everybody.
+      reply.header('cache-control', 'no-store');
+      return reply.send(createPowChallenge(getPowSecret()));
+    },
+  );
+
   app.options('/f/:projectId/:formId', { config: rl(20) }, async (_req, reply) => {
     setSubmissionCors(reply);
     return reply.code(204).send();
@@ -326,6 +362,23 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         // Distinct from the structural `invalid submission` 400 above so a consumer can react to a
         // definition-validation failure (the offending field names are in `fields`) specifically.
         return reply.code(400).send({ error: 'invalid fields', fields: invalidFields });
+      }
+
+      // PROOF OF WORK — opt-in per form. Placed after the free checks and before hCaptcha's network
+      // verify: cheapest gates first, and never spend a third-party round-trip on a submission that
+      // already failed a local one. The REASON is counted rather than a bare pass/fail, because
+      // "expired" (a visitor who left the tab open) and "wrong-answer" (a client that did no work) are
+      // opposite signals — one means the TTL is costing real leads, the other means it is working.
+      if (form.pow) {
+        const verdict = verifyPowSolution(getPowSecret(), parsed.powSolution);
+        if (verdict !== 'ok') {
+          app.log.info({ projectId, formId, verdict }, 'submission filtered by proof-of-work');
+          await submissions.recordFiltered(projectId, formId, `pow-${verdict}`).catch((err: unknown) => {
+            app.log.warn({ projectId, formId, err }, 'could not count a filtered submission');
+          });
+          // Silent, like the other traps: a bot must not learn which gate stopped it.
+          return reply.send({ ok: true });
+        }
       }
 
       // hCaptcha: enforced when the form requires it. Fail-CLOSED — if the instance

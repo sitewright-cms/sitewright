@@ -810,3 +810,28 @@ describe('component registry', () => {
     expect(componentAssets(['Nope', 'AlsoNope'])).toEqual({ css: '', js: '' });
   });
 });
+
+
+describe('proof-of-work runtime — never a fake success', () => {
+  const FORM_JS = componentAssets(['Form']).js;
+  it('REJECTS when it cannot solve, rather than posting a doomed submission', () => {
+    // The server answers a missing solution with a SILENT drop returning {ok:true}, which this runtime
+    // would render as the success message: the visitor thanked, the lead discarded, nothing visible
+    // anywhere. And it is reachable with no bot involved — crypto.subtle is undefined outside a SECURE
+    // CONTEXT, so a site on plain http would eat every submission. Failing loudly is the whole point.
+    expect(FORM_JS).toContain("Promise.reject(new Error('pow unavailable'))");
+    // …and no swallow-and-continue anywhere in the solver.
+    expect(FORM_JS).not.toContain("}).catch(function(){return '';});");
+  });
+
+  it('only solves for a form that asked for it', () => {
+    expect(FORM_JS).toContain("if(!form.hasAttribute('data-sw-pow'))return Promise.resolve('')");
+  });
+
+  it('fetches the challenge at SUBMIT, not on load', () => {
+    // A form nobody fills in must cost its visitors nothing.
+    const solveAt = FORM_JS.indexOf('powSolve(form).then('); // the CALL, not the definition above it
+    const submitHandler = FORM_JS.indexOf("form.addEventListener('submit'");
+    expect(solveAt).toBeGreaterThan(submitHandler);
+  });
+});

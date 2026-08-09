@@ -34,7 +34,7 @@ function contactForm(over: Partial<Form> = {}): Form {
     recipient: 'secret-recipient@acme.com',
     subject: 'New lead',
     mode: 'globalSmtp' as const,
-    hcaptcha: false,
+    hcaptcha: false, pow: false,
     ...over,
   } as Form;
 }

@@ -242,3 +242,27 @@ describe('filtered counter', () => {
     expect(screen.queryByText(/filtered/)).toBeNull();
   });
 });
+
+describe('proof-of-work toggle', () => {
+  it('saves the opt-in, and says plainly that it needs no third party or keys', async () => {
+    // The distinction that matters when choosing between this and hCaptcha: one needs an account, keys
+    // and a third party in the page; the other needs none of that and spends the visitor's CPU instead.
+    listForms.mockResolvedValue({ items: [] });
+    render(<FormsManager project={project} />);
+    fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
+    fireEvent.change(await screen.findByLabelText('Recipient email'), { target: { value: 'leads@acme.com' } });
+    const toggle = screen.getByLabelText('Require proof of work') as HTMLInputElement;
+    expect(toggle.checked).toBe(false); // OPT-IN: never on by default
+    expect(toggle.closest('label')!.textContent).toContain('no third party, no keys');
+    // …and it points the author at the evidence rather than at a hunch.
+    expect(toggle.closest('label')!.textContent).toContain('filtered count');
+    // …and states the constraint that would otherwise be discovered the hard way: on plain http the
+    // browser crypto is unavailable, so the form could never be submitted at all.
+    expect(toggle.closest('label')!.textContent).toContain('needs HTTPS');
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
+    await waitFor(() => expect(putForm).toHaveBeenCalled());
+    expect(putForm.mock.calls[0]![0]).toMatchObject({ pow: true });
+  });
+});

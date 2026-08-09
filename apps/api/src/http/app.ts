@@ -7104,6 +7104,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     projectMailer,
     hcaptcha: hcaptchaVerifier,
     getHcaptchaSecret: () => instanceSettingsRepo.getHcaptchaSecret(),
+    // Same key the preview signatures use — one instance secret, not a second thing to configure.
+    getPowSecret: () => currentCookieSecret,
     getFormModes: () => instanceSettingsRepo.getFormModes(),
     resolveProject,
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),

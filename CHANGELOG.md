@@ -9,7 +9,54 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-08-09
+
+### Added
+
+
+- **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`
+  token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
+  imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
+  breakpoint, because a single unconditional `:root{--sw-header-h:…}` beats the platform's own
+  media-query pair on source order and then applies at every width. Two checks: `header-height-token`
+  gates on the token *under*-declaring the measured bar (content behind the header, one honest fix) and
+  reports over-declaring without failing, since the strip it paints below the bar is only visible when
+  the backgrounds differ; `header-spacer-applies` is advisory and reports the fact an author cannot
+  otherwise see — that a `.sw-top-padding` did nothing because a `p-*`/`pt-*`, a custom rule or an
+  inline style on the same element beat it on source order (measured on a real page:
+  `class="wash sw-top-padding p-4"` computed 16px against a 102.8px token). Screen-reader-only headings
+  are excluded from the text-position probe; they sit at the top of nearly every imported page and
+  accounted for 5 of 6 candidate findings in the census.
+
+### Changed
+
+
+- **Muted text across the admin UI moved up one step, in both themes.** The pair used in 286 places
+  measured 2.58:1 on the light header and 3.53:1 on the dark one — quiet rather than readable. Page
+  paths, section descriptions, keyword labels, inactive tabs, the settings and account icons, drag
+  handles and placeholder text all move with it. Measured after: the agent pill 2.58 → 7.35 (light) /
+  3.53 → 12.11 (dark), a page row's path 4.55 / 6.85, inactive tabs 7.41 / 8.64, the header icons
+  7.37 / 12.01. A pixel-sampling audit of the admin surfaces now reports no text below WCAG AA on any
+  of these tokens in either theme.
+- **The "Connect an agent" pill has a border** in both themes — all three states do. It floats on the
+  frosted header, whose own surface sits close to each state's fill, so an unbordered pill read as
+  loose text rather than a control.
+- **Project icons in the selector sit on white, in both themes.** A favicon is artwork drawn for a
+  white page — most are dark marks on transparency — so tinting the tile hid exactly the logos it was
+  framing.
+- **The five skeleton slots are one section, not five loose cards.** They are a single concept — the
+  chrome rendered around every page — and as separate cards in a two-column grid they interleaved with
+  the unrelated sections after them, so the group had a heading but no edges.
+- **Logos & images comes before Brand colors** in Corporate Identity.
+- **`/preview` says what it is waiting for.** Opening a cold project renders every page, re-encodes
+  every referenced image size and compiles the stylesheet before the iframe can show anything, and
+  that was a blank shell with a skeleton. A pill at the top centre now names the step — "Processing
+  images…", "Rendering pages… 12 of 93" — with a spinner, and disappears at the first paint. The
+  build reports its phases through a new non-blocking `GET /projects/:projectId/preview-progress`
+  (the URL endpoint the shell already calls blocks for the whole build, so it can never narrate it).
+
 ### Fixed
+
 
 - **CI went red on an exhaustive test that was too slow to finish.** The Tailwind reference's
   "every declaration has a property and a value" sweep called `expect()` once per declaration —
@@ -31,23 +78,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   glide with **0px** of centre drift. The E2E samples width *and* centre each frame, on both of the
   directions that involve fluid.
 
-### Added
-
-- **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`
-  token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
-  imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
-  breakpoint, because a single unconditional `:root{--sw-header-h:…}` beats the platform's own
-  media-query pair on source order and then applies at every width. Two checks: `header-height-token`
-  gates on the token *under*-declaring the measured bar (content behind the header, one honest fix) and
-  reports over-declaring without failing, since the strip it paints below the bar is only visible when
-  the backgrounds differ; `header-spacer-applies` is advisory and reports the fact an author cannot
-  otherwise see — that a `.sw-top-padding` did nothing because a `p-*`/`pt-*`, a custom rule or an
-  inline style on the same element beat it on source order (measured on a real page:
-  `class="wash sw-top-padding p-4"` computed 16px against a 102.8px token). Screen-reader-only headings
-  are excluded from the text-position probe; they sit at the top of nearly every imported page and
-  accounted for 5 of 6 candidate findings in the census.
-
-### Fixed
 
 - **Dataset rows were laid out differently in the editor preview than on the published page.** To make
   a row click-to-edit, the dataset-aware `{{#each}}` (and `{{#sw-pick-entry}}`) wrapped every iteration
@@ -100,32 +130,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   the only signal a manager gets — so each one offered to save "your password for this site" and to
   autofill an account password into an SMTP box. Those fields now opt out; real credentials (sign-in,
   change-password, MFA confirm) keep their proper autocomplete semantics and still work as before.
-
-### Changed
-
-- **Muted text across the admin UI moved up one step, in both themes.** The pair used in 286 places
-  measured 2.58:1 on the light header and 3.53:1 on the dark one — quiet rather than readable. Page
-  paths, section descriptions, keyword labels, inactive tabs, the settings and account icons, drag
-  handles and placeholder text all move with it. Measured after: the agent pill 2.58 → 7.35 (light) /
-  3.53 → 12.11 (dark), a page row's path 4.55 / 6.85, inactive tabs 7.41 / 8.64, the header icons
-  7.37 / 12.01. A pixel-sampling audit of the admin surfaces now reports no text below WCAG AA on any
-  of these tokens in either theme.
-- **The "Connect an agent" pill has a border** in both themes — all three states do. It floats on the
-  frosted header, whose own surface sits close to each state's fill, so an unbordered pill read as
-  loose text rather than a control.
-- **Project icons in the selector sit on white, in both themes.** A favicon is artwork drawn for a
-  white page — most are dark marks on transparency — so tinting the tile hid exactly the logos it was
-  framing.
-- **The five skeleton slots are one section, not five loose cards.** They are a single concept — the
-  chrome rendered around every page — and as separate cards in a two-column grid they interleaved with
-  the unrelated sections after them, so the group had a heading but no edges.
-- **Logos & images comes before Brand colors** in Corporate Identity.
-- **`/preview` says what it is waiting for.** Opening a cold project renders every page, re-encodes
-  every referenced image size and compiles the stylesheet before the iframe can show anything, and
-  that was a blank shell with a skeleton. A pill at the top centre now names the step — "Processing
-  images…", "Rendering pages… 12 of 93" — with a spinner, and disappears at the first paint. The
-  build reports its phases through a new non-blocking `GET /projects/:projectId/preview-progress`
-  (the URL endpoint the shell already calls blocks for the whole build, so it can never narrate it).
 
 ## [0.14.0] — 2026-08-07
 
@@ -1380,7 +1384,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/sitewright-cms/sitewright/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/sitewright-cms/sitewright/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/sitewright-cms/sitewright/compare/v0.12.4...v0.13.0
 [0.12.4]: https://github.com/sitewright-cms/sitewright/compare/v0.12.3...v0.12.4

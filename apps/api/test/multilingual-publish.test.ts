@@ -136,7 +136,7 @@ describe('multilingual publish (locale variants are pages)', () => {
     });
     const form = {
       fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
-      successMessage: 'Thanks!', errorMessage: 'Oops.', recipient: 'leads@acme.test', mode: 'globalSmtp', hcaptcha: false,
+      successMessage: 'Thanks!', errorMessage: 'Oops.', recipient: 'leads@acme.test', mode: 'globalSmtp', hcaptcha: false, pow: false,
     };
     await proj.putContent('form', 'contact', { ...form, id: 'contact', name: 'Contact', submitLabel: 'Send' });
     await proj.putContent('form', 'contact-de', { ...form, id: 'contact-de', name: 'Kontakt', submitLabel: 'Absenden' });

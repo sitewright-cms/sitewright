@@ -838,7 +838,7 @@ describe('api client', () => {
       successMessage: 'ok',
       errorMessage: 'err',
       mode: 'globalSmtp' as const,
-      hcaptcha: false,
+      hcaptcha: false, pow: false,
     };
     fetchMock.mockResolvedValue(jsonResponse(200, { item: form }));
     await api.putForm('p', form);

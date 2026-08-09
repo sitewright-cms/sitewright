@@ -272,6 +272,10 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
       // id the runtime feeds to window.__swf. It cannot be `data-sw-form`: that is the AUTHORING marker
       // and is stripped on publish, which would leave the published form with nothing to submit to.
       el.attribs['data-sw-routed'] = resolvedId;
+      // Proof-of-work is per-form and opt-in; the runtime only fetches and solves a challenge when the
+      // form actually asks for one, so an unprotected form costs its visitors nothing.
+      if (form.pow) el.attribs['data-sw-pow'] = '';
+      else delete el.attribs['data-sw-pow'];
     }
     if (form.redirectUrl) el.attribs['data-sw-redirect'] = form.redirectUrl;
     else delete el.attribs['data-sw-redirect'];

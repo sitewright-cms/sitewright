@@ -668,3 +668,80 @@ describe('interaction gate — what the time-trap cannot catch', () => {
     expect(mailer.sent[0]!.fields).not.toHaveProperty('_ix');
   });
 });
+
+describe('proof-of-work — opt-in per form', () => {
+  const solve = async (c: { salt: string; challenge: string; signature: string; maxnumber: number }) => {
+    const { createHash } = await import('node:crypto');
+    for (let n = 0; n <= c.maxnumber; n += 1) {
+      if (createHash('sha256').update(c.salt + String(n)).digest('hex') === c.challenge) {
+        return Buffer.from(JSON.stringify({ algorithm: 'SHA-256', challenge: c.challenge, salt: c.salt, number: n, signature: c.signature })).toString('base64');
+      }
+    }
+    throw new Error('unsolvable');
+  };
+
+  it('is OFF by default — a form with no spam problem costs its visitors nothing', async () => {
+    // The whole reason it is opt-in: a few hundred ms of CPU on every visitor is not worth spending
+    // until the filtered counter says it is.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1); // no challenge solved, and it still went through
+  });
+
+  it('mints a challenge for ANY form id — never an oracle for which forms are unprotected', async () => {
+    // Answering "this one needs no proof of work" would hand a spammer a free map of the soft targets.
+    const known = await app.inject({ method: 'GET', url: `/f/${projectId}/contact/challenge` });
+    const unknown = await app.inject({ method: 'GET', url: `/f/${projectId}/no-such-form/challenge` });
+    expect(known.statusCode).toBe(200);
+    expect(unknown.statusCode).toBe(200);
+    const c = known.json() as { algorithm: string; salt: string; challenge: string; maxnumber: number };
+    expect(c.algorithm).toBe('SHA-256');
+    expect(c.maxnumber).toBeGreaterThan(0);
+    // Never cached — one visitor's solve must not serve everybody.
+    expect(known.headers['cache-control']).toContain('no-store');
+    // Each mint is its own puzzle.
+    expect((unknown.json() as { salt: string }).salt).not.toBe(c.salt);
+  });
+
+  it('accepts a solved challenge and drops an unsolved one, silently and by REASON', async () => {
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/guarded`, cookies: { sw_session: t }, payload: { ...form, id: 'guarded', pow: true } });
+    const challenge = (await app.inject({ method: 'GET', url: `/f/${projectId}/guarded/challenge` })).json() as never;
+
+    const solved = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/guarded`,
+      payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: await solve(challenge) },
+    });
+    expect(solved.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+
+    const unsolved = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/guarded`,
+      payload: { email: 'bot@x.co', _elapsed: '5000', _ix: '3.12.2' },
+    });
+    expect(unsolved.statusCode).toBe(200); // silent, like every other trap
+    expect(mailer.sent).toHaveLength(1); // …and nothing more was sent
+
+    const filtered = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/filtered`, cookies: { sw_session: t } });
+    const items = (filtered.json() as { items: Array<{ reason: string; count: number }> }).items;
+    // The REASON is recorded, not a bare failure: "missing" (no work done) and "pow-expired" (a visitor
+    // who left the tab open) are opposite signals, and only one of them means we are losing leads.
+    expect(items.find((i) => i.reason === 'pow-missing')?.count).toBe(1);
+  });
+
+  it('never stores the solution with the lead', async () => {
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/guarded2`, cookies: { sw_session: t }, payload: { ...form, id: 'guarded2', pow: true } });
+    const challenge = (await app.inject({ method: 'GET', url: `/f/${projectId}/guarded2/challenge` })).json() as never;
+    await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/guarded2`,
+      payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: await solve(challenge) },
+    });
+    expect(mailer.sent[0]!.fields).not.toHaveProperty('_pow');
+  });
+});

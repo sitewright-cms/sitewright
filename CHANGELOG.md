@@ -11,6 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Optional proof-of-work on a form, self-hosted — no third party, no account, no keys.** An
+  ALTCHA-compatible challenge, implemented rather than vendored: the interaction gate beside it is ours
+  regardless, the widget would be another shipped asset on a deliberately lean publish path, and two
+  runtime dependencies on the public form endpoint is the most exposed place to take them. Porting
+  ALTCHA's wire format keeps the exit cheap — `altcha-lib` remains a compatible swap. The server
+  publishes `sha256(salt + n)` for a secret `n` and an HMAC over it; the browser scans for `n` at
+  SUBMIT (not on load — a form nobody fills in must cost nothing), and verification is one hash plus a
+  constant-time compare, with no state to keep. **Opt-in per form**, because a few hundred milliseconds
+  of a visitor's CPU is not worth spending until the filtered counter says it is. It **requires HTTPS**
+  — the browser crypto it uses does not exist outside a secure context — and where it cannot solve, the
+  form now shows its error rather than posting a submission the server would silently drop while the
+  visitor was shown a thank-you.
+
 - **Interaction gating on every platform-routed form.** The time-trap cannot catch a script that POSTs
   straight to the endpoint with a plausible `_elapsed`, having never rendered the form — such a client
   produces no trusted input events at all. The form runtime (and the cart, which builds its own

@@ -900,6 +900,37 @@ const FORM_JS = `(function(){
     s.setAttribute('data-sw-hcaptcha','');
     document.head.appendChild(s);
   }
+  // Fetch a challenge and scan for its answer. The server publishes sha256(salt + n) for a secret n it
+  // chose in [0, maxnumber]; finding n costs maxnumber/2 hashes on average, verifying costs one.
+  //
+  // ★ REJECTS on failure — it must NOT resolve empty and let the post proceed. The server's response to
+  // a missing solution is a SILENT drop returning {ok:true}, which this runtime would then render as the
+  // success message: the visitor is thanked and the lead is discarded, every time, with nothing visible
+  // anywhere. That is the worst failure this form can have, and it is reachable without any bot:
+  // crypto.subtle is undefined outside a SECURE CONTEXT, so a site served over plain http would eat
+  // every submission. Failing loudly turns a silent black hole into an error the visitor can act on.
+  function powSolve(form){
+    if(!form.hasAttribute('data-sw-pow'))return Promise.resolve('');
+    if(!window.crypto||!window.crypto.subtle||!window.__swf)return Promise.reject(new Error('pow unavailable'));
+    var base=window.__swf(form.getAttribute('data-sw-routed')||'');
+    return fetch(base+'/challenge',{headers:{accept:'application/json'}}).then(function(r){
+      if(!r.ok)throw new Error('no challenge');
+      return r.json();
+    }).then(function(c){
+      var enc=new TextEncoder(),n=0;
+      function step(){
+        if(n>c.maxnumber)throw new Error('unsolved');
+        return window.crypto.subtle.digest('SHA-256',enc.encode(c.salt+String(n))).then(function(buf){
+          var b=new Uint8Array(buf),hex='';
+          for(var i=0;i<b.length;i++)hex+=(b[i]<16?'0':'')+b[i].toString(16);
+          if(hex===c.challenge)return btoa(JSON.stringify({algorithm:c.algorithm,challenge:c.challenge,salt:c.salt,number:n,signature:c.signature}));
+          n++;
+          return step();
+        });
+      }
+      return step();
+    });
+  }
   function enhance(form){
     // contactPhp keeps a same-origin relative endpoint; a platform-routed form carries only its id and
     // the URL is assembled by the blob renderDocument emits, so it never sits in the markup.
@@ -969,7 +1000,15 @@ const FORM_JS = `(function(){
       var ixCount=0;for(var k in ixFields){if(Object.prototype.hasOwnProperty.call(ixFields,k))ixCount++;}
       data['_ix']=ixPointer+'.'+ixKey+'.'+ixCount;
       if(submit)submit.disabled=true;
-      fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)}).then(function(res){
+      // PROOF OF WORK, when this form asks for it. Solved AT SUBMIT rather than on load: the visitor is
+      // already waiting for a round-trip and the button already reads as busy, so the hashing hides
+      // inside a wait that existed anyway — and doing it on load would burn CPU on every page view of a
+      // form nobody fills in. Main thread on purpose: a Worker needs its own asset and a CSP widening
+      // (worker-src), and the difficulty is sized so the wait stays short.
+      powSolve(form).then(function(pow){
+        if(pow)data['_pow']=pow;
+        return fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+      }).then(function(res){
         if(!res.ok)throw new Error('bad status');
         var redirect=form.getAttribute('data-sw-redirect');
         if(redirect){window.location.assign(redirect);return;}

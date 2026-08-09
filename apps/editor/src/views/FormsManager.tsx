@@ -35,7 +35,7 @@ function emptyForm(id: string, name: string): Form {
     errorMessage: 'Sorry, something went wrong. Please try again.',
     recipient: '',
     mode: 'globalSmtp',
-    hcaptcha: false,
+    hcaptcha: false, pow: false,
   };
 }
 
@@ -414,6 +414,23 @@ export function FormsManager({ project }: { project: Project }) {
           </span>
         </label>
 
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Require proof of work"
+            checked={draft.pow}
+            disabled={!isPlatformRoutedMode(draft.mode)}
+            onChange={(e) => patch({ pow: e.target.checked })}
+          />
+          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-500 dark:text-slate-400' : ''}>
+            Require proof of work (no third party, no keys — the visitor’s browser spends a moment of CPU)
+            {!isPlatformRoutedMode(draft.mode)
+              ? ' — not available for this mode (the platform can’t verify a remote endpoint)'
+              : ' — needs HTTPS (the browser crypto it uses is unavailable on plain http), and is best left off unless the filtered count says you need it'}
+          </span>
+        </label>
+
         <div className="flex items-center gap-3">
           <button onClick={save} className={primaryButton}>
             Save form
@@ -476,6 +493,11 @@ export function FormsManager({ project }: { project: Project }) {
                 </button>
                 <code className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/80">{f.id}</code>
                 <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">{f.fields.length} fields</span>
+                {f.pow && (
+                  <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
+                    PoW
+                  </span>
+                )}
                 {f.hcaptcha && (
                   <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
                     hCaptcha

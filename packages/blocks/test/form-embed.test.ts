@@ -21,7 +21,7 @@ const pub = (over: Partial<FormPublic> = {}): FormPublic => ({
   submitLabel: 'Send enquiry',
   successMessage: 'Thanks — we got it.',
   errorMessage: 'Sorry, that & failed.',
-  hcaptcha: false,
+  hcaptcha: false, pow: false,
   mode: 'globalSmtp',
   ...over,
 });
@@ -139,7 +139,7 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
   it('emits the inert hCaptcha placeholder only for opted-in platform-routed forms', () => {
     const cap = formsOf(pub({ hcaptcha: true }))['contact']!;
     expect(renderFormMarkup('contact', cap)).toContain('<div data-sw-part="hcaptcha"></div>');
-    const third = formsOf(pub({ hcaptcha: true, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }))['contact']!;
+    const third = formsOf(pub({ hcaptcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }))['contact']!;
     expect(renderFormMarkup('contact', third)).not.toContain('hcaptcha');
   });
 });
@@ -226,7 +226,7 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
       expect(out).not.toContain('data-sitekey');
     });
     it('withholds the widget for non-platform-routed modes (cannot be verified)', () => {
-      const third = formsOf(pub({ hcaptcha: true, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }));
+      const third = formsOf(pub({ hcaptcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }));
       const out = resolveFormEmbeds(authored, { forms: third, hcaptchaSiteKey: 'site-1' });
       expect(out).not.toContain('h-captcha');
     });

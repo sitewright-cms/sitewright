@@ -81,3 +81,62 @@ test('published form: no endpoint in the markup, and a real submit still reaches
   expect(body.items[0]!.fields.email).toBe('lead@example.com');
   await ctx.dispose();
 });
+
+// PROOF OF WORK on a page with NO SECURE CONTEXT — the failure mode that silently eats leads.
+//
+// crypto.subtle is undefined outside a secure context, so a site served over plain http can never solve
+// a challenge. The first cut of this feature resolved empty and posted anyway: the server dropped it
+// silently with {ok:true} and this runtime rendered the SUCCESS message. Every visitor thanked, every
+// lead discarded, nothing visible anywhere. It must fail LOUDLY instead, and that is what this pins.
+//
+// COVERAGE GAP, stated plainly: the happy path — a browser actually solving the challenge with
+// SubtleCrypto — is NOT covered here, because this E2E instance is http-only and there is no secure
+// context to be had. Chromium's --unsafely-treat-insecure-origin-as-secure did not take, and a loopback
+// forward does not reach the browser's network namespace. The algorithm is covered by form-pow.test.ts
+// (which solves and verifies for real) and the runtime contract by components.test.ts; closing this
+// properly needs an https E2E instance.
+test('proof-of-work fails LOUDLY where the browser cannot solve it, never as a fake success', async ({ page, baseURL }) => {
+  const ctx = await seedApiUser(baseURL!, `pow-${stamp}@e2e.test`);
+  const slug = `pow-${stamp}`;
+  const proj = await ctx.post('/projects', { data: { name: 'PoW Site', slug } });
+  const projectId = (await proj.json()).project.id as string;
+  const base = `/projects/${projectId}`;
+
+  expect(
+    (
+      await ctx.put(`${base}/content/form/contact`, {
+        data: {
+          id: 'contact',
+          name: 'Contact form',
+          pow: true, // the opt-in under test
+          fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
+          recipient: 'secret-recipient@acme.example',
+        },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await ctx.put(`${base}/content/page/home`, {
+        data: { id: 'home', path: '', title: 'Contact', source: '<section class="p-8">{{sw-form "contact"}}</section>' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect([201, 409]).toContain((await ctx.post(`${base}/deploy-targets`, { data: { name: 'Local', protocol: 'local' } })).status());
+  expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
+
+  await page.goto(`/sites/${slug}/`);
+  const form = page.locator('form[data-sw-component="form"]');
+  await expect(form).toHaveAttribute('data-sw-pow', ''); // the runtime knows it must solve
+  expect(await page.evaluate(() => !!(window.crypto && window.crypto.subtle))).toBe(false); // …and cannot
+  await form.locator('input[name="email"]').fill('powlead@example.com');
+  await page.waitForTimeout(4000); // clear the time-trap, so THIS is the only thing under test
+
+  await form.locator('[data-sw-part="submit"]').click();
+  await expect(form.locator('[data-sw-part="error"]')).toBeVisible();
+  await expect(form.locator('[data-sw-part="success"]')).toBeHidden(); // never a fake thank-you
+  // Nothing was sent at all — the doomed submission is not posted and then swallowed, it is not posted.
+  expect(((await (await ctx.get(`${base}/submissions?formId=contact`)).json()) as { total: number }).total).toBe(0);
+  expect(((await (await ctx.get(`${base}/submissions/filtered`)).json()) as { total: number }).total).toBe(0);
+  await ctx.dispose();
+});

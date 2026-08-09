@@ -119,6 +119,12 @@ export const FormSchema = z.object({
   /** Require an hCaptcha solve (only enforced for platform-routed modes). */
   hcaptcha: z.boolean().default(false),
   /**
+   * Require a proof-of-work solve (platform-routed modes only). OPT-IN: it puts a few hundred
+   * milliseconds of CPU on every visitor, which is not worth spending on a form that has no spam
+   * problem — and most do not. Turn it on when the filtered counter says otherwise.
+   */
+  pow: z.boolean().default(false),
+  /**
    * Third-party submission endpoint (Mode C). The exported form posts directly here
    * (cross-origin) — Sitewright is not involved. Must be https; required when
    * `mode === 'thirdParty'`.
@@ -161,6 +167,8 @@ export interface FormPublic {
   errorMessage: string;
   redirectUrl?: string;
   hcaptcha: boolean;
+  /** Require a proof-of-work solve — the runtime fetches a challenge and solves it before posting. */
+  pow: boolean;
   mode: FormMode;
   /** Third-party endpoint (Mode C) — the exported form posts here directly. */
   thirdPartyUrl?: string;
@@ -175,6 +183,7 @@ export function toPublicForm(form: Form): FormPublic {
     successMessage: form.successMessage,
     errorMessage: form.errorMessage,
     hcaptcha: form.hcaptcha,
+    pow: form.pow,
     mode: form.mode,
   };
   if (form.redirectUrl !== undefined) pub.redirectUrl = form.redirectUrl;
@@ -248,6 +257,8 @@ export const TIMETRAP_FIELD = '_elapsed';
  * happened, never what shape it had.
  */
 export const INTERACTION_FIELD = '_ix';
+/** The encoded proof-of-work solution (ALTCHA wire format) — verified server-side, never stored. */
+export const POW_FIELD = '_pow';
 /** The hCaptcha response token field (injected by the hCaptcha widget); verified + not stored. */
 export const HCAPTCHA_RESPONSE_FIELD = 'h-captcha-response';
 /** Hidden field carrying the form id — emitted only for `contactPhp` forms so the

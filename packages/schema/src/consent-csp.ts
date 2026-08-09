@@ -156,6 +156,68 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
   return { frame: [...frame], script: [...script], connect: [...connect], media: [...media] };
 }
 
+/** hCaptcha's own hosts. `*.hcaptcha.com` covers the widget's assets + challenge subdomains. */
+const HCAPTCHA_HOSTS = ['hcaptcha.com', '*.hcaptcha.com'] as const;
+
+/**
+ * CSP origins the PLATFORM ITSELF injects into a published page — the sibling of
+ * {@link authorContentCspOrigins}, which only ever sees what the AUTHOR wrote.
+ *
+ * This exists because the publisher was contradicting itself. It bakes an ABSOLUTE submission endpoint
+ * into every platform-routed form (`data-sw-endpoint="https://<platform>/f/<project>/<form>"`, absolute
+ * whenever a public base URL is configured) while emitting `connect-src 'self'` — and a published site is
+ * served from `<slug>.<sitesDomain>`, a DIFFERENT origin from the platform. So the browser blocked the
+ * submit before it left, with no request to log and no submission to store: forms "failed to send" while
+ * SMTP, CORS, the endpoint and every form definition were all correct. Measured on a real instance: 66
+ * forms across every published project, none of which could ever submit.
+ *
+ * The same page also loads `js.hcaptcha.com` from the form runtime when a form opts into a captcha, which
+ * the identical `script-src 'self' 'unsafe-inline'` blocked — so a captcha form could not even render.
+ *
+ * SCOPED, never blanket: an origin is added only when THIS page actually carries the thing that needs it,
+ * so a page with no form widens nothing. Nothing here is author-controlled — `formEndpointBase` comes from
+ * the instance's own configuration — so it cannot be used to smuggle an origin into the policy.
+ */
+export function platformInjectedCspOrigins(
+  html: string | null | undefined,
+  formEndpointBase: string | null | undefined,
+): Pick<CspOrigins, 'script' | 'frame' | 'connect' | 'style'> {
+  const script = new Set<string>();
+  const frame = new Set<string>();
+  const connect = new Set<string>();
+  const style = new Set<string>();
+  if (typeof html !== 'string' || html.length === 0) return { script: [], frame: [], connect: [], style: [] };
+
+  // The form's submission endpoint, when the publisher made it ABSOLUTE. A root-relative endpoint is
+  // same-origin and already covered by 'self'; only the cross-origin form needs widening.
+  // Keyed on the PLATFORM-ROUTED marker, not on the endpoint attribute: the endpoint must not stay a
+  // plain, harvestable URL in the markup, and the policy must not have to change when it moves.
+  const base = (formEndpointBase ?? '').trim();
+  if (base && /\sdata-sw-routed[\s=>]/i.test(html)) {
+    let host: string | null = null;
+    try {
+      const u = new URL(base);
+      host = u.protocol === 'https:' && HOST_TOKEN_RE.test(u.host) ? u.host : null;
+    } catch {
+      host = null;
+    }
+    if (host) connect.add(host);
+  }
+
+  // hCaptcha: the form runtime injects js.hcaptcha.com the moment an `.h-captcha` element is present (it
+  // is only rendered for a platform-routed form when the instance has a site key). The widget then frames
+  // and calls its own hosts, and styles itself — so all four directives, or it half-loads.
+  if (/class\s*=\s*["'][^"']*\bh-captcha\b/i.test(html)) {
+    for (const h of HCAPTCHA_HOSTS) {
+      script.add(h);
+      frame.add(h);
+      connect.add(h);
+      style.add(h);
+    }
+  }
+  return { script: [...script], frame: [...frame], connect: [...connect], style: [...style] };
+}
+
 /**
  * Neutralize cross-origin author `<iframe>`s so they don't load until consent: move `src` → a held
  * `data-sw-consent-src`, and read the INPUT category override (`data-sw-consent="x"`, else `defaultCategory`)

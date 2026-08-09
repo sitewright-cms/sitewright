@@ -38,7 +38,10 @@ test('dynamically-registered client completes the OAuth flow', async ({ page, pl
   await page.goto(`/oauth/authorize?${q.toString()}`);
   await expect(page.getByRole('heading', { name: /Authorize/ })).toBeVisible();
   await expect(page.getByText('Hosted Agent')).toBeVisible(); // registered client name shown
-  await page.getByLabel('Project').selectOption({ index: 0 });
+  // The project picker is a RADIOGROUP of cards, not a <select>: the project scopes every token the
+  // agent will get, so it reads as a choice rather than a dropdown default nobody looked at. The first
+  // option is pre-checked; check it explicitly so the test still states which project it authorises.
+  await page.locator('input[name="project"]').first().check();
 
   const [resp] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/oauth/authorize') && r.request().method() === 'POST'),

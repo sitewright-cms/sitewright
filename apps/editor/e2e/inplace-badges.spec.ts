@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { hoverForHud, signUp } from './helpers.js';
 
 // The content editor marks editable regions with a top-level OVERLAY badge HUD (in the preview iframe):
 // clickable, uniform badges that are never clipped by the host's overflow, show MULTIPLE directives per
@@ -25,9 +25,8 @@ test('content editor: overlay badge HUD — clickable, multi-directive, unclippe
   const preview = page.frameLocator('iframe[title="Preview"]');
 
   // 1) Hover a plain heading → exactly one badge, naming the bound key, clickable (pointer-events:auto).
-  await preview.locator('h1').hover();
   const headBadge = preview.locator('.sw-ov-badge', { hasText: 'headline' });
-  await expect(headBadge).toBeVisible();
+  await hoverForHud(page, preview.locator('h1'), headBadge);
   await expect(headBadge).toHaveCSS('pointer-events', 'auto');
 
   // 2) A link carrying BOTH data-sw-text and data-sw-href → two badges (Q4 multiple directives).

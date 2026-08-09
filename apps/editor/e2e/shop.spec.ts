@@ -77,13 +77,19 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
   await expect(dialog).toBeHidden();
   await expect(count).toBeHidden();
 
-  // Adding products does NOT pop the drawer (so several can be added in a row) — the badge bumps.
+  // The FIRST item opens the drawer ONCE — a first-time shopper needs to see where the cart lives and
+  // that the click worked. (The trigger is "the cart was empty", not a once-per-session flag, so
+  // emptying it re-arms the reveal.)
   await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
   await expect(count).toHaveText('1');
+  await expect(dialog).toBeVisible();
+  await cart.locator('[data-sw-part="close"]').click();
   await expect(dialog).toBeHidden();
-  // Add the second (distinct sku) → 2 lines, count 2.
+  // From the second item on the pulse + badge carry the feedback instead, so adding several things in
+  // a row is uninterrupted: count 2, drawer still closed.
   await page.locator('[data-sw-cart-add][data-sku="g1"]').click();
   await expect(count).toHaveText('2');
+  await expect(dialog).toBeHidden();
 
   // The cart persisted to a per-site localStorage key.
   const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.indexOf('sw-cart:') === 0));
@@ -149,9 +155,11 @@ test('published cart: the form channel submits the order to the /f submissions i
   const cart = page.locator('[data-sw-cart]');
   await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
   await expect(cart.locator('[data-sw-part="count"]')).toHaveText('1');
+  // The first item opens the drawer by itself, so there is no toggle to click here — and clicking it
+  // anyway would time out, because the open drawer covers it.
+  await expect(cart.locator('dialog')).toBeVisible();
   // Let the time-trap window pass (the /f endpoint silently drops submissions faster than its minimum).
   await page.waitForTimeout(1400);
-  await cart.locator('[data-sw-part="toggle"]').click();
 
   const form = cart.locator('form[data-sw-part="order"]');
   await expect(form).toBeVisible();
@@ -223,7 +231,7 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
   await expect(toggle.locator('.sw-cart-tab')).toHaveClass(/waves-effect/);
 
   await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
-  await toggle.click();
+  // Opened by the first-item reveal, not by the toggle (which the open drawer would cover anyway).
   await expect(dialog).toBeVisible();
 
   // The editable note is shown; a channel button also carries the ripple class.

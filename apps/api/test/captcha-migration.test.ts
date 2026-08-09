@@ -143,6 +143,30 @@ describe('instance hCaptcha → per-project captcha migration', () => {
     expect((await captchaRow(p))?.data).toMatchObject({ provider: 'recaptcha-v3' });
   });
 
+  it('★ still finds a project whose form does not VALIDATE — the flag is read on its own', async () => {
+    // The instance key was in use by any project holding a captcha-enabled form, valid or not. Deciding
+    // that question with a full FormSchema parse meant one malformed form — a recipient that stopped
+    // being a legal address, a field type retired years ago — silently cost that project a
+    // configuration it was actively using, and nothing would have said so.
+    const p = await makeProject('malformed');
+    await db.insert(content).values({
+      id: newId(),
+      projectId: p,
+      kind: 'form',
+      entityId: 'broken',
+      scope: '',
+      data: { id: 'broken', name: 'Broken', fields: [], recipient: 'not-an-email', hcaptcha: true },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await seedLegacyHcaptcha('hc-secret');
+
+    const res = await migrateInstanceHcaptchaToProjects(db, settings);
+
+    expect(res.moved).toEqual(['malformed']);
+    expect((await captchaRow(p))?.data).toMatchObject({ provider: 'hcaptcha', siteKey: SITE_KEY });
+  });
+
   it('does nothing at all on an instance that never configured one', async () => {
     const p = await makeProject('clean');
     await addForm(p, 'contact', { hcaptcha: true });

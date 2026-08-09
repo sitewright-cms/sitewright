@@ -11,6 +11,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **The captcha migration could silently skip a project that was using the instance key.** It decided
+  which projects had captcha-enabled forms by running each form through the full `FormSchema` — so a
+  form that failed validation for some *unrelated* reason (a recipient that stopped being a legal
+  address, a field type retired years ago) read as "no captcha", and that project quietly lost a
+  configuration it was actively using, with nothing to say so. The flag is now read on its own, via a
+  `formWantsCaptcha` helper that shares its legacy-name handling with the schema's own preprocess.
+
 - **A filtered `{{#each}}` scattered its cards across the editor preview.** The dataset loop marks each
   row for click-to-edit, and a row with no element of its own falls back to an injected
   `<div data-sw-entry>` wrapper. A row that renders *nothing* — every iteration a filter rejects, as in

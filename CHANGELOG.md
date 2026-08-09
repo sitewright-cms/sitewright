@@ -11,6 +11,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **CI went red on an exhaustive test that was too slow to finish.** The Tailwind reference's
+  "every declaration has a property and a value" sweep called `expect()` once per declaration —
+  ~100k matcher invocations across 31,524 declarations. The bookkeeping, not the checking, took 510ms
+  on a 20-core box and blew vitest's 5s default on CI's 2-core runner with every other package's suite
+  running beside it. Scanning in plain JS and asserting once takes **7ms** for the same coverage, and
+  reports every offender instead of stopping at the first.
+
 - **The responsive device switch snapped in one direction and slid off-centre in the other.** "Large
   desktop" was the only target rendered as a differently-shaped box — `w-full`, in flow — while every
   other device was an absolutely-positioned, `translateX(-50%)`-centred one. Neither `position` nor

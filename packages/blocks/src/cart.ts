@@ -378,6 +378,16 @@ export const CART_JS = `(function(){
     var key='sw-cart:'+siteKey(mount);
     var items=load(key);
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
+    // …and for the /f INTERACTION gate, which drops a submission carrying no trusted input at all. The
+    // cart builds its own payload rather than reusing the form runtime's, so it has to collect its own
+    // evidence — miss this and every order silently vanishes, exactly like a bot. Counts trusted events
+    // only (isTrusted is false for anything a script dispatches); passive, so it never delays typing.
+    var ixP=0,ixK=0,ixF={};
+    function ixNote(e,kind){
+      if(!e||e.isTrusted===false)return;
+      if(kind==='p')ixP++;else ixK++;
+      var t=e.target;if(t&&t.name)ixF[t.name]=1;
+    }
     var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
     var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label',cfg.toggleLabel);
@@ -481,6 +491,10 @@ export const CART_JS = `(function(){
     // (honeypot _hpt empty, _elapsed time-trap). No new sink: values go through value/JSON, never HTML.
     function buildOrderForm(ch){
       var form=part('form','order');
+      form.addEventListener('pointerdown',function(e){ixNote(e,'p');},{passive:true});
+      form.addEventListener('touchstart',function(e){ixNote(e,'p');},{passive:true});
+      form.addEventListener('keydown',function(e){ixNote(e,'k');},{passive:true});
+      form.addEventListener('input',function(e){ixNote(e,'k');},{passive:true}); // autofill + paste
       function field(name,label,type,required){
         var wrap=part('label','order-field');wrap.appendChild(mk('span',null,label));
         var inp=type==='textarea'?document.createElement('textarea'):document.createElement('input');
@@ -498,7 +512,8 @@ export const CART_JS = `(function(){
         e.preventDefault();
         if(!items.length){return;}
         // Native validation already enforced the required name + email (+ email format) before submit.
-        var payload={_hpt:'',_elapsed:String(Date.now()-started),name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
+        var ixN=0;for(var ixk in ixF){if(Object.prototype.hasOwnProperty.call(ixF,ixk))ixN++;}
+        var payload={_hpt:'',_elapsed:String(Date.now()-started),_ix:ixP+'.'+ixK+'.'+ixN,name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
         submit.disabled=true;status.textContent='Sending\\u2026';
         // Assembled at submit time from the encoded blob — the URL is never in the markup.
         fetch(window.__swf(ch.formId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){

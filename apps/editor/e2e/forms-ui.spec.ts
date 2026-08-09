@@ -31,7 +31,7 @@ test('author a form in the editor and see a submission in its submissions list',
   const projects = await page.context().request.get('/projects');
   const project = (await projects.json()).projects.find((p: { slug: string }) => p.slug === `forms-ui-${stamp}`);
   const submit = await page.context().request.post(`/f/${project.id}/contact`, {
-    data: { email: 'visitor@example.com', _elapsed: '5000' },
+    data: { email: 'visitor@example.com', _elapsed: '5000', _ix: '3.12.2' },
   });
   expect(submit.status()).toBe(200);
 

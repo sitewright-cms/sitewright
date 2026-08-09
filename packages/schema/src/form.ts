@@ -234,6 +234,20 @@ export function validateFormSubmission(fields: FormField[], values: Record<strin
 /** The honeypot + time-trap field names the renderer emits and the endpoint strips. */
 export const HONEYPOT_FIELD = '_hpt';
 export const TIMETRAP_FIELD = '_elapsed';
+/**
+ * Interaction evidence: how many TRUSTED input events the visitor produced while filling the form, and
+ * how many distinct fields they touched. `<pointer>.<key>.<field-count>` — three small integers, no
+ * timings, nothing identifying, nothing that leaves the page except these counts.
+ *
+ * It exists to catch what the time-trap cannot: a script that POSTs straight to the endpoint with a
+ * plausible `_elapsed`, having never rendered the form. Such a client sends no interaction at all.
+ *
+ * Deliberately COARSE. Requiring a particular mix would punish real people — a keyboard-only visitor
+ * produces no pointer events, a screen-reader user produces an unusual pattern, and browser autofill
+ * fills several fields with no keystrokes at all. So the server asks only whether SOME trusted input
+ * happened, never what shape it had.
+ */
+export const INTERACTION_FIELD = '_ix';
 /** The hCaptcha response token field (injected by the hCaptcha widget); verified + not stored. */
 export const HCAPTCHA_RESPONSE_FIELD = 'h-captcha-response';
 /** Hidden field carrying the form id — emitted only for `contactPhp` forms so the

@@ -39,7 +39,7 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   // A submission with NO captcha token is rejected (fail-closed) and not stored.
   // The accept path (a valid token) needs a real hCaptcha solve, so it's covered by
   // the integration test with an injected verifier rather than here.
-  const noToken = await admin.post(`/f/${projectId}/contact`, { data: { email: 'x@y.co', _elapsed: '5000' } });
+  const noToken = await admin.post(`/f/${projectId}/contact`, { data: { email: 'x@y.co', _elapsed: '5000', _ix: '3.12.2' } });
   expect(noToken.status()).toBe(400);
   expect((await (await admin.get(`${base}/submissions`)).json()).total).toBe(0);
 

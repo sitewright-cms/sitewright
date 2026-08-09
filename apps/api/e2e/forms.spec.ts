@@ -73,7 +73,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
 
   // LOCAL HOSTING TARGET 1 — the `/sites/<slug>/` PATH FORM (same-origin as the API). Assert CORS + storage.
   const submit = await api.post(`/f/${projectId}/contact`, {
-    data: { email: 'lead@x.co', message: 'Hello from E2E', _elapsed: '5000' },
+    data: { email: 'lead@x.co', message: 'Hello from E2E', _elapsed: '5000', _ix: '3.12.2' },
   });
   expect(submit.status()).toBe(200);
   expect(await submit.json()).toEqual({ ok: true });
@@ -98,7 +98,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   expect(subPre.headers()['access-control-allow-origin']).toBe('*');
   const subSubmit = await api.post(`/f/${projectId}/contact`, {
     headers: { host: subHost, origin: `http://${subHost}` },
-    data: { email: 'sub@x.co', message: 'Hello from the subdomain', _elapsed: '5000' },
+    data: { email: 'sub@x.co', message: 'Hello from the subdomain', _elapsed: '5000', _ix: '3.12.2' },
   });
   expect(subSubmit.status()).toBe(200);
   expect(await subSubmit.json()).toEqual({ ok: true });
@@ -114,7 +114,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
 
   // Honeypot-filled submission is dropped (still 200, not stored) — count stays at the 2 real ones.
   const trap = await api.post(`/f/${projectId}/contact`, {
-    data: { email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000' },
+    data: { email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000', _ix: '3.12.2' },
   });
   expect(trap.status()).toBe(200);
   expect((await (await api.get(`${base}/submissions`)).json()).total).toBe(2);

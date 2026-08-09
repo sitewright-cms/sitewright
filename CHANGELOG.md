@@ -9,6 +9,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Interaction gating on every platform-routed form.** The time-trap cannot catch a script that POSTs
+  straight to the endpoint with a plausible `_elapsed`, having never rendered the form — such a client
+  produces no trusted input events at all. The form runtime (and the cart, which builds its own
+  payload) now report how many trusted pointer/keyboard/input events the visitor produced and how many
+  distinct fields they touched, and a submission carrying none is filtered like any other trap:
+  silently, with the same `{ok:true}`, and counted. Deliberately the weakest possible test — *some*
+  trusted input, of any kind. A keyboard-only visitor produces no pointer events, a screen-reader user
+  an unusual shape, and browser autofill fills several fields with no keystrokes; any sharper rule
+  starts costing real leads, and a lost lead is far more expensive than a spam message that gets
+  through. A malformed value is treated as absent rather than rejected, because it is evidence, not a
+  credential. Nothing identifying is collected or stored — three integers, never persisted with the
+  lead.
+
 ## [0.15.0] — 2026-08-09
 
 ### Added

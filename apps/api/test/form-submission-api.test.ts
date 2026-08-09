@@ -138,6 +138,33 @@ describe('public form submission endpoint', () => {
     expect(mailer.sent).toHaveLength(0);
   });
 
+  it('COUNTS what it filtered — the trap is otherwise invisible to the operator', async () => {
+    // The visitor's response must stay indistinguishable from a real submission (a bot learns
+    // nothing), which is exactly why the drop needs a trace on our side: without one, "we blocked 40
+    // spam attempts" and "we lost 40 real enquiries" look identical, and a client reporting "I filled
+    // in your form and never heard back" cannot be checked at all.
+    const post = (payload: Record<string, string>) =>
+      app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload });
+    await post({ email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000' });
+    await post({ email: 'bot2@x.co', _hpt: 'also a bot', _elapsed: '5000' });
+    await post({ email: 'fast@x.co', _elapsed: '100' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/submissions/filtered`,
+      cookies: { sw_session: t },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { total: number; items: Array<{ formId: string; reason: string; count: number }> };
+    expect(body.total).toBe(3);
+    expect(body.items.find((i) => i.reason === 'honeypot')).toMatchObject({ formId: 'contact', count: 2 });
+    expect(body.items.find((i) => i.reason === 'too-fast')).toMatchObject({ formId: 'contact', count: 1 });
+    // …and none of them became a stored lead or an email.
+    expect(mailer.sent).toHaveLength(0);
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    expect((list.json() as { total: number }).total).toBe(0);
+  });
+
   it('rejects a submission missing a required field (server backstop, not stored/emailed)', async () => {
     // Passes the bot traps (_elapsed) but omits the required `email` — the client would have blocked
     // this, but a direct POST bypasses it, so the server must reject with the offending field names.

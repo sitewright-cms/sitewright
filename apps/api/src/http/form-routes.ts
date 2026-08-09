@@ -266,6 +266,18 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // didn't come through the form (a headless bot), so treat it as instant.
       const elapsed = parsed.elapsed ?? 0;
       if (parsed.honeypotFilled || elapsed < MIN_SUBMIT_ELAPSED_MS) {
+        // The VISITOR still learns nothing — same `{ok:true}` a real submission gets, so a bot cannot
+        // tell it was filtered. The OPERATOR now does. Every other branch of this route logs; these two
+        // returned 200 and vanished, which made "we blocked 40 spam attempts" and "we lost 40 real
+        // enquiries" indistinguishable, and a client reporting "I filled in your form and never heard
+        // back" impossible to check.
+        const reason = parsed.honeypotFilled ? 'honeypot' : 'too-fast';
+        app.log.info({ projectId, formId, reason, elapsed }, 'submission filtered by a bot trap');
+        // Best effort: a counter failure must not change what the visitor sees. A lost count is a
+        // reporting gap; a failed request would be a lost lead.
+        await submissions.recordFiltered(projectId, formId, reason).catch((err: unknown) => {
+          app.log.warn({ projectId, formId, reason, err }, 'could not count a filtered submission');
+        });
         return reply.send({ ok: true });
       }
 
@@ -450,6 +462,20 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // project-wide count there would announce another form's failure over this one's rows.
       const q = req.query as { formId?: string };
       return reply.send(await submissions.undeliveredSummary(project.id, q.formId));
+    },
+  );
+
+  // What the bot traps have filtered, per form and reason. The inbox can only ever show what got
+  // THROUGH; without this the traps are invisible, and an operator cannot tell a quiet form (nobody is
+  // writing) from a filtered one (everybody is, and something is eating it).
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/submissions/filtered',
+    { config: rl(60) },
+    async (req, reply) => {
+      const { project } = await resolveProject(req, 'content:read');
+      const q = req.query as { formId?: string };
+      const items = await submissions.filteredSummary(project.id, q.formId);
+      return reply.send({ items, total: items.reduce((n, i) => n + i.count, 0) });
     },
   );
 

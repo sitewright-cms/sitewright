@@ -1282,6 +1282,18 @@ describe('undelivered-notification helpers', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/admin/submissions/undelivered');
   });
 
+  it('reads what the bot traps filtered, project-wide and per form', async () => {
+    // The inbox only ever shows what got THROUGH, so this is the one place a filtered submission is
+    // visible at all — and the per-form scoping matters because the Forms tab renders per form.
+    fetchMock.mockResolvedValue(jsonResponse(200, { total: 3, items: [{ formId: 'contact', reason: 'honeypot', count: 3, lastAt: 1 }] }));
+    expect((await api.filteredSubmissions('p1')).total).toBe(3);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/submissions/filtered');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { total: 0, items: [] }));
+    await api.filteredSubmissions('p1', 'contact form');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/submissions/filtered?formId=contact%20form');
+  });
+
   it('POSTs a resend for one submission', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { queued: true }));
     expect(await api.resendSubmission('p1', 's1')).toEqual({ queued: true });

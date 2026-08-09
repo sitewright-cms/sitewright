@@ -169,6 +169,13 @@
       "when": 1785715920049,
       "tag": "0023_common_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786287144686,
+      "tag": "0024_harsh_shaman",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ const putForm = vi.fn();
 const deleteForm = vi.fn();
 const formModes = vi.fn();
 const undeliveredSubmissions = vi.fn();
+const filteredSubmissions = vi.fn();
 const getProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
@@ -20,6 +21,7 @@ vi.mock('../src/api', () => ({
     // <ProjectSmtp> asks who you are, to decide whether to offer a test-message recipient field.
     me: () => Promise.resolve({ platformRole: null }),
     undeliveredSubmissions: () => undeliveredSubmissions(),
+    filteredSubmissions: () => filteredSubmissions(),
   },
 }));
 
@@ -35,6 +37,8 @@ beforeEach(() => {
   getProjectSmtp.mockReset();
   undeliveredSubmissions.mockReset();
   undeliveredSubmissions.mockResolvedValue({ count: 0, lastError: null });
+  filteredSubmissions.mockReset();
+  filteredSubmissions.mockResolvedValue({ total: 0, items: [] });
   getProjectSmtp.mockResolvedValue({ smtp: null });
   listForms.mockResolvedValue({ items: [] });
   putForm.mockResolvedValue({ item: {} });
@@ -200,3 +204,41 @@ describe('FormsManager undelivered warning', () => {
   });
 });
 
+
+
+describe('filtered counter', () => {
+  it('shows what the bot traps caught, with the reasons in its title', async () => {
+    // The inbox can only ever show what got THROUGH. Without this an operator cannot tell a QUIET form
+    // (nobody is writing) from a FILTERED one (everybody is, and a trap is eating it) — and cannot
+    // answer a client who says they submitted and heard nothing.
+    listForms.mockResolvedValue({ items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }] });
+    filteredSubmissions.mockResolvedValue({
+      total: 5,
+      items: [
+        { formId: 'contact', reason: 'honeypot', count: 4, lastAt: Date.now() },
+        { formId: 'contact', reason: 'too-fast', count: 1, lastAt: Date.now() },
+      ],
+    });
+    render(<FormsManager project={project} />);
+    const badge = await screen.findByText('5 filtered');
+    expect(badge.getAttribute('title')).toContain('4 honeypot');
+    expect(badge.getAttribute('title')).toContain('1 too-fast');
+    // Says plainly that these were never leads, so nobody hunts the inbox for them.
+    expect(badge.getAttribute('title')).toContain('never became submissions');
+  });
+
+  it('shows NOTHING when nothing was filtered — no zero-badge noise on a healthy form', async () => {
+    listForms.mockResolvedValue({ items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }] });
+    render(<FormsManager project={project} />);
+    await screen.findByText('contact');
+    expect(screen.queryByText(/filtered/)).toBeNull();
+  });
+
+  it('still renders the forms when the counter endpoint fails — reporting is not load-bearing', async () => {
+    listForms.mockResolvedValue({ items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }] });
+    filteredSubmissions.mockRejectedValue(new Error('boom'));
+    render(<FormsManager project={project} />);
+    await screen.findByText('contact');
+    expect(screen.queryByText(/filtered/)).toBeNull();
+  });
+});

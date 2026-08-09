@@ -13,6 +13,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Filtered submissions are counted, so a quiet form can be told from a filtered one.** The honeypot
+  and time-trap answer `{ok:true}` and keep nothing — deliberately, so a bot learns nothing from the
+  response — but they told the *operator* nothing either: every other branch of the submit route logs,
+  while these two returned 200 and vanished. "We blocked 40 spam attempts" and "we lost 40 real
+  enquiries" looked identical, and a client reporting "I filled in your form and never heard back"
+  could not be checked at all. Each drop now writes a structured log line and increments a per-form,
+  per-reason counter, surfaced as a "N filtered" badge on the Forms tab with the breakdown in its
+  tooltip. A COUNT, not the payload: storing what was filtered would move the spam into the database,
+  past the per-form storage cap that exists to stop exactly that. The visitor's response is unchanged
+  and still indistinguishable from a real submission.
+
 
 
 

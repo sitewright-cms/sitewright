@@ -61,17 +61,24 @@ export function FormsManager({ project }: { project: Project }) {
   const [loading, setLoading] = useState(true);
   // Which form's submissions are expanded inline (the folded-in inbox).
   const [submissionsFor, setSubmissionsFor] = useState<string | null>(null);
+  // What the bot traps filtered, per form. The inbox shows only what got THROUGH, so without this an
+  // operator cannot tell a QUIET form (nobody is writing) from a FILTERED one (everybody is, and
+  // something is eating it) — and cannot answer a client who says they submitted and heard nothing.
+  const [filtered, setFiltered] = useState<Array<{ formId: string; reason: string; count: number; lastAt: number }>>([]);
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const [res, fm, undelivered] = await Promise.all([
+      const [res, fm, undelivered, filtered] = await Promise.all([
         api.listForms(project.id),
         api.formModes(project.id),
         api.undeliveredSubmissions(project.id).catch(() => ({ count: 0, lastError: null })),
+        // Never fatal to the tab: a counter is reporting, and losing it must not hide the forms.
+        api.filteredSubmissions(project.id).catch(() => ({ total: 0, items: [] })),
       ]);
 
       if (!isActive()) return;
       setOwed(undelivered);
+      setFiltered(filtered.items);
       setForms(res.items);
       setEnabledModes(fm.formModes);
     } catch (err) {
@@ -474,6 +481,20 @@ export function FormsManager({ project }: { project: Project }) {
                     hCaptcha
                   </span>
                 )}
+                {(() => {
+                  const rows = filtered.filter((r) => r.formId === f.id);
+                  const total = rows.reduce((n, r) => n + r.count, 0);
+                  if (total === 0) return null;
+                  const breakdown = rows.map((r) => `${r.count} ${r.reason}`).join(', ');
+                  return (
+                    <span
+                      title={`Filtered before storage: ${breakdown}. These never became submissions and nobody was emailed.`}
+                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 transition dark:bg-amber-400/15 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white"
+                    >
+                      {total} filtered
+                    </span>
+                  );
+                })()}
                 <button
                   aria-label={`${showing ? 'Hide' : 'Show'} submissions for ${f.id}`}
                   aria-expanded={showing}

@@ -9,6 +9,38 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **★ Captcha configuration moved from the instance to the PROJECT, and now covers reCAPTCHA v2 and
+  v3 alongside hCaptcha.** A captcha site key is bound to a domain allowlist in the provider's
+  dashboard, and a domain belongs to a *site*. One instance-wide key meant every client domain had to
+  be added to the agency's single key, every client shared one account's quota, the agency became the
+  data controller for all of their captcha traffic, and "export the site and hand it to the client"
+  left them holding a key they do not own. Each project now sets its own provider and credentials
+  (encrypted at rest, alongside per-project SMTP); a form still just opts in.
+  - **The project picks the provider, the form opts in.** reCAPTCHA v2 and v3 issue *different,
+    non-interchangeable* keys, so letting each form choose a provider would mean storing several
+    credential sets per site to serve a case that barely occurs.
+  - **reCAPTCHA v3 is judged on its SCORE, not on `success`.** v3 answers `success: true` for any
+    well-formed token — treating that as a pass is the most common way v3 is deployed wrong, and it
+    would accept every bot on the internet while looking like it worked. The pass mark is per project.
+  - **The editor says plainly that Google's options need consent**, where the choice is made:
+    reCAPTCHA sends visitor data to Google, which in the EU generally requires prior consent, so it
+    must be gated by the Consent Manager — and a visitor who declines cannot submit at all.
+    Proof of work involves no third party and needs none.
+  - **A "test credentials" action** asks the provider whether the stored *secret* is one it issued.
+    Both vendors distinguish "your secret is wrong" from "that token is wrong", so an author finds out
+    before a visitor does — the failure that reached production as `data-sitekey="123"`.
+  - **The instance-wide hCaptcha settings are gone.** On first boot after upgrading, an existing
+    instance config is handed to exactly the projects that were *using* it — every project holding a
+    captcha-enabled form — which preserves current behaviour precisely, without giving any other
+    project credentials it never had. The migration is idempotent, never overwrites a config an author
+    has already set, carries the encrypted secret across intact, and clears the legacy value only once
+    it has been handed on.
+  - No stored form needed migrating: the renamed `captcha` flag reads a legacy `hcaptcha: true`
+    through the schema itself.
+
+
 ### Fixed
 
 - **`pnpm verify` (and therefore CI) could report "all gates passed" on a failing gate.** The runner

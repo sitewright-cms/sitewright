@@ -53,7 +53,18 @@ describe('FormSchema', () => {
     expect(form.successMessage).toContain('Thank you');
     expect(form.errorMessage).toContain('Sorry');
     expect(form.mode).toBe('globalSmtp');
-    expect(form.hcaptcha).toBe(false);
+    expect(form.captcha).toBe(false);
+  });
+
+  it('★ reads a pre-rename `hcaptcha: true` as `captcha`, so no stored form needed migrating', () => {
+    // The flag was renamed when captcha stopped meaning "hCaptcha". Every form in every project
+    // would otherwise have had to be rewritten to flip one boolean — a forward-only data migration
+    // that cannot be tested against real databases, in exchange for nothing.
+    const legacy = FormSchema.parse({ ...base, hcaptcha: true });
+    expect(legacy.captcha).toBe(true);
+    // An explicit value always wins over the legacy one.
+    expect(FormSchema.parse({ ...base, hcaptcha: true, captcha: false }).captcha).toBe(false);
+    expect(FormSchema.parse({ ...base, hcaptcha: false, captcha: true }).captcha).toBe(true);
   });
 
   it('requires at least one field and a valid recipient email', () => {

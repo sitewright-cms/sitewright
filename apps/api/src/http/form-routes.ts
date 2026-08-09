@@ -7,7 +7,7 @@ import {
   INTERACTION_FIELD,
   POW_FIELD,
   TIMETRAP_FIELD,
-  HCAPTCHA_RESPONSE_FIELD,
+  CAPTCHA_RESPONSE_FIELDS,
   MIN_SUBMIT_ELAPSED_MS,
   MAX_SUBMISSIONS_PER_FORM,
   validateFormSubmission,
@@ -15,13 +15,14 @@ import {
   type Form,
   type FormModes,
 } from '@sitewright/schema';
+import type { CaptchaProvider } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
 import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { nextAttemptAt } from '../mail/delivery-policy.js';
 import { createPowChallenge, powScope, verifyPowSolution } from './form-pow.js';
-import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
+import type { CaptchaVerifier } from '../mail/captcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
 
@@ -36,6 +37,9 @@ const MAX_BODY_BYTES = 96 * 1024;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** True for either vendor's response-token field — both are stripped from the stored submission. */
+const isCaptchaResponseField = (key: string): boolean => (CAPTCHA_RESPONSE_FIELDS as readonly string[]).includes(key);
+
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 export interface FormRoutesDeps {
@@ -44,9 +48,14 @@ export interface FormRoutesDeps {
   mailer: SubmissionMailer;
   /** Per-project SMTP mailer for `userSmtp` forms (Mode B). */
   projectMailer: ProjectMailer;
-  hcaptcha: HcaptchaVerifier;
-  /** Returns the decrypted instance hCaptcha secret, or null when unconfigured. */
-  getHcaptchaSecret: () => Promise<string | null>;
+  captcha: CaptchaVerifier;
+  /**
+   * The PROJECT's captcha config with its secret already decrypted, or null when that project has
+   * configured none. Per project, not per instance: a site key is bound to a domain allowlist, and a
+   * domain belongs to a site. Throws only when a stored secret cannot be decrypted — the caller
+   * treats that as "cannot verify" and fails closed, exactly as it did for the instance secret.
+   */
+  getProjectCaptcha: (projectId: string) => Promise<{ provider: CaptchaProvider; secret: string | null; minScore?: number } | null>;
   /** Signing key for proof-of-work challenges — the instance cookie secret, as for preview tokens. */
   getPowSecret: () => string;
   /** Returns the instance-admin-enabled form mail modes (so authors pick among them). */
@@ -134,7 +143,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
     if (key.length > MAX_KEY_LEN) return { reason: `a field name is longer than ${MAX_KEY_LEN} characters` };
     // The control fields (honeypot / time-trap / captcha) are ALWAYS single scalars — an array for any of
     // them is malformed (and must not be silently normalized into a value that could weaken the check).
-    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === INTERACTION_FIELD || key === POW_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
+    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === INTERACTION_FIELD || key === POW_FIELD || isCaptchaResponseField(key)) && Array.isArray(rawValue)) {
       return { reason: `"${key}" must be a single value` };
     }
     // A checkbox GROUP submits several checked values under one name → a string ARRAY; join them into a
@@ -157,7 +166,10 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
       powSolution = value.length <= 4096 ? value : undefined;
       continue;
     }
-    if (key === HCAPTCHA_RESPONSE_FIELD) {
+    // Either vendor's native field: hCaptcha's widget injects `h-captcha-response`, reCAPTCHA's
+    // injects `g-recaptcha-response`, and v3 (which has no widget) is written into the latter by the
+    // runtime. Accepting whichever arrived keeps the collector generic.
+    if (isCaptchaResponseField(key)) {
       captchaToken = value.length <= 8192 ? value : undefined;
       continue;
     }
@@ -212,7 +224,7 @@ function setSubmissionCors(reply: FastifyReply): void {
  * via Mode A (global SMTP); spam is filtered by honeypot + time-trap + rate limit.
  */
 export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): void {
-  const { db, submissions, mailer, projectMailer, hcaptcha, getHcaptchaSecret, getPowSecret, resolveProject, isWriter, rl } = deps;
+  const { db, submissions, mailer, projectMailer, captcha, getProjectCaptcha, getPowSecret, resolveProject, isWriter, rl } = deps;
 
   // CORS preflight for cross-origin submissions from exported sites (rate-limited
   // like the POST so it can't be used to burn a shared global budget).
@@ -430,21 +442,27 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // secret is not configured we cannot verify, so reject rather than silently
       // accept an UNPROTECTED submission (the admin explicitly opted into a captcha).
       // A failed/absent token is rejected so the visitor can retry.
-      if (form.hcaptcha) {
-        let secret: string | null;
+      if (form.captcha) {
+        let config: { provider: CaptchaProvider; secret: string | null; minScore?: number } | null;
         try {
-          secret = await getHcaptchaSecret();
+          config = await getProjectCaptcha(projectId);
         } catch {
-          // Decryption failed (e.g. SW_ENCRYPTION_KEY removed/rotated after the secret
-          // was stored) — cannot verify, so reject rather than 500 or wave through.
-          app.log.error({ projectId, formId }, 'hCaptcha secret decryption failed; rejecting submission');
+          // Decryption failed (e.g. SW_ENCRYPTION_KEY removed/rotated after the secret was stored) —
+          // cannot verify, so reject rather than 500 or wave through.
+          app.log.error({ projectId, formId }, 'captcha secret decryption failed; rejecting submission');
           return reply.code(503).send({ error: 'captcha verification is unavailable' });
         }
-        if (!secret) {
-          app.log.warn({ projectId, formId }, 'form requires hCaptcha but no instance secret is configured');
+        if (!config?.secret) {
+          app.log.warn({ projectId, formId }, 'form requires a captcha but the project has no usable captcha config');
           return reply.code(503).send({ error: 'captcha verification is unavailable' });
         }
-        const verified = await hcaptcha.verify(secret, parsed.captchaToken, req.ip);
+        const verified = await captcha.verify({
+          provider: config.provider,
+          secret: config.secret,
+          token: parsed.captchaToken,
+          remoteip: req.ip,
+          ...(config.minScore !== undefined ? { minScore: config.minScore } : {}),
+        });
         if (!verified) return reply.code(400).send({ error: 'captcha verification failed' });
       }
 

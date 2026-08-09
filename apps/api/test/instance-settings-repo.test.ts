@@ -19,16 +19,14 @@ describe('InstanceSettingsRepository', () => {
     const pub = await repo.getPublic();
     expect(pub.formModes).toEqual(DEFAULT_FORM_MODES);
     expect(pub.smtp).toBeUndefined();
-    expect(pub.hcaptcha).toBeUndefined();
   });
 
   it('persists non-secret fields and a partial form-modes update', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
-    await repo.put({ formModes: { globalSmtp: true }, hcaptcha: { siteKey: 'site-1' } });
+    await repo.put({ formModes: { globalSmtp: true } });
     const pub = await repo.getPublic();
     expect(pub.formModes.globalSmtp).toBe(true);
     expect(pub.formModes.userSmtp).toBe(false); // untouched fields stay false
-    expect(pub.hcaptcha).toEqual({ siteKey: 'site-1', hasSecret: false });
   });
 
   it('revision policy: defaults 0/90, round-trips a set value (+ masked view), null reverts', async () => {
@@ -149,31 +147,22 @@ describe('InstanceSettingsRepository', () => {
 
   it('clears a section on null and leaves it unchanged on undefined', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
-    await repo.put({ smtp: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co', password: 'pw' }, hcaptcha: { siteKey: 's', secret: 'x' } });
-    // A formModes-only update must not disturb smtp/hcaptcha (undefined = unchanged).
+    await repo.put({ smtp: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co', password: 'pw' } });
+    // A formModes-only update must not disturb smtp (undefined = unchanged).
     await repo.put({ formModes: { thirdParty: true } });
     let pub = await repo.getPublic();
     expect(pub.smtp?.host).toBe('h');
-    expect(pub.hcaptcha?.hasSecret).toBe(true);
     expect(pub.formModes.thirdParty).toBe(true);
     // Explicit null clears smtp.
     await repo.put({ smtp: null });
     pub = await repo.getPublic();
     expect(pub.smtp).toBeUndefined();
-    expect(pub.hcaptcha?.siteKey).toBe('s'); // hcaptcha untouched
-  });
-
-  it('round-trips and decrypts the hCaptcha secret on the server side', async () => {
-    const repo = new InstanceSettingsRepository(db, KEY);
-    await repo.put({ hcaptcha: { siteKey: 'site-1', secret: 'hc-secret' } });
-    expect(await repo.getHcaptchaSecret()).toBe('hc-secret');
   });
 
   it('refuses to store a secret when no encryption key is configured', async () => {
     const repo = new InstanceSettingsRepository(db); // no key
     // Non-secret fields are fine without a key.
     await expect(repo.put({ formModes: { globalSmtp: true } })).resolves.toBeDefined();
-    await expect(repo.put({ hcaptcha: { siteKey: 's' } })).resolves.toBeDefined();
     // A plaintext secret has nowhere safe to go → fail loudly.
     await expect(
       repo.put({ smtp: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co', password: 'pw' } }),

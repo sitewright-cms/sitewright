@@ -110,8 +110,8 @@ describe('FormsManager', () => {
     expect((putForm.mock.calls[0]![0] as Form).mode).toBe('contactPhp');
   });
 
-  it('offers contact.php (SMTP) when enabled, and greys hCaptcha out for it', async () => {
-    // hCaptcha is verified server-side on the platform endpoint, which the php modes never touch —
+  it('offers contact.php (SMTP) when enabled, and greys the captcha out for it', async () => {
+    // A captcha is verified server-side on the platform endpoint, which the php modes never touch —
     // the embed pass drops the widget for them. An enabled toggle would therefore be a control that
     // silently does nothing, so it must be disabled for BOTH php flavours, not just `contactPhp`.
     formModes.mockResolvedValue({
@@ -129,10 +129,10 @@ describe('FormsManager', () => {
     const modeSelect = (await screen.findByLabelText('Delivery mode')) as HTMLSelectElement;
     expect(Array.from(modeSelect.options).map((o) => o.value)).toEqual(['globalSmtp', 'contactPhpSmtp']);
 
-    const captcha = screen.getByLabelText('Require hCaptcha') as HTMLInputElement;
+    const captcha = screen.getByLabelText('Require a captcha') as HTMLInputElement;
     expect(captcha.disabled).toBe(false); // platform-routed default
     fireEvent.change(modeSelect, { target: { value: 'contactPhpSmtp' } });
-    expect((screen.getByLabelText('Require hCaptcha') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Require a captcha') as HTMLInputElement).disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Recipient email'), { target: { value: 'a@b.co' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save form' }));

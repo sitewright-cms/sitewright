@@ -19,7 +19,6 @@ import {
   type InstanceSettingsStored,
   type InstanceSettingsPublic,
   type SmtpStored,
-  type HcaptchaStored,
   type StockKeysStored,
   type AiStored,
   type AiProviderKind,
@@ -221,21 +220,10 @@ export class InstanceSettingsRepository {
       next.smtp = smtp;
     }
 
-    if (input.hcaptcha === null) {
-      // cleared
-    } else if (input.hcaptcha === undefined) {
-      if (current.hcaptcha) next.hcaptcha = current.hcaptcha;
-    } else {
-      const secret =
-        input.hcaptcha.secret !== undefined
-          ? this.encrypt(input.hcaptcha.secret)
-          : current.hcaptcha?.secret;
-      const hcaptcha: HcaptchaStored = {
-        siteKey: input.hcaptcha.siteKey,
-        ...(secret !== undefined ? { secret } : {}),
-      };
-      next.hcaptcha = hcaptcha;
-    }
+    // hCaptcha is no longer an instance setting — captcha config lives with the PROJECT. A legacy
+    // value is CARRIED FORWARD untouched so an unrelated settings save cannot destroy the one thing
+    // the migration needs to read; the migration is what clears it, once it has been handed on.
+    if (current.hcaptcha) next.hcaptcha = current.hcaptcha;
 
     if (input.stock === null) {
       // cleared
@@ -396,10 +384,39 @@ export class InstanceSettingsRepository {
     return stored.smtp?.password ? this.decrypt(stored.smtp.password) : null;
   }
 
-  /** Decrypted hCaptcha secret for server-side verification, or null if unset. */
-  async getHcaptchaSecret(): Promise<string | null> {
+  /**
+   * LEGACY instance-wide hCaptcha, for the one-time migration ONLY — nothing in the request path
+   * calls this any more. Returns the site key alongside the decrypted secret because the migration
+   * has to hand BOTH to the projects that were using them.
+   *
+   * @deprecated migration source; see clearLegacyHcaptcha
+   */
+  async getLegacyHcaptcha(): Promise<{ siteKey: string; secret: string | null } | null> {
     const stored = await this.getStored();
-    return stored.hcaptcha?.secret ? this.decrypt(stored.hcaptcha.secret) : null;
+    if (!stored.hcaptcha) return null;
+    // A secret that will not decrypt must not abort the migration: the SITE KEY is still worth
+    // carrying over, and an author re-entering one secret beats losing the whole configuration.
+    let secret: string | null = null;
+    try {
+      secret = stored.hcaptcha.secret ? this.decrypt(stored.hcaptcha.secret) : null;
+    } catch {
+      secret = null;
+    }
+    return { siteKey: stored.hcaptcha.siteKey, secret };
+  }
+
+  /** Drops the legacy instance hCaptcha once the migration has handed it to the projects. */
+  async clearLegacyHcaptcha(): Promise<void> {
+    const stored = await this.getStored();
+    if (!stored.hcaptcha) return;
+    const rest = { ...stored };
+    delete rest.hcaptcha;
+    const validated = InstanceSettingsStoredSchema.parse(rest);
+    const now = new Date();
+    await this.db
+      .insert(instanceSettings)
+      .values({ id: INSTANCE_SETTINGS_ID, data: validated, updatedAt: now })
+      .onConflictDoUpdate({ target: instanceSettings.id, set: { data: validated, updatedAt: now } });
   }
 
   /** Decrypted stock-provider API key for server-side search/import, or null if unset. */

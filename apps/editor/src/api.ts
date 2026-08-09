@@ -1,4 +1,6 @@
 import type {
+  CaptchaPublic,
+  CaptchaInput,
   CorporateIdentity,
   Dataset,
   DeployTargetView,
@@ -53,6 +55,8 @@ export interface Branding {
 }
 
 export type {
+  CaptchaPublic,
+  CaptchaInput,
   CorporateIdentity,
   DeployTargetView,
   MediaAsset,
@@ -1411,6 +1415,17 @@ export const api = {
   /** Which mail-delivery modes the instance admin permits (for the form-mode selector). */
   formModes: (projectId: string) =>
     request<{ formModes: FormModes }>('GET', `/projects/${projectId}/form-modes`),
+
+  // --- per-project CAPTCHA (provider + credentials; replaced the instance-wide hCaptcha) ---
+  getProjectCaptcha: (projectId: string) =>
+    request<{ captcha: CaptchaPublic | null }>('GET', `/projects/${projectId}/captcha`),
+  putProjectCaptcha: (projectId: string, body: CaptchaInput) =>
+    request<{ captcha: CaptchaPublic }>('PUT', `/projects/${projectId}/captcha`, body),
+  deleteProjectCaptcha: (projectId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/captcha`),
+  /** Asks the provider whether the STORED secret is one it issued (a site key alone proves nothing). */
+  testProjectCaptcha: (projectId: string) =>
+    request<{ ok: boolean; error?: string }>('POST', `/projects/${projectId}/captcha/test`),
 
   // --- per-project SMTP (for the userSmtp form mode) ---
   getProjectSmtp: (projectId: string) =>

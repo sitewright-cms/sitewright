@@ -33,7 +33,8 @@ import { addComponentBlockMarkers } from './components.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
-import { RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
+import {
+  type CaptchaRenderConfig, RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -131,7 +132,8 @@ export interface TemplateContext {
    */
   imageMaps?: Record<string, RenderImageMap>;
   /** Instance hCaptcha site key (public) — rendered into platform-routed forms that opt in. */
-  hcaptchaSiteKey?: string;
+  /** The PROJECT's captcha provider + site key; absent → captcha-flagged forms stay inert. */
+  captcha?: CaptchaRenderConfig;
   /**
    * Page-relative path to the site root (e.g. '' at the root, '../../' two levels deep; preview
    * passes ''). Used by the form-embed pass for the page-relative `contact.php` endpoint.
@@ -1236,7 +1238,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
       forms: ctx.forms,
       locale: typeof pageLocale === 'string' ? pageLocale : undefined,
       siteRoot: ctx.siteRoot,
-      hcaptchaSiteKey: ctx.hcaptchaSiteKey,
+      captcha: ctx.captcha,
       preview: ctx.preview,
     });
   } catch (err) {

@@ -5,6 +5,7 @@ import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
+import { ProjectCaptcha } from './ProjectCaptcha';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
@@ -35,7 +36,7 @@ function emptyForm(id: string, name: string): Form {
     errorMessage: 'Sorry, something went wrong. Please try again.',
     recipient: '',
     mode: 'globalSmtp',
-    hcaptcha: false, pow: false,
+    captcha: false, pow: false,
   };
 }
 
@@ -402,13 +403,13 @@ export function FormsManager({ project }: { project: Project }) {
           <input
             type="checkbox"
             className={toggleInput}
-            aria-label="Require hCaptcha"
-            checked={draft.hcaptcha}
+            aria-label="Require a captcha"
+            checked={draft.captcha}
             disabled={!isPlatformRoutedMode(draft.mode)}
-            onChange={(e) => patch({ hcaptcha: e.target.checked })}
+            onChange={(e) => patch({ captcha: e.target.checked })}
           />
           <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-500 dark:text-slate-400' : ''}>
-            Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
+            Require a captcha (which one is set per project, in Captcha below)
             {!isPlatformRoutedMode(draft.mode) &&
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
           </span>
@@ -458,6 +459,7 @@ export function FormsManager({ project }: { project: Project }) {
           alone left an instance that enabled only the php mode able to CHOOSE it with nowhere to
           enter a password, and the resulting 409 pointed at settings that were not on screen. */}
       {(enabledModes.userSmtp || enabledModes.contactPhpSmtp) && <ProjectSmtp project={project} />}
+      <ProjectCaptcha project={project} />
       {owed.count > 0 && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="status">
           ⚠ {owed.count} submission{owed.count === 1 ? '' : 's'} could not be emailed
@@ -498,9 +500,9 @@ export function FormsManager({ project }: { project: Project }) {
                     PoW
                   </span>
                 )}
-                {f.hcaptcha && (
+                {f.captcha && (
                   <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
-                    hCaptcha
+                    Captcha
                   </span>
                 )}
                 {(() => {

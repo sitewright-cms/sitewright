@@ -11,6 +11,7 @@ export * from './corporate-identity.js';
 export * from './migrate-identity.js';
 export * from './dataset.js';
 export * from './deploy-target.js';
+export * from './captcha.js';
 export * from './form.js';
 export * from './image-map.js';
 export * from './image-map-templates.js';

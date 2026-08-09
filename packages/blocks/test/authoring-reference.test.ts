@@ -93,7 +93,9 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
     | 'forms'
     // Consumed by {{sw-imagemap}} + the data-sw-imagemap pass; not a readable `{{imageMaps.*}}` namespace.
     | 'imageMaps'
-    | 'hcaptchaSiteKey'
+    // The PROJECT's captcha provider + public site key, consumed by the form-embed pass to place the
+    // right widget. Not a readable `{{captcha.*}}` namespace — an author never writes it.
+    | 'captcha'
     | 'siteRoot'
     // A TRANSPORT input merged into the page object as the `page.parent` binding (documented under the
     // `page` namespace), NOT an author-facing top-level namespace itself.

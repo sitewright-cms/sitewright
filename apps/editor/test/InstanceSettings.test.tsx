@@ -99,9 +99,11 @@ describe('InstanceSettings', () => {
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
     expect(body.formModes).toEqual({ ...DEFAULT_FORM_MODES, globalSmtp: true });
-    // SMTP and hCaptcha were never enabled → explicitly cleared.
+    // SMTP was never enabled → explicitly cleared. (Captcha is no longer an instance setting: it
+    // moved to the project, so this body must carry nothing about it at all.)
     expect(body.smtp).toBeNull();
-    expect(body.hcaptcha).toBeNull();
+    expect(body).not.toHaveProperty('hcaptcha');
+    expect(body).not.toHaveProperty('captcha');
   });
 
   it('omits the password when an SMTP edit leaves it blank, but sends it when filled', async () => {

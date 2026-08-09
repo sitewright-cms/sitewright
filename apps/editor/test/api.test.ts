@@ -838,7 +838,7 @@ describe('api client', () => {
       successMessage: 'ok',
       errorMessage: 'err',
       mode: 'globalSmtp' as const,
-      hcaptcha: false, pow: false,
+      captcha: false, pow: false,
     };
     fetchMock.mockResolvedValue(jsonResponse(200, { item: form }));
     await api.putForm('p', form);
@@ -871,6 +871,32 @@ describe('api client', () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
     await api.deleteProjectSmtp('p');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
+  it('reads, writes, tests, and deletes the per-project captcha config', async () => {
+    const KEY = '10000000-ffff-ffff-ffff-000000000001';
+    fetchMock.mockResolvedValue(jsonResponse(200, { captcha: null }));
+    expect((await api.getProjectCaptcha('p')).captcha).toBeNull();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/captcha');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { captcha: { provider: 'hcaptcha', siteKey: KEY, hasSecret: true } }));
+    const saved = await api.putProjectCaptcha('p', { provider: 'hcaptcha', siteKey: KEY, secret: 's3cret' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/captcha');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ provider: 'hcaptcha', siteKey: KEY, secret: 's3cret' });
+    // The secret comes back as a presence flag only — never the value that was just sent.
+    expect(saved.captcha.hasSecret).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain('s3cret');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: false, error: 'The provider rejected the secret key.' }));
+    expect((await api.testProjectCaptcha('p')).ok).toBe(false);
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/captcha/test');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('POST');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteProjectCaptcha('p');
+    expect(fetchMock.mock.calls[3]![1].method).toBe('DELETE');
   });
 
   it('reads, writes, and deletes the per-project AI config', async () => {

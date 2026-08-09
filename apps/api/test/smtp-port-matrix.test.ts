@@ -253,7 +253,7 @@ describe.skipIf(!opensslAvailable() || !phpAvailable() || !portsUsable)('contact
   const form = (): Form => ({
     id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
     submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', recipient: 'leads@acme.com',
-    mode: 'contactPhpSmtp', hcaptcha: false, pow: false,
+    mode: 'contactPhpSmtp', captcha: false, pow: false,
   } as Form);
 
   /** Boots contact.php against a server on `port` and posts one submission. */

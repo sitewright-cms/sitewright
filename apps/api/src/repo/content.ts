@@ -3,6 +3,7 @@ import { sanitizeImageMapConfig } from '@sitewright/blocks';
 import { and, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  CaptchaStoredSchema,
   CorporateIdentitySchema,
   mergeLegacyIdentity,
   DatasetSchema,
@@ -93,6 +94,10 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Per-project SMTP for the `userSmtp` form mode (encrypted password). Singleton
   // per project; managed via dedicated routes (excluded from generic content).
   ['project_smtp', SmtpStoredSchema],
+  // Per-project captcha provider + credentials (encrypted secret). Singleton per project; managed
+  // via dedicated routes. Replaced the instance-wide hCaptcha config — a site key is bound to a
+  // domain allowlist, and a domain belongs to a SITE.
+  ['project_captcha', CaptchaStoredSchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
   // disk (see apps/api/src/media). Not yet part of export/import bundles.
   ['media', MediaAssetSchema],
@@ -214,7 +219,7 @@ export class ContentRepository {
       .where(
         and(
           eq(content.projectId, ctx.projectId),
-          notInArray(content.kind, ['deploy_target', 'project_smtp', 'ai_config']),
+          notInArray(content.kind, ['deploy_target', 'project_smtp', 'project_captcha', 'ai_config']),
         ),
       )
       .orderBy(desc(content.updatedAt))
@@ -243,7 +248,7 @@ export class ContentRepository {
       .where(
         and(
           eq(content.projectId, ctx.projectId),
-          notInArray(content.kind, ['deploy_target', 'project_smtp', 'ai_config']),
+          notInArray(content.kind, ['deploy_target', 'project_smtp', 'project_captcha', 'ai_config']),
         ),
       );
     const rows = Number(row?.rows ?? 0);
@@ -847,8 +852,8 @@ export class ContentRepository {
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */
   private entityKey(kind: ContentKind, entityId: string, data: unknown): string {
     if (kind === 'settings') return SETTINGS_ENTITY_ID;
-    // project_smtp is a per-project singleton with no `id` field (keyed by the path).
-    if (kind === 'project_smtp') return entityId;
+    // project_smtp / project_captcha are per-project singletons with no `id` field (keyed by path).
+    if (kind === 'project_smtp' || kind === 'project_captcha') return entityId;
     const id = (data as { id?: string }).id;
     if (id !== entityId) {
       throw new ConflictError(`${kind} id "${id ?? ''}" does not match path "${entityId}"`);

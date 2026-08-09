@@ -39,7 +39,8 @@ import {
   WIDGET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
-import { isLinkPage, type Page, type Template } from '@sitewright/schema';
+import {
+  type CaptchaRenderConfig, isLinkPage, type Page, type Template } from '@sitewright/schema';
 import {
   renderDocument,
   renderTemplate,
@@ -291,8 +292,8 @@ export interface BuildSiteOptions {
    * served by the platform itself, e.g. the in-container preview).
    */
   publicBaseUrl?: string;
-  /** Instance hCaptcha site key (public) — rendered into forms that require hCaptcha. */
-  hcaptchaSiteKey?: string;
+  /** The PROJECT's captcha provider + site key (public); absent → captcha forms render inert. */
+  captcha?: CaptchaRenderConfig;
   /**
    * The publish-time JSON snapshot fetched from `website.jsonDataUrl` (already SSRF-guarded,
    * fetched + parsed in the main process). Exposed to templates as `{{ website.json_data }}`.
@@ -1084,11 +1085,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // opts in (website.imageDelivery === 'avif'); otherwise a single WebP <img>.
           imageAvif: website?.imageDelivery === 'avif',
           // Form embedding ({{sw-form}} / data-sw-form): the precomputed public definitions, the
-          // instance hCaptcha sitekey, and this page's root path (for the page-relative
+          // the project's captcha config, and this page's root path (for the page-relative
           // contact.php endpoint). Slots render with this same ctx — chrome forms work too.
           forms: resolvedForms,
           imageMaps,
-          hcaptchaSiteKey: opts.hcaptchaSiteKey,
+          captcha: opts.captcha,
           siteRoot,
         };
         let bodyHtml: string | undefined;

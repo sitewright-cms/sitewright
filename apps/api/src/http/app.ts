@@ -19,6 +19,8 @@ import rateLimit from '@fastify/rate-limit';
 import { parse as secureJsonParse } from 'secure-json-parse';
 import { z } from 'zod';
 import {
+  type CaptchaProvider,
+  type CaptchaRenderConfig,
   MediaFolderSchema,
   targetsPrivateHost,
   ImageAssetSchema,
@@ -235,7 +237,9 @@ import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
-import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
+import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
+import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
+import { migrateInstanceHcaptchaToProjects } from '../repo/captcha-migration.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
 import {
@@ -467,7 +471,7 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'ai_config']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'project_captcha', 'ai_config']);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -1105,8 +1109,8 @@ export interface AppOptions {
   mailer?: SubmissionMailer;
   /** Per-project SMTP mailer (Mode B / userSmtp). Defaults to ProjectSmtpMailer; tests inject a fake. */
   projectMailer?: ProjectMailer;
-  /** hCaptcha verifier for form submissions. Defaults to the live siteverify client; tests inject a fake. */
-  hcaptcha?: HcaptchaVerifier;
+  /** Captcha verifier for form submissions. Defaults to the live siteverify client; tests inject a fake. */
+  captcha?: CaptchaVerifier;
   /** Stock-image search/import service. Defaults to the live providers; tests inject a fake. */
   stockService?: StockServiceLike;
   /**
@@ -1138,6 +1142,16 @@ export interface AppOptions {
   sitesDomain?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
   aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number; projectMonthlyTokens?: number };
+}
+
+/**
+ * What the RENDERER is allowed to see of a project's captcha config: the provider and the public site
+ * key, never the secret. A config with no usable site key yields `undefined`, which leaves a
+ * captcha-flagged form INERT (no widget, no vendor script) rather than emitting a broken one.
+ */
+function captchaRenderConfig(stored: { provider: CaptchaProvider; siteKey: string } | null): CaptchaRenderConfig | undefined {
+  if (!stored || !stored.siteKey) return undefined;
+  return { provider: stored.provider, siteKey: stored.siteKey };
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -1189,6 +1203,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Populate the editable global snippet/template library from the built-in constants on first boot
   // (idempotent — only fills an empty kind, so an admin's deletions aren't resurrected).
   await seedGlobalLibrary(db, contentRepo);
+  // ONE-TIME: hand the legacy instance-wide hCaptcha to the projects that were actually using it.
+  // Idempotent and self-clearing, so it costs one settings read per boot once it has run.
+  await migrateInstanceHcaptchaToProjects(db, instanceSettingsRepo)
+    .then((r) => {
+      if (r.moved.length) app.log.info({ projects: r.moved }, 'migrated instance hCaptcha to per-project captcha config');
+    })
+    .catch((err: unknown) => app.log.error({ err }, 'instance hCaptcha migration failed; the legacy config is untouched'));
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // The live-preview draft-site store: same on-disk layout as a published site (so the
@@ -1272,7 +1293,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
-  const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
+  const captchaVerifier = opts.captcha ?? new HttpCaptchaVerifier();
   const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
   // The SSRF-safe outbound for `media/import-url` (see that route). Injectable for tests only.
   const importUrlFetch = opts.importUrlFetch ?? pinnedFetchDetailed;
@@ -1356,7 +1377,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'req.body.hostFingerprint',
             // Instance-settings PUT carries plaintext secrets in nested fields.
             'req.body.smtp.password',
-            'req.body.hcaptcha.secret',
+            // The per-PROJECT captcha PUT carries its provider secret as a bare `secret` field.
+            // (The instance-wide hCaptcha settings this replaced are gone.)
+            'req.body.secret',
             'req.body.stock.unsplash',
             'req.body.stock.pexels',
             // AI keys (plaintext on input before encryption): the platform key on /admin/settings and
@@ -3243,7 +3266,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // edited them, wrote them back without the (path-implied) id, and got that on every one. Default it
       // from the path. An id that is PRESENT and wrong still conflicts in `entityKey`, so the mismatch
       // guard is untouched; the two path-keyed singletons have no `id` field at all and are skipped.
-      if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp') {
+      if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp' && kind !== 'project_captcha') {
         const b = body as Record<string, unknown> | null;
         if (b && typeof b === 'object' && !Array.isArray(b) && b.id === undefined) {
           body = { ...b, id: req.params.entityId };
@@ -3849,10 +3872,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // nothing, so testing a form never mails the merchant a lead that does not exist.
         (fid) => `/f/${project.id}/${fid}/preview`,
       );
-      // The sitekey only matters for an hcaptcha-flagged form — skip the extra settings read
-      // (per-preview hot path) for the overwhelmingly common case of none.
-      const hcaptchaSiteKey = Object.values(previewForms).some((f) => f.hcaptcha)
-        ? (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey
+      // The captcha config only matters for a captcha-flagged form — skip the extra read (this is a
+      // per-preview hot path) for the overwhelmingly common case of none.
+      const previewCaptcha = Object.values(previewForms).some((f) => f.captcha)
+        ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
         : undefined;
       // Stored image maps for {{sw-imagemap}} / data-sw-imagemap — the same shape the publish path
       // builds in build.ts. WITHOUT this key the helper renders '' (its "this surface has no image
@@ -3992,7 +4015,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Omitted entirely (not `{}`) when the page embeds none: the helper distinguishes "this
           // surface has no image maps" from "that id is unknown", and only the latter should throw.
           ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
-          ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
+          ...(previewCaptcha ? { captcha: previewCaptcha } : {}),
         });
         // Slots render through the SAME isolated worker; a broken slot is skipped here
         // (publish still hard-validates it) so it can never break the page preview. No
@@ -4019,7 +4042,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           forms: previewForms,
           // A slot (footer, sidebar, global modal) may embed a map too — same parity as forms.
           ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
-          ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
+          ...(previewCaptcha ? { captcha: previewCaptcha } : {}),
         };
         // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
         // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
@@ -5631,7 +5654,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   ): Promise<{
     bundle: ProjectBundle;
     media: MediaAsset[];
-    hcaptchaSiteKey: string | undefined;
+    captcha: CaptchaRenderConfig | undefined;
     snippets: Record<string, string>;
     globalTemplates: Template[];
   }> {
@@ -5655,7 +5678,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
     const instance = await instanceSettingsRepo.getStored();
-    const hcaptchaSiteKey = instance.hcaptcha?.siteKey;
+    const captcha = captchaRenderConfig(await loadProjectCaptchaById(db, project.id));
     // Inherit the instance-wide default image delivery format when this project hasn't chosen one, so the
     // admin's `defaultImageFormat` actually governs {{sw-image}} (build.ts reads website.imageDelivery).
     // Covers BOTH publish and the live-preview build (they share this assembly) and the isolated worker
@@ -5670,7 +5693,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
     // The runtime GLOBAL template library so a `global:<id>` ref resolves to the admin-edited source.
     const globalTemplates = await listGlobalTemplates(contentRepo);
-    return { bundle, media, hcaptchaSiteKey, snippets, globalTemplates };
+    return { bundle, media, captcha, snippets, globalTemplates };
   }
 
   // Renders the project's full static site to `outDir` — the shared build for BOTH local publish and
@@ -5682,7 +5705,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     outDir: string,
     buildOpts: { minify?: boolean } = {},
   ): Promise<ReleaseManifest> {
-    const { bundle, media, hcaptchaSiteKey, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
+    const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
     // SSRF-guarded — then pass the parsed value into the build. A bad URL throws JsonDataError (→ 409).
     let jsonData: unknown;
@@ -5694,7 +5717,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       publishedAt: new Date().toISOString(),
       media,
       ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
-      ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
+      ...(captcha ? { captcha } : {}),
       ...(jsonData !== undefined ? { jsonData } : {}),
       ...(Object.keys(snippets).length ? { snippets } : {}),
       globalTemplates,
@@ -6182,7 +6205,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // serializes its job — that path simply reports the generic "building" state below.)
         onProgress: (p) => void previewProgress.set(project.id, p),
         ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
-        ...(inputs.hcaptchaSiteKey ? { hcaptchaSiteKey: inputs.hcaptchaSiteKey } : {}),
+        ...(inputs.captcha ? { captcha: inputs.captcha } : {}),
         ...(jsonData !== undefined ? { jsonData } : {}),
         ...(Object.keys(inputs.snippets).length ? { snippets: inputs.snippets } : {}),
         globalTemplates: inputs.globalTemplates,
@@ -7030,6 +7053,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       resolveSmtpTestRecipient,
       rl,
     });
+    // Per-project captcha provider + credentials — encrypted secret, like SMTP and deploy targets.
+    registerProjectCaptchaRoutes(app, {
+      resolveProject,
+      contentRepo,
+      encryptionKey: opts.encryptionKey,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      captcha: captchaVerifier,
+      rl,
+    });
     // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.
     registerAiConfigRoutes(app, {
       resolveProject,
@@ -7115,8 +7147,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     submissions: submissionsRepo,
     mailer,
     projectMailer,
-    hcaptcha: hcaptchaVerifier,
-    getHcaptchaSecret: () => instanceSettingsRepo.getHcaptchaSecret(),
+    captcha: captchaVerifier,
+    // Per PROJECT, decrypted here so the route never touches the encryption key. A config whose
+    // secret will not decrypt THROWS, and the caller fails closed — the same posture the instance
+    // secret had, kept deliberately: an unverifiable captcha must never wave a submission through.
+    getProjectCaptcha: async (projectId: string) => {
+      const stored = await loadProjectCaptchaById(db, projectId);
+      if (!stored) return null;
+      const secret = stored.secret && opts.encryptionKey ? decryptSecret(stored.secret, opts.encryptionKey) : null;
+      return { provider: stored.provider, secret, ...(stored.minScore !== undefined ? { minScore: stored.minScore } : {}) };
+    },
     // Same key the preview signatures use — one instance secret, not a second thing to configure.
     getPowSecret: () => currentCookieSecret,
     getFormModes: () => instanceSettingsRepo.getFormModes(),
@@ -7760,9 +7800,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
         (fid) => `/f/${project.id}/${fid}/preview`, // dry run — a render preview never mails a lead
       );
-      // Settings read only when an hcaptcha-flagged form exists (mirrors the /preview gate).
-      const renderHcaptchaSiteKey = Object.values(renderForms).some((f) => f.hcaptcha)
-        ? (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey
+      // Read only when a captcha-flagged form exists (mirrors the /preview gate).
+      const renderCaptcha = Object.values(renderForms).some((f) => f.captcha)
+        ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
         : undefined;
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
@@ -7779,7 +7819,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           item,
           partials,
           forms: renderForms,
-          ...(renderHcaptchaSiteKey ? { hcaptchaSiteKey: renderHcaptchaSiteKey } : {}),
+          ...(renderCaptcha ? { captcha: renderCaptcha } : {}),
         });
         if (!body.document) return reply.send({ html: rendered });
         // Styled-document preview: wrap the rendered body in the publish doc shell + inline

@@ -165,9 +165,11 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   // is verified by the reopen round-trip below.
   await expect(page.getByText('1 line', { exact: true })).toBeVisible();
 
-  // Persist the settings bundle, then reload and confirm the partial round-tripped.
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Settings saved')).toBeVisible();
+  // The modal's own Save PERSISTS the slot now — it used to only stage the change into the settings
+  // form, leaving the author to find the tab's Save, which reads as "I saved and it didn't save". So
+  // there is nothing left to stage here and the tab's Save is correctly disabled; asserting that is
+  // what proves the modal saved on its own rather than silently dropping the edit.
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
   await page.reload();
   await page.getByRole('button', { name: /Partials Site/ }).click();

@@ -45,7 +45,14 @@ test('publish options: enabling a preview token gates the live site behind ?toke
 
   // The gate is LIVE (read from settings at serve time — no redeploy needed).
   expect((await liveSiteRequest(page, slug)).status()).toBe(403);
-  const served = await liveSiteRequest(page, slug, `/?token=${encodeURIComponent(token!)}`);
+  // A VALID token does not serve the page directly: it sets the site cookie and 302s to the CLEAN,
+  // token-free URL, so the secret stops riding in the address bar and the referrer. Assert that hop
+  // explicitly — following it here would drop the custom Host header and land on the editor SPA — then
+  // read the clean URL back with the cookie the gate just issued.
+  const gate = await liveSiteRequest(page, slug, `/?token=${encodeURIComponent(token!)}`, { maxRedirects: 0 });
+  expect(gate.status()).toBe(302);
+  expect(gate.headers()['set-cookie'] ?? '').toContain(`sw_site_${slug}=`);
+  const served = await liveSiteRequest(page, slug, '/', { headers: { Cookie: `sw_site_${slug}=${token}` } });
   expect(served.status()).toBe(200);
   expect(await served.text()).toContain('Gated content');
 });

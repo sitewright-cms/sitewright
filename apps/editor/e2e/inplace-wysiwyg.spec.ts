@@ -1,5 +1,5 @@
 import { test, expect, type FrameLocator } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { hoverForHud, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -273,8 +273,7 @@ test('field-name badge: hovering an editable region reveals a HUD badge naming i
   const badges = preview.locator('.sw-ov .sw-ov-badge');
   await expect(badges.first()).toBeHidden(); // nothing showing at rest
 
-  await region.hover();
-  await expect(badges.first()).toBeVisible();
+  await hoverForHud(page, region, badges.first());
   await expect(badges.first()).toContainText('tagline'); // names the field it edits
   // The full typed description is its accessible name (the styled tooltip renders from data-tip).
   expect(await badges.first().getAttribute('aria-label')).toContain('tagline');

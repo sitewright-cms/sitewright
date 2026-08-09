@@ -1,4 +1,4 @@
-import { expect, request, type APIResponse, type Page } from '@playwright/test';
+import { expect, request, type APIResponse, type Locator, type Page } from '@playwright/test';
 
 /**
  * Seed a signed-in E2E user for a BROWSER spec.
@@ -132,10 +132,21 @@ export async function deployLocally(page: Page): Promise<string> {
  * host has no wildcard DNS, so neither a browser navigation nor a redirect-following request can reach
  * that name — send an explicit Host header instead, the same technique the API spec uses.
  */
-export async function liveSiteRequest(page: Page, slug: string, path = '/'): Promise<APIResponse> {
+export async function liveSiteRequest(
+  page: Page,
+  slug: string,
+  path = '/',
+  // `maxRedirects: 0` matters for anything that REDIRECTS: the request context follows a hop but does
+  // NOT re-send this custom Host header on it, so the follow-up lands on the editor origin and returns
+  // the SPA rather than the site. Extra headers ride along for the same reason (e.g. a site cookie).
+  opts: { maxRedirects?: number; headers?: Record<string, string> } = {},
+): Promise<APIResponse> {
   const u = new URL(baseURL());
   const host = `${slug}.${process.env.SW_E2E_SITES_DOMAIN ?? u.hostname}${u.port ? `:${u.port}` : ''}`;
-  return page.request.get(`${baseURL()}${path}`, { headers: { Host: host } });
+  return page.request.get(`${baseURL()}${path}`, {
+    headers: { Host: host, ...(opts.headers ?? {}) },
+    ...(opts.maxRedirects === undefined ? {} : { maxRedirects: opts.maxRedirects }),
+  });
 }
 
 /** The common case: assert a 200 and hand back the HTML. */
@@ -178,4 +189,22 @@ export async function dismissProjectSelector(page: Page): Promise<void> {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
   }
+}
+
+/**
+ * Hover an editable region until the badge HUD actually responds.
+ *
+ * The HUD is driven by `mousemove`, and the preview bridge only listens once CONTENT MODE has armed
+ * the page — and the preview iframe can RELOAD after a source edit, arming a fresh document a moment
+ * later. A single hover that lands in either gap dispatches a move nobody is listening for, and since
+ * the pointer then never moves again, no badge EVER appears: the failure reads as a broken HUD and is
+ * really a race. Re-hovering until it responds removes the timing without weakening anything — a HUD
+ * that never responds still fails, on the outer timeout.
+ */
+export async function hoverForHud(page: Page, region: Locator, badge: Locator): Promise<void> {
+  await expect(async () => {
+    await page.mouse.move(0, 0); // park elsewhere, so the hover below is guaranteed to be a real MOVE
+    await region.hover();
+    await expect(badge).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
 }

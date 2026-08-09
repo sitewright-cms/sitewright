@@ -9,6 +9,7 @@ const formModes = vi.fn();
 const undeliveredSubmissions = vi.fn();
 const filteredSubmissions = vi.fn();
 const getProjectSmtp = vi.fn();
+const getProjectCaptcha = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     listForms: () => listForms(),
@@ -22,6 +23,7 @@ vi.mock('../src/api', () => ({
     me: () => Promise.resolve({ platformRole: null }),
     undeliveredSubmissions: () => undeliveredSubmissions(),
     filteredSubmissions: () => filteredSubmissions(),
+    getProjectCaptcha: () => getProjectCaptcha(),
   },
 }));
 
@@ -40,6 +42,8 @@ beforeEach(() => {
   filteredSubmissions.mockReset();
   filteredSubmissions.mockResolvedValue({ total: 0, items: [] });
   getProjectSmtp.mockResolvedValue({ smtp: null });
+  getProjectCaptcha.mockReset();
+  getProjectCaptcha.mockResolvedValue({ captcha: { provider: 'hcaptcha', siteKey: 'k', hasSecret: true } });
   listForms.mockResolvedValue({ items: [] });
   putForm.mockResolvedValue({ item: {} });
   formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false } });
@@ -108,6 +112,29 @@ describe('FormsManager', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
     await waitFor(() => expect(putForm).toHaveBeenCalled());
     expect((putForm.mock.calls[0]![0] as Form).mode).toBe('contactPhp');
+  });
+
+  it('★ warns when a form requires a captcha the PROJECT has not configured', async () => {
+    // The widget is withheld and the endpoint fails CLOSED, which is the safe answer but leaves a
+    // visitor stuck on an error they cannot resolve. Only the author can fix it, so only the author
+    // being told is any use. This became far more reachable when credentials moved to the project:
+    // every fresh or duplicated project starts with none.
+    getProjectCaptcha.mockResolvedValue({ captcha: null });
+    render(<FormsManager project={project} />);
+    fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
+    fireEvent.click(await screen.findByLabelText('Require a captcha'));
+    expect(await screen.findByText(/no captcha configured/i)).toBeInTheDocument();
+  });
+
+  it('does not cry wolf when the project IS configured, or when the form does not ask', async () => {
+    render(<FormsManager project={project} />);
+    fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
+    await screen.findByLabelText('Require a captcha');
+    expect(screen.queryByText(/no captcha configured/i)).not.toBeInTheDocument(); // not asked for
+    fireEvent.click(screen.getByLabelText('Require a captcha'));
+    expect(screen.queryByText(/no captcha configured/i)).not.toBeInTheDocument(); // asked for, and ready
   });
 
   it('offers contact.php (SMTP) when enabled, and greys the captcha out for it', async () => {

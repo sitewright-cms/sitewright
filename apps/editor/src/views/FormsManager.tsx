@@ -66,15 +66,23 @@ export function FormsManager({ project }: { project: Project }) {
   // operator cannot tell a QUIET form (nobody is writing) from a FILTERED one (everybody is, and
   // something is eating it) — and cannot answer a client who says they submitted and heard nothing.
   const [filtered, setFiltered] = useState<Array<{ formId: string; reason: string; count: number; lastAt: number }>>([]);
+  // Whether this PROJECT has a usable captcha (provider + secret). A form may require a captcha the
+  // project has not configured — the widget is then withheld and the endpoint fails CLOSED, which is
+  // the safe answer but leaves a visitor stuck on an error they cannot resolve. The author is the only
+  // one who can fix it, so they have to be told.
+  const [captchaReady, setCaptchaReady] = useState(true);
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const [res, fm, undelivered, filtered] = await Promise.all([
+      const [res, fm, undelivered, filtered, captcha] = await Promise.all([
         api.listForms(project.id),
         api.formModes(project.id),
         api.undeliveredSubmissions(project.id).catch(() => ({ count: 0, lastError: null })),
         // Never fatal to the tab: a counter is reporting, and losing it must not hide the forms.
         api.filteredSubmissions(project.id).catch(() => ({ total: 0, items: [] })),
+        // A client (non-writer) gets a 403 here; assume configured rather than showing them a warning
+        // about a screen they cannot reach.
+        api.getProjectCaptcha(project.id).catch(() => ({ captcha: { hasSecret: true } })),
       ]);
 
       if (!isActive()) return;
@@ -82,6 +90,7 @@ export function FormsManager({ project }: { project: Project }) {
       setFiltered(filtered.items);
       setForms(res.items);
       setEnabledModes(fm.formModes);
+      setCaptchaReady(Boolean(captcha.captcha?.hasSecret));
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load forms');
     } finally {
@@ -414,6 +423,12 @@ export function FormsManager({ project }: { project: Project }) {
               ' — not available for this mode (the platform can’t verify a remote endpoint)'}
           </span>
         </label>
+        {draft.captcha && isPlatformRoutedMode(draft.mode) && !captchaReady && (
+          <p className="rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
+            This project has no captcha configured, so this form will reject every submission. Set a provider and
+            keys in <strong>Captcha</strong> below, or turn this off.
+          </p>
+        )}
 
         <label className="flex items-center gap-2 text-sm">
           <input

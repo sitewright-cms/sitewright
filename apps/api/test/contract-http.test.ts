@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,13 @@ import { collectRoutes, expectContract } from './contract-helpers.js';
  * `createApp({ db })` registers 140 routes; a production-shaped one registers 190, and the 50 it drops
  * are disproportionately the public ones. Generating the contract from the bare app would have
  * under-reported exactly what matters.
+ *
+ * ★ `encryptionKey` IS PART OF "PRODUCTION-SHAPED", and used not to be. Every route that stores a
+ * secret — per-project SMTP, per-project captcha, the BYO-agent AI config — is registered inside
+ * `if (opts.encryptionKey)`, so a contract generated without one silently omitted them. The gate
+ * therefore could not have caught those routes being renamed or dropped, which is precisely the
+ * breakage it exists to prevent: an instance without an encryption key is a dev instance, and
+ * pinning only what a dev instance serves pins the wrong surface.
  */
 async function productionShapedApp(onRoute: (r: { method: string | string[]; url: string }) => void) {
   const root = await mkdtemp(join(tmpdir(), 'sw-contract-'));
@@ -24,6 +32,7 @@ async function productionShapedApp(onRoute: (r: { method: string | string[]; url
     publishRoot: join(root, 'sites'),
     previewRoot: join(root, 'preview'),
     dataDir: root,
+    encryptionKey: randomBytes(32),
   });
 }
 

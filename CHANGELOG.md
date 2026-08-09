@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The route contract was blind to every secret-storing route.** `contract/http-routes.json` is
+  generated from a "production-shaped" app that was built without an encryption key — but per-project
+  SMTP, the BYO-agent AI config, deploy targets and now captcha are all registered inside
+  `if (opts.encryptionKey)`. **21 routes were unpinned**, including the entire deploy-targets surface
+  (`POST /projects/:projectId/deploy-targets/:id/deploy` among them), so the gate could not have
+  caught any of them being renamed or dropped — precisely the breakage it exists to prevent. The
+  contract app now carries a key; the regenerated file is additions only.
+
 ### Changed
 
 - **★ Captcha configuration moved from the instance to the PROJECT, and now covers reCAPTCHA v2 and
@@ -37,6 +47,10 @@ The running version of an instance is reported at `GET /version` (baked into the
     project credentials it never had. The migration is idempotent, never overwrites a config an author
     has already set, carries the encrypted secret across intact, and clears the legacy value only once
     it has been handed on.
+  - **The editor warns when a form requires a captcha the project has not configured.** The widget is
+    withheld and the endpoint fails closed, which is the safe answer but leaves a visitor stuck on an
+    error only the author can fix — and moving credentials to the project made that far more
+    reachable, since every fresh or duplicated project starts with none.
   - No stored form needed migrating: the renamed `captcha` flag reads a legacy `hcaptcha: true`
     through the schema itself.
 

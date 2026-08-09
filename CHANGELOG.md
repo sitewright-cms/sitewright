@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-08-09
+
 ### Fixed
 
 - **The captcha migration could silently skip a project that was using the instance key.** It decided
@@ -1584,7 +1586,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/sitewright-cms/sitewright/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/sitewright-cms/sitewright/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/sitewright-cms/sitewright/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/sitewright-cms/sitewright/compare/v0.12.4...v0.13.0

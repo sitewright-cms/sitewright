@@ -1235,7 +1235,16 @@ const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;
  * component's CSS/JS the same way animations/lazyload/ripple are detected (a literal-marker scan over
  * page sources, skeleton slots, and snippets). Empty for component-free source.
  */
-export function componentTypesInSource(html: string | null | undefined): string[] {
+export function componentTypesInSource(
+  html: string | null | undefined,
+  /**
+   * Ids of the project's forms that contain a `date`/`time`/`datetime` field, i.e. the ones whose
+   * rendered markup will carry a DateTimePicker marker. Pass it to ship that runtime ONLY on pages
+   * whose form actually needs it. OMIT it and any form reference pulls the picker in: a caller with
+   * no form context should cost a page one extra chunk, never a dead widget.
+   */
+  pickerFormIds?: ReadonlySet<string>,
+): string[] {
   if (typeof html !== 'string' || html.length === 0) return [];
   const seen = new Set<string>();
   for (const match of html.matchAll(COMPONENT_MARKER_RE)) {
@@ -1244,10 +1253,41 @@ export function componentTypesInSource(html: string | null | undefined): string[
     const type = COMPONENT_NAME_TO_TYPE.get(name);
     if (type) seen.add(type);
   }
+  let formByReference = false;
   for (const { token, type } of REFERENCE_EMBEDS) {
-    if (referenceEmbedRe(token).test(html)) seen.add(type);
+    if (referenceEmbedRe(token).test(html)) {
+      seen.add(type);
+      if (type === 'Form') formByReference = true;
+    }
   }
+  // The picker is emitted INSIDE a form, so it has no reference spelling of its own to scan for.
+  // Only the REFERENCE path needs this: source that already contains rendered form markup would
+  // equally contain the rendered picker marker, which the marker scan above has already caught.
+  if (formByReference && formNeedsPicker(html, pickerFormIds)) seen.add('DateTimePicker');
   return [...seen];
+}
+
+/** Every form id this source references, from either spelling. */
+function referencedFormIds(html: string): string[] {
+  const ids: string[] = [];
+  for (const m of html.matchAll(/(?:\{\{\s*sw-form\s+|data-sw-form\s*=\s*)["']([^"']+)["']/g)) ids.push(m[1]!);
+  return ids;
+}
+
+function formNeedsPicker(html: string, pickerFormIds?: ReadonlySet<string>): boolean {
+  // Duck-typed, not just null-checked: `sources.flatMap(componentTypesInSource)` hands this the ARRAY
+  // INDEX as the second argument, which is a perfectly ordinary way to call it and would otherwise
+  // throw on the second element. A non-Set means "no form context", same as omitting it.
+  if (typeof pickerFormIds?.has !== 'function') return true; // → over-ship rather than break
+  const ids = referencedFormIds(html);
+  // A form referenced in a way we could not read an id from (an unusual spelling) is treated as
+  // "might need it" for the same reason.
+  return ids.length === 0 || ids.some((id) => pickerFormIds.has(id));
+}
+
+/** True when a form definition contains a field the DateTimePicker runtime has to enhance. */
+export function formHasPickerField(form: { fields?: ReadonlyArray<{ type?: string }> } | undefined): boolean {
+  return (form?.fields ?? []).some((f) => f.type === 'date' || f.type === 'time' || f.type === 'datetime');
 }
 
 /**

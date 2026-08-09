@@ -11,7 +11,9 @@ import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
 import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput, gradientHover } from '../theme';
 
-const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox'];
+const FIELD_TYPES: ReadonlyArray<FormField['type']> = [
+  'text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox', 'date', 'time', 'datetime',
+];
 /** Field types whose entries come from an options list (select/radio, and a checkbox GROUP). */
 const OPTION_TYPES = new Set<FormField['type']>(['select', 'radio', 'checkbox']);
 

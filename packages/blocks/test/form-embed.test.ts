@@ -127,6 +127,30 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
     expect(out).not.toContain('<fieldset'); // not a group
   });
 
+  // DATE / TIME / DATETIME — a TEXT input carrying the DateTimePicker marker, never `type="date"`.
+  // Putting the marker on a native date input stacks the brand popup on top of the browser's own
+  // picker; the component's contract is explicit that the marker belongs on a text input. Without JS
+  // the field stays an ordinary text box the visitor can type into, and it still submits.
+  it.each([
+    ['date', 'date'],
+    ['time', 'time'],
+    ['datetime', 'datetime'],
+  ])('renders a %s field as a themed picker on a text input', (type, mode) => {
+    const f = formsOf(pub({ fields: [{ name: 'slot', label: 'Preferred slot', type: type as 'date', required: true }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain(
+      `<label data-sw-part="field"><span data-sw-part="label">Preferred slot</span>` +
+        `<input type="text" name="slot" required data-sw-component="datetimepicker" data-mode="${mode}" /></label>`,
+    );
+    expect(out).not.toContain(`type="${type}"`); // never the native control
+  });
+
+  it('a date field keeps its placeholder and optional state', () => {
+    const f = formsOf(pub({ fields: [{ name: 'when', label: 'When', type: 'date', required: false, placeholder: 'Pick a day' }] }))['contact']!;
+    const out = renderFormMarkup('contact', f);
+    expect(out).toContain('<input type="text" name="when" placeholder="Pick a day" data-sw-component="datetimepicker" data-mode="date" />');
+  });
+
   it('renders submit + hidden success/error parts with escaped copy', () => {
     expect(html).toContain('<button type="submit" data-sw-part="submit" class="btn btn-primary">Send enquiry</button>');
     expect(html).toContain('<p data-sw-part="success" role="status" hidden>Thanks — we got it.</p>');

@@ -51,6 +51,7 @@ import {
   resolveInternalUrl,
   relativizeInternalLinks,
   componentTypesInSource,
+  formHasPickerField,
   componentAssets,
   systemI18nData,
   usesDialog,
@@ -733,11 +734,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships
     // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
     // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
+    // A form carrying a date/time/datetime field renders a DateTimePicker marker that a SOURCE scan
+    // cannot see (the marker only exists after the form-embed pass). Passing the ids of the forms that
+    // actually have one keeps this precise — a plain contact form ships no picker chunk.
+    const pickerFormIds = new Set((bundle.forms ?? []).filter(formHasPickerField).map((f) => f.id));
+    const scanComponents = (html: string | null | undefined): string[] => componentTypesInSource(html, pickerFormIds);
     const componentTypes = [
       ...new Set([
-        ...effectiveSources.flatMap(componentTypesInSource),
-        ...slotSources.flatMap(componentTypesInSource),
-        ...Object.values(usedSnippets).flatMap(componentTypesInSource),
+        ...effectiveSources.flatMap(scanComponents),
+        ...slotSources.flatMap(scanComponents),
+        ...Object.values(usedSnippets).flatMap(scanComponents),
       ]),
     ];
     // The site-wide union bundle — kept only to seed the `?v=` cache-bust digest (its bytes change iff
@@ -1143,7 +1149,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageScanSources = [pageSource, ...slotSources].filter((s): s is string => Boolean(s));
         const pageScanAll = [...pageScanSources, ...Object.values(referencedSnippets(pageScanSources, snippets))];
         const pageUsesMarker = (fn: (s: string | null | undefined) => boolean): boolean => pageScanAll.some(fn);
-        const pageComponentTypes = [...new Set(pageScanAll.flatMap(componentTypesInSource))];
+        const pageComponentTypes = [...new Set(pageScanAll.flatMap(scanComponents))];
         const pageComponents = componentAssets(pageComponentTypes);
         const pageUsesComponents = pageComponentTypes.length > 0;
         // Marker-gated body effects for THIS page (consent stays site-wide when the manager is enabled —

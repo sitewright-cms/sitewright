@@ -9,6 +9,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`date`, `time` and `datetime` form field types.** A form field can now capture a day, a clock time,
+  or both, alongside the existing text/email/select/radio/checkbox primitives — pick the type in Forms
+  and the field renders as a brand-themed picker. They render as a TEXT input carrying the
+  DateTimePicker marker rather than a native `type="date"`: on a native date control the browser opens
+  its own picker as well, so the visitor gets two stacked calendars. Without JS the field degrades to
+  an ordinary text box that still submits, and the submitted value stays opaque text like every other
+  field, so nothing downstream (validation, storage, email, the exported `contact.php`) needed to
+  change.
+
+  Publish ships the picker runtime only for pages whose form actually has one of these fields. That
+  needed care: the picker's marker is emitted *inside* a form at render time, and publish selects
+  runtimes by scanning page SOURCES — so a form with a date field would have rendered a marker whose
+  script was never linked, leaving a dead text box. `componentTypesInSource` now takes the ids of the
+  forms that carry a picker field; called without that context it over-ships one chunk rather than
+  breaking the widget. (The preview path scans rendered HTML and already saw the marker.)
+
 ## [0.16.0] — 2026-08-09
 
 ### Fixed

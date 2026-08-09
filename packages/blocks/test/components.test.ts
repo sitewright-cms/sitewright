@@ -153,9 +153,11 @@ describe('componentTypesInSource (code-first detection)', () => {
   });
 
   it('detects a form embedded by REFERENCE — {{sw-form}} or data-sw-form (marker only exists post-render)', () => {
-    expect(componentTypesInSource('<section>{{sw-form "contact"}}</section>')).toEqual(['Form']);
-    expect(componentTypesInSource('<section>{{ sw-form "contact" }}</section>')).toEqual(['Form']);
-    expect(componentTypesInSource('<form data-sw-form="contact"><input name="n" /></form>')).toEqual(['Form']);
+    // An EMPTY picker set = "this project's forms have no date field", which is the plain-form case.
+    const noPickers = new Set<string>();
+    expect(componentTypesInSource('<section>{{sw-form "contact"}}</section>', noPickers)).toEqual(['Form']);
+    expect(componentTypesInSource('<section>{{ sw-form "contact" }}</section>', noPickers)).toEqual(['Form']);
+    expect(componentTypesInSource('<form data-sw-form="contact"><input name="n" /></form>', noPickers)).toEqual(['Form']);
     // anchored scan: prose mentions and would-be `sw-format` helpers do NOT over-ship Form assets
     expect(componentTypesInSource('<p>about sw-form</p>')).toEqual([]);
     expect(componentTypesInSource('{{sw-formation "x"}}')).toEqual([]);
@@ -192,18 +194,63 @@ describe('componentTypesInSource (code-first detection)', () => {
         if (!line.trimStart().startsWith('//') && !line.trimStart().startsWith('*')) emitted.add(m[1]!);
       }
     }
-    expect([...emitted].sort()).toEqual(['form', 'image-map']);
+    expect([...emitted].sort()).toEqual(['datetimepicker', 'form', 'image-map']);
 
     // Each of those must be produced by scanning a plausible AUTHORED source (helper + attribute),
-    // because that is all publish ever sees.
-    const reachable = new Set(
-      [...emitted].flatMap((name) => {
-        const token = name === 'image-map' ? 'sw-imagemap' : `sw-${name}`;
-        return [...componentTypesInSource(`{{${token} "x"}}`), ...componentTypesInSource(`<div data-${token}="x"></div>`)];
-      }),
-    );
+    // because that is all publish ever sees. The picker has no reference spelling of its own — it is
+    // emitted INSIDE a form — so a form reference has to be able to reach it.
+    const reachable = new Set([
+      ...componentTypesInSource('{{sw-form "x"}}'),
+      ...componentTypesInSource('<div data-sw-form="x"></div>'),
+      ...componentTypesInSource('{{sw-imagemap "x"}}'),
+      ...componentTypesInSource('<div data-sw-imagemap="x"></div>'),
+    ]);
     expect(reachable.has('Form')).toBe(true);
     expect(reachable.has('ImageMap')).toBe(true);
+    expect(reachable.has('DateTimePicker')).toBe(true);
+  });
+
+  // ★ The picker ships INSIDE a form, so it has no `{{sw-picker}}` spelling of its own to scan for.
+  // A form with a date field would otherwise render a marker whose runtime was never linked, and the
+  // field would sit there as a plain text box — the exact failure mode the guard above describes.
+  describe('a form containing a date field pulls in the DateTimePicker runtime', () => {
+    it('ships it when the referenced form is known to have one', () => {
+      expect(componentTypesInSource('{{sw-form "booking"}}', new Set(['booking']))).toEqual(
+        expect.arrayContaining(['Form', 'DateTimePicker']),
+      );
+      expect(componentTypesInSource('<div data-sw-form="booking"></div>', new Set(['booking']))).toEqual(
+        expect.arrayContaining(['Form', 'DateTimePicker']),
+      );
+    });
+
+    it('does NOT ship it for a form that has no date field', () => {
+      expect(componentTypesInSource('{{sw-form "contact"}}', new Set(['booking']))).toEqual(['Form']);
+    });
+
+    // The failure DIRECTION matters: a caller with no form context over-ships one chunk, which is a
+    // slightly larger page. The alternative — silently omitting it — is a dead widget.
+    it('over-ships rather than breaking when the caller passes no form context', () => {
+      expect(componentTypesInSource('{{sw-form "contact"}}')).toEqual(expect.arrayContaining(['Form', 'DateTimePicker']));
+    });
+
+    it('adds nothing when there is no form at all', () => {
+      expect(componentTypesInSource('<p>no forms here</p>', new Set(['booking']))).toEqual([]);
+    });
+
+    // `sources.flatMap(componentTypesInSource)` is the natural way to scan a list — and flatMap hands
+    // the callback the ARRAY INDEX as its second argument. Index 0 is falsy and would have looked fine;
+    // index 1 is a truthy non-Set and would throw on `.has`. Two of the three publish call sites were
+    // written exactly that way before this change.
+    //
+    // TYPESCRIPT IS THE REAL FIX: `ReadonlySet<string>` is not assignable from `number`, so that call
+    // no longer compiles at all — which is why this test has to cast to make the unsafe call. The
+    // runtime guard is the belt for a dynamic/JS caller the compiler never sees.
+    it('survives a second argument that is not a Set (the flatMap-index shape)', () => {
+      const scan = componentTypesInSource as unknown as (v: string, i: number, a: string[]) => string[];
+      const sources = ['<p>a</p>', '{{sw-form "contact"}}', '<p>c</p>'];
+      expect(() => sources.flatMap(scan)).not.toThrow();
+      expect(sources.flatMap(scan)).toEqual(expect.arrayContaining(['Form']));
+    });
   });
 });
 

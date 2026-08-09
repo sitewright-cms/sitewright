@@ -14,6 +14,7 @@ The running version of an instance is reported at `GET /version` (baked into the
 ### Added
 
 
+
 - **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`
   token is a hardcoded constant sized for the stock navbar, so it is wrong for essentially every
   imported header — and a census of 45 published sites found it is normally wrong at exactly *one*
@@ -29,6 +30,7 @@ The running version of an instance is reported at `GET /version` (baked into the
   accounted for 5 of 6 candidate findings in the census.
 
 ### Changed
+
 
 
 - **Muted text across the admin UI moved up one step, in both themes.** The pair used in 286 places
@@ -56,6 +58,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   (the URL endpoint the shell already calls blocks for the whole build, so it can never narrate it).
 
 ### Fixed
+
+
+- **Published forms could never submit, on any site served from a subdomain.** The publisher bakes an
+  ABSOLUTE submission endpoint into every platform-routed form
+  (`https://<platform>/f/<project>/<form>`, absolute whenever a public base URL is configured) while
+  emitting `connect-src 'self'` — and a published site is served from `<slug>.<sitesDomain>`, a
+  DIFFERENT origin. The browser blocked the submit before it left, so there was no request to log and
+  no submission to store: SMTP, CORS, the endpoint and every form definition were correct, and the
+  visitor got nothing. Measured on a real instance: 66 forms across every published project, none of
+  which could ever send. The policy now carries the origin the publisher itself injected. Also fixes
+  hCaptcha, blocked by the same policy (`js.hcaptcha.com` under `script-src 'self' 'unsafe-inline'`),
+  which meant a captcha form could not even render its widget — `hcaptcha.com` and `*.hcaptcha.com`
+  are allowed for `script`/`frame`/`connect`/`style` when, and only when, the page carries a widget.
+  Both widenings are scoped per page, so a page without a form or a captcha stays strict. **Existing
+  published sites must be republished to pick the new policy up.**
+
 
 
 - **CI went red on an exhaustive test that was too slow to finish.** The Tailwind reference's

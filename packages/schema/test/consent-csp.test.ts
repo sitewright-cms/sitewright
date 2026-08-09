@@ -8,6 +8,7 @@ import {
   buildConsentMetaCsp,
   siteCspHeaderFromHtml,
   authorContentCspOrigins,
+  platformInjectedCspOrigins,
   gateAuthorIframes,
   DEFAULT_EMBED_CATEGORY,
 } from '../src/consent-csp.js';
@@ -367,5 +368,46 @@ describe('website.cspOrigins (author allow-list, independent of the consent mana
   it('contributes nothing when empty (a site with no third parties keeps the strict floor)', () => {
     expect(buildSiteCspHeader(undefined, {}, {})).toBeUndefined();
     expect(buildSiteCspHeader(undefined, {}, { frame: [] })).toBeUndefined();
+  });
+});
+
+describe('platformInjectedCspOrigins — what the PUBLISHER puts on the page', () => {
+  const routed = '<form data-sw-block="Form" data-sw-component="form" data-sw-routed data-sw-form="contact"></form>';
+
+  it('allows the cross-origin form endpoint the publisher itself bakes in', () => {
+    // THE DEFECT: the publisher bakes an ABSOLUTE `/f/` endpoint into every platform-routed form, while a
+    // published site is served from `<slug>.<sitesDomain>` — a different origin — under `connect-src
+    // 'self'`. The browser blocked the submit before it left, so there was no request to log and no
+    // submission to store: measured on a real instance, 66 correctly-configured forms that could never send.
+    const o = platformInjectedCspOrigins(routed, 'https://sitewright.example');
+    expect(o.connect).toEqual(['sitewright.example']);
+    expect(o.script).toEqual([]); // no captcha on this page → nothing else widened
+  });
+
+  it('widens NOTHING for a page with no platform-routed form', () => {
+    expect(platformInjectedCspOrigins('<p>no forms here</p>', 'https://sitewright.example').connect).toEqual([]);
+    // A contactPhp form posts same-origin to contact.php and carries no marker, so it stays strict.
+    expect(platformInjectedCspOrigins('<form data-sw-component="form" data-sw-endpoint="contact.php"></form>', 'https://sitewright.example').connect).toEqual([]);
+  });
+
+  it('needs no endpoint base to be configured (a same-origin deployment widens nothing)', () => {
+    expect(platformInjectedCspOrigins(routed, '').connect).toEqual([]);
+    expect(platformInjectedCspOrigins(routed, undefined).connect).toEqual([]);
+  });
+
+  it('only trusts an https base, and never a malformed one', () => {
+    expect(platformInjectedCspOrigins(routed, 'http://insecure.example').connect).toEqual([]);
+    expect(platformInjectedCspOrigins(routed, 'not a url').connect).toEqual([]);
+  });
+
+  it('allows hCaptcha across every directive its widget needs, only when the page carries one', () => {
+    // The form runtime injects js.hcaptcha.com the moment an `.h-captcha` element exists; the widget then
+    // frames, calls and styles its own hosts. Miss one directive and it half-loads.
+    const withCaptcha = `${routed}<div class="h-captcha" data-sitekey="k"></div>`;
+    const o = platformInjectedCspOrigins(withCaptcha, 'https://sitewright.example');
+    for (const d of [o.script, o.frame, o.style]) expect(d).toEqual(['hcaptcha.com', '*.hcaptcha.com']);
+    expect(o.connect).toEqual(['sitewright.example', 'hcaptcha.com', '*.hcaptcha.com']);
+    // …and a page without the widget keeps the strict policy.
+    expect(platformInjectedCspOrigins(routed, 'https://sitewright.example').frame).toEqual([]);
   });
 });

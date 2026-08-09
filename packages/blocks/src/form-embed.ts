@@ -258,6 +258,12 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
     // The pass OWNS the endpoint/redirect attributes — the stored definition is the single source
     // of truth, so an authored endpoint is overwritten and a stale authored redirect is dropped.
     el.attribs['data-sw-endpoint'] = isContactPhpMode(form.mode) ? `${ctx.siteRoot ?? ''}contact.php` : form.endpoint;
+    // Mark a PLATFORM-ROUTED form as such, independently of how its endpoint is carried. The published
+    // CSP has to allow the cross-origin `/f/` submit, and keying that on the endpoint ATTRIBUTE would tie
+    // the policy to today's markup — the endpoint is due to stop being a plain attribute (it must not sit
+    // in the HTML for harvesters to read). A contactPhp form posts same-origin and needs no widening, so
+    // it deliberately carries no marker.
+    if (!isContactPhpMode(form.mode)) el.attribs['data-sw-routed'] = '';
     if (form.redirectUrl) el.attribs['data-sw-redirect'] = form.redirectUrl;
     else delete el.attribs['data-sw-redirect'];
     // Without the component marker FORM_JS never wires the submit — a silently dead form.

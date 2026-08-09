@@ -109,6 +109,7 @@ import {
   scrollSpyUsesRuntime,
   buildConsentMetaCsp,
   authorContentCspOrigins,
+  platformInjectedCspOrigins,
   gateAuthorIframes,
   DEFAULT_EMBED_CATEGORY,
   DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
@@ -1185,11 +1186,24 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
         // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
         // Independent of consent.enabled (a held iframe still needs its frame-src origin to load on consent).
-        const authorCspOrigins = authorContentCspOrigins(
-          [bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml, website?.head, website?.scripts]
-            .filter((s): s is string => Boolean(s))
-            .join('\n'),
-        );
+        const cspScanHtml = [bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml, website?.head, website?.scripts]
+          .filter((s): s is string => Boolean(s))
+          .join('\n');
+        const authorCspOrigins = authorContentCspOrigins(cspScanHtml);
+        // …and the origins the PLATFORM injects into the very same page. The publisher used to contradict
+        // itself here: it bakes an ABSOLUTE `/f/` endpoint into every platform-routed form, and a published
+        // site is served from `<slug>.<sitesDomain>` — a DIFFERENT origin — while the policy said
+        // `connect-src 'self'`. The browser blocked the submit before it left, so there was no request to
+        // log and no submission to store, and a correctly configured form simply never sent. Same for the
+        // captcha script the form runtime loads. Scanned per page, so a page without a form widens nothing.
+        const platformCspOrigins = platformInjectedCspOrigins(cspScanHtml, formBase);
+        const pageCspOrigins = {
+          frame: [...authorCspOrigins.frame, ...platformCspOrigins.frame],
+          script: [...authorCspOrigins.script, ...platformCspOrigins.script],
+          connect: [...authorCspOrigins.connect, ...platformCspOrigins.connect],
+          media: authorCspOrigins.media,
+          style: platformCspOrigins.style,
+        };
         const html = renderDocument(page, {
           brand,
           bodyHtml,
@@ -1264,7 +1278,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `'unsafe-inline'` (for the OWNER's authored JS) — and per the CSP spec a hash in the source
           // list makes `'unsafe-inline'` be IGNORED, which would block author inline scripts in the
           // (sandboxed, opaque, safe) preview. The runtime runs via `'unsafe-inline'` instead.
-          metaCsp: buildConsentMetaCsp(website?.consent, authorCspOrigins, undefined, website?.cspOrigins),
+          metaCsp: buildConsentMetaCsp(website?.consent, pageCspOrigins, undefined, website?.cspOrigins),
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

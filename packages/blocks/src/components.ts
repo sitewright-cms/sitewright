@@ -907,6 +907,23 @@ const FORM_JS = `(function(){
     if(!endpoint){var fid=form.getAttribute('data-sw-routed');if(fid&&window.__swf)endpoint=window.__swf(fid);}
     if(!endpoint)return;
     var started=Date.now();
+    // INTERACTION EVIDENCE — see INTERACTION_FIELD. Counts TRUSTED events only (isTrusted is false for
+    // anything dispatched by a script), plus how many distinct named fields were touched. Passive
+    // listeners so none of this can delay or block the visitor's typing or scrolling.
+    var ixPointer=0,ixKey=0,ixFields={};
+    function ixNote(e,kind){
+      if(!e||e.isTrusted===false)return;
+      if(kind==='p')ixPointer++;else ixKey++;
+      var t=e.target;
+      if(t&&t.name)ixFields[t.name]=1;
+    }
+    form.addEventListener('pointerdown',function(e){ixNote(e,'p');},{passive:true});
+    form.addEventListener('touchstart',function(e){ixNote(e,'p');},{passive:true});
+    form.addEventListener('keydown',function(e){ixNote(e,'k');},{passive:true});
+    // The 'input' event catches what neither of the above does: browser AUTOFILL, and a paste from the
+    // context menu. Counting it as key-ish evidence is what keeps autofill users from looking like bots.
+    // (No backticks in this comment: it lives inside a template literal.)
+    form.addEventListener('input',function(e){ixNote(e,'k');},{passive:true});
     var success=form.querySelector('[data-sw-part="success"]');
     var error=form.querySelector('[data-sw-part="error"]');
     var submit=form.querySelector('[data-sw-part="submit"]');
@@ -949,6 +966,8 @@ const FORM_JS = `(function(){
         }
       });
       data['_elapsed']=String(Date.now()-started);
+      var ixCount=0;for(var k in ixFields){if(Object.prototype.hasOwnProperty.call(ixFields,k))ixCount++;}
+      data['_ix']=ixPointer+'.'+ixKey+'.'+ixCount;
       if(submit)submit.disabled=true;
       fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)}).then(function(res){
         if(!res.ok)throw new Error('bad status');

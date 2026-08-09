@@ -84,7 +84,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'lead@x.co', message: 'Hello there', _elapsed: '5000' },
+      payload: { email: 'lead@x.co', message: 'Hello there', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
@@ -109,7 +109,7 @@ describe('public form submission endpoint', () => {
       cookies: { sw_session: t },
       payload: { id: 'lead', name: 'Lead', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'sales@acme.com', mode: 'userSmtp' },
     });
-    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/lead`, payload: { email: 'p@x.co', _elapsed: '5000' } });
+    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/lead`, payload: { email: 'p@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect(res.statusCode).toBe(200);
     expect(projectMailer.sent).toHaveLength(1);
     expect(projectMailer.sent[0]).toMatchObject({ projectId, mail: { recipient: 'sales@acme.com' } });
@@ -120,7 +120,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000' },
+      payload: { email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     expect(mailer.sent).toHaveLength(0);
@@ -145,8 +145,8 @@ describe('public form submission endpoint', () => {
     // in your form and never heard back" cannot be checked at all.
     const post = (payload: Record<string, string>) =>
       app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload });
-    await post({ email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000' });
-    await post({ email: 'bot2@x.co', _hpt: 'also a bot', _elapsed: '5000' });
+    await post({ email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000', _ix: '3.12.2' });
+    await post({ email: 'bot2@x.co', _hpt: 'also a bot', _elapsed: '5000', _ix: '3.12.2' });
     await post({ email: 'fast@x.co', _elapsed: '100' });
 
     const res = await app.inject({
@@ -171,7 +171,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { message: 'no email supplied', _elapsed: '5000' },
+      payload: { message: 'no email supplied', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
@@ -184,7 +184,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'not-an-email', _elapsed: '5000' },
+      payload: { email: 'not-an-email', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
@@ -196,7 +196,7 @@ describe('public form submission endpoint', () => {
     const nested = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { attachment: { bytes: 'AAAA' }, _elapsed: '5000' },
+      payload: { attachment: { bytes: 'AAAA' }, _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(nested.statusCode).toBe(400);
   });
@@ -205,22 +205,22 @@ describe('public form submission endpoint', () => {
     const ok = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'lead@x.co', features: ['SEO', 'Analytics', 'Hosting'], _elapsed: '5000' },
+      payload: { email: 'lead@x.co', features: ['SEO', 'Analytics', 'Hosting'], _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(ok.statusCode).toBe(200);
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     const items = (list.json() as { items: Array<{ fields: Record<string, string> }> }).items;
     expect(items[0]!.fields.features).toBe('SEO, Analytics, Hosting'); // array joined
     // when only ONE box in a group is checked, the client sends a plain STRING (not an array) — stored as-is
-    const single = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', features: 'SEO', _elapsed: '5000' } });
+    const single = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', features: 'SEO', _elapsed: '5000', _ix: '3.12.2' } });
     expect(single.statusCode).toBe(200);
     const items2 = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } })).json() as { items: Array<{ fields: Record<string, string> }> }).items;
     expect(items2[0]!.fields.features).toBe('SEO');
     // an array with a non-string element is rejected (still no objects/binary)
-    const bad = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { features: ['ok', { x: 1 }], _elapsed: '5000' } });
+    const bad = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { features: ['ok', { x: 1 }], _elapsed: '5000', _ix: '3.12.2' } });
     expect(bad.statusCode).toBe(400);
     // a control (trap) field must NEVER be an array — reject rather than normalize it into a value
-    expect((await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@b.co', _hpt: [], _elapsed: '5000' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@b.co', _hpt: [], _elapsed: '5000', _ix: '3.12.2' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@b.co', _elapsed: ['5000'] } })).statusCode).toBe(400);
   });
 
@@ -229,7 +229,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'lead@x.co', _elapsed: '5000' },
+      payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
@@ -262,7 +262,7 @@ describe('public form submission endpoint', () => {
       method: 'POST',
       url: `/f/${projectId}/contact`,
       headers: { origin, 'content-type': 'application/json' },
-      payload: { email: 'lead@x.co', message: 'cross-domain hello', _elapsed: '5000' },
+      payload: { email: 'lead@x.co', message: 'cross-domain hello', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
@@ -275,23 +275,23 @@ describe('public form submission endpoint', () => {
   it('names the cap it hit instead of one opaque "invalid submission"', async () => {
     // A big order form sits close to the field cap (a real one measured 44 of 60); the first time a
     // menu grows past it, EVERY order 400s, and the message used to say nothing about which limit.
-    const tooMany: Record<string, string> = { _elapsed: '5000' };
+    const tooMany: Record<string, string> = { _elapsed: '5000', _ix: '3.12.2' };
     for (let i = 0; i < 70; i += 1) tooMany[`f${i}`] = 'x';
     const over = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: tooMany });
     expect(over.statusCode).toBe(400);
-    expect(over.json()).toEqual({ error: 'invalid submission', reason: 'too many fields (71; the maximum is 60)' });
+    expect(over.json()).toEqual({ error: 'invalid submission', reason: 'too many fields (72; the maximum is 60)' });
 
     const long = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'a@b.co', message: 'x'.repeat(10_001), _elapsed: '5000' },
+      payload: { email: 'a@b.co', message: 'x'.repeat(10_001), _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(long.json()).toMatchObject({ reason: '"message" is longer than 10000 characters' });
 
     const nested = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: { deep: true }, _elapsed: '5000' },
+      payload: { email: { deep: true }, _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(nested.json()).toMatchObject({ reason: '"email" is not text (no objects, nulls or attachments)' });
 
@@ -305,7 +305,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'lead@x.co', message: 'Hello', 'Meal - Chilli Con Carne': '3', _elapsed: '5000' },
+      payload: { email: 'lead@x.co', message: 'Hello', 'Meal - Chilli Con Carne': '3', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     const mail = mailer.sent[0]!;
@@ -327,7 +327,7 @@ describe('public form submission endpoint', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/f/${projectId}/contact/preview`,
-        payload: { email: 'lead@x.co', message: 'Hello there', _elapsed: '5000' },
+        payload: { email: 'lead@x.co', message: 'Hello there', _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ ok: true, preview: true, fields: 2 });
@@ -340,7 +340,7 @@ describe('public form submission endpoint', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/f/${projectId}/contact/preview`,
-        payload: { message: 'no email', _elapsed: '5000' },
+        payload: { message: 'no email', _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(res.statusCode).toBe(400);
       expect(res.json()).toEqual({ error: 'invalid fields', fields: ['email'] });
@@ -357,14 +357,14 @@ describe('public form submission endpoint', () => {
       const pot = await app.inject({
         method: 'POST',
         url: `/f/${projectId}/contact/preview`,
-        payload: { email: 'lead@x.co', _hpt: 'bot', _elapsed: '5000' },
+        payload: { email: 'lead@x.co', _hpt: 'bot', _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(pot.json()).toMatchObject({ ok: true, filtered: 'honeypot' });
       expect(await stored()).toBe(0);
     });
 
     it('404s an unknown form, and answers a CORS preflight like the real endpoint', async () => {
-      const missing = await app.inject({ method: 'POST', url: `/f/${projectId}/nope/preview`, payload: { _elapsed: '5000' } });
+      const missing = await app.inject({ method: 'POST', url: `/f/${projectId}/nope/preview`, payload: { _elapsed: '5000', _ix: '3.12.2' } });
       expect(missing.statusCode).toBe(404);
       const pre = await app.inject({ method: 'OPTIONS', url: `/f/${projectId}/contact/preview` });
       expect(pre.statusCode).toBe(204);
@@ -375,7 +375,7 @@ describe('public form submission endpoint', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/f/${projectId}/contact/preview`,
-        payload: { email: 'lead@x.co', _elapsed: '5000' },
+        payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(res.body).not.toContain('sales@acme.com');
       expect(res.body).not.toContain('Contact form');
@@ -385,7 +385,7 @@ describe('public form submission endpoint', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/f/${projectId}/contact/preview`,
-        payload: { email: { nested: true }, _elapsed: '5000' },
+        payload: { email: { nested: true }, _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(res.statusCode).toBe(400);
       expect(res.json()).toMatchObject({ error: 'invalid submission' });
@@ -413,7 +413,7 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/f/${projectId}/contact`,
-      payload: { email: 'over@cap.co', _elapsed: '5000' },
+      payload: { email: 'over@cap.co', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
@@ -433,7 +433,7 @@ describe('public form submission endpoint', () => {
 
 describe('submissions inbox (authenticated)', () => {
   beforeEach(async () => {
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@x.co', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'a@x.co', _elapsed: '5000', _ix: '3.12.2' } });
   });
 
   it('requires authentication (401 without a session)', async () => {
@@ -453,7 +453,7 @@ describe('submissions inbox (authenticated)', () => {
   });
 
   it('carries each form’s name + field labels, so the inbox is not reading input names', async () => {
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', message: 'Hi', extra: 'x', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', message: 'Hi', extra: 'x', _elapsed: '5000', _ix: '3.12.2' } });
     const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     const body = res.json() as { forms: Record<string, { name: string; labels: Record<string, string> }> };
     expect(body.forms.contact).toEqual({ name: 'Contact form', labels: { email: 'Email', message: 'Message' } });
@@ -505,7 +505,7 @@ describe('undelivered notifications are visible and recoverable', () => {
   }
 
   it('★ a successful send leaves nothing owed', async () => {
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect((await state()).deliveryState).toBe('sent');
     const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/undelivered`, cookies: { sw_session: t } });
     expect(res.json()).toEqual({ count: 0, lastError: null });
@@ -515,7 +515,7 @@ describe('undelivered notifications are visible and recoverable', () => {
     // Before this existed, a throwing mailer produced one server-log line and nothing else: the
     // visitor was thanked, the lead sat in the inbox, and nobody knew it had not been emailed.
     mailer.send = async () => { throw Object.assign(new Error('nope'), { code: 'EAUTH' }); };
-    const post = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    const post = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect(post.statusCode).toBe(200); // the visitor is still thanked — that part is deliberate
     expect(post.json()).toEqual({ ok: true });
 
@@ -533,7 +533,7 @@ describe('undelivered notifications are visible and recoverable', () => {
 
   it('★ mail that is simply unconfigured is owed too, not silently dropped', async () => {
     mailer.result = false; // "not configured / mode disabled" rather than a transport error
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     const row = await state();
     expect(row.deliveryState).toBe('pending');
     expect(row.deliveryError).toMatch(/not configured/i);
@@ -541,7 +541,7 @@ describe('undelivered notifications are visible and recoverable', () => {
 
   it('★ the retry pass delivers it once the operator fixes the problem', async () => {
     mailer.send = async () => { throw new Error('down'); };
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect((await state()).deliveryState).toBe('pending');
 
     // SMTP is fixed; the next due pass carries the backlog out. `now` is pushed past the backoff
@@ -556,7 +556,7 @@ describe('undelivered notifications are visible and recoverable', () => {
 
   it('★ resend requeues a submission and the next pass sends it', async () => {
     mailer.send = async () => { throw new Error('down'); };
-    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     const id = (await state()).id;
 
     const healthy = new FakeMailer();
@@ -594,7 +594,7 @@ describe('a submission is never emailed twice', () => {
     };
 
     // Fire the submission WITHOUT awaiting: the handler is now blocked inside the transport.
-    const posting = app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000' } });
+    const posting = app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' } });
     await waitFor(async () => (await db.select().from(formSubmissions)).length === 1);
     const [row] = await db.select().from(formSubmissions);
     expect(row!.deliveryState).toBe('pending'); // stored, owed, first attempt still running
@@ -624,3 +624,47 @@ async function waitFor(check: () => Promise<boolean>, timeoutMs = 5000): Promise
   }
 }
 
+
+describe('interaction gate — what the time-trap cannot catch', () => {
+  // A script POSTing straight to the endpoint can fake a plausible `_elapsed`; what it cannot fake
+  // without rendering the form is having produced trusted input events.
+  const post = (payload: Record<string, string>, app_: typeof app = app) =>
+    app_.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload });
+
+  it('drops a submission that carries NO interaction evidence at all', async () => {
+    const res = await post({ email: 'bot@x.co', _elapsed: '5000' });
+    expect(res.statusCode).toBe(200); // silent, like every other trap — the bot learns nothing
+    expect(mailer.sent).toHaveLength(0);
+    const filtered = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/filtered`, cookies: { sw_session: t } });
+    expect((filtered.json() as { items: Array<{ reason: string; count: number }> }).items.find((i) => i.reason === 'no-interaction')?.count).toBe(1);
+  });
+
+  it('accepts a KEYBOARD-ONLY visitor (no pointer events at all)', async () => {
+    // The gate must never require a particular MIX: a keyboard-only visitor produces zero pointer
+    // events, and any rule sharper than "did a human touch this" would silently cost that lead.
+    const res = await post({ email: 'kbd@x.co', message: 'typed it', _elapsed: '5000', _ix: '0.41.2' });
+    expect(res.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+  });
+
+  it('accepts AUTOFILL, where several fields arrive with almost no input', async () => {
+    // Browser autofill fires `input` without keystrokes; the runtime counts that as evidence. Getting
+    // this wrong would reject exactly the people most likely to be real returning customers.
+    const res = await post({ email: 'auto@x.co', message: 'autofilled', _elapsed: '5000', _ix: '1.1.3' });
+    expect(res.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+  });
+
+  it('treats a MALFORMED value as absent rather than rejecting outright', async () => {
+    // Evidence, not a credential: a browser quirk that garbles it must not 400 a real submission — it
+    // just falls to the same gate as a bot, which is the conservative direction.
+    const res = await post({ email: 'weird@x.co', _elapsed: '5000', _ix: 'not-a-triplet' });
+    expect(res.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('never stores the evidence field with the lead', async () => {
+    await post({ email: 'lead@x.co', message: 'hello', _elapsed: '5000', _ix: '4.20.2' });
+    expect(mailer.sent[0]!.fields).not.toHaveProperty('_ix');
+  });
+});

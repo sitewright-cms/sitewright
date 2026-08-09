@@ -4,6 +4,7 @@ import {
   FormSchema,
   IdSchema,
   HONEYPOT_FIELD,
+  INTERACTION_FIELD,
   TIMETRAP_FIELD,
   HCAPTCHA_RESPONSE_FIELD,
   MIN_SUBMIT_ELAPSED_MS,
@@ -87,6 +88,8 @@ async function loadForms(db: Database, projectId: string): Promise<Form[]> {
 interface ParsedSubmission {
   fields: Record<string, string>;
   honeypotFilled: boolean;
+  /** Trusted-input evidence from the form runtime, or undefined when none arrived. */
+  interaction?: { pointer: number; key: number; fields: number };
   elapsed: number | undefined;
   captchaToken: string | undefined;
 }
@@ -118,12 +121,13 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
   let honeypotFilled = false;
   let elapsed: number | undefined;
   let captchaToken: string | undefined;
+  let interaction: { pointer: number; key: number; fields: number } | undefined;
   let total = 0;
   for (const [key, rawValue] of entries) {
     if (key.length > MAX_KEY_LEN) return { reason: `a field name is longer than ${MAX_KEY_LEN} characters` };
     // The control fields (honeypot / time-trap / captcha) are ALWAYS single scalars — an array for any of
     // them is malformed (and must not be silently normalized into a value that could weaken the check).
-    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
+    if ((key === HONEYPOT_FIELD || key === TIMETRAP_FIELD || key === INTERACTION_FIELD || key === HCAPTCHA_RESPONSE_FIELD) && Array.isArray(rawValue)) {
       return { reason: `"${key}" must be a single value` };
     }
     // A checkbox GROUP submits several checked values under one name → a string ARRAY; join them into a
@@ -154,6 +158,14 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
       if (Number.isFinite(n)) elapsed = n;
       continue;
     }
+    if (key === INTERACTION_FIELD) {
+      // `<pointer>.<key>.<fields>`, three small non-negative integers. A malformed value is treated as
+      // ABSENT rather than rejected: it is evidence, not a credential, and a browser quirk that garbles
+      // it must cost a lead nothing more than the trap it then falls to.
+      const m = /^(\d{1,6})\.(\d{1,6})\.(\d{1,4})$/.exec(value.trim());
+      if (m) interaction = { pointer: Number(m[1]), key: Number(m[2]), fields: Number(m[3]) };
+      continue;
+    }
     // Skip dangerous prototype keys defensively before the dynamic assignment.
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     // Count only the fields that will actually be stored (the trap fields are skipped),
@@ -163,7 +175,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
     // eslint-disable-next-line security/detect-object-injection -- value is a string (checked) and prototype keys are excluded above
     fields[key] = value;
   }
-  return { fields, honeypotFilled, elapsed, captchaToken };
+  return { fields, honeypotFilled, elapsed, captchaToken, interaction };
 }
 
 /** Picks a safe Reply-To from a submitted `email` field, if present and valid. */
@@ -277,6 +289,29 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         // reporting gap; a failed request would be a lost lead.
         await submissions.recordFiltered(projectId, formId, reason).catch((err: unknown) => {
           app.log.warn({ projectId, formId, reason, err }, 'could not count a filtered submission');
+        });
+        return reply.send({ ok: true });
+      }
+
+      // INTERACTION GATE — catches what the time-trap cannot: a script that POSTs straight to the
+      // endpoint with a plausible `_elapsed`, having never rendered the form. Such a client produces no
+      // trusted input events, so it sends no evidence at all.
+      //
+      // Deliberately the weakest possible test: SOME trusted input, of any kind. Not a pattern, not a
+      // ratio, not a minimum count. A keyboard-only visitor produces no pointer events; a screen-reader
+      // user produces an unusual shape; browser autofill fills several fields with no keystrokes. Any
+      // rule sharper than "did a human touch this at all" starts costing real leads, and a lost lead is
+      // far more expensive than a spam message that gets through.
+      //
+      // Being honest about the ceiling: a bot that actually drives a browser produces trusted events and
+      // sails through, and one that reads the runtime can forge the field. It stops the generic spam
+      // script that never loads the page, which is the overwhelming majority of what arrives.
+      const ix = parsed.interaction;
+      const touchedAnything = ix !== undefined && ix.pointer + ix.key > 0;
+      if (Object.keys(parsed.fields).length > 0 && !touchedAnything) {
+        app.log.info({ projectId, formId, reason: 'no-interaction', ix }, 'submission filtered by a bot trap');
+        await submissions.recordFiltered(projectId, formId, 'no-interaction').catch((err: unknown) => {
+          app.log.warn({ projectId, formId, err }, 'could not count a filtered submission');
         });
         return reply.send({ ok: true });
       }

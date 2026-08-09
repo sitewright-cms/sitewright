@@ -32,7 +32,7 @@ test('userSmtp: project SMTP config + a userSmtp form stores submissions', async
   await api.put(`${base}/content/form/lead`, {
     data: { id: 'lead', name: 'Lead', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'sales@acme.example', mode: 'userSmtp' },
   });
-  const submit = await api.post(`/f/${projectId}/lead`, { data: { email: 'visitor@x.co', _elapsed: '5000' } });
+  const submit = await api.post(`/f/${projectId}/lead`, { data: { email: 'visitor@x.co', _elapsed: '5000', _ix: '3.12.2' } });
   expect(submit.status()).toBe(200);
   expect(await submit.json()).toEqual({ ok: true });
 

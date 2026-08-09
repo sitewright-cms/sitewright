@@ -358,3 +358,17 @@ describe('the drawer reveals itself on the FIRST item only', () => {
     expect(CART_JS).toContain("dialog.setAttribute('open','')");
   });
 });
+
+
+describe('cart order form — interaction evidence', () => {
+  it('sends its own _ix, because the cart builds its payload rather than reusing the form runtime', () => {
+    // The /f endpoint drops a submission carrying no trusted input. The cart does NOT go through
+    // FORM_JS, so it has to collect its own evidence — miss this and every order silently vanishes,
+    // indistinguishable from a bot, with the visitor told nothing.
+    expect(CART_JS).toContain("_ix:ixP+'.'+ixK+'.'+ixN");
+    // …collected from TRUSTED events only (isTrusted is false for anything a script dispatches).
+    expect(CART_JS).toContain('e.isTrusted===false');
+    // …on the order form, including the input event so autofill and paste count as evidence.
+    expect(CART_JS).toContain("form.addEventListener('input'");
+  });
+});

@@ -19,7 +19,17 @@ function hasControlChars(value: string): boolean {
 /** A single input in a form. No `file` type — attachments are never accepted. `radio` is a
  *  single-select option group; `checkbox` WITH options is a multi-select group (its values submit
  *  joined with ", "), WITHOUT options it is one boolean checkbox. */
-export const FormFieldTypeSchema = z.enum(['text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox']);
+/**
+ * The input primitives a form field can be.
+ *
+ * `date` / `time` / `datetime` render as a TEXT input carrying the DateTimePicker component marker,
+ * not as native `type="date"` controls — see `renderFormField`. The submitted value stays an ordinary
+ * string like every other field: the endpoint deliberately treats all values as opaque text (no
+ * parsing, no attachments), so a date needs no special handling anywhere downstream.
+ */
+export const FormFieldTypeSchema = z.enum([
+  'text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox', 'date', 'time', 'datetime',
+]);
 export type FormFieldType = z.infer<typeof FormFieldTypeSchema>;
 
 export const FormFieldSchema = z

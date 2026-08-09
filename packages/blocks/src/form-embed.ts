@@ -144,6 +144,12 @@ function renderFormField(field: FormPublic['fields'][number]): string {
   } else if (field.type === 'select') {
     const opts = options.map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`).join('');
     control = `<select name="${name}"${required}><option value="">—</option>${opts}</select>`;
+  } else if (field.type === 'date' || field.type === 'time' || field.type === 'datetime') {
+    // A TEXT input carrying the DateTimePicker marker — deliberately NOT `type="date"`. The component's
+    // contract is that the marker belongs on a text input: on a native date/time control the browser
+    // opens its OWN picker as well, so the visitor gets two stacked calendars. This way the field is
+    // brand-themed and locale-aware, and without JS it degrades to a plain text box that still submits.
+    control = `<input type="text" name="${name}"${required}${ph} data-sw-component="datetimepicker" data-mode="${field.type}" />`;
   } else {
     control = `<input type="${field.type}" name="${name}"${required}${ph} />`;
   }

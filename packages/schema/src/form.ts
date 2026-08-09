@@ -78,12 +78,36 @@ export function isPlatformRoutedMode(mode: FormMode): boolean {
  * boolean, and a forward-only rewrite that cannot be tested against real databases is a worse risk
  * than four lines here. An explicit `captcha` always wins.
  */
+const storedCaptchaFlag = (o: Record<string, unknown>): boolean | undefined => {
+  if (typeof o.captcha === 'boolean') return o.captcha;
+  if (typeof o.hcaptcha === 'boolean') return o.hcaptcha; // pre-rename
+  return undefined;
+};
+
 const carryLegacyCaptchaFlag = (v: unknown): unknown => {
   if (!v || typeof v !== 'object') return v;
   const o = v as Record<string, unknown>;
-  if (o.captcha === undefined && typeof o.hcaptcha === 'boolean') return { ...o, captcha: o.hcaptcha };
-  return v;
+  if (o.captcha !== undefined) return v;
+  const flag = storedCaptchaFlag(o);
+  return flag === undefined ? v : { ...o, captcha: flag };
 };
+
+/**
+ * Does this STORED form ask for a captcha?
+ *
+ * ★ Reads the flag ALONE, deliberately not through {@link FormSchema}. The question "was this project
+ * using the captcha credentials?" must not depend on the form's unrelated fields being valid: a form
+ * that fails validation for any other reason — a recipient that stopped being a legal address, a field
+ * type retired years ago — would otherwise be read as "no captcha", and the project would silently
+ * lose a configuration it was actively using. A migration is exactly where that trade is wrong.
+ *
+ * Shares {@link storedCaptchaFlag} with the schema's own preprocess, so the legacy `hcaptcha` name is
+ * understood in ONE place rather than re-derived by each caller.
+ */
+export function formWantsCaptcha(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  return storedCaptchaFlag(data as Record<string, unknown>) === true;
+}
 
 export const FormSchema = z.preprocess(carryLegacyCaptchaFlag, z.object({
   id: IdSchema,

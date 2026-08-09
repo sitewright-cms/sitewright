@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
+import { formWantsCaptcha,
   FormFieldSchema,
   FormSchema,
   FormSubmissionSchema,
@@ -54,6 +54,33 @@ describe('FormSchema', () => {
     expect(form.errorMessage).toContain('Sorry');
     expect(form.mode).toBe('globalSmtp');
     expect(form.captcha).toBe(false);
+  });
+
+  describe('formWantsCaptcha — the flag alone', () => {
+    it('answers for both the new and the legacy field name', () => {
+      expect(formWantsCaptcha({ captcha: true })).toBe(true);
+      expect(formWantsCaptcha({ captcha: false })).toBe(false);
+      expect(formWantsCaptcha({ hcaptcha: true })).toBe(true);
+      expect(formWantsCaptcha({ hcaptcha: false })).toBe(false);
+      expect(formWantsCaptcha({})).toBe(false);
+      expect(formWantsCaptcha({ captcha: false, hcaptcha: true })).toBe(false); // explicit wins
+    });
+
+    it('★ answers for a form that would FAIL validation, which is the whole point', () => {
+      // The migration asks "was this project using the captcha credentials?". A form that fails
+      // FormSchema for an unrelated reason — a recipient that stopped being a legal address, a field
+      // type retired years ago — must still answer honestly, or its project silently loses a
+      // configuration it was actively using.
+      const broken = { id: 'contact', recipient: 'not-an-email', fields: [], captcha: true };
+      expect(FormSchema.safeParse(broken).success).toBe(false);
+      expect(formWantsCaptcha(broken)).toBe(true);
+    });
+
+    it('is safe on anything that is not a form', () => {
+      for (const junk of [null, undefined, 'x', 42, [], { captcha: 'yes' }]) {
+        expect(formWantsCaptcha(junk)).toBe(false);
+      }
+    });
   });
 
   it('★ reads a pre-rename `hcaptcha: true` as `captcha`, so no stored form needed migrating', () => {

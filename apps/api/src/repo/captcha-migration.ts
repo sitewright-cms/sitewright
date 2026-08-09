@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { CaptchaStoredSchema, FormSchema } from '@sitewright/schema';
+import { CaptchaStoredSchema, formWantsCaptcha } from '@sitewright/schema';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { content, projects, PROJECT_CAPTCHA_ENTITY_ID } from '../db/schema.js';
@@ -43,10 +43,10 @@ export async function migrateInstanceHcaptchaToProjects(
 
   const needs = new Set<string>();
   for (const row of formRows) {
-    const parsed = FormSchema.safeParse(row.data);
-    // `captcha` reads a legacy `hcaptcha: true` through the schema's own shim, so this asks the
-    // question in ONE place rather than re-deriving the legacy field name here.
-    if (parsed.success && parsed.data.captcha) needs.add(row.projectId);
+    // ★ The FLAG only — never a full FormSchema parse. A form that fails validation for some unrelated
+    // reason would then read as "no captcha", and its project would silently lose a configuration it
+    // was actively using. `formWantsCaptcha` also understands the pre-rename `hcaptcha` name.
+    if (formWantsCaptcha(row.data)) needs.add(row.projectId);
   }
 
   const moved: string[] = [];

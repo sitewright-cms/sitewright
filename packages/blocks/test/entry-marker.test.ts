@@ -95,4 +95,25 @@ describe('markEntry — in place, else the wrapper', () => {
     expect(markEntry('A', 'e1', 'posts')).toBe(wrapEntry('A', 'e1', 'posts'));
     expect(wrapEntry('A', 'e1', 'posts')).toBe('<div data-sw-entry="e1" data-sw-dataset="posts">A</div>');
   });
+
+  // ★ A row that RENDERS NOTHING is marked with nothing. The wrapper exists to keep a click
+  // affordance that cannot go on the row's own element — but an empty row has nothing to click, so
+  // wrapping it buys no affordance and costs a preview-only element the published page won't have.
+  // That is the exact divergence this module exists to remove.
+  //
+  // It is not hypothetical: a FILTERED loop —
+  //   {{#each dataset.products}}{{#if listed}}<div class="card">…</div>{{/if}}{{/each}}
+  // — renders '' for every row the filter rejects, so a 92-product catalogue emitted 80 empty
+  // `<div data-sw-entry>`s. In the grid those became 80 empty CELLS and the real cards scattered
+  // across the page, in preview only.
+  it.each([
+    ['an empty row', ''],
+    ['whitespace only', '   \n '],
+  ])('returns %s untouched instead of wrapping it', (_label, html) => {
+    expect(markEntry(html, 'e1', 'posts')).toBe(html);
+  });
+
+  it('still wraps a row that renders real text — that one has something to click', () => {
+    expect(markEntry(' A ', 'e1', 'posts')).toBe(wrapEntry(' A ', 'e1', 'posts'));
+  });
 });

@@ -84,6 +84,29 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
     expect(out).toBe('<table><tbody><tr data-sw-entry="e1" data-sw-dataset="posts"><td>A</td></tr></tbody></table>');
   });
 
+  // ★ A FILTERED loop must not leave a marker behind for the rows it skips. Each skipped row renders
+  // '' and used to come back as `<div data-sw-entry></div>` — so a grid of N products got one empty
+  // grid cell per NON-matching row and the matching cards scattered. Preview-only, which is what made
+  // it look like a styling bug in the author's page rather than a marker bug.
+  it('emits nothing for a row the template filters out', () => {
+    const src = '<div class="grid">{{#each dataset.posts}}{{#if keep}}<span>{{t}}</span>{{/if}}{{/each}}</div>';
+    const filtered = [
+      { id: 'e1', dataset: 'posts', values: { t: 'A', keep: true } },
+      { id: 'e2', dataset: 'posts', values: { t: 'B', keep: false } },
+      { id: 'e3', dataset: 'posts', values: { t: 'C', keep: true } },
+    ];
+    const preview = renderTemplate(src, { dataset: { posts: filtered }, markEntries: true });
+
+    expect(preview).toBe(
+      '<div class="grid"><span data-sw-entry="e1" data-sw-dataset="posts">A</span>' +
+        '<span data-sw-entry="e3" data-sw-dataset="posts">C</span></div>',
+    );
+    // The invariant, restated for the filtered case: preview minus the markers === publish.
+    expect(preview.replace(/ data-sw-(?:entry|dataset)="[^"]*"/g, '')).toBe(
+      renderTemplate(src, { dataset: { posts: filtered } }),
+    );
+  });
+
   // FALLBACK: a row with no element of its own has nothing to carry the attributes, so it keeps the
   // wrapper — losing the click affordance entirely would be worse than an extra inline-level element.
   it('falls back to the wrapper for a row that is bare text', () => {

@@ -11,6 +11,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A filtered `{{#each}}` scattered its cards across the editor preview.** The dataset loop marks each
+  row for click-to-edit, and a row with no element of its own falls back to an injected
+  `<div data-sw-entry>` wrapper. A row that renders *nothing* — every iteration a filter rejects, as in
+  `{{#each dataset.products}}{{#if listed}}…{{/if}}{{/each}}` — took that same fallback, so a
+  92-product catalogue emitted 80 empty wrappers. In a grid each one is an empty CELL, and the real
+  cards ended up strewn across the page at the index of their position in the *unfiltered* dataset.
+  The wrapper bought nothing there in any case: an empty row has nothing to click. `markEntry` now
+  returns an empty row untouched, restoring the invariant this module exists for — the preview DOM is
+  the published DOM plus two attributes, never an extra element. Publish was always correct, which is
+  what made it read as a styling bug in the author's own page.
+
 - **`pnpm verify` (and therefore CI) could report "all gates passed" on a failing gate.** The runner
   checked only the child's exit *status*. `spawnSync` defaults to a 1 MB output buffer, and on overflow
   it kills the child and reports the overflow in `error` while leaving `status` at 0 — so a truncated,

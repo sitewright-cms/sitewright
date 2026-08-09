@@ -91,3 +91,67 @@ describe('project delete — on-disk cleanup', () => {
     expect((await client.get(asset.url)).statusCode).toBe(404);
   });
 });
+
+// A SLUG RENAME is the third path that strands built output, and the one that was missed. Media moves
+// with the project and the old media dir is dropped; the published site used to be left behind under a
+// slug nothing points at any more — unreachable (serving resolves the project's CURRENT slug) but not
+// harmless: a full, unserved copy of a customer's site sitting on disk, one per rename, forever.
+// Measured on a real instance: 46 published directories, 4 actually served, 2 outliving their projects.
+describe('slug rename — on-disk cleanup', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  let publishRoot: string;
+  let mediaRoot: string;
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-ren-sites-'));
+    mediaRoot = await mkdtemp(join(tmpdir(), 'sw-ren-media-'));
+    harness = await makeHarness({ publishRoot, mediaRoot });
+    client = await harness.signup({ admin: true });
+    projectId = await client.createProject('Site', 'before');
+  });
+
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+    await rm(mediaRoot, { recursive: true, force: true });
+  });
+
+  it('drops the OLD slug’s built output instead of stranding it', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    expect(existsSync(join(publishRoot, 'before'))).toBe(true);
+    expect((await client.get('/sites/before/index.html')).statusCode).toBe(200);
+
+    const renamed = await client.inject({
+      method: 'PATCH',
+      url: `/projects/${projectId}`,
+      payload: { slug: 'after' },
+    });
+    expect(renamed.statusCode).toBe(200);
+
+    // The stale directory is GONE — not merely unreachable.
+    expect(existsSync(join(publishRoot, 'before'))).toBe(false);
+    expect((await client.get('/sites/before/index.html')).statusCode).toBe(404);
+    // …and the new slug serves nothing until it is republished, which is honest: the build is derived,
+    // and republishing is what regenerates it. Silently reviving stale bytes under a new name would be
+    // worse than a 404.
+    expect(existsSync(join(publishRoot, 'after'))).toBe(false);
+    expect((await client.get('/sites/after/index.html')).statusCode).toBe(404);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    expect((await client.get('/sites/after/index.html')).statusCode).toBe(200);
+  });
+
+  it('leaves the built output alone when only the NAME changes', async () => {
+    // Renaming the display name must not cost the site — only a SLUG change moves what is keyed by slug.
+    const proj = client.project(projectId);
+    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    const renamed = await client.inject({ method: 'PATCH', url: `/projects/${projectId}`, payload: { name: 'New Name' } });
+    expect(renamed.statusCode).toBe(200);
+    expect(existsSync(join(publishRoot, 'before'))).toBe(true);
+    expect((await client.get('/sites/before/index.html')).statusCode).toBe(200);
+  });
+});

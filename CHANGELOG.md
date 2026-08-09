@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A slug rename no longer strands the built site.** Media moved with the project and the old media
+  directory was dropped, but the published build was left behind under a slug nothing points at any
+  more — unreachable, since serving resolves the project's current slug, yet a full unserved copy of a
+  customer's site sitting on disk, one per rename, indefinitely. Measured on a real instance: 46
+  published directories, 4 of them actually served, and 2 outliving their projects entirely. The stale
+  published site and preview build are now removed; both are derived and regenerate on the next
+  publish, so the new slug serves a 404 until it is republished rather than silently reviving old bytes
+  under a new name. (Permanent project deletion and removing a Local Hosting target already cleaned up.)
+- **A placeholder hCaptcha site key is rejected when it is typed, not when a visitor hits the form.** An
+  instance was configured with the literal string `123`: it passed a bare `min(1)`, was baked into every
+  published form as `data-sitekey="123"`, and produced hCaptcha's own "The sitekey for this hCaptcha is
+  incorrect" for every visitor. Input now requires the UUID shape a real key has, with a message naming
+  where to find it. The STORED schema stays permissive on purpose — it is parsed with a throwing
+  `.parse()` on every read, including the one that fetches the cookie secret at boot, so tightening it
+  would not fix a bad key already in a database, it would make the whole instance unreadable because of
+  one.
+
 ### Added
 
 - **Optional proof-of-work on a form, self-hosted — no third party, no account, no keys.** An

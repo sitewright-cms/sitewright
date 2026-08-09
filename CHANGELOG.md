@@ -11,6 +11,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **One proof-of-work solve now buys exactly one submission.** The challenge was fully stateless: the
+  expiry rode inside the signed salt, nothing was stored, and so a solved challenge stayed valid for its
+  whole 30-minute TTL and could be replayed — and sprayed at every other form on the instance, because
+  nothing tied it to the form it was minted for. Cost per submission is the entire point of proof of
+  work, and "one solve, then half an hour of free posting" is not a weaker version of that guarantee but
+  the absence of one. Two things now hold it up: the signature covers the form the challenge was minted
+  for, so a solve is `bad-signature` anywhere else; and a verified solution is spent through an atomic
+  claim, so reusing it is `replayed`. Claiming happens last, after the work has been checked, so a
+  forged or expired solution never reaches the store — writing a row costs an attacker exactly what it
+  costs a visitor. The scope is derived from the URL at both ends and never travels on the wire, so the
+  payload stays ALTCHA-shaped and the browser runtime needed no change. `pow-replayed` joins the other
+  drop reasons in the filtered counts, and spent challenges are swept once their signed TTL passes.
+- **A proof-of-work form can now be tested in the preview.** The runtime builds every form URL from
+  `window.__swf`, which appends `/preview` in a draft preview, so its solver asked for
+  `…/<formId>/preview/challenge` — a route that did not exist. The fetch 404'd, the solver rejected, and
+  the form showed its error state and never posted: the one gate an author most wants to rehearse before
+  publishing was the one gate the preview could not run. The challenge is served on the preview path too
+  and the dry run verifies it, which also surfaces the gate's nastiest failure — `crypto.subtle` does not
+  exist outside a secure context, so an instance served over plain HTTP cannot solve at all — to the
+  author rather than to a visitor.
 - **A slug rename no longer strands the built site.** Media moved with the project and the old media
   directory was dropped, but the published build was left behind under a slug nothing points at any
   more — unreachable, since serving resolves the project's current slug, yet a full unserved copy of a

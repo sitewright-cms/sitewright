@@ -98,6 +98,39 @@ describe('filtered counters — what the bot traps leave behind', () => {
     expect(await repo.filteredSummary(projectB)).toEqual([]);
   });
 
+  describe('proof-of-work spending', () => {
+    it('claims a challenge once and refuses every reuse', async () => {
+      const later = new Date(Date.now() + 60_000);
+      expect(await repo.claimPowChallenge('abc', later)).toBe(true);
+      expect(await repo.claimPowChallenge('abc', later)).toBe(false);
+      expect(await repo.claimPowChallenge('abc', later)).toBe(false);
+      // A different challenge is unaffected — spending keys on the challenge, it does not latch.
+      expect(await repo.claimPowChallenge('def', later)).toBe(true);
+    });
+
+    it('lets exactly ONE of a set of CONCURRENT claims win', async () => {
+      // The reason this is a single INSERT … ON CONFLICT and not an exists-check-then-write: two posts
+      // carrying the same solution arriving together must not both read "unspent". A test that awaits
+      // each claim in turn cannot see that window, so fire them all before awaiting any.
+      const later = new Date(Date.now() + 60_000);
+      const results = await Promise.all(Array.from({ length: 8 }, () => repo.claimPowChallenge('race', later)));
+      expect(results.filter(Boolean)).toHaveLength(1);
+    });
+
+    it('sweeps only what has already expired', async () => {
+      const past = new Date(Date.now() - 60_000);
+      const future = new Date(Date.now() + 60_000);
+      await repo.claimPowChallenge('old', past);
+      await repo.claimPowChallenge('new', future);
+      await repo.sweepSpentPow();
+      // The expired row is gone, so its key is claimable again — harmless, because a challenge that
+      // far past its signed TTL is refused as `expired` long before the claim is consulted.
+      expect(await repo.claimPowChallenge('old', future)).toBe(true);
+      // The live one is still spent. A sweep that took this would silently reopen replay.
+      expect(await repo.claimPowChallenge('new', future)).toBe(false);
+    });
+  });
+
   it('records WHEN the trap last fired, so a jump is attributable to a change', async () => {
     // "Is this number small and steady, or did it jump the day we edited the form?" is the question
     // the counter exists to answer, and it needs a timestamp to answer it.

@@ -9,6 +9,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The responsive device switch snapped in one direction and slid off-centre in the other.** "Large
+  desktop" was the only target rendered as a differently-shaped box — `w-full`, in flow — while every
+  other device was an absolutely-positioned, `translateX(-50%)`-centred one. Neither `position` nor
+  `transform` is interpolable, so the transition had nothing to work with across that boundary.
+  Measured on the old component: desktop→mobile produced **no mid-flight frames at all**, and
+  mobile→desktop tweened its width while the box slid **795px** to the left — it jumped to the left
+  edge the instant the centring transform vanished, then expanded from there. Only fixed→fixed
+  switches (tablet↔laptop) ever worked, which is why the existing test passed. Fluid now resolves to
+  the host's measured width in pixels, so every device renders the identical shape and every switch is
+  a plain px→px tween with the centring transform held constant: measured after, all five switches
+  glide with **0px** of centre drift. The E2E samples width *and* centre each frame, on both of the
+  directions that involve fluid.
+
 ### Added
 
 - **`clone_audit` now measures fixed-header clearance, at desktop *and* phone.** The `--sw-header-h`

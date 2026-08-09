@@ -3,6 +3,9 @@ import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
+/** Long enough for a device switch (duration-300) to have fully settled before the next measurement. */
+const TRANSITION_SETTLE_MS = 500;
+
 // The contentbase-style page editor modal: 90vh dialog over the page list, a code
 // strip that opens COLLAPSED and expands on hover, a device rail simulating the
 // default Tailwind breakpoints, save-without-close (button + Ctrl+S), and Esc back
@@ -34,11 +37,15 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await strip.hover();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
-  // Device rail: large desktop is the default and FLUID — no simulated width, the
-  // preview fills the modal; the other buttons resize to the Tailwind-aligned widths.
+  // Device rail: large desktop is the default and FLUID — it fills the modal; the other buttons resize
+  // to the Tailwind-aligned widths. Fluid now resolves to the host's MEASURED width in px rather than
+  // rendering as a differently-shaped box, so that every switch is a px→px tween (see DevicePreview).
   const viewport = page.getByTestId('device-viewport');
+  const host = viewport.locator('xpath=..');
   await expect(page.getByRole('button', { name: 'Preview: Large desktop' })).toHaveAttribute('aria-pressed', 'true');
-  expect(await viewport.getAttribute('style')).toBeNull(); // fluid: no inline width
+  expect(await viewport.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(
+    await host.evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+  );
   await page.getByRole('button', { name: 'Preview: Mobile' }).click();
   await expect(viewport).toHaveCSS('width', '390px'); // below sm → mobile-first base styles
   await page.getByRole('button', { name: 'Preview: Tablet' }).click();
@@ -68,6 +75,51 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await page.getByRole('button', { name: 'Preview: Tablet' }).click();
   expect(await glided).toBe(true);
   await expect(viewport).toHaveCSS('width', '768px');
+
+  // ★ AND the two switches that involve FLUID, which are the ones that were broken while the check
+  // above passed: it only ever exercised fixed→fixed. Sample width AND the box's CENTRE each frame —
+  // a switch that tweens its width while sliding sideways is still wrong, and that is exactly what
+  // "back to Large desktop" used to do (measured on the pre-fix component: 795px of centre drift,
+  // i.e. the box jumped to the left edge and widened from there, while desktop→mobile did not tween
+  // at all). Both directions must glide AND hold the centre.
+  const track = (ms: number) =>
+    viewport.evaluate(
+      (el, budget) =>
+        new Promise<{ w: number; cx: number }[]>((resolve) => {
+          const rows: { w: number; cx: number }[] = [];
+          const t0 = performance.now();
+          const tick = () => {
+            const r = el.getBoundingClientRect();
+            rows.push({ w: r.width, cx: r.left + r.width / 2 });
+            if (performance.now() - t0 > budget) return resolve(rows);
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }),
+      ms,
+    );
+  const judge = (rows: { w: number; cx: number }[]) => {
+    const first = rows[0]!, last = rows[rows.length - 1]!;
+    const cxs = rows.map((r) => r.cx);
+    return {
+      midFlight: rows.filter((r) => Math.abs(r.w - first.w) > 1 && Math.abs(r.w - last.w) > 1).length,
+      drift: Math.max(...cxs) - Math.min(...cxs),
+    };
+  };
+
+  await page.getByRole('button', { name: 'Preview: Large desktop' }).click();
+  await page.waitForTimeout(TRANSITION_SETTLE_MS);
+  const toMobile = track(700);
+  await page.getByRole('button', { name: 'Preview: Mobile' }).click();
+  const outOfFluid = judge(await toMobile);
+  expect(outOfFluid.midFlight).toBeGreaterThan(0); // it tweens leaving fluid…
+  expect(outOfFluid.drift).toBeLessThanOrEqual(1); // …without leaving centre
+
+  const toDesktop = track(700);
+  await page.getByRole('button', { name: 'Preview: Large desktop' }).click();
+  const intoFluid = judge(await toDesktop);
+  expect(intoFluid.midFlight).toBeGreaterThan(0); // …and tweens going back
+  expect(intoFluid.drift).toBeLessThanOrEqual(1); // …still without leaving centre
 
   await page.getByRole('button', { name: 'Preview: Large desktop' }).click();
   expect(await viewport.getAttribute('style')).toBeNull(); // back to fluid

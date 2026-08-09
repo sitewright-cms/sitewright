@@ -62,12 +62,10 @@ interface DevicePreviewProps {
 export function DevicePreview({ width, children }: DevicePreviewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [avail, setAvail] = useState<number | null>(null);
-  const fluid = width === null;
 
-  // Keyed on `fluid`: the measured host div only exists in the fixed-width branch,
-  // so the observer must (re)attach when switching from fluid to a fixed device.
+  // ALWAYS attached, never keyed on the device: the FLUID target resolves to this host's own width in
+  // pixels (below), so the measurement matters in every mode and the observer must not detach.
   useLayoutEffect(() => {
-    if (fluid) return;
     const host = hostRef.current;
     if (!host) return;
     const measure = () => setAvail(host.clientWidth);
@@ -77,11 +75,25 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
     const ro = new ResizeObserver(measure);
     ro.observe(host);
     return () => ro.disconnect();
-  }, [fluid]);
+  }, []);
 
-  // `avail` of null (pre-measure) or 0 (hidden / jsdom) → no scaling: never
-  // scale(0) or divide by zero.
-  const scale = !fluid && avail !== null && avail > 0 && avail < width ? avail / width : 1;
+  // 0 (hidden / jsdom, which has no layout) is not a measurement — treat it as "not measured yet".
+  const measured = avail !== null && avail > 0 ? avail : null;
+
+  // ★ FLUID IS A MEASURED PIXEL WIDTH, NOT A DIFFERENT SHAPE. It used to render as `w-full` with no
+  // positioning, which made "Large desktop" the one target whose box was laid out differently from
+  // every other: leaving it, `position` flipped static→absolute and `translateX(-50%)` appeared from
+  // nothing; entering it, both vanished. Neither is interpolable, so the observable result was exactly
+  // what it looked like — going TO desktop the box jumped to the left edge and only then widened, and
+  // going FROM desktop nothing tweened at all, because there was no px width to tween from.
+  //
+  // Resolving fluid to the host's measured width keeps ONE form for every device: same position, same
+  // transform, only `width` and `scale` differ. Every switch is then a px→px tween with the centring
+  // transform held constant, so it glides and stays centred the whole way, in both directions.
+  const simWidth = width ?? measured;
+
+  // Never scale(0) or divide by zero. Fluid resolves to exactly `measured`, so its scale is always 1.
+  const scale = simWidth !== null && measured !== null && measured < simWidth ? measured / simWidth : 1;
 
   // Glide between simulated widths instead of snapping — but ONLY for a device CHANGE. `width` and
   // `scale` also move when the editor pane itself is resized (the ResizeObserver above), and animating
@@ -115,34 +127,36 @@ export function DevicePreview({ width, children }: DevicePreviewProps) {
   // until a manual reload. Keeping the depth constant keeps the same iframe element (and its loaded
   // document) alive across every device switch, so nothing is refetched at all.
   return (
-    <div ref={hostRef} className={fluid ? 'h-full w-full' : 'relative h-full overflow-hidden'}>
+    // The host is ALWAYS the positioned, clipping box now — in fluid mode too, where the child is
+    // exactly as wide as the host and so has nothing to clip.
+    <div ref={hostRef} className="relative h-full overflow-hidden">
       <div
         data-testid="device-viewport"
         className={
-          // Both branches carry the transition while a switch plays, so the glide is symmetric: the
-          // way OUT to fluid is a device change like any other, and leaving it unarmed made "back to
-          // Large desktop" the one switch that still snapped. Measured: 1024px → 1400px reaches
-          // 1207px at 120ms, i.e. it tweens even though the box also drops from absolute to static
-          // positioning (`position` is not interpolable, but `width` still is).
+          // ONE class shape for every device (see simWidth): the transition can only do its job if the
+          // properties it is asked to interpolate exist on BOTH sides of the switch. `position` and
+          // `transform` are not interpolable, so they must never be what changes.
           //
           // Standard utilities only: an arbitrary-value `transition-[width,transform]` carries a
           // comma the class extractor can choke on, and an INLINE transition could not be waived for
           // prefers-reduced-motion (inline styles outrank any class).
-          fluid
-            ? `h-full w-full${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
-            : `absolute left-1/2 top-0${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
+          `${simWidth === null ? 'h-full w-full' : 'absolute left-1/2 top-0'}${animating ? ' transition-all duration-300 ease-out motion-reduce:transition-none' : ''}`
         }
         style={
-          fluid
+          // Only before the first measurement (and in jsdom, which has no layout) is there no pixel
+          // width to give a fluid preview; it falls back to filling the box, exactly as it always did.
+          // A layout effect takes that measurement before the first paint, so this is not a visible state.
+          simWidth === null
             ? undefined
             : {
-                width: `${width}px`,
+                width: `${simWidth}px`,
                 // The scaled-down box must still FILL the row visually: pre-scale height
                 // by 1/scale so height × scale = 100%.
                 height: `${100 / scale}%`,
                 // Subtle but correct: with `left: 50%`, translateX(-50%) centers the
                 // unscaled box, and scaling about `top center` shrinks it symmetrically —
-                // so it STAYS centered at every scale. Don't reorder the functions.
+                // so it STAYS centered at every scale, and — since neither function changes
+                // across a device switch — throughout the tween as well. Don't reorder them.
                 transform: `translateX(-50%) scale(${scale})`,
                 transformOrigin: 'top center',
               }

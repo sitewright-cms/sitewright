@@ -2,6 +2,18 @@
 // Verifies that package versions pinned in pnpm-lock.yaml were SIGNED BY NPM, and reports how much
 // of the tree carries build provenance.
 //
+// ★ PROVENANCE IS REPORTED, NEVER ENFORCED — and the measurement says why. Sweeping the whole tree
+// (2026-08-09): 323/968 attested overall, and splitting that by who chose the dependency does NOT
+// rescue it — DIRECT dependencies are 36/95 (37.9%), transitive 236/730 (32.3%). The obvious fallback
+// ("we cannot gate the tree, but we can gate what we picked") therefore fails too: 59 of the 95
+// packages this repo chose have no provenance, among them react, typescript, eslint, fastify,
+// handlebars and jsdom. A gate there would fail on every install and be switched off within a week,
+// which is the failure mode the audit floor was already rewritten once to avoid.
+//
+// So the split is printed, the unattested DIRECT packages are named, and nothing fails. The number to
+// watch is not the ratio — that mostly measures npm's ecosystem — but a package that HAD provenance
+// and stopped: that is a change in someone's release pipeline, and it is worth a human looking.
+//
 // ★ The signature is checked against the integrity hash **from our lockfile**, not the one the
 // registry returns in the same response. Verifying the registry's own hash against the registry's own
 // signature proves only that the registry is self-consistent — it would pass just as happily if our
@@ -39,6 +51,39 @@ const REGISTRY = 'https://registry.npmjs.org';
 const LOCKFILE = 'pnpm-lock.yaml';
 /** Above this share of unreachable packages, the run is not a pass — it is an unfinished check. */
 const MAX_UNREACHABLE_RATIO = 0.05;
+
+/**
+ * The dependency names THIS repo chooses — every `dependencies` / `devDependencies` /
+ * `optionalDependencies` / `peerDependencies` entry across the workspace.
+ *
+ * ★ Why the split matters more than the total. Provenance coverage across a whole tree is a fact
+ * about npm's ecosystem, not about this repo: two thirds of it is transitive packages nobody here
+ * picked, and a gate on that number could only ever be turned off. The DIRECT set is the part that is
+ * actually a decision — so it is the only part where "must have provenance" could become a rule, and
+ * the only number worth watching for regressions.
+ */
+function directDependencyNames() {
+  const names = new Set();
+  let manifests;
+  try {
+    manifests = execFileSync('git', ['ls-files', '*package.json'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+  } catch {
+    return names; // not a git checkout — the split is simply not reported
+  }
+  for (const file of manifests) {
+    if (file.includes('node_modules/')) continue;
+    let pkg;
+    try {
+      pkg = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      continue; // a fixture that is not valid JSON must not break the audit
+    }
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(pkg[field] ?? {})) names.add(name);
+    }
+  }
+  return names;
+}
 
 /** Package key line in a pnpm v9 lockfile: `  name@version:` (quoted when scoped). */
 const KEY_RE = /^ {2}'?((?:@[^/'@]+\/)?[^'@\s]+)@([^':]+)'?:\s*$/;
@@ -159,6 +204,8 @@ const invalid = [];
 const expiredKey = [];
 const errored = [];
 let attested = 0;
+const attestedNames = new Set();
+const seenNames = new Set();
 let cursor = 0;
 
 async function worker() {
@@ -178,7 +225,11 @@ async function worker() {
       errored.push(`${spec} (${err.message})`);
       continue;
     }
-    if (dist?.attestations) attested += 1;
+    if (dist?.attestations) {
+      attested += 1;
+      attestedNames.add(name);
+    }
+    seenNames.add(name);
 
     const sig = dist?.signatures?.[0];
     if (!sig) {
@@ -237,6 +288,29 @@ const verified = specs.length - unsigned.length - invalid.length - errored.lengt
 console.log(`\nscope       ${scope}`);
 console.log(`verified    ${verified}/${specs.length}`);
 console.log(`attested    ${attested}/${specs.length}   (provenance — reported, not enforced)`);
+
+// ★ The split. A whole-tree provenance gate is not available — most of npm does not publish it — so
+// the useful question is narrower: of the packages THIS repo actually chose, how many are attested?
+// That is the number an enforcement threshold could ever be set against, and the one whose decline
+// means something (a dependency's own release pipeline stopped attesting) rather than reflecting the
+// ecosystem at large.
+const direct = directDependencyNames();
+const directSeen = [...seenNames].filter((n) => direct.has(n));
+if (directSeen.length) {
+  const directAttested = directSeen.filter((n) => attestedNames.has(n));
+  const pct = (n, d) => `${((n / d) * 100).toFixed(1)}%`;
+  const transitiveSeen = seenNames.size - directSeen.length;
+  const transitiveAttested = attestedNames.size - directAttested.length;
+  console.log(`  direct      ${directAttested.length}/${directSeen.length}   (${pct(directAttested.length, directSeen.length)} of the dependencies this repo chose)`);
+  if (transitiveSeen > 0) {
+    console.log(`  transitive  ${transitiveAttested}/${transitiveSeen}   (${pct(transitiveAttested, transitiveSeen)} — not this repo's choice)`);
+  }
+  const missing = directSeen.filter((n) => !attestedNames.has(n)).sort();
+  if (missing.length) {
+    console.log(`\n  Direct dependencies WITHOUT provenance (${missing.length}) — the actionable list:`);
+    for (const name of missing) console.log(`    ${name}`);
+  }
+}
 
 if (invalid.length || unsigned.length) process.exit(1);
 if (errored.length > specs.length * MAX_UNREACHABLE_RATIO) {

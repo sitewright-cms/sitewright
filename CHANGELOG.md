@@ -11,6 +11,29 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **`pnpm verify` (and therefore CI) could report "all gates passed" on a failing gate.** The runner
+  checked only the child's exit *status*. `spawnSync` defaults to a 1 MB output buffer, and on overflow
+  it kills the child and reports the overflow in `error` while leaving `status` at 0 — so a truncated,
+  terminated run read as a pass. The bias was perverse: a *noisy* failure was more likely to be
+  swallowed than a quiet one, because failures are what print large diffs. That is not hypothetical —
+  it is how the state below went unnoticed through several green builds. The buffer is now unbounded
+  and a spawn error fails the gate on its own.
+- **The API test suite was red on `main` behind that green tick — 19 tests across 10 files.** Found by
+  running the suite directly instead of through the gate. None were flakes and all are now green:
+  - ★ **`form_filtered` was never cleared when a project was reaped.** It carries a foreign key to
+    `projects` and there is no `ON DELETE CASCADE`, so any project whose forms had ever dropped a bot
+    hit `SQLITE_CONSTRAINT_FOREIGNKEY` on purge and became **permanently un-purgeable** — the identical
+    defect `agent_grants` caused before it. The schema-introspecting drift guard had been naming the
+    table all along; nobody could see it.
+  - Ten publish/preview tests still asserted the `data-sw-endpoint` attribute that was deliberately
+    removed when the form endpoint was taken out of the markup — they were pinning the *opposite* of
+    the shipped requirement. They now assert what actually matters: that the address is **absent**, and
+    that the encoded runtime blob carries the right base (decoded, not string-matched).
+  - Five submission tests predated the interaction gate and posted without interaction evidence, so
+    they were silently filtered before reaching the behaviour under test.
+  - Four hCaptcha settings fixtures used placeholder site keys that the new UUID validation rejects.
+    They now use hCaptcha's documented test key.
+  - The committed route inventory was missing five routes added by the spam-protection work.
 - **One proof-of-work solve now buys exactly one submission.** The challenge was fully stateless: the
   expiry rode inside the signed salt, nothing was stored, and so a solved challenge stayed valid for its
   whole 30-minute TTL and could be replayed — and sprayed at every other form on the instance, because

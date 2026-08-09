@@ -111,12 +111,12 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('embeds the locale\'s own form on the contact pages ({{sw-form}} suffix resolution)', async () => {
     const en = await page('contact/index.html');
-    expect(en).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+    expect(en).toContain('data-sw-routed="contact"');
     expect(en).toContain('>Send enquiry</button>');
     expect(en).toContain('name="_hpt"'); // honeypot injected
     expect(en).not.toContain('hello@northwindstudio.com</p>'); // recipient never rendered as content
     const de = await page('de/kontakt/index.html');
-    expect(de).toContain(`data-sw-endpoint="/f/${projectId}/contact-de"`);
+    expect(de).toContain('data-sw-routed="contact-de"');
     expect(de).toContain('>Anfrage senden</button>');
     expect(de).toContain('Erzählen Sie uns von Ihrem Projekt'); // translated field label
   });
@@ -271,7 +271,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
       expect((await client.get(`/sites/${slug}/${path}/index.html`)).statusCode, path).toBe(200);
     }
     const contacto = await page('es/contacto/index.html');
-    expect(contacto).toContain(`data-sw-endpoint="/f/${projectId}/contact-es"`);
+    expect(contacto).toContain('data-sw-routed="contact-es"');
     expect(contacto).toContain('>Enviar consulta</button>');
     const tienda = await page('es/tienda/index.html');
     expect(tienda).toContain('data-cart-title="Su carrito"');

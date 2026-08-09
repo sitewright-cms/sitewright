@@ -211,7 +211,10 @@ describe('mini shop cart → publish', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     // The form channel's submission endpoint is resolved server-side (the cart can't build it).
-    expect(index.body).toContain(`/f/${projectId}/order`);
+    // The cart resolves its channel endpoint at runtime from the same encoded blob the forms use, so
+    // the address is not in the page — only the channel's form id is.
+    expect(index.body).not.toContain(`/f/${projectId}/order`);
+    expect(index.body).toContain('order');
     expect(index.body).toContain('cart.js');
   });
 });

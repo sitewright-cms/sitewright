@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
+import { SubmissionRepository } from '../src/repo/submissions.js';
 import { agentGrants } from '../src/db/schema.js';
 
 // REAP = the permanent delete behind the admin "deleted projects" purge. There is no ON DELETE CASCADE
@@ -35,6 +36,7 @@ describe('project reap', () => {
     'api_keys',
     'content',
     'content_revisions',
+    'form_filtered',
     'form_submissions',
     'invites',
     'oauth_auth_codes',
@@ -48,6 +50,21 @@ describe('project reap', () => {
     // If this fails, a new table references `projects` — add a `tx.delete(...)` for it in
     // ProjectRepository.remove() and list it here. Do not just update the list.
     expect(referencing).toEqual(REAPED_TABLES);
+  });
+
+  it('reaps a project whose forms have FILTERED counts (the same trap, caught by the guard above)', async () => {
+    // form_filtered arrived with the spam counters and carries an FK to projects, but was not cleared
+    // in remove() — so any project whose forms had ever dropped a bot was permanently un-purgeable,
+    // exactly as agent_grants once was. The drift guard named the table; this proves the fix.
+    const db = await makeTestDb();
+    const projects = new ProjectRepository(db);
+    const project = await projects.create({ name: 'Trapped', slug: 'trapped' });
+    await new SubmissionRepository(db).recordFiltered(project.id, 'contact', 'honeypot');
+
+    await expect(projects.remove(project.id)).resolves.toBeUndefined();
+    await expect(projects.get(project.id)).rejects.toThrow(/not found/i);
+    const left = (await db.all(sql`select count(*) as n from form_filtered where project_id = ${project.id}`)) as Array<{ n: number }>;
+    expect(Number(left[0]?.n ?? 0)).toBe(0);
   });
 
   it('reaps a project that holds an agent grant (the FK that made projects un-purgeable)', async () => {

@@ -407,6 +407,11 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       //
       // Verifying CONSUMES the solution: the scope ties it to this form, and the claim spends it, so
       // the cost the visitor paid buys this one submission and nothing further.
+      //
+      // A store failure inside the claim propagates (500) rather than joining the silent-200 traps.
+      // That is the same fail-CLOSED choice the captcha makes below: a real visitor sees an error and
+      // can retry, where swallowing it would either drop a genuine lead or wave the submission through
+      // unspent — and "the database hiccuped" must not be the way replay reopens.
       if (form.pow) {
         const verdict = await verifyPowSolution(getPowSecret(), powScope(projectId, formId), parsed.powSolution, (challenge, expiresAt) =>
           submissions.claimPowChallenge(challenge, expiresAt),

@@ -189,7 +189,7 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
       method: 'POST',
       url: `/f/${projectId}/contact`,
       headers: { host },
-      payload: { email: 'lead@x.co', _elapsed: '5000' },
+      payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2' },
     });
     expect(post.statusCode).toBe(200);
     expect(post.json()).toEqual({ ok: true });

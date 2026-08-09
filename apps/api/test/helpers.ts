@@ -59,3 +59,16 @@ export async function promoteToAdmin(db: Database, email: string): Promise<void>
   if (!u) throw new Error(`promoteToAdmin: no user "${email}"`);
   await setPlatformRole(db, u.id, 'admin');
 }
+
+/**
+ * Decode the `<script data-sw-f>` blob a published/previewed page carries: `{ b: base, p: projectId,
+ * v?: preview }`. The form endpoint is deliberately NOT written into the markup, so the only honest way
+ * to assert that publish put the right base there is to decode what it actually emitted. Asserting the
+ * encoded string instead would pin a byte sequence nobody can read in a diff — and would keep passing
+ * if the value inside went wrong.
+ */
+export function formApiBlob(html: string): Record<string, unknown> {
+  const m = /atob\("([A-Za-z0-9+/=]+)"\)/.exec(html);
+  if (!m) throw new Error('no form-API blob in the page (expected a <script data-sw-f> atob payload)');
+  return JSON.parse(Buffer.from(m[1]!, 'base64').toString('utf8')) as Record<string, unknown>;
+}

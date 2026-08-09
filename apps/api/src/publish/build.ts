@@ -1279,6 +1279,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // list makes `'unsafe-inline'` be IGNORED, which would block author inline scripts in the
           // (sandboxed, opaque, safe) preview. The runtime runs via `'unsafe-inline'` instead.
           metaCsp: buildConsentMetaCsp(website?.consent, pageCspOrigins, undefined, website?.cspOrigins),
+          // Coordinates for the encoded submission-endpoint resolver at body end. The form markup and the
+          // cart's channel config carry only a form ID; the URL is assembled at runtime so it is never a
+          // ready-to-POST address sitting in the HTML. Only meaningful with an absolute base — a
+          // same-origin deployment keeps its relative endpoints.
+          formApi: { base: formBase, project: bundle.project.id, preview: previewMode },
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).

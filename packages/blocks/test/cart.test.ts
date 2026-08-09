@@ -243,7 +243,10 @@ describe('cart form channel', () => {
     expect(CART_JS).toContain('_elapsed'); // time-trap
     expect(CART_JS).toContain('_hpt'); // honeypot (sent empty)
     expect(CART_JS).toContain("method:'POST'");
-    expect(CART_JS).toContain('ch.endpoint');
+    // The URL is assembled at submit time from the encoded blob, never read off the channel config —
+    // it used to ship in `data-channels` for any scraper to lift.
+    expect(CART_JS).toContain('window.__swf(ch.formId)');
+    expect(CART_JS).not.toContain('ch.endpoint');
     // contact values flow through input .value (and JSON) — never innerHTML.
     expect(CART_JS).not.toContain('innerHTML');
   });

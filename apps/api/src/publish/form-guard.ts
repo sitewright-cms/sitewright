@@ -3,19 +3,34 @@ import { collectSiteFiles } from './adapters.js';
 import { PublishError } from './build.js';
 
 /**
- * Marker for a ROOT-RELATIVE platform-routed form endpoint in built HTML. A platform-routed form
- * (Email/SMTP delivery — `globalSmtp`/`userSmtp`) posts to `/f/<projectId>/<formId>`. The build bakes
- * that endpoint ABSOLUTE when a `publicBaseUrl` is configured (`https://host/f/…`), and root-relative
- * (`/f/…`) otherwise. The relative form is fine for LOCAL hosting — it shares the platform origin (path
- * form) or is reached via the subdomain carve-out — but on a REMOTE host it resolves to the deployed
- * site itself, where no such route exists, so the form silently 404s. (the `contactPhp`/`contactPhpSmtp`
- * modes post to a co-located `../contact.php`, and `thirdParty` to an external URL — none of them
- * carries this marker.)
+ * A platform-routed form (Email/SMTP delivery — `globalSmtp`/`userSmtp`) posts to
+ * `/f/<projectId>/<formId>`, built ABSOLUTE when a `publicBaseUrl` is configured and root-relative
+ * otherwise. Relative is fine for LOCAL hosting — it shares the platform origin, or is reached via the
+ * subdomain carve-out — but on a REMOTE host it resolves to the deployed site itself, where no such route
+ * exists, so the form silently 404s. (`contactPhp`/`contactPhpSmtp` post to a co-located `../contact.php`
+ * and `thirdParty` to an external URL — neither is platform-routed.)
  *
- * Depends on the built attribute staying double-quoted: dom-serializer always double-quotes and
- * `minifyPageHtml` does NOT enable `removeAttributeQuotes`. Revisit this marker if that changes.
+ * The endpoint is no longer a plain attribute: it must not sit in the markup as a ready-to-POST address,
+ * so a routed form carries `data-sw-routed="<formId>"` and the URL is assembled at runtime from an
+ * encoded payload. This guard therefore reads the PAYLOAD — an empty base is exactly the
+ * "root-relative, unreachable from a remote host" case the check exists to catch. Keying it on the old
+ * attribute would have left the guard matching nothing and silently passing every remote deploy.
  */
-const RELATIVE_SW_FORM_ENDPOINT = 'data-sw-endpoint="/f/';
+const ROUTED_FORM_MARKER = 'data-sw-routed';
+/** The encoded resolver payload emitted by renderDocument (see formApiScript). */
+const FORM_API_PAYLOAD_RE = /JSON\.parse\(atob\("([^"]+)"\)\)/;
+
+/** The submission base the page will build its endpoint from, or null when the page carries no resolver. */
+function endpointBaseOf(html: string): string | null {
+  const m = FORM_API_PAYLOAD_RE.exec(html);
+  if (!m?.[1]) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8')) as { b?: unknown };
+    return typeof parsed.b === 'string' ? parsed.b : null;
+  } catch {
+    return null; // unreadable payload → nothing to assert against; the deploy is not blocked on a guess
+  }
+}
 
 /**
  * Guards a REMOTE deploy: throws {@link PublishError} if the built site embeds a platform-routed form
@@ -29,7 +44,7 @@ export async function assertRemoteFormEndpointsReachable(siteDir: string): Promi
     if (!file.rel.endsWith('.html')) continue;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs path is confined to siteDir by collectSiteFiles
     const html = await readFile(file.abs, 'utf8');
-    if (html.includes(RELATIVE_SW_FORM_ENDPOINT)) {
+    if (html.includes(ROUTED_FORM_MARKER) && endpointBaseOf(html) === '') {
       throw new PublishError(
         'This site embeds a platform-routed form (Email/SMTP delivery) but the server has no public URL ' +
           'configured (SW_PUBLIC_URL), so the form endpoint is root-relative and would not submit from a ' +

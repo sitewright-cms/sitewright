@@ -778,9 +778,11 @@ function createInstance(): typeof Handlebars {
         if (c.kind === 'whatsapp') return { kind: 'whatsapp', label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
         if (c.kind === 'mailto') return { kind: 'mailto', label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
         if (c.kind === 'payment') return { kind: 'payment', label, urlTemplate: c.urlTemplate };
-        // `endpoint` is filled by resolveShopChannels in the render projection (the cart can't build
-        // /f/<projectId>/<formId> client-side); a form channel with no resolved endpoint is dropped.
-        if (c.kind === 'form') return typeof c.endpoint === 'string' ? { kind: 'form', label, endpoint: c.endpoint } : null;
+        // The form channel carries its form ID, never the resolved URL: cart.js assembles the address
+        // from the encoded blob (window.__swf), so the endpoint stays out of this attribute — it used to
+        // ship the full `/f/…` URL in `data-channels` for any scraper to read. `endpoint` is still what
+        // the render projection resolves, and its presence is what proves the channel is dispatchable.
+        if (c.kind === 'form') return typeof c.endpoint === 'string' && typeof c.formId === 'string' ? { kind: 'form', label, formId: c.formId } : null;
         return null;
       })
       .filter((c): c is Record<string, unknown> => c !== null);

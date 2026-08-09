@@ -56,8 +56,20 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   expect(exported.status()).toBe(200);
   const html = await exported.text();
   expect(html).toContain('data-sw-component="form"');
-  expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
   expect(html).not.toContain('secret-recipient@acme.example');
+  // ★ THE SUBMISSION ENDPOINT IS NOT IN THE MARKUP. It used to be written straight onto the form as
+  // `data-sw-endpoint="/f/<project>/<form>"` — a ready-to-POST address a scraper can grep for once and
+  // then hit forever, without ever loading the page again. The form now carries only its ID and the
+  // runtime assembles the URL from an encoded payload, which is what these three assertions pin:
+  expect(html).toContain(`data-sw-routed="contact"`);
+  expect(html).not.toContain('data-sw-endpoint');
+  expect(html).not.toContain(`/f/${projectId}/`);
+  // …and the payload itself carries the PARTS, so decoding it still hands over no URL.
+  const payload = /JSON\.parse\(atob\("([^"]+)"\)\)/.exec(html)?.[1];
+  expect(payload, 'the page must carry the encoded resolver').toBeTruthy();
+  const decoded = Buffer.from(payload!, 'base64').toString('utf8');
+  expect(decoded).toContain(projectId);
+  expect(decoded).not.toContain('/f/');
 
   // LOCAL HOSTING TARGET 1 — the `/sites/<slug>/` PATH FORM (same-origin as the API). Assert CORS + storage.
   const submit = await api.post(`/f/${projectId}/contact`, {
@@ -75,7 +87,9 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   const subHost = `${slug}.dind.local`;
   const subPage = await api.get(`/contact/`, { headers: { host: subHost } });
   expect(subPage.status()).toBe(200);
-  expect(await subPage.text()).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+  const subHtml = await subPage.text();
+  expect(subHtml).toContain(`data-sw-routed="contact"`);
+  expect(subHtml).not.toContain(`/f/${projectId}/`); // still no address in the markup on this host either
   const subPre = await api.fetch(`/f/${projectId}/contact`, {
     method: 'OPTIONS',
     headers: { host: subHost, origin: `http://${subHost}`, 'access-control-request-method': 'POST' },

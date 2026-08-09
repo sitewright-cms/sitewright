@@ -728,6 +728,12 @@ interface PreviewShell {
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
   /**
+   * Coordinates for the encoded submission-endpoint resolver (`window.__swf`). The preview is
+   * SAME-ORIGIN, so its base is empty — but it still needs the blob, because a platform-routed form now
+   * carries only its id and the runtime has nothing to submit to without it.
+   */
+  formApi?: { base: string; project: string; preview?: boolean };
+  /**
    * Sticky/fixed top-header mode (`website.effects.stickyHeader`) — passed straight to renderDocument,
    * which normalizes it. Typed AS STORED, so a retired value read back off a project still flows
    * through instead of failing to typecheck at every call site.
@@ -4036,6 +4042,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const sourceHtml = await styledSourceDocument(page, brand, rendered, {
           // Self-hosted @font-face so the editor canvas doesn't fall back to system fonts.
           ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          formApi: { base: '', project: project.id, preview: true },
           mainNav,
           sidebarLeft,
           sidebarRight,
@@ -7770,6 +7777,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           // Self-hosted @font-face so the code-editor preview doesn't fall back to system fonts.
           ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          formApi: { base: '', project: project.id, preview: true },
           criticalCss: themeCriticalCss, // site-wide critical CSS (gradient/chrome classes)
           bodyClass: themeBodyClass,
           stickyHeader: themeStickyHeader,
@@ -7879,6 +7887,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           // Self-hosted @font-face so this preview doesn't fall back to system fonts.
           ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          formApi: { base: '', project: project.id, preview: true },
           criticalCss: themeCriticalCss, // site-wide critical CSS (gradient/chrome classes)
           bodyClass: themeBodyClass,
           stickyHeader: themeStickyHeader,

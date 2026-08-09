@@ -23,7 +23,7 @@ function form(over: Partial<Form>): Form {
     errorMessage: 'no',
     recipient: 'leads@acme.com',
     mode: 'contactPhpSmtp',
-    hcaptcha: false, pow: false,
+    captcha: false, pow: false,
     ...over,
   } as Form;
 }

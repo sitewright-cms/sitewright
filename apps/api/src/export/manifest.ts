@@ -33,6 +33,7 @@ export function exportBundleOverCap(bundle: ProjectExportBundle): string | null 
 const OMITTED = [
   'deploy_target_credentials',
   'project_smtp_password',
+  'project_captcha_secret',
   'form_submissions',
   'content_revisions',
   'members',

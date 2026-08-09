@@ -34,7 +34,9 @@ import { parseDocument } from 'htmlparser2';
 import type { Element } from 'domhandler';
 import { findAll, appendChild } from 'domutils';
 import render from 'dom-serializer';
-import { HONEYPOT_FIELD, FORM_ID_FIELD, isContactPhpMode, isPlatformRoutedMode, type FormPublic } from '@sitewright/schema';
+import {
+  RECAPTCHA_RESPONSE_FIELD,
+  type CaptchaRenderConfig, HONEYPOT_FIELD, FORM_ID_FIELD, isContactPhpMode, isPlatformRoutedMode, type FormPublic } from '@sitewright/schema';
 import { escapeAttr, escapeHtml } from './escape.js';
 
 /** Form-id keys that must never index the forms map (prototype-pollution guard). */
@@ -155,13 +157,14 @@ function renderFormField(field: FormPublic['fields'][number]): string {
  * alike). There is deliberately no `action=` — submission is JS-only (no JS → cannot submit).
  * Native constraint validation is ON (no `novalidate`): clicking submit with a required field empty
  * fires the browser's own "please fill this in" prompt on the first invalid field and blocks the submit
- * (the JS runtime's `submit` handler only runs once the form is valid). The hCaptcha PLACEHOLDER is
- * positioned before the submit button; the pass upgrades it with the sitekey only when configured.
+ * (the JS runtime's `submit` handler only runs once the form is valid). The CAPTCHA PLACEHOLDER is
+ * positioned before the submit button; the pass upgrades it with the provider + sitekey only when the
+ * PROJECT has configured one.
  */
 export function renderFormMarkup(resolvedId: string, form: RenderForm, opts: { class?: string } = {}): string {
   const cls = opts.class ? ` class="${escapeAttr(opts.class)}"` : '';
   const fields = form.fields.map(renderFormField).join('');
-  const captcha = form.hcaptcha && isSwRouted(form) ? '<div data-sw-part="hcaptcha"></div>' : '';
+  const captcha = form.captcha && isSwRouted(form) ? '<div data-sw-part="captcha"></div>' : '';
   return (
     `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-form="${escapeAttr(resolvedId)}">` +
     `<div data-sw-part="fields">${fields}</div>` +
@@ -182,9 +185,14 @@ export interface FormEmbedContext {
   /** Page-relative path to the site root ('' at the root / in preview) — the contactPhp endpoint
    * is emitted page-relative because relativizeInternalLinks never rewrites data-* attributes. */
   siteRoot?: string;
-  /** Instance hCaptcha site key (public). Absent → hcaptcha-flagged forms render the inert
-   * placeholder only (no `.h-captcha` class, so the widget script never loads — flag is inert). */
-  hcaptchaSiteKey?: string;
+  /**
+   * The PROJECT's captcha provider + site key (both public — the site key ships in the markup).
+   * Absent → captcha-flagged forms render the inert placeholder only: no widget class, no provider
+   * marker, so the vendor script never loads and the flag is INERT rather than broken. That is the
+   * same forgiving behaviour the missing-site-key case always had, now that the credentials live
+   * with the project rather than the instance.
+   */
+  captcha?: CaptchaRenderConfig;
   /** PREVIEW keeps the `data-sw-form` marker (parity with the data-sw-* directives); publish
    * strips it, leaving clean static HTML. */
   preview?: boolean;
@@ -286,17 +294,33 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
       appendFragment(el, `<input type="hidden" name="${escapeAttr(FORM_ID_FIELD)}" value="${escapeAttr(resolvedId)}" />`);
     }
     if (!hasNamedInput(el, HONEYPOT_FIELD)) appendFragment(el, honeypotBlock());
-    if (form.hcaptcha && isSwRouted(form) && ctx.hcaptchaSiteKey) {
-      const placeholder = findAll((e) => e.attribs['data-sw-part'] === 'hcaptcha', el.children)[0];
-      if (placeholder) {
-        const classes = (placeholder.attribs.class ?? '').split(/\s+/).filter(Boolean);
-        if (!classes.includes('h-captcha')) classes.push('h-captcha');
-        placeholder.attribs.class = classes.join(' ');
-        placeholder.attribs['data-sitekey'] = ctx.hcaptchaSiteKey;
+    if (form.captcha && isSwRouted(form) && ctx.captcha) {
+      const { provider, siteKey } = ctx.captcha;
+      // The provider marker goes on the FORM, always — it is what the runtime switches on and what the
+      // published page's CSP is keyed to. It cannot be inferred from a widget class, because reCAPTCHA
+      // v3 HAS no widget: it is a script that runs on submit.
+      el.attribs['data-sw-captcha'] = provider;
+      if (provider === 'recaptcha-v3') {
+        // v3 is invisible. The runtime fetches a token and writes it into this hidden field, so there
+        // is nothing to place and an authored placeholder is left alone (Google's badge floats).
+        if (!hasNamedInput(el, RECAPTCHA_RESPONSE_FIELD)) {
+          appendFragment(el, `<input type="hidden" name="${escapeAttr(RECAPTCHA_RESPONSE_FIELD)}" data-sw-part="captcha" />`);
+        }
       } else {
-        // No authored placeholder → append the widget div (functional anywhere inside the form;
-        // authors control placement by adding their own `data-sw-part="hcaptcha"` div).
-        appendFragment(el, `<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="${escapeAttr(ctx.hcaptchaSiteKey)}"></div>`);
+        // hCaptcha and reCAPTCHA v2 both render an interactive widget the vendor script finds by
+        // class and configures from `data-sitekey`.
+        const widgetClass = provider === 'hcaptcha' ? 'h-captcha' : 'g-recaptcha';
+        const placeholder = findAll((e) => e.attribs['data-sw-part'] === 'captcha', el.children)[0];
+        if (placeholder) {
+          const classes = (placeholder.attribs.class ?? '').split(/\s+/).filter(Boolean);
+          if (!classes.includes(widgetClass)) classes.push(widgetClass);
+          placeholder.attribs.class = classes.join(' ');
+          placeholder.attribs['data-sitekey'] = siteKey;
+        } else {
+          // No authored placeholder → append the widget div (functional anywhere inside the form;
+          // authors control placement by adding their own `data-sw-part="captcha"` div).
+          appendFragment(el, `<div class="${widgetClass}" data-sw-part="captcha" data-sitekey="${escapeAttr(siteKey)}"></div>`);
+        }
       }
     }
     // STATUS MARKERS. FORM_JS reveals `success` on a 2xx, `error` on a failure, and disables `submit`

@@ -21,7 +21,7 @@ const pub = (over: Partial<FormPublic> = {}): FormPublic => ({
   submitLabel: 'Send enquiry',
   successMessage: 'Thanks — we got it.',
   errorMessage: 'Sorry, that & failed.',
-  hcaptcha: false, pow: false,
+  captcha: false, pow: false,
   mode: 'globalSmtp',
   ...over,
 });
@@ -136,11 +136,11 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
     expect(html).not.toContain('_hpt');
     expect(renderFormMarkup('contact', form, { class: 'card p-8' })).toContain('<form data-sw-block="Form" class="card p-8" data-sw-component="form"');
   });
-  it('emits the inert hCaptcha placeholder only for opted-in platform-routed forms', () => {
-    const cap = formsOf(pub({ hcaptcha: true }))['contact']!;
-    expect(renderFormMarkup('contact', cap)).toContain('<div data-sw-part="hcaptcha"></div>');
-    const third = formsOf(pub({ hcaptcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }))['contact']!;
-    expect(renderFormMarkup('contact', third)).not.toContain('hcaptcha');
+  it('emits the inert captcha placeholder only for opted-in platform-routed forms', () => {
+    const cap = formsOf(pub({ captcha: true }))['contact']!;
+    expect(renderFormMarkup('contact', cap)).toContain('<div data-sw-part="captcha"></div>');
+    const third = formsOf(pub({ captcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }))['contact']!;
+    expect(renderFormMarkup('contact', third)).not.toContain('data-sw-part="captcha"');
   });
 });
 
@@ -208,29 +208,49 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
     const withRedirect = resolveFormEmbeds(authored, { forms: formsOf(pub({ redirectUrl: '/thanks' })) });
     expect(withRedirect).toContain('data-sw-redirect="/thanks"');
   });
-  describe('hCaptcha widget', () => {
-    const cap = formsOf(pub({ hcaptcha: true }));
-    it('upgrades an authored/helper placeholder with the sitekey', () => {
-      const src = '<form data-sw-form="contact"><div data-sw-part="hcaptcha" class="my-cap"></div></form>';
-      const out = resolveFormEmbeds(src, { forms: cap, hcaptchaSiteKey: 'site-1' });
-      expect(out).toContain('class="my-cap h-captcha"');
-      expect(out).toContain('data-sitekey="site-1"');
+  describe('captcha widget — one project provider, three shapes', () => {
+    const cap = formsOf(pub({ captcha: true }));
+    const HC = { provider: 'hcaptcha' as const, siteKey: 'site-1' };
+    const V2 = { provider: 'recaptcha-v2' as const, siteKey: '6Labc' };
+    const V3 = { provider: 'recaptcha-v3' as const, siteKey: '6Lxyz' };
+
+    it('upgrades an authored/helper placeholder with the provider’s class + sitekey', () => {
+      const src = '<form data-sw-form="contact"><div data-sw-part="captcha" class="my-cap"></div></form>';
+      expect(resolveFormEmbeds(src, { forms: cap, captcha: HC })).toContain('class="my-cap h-captcha"');
+      expect(resolveFormEmbeds(src, { forms: cap, captcha: V2 })).toContain('class="my-cap g-recaptcha"');
+      expect(resolveFormEmbeds(src, { forms: cap, captcha: HC })).toContain('data-sitekey="site-1"');
     });
+
     it('appends the widget div when no placeholder exists', () => {
-      const out = resolveFormEmbeds(authored, { forms: cap, hcaptchaSiteKey: 'site-1' });
-      expect(out).toContain('<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="site-1"></div>');
+      expect(resolveFormEmbeds(authored, { forms: cap, captcha: HC })).toContain('<div class="h-captcha" data-sw-part="captcha" data-sitekey="site-1"></div>');
+      expect(resolveFormEmbeds(authored, { forms: cap, captcha: V2 })).toContain('<div class="g-recaptcha" data-sw-part="captcha" data-sitekey="6Labc"></div>');
     });
-    it('withholds the widget without a sitekey (inert placeholder, no .h-captcha)', () => {
-      const out = resolveFormEmbeds('<form data-sw-form="contact"><div data-sw-part="hcaptcha"></div></form>', { forms: cap });
+
+    it('★ marks the FORM with the provider, which is the only way v3 is detectable', () => {
+      // reCAPTCHA v3 renders no widget at all — it is a script that runs on submit. The runtime and
+      // the published page's CSP both switch on this attribute; a widget class could not carry it.
+      const out = resolveFormEmbeds(authored, { forms: cap, captcha: V3 });
+      expect(out).toContain('data-sw-captcha="recaptcha-v3"');
+      expect(out).toContain('name="g-recaptcha-response"');
+      expect(out).not.toContain('g-recaptcha"'); // no widget div
+      expect(resolveFormEmbeds(authored, { forms: cap, captcha: HC })).toContain('data-sw-captcha="hcaptcha"');
+    });
+
+    it('withholds everything when the PROJECT has configured no captcha (inert, not broken)', () => {
+      const out = resolveFormEmbeds('<form data-sw-form="contact"><div data-sw-part="captcha"></div></form>', { forms: cap });
       expect(out).not.toContain('h-captcha"');
       expect(out).not.toContain('data-sitekey');
+      expect(out).not.toContain('data-sw-captcha');
     });
+
     it('withholds the widget for non-platform-routed modes (cannot be verified)', () => {
-      const third = formsOf(pub({ hcaptcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }));
-      const out = resolveFormEmbeds(authored, { forms: third, hcaptchaSiteKey: 'site-1' });
+      const third = formsOf(pub({ captcha: true, pow: false, mode: 'thirdParty', thirdPartyUrl: 'https://x.example/y' }));
+      const out = resolveFormEmbeds(authored, { forms: third, captcha: HC });
       expect(out).not.toContain('h-captcha');
+      expect(out).not.toContain('data-sw-captcha');
     });
   });
+
   describe('status markers (a code-first form used to confirm nothing)', () => {
     it('marks the submit control and appends the definition’s success + error panels', () => {
       const out = resolveFormEmbeds(

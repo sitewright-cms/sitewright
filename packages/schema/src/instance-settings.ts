@@ -184,30 +184,22 @@ export const SmtpStoredSchema = z.object({
 export type SmtpStored = z.infer<typeof SmtpStoredSchema>;
 
 /**
- * An hCaptcha SITE KEY is a UUID. Validating the shape is what stops a placeholder reaching a published
- * page: an instance was found configured with the literal string `123`, which sailed through a bare
- * `min(1)`, was baked into every published form as `data-sitekey="123"`, and produced hCaptcha's own
- * "The sitekey for this hCaptcha is incorrect" for every visitor — the platform knew the value was
- * unusable at the moment it was typed, and said nothing until a stranger hit the form.
+ * LEGACY — instance-wide hCaptcha, REMOVED as a feature. Captcha configuration is now per PROJECT
+ * (`project_captcha`; see packages/schema/src/captcha.ts), because a site key is bound to a domain
+ * allowlist and a domain belongs to a SITE, not to the instance that built it.
+ *
+ * This shape survives for ONE reason: the one-time boot migration has to be able to READ what an
+ * existing instance stored so it can hand it to the projects that were actually using it. Nothing
+ * writes it any more, no input accepts it, and it is absent from the public view — the migration
+ * clears it once the value has moved. Delete this once no deployed instance can still hold one.
+ *
+ * @deprecated read-only migration source
  */
-const HCAPTCHA_SITEKEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const siteKeySchema = z
-  .string()
-  .trim()
-  .regex(HCAPTCHA_SITEKEY_RE, 'an hCaptcha site key is a UUID, e.g. 10000000-ffff-ffff-ffff-000000000001 (find it in your hCaptcha dashboard under Sites)');
-
-/** hCaptcha as stored: the site key is public, the secret is encrypted (or absent). */
-export const HcaptchaStoredSchema = z.object({
-  // ★ PERMISSIVE ON READ, deliberately — the strict shape is enforced on INPUT (below), not here.
-  // Stored settings are parsed with a throwing `.parse()` on every read, including the one that fetches
-  // the cookie secret at boot. Tightening THIS schema would not fix a bad key already in the database;
-  // it would make the whole instance unreadable because of it. An instance was found holding the literal
-  // `123`, so that is not hypothetical. Existing rows stay readable and the next save is what must be
-  // valid: validation belongs at the boundary where a human can still act on the message.
+export const LegacyHcaptchaStoredSchema = z.object({
   siteKey: z.string().min(1).max(255),
   secret: EncryptedSecretSchema.optional(),
 });
-export type HcaptchaStored = z.infer<typeof HcaptchaStoredSchema>;
+export type LegacyHcaptchaStored = z.infer<typeof LegacyHcaptchaStoredSchema>;
 
 /** Stock-image provider API keys as stored (each an encrypted envelope, or absent). */
 export const StockKeysStoredSchema = z.object({
@@ -290,7 +282,8 @@ export type OidcProviderStored = z.infer<typeof OidcProviderStoredSchema>;
 /** The persisted instance-settings document (secrets encrypted at rest). */
 export const InstanceSettingsStoredSchema = z.object({
   smtp: SmtpStoredSchema.optional(),
-  hcaptcha: HcaptchaStoredSchema.optional(),
+  /** @deprecated LEGACY — read-only migration source; see LegacyHcaptchaStoredSchema. */
+  hcaptcha: LegacyHcaptchaStoredSchema.optional(),
   stock: StockKeysStoredSchema.optional(),
   /** Platform-wide AI assistant config (the API key is encrypted at rest). */
   ai: AiStoredSchema.optional(),
@@ -362,7 +355,7 @@ export const DEFAULT_NEW_PROJECT_LOCALE = 'en';
 // ---- Input (the admin PUT body) ----
 // Secrets are plaintext and OPTIONAL: omit the password/secret to keep the one
 // already stored (so an admin editing other fields need not re-enter it). A
-// `null` smtp/hcaptcha clears that section entirely; an absent (undefined) one
+// `null` smtp clears that section entirely; an absent (undefined) one
 // leaves it unchanged.
 
 export const SmtpInputSchema = z.object({
@@ -371,12 +364,6 @@ export const SmtpInputSchema = z.object({
   password: z.string().min(1).max(1024).optional(),
 });
 export type SmtpInput = z.infer<typeof SmtpInputSchema>;
-
-export const HcaptchaInputSchema = z.object({
-  siteKey: siteKeySchema,
-  secret: z.string().min(1).max(255).optional(),
-});
-export type HcaptchaInput = z.infer<typeof HcaptchaInputSchema>;
 
 /** Stock provider keys (plaintext on input; omit a key to keep the stored one). */
 export const StockKeysInputSchema = z.object({
@@ -420,7 +407,6 @@ export type OidcProviderInput = z.infer<typeof OidcProviderInputSchema>;
 
 export const InstanceSettingsInputSchema = z.object({
   smtp: SmtpInputSchema.nullable().optional(),
-  hcaptcha: HcaptchaInputSchema.nullable().optional(),
   stock: StockKeysInputSchema.nullable().optional(),
   // Platform AI config: an object sets it (apiKey preserved when omitted), `null` clears the whole
   // section (disables the platform assistant), and an absent value leaves it unchanged.
@@ -494,11 +480,6 @@ export interface SmtpPublic {
   hasPassword: boolean;
 }
 
-export interface HcaptchaPublic {
-  siteKey: string;
-  hasSecret: boolean;
-}
-
 /** Masked stock keys — presence only (keys are secret, never returned). */
 export interface StockKeysPublic {
   hasUnsplash: boolean;
@@ -535,7 +516,6 @@ export interface OidcProviderPublic {
 
 export interface InstanceSettingsPublic {
   smtp?: SmtpPublic;
-  hcaptcha?: HcaptchaPublic;
   stock?: StockKeysPublic;
   ai?: AiPublic;
   formModes: FormModes;
@@ -591,9 +571,6 @@ export function maskOidcProvider(p: OidcProviderStored): OidcProviderPublic {
 export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSettingsPublic {
   const result: InstanceSettingsPublic = { formModes: stored.formModes };
   if (stored.smtp) result.smtp = maskSmtp(stored.smtp);
-  if (stored.hcaptcha) {
-    result.hcaptcha = { siteKey: stored.hcaptcha.siteKey, hasSecret: stored.hcaptcha.secret !== undefined };
-  }
   if (stored.stock) {
     result.stock = {
       hasUnsplash: stored.stock.unsplash !== undefined,

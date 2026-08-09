@@ -83,7 +83,7 @@ const formatBytes = (n: number): string => {
 };
 
 /**
- * Instance admin → settings: the global mail transport, hCaptcha keys, and which
+ * Instance admin → settings: the global mail transport and which
  * web-form mail-delivery modes projects may use. Secrets are write-only here — the
  * API never returns them, so a blank password/secret field means "keep the current
  * one". Shown only to instance admins (gated in App).
@@ -128,11 +128,6 @@ export function InstanceSettings() {
   const [fromName, setFromName] = useState('');
   const [password, setPassword] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
-
-  const [hcaptchaEnabled, setHcaptchaEnabled] = useState(false);
-  const [siteKey, setSiteKey] = useState('');
-  const [hcSecret, setHcSecret] = useState('');
-  const [hasSecret, setHasSecret] = useState(false);
 
   const [stockEnabled, setStockEnabled] = useState(false);
   const [unsplashKey, setUnsplashKey] = useState('');
@@ -335,10 +330,6 @@ export function InstanceSettings() {
     setFromName(s.smtp?.fromName ?? '');
     setHasPassword(s.smtp?.hasPassword ?? false);
     setPassword('');
-    setHcaptchaEnabled(Boolean(s.hcaptcha));
-    setSiteKey(s.hcaptcha?.siteKey ?? '');
-    setHasSecret(s.hcaptcha?.hasSecret ?? false);
-    setHcSecret('');
     setStockEnabled(Boolean(s.stock));
     setHasUnsplash(s.stock?.hasUnsplash ?? false);
     setHasPexels(s.stock?.hasPexels ?? false);
@@ -453,9 +444,6 @@ export function InstanceSettings() {
           ...(fromName ? { fromName } : {}),
           ...(password ? { password } : {}), // blank = keep current
         }
-      : null;
-    input.hcaptcha = hcaptchaEnabled
-      ? { siteKey, ...(hcSecret ? { secret: hcSecret } : {}) }
       : null;
     input.stock = stockEnabled
       ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
@@ -856,39 +844,7 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
-      <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">hCaptcha</legend>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className={toggleInput}
-            aria-label="Configure hCaptcha"
-            checked={hcaptchaEnabled}
-            onChange={(e) => setHcaptchaEnabled(e.target.checked)}
-          />
-          Enable hCaptcha for forms
-        </label>
-        {hcaptchaEnabled && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Site key
-              <input className={field} aria-label="hCaptcha site key" value={siteKey} onChange={(e) => setSiteKey(e.target.value)} required />
-            </label>
-            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Secret key
-              <input
-                className={field}
-                aria-label="hCaptcha secret"
-                type="password"
-                {...secretFieldProps}
-                value={hcSecret}
-                placeholder={hasSecret ? '•••••• (leave blank to keep)' : ''}
-                onChange={(e) => setHcSecret(e.target.value)}
-              />
-            </label>
-          </div>
-        )}
-      </fieldset>
+      
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">

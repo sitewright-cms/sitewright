@@ -401,9 +401,9 @@ describe('platformInjectedCspOrigins — what the PUBLISHER puts on the page', (
   });
 
   it('allows hCaptcha across every directive its widget needs, only when the page carries one', () => {
-    // The form runtime injects js.hcaptcha.com the moment an `.h-captcha` element exists; the widget then
+    // The form runtime injects the provider's script the moment a captcha-bearing form exists; it then
     // frames, calls and styles its own hosts. Miss one directive and it half-loads.
-    const withCaptcha = `${routed}<div class="h-captcha" data-sitekey="k"></div>`;
+    const withCaptcha = `${routed}<form data-sw-captcha="hcaptcha"><div class="h-captcha" data-sitekey="k"></div></form>`;
     const o = platformInjectedCspOrigins(withCaptcha, 'https://sitewright.example');
     for (const d of [o.script, o.frame, o.style]) expect(d).toEqual(['hcaptcha.com', '*.hcaptcha.com']);
     expect(o.connect).toEqual(['sitewright.example', 'hcaptcha.com', '*.hcaptcha.com']);

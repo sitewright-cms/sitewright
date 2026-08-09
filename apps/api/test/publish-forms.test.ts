@@ -35,7 +35,7 @@ function contactForm(over: Partial<Form> = {}): Form {
     recipient: 'secret-recipient@acme.com',
     subject: 'New lead',
     mode: 'globalSmtp' as const,
-    hcaptcha: false, pow: false,
+    captcha: false, pow: false,
     ...over,
   } as Form;
 }
@@ -165,16 +165,17 @@ describe('buildSite — code-first form embedding', () => {
     expect(html).toContain('data-sw-endpoint="https://hooks.example/x"');
   });
 
-  it('renders the hCaptcha widget only when opted in AND a sitekey is configured (platform-routed only)', async () => {
+  it('renders the widget only when opted in AND the PROJECT configured a captcha (platform-routed only)', async () => {
     const page = { id: 'home', path: '', title: 'Home', source: '{{sw-form "contact"}}' };
-    await buildSite({ publishedAt: at, outDir, bundle: bundle([page], [contactForm({ hcaptcha: true })]), hcaptchaSiteKey: 'site-1' });
+    await buildSite({ publishedAt: at, outDir, bundle: bundle([page], [contactForm({ captcha: true })]), captcha: { provider: 'hcaptcha', siteKey: 'site-1' } });
     const withKey = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(withKey).toContain('class="h-captcha"');
     expect(withKey).toContain('data-sitekey="site-1"');
     await rm(outDir, { recursive: true, force: true });
-    await buildSite({ publishedAt: at, outDir, bundle: bundle([page], [contactForm({ hcaptcha: true })]) });
+    await buildSite({ publishedAt: at, outDir, bundle: bundle([page], [contactForm({ captcha: true })]) });
     const noKey = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(noKey).not.toContain('data-sitekey');
+    expect(noKey).not.toContain('data-sw-captcha'); // inert, not broken
   });
 
   it('a form referenced from a chrome slot (footer) resolves like a page-body form', async () => {

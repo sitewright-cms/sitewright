@@ -830,8 +830,13 @@ describe('proof-of-work runtime — never a fake success', () => {
 
   it('fetches the challenge at SUBMIT, not on load', () => {
     // A form nobody fills in must cost its visitors nothing.
-    const solveAt = FORM_JS.indexOf('powSolve(form).then('); // the CALL, not the definition above it
     const submitHandler = FORM_JS.indexOf("form.addEventListener('submit'");
+    // The CALL, not the definition above it. It now sits one link along a chain that resolves the
+    // captcha first, so match the call site rather than the old `powSolve(form).then(` spelling.
+    const solveAt = FORM_JS.indexOf('return powSolve(form);');
     expect(solveAt).toBeGreaterThan(submitHandler);
+    // Same for the captcha: a reCAPTCHA v3 token expires in two minutes, so one minted on page load
+    // would be stale by the time a visitor finished typing.
+    expect(FORM_JS.indexOf('captchaToken(form).then(')).toBeGreaterThan(submitHandler);
   });
 });

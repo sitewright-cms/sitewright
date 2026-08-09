@@ -30,22 +30,19 @@ test('instance admin settings: gating, persistence, and secret masking', async (
   expect(initial.status()).toBe(200);
   expect((await initial.json()).settings.formModes.globalSmtp).toBe(false);
 
-  // Write SMTP + hCaptcha + a form mode, with secrets.
+  // Write SMTP + a form mode, with secrets. (Captcha is per PROJECT now — see captcha.spec.ts.)
   const put = await admin.put('/admin/settings', {
     data: {
       formModes: { globalSmtp: true, contactPhp: true },
       smtp: { host: 'smtp.acme.example', port: 587, secure: false, user: 'mailer', fromEmail: 'no-reply@acme.example', password: 'top-secret-pw' },
-      hcaptcha: { siteKey: 'site-abc', secret: 'hc-secret-xyz' },
     },
   });
   expect(put.status()).toBe(200);
   const putBody = await put.text();
   // Secrets must NEVER be echoed back.
   expect(putBody).not.toContain('top-secret-pw');
-  expect(putBody).not.toContain('hc-secret-xyz');
   const settings = JSON.parse(putBody).settings;
   expect(settings.smtp.hasPassword).toBe(true);
-  expect(settings.hcaptcha.hasSecret).toBe(true);
   expect(settings.formModes.globalSmtp).toBe(true);
   expect(settings.formModes.contactPhp).toBe(true);
 

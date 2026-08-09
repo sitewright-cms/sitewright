@@ -72,7 +72,20 @@ export function isPlatformRoutedMode(mode: FormMode): boolean {
 }
 
 /** A form definition (content kind `form`). */
-export const FormSchema = z.object({
+/**
+ * Carries a pre-rename `hcaptcha: true` onto `captcha`. Kept as a READ-side shim rather than a data
+ * migration: every stored form in every project would otherwise have to be rewritten to flip one
+ * boolean, and a forward-only rewrite that cannot be tested against real databases is a worse risk
+ * than four lines here. An explicit `captcha` always wins.
+ */
+const carryLegacyCaptchaFlag = (v: unknown): unknown => {
+  if (!v || typeof v !== 'object') return v;
+  const o = v as Record<string, unknown>;
+  if (o.captcha === undefined && typeof o.hcaptcha === 'boolean') return { ...o, captcha: o.hcaptcha };
+  return v;
+};
+
+export const FormSchema = z.preprocess(carryLegacyCaptchaFlag, z.object({
   id: IdSchema,
   /** Admin-facing name; also feeds the default email subject — reject control chars. */
   name: z
@@ -116,8 +129,15 @@ export const FormSchema = z.object({
     .refine((v) => !hasControlChars(v), 'subject must not contain control characters')
     .optional(),
   mode: FormModeSchema.default('globalSmtp'),
-  /** Require an hCaptcha solve (only enforced for platform-routed modes). */
-  hcaptcha: z.boolean().default(false),
+  /**
+   * Require a captcha solve (platform-routed modes only). WHICH captcha is a PROJECT setting — the
+   * key is bound to a domain, and a domain is a site, not a form — so this is a plain opt-in. A form
+   * with this on in a project that has configured no captcha renders no widget and enforces nothing:
+   * the flag is inert rather than broken, exactly as it was when the site key was missing.
+   *
+   * Reads a legacy `hcaptcha: true` (see the preprocess below), so no stored form needed migrating.
+   */
+  captcha: z.boolean().default(false),
   /**
    * Require a proof-of-work solve (platform-routed modes only). OPT-IN: it puts a few hundred
    * milliseconds of CPU on every visitor, which is not worth spending on a form that has no spam
@@ -150,7 +170,7 @@ export const FormSchema = z.object({
 }).refine((f) => f.mode !== 'thirdParty' || !!f.thirdPartyUrl, {
   message: 'thirdPartyUrl is required when mode is "thirdParty"',
   path: ['thirdPartyUrl'],
-});
+}));
 export type Form = z.infer<typeof FormSchema>;
 
 /**
@@ -166,7 +186,7 @@ export interface FormPublic {
   successMessage: string;
   errorMessage: string;
   redirectUrl?: string;
-  hcaptcha: boolean;
+  captcha: boolean;
   /** Require a proof-of-work solve — the runtime fetches a challenge and solves it before posting. */
   pow: boolean;
   mode: FormMode;
@@ -182,7 +202,7 @@ export function toPublicForm(form: Form): FormPublic {
     submitLabel: form.submitLabel,
     successMessage: form.successMessage,
     errorMessage: form.errorMessage,
-    hcaptcha: form.hcaptcha,
+    captcha: form.captcha,
     pow: form.pow,
     mode: form.mode,
   };
@@ -261,6 +281,15 @@ export const INTERACTION_FIELD = '_ix';
 export const POW_FIELD = '_pow';
 /** The hCaptcha response token field (injected by the hCaptcha widget); verified + not stored. */
 export const HCAPTCHA_RESPONSE_FIELD = 'h-captcha-response';
+/**
+ * reCAPTCHA's response token field. v2's widget injects it itself, exactly as hCaptcha's does; v3 has
+ * no widget at all, so the runtime writes the token here after calling `grecaptcha.execute`. Keeping
+ * each provider's NATIVE field name means the generic field collector picks the token up with no
+ * special case, and the server accepts whichever arrived.
+ */
+export const RECAPTCHA_RESPONSE_FIELD = 'g-recaptcha-response';
+/** Every field a captcha may deliver its token in — verified server-side, never stored. */
+export const CAPTCHA_RESPONSE_FIELDS = [HCAPTCHA_RESPONSE_FIELD, RECAPTCHA_RESPONSE_FIELD] as const;
 /** Hidden field carrying the form id — emitted only for `contactPhp` forms so the
  * generated `contact.php` can dispatch to the right recipient. */
 export const FORM_ID_FIELD = '_form';

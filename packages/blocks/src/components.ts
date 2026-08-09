@@ -891,14 +891,65 @@ const FORM_CSS = [
 ].join('');
 
 const FORM_JS = `(function(){
-  function ensureHcaptcha(){
-    if(!document.querySelector('.h-captcha'))return;
-    if(window.hcaptcha)return;
-    if(document.querySelector('script[data-sw-hcaptcha]'))return;
+  // CAPTCHA, whichever provider the project configured. The provider is named on the form itself
+  // (data-sw-captcha) rather than inferred from a widget class, because reCAPTCHA v3 has NO widget.
+  // Each vendor script is injected at most once, and only when a form on this page actually needs it.
+  function captchaProvider(form){return form.getAttribute('data-sw-captcha')||'';}
+  function siteKeyOf(form){
+    var el=form.querySelector('[data-sitekey]');
+    return el?el.getAttribute('data-sitekey'):'';
+  }
+  function loadScript(src,mark){
+    if(document.querySelector('script[data-sw-captcha-src="'+mark+'"]'))return;
     var s=document.createElement('script');
-    s.src='https://js.hcaptcha.com/1/api.js';s.async=true;s.defer=true;
-    s.setAttribute('data-sw-hcaptcha','');
+    s.src=src;s.async=true;s.defer=true;
+    s.setAttribute('data-sw-captcha-src',mark);
     document.head.appendChild(s);
+  }
+  function ensureCaptcha(){
+    var forms=document.querySelectorAll('form[data-sw-captcha]');
+    for(var i=0;i<forms.length;i++){
+      var p=captchaProvider(forms[i]);
+      if(p==='hcaptcha'){if(!window.hcaptcha)loadScript('https://js.hcaptcha.com/1/api.js','hcaptcha');}
+      else if(p==='recaptcha-v2'){if(!window.grecaptcha)loadScript('https://www.google.com/recaptcha/api.js','recaptcha');}
+      else if(p==='recaptcha-v3'){
+        // v3 needs the site key IN THE SCRIPT URL, and it has no widget to read it from later.
+        var k=siteKeyOf(forms[i]);
+        if(k&&!window.grecaptcha)loadScript('https://www.google.com/recaptcha/api.js?render='+encodeURIComponent(k),'recaptcha-v3-'+k);
+      }
+    }
+  }
+  // Resolves this form's captcha token, or rejects so the caller can prompt instead of posting a
+  // token-less submission the server would reject anyway (fail-closed on BOTH sides).
+  function captchaToken(form){
+    var p=captchaProvider(form);
+    if(!p)return Promise.resolve(null);
+    if(p==='hcaptcha'){
+      var h=(window.hcaptcha&&window.hcaptcha.getResponse)?window.hcaptcha.getResponse():'';
+      return h?Promise.resolve(null):Promise.reject(new Error('captcha'));
+    }
+    if(p==='recaptcha-v2'){
+      var g=(window.grecaptcha&&window.grecaptcha.getResponse)?window.grecaptcha.getResponse():'';
+      return g?Promise.resolve(null):Promise.reject(new Error('captcha'));
+    }
+    if(p==='recaptcha-v3'){
+      // INVISIBLE: no widget, so there is nothing for the visitor to complete and nothing to read
+      // back. A fresh token is minted per submit (they expire in two minutes) and written into the
+      // hidden field the renderer emitted.
+      var key=siteKeyOf(form);
+      if(!window.grecaptcha||!window.grecaptcha.execute||!key)return Promise.reject(new Error('captcha'));
+      return new Promise(function(res,rej){
+        window.grecaptcha.ready(function(){
+          window.grecaptcha.execute(key,{action:'submit'}).then(function(t){
+            if(!t){rej(new Error('captcha'));return;}
+            var f=form.querySelector('input[name="g-recaptcha-response"]');
+            if(f)f.value=t;
+            res(t);
+          },function(){rej(new Error('captcha'));});
+        });
+      });
+    }
+    return Promise.resolve(null);
   }
   // Fetch a challenge and scan for its answer. The server publishes sha256(salt + n) for a secret n it
   // chose in [0, maxnumber]; finding n costs maxnumber/2 hashes on average, verifying costs one.
@@ -978,12 +1029,6 @@ const FORM_JS = `(function(){
     form.addEventListener('submit',function(e){
       e.preventDefault();
       if(error)error.hidden=true;
-      // If this form has an hCaptcha that hasn't been solved yet, prompt instead of
-      // posting a token-less submission that the server would reject (fail-closed).
-      if(form.querySelector('.h-captcha')){
-        var token=(window.hcaptcha&&window.hcaptcha.getResponse)?window.hcaptcha.getResponse():'';
-        if(!token){if(error){error.textContent='Please complete the captcha.';error.hidden=false;}return;}
-      }
       var data={};
       Array.prototype.forEach.call(form.querySelectorAll('input,textarea,select'),function(el){
         if(!el.name||el.type==='submit'||el.type==='button')return;
@@ -1005,7 +1050,14 @@ const FORM_JS = `(function(){
       // inside a wait that existed anyway — and doing it on load would burn CPU on every page view of a
       // form nobody fills in. Main thread on purpose: a Worker needs its own asset and a CSP widening
       // (worker-src), and the difficulty is sized so the wait stays short.
-      powSolve(form).then(function(pow){
+      // CAPTCHA first: an interactive widget (hCaptcha, reCAPTCHA v2) has already injected its token
+      // into a field the collector picked up, so this only checks it was actually solved. reCAPTCHA v3
+      // has no widget — it MINTS a token here, per submit, because v3 tokens expire in two minutes and
+      // one fetched on page load would be stale by the time a visitor finished typing.
+      captchaToken(form).then(function(tok){
+        if(tok)data['g-recaptcha-response']=tok;
+        return powSolve(form);
+      }).then(function(pow){
         if(pow)data['_pow']=pow;
         return fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
       }).then(function(res){
@@ -1015,14 +1067,19 @@ const FORM_JS = `(function(){
         form.reset();
         if(success)success.hidden=false;
         form.setAttribute('data-sw-submitted','true');
-      }).catch(function(){
-        if(error)error.hidden=false;
+      }).catch(function(err){
+        // Name the captcha specifically: "something went wrong" in front of an unticked checkbox is
+        // the difference between a visitor fixing it in two seconds and giving up on the form.
+        if(error){
+          if(err&&err.message==='captcha')error.textContent='Please complete the captcha.';
+          error.hidden=false;
+        }
       }).then(function(){
         if(submit)submit.disabled=false;
       });
     });
   }
-  function init(){ensureHcaptcha();Array.prototype.forEach.call(document.querySelectorAll('form[data-sw-component="form"]'),enhance);}
+  function init(){ensureCaptcha();Array.prototype.forEach.call(document.querySelectorAll('form[data-sw-component="form"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 

@@ -48,6 +48,7 @@ export const CONTENT_KIND_VALUES = [
   'form',
   'imagemap',
   'project_smtp',
+  'project_captcha',
   'ai_config',
   'preview_share',
 ] as const;
@@ -585,7 +586,7 @@ export const aiUsage = sqliteTable(
 
 /**
  * Instance-wide settings, configured by an instance admin (global mail transport,
- * hCaptcha keys, permitted web-form mail modes). A singleton: exactly one row keyed
+ * permitted web-form mail modes). A singleton: exactly one row keyed
  * by {@link INSTANCE_SETTINGS_ID}. Secrets inside `data` are encrypted at rest.
  */
 export const instanceSettings = sqliteTable('instance_settings', {
@@ -599,6 +600,9 @@ export const INSTANCE_SETTINGS_ID = 'instance';
 
 /** The fixed entity id of a project's SMTP-config singleton (content kind `project_smtp`). */
 export const PROJECT_SMTP_ENTITY_ID = 'smtp';
+
+/** The fixed entity id of a project's captcha-config singleton (content kind `project_captcha`). */
+export const PROJECT_CAPTCHA_ENTITY_ID = 'captcha';
 
 /**
  * Web-form submissions (text fields only — never binaries/attachments). Project-

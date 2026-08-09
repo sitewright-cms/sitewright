@@ -116,8 +116,7 @@ describe('coverage backfill', () => {
       expect(pub.platformName).toBe('Cov');
       expect(pub.defaultImageFormat).toBe('avif');
       // secret round-trips exercise the decrypt branches of the secret getters
-      await repo.put({ hcaptcha: { siteKey: 'sk', secret: 'hc-secret' }, stock: { unsplash: 'uk', pexels: 'pk' } });
-      expect(await repo.getHcaptchaSecret()).toBe('hc-secret');
+      await repo.put({ stock: { unsplash: 'uk', pexels: 'pk' } });
       expect(await repo.getStockKey('unsplash')).toBe('uk');
       expect(await repo.getStockKey('pexels')).toBe('pk');
       // exercise the remaining read-side getters (statement coverage)

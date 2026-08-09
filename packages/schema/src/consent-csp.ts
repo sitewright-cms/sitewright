@@ -1,3 +1,4 @@
+import { CAPTCHA_HOSTS, CAPTCHA_PROVIDERS } from './captcha.js';
 // CONSENT MANAGER — third-party gating support: the curated CSP origin bundles per preset, the runtime
 // descriptors the auto-injected consent mount bakes into the config, and the per-site CSP builders consumed by
 // BOTH the serve-time response header (apps/api app.ts /sites/:slug/*) and the build-time <meta> (build.ts).
@@ -156,8 +157,6 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
   return { frame: [...frame], script: [...script], connect: [...connect], media: [...media] };
 }
 
-/** hCaptcha's own hosts. `*.hcaptcha.com` covers the widget's assets + challenge subdomains. */
-const HCAPTCHA_HOSTS = ['hcaptcha.com', '*.hcaptcha.com'] as const;
 
 /**
  * CSP origins the PLATFORM ITSELF injects into a published page — the sibling of
@@ -204,11 +203,16 @@ export function platformInjectedCspOrigins(
     if (host) connect.add(host);
   }
 
-  // hCaptcha: the form runtime injects js.hcaptcha.com the moment an `.h-captcha` element is present (it
-  // is only rendered for a platform-routed form when the instance has a site key). The widget then frames
-  // and calls its own hosts, and styles itself — so all four directives, or it half-loads.
-  if (/class\s*=\s*["'][^"']*\bh-captcha\b/i.test(html)) {
-    for (const h of HCAPTCHA_HOSTS) {
+  // CAPTCHA, whichever provider this project configured. The runtime injects the provider's script the
+  // moment a captcha-bearing form is present; the widget then frames and calls its own hosts, and styles
+  // itself — so all four directives, or it half-loads.
+  //
+  // Keyed on the explicit `data-sw-captcha="<provider>"` marker rather than on a widget class, because
+  // reCAPTCHA v3 has NO widget to detect: it is a script that runs on submit. A class-based check would
+  // have silently omitted the origins for exactly the provider whose failure is hardest to see.
+  for (const provider of CAPTCHA_PROVIDERS) {
+    if (!new RegExp(`data-sw-captcha\\s*=\\s*["']${provider}["']`, 'i').test(html)) continue;
+    for (const h of CAPTCHA_HOSTS[provider]) {
       script.add(h);
       frame.add(h);
       connect.add(h);

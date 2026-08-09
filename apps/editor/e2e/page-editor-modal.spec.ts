@@ -122,7 +122,11 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   expect(intoFluid.drift).toBeLessThanOrEqual(1); // …still without leaving centre
 
   await page.getByRole('button', { name: 'Preview: Large desktop' }).click();
-  expect(await viewport.getAttribute('style')).toBeNull(); // back to fluid
+  await page.waitForTimeout(TRANSITION_SETTLE_MS);
+  // Back to fluid — which now means "as wide as the host", not "no inline style".
+  expect(await viewport.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(
+    await host.evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+  );
 
   // The code strip COLLAPSES on a mode switch instead of vanishing: still in the DOM, zero-height,
   // and out of the tab order (visibility, not display, so the collapse can animate).

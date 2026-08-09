@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, notInArray, lt, lte, or, isNull, sql } fro
 import { FormSubmissionSchema, type FormSubmission } from '@sitewright/schema';
 // (FormSubmissionSchema is also used to validate rows on read — see toSubmission.)
 import type { Database } from '../db/client.js';
-import { formFiltered, formSubmissions } from '../db/schema.js';
+import { formFiltered, formPowSpent, formSubmissions } from '../db/schema.js';
 import { DELIVERY_LEASE_MS } from '../mail/delivery-policy.js';
 
 export interface SubmissionListResult {
@@ -312,6 +312,35 @@ export class SubmissionRepository {
         target: [formFiltered.projectId, formFiltered.formId, formFiltered.reason],
         set: { count: sql`${formFiltered.count} + 1`, lastAt: now },
       });
+  }
+
+  /**
+   * Spend a proof-of-work challenge. Returns TRUE the first time and FALSE for every reuse, which is
+   * what turns "this solution is valid" into "this solution buys one submission".
+   *
+   * The whole guarantee rests on this being ONE atomic statement. An exists-check followed by an
+   * insert would leave a window in which two posts carrying the same solution both read "unspent" —
+   * precisely the replay being defended against, just narrower. `ON CONFLICT DO NOTHING … RETURNING`
+   * returns no row when the key was already there, so the database decides the winner.
+   *
+   * NOT best-effort, unlike recordFiltered: a failure here must propagate. Treating a store error as
+   * "unspent" would fail open and reopen replay the moment the database hiccups.
+   */
+  async claimPowChallenge(challenge: string, expiresAt: Date): Promise<boolean> {
+    const claimed = await this.db
+      .insert(formPowSpent)
+      .values({ challenge, expiresAt })
+      .onConflictDoNothing({ target: formPowSpent.challenge })
+      .returning({ challenge: formPowSpent.challenge });
+    return claimed.length > 0;
+  }
+
+  /**
+   * Drop spent challenges that can no longer be replayed anyway — their signed TTL has passed, so
+   * verification rejects them as `expired` long before the claim is consulted. Housekeeping only.
+   */
+  async sweepSpentPow(now: Date = new Date()): Promise<void> {
+    await this.db.delete(formPowSpent).where(lte(formPowSpent.expiresAt, now));
   }
 
   /** What each trap has filtered for a project (optionally one form), most recent activity first. */

@@ -744,4 +744,65 @@ describe('proof-of-work — opt-in per form', () => {
     });
     expect(mailer.sent[0]!.fields).not.toHaveProperty('_pow');
   });
+
+  it('SPENDS the solution — one solve buys one submission, not a window of them', async () => {
+    // The cost model IS the feature. Replayable work means a spammer pays once per TTL and then posts
+    // freely until it expires, which is not a weaker guarantee than "cost per submission" but the
+    // absence of one. Exercised end-to-end because the guarantee lives in the DB's unique key.
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/spend`, cookies: { sw_session: t }, payload: { ...form, id: 'spend', pow: true } });
+    const solution = await solve((await app.inject({ method: 'GET', url: `/f/${projectId}/spend/challenge` })).json() as never);
+    const post = () => app.inject({ method: 'POST', url: `/f/${projectId}/spend`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: solution } });
+
+    expect((await post()).statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+    // Same work, again. Silent like every trap, and nothing more delivered.
+    expect((await post()).statusCode).toBe(200);
+    expect((await post()).statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+
+    const items = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/filtered`, cookies: { sw_session: t } })).json() as { items: Array<{ formId: string; reason: string; count: number }> }).items;
+    expect(items.find((i) => i.formId === 'spend' && i.reason === 'pow-replayed')?.count).toBe(2);
+  });
+
+  it('binds the work to ONE form — a solve cannot be sprayed across the instance', async () => {
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/formA`, cookies: { sw_session: t }, payload: { ...form, id: 'formA', pow: true } });
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/formB`, cookies: { sw_session: t }, payload: { ...form, id: 'formB', pow: true } });
+    const forA = await solve((await app.inject({ method: 'GET', url: `/f/${projectId}/formA/challenge` })).json() as never);
+
+    const sprayed = await app.inject({ method: 'POST', url: `/f/${projectId}/formB`, payload: { email: 'bot@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: forA } });
+    expect(sprayed.statusCode).toBe(200); // silent
+    expect(mailer.sent).toHaveLength(0); // …and not delivered
+
+    // The same solution is still good at the form it was minted for — the binding must not be a
+    // blanket rejection of work done slightly earlier.
+    const home = await app.inject({ method: 'POST', url: `/f/${projectId}/formA`, payload: { email: 'lead@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: forA } });
+    expect(home.statusCode).toBe(200);
+    expect(mailer.sent).toHaveLength(1);
+
+    const items = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/filtered`, cookies: { sw_session: t } })).json() as { items: Array<{ formId: string; reason: string; count: number }> }).items;
+    expect(items.find((i) => i.formId === 'formB' && i.reason === 'pow-bad-signature')?.count).toBe(1);
+  });
+
+  it('is testable in the PREVIEW — the runtime asks for the challenge on the preview path', async () => {
+    // The runtime builds every form URL from `window.__swf`, which appends `/preview` in a draft
+    // preview, so its solver requests `…/<formId>/preview/challenge`. That route did not exist: the
+    // fetch 404'd, the solver rejected, and a proof-of-work form showed its error state and never
+    // posted — the gate an author most wants to rehearse was the one the preview could not run.
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/form/prev`, cookies: { sw_session: t }, payload: { ...form, id: 'prev', pow: true } });
+    const res = await app.inject({ method: 'GET', url: `/f/${projectId}/prev/preview/challenge` });
+    expect(res.statusCode).toBe(200);
+
+    const dry = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/prev/preview`,
+      payload: { email: 'author@x.co', _elapsed: '5000', _ix: '3.12.2', _pow: await solve(res.json() as never) },
+    });
+    expect(dry.json()).toMatchObject({ ok: true, preview: true });
+    expect(dry.json()).not.toHaveProperty('filtered');
+    expect(mailer.sent).toHaveLength(0); // a dry run is still a dry run
+
+    // And it really is CHECKED here, so an author finds out now rather than a visitor finding out later.
+    const unsolved = await app.inject({ method: 'POST', url: `/f/${projectId}/prev/preview`, payload: { email: 'author@x.co', _elapsed: '5000', _ix: '3.12.2' } });
+    expect(unsolved.json()).toMatchObject({ ok: true, preview: true, filtered: 'pow-missing' });
+  });
 });

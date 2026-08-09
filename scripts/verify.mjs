@@ -71,13 +71,27 @@ for (const gate of GATES) {
   open(gate.name);
   const t = Date.now();
   // `pipe` so a tolerated failure can be inspected; echoed immediately so output still streams in order.
-  const res = spawnSync(gate.cmd[0], gate.cmd.slice(1), { encoding: 'utf8', shell: false });
+  //
+  // ★ `maxBuffer: Infinity` IS THE GATE. spawnSync defaults to a 1 MB buffer, and on overflow it KILLS
+  // the child and reports the overflow in `res.error` while leaving `res.status` at 0 — so a `status`-only
+  // check reads a truncated, murdered run as a pass. This gate spent time in exactly that state: the api
+  // suite went red, its failures printed large HTML diffs, the diffs pushed the output past 1 MB, and the
+  // extra output turned the failure into "✔ all gates passed" both locally and in CI. The perverse part
+  // is the direction of the bias — a NOISY failure was more likely to be swallowed than a quiet one, so
+  // the gate got least trustworthy exactly when it mattered most. Never let this go back to a default
+  // buffer, and never check `status` without `error`.
+  const res = spawnSync(gate.cmd[0], gate.cmd.slice(1), { encoding: 'utf8', shell: false, maxBuffer: Infinity });
   const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
   process.stdout.write(out);
   const ms = Date.now() - t;
   timings.push([gate.name, ms]);
   close();
 
+  if (res.error) {
+    // The command never ran, or was killed. Not a test result — a broken gate, which must never pass.
+    console.error(`\n✖ ${gate.name} could not be run to completion after ${(ms / 1000).toFixed(1)}s: ${res.error.message}`);
+    process.exit(1);
+  }
   if (res.status !== 0) {
     if (gate.tolerate?.(out)) {
       console.log(ci ? `::warning::${gate.tolerateNote}` : `WARNING: ${gate.tolerateNote}`);

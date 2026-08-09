@@ -4,6 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+
+/** hCaptcha's own documented TEST site key. A site key is validated for the UUID shape a real one
+ * has, so a `site-key`-style placeholder is no longer a usable fixture — which is the point: that
+ * class of value is exactly what reached visitors as data-sitekey="123". */
+const HCAPTCHA_TEST_SITEKEY = '10000000-ffff-ffff-ffff-000000000001';
 import { registerAccount } from '../src/repo/accounts.js';
 import type { HcaptchaVerifier } from '../src/mail/hcaptcha.js';
 
@@ -54,7 +59,7 @@ async function setup(opts: { configureSecret: boolean }) {
       method: 'PUT',
       url: '/admin/settings',
       cookies: { sw_session: t },
-      payload: { hcaptcha: { siteKey: 'site-key', secret: 'hc-secret' } },
+      payload: { hcaptcha: { siteKey: HCAPTCHA_TEST_SITEKEY, secret: 'hc-secret' } },
     });
   }
 }
@@ -63,7 +68,7 @@ describe('form submission hCaptcha enforcement', () => {
   it('rejects (400) when verification fails, and does not store', async () => {
     await setup({ configureSecret: true });
     hcaptcha.result = false;
-    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', 'h-captcha-response': 'bad', _elapsed: '5000' } });
+    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', 'h-captcha-response': 'bad', _elapsed: '5000', _ix: '3.12.2' } });
     expect(res.statusCode).toBe(400);
     expect(hcaptcha.calls[0]).toMatchObject({ secret: 'hc-secret', token: 'bad' });
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
@@ -73,7 +78,7 @@ describe('form submission hCaptcha enforcement', () => {
   it('accepts when verification passes and never stores the captcha token', async () => {
     await setup({ configureSecret: true });
     hcaptcha.result = true;
-    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', 'h-captcha-response': 'good-token', _elapsed: '5000' } });
+    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', 'h-captcha-response': 'good-token', _elapsed: '5000', _ix: '3.12.2' } });
     expect(res.statusCode).toBe(200);
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     const body = list.json() as { items: Array<{ fields: Record<string, string> }>; total: number };
@@ -84,7 +89,7 @@ describe('form submission hCaptcha enforcement', () => {
 
   it('rejects (503, fail-closed) when the form requires hCaptcha but no instance secret is configured', async () => {
     await setup({ configureSecret: false });
-    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', _elapsed: '5000' } });
+    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/contact`, payload: { email: 'x@y.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect(res.statusCode).toBe(503);
     expect(hcaptcha.calls).toHaveLength(0); // never called — no secret to verify against
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
@@ -105,12 +110,12 @@ describe('form submission hCaptcha enforcement', () => {
     const proj = await keyed.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     await keyed.inject({ method: 'PUT', url: `/projects/${pid}/content/form/contact`, cookies: { sw_session: tok }, payload: { id: 'contact', name: 'C', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', hcaptcha: true } });
-    await keyed.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: tok }, payload: { hcaptcha: { siteKey: 'sk', secret: 'hc-secret' } } });
+    await keyed.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: tok }, payload: { hcaptcha: { siteKey: HCAPTCHA_TEST_SITEKEY, secret: 'hc-secret' } } });
 
     // Same DB, NO encryption key → decrypt throws.
     const keyless = await createApp({ db, hcaptcha });
     await keyless.ready();
-    const res = await keyless.inject({ method: 'POST', url: `/f/${pid}/contact`, payload: { email: 'x@y.co', _elapsed: '5000' } });
+    const res = await keyless.inject({ method: 'POST', url: `/f/${pid}/contact`, payload: { email: 'x@y.co', _elapsed: '5000', _ix: '3.12.2' } });
     expect(res.statusCode).toBe(503);
   });
 });

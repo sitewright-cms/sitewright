@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { RenderPool } from '../src/render/render-pool.js';
+import { formApiBlob } from './helpers.js';
 
 // Code-first preview (POST /projects/:id/preview) renders the page `source` in the worker pool and
 // wraps it in the sandboxed document shell. These cover the branches the deleted block-tree preview
@@ -122,7 +123,13 @@ describe('code-first preview', () => {
       source: '<section>{{sw-form "contact"}}</section>',
     });
     // a PREVIEW posts to the dry run: same validation, nothing stored, nothing mailed
-    expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact/preview"`);
+    // A preview form carries the same id-only marker as a published one; the `/preview` suffix lives
+    // in the runtime blob (`v: true`), so the dry-run address is no more scrapeable than the real one.
+    expect(html).toContain('data-sw-routed="contact"');
+    // Note the `="`: the preview INLINES FORM_JS, whose source mentions the attribute name when it
+    // reads a contactPhp endpoint. What must be absent is the ATTRIBUTE, not the string.
+    expect(html).not.toContain('data-sw-endpoint="');
+    expect(formApiBlob(html)).toMatchObject({ p: projectId, v: 1 }); // v=1 → the assembler appends /preview
     expect(html).toContain('data-sw-form="contact"'); // preview keeps the reference marker
     expect(html).toContain('<span data-sw-part="label">Email</span>');
     expect(html).toContain('name="_hpt"');

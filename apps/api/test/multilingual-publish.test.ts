@@ -152,10 +152,10 @@ describe('multilingual publish (locale variants are pages)', () => {
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const en = (await client.get(`/sites/${slug}/index.html`)).body;
-    expect(en).toContain('data-sw-endpoint="/f/' + projectId + '/contact"');
+    expect(en).toContain('data-sw-routed="contact"');
     expect(en).toContain('>Send</button>');
     const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
-    expect(de).toContain('data-sw-endpoint="/f/' + projectId + '/contact-de"');
+    expect(de).toContain('data-sw-routed="contact-de"');
     expect(de).toContain('>Absenden</button>');
   });
 

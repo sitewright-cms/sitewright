@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import type { Form, Page } from '@sitewright/schema';
 import { buildSite, PublishError } from '../src/publish/build.js';
+import { formApiBlob } from './helpers.js';
 
 let outDir: string;
 beforeEach(async () => {
@@ -67,7 +68,13 @@ describe('buildSite — code-first form embedding', () => {
     );
     await buildSite({ publishedAt: at, outDir, bundle: b });
     const html = await readFile(join(outDir, 'contact/index.html'), 'utf8');
-    expect(html).toContain('data-sw-endpoint="/f/proj1/contact"');
+    // ★ THE ENDPOINT IS NOT IN THE MARKUP. A routed form carries only its id; the URL is assembled at
+    // runtime from an encoded blob, so the published page is not a ready-to-POST address a scraper can
+    // grep for once and hammer forever. Asserting the ABSENCE of the address is the requirement — the
+    // presence of `data-sw-routed` is only how it is met.
+    expect(html).toContain('data-sw-routed="contact"');
+    expect(html).not.toContain('data-sw-endpoint');
+    expect(html).not.toContain('/f/proj1/contact');
     expect(html).toContain('data-sw-component="form"');
     expect(html).toContain('<span data-sw-part="label">Email</span>');
     expect(html).toContain('name="_hpt"'); // honeypot injected
@@ -75,7 +82,8 @@ describe('buildSite — code-first form embedding', () => {
     expect(html).not.toContain('secret-recipient'); // the recipient never reaches the export
     // only-used-ships: the source scan caught the {{sw-form …}} reference → the Form chunk is written
     expect(html).toContain('c-form.js');
-    await expect(readFile(join(outDir, 'c-form.js'), 'utf8')).resolves.toContain('data-sw-endpoint');
+    // The shipped chunk is what knows how to build the URL from the blob.
+    await expect(readFile(join(outDir, 'c-form.js'), 'utf8')).resolves.toContain('__swf');
   });
 
   it('endpoints are absolute when a publicBaseUrl is configured', async () => {
@@ -85,7 +93,11 @@ describe('buildSite — code-first form embedding', () => {
     );
     await buildSite({ publishedAt: at, outDir, bundle: b, publicBaseUrl: 'https://sw.example/' });
     const html = await readFile(join(outDir, 'contact/index.html'), 'utf8');
-    expect(html).toContain('data-sw-endpoint="https://sw.example/f/proj1/contact"');
+    // The absolute base moved into the encoded blob rather than onto the form. It must still be the
+    // configured origin — a same-origin fallback here would silently break every exported site — but it
+    // must not appear as a literal address anywhere in the page.
+    expect(html).not.toContain('https://sw.example/f/proj1/contact');
+    expect(formApiBlob(html)).toMatchObject({ b: 'https://sw.example', p: 'proj1' });
   });
 
   it('an authored <form data-sw-form> resolves too, and a de page picks the contact-de variant', async () => {
@@ -107,8 +119,10 @@ describe('buildSite — code-first form embedding', () => {
     await buildSite({ publishedAt: at, outDir, bundle: b });
     const en = await readFile(join(outDir, 'index.html'), 'utf8');
     const de = await readFile(join(outDir, 'de/index.html'), 'utf8');
-    expect(en).toContain('data-sw-endpoint="/f/proj1/contact"');
-    expect(de).toContain('data-sw-endpoint="/f/proj1/contact-de"');
+    expect(en).toContain('data-sw-routed="contact"');
+    expect(de).toContain('data-sw-routed="contact-de"');
+    expect(en).not.toContain('data-sw-endpoint');
+    expect(de).not.toContain('data-sw-endpoint');
   });
 
   it('an unknown form id fails the publish loudly with the page + form named', async () => {
@@ -171,7 +185,8 @@ describe('buildSite — code-first form embedding', () => {
     );
     await buildSite({ publishedAt: at, outDir, bundle: b });
     const html = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(html).toContain('data-sw-endpoint="/f/proj1/newsletter"');
+    expect(html).toContain('data-sw-routed="newsletter"');
+    expect(html).not.toContain('data-sw-endpoint');
   });
 
   it('a contactPhpSmtp form posts to the SAME contact.php, which delivers over SMTP', async () => {

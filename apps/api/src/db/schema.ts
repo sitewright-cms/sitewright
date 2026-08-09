@@ -635,6 +635,22 @@ export const formFiltered = sqliteTable(
   (t) => [primaryKey({ columns: [t.projectId, t.formId, t.reason] })],
 );
 
+/**
+ * Spent proof-of-work challenges — what makes one solve buy exactly ONE submission.
+ *
+ * The challenge is the PRIMARY KEY, so claiming is a single atomic insert: a duplicate is a replay,
+ * with no check-then-write window for two concurrent posts to slip through. Nothing here is secret —
+ * a challenge is published to the client that solves it — so it is stored verbatim.
+ *
+ * Rows are written only for solutions that already passed verification (so filling this table costs
+ * the same CPU as a real submission) and are swept once expired: an expired challenge is refused by
+ * the signature/TTL check before the claim is ever reached, so a swept row cannot be replayed.
+ */
+export const formPowSpent = sqliteTable('form_pow_spent', {
+  challenge: text('challenge').primaryKey(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export const formSubmissions = sqliteTable(
   'form_submissions',
   {

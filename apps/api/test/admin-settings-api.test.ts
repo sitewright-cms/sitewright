@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DEFAULT_FORM_MODES } from '@sitewright/schema';
+
+/**
+ * hCaptcha's own publicly documented TEST site key, used here because a site key is now validated for
+ * the UUID shape a real one has. The placeholders this file used before ('site-123', 'site-1') are the
+ * exact class of value that reached a published site as data-sitekey="123" and greeted every visitor
+ * with hCaptcha's "the sitekey is incorrect" — a fixture that cannot be a real key is not a fixture
+ * worth keeping.
+ */
+const HCAPTCHA_TEST_SITEKEY = '10000000-ffff-ffff-ffff-000000000001';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -89,7 +98,7 @@ describe('admin settings API', () => {
         payload: {
           formModes: { globalSmtp: true, contactPhp: true },
           smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'mailer', fromEmail: 'no-reply@acme.com', password: 'hunter2' },
-          hcaptcha: { siteKey: 'site-123', secret: 'hc-secret' },
+          hcaptcha: { siteKey: HCAPTCHA_TEST_SITEKEY, secret: 'hc-secret' },
         },
       });
       expect(put.statusCode).toBe(200);
@@ -266,7 +275,7 @@ describe('admin settings API', () => {
         method: 'PUT',
         url: '/admin/settings',
         cookies,
-        payload: { formModes: { thirdParty: true }, hcaptcha: { siteKey: 'site-1' } },
+        payload: { formModes: { thirdParty: true }, hcaptcha: { siteKey: HCAPTCHA_TEST_SITEKEY } },
       });
       expect(ok.statusCode).toBe(200);
       const blocked = await app.inject({
@@ -276,6 +285,21 @@ describe('admin settings API', () => {
         payload: { smtp: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co', password: 'pw' } },
       });
       expect(blocked.statusCode).toBe(503);
+    });
+
+    it('refuses a site key that cannot possibly be one, at the boundary a human can still act on', async () => {
+      // The instance that shipped `data-sitekey="123"` to visitors is why this is checked on the way
+      // IN. Rejecting it on the way OUT would not have helped: stored settings are read with a
+      // throwing parse on every read, so a strict stored schema turns one bad key into an unreadable
+      // instance rather than a fixed one.
+      const admin = await registerAdmin(app);
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/admin/settings',
+        cookies: { sw_session: admin.t },
+        payload: { hcaptcha: { siteKey: '123' } },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 

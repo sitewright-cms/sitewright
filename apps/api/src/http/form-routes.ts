@@ -20,7 +20,7 @@ import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
 import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { nextAttemptAt } from '../mail/delivery-policy.js';
-import { createPowChallenge, verifyPowSolution } from './form-pow.js';
+import { createPowChallenge, powScope, verifyPowSolution } from './form-pow.js';
 import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -228,16 +228,33 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
   // Deliberately does NOT reveal whether the form requires proof-of-work, or even exists: it mints for
   // any well-formed id. Answering "no challenge needed" would hand a spammer a free oracle for finding
   // the unprotected forms on an instance.
-  app.get<{ Params: { projectId: string; formId: string } }>(
-    '/f/:projectId/:formId/challenge',
-    { config: rl(30) },
-    async (_req, reply) => {
-      setSubmissionCors(reply);
-      // Never cached: every visitor must get their own challenge, or one solve serves everybody.
-      reply.header('cache-control', 'no-store');
-      return reply.send(createPowChallenge(getPowSecret()));
-    },
-  );
+  //
+  // The challenge is BOUND to this form (see powScope): the ids in the path go into the signature, so a
+  // solution minted here is `bad-signature` at any other form. That is derived from the URL on both
+  // ends and never travels on the wire, so the payload stays ALTCHA-shaped.
+  const challengeHandler = async (
+    req: { params: { projectId: string; formId: string } },
+    reply: FastifyReply,
+  ): Promise<unknown> => {
+    setSubmissionCors(reply);
+    // Never cached: every visitor must get their own challenge, or one solve serves everybody.
+    reply.header('cache-control', 'no-store');
+    return reply.send(createPowChallenge(getPowSecret(), powScope(req.params.projectId, req.params.formId)));
+  };
+
+  app.get<{ Params: { projectId: string; formId: string } }>('/f/:projectId/:formId/challenge', { config: rl(30) }, challengeHandler);
+
+  // ★ THE SAME CHALLENGE, ON THE PREVIEW PATH. The runtime builds every form URL from `window.__swf`,
+  // which appends `/preview` in a draft preview, so its solver asks for `…/<formId>/preview/challenge`.
+  // Without this route that 404s, the solver rejects, and a proof-of-work form shows its error state
+  // and NEVER POSTS — the one gate an author most wants to try before publishing was the one gate the
+  // preview could not exercise. Same scope as the live route (this is the same form, reached by a
+  // different endpoint), so an author's dry run rehearses exactly what a visitor's browser will do.
+  app.options('/f/:projectId/:formId/preview/challenge', { config: rl(20) }, async (_req, reply) => {
+    setSubmissionCors(reply);
+    return reply.code(204).send();
+  });
+  app.get<{ Params: { projectId: string; formId: string } }>('/f/:projectId/:formId/preview/challenge', { config: rl(30) }, challengeHandler);
 
   app.options('/f/:projectId/:formId', { config: rl(20) }, async (_req, reply) => {
     setSubmissionCors(reply);
@@ -287,6 +304,23 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
 
       const invalidFields = validateFormSubmission(form.fields, parsed.fields);
       if (invalidFields.length > 0) return reply.code(400).send({ error: 'invalid fields', fields: invalidFields });
+
+      // Proof of work IS verified here, unlike the captcha below. The distinction is who issued the
+      // token: a captcha token comes from hCaptcha and is single-use, so spending it on a dry run
+      // would break the visitor's next real submission — but a proof-of-work challenge is minted by
+      // the preview's own `/preview/challenge`, so consuming it costs nothing and rehearses the whole
+      // path. That is worth doing precisely because this gate's nastiest failure is environmental:
+      // `crypto.subtle` does not exist outside a secure context, so an instance served over plain HTTP
+      // cannot solve at all. Better an author meets that here than a visitor meets it in production.
+      if (form.pow) {
+        const verdict = await verifyPowSolution(
+          getPowSecret(),
+          powScope(req.params.projectId, req.params.formId),
+          parsed.powSolution,
+          (challenge, expiresAt) => submissions.claimPowChallenge(challenge, expiresAt),
+        );
+        if (verdict !== 'ok') return reply.send({ ok: true, preview: true, filtered: `pow-${verdict}` });
+      }
 
       // A captcha is NOT verified here: the token is single-use, so spending it on a dry run would
       // make the next real submission fail. The widget still renders, so its placement is previewable.
@@ -367,10 +401,21 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // PROOF OF WORK — opt-in per form. Placed after the free checks and before hCaptcha's network
       // verify: cheapest gates first, and never spend a third-party round-trip on a submission that
       // already failed a local one. The REASON is counted rather than a bare pass/fail, because
-      // "expired" (a visitor who left the tab open) and "wrong-answer" (a client that did no work) are
-      // opposite signals — one means the TTL is costing real leads, the other means it is working.
+      // "expired" (a visitor who left the tab open), "wrong-answer" (a client that did no work) and
+      // "replayed" (a solution being spent twice) are entirely different signals — the first means the
+      // TTL is costing real leads, the other two mean it is working.
+      //
+      // Verifying CONSUMES the solution: the scope ties it to this form, and the claim spends it, so
+      // the cost the visitor paid buys this one submission and nothing further.
+      //
+      // A store failure inside the claim propagates (500) rather than joining the silent-200 traps.
+      // That is the same fail-CLOSED choice the captcha makes below: a real visitor sees an error and
+      // can retry, where swallowing it would either drop a genuine lead or wave the submission through
+      // unspent — and "the database hiccuped" must not be the way replay reopens.
       if (form.pow) {
-        const verdict = verifyPowSolution(getPowSecret(), parsed.powSolution);
+        const verdict = await verifyPowSolution(getPowSecret(), powScope(projectId, formId), parsed.powSolution, (challenge, expiresAt) =>
+          submissions.claimPowChallenge(challenge, expiresAt),
+        );
         if (verdict !== 'ok') {
           app.log.info({ projectId, formId, verdict }, 'submission filtered by proof-of-work');
           await submissions.recordFiltered(projectId, formId, `pow-${verdict}`).catch((err: unknown) => {

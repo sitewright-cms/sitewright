@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import type { Form, Page } from '@sitewright/schema';
-import { makeTestDb } from './helpers.js';
+import { formApiBlob, makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { buildSite } from '../src/publish/build.js';
@@ -115,7 +115,10 @@ describe('form submission across deploy targets', () => {
     const endpointPath = new URL(absEndpoint).pathname; // /f/<pid>/contact
     // The GIT target force-pushes this build verbatim, so its page carries the absolute endpoint too
     // (the git transport's byte-fidelity is covered by the git-deploy suite; here we assert the artifact).
-    expect(await readFile(join(builtDir, 'contact', 'index.html'), 'utf8')).toContain(`data-sw-endpoint="${absEndpoint}"`);
+    const builtHtml = await readFile(join(builtDir, 'contact', 'index.html'), 'utf8');
+    // The absolute base rides in the encoded runtime blob now, never as a literal address on the form.
+    expect(builtHtml).not.toContain(absEndpoint);
+    expect(formApiBlob(builtHtml)).toMatchObject({ b: 'https://app.sitewright.example', p: pid });
 
     // FTP / FTPS / SFTP: deploy via each transport, capture the upload, assert the page shipped intact,
     // then submit cross-origin to the absolute endpoint exactly as a visitor's browser would.
@@ -124,13 +127,15 @@ describe('form submission across deploy targets', () => {
       const result = await deploySite(builtDir, remoteCfg(protocol), capturing(dest));
       expect(result.protocol).toBe(protocol);
       const deployedHtml = await readFile(join(dest, 'contact', 'index.html'), 'utf8');
-      expect(deployedHtml, protocol).toContain(`data-sw-endpoint="${absEndpoint}"`);
+      // What matters across the transport is that the blob survives byte-for-byte, so the deployed page
+      // still resolves the SAME absolute origin a cross-origin visitor needs.
+      expect(formApiBlob(deployedHtml), protocol).toMatchObject({ b: 'https://app.sitewright.example', p: pid });
 
       const submit = await app.inject({
         method: 'POST',
         url: endpointPath,
         headers: { origin: 'https://deployed.example', 'content-type': 'application/json' },
-        payload: { email: `lead-${protocol}@x.co`, _elapsed: '5000' },
+        payload: { email: `lead-${protocol}@x.co`, _elapsed: '5000', _ix: '3.12.2' },
       });
       expect(submit.statusCode, protocol).toBe(200);
       expect(submit.json()).toEqual({ ok: true });

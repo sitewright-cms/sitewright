@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { adminContext, enableLocalHosting } from './helpers.js';
 
+/** hCaptcha's own documented TEST site key. A site key is validated for the UUID shape a real one
+ * has, so a `site-key`-style placeholder is no longer a usable fixture — which is the point: that
+ * class of value is exactly what reached visitors as data-sitekey="123". */
+const HCAPTCHA_TEST_SITEKEY = '10000000-ffff-ffff-ffff-000000000001';
+
 
 // hCaptcha (Phase 4) over HTTP: the admin configures instance hCaptcha keys, a form
 // opts in, publish bakes the widget into the exported HTML, and the public endpoint
@@ -11,7 +16,7 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   const admin = await adminContext(playwright, baseURL);
   // Configure instance hCaptcha keys (secret encrypted at rest).
   const settings = await admin.put('/admin/settings', {
-    data: { hcaptcha: { siteKey: `hcsite-${stamp}`, secret: 'hc-secret-xyz' } },
+    data: { hcaptcha: { siteKey: HCAPTCHA_TEST_SITEKEY, secret: 'hc-secret-xyz' } },
   });
   expect(settings.status()).toBe(200);
 
@@ -34,7 +39,7 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   // The exported page carries the hCaptcha widget with the configured site key.
   const html = await (await admin.get(`/sites/${slug}/contact/`)).text();
   expect(html).toContain('class="h-captcha"');
-  expect(html).toContain(`data-sitekey="hcsite-${stamp}"`);
+  expect(html).toContain(`data-sitekey="${HCAPTCHA_TEST_SITEKEY}"`);
 
   // A submission with NO captcha token is rejected (fail-closed) and not stored.
   // The accept path (a valid token) needs a real hCaptcha solve, so it's covered by

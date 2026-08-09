@@ -7939,6 +7939,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const sweepTimer = setInterval(() => {
       void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
       void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
+      // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
+      // an expired challenge fails verification before the spent-check is ever consulted.
+      void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
       if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
     }, sweepMs);
     sweepTimer.unref();

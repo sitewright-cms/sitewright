@@ -83,13 +83,92 @@ describe('PexelsProvider', () => {
   });
 });
 
+describe('rendition choice — the sizes each provider is asked for', () => {
+  // These pin the PREFERENCE ORDER, not just "a url came back". The fallback tests below only ever
+  // supply one candidate, so they pass under any order — which is how an import silently shipped a
+  // 1080px `regular` while a full-resolution `full` sat right next to it in the same payload.
+  it('Unsplash import takes `full` even when the smaller renditions are present', async () => {
+    const f = jsonFetch({
+      urls: {
+        raw: 'https://images.unsplash.com/u1-raw',
+        full: 'https://images.unsplash.com/u1-full',
+        regular: 'https://images.unsplash.com/u1-reg',
+        small: 'https://images.unsplash.com/u1-small',
+      },
+      user: { name: 'Bo' },
+      links: { html: 'https://unsplash/u1' },
+    });
+    expect(await new UnsplashProvider(f).resolve('u1', 'K')).toMatchObject({ downloadUrl: 'https://images.unsplash.com/u1-full' });
+  });
+
+  it('Pexels import takes `original` even when large2x/large are present', async () => {
+    const f = jsonFetch({
+      src: { original: 'https://images.pexels.com/p1-orig', large2x: 'https://images.pexels.com/p1-l2x', large: 'https://images.pexels.com/p1-lg' },
+      photographer: 'Cy',
+      url: 'https://pexels/p1',
+    });
+    expect(await new PexelsProvider(f).resolve('1', 'PK')).toMatchObject({ downloadUrl: 'https://images.pexels.com/p1-orig' });
+  });
+
+  it('search results carry a MID-size previewUrl distinct from the grid thumbnail', async () => {
+    const [u] = await new UnsplashProvider(
+      jsonFetch({ results: [{ id: 'u1', urls: { thumb: 'https://images.unsplash.com/u1-thumb', regular: 'https://images.unsplash.com/u1-reg', full: 'https://images.unsplash.com/u1-full' }, width: 1, height: 1 }] }),
+    ).search('x', 1, 'K');
+    expect(u).toMatchObject({ thumbUrl: 'https://images.unsplash.com/u1-thumb', previewUrl: 'https://images.unsplash.com/u1-reg' });
+
+    const [p] = await new PexelsProvider(
+      jsonFetch({ photos: [{ id: 1, src: { medium: 'https://images.pexels.com/p1-m', large: 'https://images.pexels.com/p1-lg' }, width: 1, height: 1 }] }),
+    ).search('x', 1, 'PK');
+    expect(p).toMatchObject({ thumbUrl: 'https://images.pexels.com/p1-m', previewUrl: 'https://images.pexels.com/p1-lg' });
+
+    const [o] = await new OpenverseProvider(
+      jsonFetch({ results: [{ id: 'ov1', thumbnail: 'https://cdn/ov1-thumb.jpg', url: 'https://cdn/ov1.jpg', width: 1, height: 1 }] }),
+    ).search('x', 1);
+    expect(o).toMatchObject({ thumbUrl: 'https://cdn/ov1-thumb.jpg', previewUrl: 'https://cdn/ov1.jpg' });
+  });
+
+  it('previewUrl falls back to the thumbnail when no larger rendition is offered', async () => {
+    const [u] = await new UnsplashProvider(
+      jsonFetch({ results: [{ id: 'u1', urls: { thumb: 'https://images.unsplash.com/u1-thumb' }, width: 1, height: 1 }] }),
+    ).search('x', 1, 'K');
+    expect(u!.previewUrl).toBe('https://images.unsplash.com/u1-thumb');
+  });
+
+  it('each provider asks for its OWN page size, and the request URL says so', async () => {
+    const capture = (): { fetchImpl: FetchLike; url: () => string } => {
+      let seen = '';
+      return {
+        fetchImpl: async (url) => {
+          seen = url;
+          return { ok: true, status: 200, json: async () => ({ results: [], photos: [] }), arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } };
+        },
+        url: () => seen,
+      };
+    };
+    const ov = capture();
+    await new OpenverseProvider(ov.fetchImpl).search('x', 1);
+    expect(new URL(ov.url()).searchParams.get('page_size')).toBe('20');
+
+    const un = capture();
+    const unsplash = new UnsplashProvider(un.fetchImpl);
+    await unsplash.search('x', 1, 'K');
+    expect(new URL(un.url()).searchParams.get('per_page')).toBe(String(unsplash.pageSize));
+    expect(unsplash.pageSize).toBe(30);
+
+    const px = capture();
+    const pexels = new PexelsProvider(px.fetchImpl);
+    await pexels.search('x', 1, 'PK');
+    expect(new URL(px.url()).searchParams.get('per_page')).toBe(String(pexels.pageSize));
+  });
+});
+
 describe('provider mappers — fallback branches', () => {
   it('Unsplash: falls back to urls.small / regular / raw and to Unknown author + thumb sourceUrl', async () => {
     const search = jsonFetch({ results: [{ id: 'u2', urls: { small: 'https://images.unsplash.com/u2-small' }, width: 1, height: 1 }] });
     const [hit] = await new UnsplashProvider(search).search('x', 1, 'K');
     expect(hit).toMatchObject({ id: 'u2', thumbUrl: 'https://images.unsplash.com/u2-small', author: 'Unknown', sourceUrl: 'https://images.unsplash.com/u2-small' });
     expect(hit!.authorUrl).toBeUndefined();
-    // resolve: full absent → regular; then raw
+    // resolve falls back down the chain when the preferred rendition is absent (full → raw → regular)
     expect(await new UnsplashProvider(jsonFetch({ urls: { regular: 'https://images.unsplash.com/u2-reg' } })).resolve('u2', 'K')).toMatchObject({ downloadUrl: 'https://images.unsplash.com/u2-reg' });
     expect(await new UnsplashProvider(jsonFetch({ urls: { raw: 'https://images.unsplash.com/u2-raw' } })).resolve('u2', 'K')).toMatchObject({ downloadUrl: 'https://images.unsplash.com/u2-raw' });
   });

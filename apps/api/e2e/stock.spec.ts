@@ -56,17 +56,38 @@ test('stock: keyless Openverse search + import works with no configuration', asy
   // within Openverse's anonymous page_size<=20 limit — exceeding it returns 401).
   const search = await ctx.get(`${base}/stock/search?provider=openverse&q=mountain`);
   expect(search.status()).toBe(200);
-  const results = (await search.json()).results as Array<{ id: string; thumbUrl: string }>;
+  const results = (await search.json()).results as Array<{ id: string; thumbUrl: string; previewUrl: string }>;
   // If the anonymous tier is transiently rate-limited the search may legitimately
   // come back empty; only assert the import path when there is something to import.
   if (results.length > 0) {
     expect(results[0]!.thumbUrl).toMatch(/^https:\/\//);
+    expect(results[0]!.previewUrl).toMatch(/^https:\/\//); // the full-size preview rendition
     const imp = await ctx.post(`${base}/stock/import`, { data: { provider: 'openverse', id: results[0]!.id } });
     expect(imp.status()).toBe(201);
     const asset = (await imp.json()).item;
     expect(asset.attribution.provider).toBe('openverse');
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\.jpg$/); // flat scheme (#708-711), self-hosted not hotlinked
+    // Flat scheme (#708-711), self-hosted not hotlinked. The extension depends on the source: a
+    // photo wider than the 2400px import cap is downscaled + re-encoded to .webp.
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\.(jpe?g|png|webp|avif|gif)$/);
+    expect(asset.width).toBeLessThanOrEqual(2400);
     expect((await ctx.get(asset.url)).status()).toBe(200);
+  }
+  await ctx.dispose();
+});
+
+test('stock: `all` fans out across every available provider without a key', async ({ playwright, baseURL }) => {
+  const { ctx, base } = await newProject(playwright, baseURL!);
+
+  // With no instance keys, the fan-out still works — keyless Openverse carries it, and the unkeyed
+  // providers are SKIPPED rather than failing the search.
+  const res = await ctx.get(`${base}/stock/search?provider=all&q=mountain`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.provider).toBe('all');
+  expect(typeof body.hasMore).toBe('boolean');
+  for (const hit of body.results as Array<{ provider: string }>) {
+    // Every RESULT names a concrete provider, which is what an import passes back.
+    expect(['openverse', 'unsplash', 'pexels']).toContain(hit.provider);
   }
   await ctx.dispose();
 });

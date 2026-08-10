@@ -42,6 +42,7 @@ function stubProvider(requiresKey: boolean, onSearch: (key: string | null) => vo
   return {
     name: 'unsplash',
     requiresKey,
+    pageSize: 30,
     search: async (_q: string, _p: number, key: string | null) => {
       onSearch(key);
       return [];
@@ -70,7 +71,7 @@ describe('StockService.testKey', () => {
   it('reports the provider error when the key is rejected', async () => {
     const svc = new StockService(
       new Map<StockProviderName, StockProvider>([
-        ['unsplash', { name: 'unsplash', requiresKey: true, search: async () => { throw new Error('provider request failed (401)'); }, resolve: async () => null }],
+        ['unsplash', { name: 'unsplash', requiresKey: true, pageSize: 30, search: async () => { throw new Error('provider request failed (401)'); }, resolve: async () => null }],
       ]),
       settings,
     );

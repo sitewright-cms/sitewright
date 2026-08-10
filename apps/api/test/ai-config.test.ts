@@ -216,7 +216,7 @@ describe('credential connectivity tests', () => {
     // is unit-tested in ai-connectivity.test.ts.
     const fakeStock = {
       availability: async () => ({ providers: [] }),
-      search: async () => ({ provider: 'unsplash' as const, page: 1, results: [] }),
+      search: async () => ({ provider: 'unsplash' as const, page: 1, hasMore: false, results: [] }),
       testKey: async (_n: 'openverse' | 'unsplash' | 'pexels', key?: string) =>
         key === 'good' ? { ok: true } : { ok: false, error: 'invalid key (401)' },
       fetchForImport: async () => null,

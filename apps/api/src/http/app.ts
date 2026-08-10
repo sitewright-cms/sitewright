@@ -4269,17 +4269,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const assetId = await mintAssetId(ctx);
       const { assetDir, inputPath } = await storage.stageUpload(projectSlug, assetId, buffer);
       try {
-        // Store the retained ORIGINAL. Cap precedence: an explicit caller cap (the importer's 2400)
-        // wins; otherwise the project's configured upload cap (website.imageUploadCap); otherwise
-        // uncapped. When a cap bites, storeOriginal downscales + re-encodes to WebP. Responsive
-        // thumbnails are generated on demand from this original — no eager variant fan-out.
-        let cap = storeOpts?.cap;
-        if (cap === undefined) {
-          const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as
-            | Settings
-            | undefined;
-          cap = settings?.website?.imageUploadCap;
-        }
+        // Store the retained ORIGINAL. Both caps BOUND the stored width and the SMALLER wins: an
+        // explicit caller cap (the site importer's 2400, the stock import's STOCK_IMPORT_CAP) and
+        // the project's own `website.imageUploadCap`. Either alone applies; neither → uncapped. A
+        // project that deliberately caps at 1600 must not be overridden to 2400 by an import path.
+        // When a cap bites, storeOriginal downscales + re-encodes to WebP. Responsive thumbnails are
+        // generated on demand from this original — no eager variant fan-out.
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as
+          | Settings
+          | undefined;
+        const projectCap = settings?.website?.imageUploadCap;
+        const cap =
+          storeOpts?.cap === undefined
+            ? projectCap
+            : projectCap === undefined
+              ? storeOpts.cap
+              : Math.min(storeOpts.cap, projectCap);
         // Prefix the stored file with `<id>-` so the optimized original lands FLAT as
         // `<slug>/<id>-<name>` in the shared project dir; `logicalStoredName` strips it back for the DB.
         const storedName = `${assetId}-${MediaStorage.safeStoredName(meta.filename || 'image')}`;

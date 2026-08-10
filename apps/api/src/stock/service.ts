@@ -1,12 +1,36 @@
-import { targetsPrivateHost, type StockProviderName, type StockProvidersStatus, type StockSearchResult } from '@sitewright/schema';
+import {
+  targetsPrivateHost,
+  type StockProviderName,
+  type StockProvidersStatus,
+  type StockResult,
+  type StockSearchProvider,
+  type StockSearchResult,
+} from '@sitewright/schema';
 import { StockProviderError, type ProviderAttribution, type StockProvider } from './providers.js';
 
 /** Max bytes the import will download (matches the media upload cap). */
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 
+/**
+ * Max stored width for an imported stock photo. Providers are asked for their FULL-resolution file
+ * (so a hero is sharp and a 2x srcset has pixels to work with) and the pipeline downscales to this,
+ * re-encoding to WebP — the same bound the site importer applies to a cloned site. A project's own
+ * `website.imageUploadCap`, when set lower, still wins (see `createMediaAsset`).
+ */
+export const STOCK_IMPORT_CAP = 2400;
+
 /** A provider whose key isn't configured (→ 400 at the route). */
 export class StockNotConfiguredError extends Error {}
+/**
+ * The chosen photo is bigger than the import can accept (→ 413 at the route).
+ *
+ * Distinct from StockProviderError because the provider did nothing wrong and "stock provider
+ * unavailable — please try again" would send the author into a retry loop that cannot succeed.
+ * Reaching this got MORE likely when imports moved to full-resolution originals, so it needs to say
+ * what actually happened and that a different photo is the way out.
+ */
+export class StockImageTooLargeError extends Error {}
 /** An unknown provider name (→ 404 at the route). */
 export class StockUnknownProviderError extends Error {}
 
@@ -23,6 +47,10 @@ export interface DownloadedImage {
 
 /** Downloads an image URL to a Buffer, applying SSRF + size + type guards. */
 export type ImageDownloader = (url: string) => Promise<DownloadedImage>;
+
+const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const tooLargeMessage = (bytes: number): string =>
+  `this photo is ${mb(bytes)}, over the ${mb(MAX_IMAGE_BYTES)} import limit — pick a different one`;
 
 /**
  * Default image downloader: https-only, public-host-only (SSRF guard), no redirects
@@ -41,9 +69,11 @@ export const defaultDownloadImage: ImageDownloader = async (url) => {
     const contentType = res.headers.get('content-type') ?? '';
     if (!contentType.startsWith('image/')) throw new StockProviderError('download is not an image');
     const declared = Number(res.headers.get('content-length') ?? '0');
-    if (declared > MAX_IMAGE_BYTES) throw new StockProviderError('image exceeds size limit');
+    if (declared > MAX_IMAGE_BYTES) throw new StockImageTooLargeError(tooLargeMessage(declared));
     const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length > MAX_IMAGE_BYTES) throw new StockProviderError('image exceeds size limit');
+    // Backstop for a missing/lying Content-Length: the bytes are already in memory here, but the
+    // pre-check above means that only happens when the provider didn't declare a length.
+    if (buffer.length > MAX_IMAGE_BYTES) throw new StockImageTooLargeError(tooLargeMessage(buffer.length));
     // Strip any `; charset=…` parameter so the stored format is a clean MIME type.
     return { buffer, contentType: contentType.split(';')[0]?.trim() || 'image/jpeg' };
   } finally {
@@ -82,12 +112,59 @@ export class StockService {
     return new StockNotConfiguredError(`${name} is not configured (needs an instance API key); ${hint}`);
   }
 
-  async search(name: StockProviderName, query: string, page: number): Promise<StockSearchResult> {
-    const provider = this.provider(name);
-    const key = await this.keyFor(name);
-    if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
+  /**
+   * Search one provider, or every AVAILABLE one at once (`all`).
+   *
+   * A fan-out queries the available providers concurrently and interleaves the pages round-robin, so
+   * the top of the grid is a mix rather than one provider's page followed by another's. It is also
+   * fault-TOLERANT: a provider that errors is reported in `errors` and the rest still return —
+   * only a total wipeout throws. A single-provider search keeps its strict behaviour (an upstream
+   * failure propagates and the route maps it to 502).
+   */
+  async search(name: StockSearchProvider, query: string, page: number): Promise<StockSearchResult> {
     const p = Math.max(1, Math.min(Number.isFinite(page) ? page : 1, 100));
-    return { provider: name, page: p, results: await provider.search(query, p, key) };
+    if (name !== 'all') {
+      const provider = this.provider(name);
+      const key = await this.keyFor(name);
+      if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
+      const results = await provider.search(query, p, key);
+      // A FULL page means "there is probably another". Inferred from the mapped count rather than an
+      // upstream total, which the three providers each report differently — the cost is that a page
+      // whose last row was DROPPED by the mapper (a non-https URL, a missing id) reads as the last
+      // one. Rare, and it ends pagination early rather than promising a page that isn't there.
+      return { provider: name, page: p, results, hasMore: results.length >= provider.pageSize };
+    }
+
+    // Resolve every key ONCE up front (each is a decrypt), then fan out.
+    const usable: Array<{ provider: StockProvider; key: string | null }> = [];
+    for (const [providerName, provider] of this.providers) {
+      const key = await this.keyFor(providerName);
+      if (!provider.requiresKey || key !== null) usable.push({ provider, key });
+    }
+    if (usable.length === 0) throw new StockNotConfiguredError('no stock providers are configured');
+
+    const settled = await Promise.all(
+      usable.map(async ({ provider, key }) => {
+        try {
+          return { provider, results: await provider.search(query, p, key), error: null as string | null };
+        } catch (err) {
+          return { provider, results: [] as StockResult[], error: err instanceof Error ? err.message : 'search failed' };
+        }
+      }),
+    );
+    const errors = settled
+      .filter((s) => s.error !== null)
+      .map((s) => ({ provider: s.provider.name, error: s.error as string }));
+    // Every provider failed → there is nothing to show and no partial result to salvage, so surface
+    // it as a provider failure (502) instead of an empty "no results", which would read as a bad query.
+    if (errors.length === settled.length) throw new StockProviderError('every stock provider failed');
+    return {
+      provider: 'all',
+      page: p,
+      results: interleave(settled.map((s) => s.results)),
+      hasMore: settled.some((s) => s.results.length >= s.provider.pageSize),
+      ...(errors.length ? { errors } : {}),
+    };
   }
 
   /**
@@ -135,4 +212,21 @@ export class StockService {
   private async keyFor(name: StockProviderName): Promise<string | null> {
     return name === 'unsplash' || name === 'pexels' ? this.settings.getStockKey(name) : null;
   }
+}
+
+/**
+ * Round-robin merge: first hit of every list, then the second of every list, and so on. Uneven
+ * lengths are fine — a list that runs out simply stops contributing, so a provider returning 3
+ * results doesn't push a provider returning 30 down the grid.
+ */
+function interleave(lists: StockResult[][]): StockResult[] {
+  const longest = lists.reduce((max, l) => Math.max(max, l.length), 0);
+  const out: StockResult[] = [];
+  for (let i = 0; i < longest; i++) {
+    for (const list of lists) {
+      const hit = list[i];
+      if (hit) out.push(hit);
+    }
+  }
+  return out;
 }

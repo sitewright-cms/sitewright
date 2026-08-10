@@ -418,9 +418,11 @@ loads only ~200px before the element actually scrolls into view.
 
 IMAGES — three ways to bring one in, all self-hosted (never hotlink), then reference the returned
 media url in \`source\`:
-- STOCK: call list_stock_providers to see which are enabled (openverse is always on; unsplash /
-  pexels need an instance API key), then search_stock_images on an available one → import_stock_image
-  (downloaded, optimized, attributed).
+- STOCK: search_stock_images with provider "all" — it queries every enabled provider at once and
+  interleaves the hits, so there is no need to call list_stock_providers first (do that only to
+  explain a gap: openverse is always on; unsplash / pexels need an instance API key). Pass each
+  hit's OWN \`provider\` back to import_stock_image with its id (downloaded, optimized, attributed);
+  \`hasMore\` says whether page+1 is worth fetching.
 - BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).
 - EXISTING: list_media to find assets already in the project and reuse their url.
 
@@ -1692,7 +1694,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },
-  { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
+  { name: 'search_stock_images', description: "Search stock photos across every available provider at once (provider: 'all') or one by name.", capability: 'content:read' },
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
   { name: 'put_page', description: "Create or REPLACE a page (id taken from page.id) — a total replace; omitted fields are deleted. For partial edits use patch_page.", capability: 'content:write' },

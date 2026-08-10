@@ -23,6 +23,7 @@ import type {
   Snippet,
   StockProviderName,
   StockProvidersStatus,
+  StockSearchProvider,
   StockSearchResult,
   Template,
   WebsiteSettings,
@@ -72,6 +73,7 @@ export type {
   Snippet,
   StockProviderName,
   StockProvidersStatus,
+  StockSearchProvider,
   StockSearchResult,
   WebsiteSettings,
   AiConfigView,
@@ -1247,7 +1249,8 @@ export const api = {
   // --- stock images (search provider-hosted photos; import = download+optimize+self-host) ---
   stockProviders: (projectId: string) =>
     request<StockProvidersStatus>('GET', `/projects/${projectId}/stock/providers`),
-  searchStock: (projectId: string, provider: StockProviderName, q: string, page = 1) => {
+  /** `provider` may be a single provider or 'all' to fan out across every available one. */
+  searchStock: (projectId: string, provider: StockSearchProvider, q: string, page = 1) => {
     const params = new URLSearchParams({ provider, q, page: String(page) });
     return request<StockSearchResult>('GET', `/projects/${projectId}/stock/search?${params.toString()}`);
   },

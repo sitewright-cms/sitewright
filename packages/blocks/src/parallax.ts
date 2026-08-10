@@ -19,6 +19,8 @@
 // layers, each its own element carrying its own channels (no bespoke background logic):
 //   data-sw-parallax-scene                  position:relative; overflow:hidden (clips)
 //   data-sw-parallax-layer                  an absolutely-positioned, independently-animated layer
+//   data-sw-parallax-layer="content"        an IN-FLOW layer: sizes the scene, still animates. A scene
+//                                           with no in-flow layer has zero height (see the CSS below).
 //
 // Authored as plain attributes in code-first sources, snippets, or raw Html blocks — like data-sw-animation
 // (see animations.ts). The vocabulary every HTML template / LLM understands; NO third-party library
@@ -55,6 +57,15 @@ export const PARALLAX_CSS = [
   '[data-sw-parallax-scene]{position:relative;overflow:hidden}',
   // Stacked, full-bleed layers; the author orders/styles them (z-index, background, object-fit).
   '[data-sw-parallax-scene] [data-sw-parallax-layer]{position:absolute;inset:0}',
+  // ★ THE CONTENT LAYER. Every layer above is absolute, so a scene whose content lives in one has
+  // nothing in flow to give it height and COLLAPSES TO ZERO — the section and everything in it simply
+  // vanish, with no error. Opt a layer into normal flow and it sizes the scene while the decorative
+  // layers clip to it; `transform` does not affect layout, so it still drifts on scroll.
+  //
+  // Why opt-in rather than the default: existing cover layers oversize themselves with an inline
+  // `inset:-14%`, which does nothing once the element is not absolute — flipping the default would
+  // collapse every background layer already in the wild. Declared AFTER the rule it overrides.
+  '[data-sw-parallax-scene] [data-sw-parallax-layer="content"]{position:relative;inset:auto}',
 ].join('');
 
 // --- runtime ----------------------------------------------------------------

@@ -8,6 +8,7 @@ import { DEFAULT_BRAND_COLORS, type MandatoryColorToken } from '@sitewright/sche
 import { api } from '../../api';
 import { PLATFORM_BG_EVENT } from '../PlatformBackground';
 import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
+import { useCiBrandColors } from '../../lib/ci-palette';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 // Runtime defaults for the optional knobs — an attribute is emitted only when it DIFFERS from these, so
@@ -162,7 +163,11 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
   }, []);
 
   const tokens = useMemo(() => slots.map(slotToken) as [string, string, string], [slots]);
-  const palette = useMemo(() => paletteFromSlots(tokens, isDark), [tokens, isDark]);
+  // ★ The OPEN PROJECT's brand palette, so the preview shows the colours this site will actually use.
+  // `null` (no project open) falls through to the platform defaults inside the resolver — which is the
+  // only case where showing the platform's own indigo/sky is the right answer.
+  const brand = useCiBrandColors();
+  const palette = useMemo(() => paletteFromSlots(tokens, isDark, brand ?? undefined), [tokens, isDark, brand]);
   const markup = buildMarkup({ preset, angle, colors: tokens.join(','), speed, intensity, interactive, overlay });
 
   function setSlot(i: number, patch: Partial<Slot>) {
@@ -170,10 +175,11 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
       prev.map((s, idx) => {
         if (idx !== i) return s;
         const next = { ...s, ...patch };
-        // Switching TO custom from a CI token seeds the swatch with that token's default color, so the
-        // picker doesn't jump to a stale/unrelated hue.
+        // Switching TO custom from a CI token seeds the swatch with that token's CURRENT colour, so
+        // the picker doesn't jump to a stale/unrelated hue — the project's own where there is one,
+        // which is the value the author just saw in the preview.
         if (patch.mode === 'custom' && s.mode !== 'custom') {
-          next.color = DEFAULT_BRAND_COLORS[s.mode as MandatoryColorToken] ?? s.color;
+          next.color = brand?.[s.mode] ?? DEFAULT_BRAND_COLORS[s.mode as MandatoryColorToken] ?? s.color;
         }
         return next;
       }) as [Slot, Slot, Slot],

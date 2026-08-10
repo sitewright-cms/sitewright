@@ -27,7 +27,7 @@
     "@sitewright/blocks": "workspace:*",
     "@sitewright/core": "workspace:*",
     "@sitewright/schema": "workspace:*",
-    "dom-serializer": "^2.0.0",
+    "dom-serializer": "^3.1.1",
     "domhandler": "^5.0.3",
     "domutils": "^3.2.2",
     "htmlparser2": "^12.0.0"

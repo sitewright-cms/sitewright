@@ -71,35 +71,42 @@ export const CONSENT_SCRIPT = `(function(){
     try { search.focus(); } catch(_){}
   }
 
-  // ---- copy the authorization code --------------------------------------
-  var copyBtn = document.getElementById('sw-copy');
-  if(copyBtn){
-    copyBtn.addEventListener('click', function(){
-      var el = document.getElementById('sw-code');
-      var value = el ? (el.textContent || '') : '';
-      if(!value) return;
-      var ok = function(){ toast('Code copied to clipboard'); };
-      // navigator.clipboard needs a secure context; an instance reached over plain HTTP on a LAN has
-      // none, so fall back to a hidden textarea + execCommand rather than silently doing nothing.
-      var fallback = function(){
-        try{
-          var ta = document.createElement('textarea');
-          ta.value = value;
-          ta.setAttribute('readonly','');
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          var done = document.execCommand('copy');
-          document.body.removeChild(ta);
-          if(done) ok(); else toast('Press Ctrl/Cmd+C to copy');
-        }catch(_){ toast('Press Ctrl/Cmd+C to copy'); }
-      };
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(value).then(ok, fallback);
-      } else {
-        fallback();
-      }
-    });
+  // ---- copy buttons ------------------------------------------------------
+  // Any [data-copy] button copies the text of the element it names and toasts its data-copied
+  // label. Generic because the approval screen offers TWO values: the callback URL (what Claude Code
+  // asks for) and the bare code (what some other clients ask for).
+  // NOTE: no backticks anywhere in this file's template literal — they close the string.
+  var copyButtons = document.querySelectorAll('[data-copy]');
+  for(var b=0;b<copyButtons.length;b++){
+    (function(btn){
+      btn.addEventListener('click', function(){
+        var el = document.getElementById(btn.getAttribute('data-copy') || '');
+        var value = el ? (el.textContent || '').trim() : '';
+        if(!value) return;
+        var label = btn.getAttribute('data-copied') || 'Copied';
+        var ok = function(){ toast(label + ' to clipboard'); };
+        // navigator.clipboard needs a SECURE CONTEXT; an instance reached over plain HTTP on a LAN
+        // has none, so fall back to a hidden textarea + execCommand rather than silently doing nothing.
+        var fallback = function(){
+          try{
+            var ta = document.createElement('textarea');
+            ta.value = value;
+            ta.setAttribute('readonly','');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            var done = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if(done) ok(); else toast('Press Ctrl/Cmd+C to copy');
+          }catch(_){ toast('Press Ctrl/Cmd+C to copy'); }
+        };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(value).then(ok, fallback);
+        } else {
+          fallback();
+        }
+      });
+    })(copyButtons[b]);
   }
 })();`;

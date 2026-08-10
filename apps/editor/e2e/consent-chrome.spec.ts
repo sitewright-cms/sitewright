@@ -124,7 +124,7 @@ test('consent screen: projects sort alphabetically, search filters, Enter approv
   await search.fill('charlie');
   await search.press('Enter');
   await expect(page.getByRole('heading', { name: /Approved/ })).toBeVisible();
-  await expect(page.locator('#sw-code')).not.toBeEmpty();
+  await expect(page.locator('#sw-url')).not.toBeEmpty(); // the callback URL, what most clients want
 });
 
 test('admin can allow the panel to be iframed, and it really loads in one', async ({ page, baseURL }) => {

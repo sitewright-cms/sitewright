@@ -152,7 +152,10 @@ describe('consent screen — platform branding', () => {
     expect(js.statusCode).toBe(200);
     expect(String(js.headers['content-type'])).toContain('javascript');
     expect(js.body).toContain('data-sw-shader'); // the shader runtime
-    expect(js.body).toContain('sw-project-search'); // the consent behaviour
+    expect(js.body).toContain('data-copy'); // the consent behaviour
+    // ★ It PARSES. The script is authored as a TS template literal, so a stray backtick in a comment
+    // silently truncates it; `new Function` compiles without executing, which is exactly the check.
+    expect(() => new Function(js.body)).not.toThrow();
   });
 
   it('omits the background HOST entirely when no background is configured', async () => {
@@ -195,22 +198,29 @@ describe('consent screen — project picker', () => {
 });
 
 describe('consent screen — the approved code is shown, not fired at the callback', () => {
-  it('renders the code with copy + continue instead of redirecting', async () => {
+  it('renders the callback URL and the code, with copy for each, instead of redirecting', async () => {
     const { session, ids } = await userWithProjects(['Only']);
     const res = await approve(session, ids[0]!);
 
     expect(res.statusCode).toBe(200); // NOT a 302
     expect(res.headers.location).toBeUndefined();
+
+    // ★ The FULL CALLBACK URL is the headline value. Claude Code's manual fallback asks for the whole
+    // URL and rejects a bare code — shipping only the code made this screen useless for the very
+    // client it exists for. Both are offered because clients disagree about what to paste.
+    expect(res.body).toContain('id="sw-url"');
+    expect(res.body).toContain('data-copy="sw-url"');
     expect(res.body).toContain('id="sw-code"');
-    expect(res.body).toContain('id="sw-copy"');
-    // The continue button names the destination so the user knows where it goes.
-    expect(res.body).toContain('Continue to 127.0.0.1:8976');
-    // …and it carries the same code + state a redirect would have.
-    const href = /<a href="([^"]+)"/.exec(res.body)?.[1]?.replace(/&amp;/g, '&');
-    const url = new URL(href!);
+    expect(res.body).toContain('data-copy="sw-code"');
+    expect(res.body).toContain('127.0.0.1:8976'); // the destination is named
+
+    // The displayed URL is a real callback URL carrying the same code + state a redirect would have.
+    const shownUrl = /<span id="sw-url">([^<]+)<\/span>/.exec(res.body)?.[1]?.replace(/&amp;/g, '&');
+    const url = new URL(shownUrl!);
     expect(url.origin + url.pathname).toBe('http://127.0.0.1:8976/callback');
     expect(url.searchParams.get('state')).toBe('st');
-    expect(url.searchParams.get('code')).toBeTruthy();
+    const shownCode = /<span id="sw-code">([^<]+)<\/span>/.exec(res.body)?.[1];
+    expect(url.searchParams.get('code')).toBe(shownCode); // the two values agree
   });
 
   it('the displayed code is the REAL one — it exchanges for a token', async () => {

@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`data-sw-parallax-layer="content"` — an in-flow parallax layer.** Every layer in a depth scene is
+  `position:absolute`, so a scene whose content lives in a layer has nothing in flow to give it height
+  and collapses to zero: the section and everything inside it vanish, with no error. The guide's own
+  example put content in a plain layer, which made the trap easy to walk into. A layer marked
+  `="content"` sits in normal flow, so it sizes the scene while the decorative layers clip to it — and
+  it still drifts, because `transform` does not affect layout. Plain layers are unchanged, so existing
+  scenes (whose cover layers rely on an inline `inset:-14%` that only works while absolute) behave
+  exactly as before.
+
 ### Fixed
 
 - **A parallax `opacity` or `blur` channel was dropped entirely under reduced motion, and without JS.**

@@ -476,9 +476,12 @@ centred (or data-sw-parallax-range on the element as a default). A shorter windo
 phase: data-sw-parallax-<effect>-out="1,0" (+ optional -out-range) → in → hold → out (e.g. fade in to
 centre then back out). DEPTH SCENE (replaces the old -bg): <section data-sw-parallax-scene><div
 data-sw-parallax-layer data-sw-parallax-translate="70,-70" style="inset:-14% 0" data-sw-bg="page.data.bg">
-</div><div data-sw-parallax-layer data-sw-parallax-translate="0,-30">…content…</div></section> — the scene
-clips; each layer is absolutely-positioned and moves independently (oversize a translating cover layer via
-inline inset so no edge shows). RESTRAINT: at most one parallax accent per section, keep moves modest; it
+</div><div data-sw-parallax-layer="content" data-sw-parallax-translate="0,-30">…content…</div></section> —
+the scene clips; each layer moves independently (oversize a translating cover layer via inline inset so no
+edge shows). ★ A PLAIN LAYER IS position:absolute, so a scene made only of those has nothing in flow and
+COLLAPSES TO ZERO HEIGHT — the section and everything in it vanish, with no error. The layer holding the
+section's real content must be data-sw-parallax-layer="content" (normal flow, sizes the scene, still
+drifts); decorative layers stay plain. RESTRAINT: at most one parallax accent per section, keep moves modest; it
 inherits prefers-reduced-motion (no motion = static, in-flow — never breaks layout). Blur is heavier — use
 sparingly. Recipe to copy: parallax-hero. Compose one in the editor's Parallax builder (Library).
 

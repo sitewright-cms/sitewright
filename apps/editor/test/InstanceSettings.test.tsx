@@ -393,5 +393,65 @@ describe('instance-wide undelivered warning', () => {
     expect(await screen.findByLabelText('Configure global SMTP')).toBeInTheDocument();
     expect(screen.queryByText(/could not be emailed/)).toBeNull();
   });
-});
 
+  it('embedding: hidden until enabled, then adds a valid origin and saves it', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    const toggle = await screen.findByLabelText('Allow embedding');
+    // The allowlist controls only exist once framing is opted into.
+    expect(screen.queryByLabelText('Origin to allow')).toBeNull();
+    fireEvent.click(toggle);
+
+    const input = screen.getByLabelText('Origin to allow');
+    fireEvent.change(input, { target: { value: 'https://intranet.acme.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add origin' }));
+    expect(await screen.findByText('https://intranet.acme.test')).toBeInTheDocument();
+    expect(input).toHaveValue(''); // cleared, ready for the next one
+
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalled());
+    const body = putInstanceSettings.mock.calls.at(-1)![0] as InstanceSettingsInput;
+    expect(body.embedding).toEqual({ enabled: true, origins: ['https://intranet.acme.test'], allowSelf: false });
+  });
+
+  it('embedding: rejects a CSP-injecting origin with the SERVER\'s own message, and never adds it', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Allow embedding'));
+    const input = screen.getByLabelText('Origin to allow');
+    fireEvent.change(input, { target: { value: 'https://evil.test; default-src *' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add origin' }));
+    expect(await screen.findByText(/scheme:\/\/host/)).toBeInTheDocument();
+    expect(screen.queryByText('https://evil.test; default-src *')).toBeNull();
+  });
+
+  it('embedding: Enter adds the origin instead of submitting the whole settings form', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Allow embedding'));
+    const input = screen.getByLabelText('Origin to allow');
+    fireEvent.change(input, { target: { value: 'https://a.test' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await screen.findByText('https://a.test')).toBeInTheDocument();
+    // A half-entered allowlist must not be persisted by a stray Enter.
+    expect(putInstanceSettings).not.toHaveBeenCalled();
+  });
+
+  it('embedding: hydrates a stored policy and can remove an origin', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, embedding: { enabled: true, origins: ['https://a.test', 'https://b.test'], allowSelf: true } },
+    });
+    render(<InstanceSettings />);
+    expect(await screen.findByText('https://a.test')).toBeInTheDocument();
+    expect(screen.getByLabelText('Allow same-origin framing')).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove https://a.test' }));
+    await waitFor(() => expect(screen.queryByText('https://a.test')).toBeNull());
+    expect(screen.getByText('https://b.test')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalled());
+    const body = putInstanceSettings.mock.calls.at(-1)![0] as InstanceSettingsInput;
+    expect(body.embedding).toEqual({ enabled: true, origins: ['https://b.test'], allowSelf: true });
+  });
+});

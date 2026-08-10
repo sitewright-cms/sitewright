@@ -10,10 +10,15 @@ import {
   DEFAULT_AUTH_MAX_FAILURES,
   DEFAULT_FORM_MODES,
   DEFAULT_HSTS,
+  DEFAULT_EMBEDDING,
   DEFAULT_BACKUP_RETENTION,
   DEFAULT_LOG_LEVEL,
   DEFAULT_PLATFORM_NAME,
+  DEFAULT_BRAND_PRIMARY,
+  DEFAULT_BRAND_SECONDARY,
+  type PlatformBackground,
   type Hsts,
+  type Embedding,
   type LogLevel,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
@@ -28,6 +33,20 @@ import {
 import type { Database } from '../db/client.js';
 import { instanceSettings, INSTANCE_SETTINGS_ID } from '../db/schema.js';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
+
+/**
+ * The platform's visual chrome as needed by a surface rendering OUTSIDE the editor SPA. Non-secret:
+ * the login screen already serves the same values unauthenticated via `/auth/config`.
+ */
+export interface PlatformChrome {
+  name: string;
+  primary: string;
+  secondary: string;
+  /** Cache-busted URL of the uploaded logo, or null when none is set. */
+  logoUrl: string | null;
+  /** The admin-set WebGL background, or null for the static gradient shell. */
+  background: PlatformBackground | null;
+}
 
 /** Raised when a secret must be encrypted but no SW_ENCRYPTION_KEY is configured. */
 export class EncryptionUnavailableError extends Error {
@@ -118,6 +137,11 @@ export class InstanceSettingsRepository {
     return (await this.getStored()).hsts ?? { ...DEFAULT_HSTS };
   }
 
+  /** The effective embedding policy (admin setting or the DENIED default) — read by the security-headers hook. */
+  async getEmbedding(): Promise<Embedding> {
+    return (await this.getStored()).embedding ?? { ...DEFAULT_EMBEDDING, origins: [] };
+  }
+
   /** How many pre-migration DB snapshots to keep — the admin setting or the built-in default (2). */
   async getBackupRetention(): Promise<number> {
     return (await this.getStored()).backupRetention ?? DEFAULT_BACKUP_RETENTION;
@@ -150,6 +174,27 @@ export class InstanceSettingsRepository {
       .where(eq(instanceSettings.id, INSTANCE_SETTINGS_ID));
     if (!row) return { stored: { formModes: { ...DEFAULT_FORM_MODES } }, updatedAtMs: 0 };
     return { stored: InstanceSettingsStoredSchema.parse(row.data), updatedAtMs: row.updatedAt.getTime() };
+  }
+
+  /**
+   * The admin's PLATFORM CHROME — the white-label name, gradient stops, logo URL and animated
+   * background — for surfaces that must look like the platform while rendering OUTSIDE the editor SPA
+   * (the server-rendered OAuth consent screen) or BEFORE it has a session (the login screen, via
+   * `/auth/config`). Single-sourced here so a server-rendered surface can never drift from the SPA's
+   * branding, which is exactly how the consent screen ended up hardcoding indigo/purple.
+   *
+   * The logo URL carries the settings row's mtime as a cache-buster (the logo is mutable and served
+   * from a `no-store` route); `null` when no logo is uploaded.
+   */
+  async getChrome(): Promise<PlatformChrome> {
+    const { stored, updatedAtMs } = await this.getStoredWithUpdatedAt();
+    return {
+      name: stored.platformName ?? DEFAULT_PLATFORM_NAME,
+      primary: stored.brandPrimary ?? DEFAULT_BRAND_PRIMARY,
+      secondary: stored.brandSecondary ?? DEFAULT_BRAND_SECONDARY,
+      logoUrl: stored.platformLogo ? `/branding/logo?v=${updatedAtMs}` : null,
+      background: stored.platformBackground ?? null,
+    };
   }
 
   /**
@@ -273,6 +318,16 @@ export class InstanceSettingsRepository {
       if (current.hsts) next.hsts = current.hsts;
     } else {
       next.hsts = input.hsts;
+    }
+
+    // Embedding allowlist (non-secret object): same three-way semantics as HSTS — an object sets it,
+    // `null` clears it (revert to framing DENIED), undefined keeps whatever was stored.
+    if (input.embedding === null) {
+      // cleared — leave next.embedding undefined
+    } else if (input.embedding === undefined) {
+      if (current.embedding) next.embedding = current.embedding;
+    } else {
+      next.embedding = input.embedding;
     }
 
     // Agent instructions: a string sets the override, `null` clears it (revert to default),

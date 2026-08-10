@@ -209,6 +209,20 @@ describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
   });
 });
 
+/**
+ * Pulls the authorization code out of the post-approval page's continue link. Asserts `state` is
+ * preserved on the way, which is what a client checks before accepting the code.
+ */
+function codeFromApprovalPage(html: string, expectedState: string | null = 'xyz-state'): string {
+  const href = /<a href="([^"]+)"/.exec(html)?.[1];
+  if (!href) throw new Error(`no continue link on the approval page: ${html.slice(0, 400)}`);
+  const url = new URL(href.replace(/&amp;/g, '&'));
+  if (expectedState !== null) expect(url.searchParams.get('state')).toBe(expectedState);
+  const code = url.searchParams.get('code');
+  if (!code) throw new Error(`no code in the continue link: ${href}`);
+  return code;
+}
+
 describe('OAuth full authorization-code + PKCE flow', () => {
   async function getCode(session: string, project: string): Promise<string> {
     const res = await app.inject({
@@ -229,12 +243,13 @@ describe('OAuth full authorization-code + PKCE flow', () => {
         decision: 'approve',
       }),
     });
-    expect(res.statusCode).toBe(302);
-    const loc = new URL(res.headers.location as string);
-    expect(loc.searchParams.get('state')).toBe('xyz-state');
-    const code = loc.searchParams.get('code');
-    if (!code) throw new Error(`no code in redirect: ${res.headers.location}`);
-    return code;
+    // Approval no longer redirects: it renders the code with a copy button and the redirect as an
+    // explicit link, because a client's callback is often unreachable from the user's browser. The
+    // continue LINK still carries `code` + `state`, so this reads the code from there — the same
+    // value the redirect used to deliver, now one click away instead of automatic.
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toContain('no-store');
+    return codeFromApprovalPage(res.body);
   }
 
   it('exchanges code → access + refresh, and the access token works on the API; refresh rotates', async () => {
@@ -336,13 +351,13 @@ describe('OAuth full authorization-code + PKCE flow', () => {
         decision: 'approve',
       }),
     });
-    expect(consent.statusCode).toBe(302);
-    const code = new URL(consent.headers.location as string).searchParams.get('code');
+    expect(consent.statusCode).toBe(200);
+    const code = codeFromApprovalPage(consent.body, 's');
 
     const tok = await app.inject({
       method: 'POST',
       url: '/oauth/token',
-      ...form({ grant_type: 'authorization_code', code: code!, client_id: clientId, redirect_uri: HREDIRECT, code_verifier: VERIFIER }),
+      ...form({ grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: HREDIRECT, code_verifier: VERIFIER }),
     });
     expect(tok.statusCode).toBe(200);
     expect((tok.json() as { access_token: string }).access_token.startsWith('swk_')).toBe(true);
@@ -496,12 +511,12 @@ describe('consent-page scope selection', () => {
       // The user keeps read + publish, unchecks the rest.
       ...form({ client_id: CLIENT, redirect_uri: REDIRECT, response_type: 'code', code_challenge: CHALLENGE, code_challenge_method: 'S256', 'scope_content:read': '1', 'scope_publish': '1', state: 's', project: projectId, decision: 'approve' }),
     });
-    expect(consent.statusCode).toBe(302);
-    const code = new URL(consent.headers.location as string).searchParams.get('code');
+    expect(consent.statusCode).toBe(200);
+    const code = codeFromApprovalPage(consent.body, 's');
     const tok = (await app.inject({
       method: 'POST',
       url: '/oauth/token',
-      ...form({ grant_type: 'authorization_code', code: code!, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
+      ...form({ grant_type: 'authorization_code', code, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
     })).json() as { scope: string };
     expect(tok.scope.split(' ').sort()).toEqual(['content:read', 'publish']);
   });

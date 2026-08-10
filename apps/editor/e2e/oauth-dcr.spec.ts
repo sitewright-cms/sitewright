@@ -43,15 +43,17 @@ test('dynamically-registered client completes the OAuth flow', async ({ page, pl
   // option is pre-checked; check it explicitly so the test still states which project it authorises.
   await page.locator('input[name="project"]').first().check();
 
-  const [resp] = await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/oauth/authorize') && r.request().method() === 'POST'),
-    page.getByRole('button', { name: 'Approve' }).click(),
-  ]);
-  expect(resp.status()).toBe(302);
-  const back = new URL(resp.headers()['location'] as string);
-  expect(back.origin).toBe('https://hosted.example.test');
-  const code = back.searchParams.get('code');
+  // Approval shows the code rather than redirecting — a REMOTE client's callback is exactly the case
+  // the browser may not be able to reach, so the code is handed to the user with the redirect offered
+  // as a choice. The continue link still carries it.
+  await page.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByRole('heading', { name: /Approved/ })).toBeVisible();
+  const code = (await page.locator('#sw-code').textContent())?.trim();
   expect(code).toBeTruthy();
+  const back = new URL((await page.locator('a[href] >> nth=0').getAttribute('href'))!.replace(/&amp;/g, '&'));
+  expect(back.origin).toBe('https://hosted.example.test');
+  expect(back.searchParams.get('code')).toBe(code);
+  await expect(page.getByRole('button', { name: /Continue to hosted\.example\.test/ })).toBeVisible();
 
   // Exchange the code for tokens (cookieless), then use the access token.
   const bot = await playwright.request.newContext({ baseURL });

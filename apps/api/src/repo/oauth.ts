@@ -18,8 +18,17 @@ import { isValidS256Challenge, verifyPkceS256 } from '../auth/pkce.js';
 export const ACCESS_TTL_MS = 1000 * 60 * 60; // 1 hour
 /** Absolute refresh/session cap — re-auth required past this regardless of activity. */
 export const REFRESH_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
-/** Authorization code lifetime — single-use and very short. */
-export const AUTH_CODE_TTL_MS = 1000 * 60; // 60 seconds
+/**
+ * Authorization code lifetime — single-use, and the RFC 6749 §4.1.2 recommended MAXIMUM.
+ *
+ * Was 60 seconds, which is right for a code that only ever travels machine-to-machine in a redirect.
+ * It is not right once the consent screen SHOWS the code for a human to copy into a client whose
+ * callback the browser can't reach: reading the page, clicking copy, switching to a terminal and
+ * pasting routinely takes longer than a minute, and the failure mode is an expired-code error that
+ * looks like a broken integration. The code remains single-use, PKCE-bound and redirect-bound, so the
+ * window is the only thing that changed.
+ */
+export const AUTH_CODE_TTL_MS = 1000 * 60 * 10; // 10 minutes (RFC 6749 recommended max)
 /** Device-code lifetime + minimum CLI polling interval (RFC 8628). */
 export const DEVICE_CODE_TTL_MS = 1000 * 60 * 10; // 10 minutes
 export const DEVICE_POLL_INTERVAL_SEC = 5;

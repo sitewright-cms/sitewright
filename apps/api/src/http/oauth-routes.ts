@@ -7,6 +7,16 @@ import { listProjectAccessForUser, resolveProjectRole } from '../repo/accounts.j
 import type { ProjectRepository } from '../repo/projects.js';
 import { OAuthClientError, isLoopbackHttp, type OAuthClientRepository } from '../repo/oauth-clients.js';
 import { ForbiddenError, NotFoundError } from '../repo/context.js';
+import {
+  isSafeCssTokenValue,
+  DEFAULT_PLATFORM_NAME,
+  DEFAULT_BRAND_PRIMARY,
+  DEFAULT_BRAND_SECONDARY,
+  type PlatformBackground,
+} from '@sitewright/schema';
+import { SHADER_BG_CSS, SHADER_BG_JS } from '@sitewright/blocks';
+import { CONSENT_SCRIPT } from './consent-script.js';
+import { AUTH_CODE_TTL_MS } from '../repo/oauth.js';
 
 /** The built-in public client for the `sitewright` CLI (loopback redirect, PKCE, no secret). */
 export const CLI_CLIENT_ID = 'sitewright-cli';
@@ -19,7 +29,11 @@ export interface OAuthDeps {
   /** Resolves the session user id, or null when unauthenticated. */
   currentUserId: (req: FastifyRequest) => Promise<string | null>;
   /** Supplies the admin-configurable agent-session (refresh) cap applied to newly-issued tokens. */
-  instanceSettings: { getAgentSessionMs(): Promise<number> };
+  instanceSettings: {
+    getAgentSessionMs(): Promise<number>;
+    /** The admin's branding + animated background, so the consent screen looks like the platform. */
+    getChrome(): Promise<ConsentChrome>;
+  };
   /** The instance's public origin (`SW_PUBLIC_URL`). When set, it is the OAuth issuer / `resource`
    *  regardless of proxy headers — the fix for `http://` metadata behind a TLS-terminating proxy. */
   publicUrl?: string;
@@ -105,36 +119,121 @@ function scopeCheckboxes(selected: readonly ApiKeyCapability[]): string {
 }
 
 /**
+ * A CSS custom-property value taken from admin settings. `CssColorSchema` already constrains the
+ * stored brand colors, but this shell writes them into a `<style>` block, so the value is re-checked
+ * against the SAME allowlist the rest of the platform uses for CSS sinks rather than trusted because
+ * of where it came from. A rejected value falls back to the built-in default — the page always
+ * renders, it just isn't branded. See `isSafeCssTokenValue`.
+ */
+function cssColor(value: string, fallback: string): string {
+  return isSafeCssTokenValue(value) ? value : fallback;
+}
+
+/** The consent surface's chrome: the admin's branding plus (optionally) the animated background. */
+export interface ConsentChrome {
+  name: string;
+  primary: string;
+  secondary: string;
+  logoUrl: string | null;
+  background: PlatformBackground | null;
+}
+
+/** The built-in look, used when settings can't be read (the page must still render). */
+export const DEFAULT_CONSENT_CHROME: ConsentChrome = {
+  name: DEFAULT_PLATFORM_NAME,
+  primary: DEFAULT_BRAND_PRIMARY,
+  secondary: DEFAULT_BRAND_SECONDARY,
+  logoUrl: null,
+  background: null,
+};
+
+/**
+ * The host element for the platform's animated background, or '' when none is configured.
+ *
+ * Reuses the SAME `data-sw-component="shader-bg"` runtime published sites use (served here by
+ * `/oauth/consent.js`) rather than a second copy of the shader engine — the preset key, angle and
+ * palette slots are the admin's stored values, passed as the runtime's own declarative `data-*`
+ * knobs. Until the runtime enhances it (and forever, without JS or WebGL) its `::before` paints the
+ * brand gradient, so the surface is never blank.
+ */
+function backgroundHost(bg: PlatformBackground | null): string {
+  if (!bg) return '';
+  // preset/angle/colors are schema-constrained (a lowercase key, an int, hex-or-token slots) and are
+  // additionally escaped here — this is an HTML attribute sink.
+  return (
+    `<div class="sw-bg" aria-hidden="true" data-sw-component="shader-bg" data-preset="${escapeHtml(bg.preset)}" ` +
+    `data-angle="${escapeHtml(String(bg.angle))}" data-colors="${escapeHtml(bg.colors.join(','))}"></div>`
+  );
+}
+
+/**
  * The consent surface's document shell. Server-rendered (no SPA, no Tailwind at this point in the
  * flow), so the platform's look is reproduced with self-contained CSS: the brand gradient mark, a
  * frosted card on a tinted field, and the same slate type scale + rounded geometry as the editor.
  * Light AND dark, keyed off the viewer's system setting like every other platform surface.
+ *
+ * The brand stops, platform name, logo and animated background all come from INSTANCE SETTINGS — the
+ * same values the editor and login screen use — so a white-labelled instance doesn't drop back to
+ * stock indigo the moment an agent asks for authorization.
+ *
+ * `script` opts into `/oauth/consent.js` (project search + copy-to-clipboard + the shader runtime).
+ * It is loaded only by the pages that need it, and every one of them works without it.
  */
-function htmlPage(title: string, body: string): string {
+function htmlPage(title: string, body: string, chrome: ConsentChrome = DEFAULT_CONSENT_CHROME, opts?: { script?: boolean }): string {
+  const primary = cssColor(chrome.primary, DEFAULT_BRAND_PRIMARY);
+  const secondary = cssColor(chrome.secondary, DEFAULT_BRAND_SECONDARY);
+  const mark = chrome.logoUrl
+    ? `<img class="mark logo" src="${escapeHtml(chrome.logoUrl)}" alt="">`
+    : '<span class="mark"></span>';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
     :root{
-      --sw-brand-1:#6366f1; --sw-brand-2:#a855f7;
+      --sw-brand-1:${primary}; --sw-brand-2:${secondary};
+      /* The shader runtime resolves palette slots named as CI tokens through these; hex slots and the
+         auto slot don't need them, but a token-named slot would otherwise fall back to stock colors. */
+      --sw-color-primary:${primary}; --sw-color-secondary:${secondary}; --sw-color-neutral:#1f2937; --sw-color-base-100:#f8fafc;
       --bg:#f1f5f9; --panel:rgba(255,255,255,.82); --line:#e2e8f0; --ink:#0f172a; --muted:#64748b;
       --field:#fff; --field-line:#cbd5e1; --row:rgba(255,255,255,.7); --row-line:#e2e8f0;
     }
     @media (prefers-color-scheme:dark){
       :root{--bg:#0b1120;--panel:rgba(15,23,42,.82);--line:rgba(255,255,255,.1);--ink:#e2e8f0;--muted:#94a3b8;
-            --field:rgba(15,23,42,.6);--field-line:rgba(255,255,255,.14);--row:rgba(30,41,59,.6);--row-line:rgba(255,255,255,.08)}
+            --field:rgba(15,23,42,.6);--field-line:rgba(255,255,255,.14);--row:rgba(30,41,59,.6);--row-line:rgba(255,255,255,.08);
+            --sw-color-base-100:#0b1120}
     }
     *{box-sizing:border-box}
-    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem 1.25rem;
+    /* align-items:center CLIPS a panel taller than the viewport at BOTH ends, with nothing to scroll
+       to — a long project list plus the permissions fieldset reaches that on a laptop screen, and the
+       Approve button is what disappears. flex-start + margin:auto on the shell centres it when there
+       is room and simply scrolls when there is not. */
+    body{margin:0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1.25rem;
       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);
       background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--sw-brand-1) 14%,transparent),transparent),var(--bg)}
-    .shell{width:100%;max-width:34rem}
+    /* The admin's animated background, behind everything. Fixed + full-viewport beats the runtime's
+       zero-specificity position:relative default. */
+    .sw-bg{position:fixed;inset:0;z-index:-1;pointer-events:none}
+    /* ★ With a background behind it, the heading and intro can no longer sit on bare page: the admin
+       picks the palette, so text contrast is not ours to predict — the auto slot alone ranges from
+       near-white to near-black. Rather than guess a text colour, the whole shell becomes ONE frosted
+       panel (the platform's existing card language), and the inner card drops its own chrome so it
+       doesn't read as a panel inside a panel. Legible over any palette the admin can choose. */
+    body.has-bg .shell{border:1px solid var(--line);border-radius:1.25rem;background:var(--panel);
+      backdrop-filter:blur(16px);box-shadow:0 24px 60px rgba(15,23,42,.18);padding:1.35rem 1.4rem}
+    body.has-bg .card{margin-top:.9rem;padding:0;border:0;background:none;backdrop-filter:none;box-shadow:none}
+    ${SHADER_BG_CSS}
+    .shell{width:100%;max-width:34rem;margin:auto}
     .brand{display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;font-weight:700;letter-spacing:-.01em}
     .mark{width:1.9rem;height:1.9rem;border-radius:.6rem;background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));
       box-shadow:0 6px 18px color-mix(in srgb,var(--sw-brand-1) 35%,transparent)}
+    .mark.logo{object-fit:contain;background:none;box-shadow:none}
     h1{font-size:1.2rem;line-height:1.35;margin:0 0 .35rem;letter-spacing:-.01em}
     h1 strong{background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));-webkit-background-clip:text;background-clip:text;color:transparent}
     p{margin:.35rem 0;color:var(--muted);font-size:.9rem}
     .card{margin-top:1rem;padding:1.35rem;border:1px solid var(--line);border-radius:1rem;background:var(--panel);
       backdrop-filter:blur(14px);box-shadow:0 18px 45px rgba(15,23,42,.10)}
     .lbl{display:block;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .5rem}
+    input[type=search],input[type=text]{width:100%;font:inherit;padding:.5rem .7rem;border-radius:.6rem;border:1px solid var(--field-line);
+      background:var(--field);color:var(--ink)}
+    input[type=search]:focus,input[type=text]:focus{outline:2px solid color-mix(in srgb,var(--sw-brand-1) 55%,transparent);outline-offset:1px}
+    .search{margin:0 0 .5rem}
     /* Project picker — the card-row list from the editor's project selector, as radios. */
     .projects{display:flex;flex-direction:column;gap:.5rem;max-height:15rem;overflow:auto;margin:0;padding:0;border:0}
     .project{display:flex;align-items:center;gap:.7rem;padding:.7rem .85rem;border:1px solid var(--row-line);border-radius:.85rem;
@@ -144,6 +243,8 @@ function htmlPage(title: string, body: string): string {
     .project input{accent-color:var(--sw-brand-1);margin:0}
     .project:has(input:checked) input{accent-color:#fff}
     .project .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .project[hidden]{display:none}
+    .no-match{margin:.25rem 0 0;font-size:.85rem}
     fieldset.scopes{margin:1.1rem 0 0;border:1px solid var(--line);border-radius:.85rem;padding:.65rem .9rem}
     fieldset.scopes legend{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:0 .35rem}
     label.scope-opt{display:flex;align-items:center;gap:.5rem;margin:.25rem 0;font-size:.87rem;font-weight:400}
@@ -151,7 +252,7 @@ function htmlPage(title: string, body: string): string {
     .scope-warn{font-size:.62rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:.3rem;padding:.05rem .35rem;
       font-weight:700;text-transform:uppercase;letter-spacing:.04em}
     @media (prefers-color-scheme:dark){.scope-warn{color:#fca5a5;background:rgba(127,29,29,.35);border-color:rgba(248,113,113,.35)}}
-    .row{display:flex;gap:.6rem;margin-top:1.35rem}
+    .row{display:flex;gap:.6rem;margin-top:1.35rem;flex-wrap:wrap}
     button{font:inherit;font-weight:600;padding:.6rem 1.15rem;border-radius:.7rem;border:1px solid var(--field-line);
       background:var(--field);color:var(--ink);cursor:pointer;transition:filter .15s,border-color .15s}
     button:hover{border-color:var(--muted)}
@@ -160,7 +261,68 @@ function htmlPage(title: string, body: string): string {
     button.primary:hover{filter:brightness(1.08)}
     a{color:inherit}
     code{background:color-mix(in srgb,var(--muted) 16%,transparent);padding:.08rem .32rem;border-radius:.3rem;font-size:.85em}
-  </style></head><body><div class="shell"><div class="brand"><span class="mark"></span>Sitewright</div>${body}</div></body></html>`;
+    /* The issued authorization code: a full-width, selectable, monospace block. */
+    .code-box{display:flex;align-items:center;gap:.5rem;margin:.6rem 0 0;padding:.7rem .85rem;border:1px solid var(--field-line);
+      border-radius:.7rem;background:var(--field);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;
+      word-break:break-all;user-select:all}
+    .expiry{font-size:.78rem}
+    /* Copy confirmation. Hidden until the script shows it; it never appears without JS, and without JS
+       the code is still visible and selectable, so nothing depends on it. */
+    .toast{position:fixed;left:50%;bottom:1.5rem;transform:translate(-50%,1rem);opacity:0;pointer-events:none;
+      padding:.6rem 1rem;border-radius:.7rem;color:#fff;font-weight:600;font-size:.87rem;
+      background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));box-shadow:0 10px 30px rgba(15,23,42,.25);
+      transition:opacity .18s ease,transform .18s ease}
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+  </style></head><body class="${chrome.background ? 'has-bg' : ''}">${backgroundHost(chrome.background)}<div class="shell"><div class="brand">${mark}${escapeHtml(chrome.name)}</div>${body}</div>` +
+    `<div class="toast" id="sw-toast" role="status" aria-live="polite"></div>` +
+    `${opts?.script ? '<script src="/oauth/consent.js"></script>' : ''}</body></html>`;
+}
+
+/**
+ * The host of a redirect URI, for labelling the continue button — `127.0.0.1:8976`, `claude.ai`. Falls
+ * back to the raw (escaped) value if it somehow will not parse; the URI is already validated against
+ * the client's registered set by this point, so this is presentation only.
+ */
+function redirectHost(redirectUri: string): string {
+  try {
+    return new URL(redirectUri).host || redirectUri;
+  } catch {
+    return redirectUri;
+  }
+}
+
+/**
+ * The post-approval screen: the issued authorization code, a copy button, and the redirect as an
+ * explicit choice rather than something that happens TO the user.
+ *
+ * Why show the code at all — it is single-use and bound to the client's PKCE `code_verifier`, so on
+ * its own it authorises nothing; what it does is let a user complete the flow when the client's
+ * callback is unreachable from their browser (an agent running in a sandbox or on another machine),
+ * by pasting it where the client asks. That is the normal manual fallback those clients offer, and it
+ * was previously impossible here because the code only ever existed inside a redirect the browser
+ * followed automatically.
+ *
+ * The page is `no-store` + `no-referrer` (see the caller) and the code expires in minutes.
+ */
+function issuedCodePage(code: string, continueUrl: string, redirectUri: string, chrome: ConsentChrome): string {
+  const minutes = Math.max(1, Math.round(AUTH_CODE_TTL_MS / 60000));
+  return htmlPage(
+    'Authorization approved',
+    `<h1>Approved — here is your <strong>code</strong></h1>
+     <p>Paste it into the client that asked for it. It can be used once, and expires in ${minutes} minutes.</p>
+     <div class="card">
+       <span class="lbl">Authorization code</span>
+       <div class="code-box"><span id="sw-code">${escapeHtml(code)}</span></div>
+       <div class="row">
+         <button class="primary" type="button" id="sw-copy">Copy code</button>
+         <a href="${escapeHtml(continueUrl)}"><button type="button">Continue to ${escapeHtml(redirectHost(redirectUri))}</button></a>
+       </div>
+       <p class="expiry">Continue only works if this browser can reach that address — otherwise copy the code.</p>
+     </div>`,
+    chrome,
+    { script: true },
+  );
 }
 
 /** Builds a redirect URL appending query params, preserving any existing query. */
@@ -198,8 +360,32 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
   // platform admin → all; everyone else → their memberships). The option value is the project id.
   async function projectOptions(userId: string): Promise<Array<{ value: string; label: string }>> {
     const access = await listProjectAccessForUser(db, userId);
-    return access.map((p) => ({ value: p.projectId, label: p.projectName }));
+    // Alphabetical, case- and accent-insensitively: the picker is a flat list an operator SCANS, and
+    // membership order (effectively insertion order) is meaningless to them.
+    return access
+      .map((p) => ({ value: p.projectId, label: p.projectName }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
   }
+
+  /** The admin's chrome for a consent render. Never fails the page: a settings read that throws
+   *  degrades to the built-in look rather than a 500 in the middle of an authorization. */
+  const chromeOf = async (): Promise<ConsentChrome> => {
+    try {
+      return await instanceSettings.getChrome();
+    } catch {
+      return DEFAULT_CONSENT_CHROME;
+    }
+  };
+
+  // The consent surface's script: the shared shader-bg runtime (the SAME one published sites use, so
+  // the admin's animated background renders here without a second copy of the engine) plus the page's
+  // own search/copy behaviour. Static and content-addressed by the build, so it caches hard.
+  app.get('/oauth/consent.js', { config: rl(60) }, async (_req, reply) =>
+    reply
+      .type('application/javascript; charset=utf-8')
+      .header('cache-control', 'public, max-age=3600')
+      .send(`${SHADER_BG_JS}\n${CONSENT_SCRIPT}`),
+  );
 
   // ---- Discovery (RFC 8414 + RFC 9728) ----
   app.get('/.well-known/oauth-authorization-server', async (req, reply) => {
@@ -272,7 +458,11 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const client = await resolveClient(clientId);
       if (!client || !client.allowsRedirect(redirectUri)) {
         return reply.code(400).type('text/html').send(
-          htmlPage('Invalid request', '<div class="card"><h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p></div>'),
+          htmlPage(
+            'Invalid request',
+            '<div class="card"><h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p></div>',
+            await chromeOf(),
+          ),
         );
       }
       // From here, parameter errors can safely redirect back to the (validated) client.
@@ -301,7 +491,11 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const options = await projectOptions(userId);
       if (options.length === 0) {
         return reply.code(200).type('text/html').send(
-          htmlPage('No projects', '<div class="card"><h1>No projects yet</h1><p>Create a project in the editor first, then retry this authorization.</p></div>'),
+          htmlPage(
+            'No projects',
+            '<div class="card"><h1>No projects yet</h1><p>Create a project in the editor first, then retry this authorization.</p></div>',
+            await chromeOf(),
+          ),
         );
       }
 
@@ -310,13 +504,22 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       // Radio CARDS, matching the editor's project selector, rather than a bare <select>: the project
       // is the single most consequential choice on this page (it scopes every token the agent gets),
       // so it should read like a choice, not like a dropdown default nobody looked at.
+      // `data-name` is what the client-side filter matches on — reading it off the attribute keeps the
+      // filter independent of the markup inside the card.
       const optionsHtml = options
         .map(
           (o, i) =>
-            `<label class="project"><input type="radio" name="project" value="${escapeHtml(o.value)}"${i === 0 ? ' checked' : ''} required>` +
+            `<label class="project" data-name="${escapeHtml(o.label)}">` +
+            `<input type="radio" name="project" value="${escapeHtml(o.value)}"${i === 0 ? ' checked' : ''} required>` +
             `<span class="nm">${escapeHtml(o.label)}</span></label>`,
         )
         .join('');
+      // The search box only earns its space once the list is long enough to scan for.
+      const searchHtml =
+        options.length > 5
+          ? '<input type="search" id="sw-project-search" class="search" placeholder="Search projects — Enter to approve" ' +
+            'aria-label="Search projects" autocomplete="off">'
+          : '';
       return reply.code(200).type('text/html').send(
         htmlPage(
           'Authorize access',
@@ -329,14 +532,18 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
                ${hidden('code_challenge_method', 'S256')}
                ${q.state ? hidden('state', q.state) : ''}
                <span class="lbl">Project</span>
-               <div class="projects" role="radiogroup" aria-label="Project">${optionsHtml}</div>
+               ${searchHtml}
+               <div class="projects" id="sw-projects" role="radiogroup" aria-label="Project">${optionsHtml}</div>
+               <p class="no-match" id="sw-no-match" hidden>No project matches that search.</p>
                <fieldset class="scopes" style="margin-top:.75rem"><legend>Permissions</legend>${scopeCheckboxes(scope)}</fieldset>
                <div class="row">
-                 <button class="primary" type="submit" name="decision" value="approve">Approve</button>
+                 <button class="primary" id="sw-approve" type="submit" name="decision" value="approve">Approve</button>
                  <button type="submit" name="decision" value="deny">Deny</button>
                </div>
              </form>
            </div>`,
+          await chromeOf(),
+          { script: true },
         ),
       );
     },
@@ -354,7 +561,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const redirectUri = b.redirect_uri ?? '';
       const client = await resolveClient(clientId);
       if (!client || !client.allowsRedirect(redirectUri)) {
-        return reply.code(400).type('text/html').send(htmlPage('Invalid request', '<h1>Invalid request</h1>'));
+        return reply.code(400).type('text/html').send(htmlPage('Invalid request', '<div class="card"><h1>Invalid request</h1></div>', await chromeOf()));
       }
       const state = b.state;
       const back = (params: Record<string, string>): FastifyReply =>
@@ -363,7 +570,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       // Auth first, so an unauthenticated POST always 401s (never a misleading
       // access_denied that looks like a user decision).
       const userId = await currentUserId(req);
-      if (!userId) return reply.code(401).type('text/html').send(htmlPage('Sign in required', '<h1>Sign in required</h1>'));
+      if (!userId) return reply.code(401).type('text/html').send(htmlPage('Sign in required', '<div class="card"><h1>Sign in required</h1></div>', await chromeOf()));
       if (b.decision !== 'approve') return back({ error: 'access_denied' });
       // Re-validate the same params the GET enforced (a client can POST directly).
       if (b.response_type !== 'code') return back({ error: 'unsupported_response_type' });
@@ -385,7 +592,18 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         await projects.get(projectId); // 404 if the project no longer exists
         const grant: Grant = { clientId, userId, projectId, role, scope };
         const code = await oauth.createAuthCode(grant, redirectUri, b.code_challenge);
-        return back({ code });
+        // ★ NO automatic redirect. The client's callback is often unreachable from where the user is
+        // actually sitting — an agent in a container/sandbox advertises a loopback redirect that only
+        // resolves INSIDE that sandbox — and the old behaviour bounced the browser at it, leaving the
+        // user to dig the code back out of a failed navigation's URL bar. The code is shown instead,
+        // with the redirect kept one click away for the flows where it does work.
+        return reply
+          .code(200)
+          .type('text/html')
+          // The document carries a live credential: never cached, never leaked via Referer.
+          .header('cache-control', 'no-store')
+          .header('referrer-policy', 'no-referrer')
+          .send(issuedCodePage(code, redirectWith(redirectUri, { code, ...(state ? { state } : {}) }), redirectUri, await chromeOf()));
       } catch (err) {
         if (err instanceof ForbiddenError || err instanceof NotFoundError) return back({ error: 'access_denied' });
         if (err instanceof OAuthError) return back({ error: err.code });

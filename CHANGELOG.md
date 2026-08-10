@@ -11,6 +11,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **The consent screen could not be scrolled to its buttons on a short viewport.** It centred with
+  `align-items:center`, which clips a panel taller than the viewport at *both* ends with nothing to
+  scroll to — with a long project list and the permissions fieldset, Approve was what fell off the
+  bottom. It now centres by auto margin, which simply scrolls when there is not enough room.
+
 - **★ The maintenance sweeps never ran on an instance that restarted often.** They were scheduled with
   `setInterval` alone, so a deployment restarted more frequently than the hourly interval cancelled the
   timer before it ever fired — development instances, anything redeployed a few times a day, and every
@@ -21,6 +26,24 @@ The running version of an instance is reported at `GET /version` (baked into the
   restart is not slowed by a filesystem walk.
 
 ### Added
+
+- **The admin panel can be embedded in an iframe, from origins you name.** A new instance setting
+  (System settings → Embedding) turns framing on and takes a list of allowed origins —
+  `https://portal.example.com`, or `https://*.example.com` for a whole subdomain tree. Off by default:
+  without it the panel keeps sending `frame-ancestors 'none'` plus `X-Frame-Options: DENY`. Changes
+  apply on save, with no restart.
+
+  Only the admin panel is affected. A locally-hosted client site (`<slug>.<sitesDomain>` or
+  `/sites/…`) keeps the strict policy, so allowing your own portal to embed the panel never makes
+  every tenant's published site framable as a side effect. While an allowlist is active the panel
+  sends `frame-ancestors` **alone** and drops `X-Frame-Options`, which cannot express a list — its
+  `ALLOW-FROM` was removed from every browser — so a browser too old for `frame-ancestors` loses
+  framing protection. That is the unavoidable cost of the feature, and the settings screen says so.
+
+  An origin is validated against a deliberately narrow grammar, because the value is written straight
+  into a CSP header: a header is `;`-separated directives whose sources are separated by spaces, so a
+  value carrying either would not be rejected by the browser — it would be read as *more policy*.
+  Paths, credentials, other schemes and a bare `*` are refused too.
 
 - **The File Manager can find unused files.** "Search for unused files" lists media nothing in the
   project refers to, with checkboxes and select-all, and moves the selection to the Recycle Bin
@@ -36,6 +59,33 @@ The running version of an instance is reported at `GET /version` (baked into the
   megabytes with nothing to show for it.
 
 ### Changed
+
+- **★ Approving an agent authorization now shows you the code instead of redirecting.** The consent
+  screen used to bounce the browser straight at the client's callback. That works when the callback is
+  reachable from the browser doing the authorizing — and frequently it is not: an agent running in a
+  container or sandbox advertises a loopback address that only resolves *inside* it, so the redirect
+  landed on a dead page and the only way forward was to dig the code back out of the URL bar. The
+  screen now shows the authorization code with a **Copy code** button, and offers the redirect as a
+  **Continue to `<host>`** button for the flows where it does work. Denial still redirects immediately
+  — there is nothing to hand over, and the client should hear about it.
+
+  The authorization code's lifetime went from 60 seconds to 10 minutes (the maximum RFC 6749
+  recommends) as a direct consequence: a minute is ample machine-to-machine, but not for reading a
+  page, copying, switching to a terminal and pasting. The code remains single-use, PKCE-bound and
+  redirect-bound; only the window changed.
+
+- **The consent screen looks like your platform.** It was server-rendered with hardcoded indigo, so a
+  white-labelled instance dropped back to stock colours the moment an agent asked for authorization.
+  It now uses the instance's brand gradient, platform name, logo and — if one is configured — the
+  animated background, reusing the *same* shader runtime published sites use rather than a second copy
+  of the engine. With a background behind it the whole panel becomes frosted: the palette is the
+  admin's to choose and its `auto` slot ranges from near-white to near-black, so no fixed text colour
+  would have been legible against every one.
+
+  The project list is sorted alphabetically instead of by membership order, and past five projects
+  gains a search box that filters as you type, with **Enter to approve**. Filtering moves the
+  selection onto a visible project, so approval can never submit one you can no longer see. Everything
+  still works without JavaScript.
 
 - **★ The three derived stores now have a lifecycle.** `sites`, `preview` and `source-refs` had one
   removal path between them (permanent project deletion), so anything ever published, previewed or

@@ -8101,21 +8101,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   const sweepMs = opts.maintenanceSweepMs ?? 60 * 60 * 1000;
+  /**
+   * ★ Runs ONCE SHORTLY AFTER BOOT as well as on the interval, and that is not a nicety.
+   *
+   * With `setInterval` alone, an instance restarted more often than the interval NEVER sweeps — the
+   * timer is always cancelled before it fires. That is not a hypothetical: a development instance,
+   * anything redeployed a few times a day, and every container that crash-loops all fall into it, and
+   * the symptom is silence rather than an error. Housekeeping that only runs on quiet machines is
+   * housekeeping that does not run on the machines with the most to clean.
+   *
+   * The delay keeps it off the boot path, so a restart is not slowed by a filesystem walk and a
+   * health check never waits behind one.
+   */
+  const runMaintenanceSweeps = (): void => {
+    void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
+    void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
+    // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
+    // an expired challenge fails verification before the spent-check is ever consulted.
+    void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
+    if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
+    // ★ THE DERIVED-STORE REAPERS. `sites`, `preview` and `source-refs` had ONE removal path
+    // between them (permanent project deletion), so anything ever published, previewed or imported
+    // grew forever — 1.35 GB on a real instance, almost none of it reachable.
+    void reapDerivedStorage().catch((err) => app.log.warn(err, 'derived-storage reap failed'));
+  };
+
   if (sweepMs > 0) {
-    const sweepTimer = setInterval(() => {
-      void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
-      void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
-      // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
-      // an expired challenge fails verification before the spent-check is ever consulted.
-      void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
-      if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
-      // ★ THE DERIVED-STORE REAPERS. `sites`, `preview` and `source-refs` had ONE removal path
-      // between them (permanent project deletion), so anything ever published, previewed or imported
-      // grew forever — 1.35 GB on a real instance, almost none of it reachable.
-      void reapDerivedStorage().catch((err) => app.log.warn(err, 'derived-storage reap failed'));
-    }, sweepMs);
+    // Well inside the shortest interval any caller sets, so the two never overlap on the first pass.
+    const firstRun = setTimeout(runMaintenanceSweeps, Math.min(30_000, Math.floor(sweepMs / 2)));
+    const sweepTimer = setInterval(runMaintenanceSweeps, sweepMs);
+    firstRun.unref();
     sweepTimer.unref();
-    app.addHook('onClose', async () => clearInterval(sweepTimer));
+    app.addHook('onClose', async () => {
+      clearTimeout(firstRun);
+      clearInterval(sweepTimer);
+    });
   }
 
   return app;

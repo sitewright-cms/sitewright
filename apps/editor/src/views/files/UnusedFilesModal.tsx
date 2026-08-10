@@ -106,6 +106,9 @@ export function UnusedFilesModal({ projectId, onClose, onChanged }: { projectId:
   return (
     <Modal title="Unused files" onClose={onClose} size="lg">
       {dialog}
+      {/* Modal supplies the panel, not the inset — every other call site pads its own body. `p-5`
+          matches the sibling RecycleBinModal, which this dialog is the mirror of. */}
+      <div className="p-5">
       {loading && <p className="text-sm text-slate-500 dark:text-slate-400">Searching every page, template, snippet, dataset, form and setting…</p>}
       {error && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -176,6 +179,7 @@ export function UnusedFilesModal({ projectId, onClose, onChanged }: { projectId:
           </div>
         </>
       )}
+      </div>
     </Modal>
   );
 }

@@ -9,6 +9,52 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **The File Manager can find unused files.** "Search for unused files" lists media nothing in the
+  project refers to, with checkboxes and select-all, and moves the selection to the Recycle Bin
+  (recoverable for 90 days). The scan is the feature: a false negative costs disk, a false positive
+  offers to delete a file that is on a live page — so it searches every page, template, snippet,
+  translation, dataset, entry, form and image map, the settings document (logo, icon, OG image,
+  critical CSS, project scripts) and the global library, and errs towards "used" when uncertain. The
+  modal reports what it searched rather than asking to be trusted. Assets referenced **only by version
+  history** are shown but not pre-selected: deleting one breaks a restore rather than a page.
+- **A per-project storage reading** (media / build / preview / source references, and how much of it
+  is derived). Reporting only. Nothing bounds a single project — the reapers cap how long derived
+  output survives, not how large any one site gets — so one large import could add hundreds of
+  megabytes with nothing to show for it.
+
+### Changed
+
+- **★ The three derived stores now have a lifecycle.** `sites`, `preview` and `source-refs` had one
+  removal path between them (permanent project deletion), so anything ever published, previewed or
+  imported grew forever: measured at 1.35 GB on a real instance, almost none of it reachable.
+  - **A site build is kept only while a Local Hosting target exists.** It is read by the local
+    `/sites/<slug>/` server and by the "download site .zip" archive; a remote deploy builds into a
+    temp dir of its own. So a retained build without a local target serves nothing, which is why this
+    is not an age test. Measured: 46 build directories, 4 of them served. The build still *happens*
+    either way, because "publish to check it builds" is a real workflow — only the retention is
+    conditional, and the *sweep* enforces it rather than the publish route: deleting the build the
+    instant it is written would punish the ordinary sequence "publish, then turn hosting on". Two
+    behaviours are preserved rather than sacrificed to the rule: turning Local Hosting **back** on
+    rebuilds a reclaimed site, so it serves without a republish as it always did, and **the archive
+    builds on demand** when no build is retained — downloading a zip is most useful precisely when a
+    project has no deploy target, since that is the manual deployment path.
+  - **Preview builds and source references are reaped after 30 days untouched** (configurable). Both
+    are derived: a preview rebuilds on the next open. A directory is aged by its NEWEST CHILD, not its
+    own mtime — a rebuild that overwrites files in place does not necessarily touch the directory, so
+    ageing by the directory would reap an actively-used project as a month stale.
+  - ★ The sweep runs **in-process**. `previewBuiltVersion` is an in-memory map whose check returns
+    early on a version match without testing that the directory still exists, so a cron or shell
+    reaper would delete a build this process still believes in and previews would 404 silently until
+    the content version changed. Dropping that marker is what makes the next request rebuild.
+- **The release record moved from the built directory into the database.** `release.json` lived inside
+  the build, which made "is the published site out of date?" a hostage to that directory's lifetime —
+  reaping the build would have made a remote-only project report that it had never been published. The
+  small durable fact is now a row; the large derived bytes are free to delete. A project published
+  before this change still reports correctly (the row falls back to the file). The archive download
+  now distinguishes "never published" from "the build is no longer on disk — publish again".
+
 ### Fixed
 
 - **A parallax layer coming into view painted one frame stale.** The runtime renders on scroll, and an

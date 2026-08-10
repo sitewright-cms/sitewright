@@ -42,6 +42,7 @@ describe('project reap', () => {
     'oauth_auth_codes',
     'oauth_refresh_tokens',
     'project_members',
+    'project_releases',
   ].sort();
 
   it('remove() clears EVERY table that carries an FK to projects', async () => {

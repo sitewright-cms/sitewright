@@ -873,6 +873,22 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
+  it('reads the unused-media scan and the per-project storage reading', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { items: [{ id: 'aaaaaa', filename: 'x.png' }], scanned: { assets: 1, contentRows: 2, globalRows: 0, revisionRows: 5 } }),
+    );
+    const scan = await api.unusedMedia('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/media/unused');
+    expect(scan.items).toHaveLength(1);
+    // The scan reports its own reach — the UI shows it rather than asking to be trusted.
+    expect(scan.scanned.revisionRows).toBe(5);
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { media: 10, build: 20, preview: 30, sourceRefs: 40, total: 100, derived: 90 }));
+    const storage = await api.projectStorage('p');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/storage');
+    expect(storage.derived).toBe(90);
+  });
+
   it('reads, writes, tests, and deletes the per-project captcha config', async () => {
     const KEY = '10000000-ffff-ffff-ffff-000000000001';
     fetchMock.mockResolvedValue(jsonResponse(200, { captcha: null }));

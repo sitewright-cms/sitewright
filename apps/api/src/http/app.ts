@@ -240,6 +240,9 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnect
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
 import { migrateInstanceHcaptchaToProjects } from '../repo/captcha-migration.js';
+import { ReleaseRepository } from '../repo/releases.js';
+import { sweepDerivedStorage, projectStorage } from '../repo/storage-reaper.js';
+import { findUnusedMedia } from '../repo/media-usage.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
 import {
@@ -1082,6 +1085,8 @@ export interface AppOptions {
    * periodic pass.
    */
   maintenanceSweepMs?: number;
+  /** How long an untouched preview build / source reference survives. Default 30 days; 0 disables. */
+  derivedRetentionMs?: number;
   /**
    * Whether to ENFORCE the seeded default-password admin's forced password change (the
    * `must_change_password` flag → a 403 `password-change-required` guard + the editor's forced screen).
@@ -1291,6 +1296,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const oidcRedirectUri = (req: FastifyRequest, providerId: string): string =>
     `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
+  const releasesRepo = new ReleaseRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
   const captchaVerifier = opts.captcha ?? new HttpCaptchaVerifier();
@@ -4930,6 +4936,51 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     );
 
     // --- Recycle Bin: list soft-deleted media, restore one, or purge it permanently -----------
+    /**
+     * Which of this project's media nothing refers to.
+     *
+     * Returns the assets themselves (so the caller can show name, size and thumbnail) plus WHAT WAS
+     * SEARCHED — an author about to delete 40 files deserves to see the scan's reach rather than be
+     * asked to trust it. Assets referenced only by version history come back flagged, not hidden:
+     * deleting one breaks a restore rather than a page, which is a different decision.
+     */
+    /**
+     * What this project occupies on disk, per store. Reporting only — nothing enforces a quota.
+     *
+     * Nothing bounds a SINGLE project: the reapers cap how long derived output survives, not how
+     * large any one site gets, so one large import can add hundreds of megabytes and no policy
+     * notices. A number an author can see is the cheapest thing that makes that visible.
+     */
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/storage', { config: rl(20) }, async (req, reply) => {
+      const { project } = await resolveProject(req, 'content:read');
+      const [media, build, preview, sourceRefs] = await Promise.all([
+        projectStorage(opts.mediaRoot, project.slug),
+        projectStorage(opts.publishRoot, project.slug),
+        projectStorage(opts.previewRoot, project.slug),
+        projectStorage(opts.sourceRefRoot, project.slug),
+      ]);
+      return reply.send({
+        media,
+        build,
+        preview,
+        sourceRefs,
+        total: media + build + preview + sourceRefs,
+        // Which of these the sweeps can reclaim without anyone republishing or re-importing.
+        derived: build + preview + sourceRefs,
+      });
+    });
+
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/unused', { config: rl(10) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:read');
+      const scan = await findUnusedMedia(db, ctx.projectId);
+      const byId = new Map(scan.unused.map((u) => [u.id, u]));
+      const all = (await contentRepo.list(ctx, 'media')) as Array<{ id: string }>;
+      const items = all
+        .filter((m) => byId.has(m.id))
+        .map((m) => ({ ...m, onlyInHistory: byId.get(m.id)?.onlyInHistory ?? false }));
+      return reply.send({ items, scanned: scan.scanned });
+    });
+
     app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/deleted', { config: rl(60) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       return reply.send({ items: await contentRepo.listDeletedMedia(ctx) });
@@ -5840,6 +5891,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const release = await buildToDir(ctx, project, store.dirFor(project.slug), {
             minify: !!hosting.local?.minifyHtml,
           });
+          // The DURABLE record of this publish. Kept in the database rather than read back out of the
+          // build, so reaping the build (see the retention rule below) cannot destroy the answer to
+          // "is the published site out of date?".
+          await releasesRepo.record(project.id, release);
+
+          // ★ RETENTION IS THE SWEEP'S JOB, NOT THIS ROUTE'S. A build for a project with no Local
+          // Hosting target serves nothing, but deleting it HERE would punish the ordinary sequence
+          // "publish, then turn on hosting": the bytes would be gone seconds before they were wanted,
+          // and the author would have to publish twice for no reason they could see. The hourly sweep
+          // removes it instead, which bounds the disk just as well and leaves that window open.
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({
             status: hosting.deployTargets === 0 ? 'unpublished' : 'published',
@@ -5869,7 +5930,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/projects/:projectId/publish',
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
-        const release = await store.readRelease(project.slug);
+        const release = await releasesRepo.get(project.id, () => store.readRelease(project.slug));
         // Dirty = there is publishable content AND it changed since the last release (or there is
         // no release yet). Drives the editor's "changes to deploy" hint.
         const latest = await contentRepo.latestContentUpdate(ctx);
@@ -5901,15 +5962,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { projectId: string } }>(
       '/projects/:projectId/publish/archive',
       async (req, reply) => {
-        const { project } = await resolveProject(req, 'content:read');
-        if ((await store.readRelease(project.slug)) === null) {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        // ★ THE ARCHIVE IS THE SECOND READER OF THE BUILD DIRECTORY, and the reason it cannot simply
+        // be gated on one existing. Downloading a zip is most useful precisely when a project has NO
+        // deploy target — that IS the manual deployment path — so the retention rule (keep a build
+        // only while Local Hosting is on) must not take the feature away.
+        //
+        // So: use the retained build when there is one, and otherwise build fresh into a temp dir and
+        // throw it away, exactly as a remote deploy does. A publish is still required first, because
+        // "export" means "the site as published", not "whatever the draft happens to be".
+        const everPublished = await releasesRepo.get(project.id, () => store.readRelease(project.slug));
+        if (everPublished === null) {
           return reply.code(409).send({ error: 'publish the site before exporting' });
         }
-        const zip = await archiveSite(store.dirFor(project.slug));
-        return reply
-          .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
-          .type('application/zip')
-          .send(zip);
+        const retained = (await store.readRelease(project.slug)) !== null;
+        const dir = retained ? store.dirFor(project.slug) : await buildForDeploy(ctx, project.id);
+        try {
+          const zip = await archiveSite(dir);
+          return reply
+            .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
+            .header('content-type', 'application/zip')
+            .send(zip);
+        } finally {
+          if (!retained) await rm(dir, { recursive: true, force: true }).catch(() => {});
+        }
       },
     );
 
@@ -7044,6 +7120,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       removeLocalSite: async (slug) => {
         await publishStore?.removeProject(slug);
       },
+      // Build into the locally-served directory when Local Hosting is switched ON. The build is kept
+      // only while such a target exists, so without this the site would 404 until the next publish.
+      ensureLocalSite: async (ctx, project) => {
+        if (!publishStore) return;
+        // ★ ONLY when a release exists and its bytes do NOT. A project that has never been published
+        // has nothing to reproduce, so building here would turn "add Local Hosting" into a publish
+        // the author did not ask for — and on a freshly created project there is not even content to
+        // build. This runs for exactly one case: the sweep reclaimed the build, and hosting is being
+        // switched back on, where a 404 would otherwise be the only feedback.
+        if ((await publishStore.readRelease(project.slug)) !== null) return;
+        if ((await releasesRepo.get(project.id)) === null) return;
+        const release = await buildToDir(ctx, project as never, publishStore.dirFor(project.slug), { minify: false });
+        await releasesRepo.record(project.id, release);
+      },
       // Shares the publish route's in-flight set so a delete can't `rm -rf` a directory mid-build.
       isPublishing: (projectId) => activePublishes.has(projectId),
       rl,
@@ -7979,6 +8069,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close
   // (so tests don't leak timers); the interval is long enough not to fire inside a test run.
+  /**
+   * How long a derived artefact survives without being touched. Preview builds and source references
+   * only; a build with no Local Hosting target is removed regardless of age, because age is not what
+   * makes it useless.
+   */
+  const derivedRetentionMs = opts.derivedRetentionMs ?? 30 * 24 * 60 * 60 * 1000;
+
+  /**
+   * Sweep the three derived stores. The rules live in `storage-reaper.ts`; what matters HERE is the
+   * `onPreviewReaped` wiring — `previewBuiltVersion` is an in-memory map whose check returns early
+   * without testing that the directory still exists, so a build reaped behind this process's back
+   * would serve 404s. Dropping the marker is what makes the next request rebuild instead, and it is
+   * why this sweep cannot be a cron job.
+   */
+  async function reapDerivedStorage(): Promise<void> {
+    const report = await sweepDerivedStorage(db, {
+      ...(opts.publishRoot ? { publishRoot: opts.publishRoot } : {}),
+      ...(opts.previewRoot ? { previewRoot: opts.previewRoot } : {}),
+      ...(opts.sourceRefRoot ? { sourceRefRoot: opts.sourceRefRoot } : {}),
+      retentionMs: derivedRetentionMs,
+      busyProjectIds: activePublishes,
+      onPreviewReaped: (projectId) => {
+        previewBuiltVersion.delete(projectId);
+        previewBuilds.delete(projectId);
+      },
+    });
+    for (const [what, r] of [['unserved site builds', report.builds], ['stale preview builds', report.previews], ['stale source references', report.sourceRefs]] as const) {
+      if (r.removed.length) app.log.info({ removed: r.removed.length, bytes: r.bytesFreed }, `reaped ${what}`);
+    }
+  }
+
   const sweepMs = opts.maintenanceSweepMs ?? 60 * 60 * 1000;
   if (sweepMs > 0) {
     const sweepTimer = setInterval(() => {
@@ -7988,6 +8109,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // an expired challenge fails verification before the spent-check is ever consulted.
       void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
       if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
+      // ★ THE DERIVED-STORE REAPERS. `sites`, `preview` and `source-refs` had ONE removal path
+      // between them (permanent project deletion), so anything ever published, previewed or imported
+      // grew forever — 1.35 GB on a real instance, almost none of it reachable.
+      void reapDerivedStorage().catch((err) => app.log.warn(err, 'derived-storage reap failed'));
     }, sweepMs);
     sweepTimer.unref();
     app.addHook('onClose', async () => clearInterval(sweepTimer));

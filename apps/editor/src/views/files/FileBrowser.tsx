@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { useProjectEvents } from '../../lib/use-project-events';
 import { StockPicker } from '../media/StockPicker';
 import { RecycleBinModal } from './RecycleBinModal';
+import { UnusedFilesModal } from './UnusedFilesModal';
 import { FileTypeIcon, FolderIcon } from '../media/file-icons';
 import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
@@ -146,6 +147,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const [cleanSvg, setCleanSvg] = useState(true);
   const [stockOpen, setStockOpen] = useState(false);
   const [recycleOpen, setRecycleOpen] = useState(false);
+  const [unusedOpen, setUnusedOpen] = useState(false);
   const [folder, setFolder] = useState('');
   const [view, setView] = useState<'list' | 'grid'>(pick ? 'grid' : 'list');
   const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' });
@@ -438,6 +440,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         <button type="button" onClick={() => setStockOpen(true)} className={ghostButton}>
           Search stock images
         </button>
+        <button type="button" onClick={() => setUnusedOpen(true)} className={ghostButton}>
+          Search for unused files
+        </button>
         <button type="button" onClick={() => setRecycleOpen(true)} className={ghostButton}>
           Recycle Bin
         </button>
@@ -697,6 +702,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       )}
 
       {recycleOpen && <RecycleBinModal projectId={projectId} onClose={() => setRecycleOpen(false)} onChanged={() => void load()} />}
+      {unusedOpen && <UnusedFilesModal projectId={projectId} onClose={() => setUnusedOpen(false)} onChanged={() => void load()} />}
 
       {/* In-app image preview (replaces opening images in a new tab) + copyable embed URLs. */}
       {preview && preview.kind === 'image' && (

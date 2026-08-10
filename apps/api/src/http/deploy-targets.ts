@@ -185,6 +185,12 @@ export interface DeployTargetDeps {
   /** Delete the LOCALLY-SERVED build for a slug. Called when a `local` target is removed — see the
    *  DELETE route. Remote protocols never write here (they build into a throwaway temp dir). */
   removeLocalSite: (slug: string) => Promise<void>;
+  /**
+   * Build the site into the locally-served directory. Called when Local Hosting is ADDED, because the
+   * build is retained only while such a target exists — without this, switching it on would serve a
+   * 404 until the next publish.
+   */
+  ensureLocalSite: (ctx: ProjectContext, project: { id: string; slug: string }) => Promise<void>;
   /** Whether a publish is building into that same directory right now. The DELETE route refuses
    *  rather than racing its `rm -rf` against a live `buildToDir`. */
   isPublishing: (projectId: string) => boolean;
@@ -236,13 +242,13 @@ async function streamDeploy(
  * Credentials are encrypted at rest and never returned to clients.
  */
 export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTargetDeps): void {
-  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, removeLocalSite, isPublishing, rl } = deps;
+  const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, removeLocalSite, ensureLocalSite, isPublishing, rl } = deps;
 
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/deploy-targets',
     { config: rl(20) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'deploy');
+      const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CreateDeployTargetBody.parse(req.body);
       // At most one Local Hosting target per project — it is THE local-serving config (findLocalTarget
@@ -318,6 +324,18 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             },
       );
       const saved = (await contentRepo.put(ctx, 'deploy_target', id, target)) as DeployTarget;
+      // ★ ADDING LOCAL HOSTING SERVES THE SITE WITHOUT A REPUBLISH — a property worth keeping.
+      //
+      // The build is retained only while a local target exists, so a project that published without
+      // one has no bytes on disk; turning local hosting on would otherwise 404 until someone thought
+      // to publish again, with nothing saying so. Rebuilding here restores the old behaviour on the
+      // new retention rule. Best-effort: a failure leaves the target created and the site unbuilt,
+      // which the next publish fixes — refusing to add the target would be the worse trade.
+      if (saved.protocol === 'local') {
+        await ensureLocalSite(ctx, project).catch((err: unknown) => {
+          req.log.warn({ err, project: project.id }, 'could not build the site when Local Hosting was added');
+        });
+      }
       return reply.code(201).send({ target: sanitize(saved) });
     },
   );

@@ -51,7 +51,7 @@
     "@playwright/test": "^1.62",
     "@types/html-minifier-terser": "^7",
     "@types/node": "^22.10.2",
-    "@types/nodemailer": "^8.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@vitest/coverage-v8": "^4.1.10",
     "drizzle-kit": "^0.31",

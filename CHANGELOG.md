@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **★ The maintenance sweeps never ran on an instance that restarted often.** They were scheduled with
+  `setInterval` alone, so a deployment restarted more frequently than the hourly interval cancelled the
+  timer before it ever fired — development instances, anything redeployed a few times a day, and every
+  crash-looping container. The symptom was silence rather than an error, and it applied to all five
+  sweeps (expired auth rows, revision retention, spent proof-of-work, the media Recycle Bin, and the
+  new derived-storage reapers): housekeeping that only runs on quiet machines does not run on the
+  machines with the most to clean. They now also run once shortly after boot, off the boot path so a
+  restart is not slowed by a filesystem walk.
+
 ### Added
 
 - **The File Manager can find unused files.** "Search for unused files" lists media nothing in the
